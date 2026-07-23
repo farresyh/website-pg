@@ -18,6 +18,7 @@ class Order extends Model
         'game_id',
         'package_id',
         'supplier_id',
+        'supplier_product_ref',
         'reseller_id',
         'cost_price',
         'reseller_cost_price',
