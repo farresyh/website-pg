@@ -1,0 +1,12 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+.zed
+.cursor/
+
+# Ruflo / claude-flow local state (not project source)
+.claude-flow/
+.swarm/
+ruvector.db
