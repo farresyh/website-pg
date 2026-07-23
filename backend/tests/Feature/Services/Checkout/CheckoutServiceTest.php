@@ -106,10 +106,15 @@ class CheckoutServiceTest extends TestCase
     }
 
     /**
-     * A payment-gateway failure must never leave a dangling, unpayable
-     * Order behind — the whole initiate() call is one transaction.
+     * A payment-gateway failure leaves the Order in place (Pending, no
+     * payment_ref) rather than rolling it back — that's the safe
+     * failure direction. Order creation and the gateway call are
+     * deliberately not wrapped in one transaction: if they were, a
+     * commit failure after a successful Xendit call could instead
+     * orphan a real, payable Xendit payment link with no matching
+     * Order anywhere in the system, which is worse.
      */
-    public function test_initiate_rolls_back_the_order_when_payment_request_creation_fails(): void
+    public function test_initiate_keeps_the_order_when_payment_request_creation_fails(): void
     {
         $gateway = $this->fakePaymentGateway(false, null, 'API_VALIDATION_ERROR', 'bad channel_properties');
 
@@ -120,6 +125,7 @@ class CheckoutServiceTest extends TestCase
             // expected
         }
 
-        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(1, Order::query()->count());
+        $this->assertNull(Order::query()->first()->payment_ref);
     }
 }

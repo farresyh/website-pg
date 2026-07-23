@@ -9,6 +9,12 @@ final class CheckoutTotalService
         int $voucherDiscount,
         PaymentMethodFeeConfig $fee,
     ): CheckoutTotal {
+        if ($voucherDiscount < 0) {
+            throw new InvalidPricingConfigException(
+                "voucher_discount ({$voucherDiscount}) cannot be negative",
+            );
+        }
+
         if ($voucherDiscount > $sellingPrice) {
             throw new InvalidPricingConfigException(
                 "voucher_discount ({$voucherDiscount}) exceeds selling_price ({$sellingPrice})",

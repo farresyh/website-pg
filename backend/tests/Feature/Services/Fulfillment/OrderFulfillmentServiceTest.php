@@ -111,6 +111,19 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->service($this->fakeSupplierAdapter(true))->fulfill($order);
     }
 
+    /**
+     * Fails fast with a clear internal error instead of silently
+     * sending an empty product_code to the supplier.
+     */
+    public function test_fulfill_rejects_when_supplier_product_ref_is_missing(): void
+    {
+        $order = $this->paidOrder(['supplier_product_ref' => null]);
+
+        $this->expectException(\App\Services\Fulfillment\OrderFulfillmentException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))->fulfill($order);
+    }
+
     public function test_fulfill_generates_reference_number_and_submits_to_supplier(): void
     {
         $order = $this->paidOrder();

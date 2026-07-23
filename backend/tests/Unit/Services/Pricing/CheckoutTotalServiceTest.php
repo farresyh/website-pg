@@ -93,6 +93,25 @@ class CheckoutTotalServiceTest extends TestCase
     }
 
     /**
+     * A negative voucher discount would inflate fee_base/final_amount
+     * above the actual selling price instead of reducing it — reject
+     * outright rather than silently overcharge.
+     */
+    public function test_rejects_negative_voucher_discount(): void
+    {
+        $service = new CheckoutTotalService();
+        $cardFee = new PaymentMethodFeeConfig(percentageRate: 1.9, flatFeeSen: 90);
+
+        $this->expectException(InvalidPricingConfigException::class);
+
+        $service->calculate(
+            sellingPrice: 5000,
+            voucherDiscount: -1,
+            fee: $cardFee,
+        );
+    }
+
+    /**
      * Rounding policy: fractional sen round half away from zero (i.e. 2.5
      * rounds to 3, not 2) — this is a deliberate financial policy, not an
      * accident of PHP's round() default. fee_base 100 * 2.5% = 2.5 exactly.
