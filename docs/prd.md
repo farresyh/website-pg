@@ -522,14 +522,15 @@ Built test-first (red → green), per the TDD approach agreed for money-critical
 | **Ledger** (append-only balance, ADR-002) | ✅ Done | `app/Models/{LedgerAccount,LedgerEntry}.php`, `app/Services/Ledger/{LedgerService,InsufficientBalanceException}.php`, migrations for both tables | `tests/Feature/Services/Ledger/LedgerServiceTest.php` (4) + `tests/Concurrency/LedgerWithdrawConcurrencyTest.php` (1, proves the lock, not just the arithmetic) |
 | **Order status** (payment_status/delivery_status, ORD-11 guard) | ✅ Done | `app/Services/Order/{PaymentStatus,DeliveryStatus,OrderStatusService,InvalidOrderTransitionException}.php` | `tests/Unit/Services/Order/OrderStatusServiceTest.php` (9) |
 | **Voucher redemption** (VCH-5) | ✅ Done | `app/Models/Voucher.php`, `app/Services/Voucher/{VoucherService,InvalidVoucherException}.php`, migration | `tests/Feature/Services/Voucher/VoucherServiceTest.php` (4) + `tests/Concurrency/VoucherRedeemConcurrencyTest.php` (1) |
-| **Order idempotency** (`reference_number` generation before supplier call, ORD-8) | ⬜ Not started | — | — |
+| **Order idempotency** (`reference_number` generation before supplier call, ORD-8) | ✅ Done | `app/Services/Order/ReferenceNumberService.php` — `generate()` produces a unique `REF-<ULID>` value; `resolve(?string $existing)` is the retry-safe entry point (returns the existing value unchanged, generates only when none exists yet). Not yet wired to an `Order` model/migration — those don't exist yet (see below) | `tests/Unit/Services/Order/ReferenceNumberServiceTest.php` (5) |
 | **Supplier Adapter layer** (ADAPT-1..4) | ⬜ Not started | — | — |
 | **Payment webhook handling** (PAY-1..4) | ⬜ Not started | — | — |
 | **Blacklist check** (FRAUD-1..4) | ⬜ Not started | — | — |
+| **`Order` model/migration** | ⬜ Not started — currently only pure logic services exist (`OrderStatusService`, `ReferenceNumberService`); no Eloquent model or table yet | — | — |
 | **All controllers/routes/auth** (Sanctum, MFA) | ⬜ Not started | — | — |
 | **Admin/Middleware/Storefront UI** | ⬜ Scaffolded only (placeholders, no logic wired) — see `admin/` | — |
 
-**Test suite total: 29 passing** (27 in the default sqlite suite + 2 in the MySQL concurrency suite).
+**Test suite total: 34 passing** (32 in the default sqlite suite + 2 in the MySQL concurrency suite).
 
 **How to run tests:**
 - Fast, everyday suite (sqlite, no Docker needed): `cd backend && php artisan test`
