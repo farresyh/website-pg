@@ -523,14 +523,14 @@ Built test-first (red → green), per the TDD approach agreed for money-critical
 | **Order status** (payment_status/delivery_status, ORD-11 guard) | ✅ Done | `app/Services/Order/{PaymentStatus,DeliveryStatus,OrderStatusService,InvalidOrderTransitionException}.php` | `tests/Unit/Services/Order/OrderStatusServiceTest.php` (9) |
 | **Voucher redemption** (VCH-5) | ✅ Done | `app/Models/Voucher.php`, `app/Services/Voucher/{VoucherService,InvalidVoucherException}.php`, migration | `tests/Feature/Services/Voucher/VoucherServiceTest.php` (4) + `tests/Concurrency/VoucherRedeemConcurrencyTest.php` (1) |
 | **Order idempotency** (`reference_number` generation before supplier call, ORD-8) | ✅ Done | `app/Services/Order/ReferenceNumberService.php` — `generate()` produces a unique `REF-<ULID>` value; `resolve(?string $existing)` is the retry-safe entry point (returns the existing value unchanged, generates only when none exists yet). Not yet wired to an `Order` model/migration — those don't exist yet (see below) | `tests/Unit/Services/Order/ReferenceNumberServiceTest.php` (5) |
-| **Supplier Adapter layer** (ADAPT-1..4) | ⬜ Not started | — | — |
+| **Supplier Adapter layer** (ADAPT-1..4) | 🟡 Interface done, one real adapter done | `app/Services/Supplier/{SupplierAdapter,SupplierResponse,SupplierOrderRequest,ValidationNotSupportedException}.php` — canonical contract + normalized-response DTO. First concrete implementation: `app/Services/Supplier/Gamevion/GamevionAdapter.php`, built against Gamevion's real OpenAPI spec (docs.gamevion.com/gamevion-api, v1.0.10 — not assumed). Confirmed Gamevion-specific quirks the adapter absorbs: dual auth headers (Bearer **and** X-API-KEY, both required), sandbox mode returns a differently-prefixed product shape (`sandbox_*` vs `product_*`), a 409 on order creation means "duplicate reference" (their idempotency signal), `check-status` takes Gamevion's own `invoice_number` (not our `reference_number`), and no player-validation endpoint exists at all (ADR-005 fallback applies to every game on this supplier). Config placeholder in `config/services.php['gamevion']` (env-based; set `GAMEVION_BEARER_TOKEN`/`GAMEVION_API_KEY` locally — not committed). Not yet wired to a `Supplier` model/DB config (SUPP-5) or to any order-creation flow | `tests/Feature/Services/Supplier/GamevionAdapterTest.php` (12) |
 | **Payment webhook handling** (PAY-1..4) | ⬜ Not started | — | — |
 | **Blacklist check** (FRAUD-1..4) | ⬜ Not started | — | — |
-| **`Order` model/migration** | ⬜ Not started — currently only pure logic services exist (`OrderStatusService`, `ReferenceNumberService`); no Eloquent model or table yet | — | — |
+| **`Order`/`Supplier` models/migrations** | ⬜ Not started — currently only pure logic services exist (`OrderStatusService`, `ReferenceNumberService`, Supplier Adapter layer); no Eloquent model or table yet | — | — |
 | **All controllers/routes/auth** (Sanctum, MFA) | ⬜ Not started | — | — |
 | **Admin/Middleware/Storefront UI** | ⬜ Scaffolded only (placeholders, no logic wired) — see `admin/` | — |
 
-**Test suite total: 34 passing** (32 in the default sqlite suite + 2 in the MySQL concurrency suite).
+**Test suite total: 46 passing** (44 in the default sqlite suite + 2 in the MySQL concurrency suite).
 
 **How to run tests:**
 - Fast, everyday suite (sqlite, no Docker needed): `cd backend && php artisan test`
