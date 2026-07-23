@@ -513,7 +513,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 
 # 14. Implementation Status (`backend/`)
 
-Built test-first (red → green), per the TDD approach agreed for money-critical logic. Everything below is pure/framework-light business logic — no controllers, routes, or UI wired up yet. Updated 2026-07-23; keep this section current as a quick "where did we leave off" marker for future sessions, rather than re-deriving it from git history each time.
+Built test-first (red → green), per the TDD approach agreed for money-critical logic. Updated 2026-07-24; keep this section current as a quick "where did we leave off" marker for future sessions, rather than re-deriving it from git history each time.
 
 | Area | Status | Files | Tests |
 | --- | --- | --- | --- |
@@ -541,6 +541,16 @@ Built test-first (red → green), per the TDD approach agreed for money-critical
 **Test suite total: 92 passing** (89 in the default sqlite suite + 3 in the MySQL concurrency suite).
 
 **Storefront auth decision, 2026-07-24:** confirmed via live comparison (browser) that keroxshop.com (our own site) is 100% guest-checkout — no login/register anywhere, only "Track Order" by order number. gamevion.com does have customer accounts, but for a reason that doesn't apply to us: their site runs a customer wallet (pre-funded balance) plus a reseller/membership-tier program, both of which require persistent identity. Our PRD has no Customer entity and no customer-facing wallet concept — Order already only stores `customer_email`/`customer_phone` as plain strings. Decision: MVP storefront stays guest-checkout; auth (Sanctum) is for `AdminUser` only. Revisit only if a customer wallet/loyalty feature is deliberately added later (would be its own ADR-level decision, not a default).
+
+---
+
+**➡️ NEXT SESSION STARTS HERE: Admin Panel skeleton (`admin/`).** Backend now has a real, tested slice end-to-end (checkout initiation → Xendit payment request → webhook → supplier fulfillment → ledger credit), plus working `AdminUser` auth (`POST /api/login`, `GET /api/me`) and role middleware. `admin/` is still `create-next-app` scaffold, but a *thoughtfully pre-planned* one — every stub already has a TODO pointing at the exact PRD/AUTH ID it's waiting on (verified by reading them, not assumed):
+- `admin/src/lib/api-client.ts` — a working `apiFetch<T>()` fetch wrapper already exists (bearer-token header support built in) and explicitly never computes/trusts money values itself (foundation-security.md). Just needs real calls wired in, not a rewrite.
+- `admin/src/lib/auth.ts` + `admin/src/proxy.ts` — the intended design is a **cookie-based optimistic gate**: `SESSION_COOKIE_NAME` cookie presence redirects `/admin/*` and `/middleware/*` to `/login` client-side for UX only, explicitly documented as NOT the real security boundary (`EnsureAdminRole` server-side already is). TODO in `auth.ts` says: set this cookie via a Next.js Route Handler that calls Laravel's `/api/login` and stores the returned Sanctum token **httpOnly** — that Route Handler doesn't exist yet and is the actual next piece to build.
+- `admin/src/app/login/page.tsx` — form UI exists but every field is `disabled`; needs wiring to the Route Handler above. Comment already flags AUTH-7 (MFA) as a second step to insert here later — not needed yet since MFA enforcement itself isn't built server-side.
+- CORS/Sanctum config: `SANCTUM_STATEFUL_DOMAINS` and CORS for wherever `admin/` runs locally (e.g. `localhost:3000`) is **not yet configured or verified** on the backend — check this before the login flow is tested end-to-end, or requests will fail confusingly.
+- `admin/src/app/middleware/page.tsx` (Supplier Middleware business panel, §6.20 — unrelated to the Next.js `proxy.ts` mechanism despite the name collision) is explicitly TODO'd as blocked on the Adapter layer's remaining pieces (ADAPT-1..3 exist; product sync/matching UI needs `Game`/`Package`, still blocked on real Gamevion catalog data).
+- Scope the first working screens to what auth alone unlocks (login → `/admin` shell showing the signed-in admin via `GET /api/me`) rather than reaching for screens needing `Game`/`Package`/`Order` list endpoints that don't exist yet.
 
 **How to run tests:**
 - Fast, everyday suite (sqlite, no Docker needed): `cd backend && php artisan test`
