@@ -46,4 +46,14 @@ return [
         'sandbox' => env('GAMEVION_SANDBOX', true),
     ],
 
+    // Temporary env-based config for local/manual testing of
+    // XenditGateway. Test vs. live mode is controlled by which key
+    // type is set (Xendit's own convention: xnd_development_... vs
+    // xnd_production_...), not a separate sandbox URL/flag.
+    'xendit' => [
+        'base_url' => env('XENDIT_BASE_URL', 'https://api.xendit.co'),
+        'secret_key' => env('XENDIT_SECRET_KEY'),
+        'webhook_token' => env('XENDIT_WEBHOOK_TOKEN'),
+    ],
+
 ];
