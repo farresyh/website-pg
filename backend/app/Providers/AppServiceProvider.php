@@ -23,12 +23,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(SupplierAdapter::class, function () {
             $config = config('services.gamevion');
+            $proxy = config('services.proxy');
 
             return new GamevionAdapter(
                 baseUrl: $config['base_url'],
                 bearerToken: (string) $config['bearer_token'],
                 apiKey: (string) $config['api_key'],
                 sandbox: (bool) $config['sandbox'],
+                proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
             );
         });
 

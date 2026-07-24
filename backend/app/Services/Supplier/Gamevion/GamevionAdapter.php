@@ -33,6 +33,7 @@ final class GamevionAdapter implements SupplierAdapter
         private readonly string $bearerToken,
         private readonly string $apiKey,
         private readonly bool $sandbox = false,
+        private readonly ?string $proxyUrl = null,
     ) {
     }
 
@@ -140,13 +141,19 @@ final class GamevionAdapter implements SupplierAdapter
 
     private function client(): PendingRequest
     {
-        return Http::baseUrl($this->baseUrl)
+        $client = Http::baseUrl($this->baseUrl)
             ->withHeaders(array_filter([
                 'Authorization' => "Bearer {$this->bearerToken}",
                 'X-API-KEY' => $this->apiKey,
                 'X-ENVIRONMENT' => $this->sandbox ? 'sandbox' : null,
             ]))
             ->acceptJson();
+
+        if ($this->proxyUrl !== null) {
+            $client = $client->withOptions(['proxy' => $this->proxyUrl]);
+        }
+
+        return $client;
     }
 
     /**

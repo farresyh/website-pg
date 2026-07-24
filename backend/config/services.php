@@ -35,6 +35,19 @@ return [
         ],
     ],
 
+    // Shared outbound HTTP(S) proxy, used by any SupplierAdapter whose
+    // supplier requires a whitelisted static IP — our local/dev machine
+    // has no static IP of its own. Not tied to Gamevion specifically:
+    // one proxy host covers every supplier that needs IP whitelisting,
+    // since the whitelisted party only cares which IP the request came
+    // from, not what else that IP is also used for. Only build a second
+    // proxy if a future supplier demands an exclusive/region-specific IP.
+    // SUPPLIER_PROXY_URL format: http://user:pass@host:port
+    'proxy' => [
+        'enabled' => (bool) env('SUPPLIER_PROXY_ENABLED', false),
+        'url' => env('SUPPLIER_PROXY_URL'),
+    ],
+
     // Temporary env-based config for local/manual testing of
     // GamevionAdapter. Once the Supplier model exists (SUPP-5), this
     // moves to encrypted-at-rest per-supplier `api_config` in the DB —
