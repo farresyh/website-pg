@@ -3,6 +3,7 @@
 namespace App\Services\Supplier\Gamevion;
 
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -188,24 +189,24 @@ final class GamevionAdapter implements SupplierAdapter
      * genuinely different field set for the same concept, confirmed
      * from the spec's oneOf. Both collapse to one canonical shape.
      */
-    private function normalizeProduct(array $item): array
+    private function normalizeProduct(array $item): SupplierCatalogItem
     {
         if (array_key_exists('sandbox_code', $item)) {
-            return [
-                'product_ref' => $item['sandbox_code'] ?? null,
-                'name' => $item['sandbox_serviceName'] ?? null,
-                'category' => $item['sandbox_category'] ?? null,
-                'price' => isset($item['sandbox_price']) ? (float) $item['sandbox_price'] : null,
-                'status' => $item['sandbox_status'] ?? null,
-            ];
+            return new SupplierCatalogItem(
+                productRef: $item['sandbox_code'] ?? '',
+                name: $item['sandbox_serviceName'] ?? null,
+                category: $item['sandbox_category'] ?? null,
+                price: isset($item['sandbox_price']) ? (float) $item['sandbox_price'] : null,
+                status: $item['sandbox_status'] ?? null,
+            );
         }
 
-        return [
-            'product_ref' => $item['product_code'] ?? null,
-            'name' => $item['product_serviceName'] ?? null,
-            'category' => $item['product_category'] ?? null,
-            'price' => isset($item['product_price']) ? (float) $item['product_price'] : null,
-            'status' => $item['product_status'] ?? null,
-        ];
+        return new SupplierCatalogItem(
+            productRef: $item['product_code'] ?? '',
+            name: $item['product_serviceName'] ?? null,
+            category: $item['product_category'] ?? null,
+            price: isset($item['product_price']) ? (float) $item['product_price'] : null,
+            status: $item['product_status'] ?? null,
+        );
     }
 }

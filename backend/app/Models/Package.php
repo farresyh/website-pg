@@ -12,6 +12,7 @@ class Package extends Model
         'name',
         'cost_price',
         'reseller_cost_price',
+        'markup_percent',
         'is_active',
         'supplier_id',
         'supplier_package_ref',
@@ -21,6 +22,7 @@ class Package extends Model
     protected $casts = [
         'cost_price' => 'integer',
         'reseller_cost_price' => 'integer',
+        'markup_percent' => 'decimal:2',
         'is_active' => 'boolean',
         'sort_order' => 'integer',
     ];

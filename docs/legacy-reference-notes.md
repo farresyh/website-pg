@@ -42,7 +42,16 @@ The legacy system is two separately-deployed apps (`admin.keroxshop.com`, `manag
 
 ## Not reviewed / lower priority for a future pass
 
-Settings → SEO, Backups detail beyond the list view, the Games edit modal's Content tab, Validators CRUD, and the Price List screen.
+Settings → SEO, Backups detail beyond the list view, the Games edit modal's Content tab, Validators CRUD.
+
+## Product Manager / Games / Price List — package-level pricing across suppliers (2026-07-25, read-only, no sync/add/remove actions taken)
+
+Reviewed specifically to answer a founder question: when two suppliers offer "the same" package at different prices, how does the legacy system pick which one the customer sees?
+
+- **Product Manager** (`manage.keroxshop.com/product-manager`) matches at the **Game level only** — 626 total products, 124 "Matched (Both Suppliers)", 377 MooGold-only, 125 BarbarTopup-only. Confirmed directly from `Game`'s own schema (`/api/supplier/games/list`): matching is stored as `moogold_product_id`/`moogold_product_name`/`barbar_product_id`/`barbar_product_name` — **dedicated columns for exactly two suppliers, hardcoded**, not a list. A third supplier would need a third pair of columns. This project's `Game.supplier_mappings` (JSON array) already avoids this ceiling — worth remembering as a concrete reason that design is right, not just theoretically nicer.
+- **Games screen**, per-game detail, has two tabs: **"Available Packages"** (raw, side-by-side per-supplier lists with prices and an `Add` button each) and **"Catalog"** (admin-curated, starts empty, "Edit the final name as needed"). Confirmed via `/api/supplier/games/{id}/compare-packages`: this endpoint returns two flat per-supplier item lists with **no `matched_with`/`group_id` field linking individual packages across suppliers** — package-level matching is not automatic at all, only the Game-level matching above is.
+- **Admin can (and does) activate multiple same-or-near-same-named packages simultaneously** — inspected Mobile Legends (Malaysia)'s real Catalog (102 active rows): MooGold's "13 + 1 Diamonds" (RM 0.94) and three BarbarTopup rows all named "14 Diamond ( 13 + 1 Bonus )" (RM 0.96, RM 0.96, RM 0.97) are all `active` at once, un-deduplicated, at the Catalog/admin layer.
+- **The actual dedup happens at the storefront**, at query time: live-checked `keroxshop.com/game/mobile-legends-malaysia` and only **one** "14 Diamond ( 13 + 1 Bonus )" card is shown, RM 0.99 — despite 4 differently-priced active Catalog rows behind it. Mechanism (founder-confirmed, matches the evidence above): storefront groups active Catalog packages **by exact display name string** and shows only the cheapest. A package renamed even slightly (e.g. dropping "(13+1 Bonus)") would stop grouping with the others and appear as a second, separate card — this is a **name-string-match**, not an ID/relationship-based grouping, and is therefore fragile to typos/formatting drift. Confirms this is a legacy-proven pattern worth adopting the *behavior* of, but worth hardening the *mechanism* of (normalize the name before grouping) in this project's own build — see `docs/prd.md` §14's Price Sync Stage 3 note.
 
 ---
 

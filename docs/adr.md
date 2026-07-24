@@ -66,6 +66,10 @@ Immutable record of foundation decisions made before any code was written. Each 
 
 **Rationale:** Confirmed via direct research on real supplier APIs that dedicated validate-ID endpoints are typically only available for specific games (e.g. MLBB), not universally offered by every supplier for every game. This cannot be engineered around — for suppliers without pre-validation, "customer pays, then player ID turns out invalid" is a real scenario that must be handled by policy (ADR-004's voucher-only refund), not assumed away by code.
 
+**Addendum, 2026-07-25 — Gamevion re-confirmed against the live spec, and a related gap surfaced:** re-checked directly against `docs.gamevion.com/gamevion-api` (v1.0.10, fetched live, not recalled from memory) in response to a founder question. Gamevion's entire API surface is exactly 4 endpoints — `check-balance`, `product`, `order`, `check-status` — **zero validation endpoints, for any game, not just "not universal."** `GamevionAdapter::validatePlayer()` throwing `ValidationNotSupportedException` unconditionally is confirmed correct, not a stale assumption.
+
+The same check surfaced a related, previously-undocumented gap: `POST /api/order`'s `data` field is a single opaque **string** (e.g. `"123456|1234"`) — Gamevion's API has no concept of structured per-product input fields either (no schema telling us "this game needs player_id + server_id, this one needs only player_id"). That knowledge has to live entirely on our side. The schema already has a home for it (`Game.validation_rules`, JSON — see `prd.md` §8), but no admin UI to populate it and no `CheckoutService`/`OrderFulfillmentService` logic yet to assemble the `data` string from it. Not built as of this addendum — tracked in `prd.md` §14's NEXT SESSION pointer.
+
 ---
 
 ## ADR-006 (D6): Supplier Adapter/Normalizer layer is MVP, not Phase 2

@@ -92,10 +92,10 @@ class GamevionAdapterTest extends TestCase
         $result = $this->adapter()->listProducts();
 
         $this->assertTrue($result->success);
-        $this->assertSame('FFP5', $result->data[0]['product_ref']);
-        $this->assertSame('Free Fire 5 Diamonds', $result->data[0]['name']);
-        $this->assertSame(1000.0, $result->data[0]['price']);
-        $this->assertSame('active', $result->data[0]['status']);
+        $this->assertSame('FFP5', $result->data[0]->productRef);
+        $this->assertSame('Free Fire 5 Diamonds', $result->data[0]->name);
+        $this->assertSame(1000.0, $result->data[0]->price);
+        $this->assertSame('active', $result->data[0]->status);
     }
 
     /**
@@ -128,10 +128,10 @@ class GamevionAdapterTest extends TestCase
         $result = $this->adapter(sandbox: true)->listProducts();
 
         $this->assertTrue($result->success);
-        $this->assertSame('FFP5', $result->data[0]['product_ref']);
-        $this->assertSame('Free Fire 5 Diamonds', $result->data[0]['name']);
-        $this->assertSame(1000.0, $result->data[0]['price']);
-        $this->assertSame('active', $result->data[0]['status']);
+        $this->assertSame('FFP5', $result->data[0]->productRef);
+        $this->assertSame('Free Fire 5 Diamonds', $result->data[0]->name);
+        $this->assertSame(1000.0, $result->data[0]->price);
+        $this->assertSame('active', $result->data[0]->status);
     }
 
     /**

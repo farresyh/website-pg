@@ -14,6 +14,19 @@
  * (still optimistic/UX-only — Laravel remains the real enforcement layer)
  * to redirect non-Super-Admins away from this section.
  */
+import Link from "next/link";
+
+// Only pages that actually exist are real links — the rest are still
+// TODO (§6.20), same placeholder-until-built discipline as before.
+const NAV_ITEMS: { label: string; href: string | null }[] = [
+  { label: "Dashboard", href: "/middleware" },
+  { label: "Product Manager", href: "/middleware/product-manager" },
+  { label: "Price Sync", href: null },
+  { label: "Validate Player", href: null },
+  { label: "Request Logs", href: null },
+  { label: "Developer / API Tester", href: null },
+];
+
 export default function MiddlewareLayout({
   children,
 }: {
@@ -24,12 +37,19 @@ export default function MiddlewareLayout({
       <nav className="w-56 shrink-0 border-r border-black/10 p-4 dark:border-white/15">
         <p className="mb-4 text-sm font-semibold">Middleware Panel</p>
         <ul className="space-y-2 text-sm text-black/70 dark:text-white/70">
-          <li>Dashboard</li>
-          <li>Product Manager</li>
-          <li>Price Sync</li>
-          <li>Validate Player</li>
-          <li>Request Logs</li>
-          <li>Developer / API Tester</li>
+          {NAV_ITEMS.map((item) =>
+            item.href ? (
+              <li key={item.label}>
+                <Link href={item.href} className="hover:text-brand-500 dark:hover:text-brand-400">
+                  {item.label}
+                </Link>
+              </li>
+            ) : (
+              <li key={item.label} className="opacity-50">
+                {item.label}
+              </li>
+            ),
+          )}
         </ul>
       </nav>
       <main className="flex-1 p-6">{children}</main>

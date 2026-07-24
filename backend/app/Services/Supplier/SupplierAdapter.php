@@ -12,6 +12,10 @@ interface SupplierAdapter
 {
     public function checkBalance(): SupplierResponse;
 
+    /**
+     * @return SupplierResponse whose `data`, on success, is a
+     *         SupplierCatalogItem[]
+     */
     public function listProducts(): SupplierResponse;
 
     public function createOrder(SupplierOrderRequest $request): SupplierResponse;

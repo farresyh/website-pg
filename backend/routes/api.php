@@ -4,6 +4,9 @@ use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\GameController;
+use App\Http\Controllers\Middleware\SupplierProductController;
+use App\Http\Controllers\PackageController;
 use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -44,6 +47,30 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
         });
         Route::post('/orders/{order}/voucher', [VoucherController::class, 'storeFromOrder']);
+    });
+
+    // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion
+    // mirror (supplier_products), link a category group to a Game
+    // once, then promote individual rows into real Packages.
+    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/supplier-products')->group(function () {
+        Route::get('/categories', [SupplierProductController::class, 'categories']);
+        Route::post('/categories/link', [SupplierProductController::class, 'linkCategory']);
+        Route::get('/', [SupplierProductController::class, 'index']);
+        Route::post('/{supplier_product}/promote', [SupplierProductController::class, 'promote']);
+    });
+
+    // GAME-1..5/7 — Admin Games & Packages management.
+    Route::middleware('admin.role:super_admin,admin')->group(function () {
+        Route::get('/games', [GameController::class, 'index']);
+        Route::get('/games/{game}', [GameController::class, 'show']);
+        Route::put('/games/{game}', [GameController::class, 'update']);
+        Route::delete('/games/{game}', [GameController::class, 'destroy']);
+        Route::get('/games/{game}/packages', [GameController::class, 'packages']);
+
+        Route::put('/packages/{package}', [PackageController::class, 'update']);
+        Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
+        Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
+        Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
     });
 });
 
