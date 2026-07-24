@@ -44,6 +44,7 @@
 - [ ] Never assume a supplier's auth scheme, response envelope, or validation-endpoint availability is uniform with any other supplier. Confirm per-supplier, per-game during onboarding. (D6 / ADR-006)
 - [ ] Validation-capability (`supports_validation`) is tracked per game-supplier mapping, not as a blanket flag on the Supplier record. (GAME-12)
 - [ ] A circuit breaker trips per-supplier after repeated failures — a down supplier must not be able to cascade into blocking the whole delivery queue.
+- [ ] If a supplier requires IP whitelisting, its Adapter routes through the one shared outbound proxy config (`config/services.php['proxy']`), never a supplier-specific, one-off proxy setup. (ADR-006 addendum)
 
 ## 7. Secrets & Data
 
