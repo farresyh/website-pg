@@ -8,7 +8,8 @@
 
 - [ ] Super Admin and Admin accounts require MFA (TOTP) — enforced before any withdrawal/voucher/refund-affecting action. (AUTH-7)
 - [ ] Every backend endpoint enforces role-based access control server-side. Frontend route guards are convenience only, never the actual gate.
-- [ ] Withdrawals and vouchers above a configured threshold require a **second, different** admin's approval (maker-checker) — the requester can never be the sole approver. (WTH-5, VCH-6)
+- [ ] Withdrawals above a configured threshold require a **second, different** Super Admin's approval (maker-checker) — the requester can never be the sole approver. (WTH-5)
+- [ ] Vouchers above a configured threshold can only be created by a Super Admin — a **single-step role gate**, not the same two-person check as WTH-5. Deliberate deviation, decided 2026-07-24: voucher issuance is a store-credit obligation (never cash-out, per ADR-004), judged lower-stakes than an actual withdrawal, so the extra friction of a separate approver wasn't required. If this changes, update this line and `prd.md`'s VCH-6 row together — don't let them drift apart again. (VCH-6)
 - [ ] Reseller impersonation sessions (Phase 2) are fully audit-logged: real admin identity, session start/end, visible "impersonating" banner, every action tagged. (RES-4)
 
 ## 2. Money & Pricing
