@@ -4,16 +4,23 @@
  * but must never be the real authorization boundary — Laravel enforces
  * that on every request. See foundation-security.md §1.)
  *
- * TODO once Laravel Sanctum login endpoint (AUTH-1/AUTH-2) exists:
- * - set this cookie on successful login via a Route Handler that calls
- *   the Laravel /login endpoint and stores the returned token httpOnly.
- * - decode `role` from the token/session to drive the /middleware
- *   optimistic gate in proxy.ts (Super-Admin-only area, per §3 Users & Roles).
+ * The cookie itself is set by app/api/login/route.ts and is presence-only
+ * (proxy.ts only checks `.has()`, never reads a value out of it) — the real
+ * token lives in sessionStorage via lib/session.ts, per ADR-009's
+ * browser-calls-Laravel-directly design. `SessionPayload` here is the shape
+ * of *that* client-side session, not the cookie's contents.
+ *
+ * TODO: decode `role` client-side to drive the /middleware optimistic gate
+ * in proxy.ts (Super-Admin-only area, per §3 Users & Roles) — not needed
+ * yet since /middleware has no real screens built behind it.
  */
 
 export const SESSION_COOKIE_NAME = "kerox_session";
 
 export interface SessionPayload {
   token: string;
+  id: number;
   role: "super_admin" | "admin";
+  name: string;
+  email: string;
 }
