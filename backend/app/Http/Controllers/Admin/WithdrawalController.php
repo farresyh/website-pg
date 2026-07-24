@@ -1,0 +1,163 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Withdrawal\CreateWithdrawalRequest;
+use App\Models\Withdrawal;
+use App\Services\Ledger\InsufficientBalanceException;
+use App\Services\Ledger\LedgerService;
+use App\Services\Withdrawal\WithdrawalStatus;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * WTH-1..5. MVP only ever operates on the single internal platform
+ * owner (owner_type='platform', owner_id=null — see LedgerEntry's own
+ * convention). Reseller-owned withdrawals are a Phase 2 concern.
+ */
+class WithdrawalController extends Controller
+{
+    public function __construct(private readonly LedgerService $ledger)
+    {
+    }
+
+    public function index(): JsonResponse
+    {
+        $withdrawals = Withdrawal::query()->orderBy('created_at', 'desc')->get();
+
+        $stats = collect(WithdrawalStatus::cases())->mapWithKeys(function (WithdrawalStatus $status) use ($withdrawals) {
+            $matching = $withdrawals->where('status', $status);
+
+            return [$status->value => [
+                'count' => $matching->count(),
+                'total' => (int) $matching->sum('amount'),
+            ]];
+        });
+
+        return response()->json([
+            'stats' => $stats,
+            'available_balance' => $this->ledger->balance('platform', null),
+            'withdrawals' => $withdrawals,
+        ]);
+    }
+
+    public function store(CreateWithdrawalRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $availableBalance = $this->ledger->balance('platform', null);
+
+        if ($data['amount'] > $availableBalance) {
+            throw ValidationException::withMessages([
+                'amount' => ["Amount exceeds the available balance ({$availableBalance} sen)."],
+            ]);
+        }
+
+        $withdrawal = Withdrawal::query()->create([
+            'owner_type' => 'platform',
+            'owner_id' => null,
+            'amount' => $data['amount'],
+            'bank_name' => $data['bank_name'],
+            'bank_account_no' => $data['bank_account_no'],
+            'bank_account_holder' => $data['bank_account_holder'],
+            'status' => WithdrawalStatus::Pending,
+            'requested_by' => $request->user()->id,
+        ]);
+
+        return response()->json($withdrawal, 201);
+    }
+
+    /**
+     * WTH-5: at/above the configured threshold, approval requires a
+     * Super Admin who did not request this withdrawal. Below threshold,
+     * any admin.role user may approve — including their own request.
+     */
+    public function approve(Request $request, Withdrawal $withdrawal): JsonResponse
+    {
+        if ($withdrawal->status !== WithdrawalStatus::Pending) {
+            throw ValidationException::withMessages([
+                'status' => ['Only a pending withdrawal can be approved.'],
+            ]);
+        }
+
+        $admin = $request->user();
+        $threshold = config('withdrawals.maker_checker_threshold_sen');
+
+        if ($withdrawal->amount >= $threshold) {
+            if ($admin->role !== 'super_admin') {
+                throw ValidationException::withMessages([
+                    'amount' => ['Withdrawals at or above the maker-checker threshold require Super Admin approval.'],
+                ]);
+            }
+
+            if ($admin->id === $withdrawal->requested_by) {
+                throw ValidationException::withMessages([
+                    'approved_by' => ['A different Super Admin must approve this withdrawal.'],
+                ]);
+            }
+        }
+
+        try {
+            $this->ledger->withdraw(
+                $withdrawal->owner_type,
+                $withdrawal->owner_id,
+                $withdrawal->amount,
+                referenceType: 'withdrawal',
+                referenceId: $withdrawal->id,
+                createdBy: $admin->id,
+            );
+        } catch (InsufficientBalanceException $e) {
+            throw ValidationException::withMessages(['amount' => [$e->getMessage()]]);
+        }
+
+        $withdrawal->update([
+            'status' => WithdrawalStatus::Approved,
+            'approved_by' => $admin->id,
+        ]);
+
+        return response()->json($withdrawal->fresh());
+    }
+
+    /**
+     * Only valid from Pending for MVP — an Approved withdrawal already
+     * has its ledger debit written; reversing that is a deliberately
+     * deferred edge case (see docs/prd.md §14).
+     */
+    public function reject(Request $request, Withdrawal $withdrawal): JsonResponse
+    {
+        if ($withdrawal->status !== WithdrawalStatus::Pending) {
+            throw ValidationException::withMessages([
+                'status' => ['Only a pending withdrawal can be rejected.'],
+            ]);
+        }
+
+        $validated = $request->validate([
+            'admin_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $withdrawal->update([
+            'status' => WithdrawalStatus::Rejected,
+            'approved_by' => $request->user()->id,
+            'admin_note' => $validated['admin_note'] ?? null,
+        ]);
+
+        return response()->json($withdrawal);
+    }
+
+    public function complete(Request $request, Withdrawal $withdrawal): JsonResponse
+    {
+        if ($withdrawal->status !== WithdrawalStatus::Approved) {
+            throw ValidationException::withMessages([
+                'status' => ['Only an approved withdrawal can be marked completed.'],
+            ]);
+        }
+
+        $withdrawal->update([
+            'status' => WithdrawalStatus::Completed,
+            'processed_at' => now(),
+        ]);
+
+        return response()->json($withdrawal);
+    }
+}

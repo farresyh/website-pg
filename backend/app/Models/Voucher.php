@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Voucher extends Model
 {
     protected $fillable = [
+        'order_id',
         'code',
         'customer_email',
         'amount',
