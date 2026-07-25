@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Order extends Model
 {
@@ -51,4 +52,24 @@ class Order extends Model
         'delivery_status' => DeliveryStatus::class,
         'supplier_response' => 'array',
     ];
+
+    public function game(): BelongsTo
+    {
+        return $this->belongsTo(Game::class);
+    }
+
+    public function package(): BelongsTo
+    {
+        return $this->belongsTo(Package::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function reseller(): BelongsTo
+    {
+        return $this->belongsTo(Reseller::class);
+    }
 }

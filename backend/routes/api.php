@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
@@ -54,6 +55,14 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
         });
         Route::post('/orders/{order}/voucher', [VoucherController::class, 'storeFromOrder']);
+    });
+
+    // ORD-1..6 — read-only for this pass (list + detail), the
+    // resolve actions (ORD-7) come later. Makes a real order's
+    // outcome visible in the Admin Panel for the first time.
+    Route::middleware('admin.role:super_admin,admin')->prefix('orders')->group(function () {
+        Route::get('/', [OrderController::class, 'index']);
+        Route::get('/{order}', [OrderController::class, 'show']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion
