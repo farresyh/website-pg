@@ -49,6 +49,12 @@ final class FulfillOrderJob implements ShouldQueue
 
     public function handle(OrderFulfillmentService $fulfillment): void
     {
+        // ADR-014: this job runs in a separate worker process from
+        // the webhook request that dispatched it — its own context,
+        // using the same order_number key XenditWebhookController
+        // sets, is what makes the two correlatable by grep.
+        Log::withContext(['order_number' => $this->order->order_number]);
+
         try {
             $fulfillment->fulfill($this->order);
         } catch (InvalidOrderTransitionException $e) {
@@ -56,7 +62,7 @@ final class FulfillOrderJob implements ShouldQueue
             // order past NotStarted/Failed before this job got the
             // lock — fulfill()'s own guard correctly rejected this
             // attempt. Expected outcome, not a job failure.
-            Log::info("Fulfillment skipped for order {$this->order->id}: {$e->getMessage()}");
+            Log::info('Fulfillment skipped: order already advanced', ['reason' => $e->getMessage()]);
         }
     }
 
@@ -68,6 +74,7 @@ final class FulfillOrderJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        Log::error("FulfillOrderJob exhausted all retries for order {$this->order->id}: {$exception->getMessage()}");
+        Log::withContext(['order_number' => $this->order->order_number]);
+        Log::error('FulfillOrderJob exhausted all retries', ['exception' => $exception->getMessage()]);
     }
 }

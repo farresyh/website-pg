@@ -16,6 +16,7 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -190,5 +191,29 @@ class OrderFulfillmentServiceTest extends TestCase
             ->fulfill($failed->fresh());
 
         $this->assertSame($firstReference, $delivered->reference_number);
+    }
+
+    /**
+     * ADR-014: a business-level delivery failure never throws (see
+     * this class's own doc comment) — without an explicit log line, it
+     * would be silent to a file-log admin until someone checks the
+     * Admin Orders screen. Proves the line exists and carries the
+     * error detail, with reference_number already in the shared log
+     * context by this point.
+     */
+    public function test_fulfill_logs_a_warning_when_delivery_fails(): void
+    {
+        Log::spy();
+        $order = $this->paidOrder();
+
+        $this->service($this->fakeSupplierAdapter(false, null, 'timeout', 'Supplier timed out'))
+            ->fulfill($order);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->with('Delivery failed', [
+                'error_code' => 'timeout',
+                'error_message' => 'Supplier timed out',
+            ]);
     }
 }

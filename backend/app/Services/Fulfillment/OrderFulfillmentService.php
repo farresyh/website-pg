@@ -9,6 +9,7 @@ use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Orchestrates checkout COMPLETION — submitting a paid order to the
@@ -71,6 +72,14 @@ final class OrderFulfillmentService
             // if this is a retry after a prior failure.
             $referenceNumber = $this->referenceNumbers->resolve($locked->reference_number);
 
+            // ADR-014: extends whatever context the caller already set
+            // (order_number, from the webhook/job) with the ORD-8 key
+            // Gamevion itself is called with — the two together are
+            // what a support conversation ("customer's order didn't
+            // arrive") and a raw Gamevion dashboard lookup have in
+            // common.
+            Log::withContext(['reference_number' => $referenceNumber]);
+
             $locked->update([
                 'reference_number' => $referenceNumber,
                 'delivery_status' => $processingStatus->value,
@@ -91,6 +100,17 @@ final class OrderFulfillmentService
                         'error_code' => $result->errorCode,
                         'error_message' => $result->errorMessage,
                     ],
+                ]);
+
+                // ADR-014: the one line a file-log admin actually needs
+                // to notice without watching the Admin Orders screen —
+                // a business-level failure (this branch) never throws,
+                // so without this line it would be silent until someone
+                // looks. Grep by reference_number/order_number to find
+                // the matching webhook/job lines for full context.
+                Log::warning('Delivery failed', [
+                    'error_code' => $result->errorCode,
+                    'error_message' => $result->errorMessage,
                 ]);
 
                 return $locked->fresh();

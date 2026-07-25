@@ -46,10 +46,24 @@ class XenditWebhookController extends Controller
         $order = Order::query()->where('payment_ref', $event->paymentRequestId)->first();
 
         if ($order === null) {
-            Log::warning("Rejected Xendit webhook: no order found for payment_request_id {$event->paymentRequestId}");
+            Log::warning('Rejected Xendit webhook: no order found', [
+                'payment_request_id' => $event->paymentRequestId,
+            ]);
 
             return response()->json(['message' => 'order not found'], 404);
         }
+
+        // ADR-014: every subsequent log line in this request carries
+        // order_number, so a support/ops grep finds the whole webhook
+        // story without hand-parsing free-text messages. FulfillOrderJob
+        // sets its own context independently (queue workers run in a
+        // separate process — this context does not cross that
+        // boundary), using the same key so the two are still
+        // correlatable by grepping for one order_number.
+        Log::withContext([
+            'order_number' => $order->order_number,
+            'payment_request_id' => $event->paymentRequestId,
+        ]);
 
         // PAY-2: Xendit can and does deliver the same event more than
         // once — if payment_status is already Paid, this is a repeat
