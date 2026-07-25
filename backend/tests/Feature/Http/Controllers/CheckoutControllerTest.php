@@ -287,4 +287,22 @@ class CheckoutControllerTest extends TestCase
 
         $response->assertCreated(); // no Sanctum::actingAs() anywhere in this test — ADR-011
     }
+
+    /**
+     * ADR-014: throttle:10,1 — the 11th request from the same IP
+     * within a minute must be rejected before it ever reaches
+     * CheckoutController, flood-protection independent of validation.
+     */
+    public function test_rate_limits_repeated_requests_from_the_same_ip(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/checkout', $this->payload($game, $package))->assertCreated();
+        }
+
+        $this->postJson('/api/checkout', $this->payload($game, $package))
+            ->assertStatus(429);
+    }
 }

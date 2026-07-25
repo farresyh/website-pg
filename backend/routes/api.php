@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
@@ -17,11 +18,17 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
 
+// ADR-014: unauthenticated infra probe, DB + queue connection only —
+// no order/customer data ever touches this endpoint.
+Route::get('/health', [HealthController::class, 'check']);
+
 // Guest checkout (ADR-011) — no Customer auth exists, deliberately not
 // behind auth:sanctum. Money fields are still never client-trusted
 // (ORD-9): CheckoutController resolves everything from stored
 // Game/Package config, never from this request's own body.
-Route::post('/checkout', [CheckoutController::class, 'store']);
+// ADR-014: throttle:10,1 — 10/minute/IP, loose enough for a genuine
+// customer retrying a failed attempt, tight enough to blunt a flood.
+Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
