@@ -1,8 +1,8 @@
 import { apiFetch } from "@/lib/api-client";
 
 /**
- * ORD-1..6 — read-only for this pass (list + detail). Resolve
- * actions (ORD-7: retry-delivery/voucher) and export (ORD-5) are a
+ * ORD-1..7 — list + detail + retry-delivery (ORD-7 / ADR-014).
+ * Voucher issuance (the other ORD-7 action) and export (ORD-5) are a
  * later pass; see backend/app/Http/Controllers/Admin/OrderController.php.
  */
 export interface OrderListItem {
@@ -62,4 +62,12 @@ export function listOrders(
 
 export function getOrder(token: string, id: number) {
   return apiFetch<OrderDetail>(`/api/orders/${id}`, { token });
+}
+
+/**
+ * ORD-7 / ADR-014: queues FulfillOrderJob for a failed delivery —
+ * backend rejects (422) unless delivery_status is already "failed".
+ */
+export function retryOrderDelivery(token: string, id: number) {
+  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", token });
 }

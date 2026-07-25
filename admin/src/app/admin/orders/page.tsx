@@ -1,12 +1,11 @@
 "use client";
 
 /**
- * ORD-1..6 — read-only for this pass: list with ORD-2's status
- * filters + search (ORD-1), and a detail view (ORD-6: customer info,
- * game/package, payment info, supplier response). Resolve actions
- * (ORD-7: retry-delivery/voucher) and export (ORD-5) come in a later
- * pass — this exists to make a real order's outcome visible in the
- * Admin Panel for the first time (docs/prd.md §14).
+ * ORD-1..7 — list with ORD-2's status filters + search (ORD-1), a
+ * detail view (ORD-6: customer info, game/package, payment info,
+ * supplier response), and retry-delivery (ORD-7 / ADR-014). Voucher
+ * issuance (the other ORD-7 action) and export (ORD-5) remain a later
+ * pass — see docs/prd.md §14.
  */
 
 import { useEffect, useState } from "react";
@@ -17,7 +16,7 @@ import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
 import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder } from "@/lib/orders";
+import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder, retryOrderDelivery } from "@/lib/orders";
 
 const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -56,13 +55,30 @@ export default function OrdersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<OrderDetail | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
+    setRetryMessage(null);
     try {
       setSelected(await getOrder(token, id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this order.");
+    }
+  }
+
+  async function handleRetryDelivery() {
+    if (!session || !selected) return;
+    setRetrying(true);
+    setRetryMessage(null);
+    try {
+      await retryOrderDelivery(session.token, selected.id);
+      setRetryMessage("Retry queued — refresh in a moment to see the outcome.");
+    } catch (err) {
+      setRetryMessage(err instanceof ApiError ? err.message : "Could not queue a retry.");
+    } finally {
+      setRetrying(false);
     }
   }
 
@@ -112,6 +128,15 @@ export default function OrdersPage() {
               delivery: {selected.delivery_status}
             </Badge>
           </p>
+          {/* ORD-7 / ADR-014: only a failed delivery can be retried — mirrors the backend guard exactly. */}
+          {selected.delivery_status === "failed" && (
+            <div className="mt-3 flex items-center gap-3">
+              <Button size="sm" onClick={handleRetryDelivery} disabled={retrying}>
+                {retrying ? "Queuing retry…" : "Retry Delivery"}
+              </Button>
+              {retryMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{retryMessage}</span>}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

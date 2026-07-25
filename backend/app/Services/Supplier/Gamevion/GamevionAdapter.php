@@ -2,6 +2,7 @@
 
 namespace App\Services\Supplier\Gamevion;
 
+use App\Services\Http\TransientFailureRetryPolicy;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
@@ -164,7 +165,13 @@ final class GamevionAdapter implements SupplierAdapter
             ]))
             ->timeout($this->timeoutSeconds)
             ->connectTimeout($this->connectTimeoutSeconds)
-            ->acceptJson();
+            ->acceptJson()
+            // ADR-014: 3 retries, 200ms/500ms/1s backoff, connection
+            // failures and real 5xx only — never a 4xx like the 422
+            // "invalid product code" ADR-006's sandbox retest hit.
+            // throw:false keeps failureFrom()'s own status/body
+            // inspection working unchanged for non-retried failures.
+            ->retry([200, 500, 1000], when: TransientFailureRetryPolicy::shouldRetry(), throw: false);
 
         if ($this->proxyUrl !== null) {
             $client = $client->withOptions(['proxy' => $this->proxyUrl]);

@@ -2,6 +2,7 @@
 
 namespace App\Services\Payment\Xendit;
 
+use App\Services\Http\TransientFailureRetryPolicy;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
@@ -109,7 +110,10 @@ final class XenditGateway implements PaymentGateway
         return Http::baseUrl($this->baseUrl)
             ->withBasicAuth($this->secretKey, '')
             ->withHeaders(['api-version' => self::API_VERSION])
-            ->acceptJson();
+            ->acceptJson()
+            // ADR-014: same transient-failure-only retry policy as
+            // GamevionAdapter — see TransientFailureRetryPolicy.
+            ->retry([200, 500, 1000], when: TransientFailureRetryPolicy::shouldRetry(), throw: false);
     }
 
     /**

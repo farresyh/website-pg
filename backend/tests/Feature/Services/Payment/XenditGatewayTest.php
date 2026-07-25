@@ -284,4 +284,62 @@ class XenditGatewayTest extends TestCase
 
         $this->assertSame(PaymentStatus::Pending, $event->status);
     }
+
+    /**
+     * ADR-014: same transient-failure retry policy as GamevionAdapter
+     * (TransientFailureRetryPolicy) — a 5xx is retried automatically.
+     */
+    public function test_retries_a_transient_server_error_then_succeeds(): void
+    {
+        Http::fake([
+            'api.xendit.co/*' => Http::sequence()
+                ->push(['error_code' => 'SERVER_ERROR', 'message' => 'Internal error'], 500)
+                ->push([
+                    'payment_request_id' => 'pr-retried',
+                    'reference_id' => 'KRS-RETRY-1',
+                    'status' => 'ACCEPTING_PAYMENTS',
+                    'actions' => [],
+                    'request_amount' => 100.00,
+                ], 201),
+        ]);
+
+        $result = $this->gateway()->createPayment(new PaymentRequest(
+            referenceId: 'KRS-RETRY-1',
+            amountSen: 10000,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: 'DUITNOW_PAY',
+        ));
+
+        Http::assertSentCount(2);
+        $this->assertTrue($result->success);
+        $this->assertSame('pr-retried', $result->data['payment_request_id']);
+    }
+
+    /**
+     * ADR-014: a 4xx (validation error — API_VALIDATION_ERROR is a
+     * real Xendit error code confirmed live earlier this project) must
+     * never be retried.
+     */
+    public function test_does_not_retry_a_validation_error(): void
+    {
+        Http::fake([
+            'api.xendit.co/*' => Http::response([
+                'error_code' => 'API_VALIDATION_ERROR',
+                'message' => 'request_amount must be a positive number',
+            ], 400),
+        ]);
+
+        $result = $this->gateway()->createPayment(new PaymentRequest(
+            referenceId: 'KRS-NO-RETRY-1',
+            amountSen: 10000,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: 'DUITNOW_PAY',
+        ));
+
+        Http::assertSentCount(1);
+        $this->assertFalse($result->success);
+        $this->assertSame('API_VALIDATION_ERROR', $result->errorCode);
+    }
 }

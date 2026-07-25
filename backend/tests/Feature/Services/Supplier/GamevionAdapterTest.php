@@ -354,4 +354,57 @@ class GamevionAdapterTest extends TestCase
 
         $this->adapter()->validatePlayer('123456', '1234');
     }
+
+    /**
+     * ADR-014: a transient 5xx should be retried automatically rather
+     * than surfacing as an immediate failure — proves the retry
+     * actually fires, not just that it's configured.
+     */
+    public function test_retries_a_transient_server_error_then_succeeds(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::sequence()
+                ->push(['error' => true, 'code' => 500, 'message' => 'Server error'], 500)
+                ->push(['error' => true, 'code' => 500, 'message' => 'Server error'], 500)
+                ->push([
+                    'error' => false, 'code' => 200, 'message' => 'Order Created',
+                    'data' => ['invoice_number' => 'GV-RETRIED'],
+                ], 200),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'FFP5',
+            referenceNumber: 'REF-RETRY-1',
+            playerId: '123456',
+        ));
+
+        Http::assertSentCount(3);
+        $this->assertTrue($result->success);
+        $this->assertSame('GV-RETRIED', $result->data['supplier_ref']);
+    }
+
+    /**
+     * ADR-014: a 4xx (validation outcome, not a transient failure —
+     * this is the exact shape of the 422 "invalid product code" ADR-006's
+     * sandbox retest hit) must never be retried. Retrying it would only
+     * burn the retry budget and delay the real failure signal.
+     */
+    public function test_does_not_retry_a_validation_error(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => true, 'code' => 422, 'message' => 'The selected product code is invalid.',
+            ], 422),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: '234',
+            referenceNumber: 'REF-NO-RETRY-1',
+            playerId: '123456',
+        ));
+
+        Http::assertSentCount(1);
+        $this->assertFalse($result->success);
+        $this->assertSame('422', $result->errorCode);
+    }
 }

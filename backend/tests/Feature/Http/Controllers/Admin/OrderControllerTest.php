@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers\Admin;
 
+use App\Jobs\FulfillOrderJob;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Order;
@@ -10,6 +11,7 @@ use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -157,5 +159,46 @@ class OrderControllerTest extends TestCase
         $response = $this->getJson('/api/orders/999999');
 
         $response->assertNotFound();
+    }
+
+    /**
+     * ORD-7 / ADR-014: the manual retry action queues FulfillOrderJob
+     * rather than running it inline, same as the webhook path.
+     */
+    public function test_retry_delivery_queues_a_fulfillment_job_for_a_failed_order(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
+    }
+
+    public function test_retry_delivery_rejects_an_order_that_is_not_failed(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    public function test_retry_delivery_requires_authentication(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertUnauthorized();
     }
 }

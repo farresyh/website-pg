@@ -60,12 +60,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/orders/{order}/voucher', [VoucherController::class, 'storeFromOrder']);
     });
 
-    // ORD-1..6 — read-only for this pass (list + detail), the
-    // resolve actions (ORD-7) come later. Makes a real order's
-    // outcome visible in the Admin Panel for the first time.
+    // ORD-1..7 — list + detail, plus retryDelivery (ORD-7's resolve
+    // action, ADR-014). Makes a real order's outcome visible in the
+    // Admin Panel and gives an operator a way to act on a failure.
     Route::middleware('admin.role:super_admin,admin')->prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::get('/{order}', [OrderController::class, 'show']);
+        Route::post('/{order}/retry-delivery', [OrderController::class, 'retryDelivery']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion
