@@ -48,8 +48,7 @@ class PaymentMethodControllerTest extends TestCase
                 private readonly bool $createSucceeds,
                 private readonly ?string $errorCode,
                 private readonly ?string $errorMessage,
-            ) {
-            }
+            ) {}
 
             public function createPayment(PaymentRequest $request): PaymentResponse
             {

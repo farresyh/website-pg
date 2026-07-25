@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Game extends Model
@@ -17,6 +18,8 @@ class Game extends Model
         'banner_url',
         'supplier_mappings',
         'validation_rules',
+        'player_validator_profile_id',
+        'player_validator_enabled',
         'seo_title',
         'seo_title_local',
         'seo_description',
@@ -30,10 +33,21 @@ class Game extends Model
         'sort_order' => 'integer',
         'supplier_mappings' => 'array',
         'validation_rules' => 'array',
+        'player_validator_enabled' => 'boolean',
     ];
 
     public function packages(): HasMany
     {
         return $this->hasMany(Package::class);
+    }
+
+    public function playerRegionMappings(): HasMany
+    {
+        return $this->hasMany(PlayerRegionMapping::class);
+    }
+
+    public function playerValidatorProfile(): BelongsTo
+    {
+        return $this->belongsTo(PlayerValidatorProfile::class);
     }
 }

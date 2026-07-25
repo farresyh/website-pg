@@ -118,7 +118,7 @@ class SupplierProductControllerTest extends TestCase
 
         $this->actingAsAdmin();
 
-        $response = $this->getJson('/api/middleware/supplier-products?category=' . urlencode('Free Fire Global'));
+        $response = $this->getJson('/api/middleware/supplier-products?category='.urlencode('Free Fire Global'));
 
         $response->assertOk();
         $this->assertCount(1, $response->json('data'));

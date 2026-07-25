@@ -74,4 +74,25 @@ return [
         'webhook_token' => env('XENDIT_WEBHOOK_TOKEN'),
     ],
 
+    // Unofficial third-party MLBB validators (docs/prd.md research,
+    // confirmed live 2026-07-25) — no API keys, since all three are
+    // public unauthenticated form/JSON endpoints. Short timeouts since
+    // MlbbPlayerValidator tries them in sequence synchronously within
+    // one storefront request; a slow/hung provider must fail fast so
+    // the next one in the chain still gets a chance.
+    'player_validators' => [
+        'acidgameshop' => [
+            'base_url' => env('ACIDGAMESHOP_BASE_URL', 'https://acidgameshop.com'),
+            'timeout' => (int) env('ACIDGAMESHOP_TIMEOUT_SECONDS', 8),
+        ],
+        'nexone' => [
+            'base_url' => env('NEXONE_BASE_URL', 'https://nexone.ph'),
+            'timeout' => (int) env('NEXONE_TIMEOUT_SECONDS', 8),
+        ],
+        'moogold' => [
+            'base_url' => env('MOOGOLD_BASE_URL', 'https://moogold.com'),
+            'timeout' => (int) env('MOOGOLD_TIMEOUT_SECONDS', 8),
+        ],
+    ],
+
 ];

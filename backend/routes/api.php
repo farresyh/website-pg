@@ -8,6 +8,8 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
+use App\Http\Controllers\Middleware\PlayerRegionMappingController;
+use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\Webhooks\XenditWebhookController;
@@ -83,6 +85,24 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{payment_method}/status', [PaymentMethodController::class, 'updateStatus']);
         Route::patch('/{payment_method}/fee', [PaymentMethodController::class, 'updateFee']);
         Route::post('/{payment_method}/test', [PaymentMethodController::class, 'test']);
+    });
+
+    // MUI-5 — Validators: admin-created profiles, each bound to a real
+    // backend implementation via `key` (PlayerValidatorRegistry).
+    // Region-routing mappings are nested under the profile they
+    // belong to, not a flat list — see PlayerValidatorProfileController's
+    // doc comment for why (founder correction, 2026-07-25).
+    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/validators')->group(function () {
+        Route::get('/', [PlayerValidatorProfileController::class, 'index']);
+        Route::get('/available-keys', [PlayerValidatorProfileController::class, 'availableKeys']);
+        Route::post('/', [PlayerValidatorProfileController::class, 'store']);
+        Route::put('/{validator}', [PlayerValidatorProfileController::class, 'update']);
+        Route::delete('/{validator}', [PlayerValidatorProfileController::class, 'destroy']);
+        Route::post('/{validator}/test', [PlayerValidatorProfileController::class, 'test']);
+
+        Route::post('/{validator}/mappings', [PlayerRegionMappingController::class, 'store']);
+        Route::put('/{validator}/mappings/{mapping}', [PlayerRegionMappingController::class, 'update']);
+        Route::delete('/{validator}/mappings/{mapping}', [PlayerRegionMappingController::class, 'destroy']);
     });
 
     // GAME-1..5/7 — Admin Games & Packages management.

@@ -5,6 +5,11 @@ namespace App\Providers;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\Xendit\XenditGateway;
+use App\Services\PlayerValidation\MlbbPlayerValidator;
+use App\Services\PlayerValidation\PlayerValidatorRegistry;
+use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
+use App\Services\PlayerValidation\Providers\MoogoldValidator;
+use App\Services\PlayerValidation\Providers\NexoneValidator;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use Illuminate\Support\ServiceProvider;
@@ -59,6 +64,31 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(PaymentGatewayFactory::class);
 
         $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.xendit'));
+
+        // MLBB's validator chain — AcidGameShop -> Nexone -> MooGold,
+        // priority order per the founder's own reliability ranking.
+        // Bound under 'player-validator.mlbb' so PlayerValidatorRegistry
+        // resolves it the same way it would any future validator key.
+        $this->app->bind('player-validator.mlbb', function () {
+            $config = config('services.player_validators');
+
+            return new MlbbPlayerValidator([
+                new AcidGameShopValidator(
+                    baseUrl: $config['acidgameshop']['base_url'],
+                    timeoutSeconds: $config['acidgameshop']['timeout'],
+                ),
+                new NexoneValidator(
+                    baseUrl: $config['nexone']['base_url'],
+                    timeoutSeconds: $config['nexone']['timeout'],
+                ),
+                new MoogoldValidator(
+                    baseUrl: $config['moogold']['base_url'],
+                    timeoutSeconds: $config['moogold']['timeout'],
+                ),
+            ]);
+        });
+
+        $this->app->singleton(PlayerValidatorRegistry::class);
     }
 
     /**
