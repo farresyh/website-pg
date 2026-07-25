@@ -706,6 +706,8 @@ Backend now has a real, tested slice end-to-end (checkout initiation → Xendit 
 
 </details>
 
+**➡️ NEXT SESSION STARTS HERE (24/7 burst-resilience baseline), 2026-07-26.** While waiting on Gamevion support's reply to the sandbox `500` (ADR-006's newest addendum — no code fix available on our side until they respond), founder asked to strengthen the foundation instead of idling. Full design agreed and recorded in [ADR-014](./adr.md) — **design only, nothing built yet**. Implementation order agreed: (1) Queue (`database` driver, `FulfillOrderJob`, webhook controller becomes thin), (2) `orders.payment_ref` + `(payment_status,delivery_status)` indexes, (3) network retry on `GamevionAdapter`/`XenditGateway` + job-level retry + ORD-7 manual retry button, (4) `throttle:10,1` on `POST /api/checkout` + `GET /api/health`, (5) `Cache::remember()` (60s TTL, invalidate-on-write) on Games/Packages/Payment Methods listings only — never the pricing/checkout path, (6) structured log context (`order_number`/`reference_number`) on the fulfillment/payment path. Do not re-derive the trade-offs (queue driver choice, retry counts, cache TTL, Sentry-vs-file-log, rate-limit threshold) — they're founder-decided and recorded in ADR-014, not open questions anymore.
+
 **How to run tests:**
 - Fast, everyday suite (sqlite, no Docker needed): `cd backend && php artisan test`
 - Concurrency suite (needs the dockerized MySQL): `cd backend && docker compose up -d && php artisan test -c phpunit.concurrency.xml`
