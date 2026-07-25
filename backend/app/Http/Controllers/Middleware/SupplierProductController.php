@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\GameController;
 use App\Http\Requests\Middleware\LinkSupplierProductCategoryRequest;
 use App\Http\Requests\Middleware\PromoteSupplierProductRequest;
 use App\Models\Game;
@@ -197,6 +198,11 @@ class SupplierProductController extends Controller
             'supplier_id' => $supplierProduct->supplier_id,
             'supplier_package_ref' => $supplierProduct->external_ref,
         ]);
+
+        // ADR-014: a promoted item is a new row in both GameController's
+        // index() (packages_count) and packages($game) listings.
+        GameController::forgetIndexCache();
+        GameController::forgetPackagesCache($data['game_id']);
 
         return response()->json(['package' => $package], 201);
     }

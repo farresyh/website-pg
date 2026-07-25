@@ -131,6 +131,29 @@ class GameControllerTest extends TestCase
         $this->assertFalse($byRef['B']['supplier_active']);
     }
 
+    /**
+     * ADR-014: packages() is cached per game — PackageController's own
+     * updateStatus() must invalidate it (GameController::
+     * forgetPackagesCache()), proven end-to-end through both real
+     * endpoints rather than by calling the cache helper directly.
+     */
+    public function test_packages_cache_is_invalidated_when_a_package_status_changes(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        $this->actingAsAdmin();
+
+        $this->getJson("/api/games/{$game->id}/packages")->assertJsonPath('0.is_active', true);
+
+        $this->patchJson("/api/packages/{$package->id}/status", ['is_active' => false])->assertOk();
+
+        $this->getJson("/api/games/{$game->id}/packages")->assertJsonPath('0.is_active', false);
+    }
+
     public function test_update_edits_the_games_own_fields(): void
     {
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
@@ -184,5 +207,55 @@ class GameControllerTest extends TestCase
         $response->assertNoContent();
         $this->assertSame(0, Game::query()->count());
         $this->assertSame(0, Package::query()->count());
+    }
+
+    /**
+     * ADR-014: the unfiltered index() listing is cached (60s TTL) —
+     * proven by mutating the row directly (bypassing the controller's
+     * own cache-invalidation) and confirming the stale value still
+     * comes back, then invalidating via the real update() endpoint
+     * and confirming the fresh value comes back immediately after.
+     */
+    public function test_index_caches_the_unfiltered_listing_and_invalidates_on_update(): void
+    {
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        $this->actingAsAdmin();
+
+        $first = $this->getJson('/api/games');
+        $first->assertJsonPath('0.is_active', true);
+
+        // Bypasses GameController::forgetIndexCache() on purpose —
+        // simulates "something changed without going through the
+        // cached endpoint's own write path".
+        $game->update(['is_active' => false]);
+
+        $stillCached = $this->getJson('/api/games');
+        $stillCached->assertJsonPath('0.is_active', true);
+
+        $this->putJson("/api/games/{$game->id}", [
+            'name' => $game->name, 'slug' => $game->slug, 'is_active' => false,
+        ])->assertOk();
+
+        $fresh = $this->getJson('/api/games');
+        $fresh->assertJsonPath('0.is_active', false);
+    }
+
+    /**
+     * A search query must never read the cached, unfiltered listing —
+     * proven by caching an empty-search response first, then asserting
+     * a real search still filters correctly instead of returning the
+     * cached full list.
+     */
+    public function test_index_does_not_cache_a_filtered_search(): void
+    {
+        Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/games')->assertJsonCount(2);
+
+        $filtered = $this->getJson('/api/games?search=Free+Fire');
+        $filtered->assertJsonCount(1);
+        $filtered->assertJsonPath('0.name', 'Free Fire Global');
     }
 }

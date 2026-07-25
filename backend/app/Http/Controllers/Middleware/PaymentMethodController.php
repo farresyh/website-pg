@@ -9,6 +9,7 @@ use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
@@ -20,16 +21,32 @@ use Illuminate\Support\Str;
  */
 class PaymentMethodController extends Controller
 {
+    /**
+     * ADR-014: same 60s-TTL, invalidate-on-write policy as
+     * GameController — see that class's own doc comment.
+     */
+    private const CACHE_TTL_SECONDS = 60;
+
+    private const CACHE_KEY = 'catalog.payment_methods.index';
+
+    /**
+     * Only the unfiltered listing (no category) is cached — see
+     * GameController::index()'s identical reasoning.
+     */
     public function index(Request $request): JsonResponse
     {
-        $query = PaymentMethod::query();
+        $category = $request->query('category');
 
-        if ($category = $request->query('category')) {
-            $query->where('category', $category);
+        if ($category === null) {
+            return response()->json(Cache::remember(
+                self::CACHE_KEY,
+                self::CACHE_TTL_SECONDS,
+                fn () => PaymentMethod::query()->orderBy('category')->orderBy('label')->get(),
+            ));
         }
 
         return response()->json(
-            $query->orderBy('category')->orderBy('label')->get(),
+            PaymentMethod::query()->where('category', $category)->orderBy('category')->orderBy('label')->get(),
         );
     }
 
@@ -46,6 +63,7 @@ class PaymentMethodController extends Controller
         ]);
 
         $paymentMethod->update(['is_active' => $validated['is_active']]);
+        Cache::forget(self::CACHE_KEY);
 
         return response()->json($paymentMethod);
     }
@@ -58,6 +76,7 @@ class PaymentMethodController extends Controller
         ]);
 
         $paymentMethod->update($validated);
+        Cache::forget(self::CACHE_KEY);
 
         return response()->json($paymentMethod);
     }
@@ -107,6 +126,7 @@ class PaymentMethodController extends Controller
                 ? 'success'
                 : "failed: [{$response->errorCode}] {$response->errorMessage}",
         ]);
+        Cache::forget(self::CACHE_KEY);
 
         return response()->json($paymentMethod->fresh());
     }

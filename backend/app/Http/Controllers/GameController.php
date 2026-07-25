@@ -8,6 +8,7 @@ use App\Models\Package;
 use App\Models\SupplierProduct;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * GAME-1..5: Admin's Games & Packages management, and also the "link
@@ -21,17 +22,39 @@ use Illuminate\Http\Request;
 class GameController extends Controller
 {
     /**
-     * `status` — `active`/`inactive`, omit for all (GAME-2).
+     * ADR-014: 60s TTL, invalidated immediately on any write that
+     * changes what these two listings show (see forgetIndexCache()/
+     * forgetPackagesCache() and every call site of those). Pricing and
+     * checkout are never cached — only these read-listing endpoints.
+     */
+    private const CACHE_TTL_SECONDS = 60;
+
+    /**
+     * `status` — `active`/`inactive`, omit for all (GAME-2). Only the
+     * unfiltered listing (no search/status) is cached — a filtered
+     * admin search goes straight to the DB rather than growing the
+     * cache with one entry per distinct search string.
      */
     public function index(Request $request): JsonResponse
     {
+        $search = $request->query('search');
+        $status = $request->query('status');
+
+        if ($search === null && $status === null) {
+            return response()->json(Cache::remember(
+                'catalog.games.index',
+                self::CACHE_TTL_SECONDS,
+                fn () => Game::query()->withCount('packages')->orderBy('name')->get(),
+            ));
+        }
+
         $query = Game::query()->withCount('packages');
 
-        if ($search = $request->query('search')) {
+        if ($search) {
             $query->where('name', 'like', "%{$search}%");
         }
 
-        if ($status = $request->query('status')) {
+        if ($status) {
             $query->where('is_active', $status === 'active');
         }
 
@@ -46,6 +69,7 @@ class GameController extends Controller
     public function update(UpdateGameRequest $request, Game $game): JsonResponse
     {
         $game->update($request->validated());
+        self::forgetIndexCache();
 
         return response()->json($game);
     }
@@ -58,6 +82,8 @@ class GameController extends Controller
     public function destroy(Game $game): JsonResponse
     {
         $game->delete();
+        self::forgetIndexCache();
+        self::forgetPackagesCache($game->id);
 
         return response()->json(null, 204);
     }
@@ -77,18 +103,51 @@ class GameController extends Controller
      */
     public function packages(Game $game): JsonResponse
     {
-        $packages = $game->packages()->orderBy('name')->get();
+        $packages = Cache::remember(
+            self::packagesCacheKey($game->id),
+            self::CACHE_TTL_SECONDS,
+            function () use ($game) {
+                $packages = $game->packages()->orderBy('name')->get();
 
-        $supplierStatuses = SupplierProduct::query()
-            ->whereIn('external_ref', $packages->pluck('supplier_package_ref'))
-            ->get(['supplier_id', 'external_ref', 'status_raw'])
-            ->keyBy(fn (SupplierProduct $p) => "{$p->supplier_id}:{$p->external_ref}");
+                $supplierStatuses = SupplierProduct::query()
+                    ->whereIn('external_ref', $packages->pluck('supplier_package_ref'))
+                    ->get(['supplier_id', 'external_ref', 'status_raw'])
+                    ->keyBy(fn (SupplierProduct $p) => "{$p->supplier_id}:{$p->external_ref}");
 
-        $packages->each(function (Package $package) use ($supplierStatuses) {
-            $status = $supplierStatuses->get("{$package->supplier_id}:{$package->supplier_package_ref}");
-            $package->supplier_active = $status?->status_raw === 'active';
-        });
+                $packages->each(function (Package $package) use ($supplierStatuses) {
+                    $status = $supplierStatuses->get("{$package->supplier_id}:{$package->supplier_package_ref}");
+                    $package->supplier_active = $status?->status_raw === 'active';
+                });
+
+                return $packages;
+            },
+        );
 
         return response()->json($packages);
+    }
+
+    /**
+     * ADR-014 invalidation seam: called by GameController itself and
+     * by PackageController/SupplierProductController — any write that
+     * changes what index()/packages() return. Public + static rather
+     * than an injected cache-service dependency: this is cheap,
+     * stateless, and used from three different controllers, so a full
+     * service class would be indirection with no second adapter to
+     * justify it (codebase-design: "one adapter means a hypothetical
+     * seam").
+     */
+    public static function forgetIndexCache(): void
+    {
+        Cache::forget('catalog.games.index');
+    }
+
+    public static function forgetPackagesCache(int $gameId): void
+    {
+        Cache::forget(self::packagesCacheKey($gameId));
+    }
+
+    private static function packagesCacheKey(int $gameId): string
+    {
+        return "catalog.games.{$gameId}.packages";
     }
 }

@@ -164,4 +164,35 @@ class PaymentMethodControllerTest extends TestCase
             $paymentMethod->fresh()->last_test_result,
         );
     }
+
+    /**
+     * ADR-014: the unfiltered index() listing is cached (60s TTL) and
+     * invalidated on every write — proven end-to-end via updateStatus(),
+     * same approach as GameControllerTest's equivalent case.
+     */
+    public function test_index_caches_the_unfiltered_listing_and_invalidates_on_status_update(): void
+    {
+        $paymentMethod = $this->paymentMethod(['is_active' => false]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/middleware/payment-methods')->assertJsonPath('0.is_active', false);
+
+        $this->patchJson("/api/middleware/payment-methods/{$paymentMethod->id}/status", ['is_active' => true])
+            ->assertOk();
+
+        $this->getJson('/api/middleware/payment-methods')->assertJsonPath('0.is_active', true);
+    }
+
+    public function test_index_does_not_cache_a_filtered_category_request(): void
+    {
+        $this->paymentMethod(['channel_code' => 'AMBANK_FPX', 'category' => 'fpx']);
+        $this->paymentMethod(['channel_code' => 'GRABPAY', 'category' => 'ewallet']);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/middleware/payment-methods')->assertJsonCount(2);
+
+        $filtered = $this->getJson('/api/middleware/payment-methods?category=ewallet');
+        $filtered->assertJsonCount(1);
+        $filtered->assertJsonPath('0.channel_code', 'GRABPAY');
+    }
 }

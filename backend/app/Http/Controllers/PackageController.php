@@ -21,6 +21,7 @@ class PackageController extends Controller
     public function update(UpdatePackageRequest $request, Package $package): JsonResponse
     {
         $package->update($request->validated());
+        GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);
     }
@@ -39,6 +40,7 @@ class PackageController extends Controller
             'markup_percent' => $markupPercent,
             'reseller_cost_price' => $markup->calculateResellerCostPrice($package->cost_price, $markupPercent),
         ]);
+        GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);
     }
@@ -55,13 +57,17 @@ class PackageController extends Controller
         ]);
 
         $package->update(['is_active' => $validated['is_active']]);
+        GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);
     }
 
     public function destroy(Package $package): JsonResponse
     {
+        $gameId = $package->game_id;
         $package->delete();
+        GameController::forgetIndexCache();
+        GameController::forgetPackagesCache($gameId);
 
         return response()->json(null, 204);
     }
