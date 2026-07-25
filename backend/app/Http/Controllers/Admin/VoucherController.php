@@ -8,8 +8,10 @@ use App\Models\Order;
 use App\Models\Voucher;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -103,15 +105,27 @@ class VoucherController extends Controller
 
         $amount = $order->final_amount - $order->transaction_fee;
 
-        $voucher = $this->issue(
-            customerEmail: $order->customer_email,
-            amount: $amount,
-            reason: $validated['reason'] ?? "Delivery failed - refund voucher for order {$order->order_number}",
-            expiresAt: null,
-            createdBy: $request->user()->id,
-            approvedBy: null,
-            orderId: $order->id,
-        );
+        // The existence check above is a friendly-error fast path, not
+        // the real guarantee — two concurrent requests for the same
+        // order could both pass it before either commits. The unique
+        // index on vouchers.order_id (migration 2026_07_25_140000) is
+        // the actual serialization point; a second request that loses
+        // the race hits it here instead of double-issuing a voucher.
+        try {
+            $voucher = $this->issue(
+                customerEmail: $order->customer_email,
+                amount: $amount,
+                reason: $validated['reason'] ?? "Delivery failed - refund voucher for order {$order->order_number}",
+                expiresAt: null,
+                createdBy: $request->user()->id,
+                approvedBy: null,
+                orderId: $order->id,
+            );
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages([
+                'order' => ['A voucher has already been issued for this order.'],
+            ]);
+        }
 
         return response()->json($voucher, 201);
     }
@@ -129,6 +143,13 @@ class VoucherController extends Controller
         return response()->json($voucher);
     }
 
+    /**
+     * The Voucher row and its ledger debit are two separate writes —
+     * without a transaction, a crash/connection-drop between them
+     * leaves a Voucher with no matching ledger entry, quietly breaking
+     * ADR-002's "ledger is the sole source of truth" guarantee for this
+     * one path. Found during the 2026-07-25 codebase audit.
+     */
     private function issue(
         string $customerEmail,
         int $amount,
@@ -138,22 +159,24 @@ class VoucherController extends Controller
         ?int $approvedBy,
         ?int $orderId = null,
     ): Voucher {
-        $voucher = Voucher::query()->create([
-            'order_id' => $orderId,
-            'code' => $this->generateCode(),
-            'customer_email' => $customerEmail,
-            'amount' => $amount,
-            'remaining' => $amount,
-            'status' => 'active',
-            'expires_at' => $expiresAt,
-            'reason' => $reason,
-            'created_by' => $createdBy,
-            'approved_by' => $approvedBy,
-        ]);
+        return DB::transaction(function () use ($customerEmail, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId) {
+            $voucher = Voucher::query()->create([
+                'order_id' => $orderId,
+                'code' => $this->generateCode(),
+                'customer_email' => $customerEmail,
+                'amount' => $amount,
+                'remaining' => $amount,
+                'status' => 'active',
+                'expires_at' => $expiresAt,
+                'reason' => $reason,
+                'created_by' => $createdBy,
+                'approved_by' => $approvedBy,
+            ]);
 
-        $this->ledger->credit('platform', null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
+            $this->ledger->credit('platform', null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
 
-        return $voucher;
+            return $voucher;
+        });
     }
 
     private function generateCode(): string

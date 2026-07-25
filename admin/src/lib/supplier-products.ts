@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
+import type { GameValidationRules } from "@/lib/games";
 
 /**
  * MID-1..6/SUPP-3 — see backend/app/Http/Controllers/Middleware/SupplierProductController.php.
@@ -37,13 +38,14 @@ export interface SupplierProductCategory {
   total: number;
   promoted_count: number;
   game_id: number | null;
-  game: { id: number; name: string } | null;
+  game: { id: number; name: string; validation_rules?: GameValidationRules | null } | null;
 }
 
 export interface LinkCategoryValues {
   category_raw: string;
   game_id?: number;
   new_game?: { name: string; category?: string };
+  validation_rules?: GameValidationRules | null;
 }
 
 /**

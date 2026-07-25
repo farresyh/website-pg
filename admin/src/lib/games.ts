@@ -1,5 +1,34 @@
 import { apiFetch } from "@/lib/api-client";
 
+/**
+ * ADR-005 addendum: Gamevion's order endpoint takes an opaque `data`
+ * string with no field schema of its own — we must know per-game
+ * whether checkout needs just Player ID (UID), or a second field, and
+ * what to call it. Set once per category at /middleware/product-manager's
+ * category-link step (LinkCategoryModal), not edited here.
+ */
+export interface GameValidationRules {
+  extra_field?: "server_id" | "zone_id" | null;
+}
+
+/** Shared between LinkCategoryModal (set at link time) and the inline editor next to the Product Manager Catalog tab (correct it later). */
+export const EXTRA_FIELD_OPTIONS = [
+  { value: "", label: "UID only (Player ID)" },
+  { value: "server_id", label: "UID + Server ID" },
+  { value: "zone_id", label: "UID + Zone ID" },
+];
+
+export function extraFieldLabel(extraField: "server_id" | "zone_id" | null | undefined): string {
+  switch (extraField) {
+    case "server_id":
+      return "UID + Server ID";
+    case "zone_id":
+      return "UID + Zone ID";
+    default:
+      return "UID only";
+  }
+}
+
 export interface Game {
   id: number;
   name: string;
@@ -9,6 +38,7 @@ export interface Game {
   banner_url?: string | null;
   is_active?: boolean;
   packages_count?: number;
+  validation_rules?: GameValidationRules | null;
 }
 
 export interface GamePackage {

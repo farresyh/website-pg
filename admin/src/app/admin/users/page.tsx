@@ -15,6 +15,7 @@ import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon, PencilIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
+import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import {
   type AdminUser,
@@ -29,7 +30,11 @@ import AdminUserFormModal, {
 
 export default function AdminUsersPage() {
   const router = useRouter();
-  const session = getClientSession();
+  // Read in an effect, not render body — sessionStorage isn't available
+  // during SSR, and reading it directly during render caused the known
+  // hydration mismatch on other screens (see UserDropdown.tsx). Fixed
+  // here as part of standardizing on this pattern, 2026-07-25 audit.
+  const [session, setSession] = useState<SessionPayload | null>(null);
 
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,12 +51,14 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => {
-    if (!session) {
+    const s = getClientSession();
+    if (!s) {
       router.replace("/login");
       return;
     }
+    setSession(s);
 
-    listAdminUsers(session.token)
+    listAdminUsers(s.token)
       .then(setUsers)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load admin users.");

@@ -61,7 +61,7 @@ class SupplierProductController extends Controller
 
         $games = Game::query()
             ->whereIn('id', $categories->pluck('game_id')->filter()->unique())
-            ->get(['id', 'name'])
+            ->get(['id', 'name', 'validation_rules'])
             ->keyBy('id');
 
         $categories = $categories
@@ -81,6 +81,11 @@ class SupplierProductController extends Controller
      * action. Safe to call again later (e.g. after Stage 1 re-syncs
      * new items into an already-linked category) — always re-stamps
      * the whole group, not just unlinked rows.
+     *
+     * `validation_rules` is stamped onto the Game here too (existing
+     * or newly-created) — re-linking is the supported way to correct
+     * it later, same "always re-stamps, safe to repeat" idempotency
+     * already documented for `game_id` above.
      */
     public function linkCategory(LinkSupplierProductCategoryRequest $request): JsonResponse
     {
@@ -93,6 +98,8 @@ class SupplierProductController extends Controller
                 'slug' => $this->uniqueSlug($data['new_game']['name']),
                 'category' => $data['new_game']['category'] ?? null,
             ]);
+
+        $game->update(['validation_rules' => $data['validation_rules'] ?? null]);
 
         SupplierProduct::query()
             ->where('category_raw', $data['category_raw'])

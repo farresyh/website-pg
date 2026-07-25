@@ -14,6 +14,7 @@ import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
+import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import {
   type Withdrawal,
@@ -39,7 +40,8 @@ function formatRm(sen: number): string {
 
 export default function WithdrawalsPage() {
   const router = useRouter();
-  const session = getClientSession();
+  // Read in an effect, not render body — see UserDropdown.tsx for why.
+  const [session, setSession] = useState<SessionPayload | null>(null);
 
   const [data, setData] = useState<WithdrawalIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,12 +57,14 @@ export default function WithdrawalsPage() {
   }
 
   useEffect(() => {
-    if (!session) {
+    const s = getClientSession();
+    if (!s) {
       router.replace("/login");
       return;
     }
+    setSession(s);
 
-    listWithdrawals(session.token)
+    listWithdrawals(s.token)
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load withdrawals.");

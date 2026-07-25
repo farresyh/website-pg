@@ -7,7 +7,7 @@ import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
 import Button from "@/components/ui/button/Button";
 import type { LinkCategoryValues } from "@/lib/supplier-products";
-import type { Game } from "@/lib/games";
+import { EXTRA_FIELD_OPTIONS, type Game } from "@/lib/games";
 
 interface LinkCategoryModalProps {
   isOpen: boolean;
@@ -35,8 +35,17 @@ function LinkCategoryFields({
   const [gameId, setGameId] = useState(games[0] ? String(games[0].id) : "");
   const [newGameName, setNewGameName] = useState(categoryRaw);
   const [newGameCategory, setNewGameCategory] = useState("");
+  // Defaults to whatever the initially-selected existing game already
+  // has set — re-linking is the supported way to review/correct it.
+  const [extraField, setExtraField] = useState(games[0]?.validation_rules?.extra_field ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function handleGameIdChange(value: string) {
+    setGameId(value);
+    const selected = games.find((g) => String(g.id) === value);
+    setExtraField(selected?.validation_rules?.extra_field ?? "");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,6 +67,7 @@ function LinkCategoryFields({
         ...(gameMode === "existing"
           ? { game_id: Number(gameId) }
           : { new_game: { name: newGameName, category: newGameCategory || undefined } }),
+        validation_rules: { extra_field: extraField === "" ? null : (extraField as "server_id" | "zone_id") },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -100,7 +110,7 @@ function LinkCategoryFields({
         {gameMode === "existing" ? (
           <Select
             value={gameId}
-            onChange={setGameId}
+            onChange={handleGameIdChange}
             options={games.map((g) => ({ value: String(g.id), label: g.name }))}
           />
         ) : (
@@ -120,6 +130,14 @@ function LinkCategoryFields({
             </div>
           </div>
         )}
+
+        <div>
+          <Label htmlFor="extra_field">Checkout input needed</Label>
+          <Select id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
+          <p className="mt-1 text-theme-xs text-gray-400">
+            What Gamevion needs beyond Player ID for orders in this category — e.g. Mobile Legends needs a Zone ID.
+          </p>
+        </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>

@@ -157,6 +157,31 @@ class SupplierProductControllerTest extends TestCase
         $this->assertNull($byCategory['Mobile Legends']['game']);
     }
 
+    /**
+     * Founder ask, 2026-07-25: admin wants to double-confirm the
+     * `validation_rules` set at link time by seeing it again when
+     * viewing an already-linked category (not just trusting it was
+     * saved correctly) — so `categories()` must actually return it,
+     * not just `game_id`/`name`.
+     */
+    public function test_categories_includes_the_linked_games_validation_rules(): void
+    {
+        $supplier = $this->supplier();
+        $game = Game::query()->create([
+            'name' => 'Mobile Legends', 'slug' => 'mobile-legends',
+            'validation_rules' => ['extra_field' => 'zone_id'],
+        ]);
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Mobile Legends', 'game_id' => $game->id]);
+
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/middleware/supplier-products/categories');
+
+        $response->assertOk();
+        $byCategory = collect($response->json())->keyBy('category_raw');
+        $this->assertSame(['extra_field' => 'zone_id'], $byCategory['Mobile Legends']['game']['validation_rules']);
+    }
+
     public function test_link_category_creates_a_new_game_and_stamps_every_item_in_the_category(): void
     {
         $supplier = $this->supplier();
@@ -194,6 +219,62 @@ class SupplierProductControllerTest extends TestCase
         $response->assertOk();
         $this->assertSame(1, Game::query()->count()); // no duplicate created
         $this->assertSame($game->id, SupplierProduct::query()->where('external_ref', 'A')->firstOrFail()->game_id);
+    }
+
+    /**
+     * ADR-005 addendum: Gamevion's order endpoint has no field schema
+     * of its own, so we must know per-game whether checkout needs a
+     * second field beyond Player ID (UID), and what to call it — set
+     * here, at the same "which Game" decision, not a separate trip to
+     * /admin/games afterward.
+     */
+    public function test_link_category_sets_validation_rules_on_a_new_game(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Mobile Legends']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'category_raw' => 'Mobile Legends',
+            'new_game' => ['name' => 'Mobile Legends'],
+            'validation_rules' => ['extra_field' => 'zone_id'],
+        ]);
+
+        $response->assertOk();
+        $game = Game::query()->where('name', 'Mobile Legends')->firstOrFail();
+        $this->assertSame(['extra_field' => 'zone_id'], $game->validation_rules);
+    }
+
+    public function test_link_category_sets_validation_rules_on_an_existing_game(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Free Fire Global']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'category_raw' => 'Free Fire Global',
+            'game_id' => $game->id,
+            'validation_rules' => ['extra_field' => 'server_id'],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(['extra_field' => 'server_id'], $game->refresh()->validation_rules);
+    }
+
+    public function test_link_category_rejects_an_unknown_extra_field_value(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['category_raw' => 'Free Fire Global']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'category_raw' => 'Free Fire Global',
+            'new_game' => ['name' => 'Free Fire Global'],
+            'validation_rules' => ['extra_field' => 'account_number'],
+        ]);
+
+        $response->assertUnprocessable();
     }
 
     public function test_link_category_rejects_both_game_id_and_new_game_given_together(): void

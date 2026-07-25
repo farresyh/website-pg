@@ -14,6 +14,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
+import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import {
   type SupplierProduct,
@@ -25,7 +26,8 @@ import {
   linkSupplierProductCategory,
   promoteSupplierProduct,
 } from "@/lib/supplier-products";
-import { type Game, type GamePackage, listGames, listGamePackages } from "@/lib/games";
+import { EXTRA_FIELD_OPTIONS, type Game, type GamePackage, type GameValidationRules, listGames, listGamePackages } from "@/lib/games";
+import Select from "@/components/form/Select";
 import LinkCategoryModal from "@/components/middleware/LinkCategoryModal";
 import PromoteProductModal from "@/components/middleware/PromoteProductModal";
 
@@ -33,9 +35,50 @@ function formatRm(sen: number | null): string {
   return sen === null ? "—" : `RM ${(sen / 100).toFixed(2)}`;
 }
 
+/**
+ * The admin, not any supplier API, decides what a game's checkout
+ * needs (ADR-005 addendum) — LinkCategoryModal sets it once at
+ * link time, but until this editor existed there was no way to
+ * correct a wrong choice afterward (the "Link to Game" button
+ * disappears once a category is linked). Reuses linkSupplierProductCategory
+ * directly — game_id doesn't change, only validation_rules.
+ */
+function CheckoutInputEditor({
+  initial,
+  onUpdate,
+}: {
+  initial: GameValidationRules | null | undefined;
+  onUpdate: (extraField: "server_id" | "zone_id" | null) => Promise<void>;
+}) {
+  const [value, setValue] = useState(initial?.extra_field ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleUpdate() {
+    setSaving(true);
+    try {
+      await onUpdate(value === "" ? null : (value as "server_id" | "zone_id"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Select value={value} onChange={setValue} options={EXTRA_FIELD_OPTIONS} className="w-56" />
+      <Button size="sm" disabled={saving} onClick={handleUpdate}>
+        {saving ? "Saving…" : "Update"}
+      </Button>
+      <code className="rounded bg-gray-100 px-1.5 py-0.5 text-theme-xs text-gray-500 dark:bg-white/5 dark:text-gray-400">
+        {JSON.stringify({ extra_field: value === "" ? null : value })}
+      </code>
+    </div>
+  );
+}
+
 export default function ProductManagerPage() {
   const router = useRouter();
-  const session = getClientSession();
+  // Read in an effect, not render body — see UserDropdown.tsx for why.
+  const [session, setSession] = useState<SessionPayload | null>(null);
 
   const [categories, setCategories] = useState<SupplierProductCategory[] | null>(null);
   const [games, setGames] = useState<Game[]>([]);
@@ -45,7 +88,7 @@ export default function ProductManagerPage() {
   const [selected, setSelected] = useState<SupplierProductCategory | null>(null);
   const [items, setItems] = useState<SupplierProduct[] | null>(null);
   const [catalogPackages, setCatalogPackages] = useState<GamePackage[] | null>(null);
-  const [tab, setTab] = useState<"available" | "catalog">("available");
+  const [tab, setTab] = useState<"available" | "catalog" | "checkout_input">("available");
 
   const [linkingCategory, setLinkingCategory] = useState<SupplierProductCategory | null>(null);
   const [promoting, setPromoting] = useState<SupplierProduct | null>(null);
@@ -77,12 +120,14 @@ export default function ProductManagerPage() {
   }
 
   useEffect(() => {
-    if (!session) {
+    const s = getClientSession();
+    if (!s) {
       router.replace("/login");
       return;
     }
+    setSession(s);
 
-    listGames(session.token).then(setGames).catch(() => {
+    listGames(s.token).then(setGames).catch(() => {
       // Non-fatal — "new game" mode in the link modal still works without the picker.
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,7 +142,7 @@ export default function ProductManagerPage() {
         setError(err instanceof ApiError ? err.message : "Could not load categories.");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categorySearch]);
+  }, [session, categorySearch]);
 
   async function handleLinkSubmit(values: LinkCategoryValues) {
     if (!session || !linkingCategory) return;
@@ -111,6 +156,21 @@ export default function ProductManagerPage() {
     setCategories(refreshed);
     const reopened = refreshed.find((c) => c.category_raw === linkingCategory.category_raw);
     if (reopened) await openCategory(session.token, reopened);
+  }
+
+  async function handleUpdateCheckoutInput(extraField: "server_id" | "zone_id" | null) {
+    if (!session || !selected?.game) return;
+
+    await linkSupplierProductCategory(session.token, {
+      category_raw: selected.category_raw ?? "",
+      game_id: selected.game.id,
+      validation_rules: { extra_field: extraField },
+    });
+
+    const refreshed = await listSupplierProductCategories(session.token, { search: categorySearch || undefined });
+    setCategories(refreshed);
+    const reopened = refreshed.find((c) => c.category_raw === selected.category_raw);
+    if (reopened) setSelected(reopened);
   }
 
   async function handlePromoteSubmit(values: PromoteValues) {
@@ -180,9 +240,15 @@ export default function ProductManagerPage() {
               >
                 Catalog ({catalogPackages?.length ?? 0})
               </button>
+              <button
+                onClick={() => setTab("checkout_input")}
+                className={`px-4 py-2 text-sm font-medium ${tab === "checkout_input" ? "border-b-2 border-brand-500 text-brand-500" : "text-gray-500 dark:text-gray-400"}`}
+              >
+                Checkout Input
+              </button>
             </div>
 
-            {tab === "available" ? (
+            {tab === "available" && (
               <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
                 <div className="max-w-full overflow-x-auto">
                   <Table>
@@ -230,7 +296,9 @@ export default function ProductManagerPage() {
                   {items === null && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
                 </div>
               </div>
-            ) : (
+            )}
+
+            {tab === "catalog" && (
               <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
                 <div className="max-w-full overflow-x-auto">
                   <Table>
@@ -267,6 +335,21 @@ export default function ProductManagerPage() {
                     </p>
                   )}
                 </div>
+              </div>
+            )}
+
+            {tab === "checkout_input" && selected.game && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
+                <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                  What Gamevion needs beyond Player ID (UID) for orders in this category — the admin decides this,
+                  not a supplier API (ADR-005 addendum). Applies to every package under{" "}
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{selected.game.name}</span>.
+                </p>
+                <CheckoutInputEditor
+                  key={`${selected.category_raw}-${selected.game.id}`}
+                  initial={selected.game.validation_rules}
+                  onUpdate={handleUpdateCheckoutInput}
+                />
               </div>
             )}
           </>

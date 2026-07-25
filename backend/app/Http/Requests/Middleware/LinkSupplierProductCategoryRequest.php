@@ -4,6 +4,7 @@ namespace App\Http\Requests\Middleware;
 
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Links every raw `supplier_products` row sharing one `category_raw`
@@ -11,6 +12,14 @@ use Illuminate\Foundation\Http\FormRequest;
  * either an existing Game or a brand-new one created inline. This
  * decision is made ONCE per category, not per item (founder feedback,
  * docs/prd.md §14).
+ *
+ * `validation_rules.extra_field` rides along in the same action
+ * (founder feedback, 2026-07-25): a game's supplier order-submission
+ * needs are a per-game constant, so the natural moment to set them is
+ * the same "which Game" decision — not a separate trip to
+ * /admin/games afterward. Structured/validated to a fixed enum (never
+ * raw JSON), per legacy-reference-notes.md's "typo silently breaks
+ * checkout" finding.
  */
 class LinkSupplierProductCategoryRequest extends FormRequest
 {
@@ -30,6 +39,8 @@ class LinkSupplierProductCategoryRequest extends FormRequest
             'new_game' => ['nullable', 'required_without:game_id', 'array'],
             'new_game.name' => ['required_with:new_game', 'string', 'max:255'],
             'new_game.category' => ['nullable', 'string', 'max:255'],
+            'validation_rules' => ['nullable', 'array'],
+            'validation_rules.extra_field' => ['nullable', Rule::in(['server_id', 'zone_id'])],
         ];
     }
 

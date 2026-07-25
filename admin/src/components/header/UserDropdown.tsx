@@ -1,15 +1,26 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dropdown } from "@/components/ui/dropdown/Dropdown";
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import { getClientSession, clearClientSession } from "@/lib/session";
+import type { SessionPayload } from "@/lib/auth";
 
 export default function UserDropdown() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const session = getClientSession();
+  // Read lazily in an effect, not during render: sessionStorage doesn't
+  // exist during SSR, so a render-body read renders "?"/"Account" on the
+  // server and the real name on the client's first (hydration) render —
+  // React sees that as a text mismatch. This was the exact cause of the
+  // known "+ T / - ?" hydration warning on every admin page load (see
+  // docs/prd.md §14). Root-caused and fixed during the 2026-07-25 audit.
+  const [session, setSession] = useState<SessionPayload | null>(null);
+
+  useEffect(() => {
+    setSession(getClientSession());
+  }, []);
 
   function toggleDropdown(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation();

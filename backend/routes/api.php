@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
@@ -11,6 +12,12 @@ use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
+
+// Guest checkout (ADR-011) — no Customer auth exists, deliberately not
+// behind auth:sanctum. Money fields are still never client-trusted
+// (ORD-9): CheckoutController resolves everything from stored
+// Game/Package config, never from this request's own body.
+Route::post('/checkout', [CheckoutController::class, 'store']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);

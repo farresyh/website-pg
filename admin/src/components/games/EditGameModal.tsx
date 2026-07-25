@@ -18,8 +18,10 @@ interface EditGameModalProps {
 /**
  * Renders as a child of <Modal>, which unmounts while closed — same
  * fresh-mount-per-open reasoning as the other *FormFields components.
- * GAME-3/GAME-4/GAME-5. Deliberately excludes supplier_mappings/
- * validation_rules (raw JSON, a typo risk — PRD §14) and SEO fields —
+ * GAME-3/GAME-4/GAME-5. Deliberately excludes `supplier_mappings`/
+ * `validation_rules` (the latter is set at /middleware/product-manager's
+ * category-link step, not here — it's a supplier-integration decision,
+ * not a catalog-display one; see LinkCategoryModal) and SEO fields —
  * separately scoped, not part of this pass.
  */
 function EditGameFields({

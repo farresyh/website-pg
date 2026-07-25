@@ -35,6 +35,8 @@ final class GamevionAdapter implements SupplierAdapter
         private readonly string $apiKey,
         private readonly bool $sandbox = false,
         private readonly ?string $proxyUrl = null,
+        private readonly int $timeoutSeconds = 10,
+        private readonly int $connectTimeoutSeconds = 5,
     ) {
     }
 
@@ -140,6 +142,16 @@ final class GamevionAdapter implements SupplierAdapter
         );
     }
 
+    /**
+     * createOrder() runs inside OrderFulfillmentService::fulfill()'s
+     * DB::transaction()/lockForUpdate() (added during the 2026-07-25
+     * audit to fix a double-delivery race) — a hung/slow Gamevion
+     * response with no client-side timeout would hold that row lock
+     * (and the open transaction) for as long as the socket stays open,
+     * risking lock-wait timeouts/connection pool exhaustion under load.
+     * Every request goes through this one client, so the timeout
+     * applies uniformly, not just to createOrder().
+     */
     private function client(): PendingRequest
     {
         $client = Http::baseUrl($this->baseUrl)
@@ -148,6 +160,8 @@ final class GamevionAdapter implements SupplierAdapter
                 'X-API-KEY' => $this->apiKey,
                 'X-ENVIRONMENT' => $this->sandbox ? 'sandbox' : null,
             ]))
+            ->timeout($this->timeoutSeconds)
+            ->connectTimeout($this->connectTimeoutSeconds)
             ->acceptJson();
 
         if ($this->proxyUrl !== null) {

@@ -8,9 +8,11 @@ use Illuminate\Validation\Rule;
 /**
  * GAME-3/GAME-4: admin edits a Game's own display fields and
  * active/inactive status. Deliberately excludes `supplier_mappings`/
- * `validation_rules` (raw JSON, PRD §14 flags free-typed JSON here as
- * a real typo risk — a future structured editor, not this endpoint)
- * and SEO fields (separate concern, not part of this pass).
+ * `validation_rules` — the latter is set at the /middleware/product-manager
+ * category-link step (LinkSupplierProductCategoryRequest), a
+ * supplier-integration decision made once per category, not a
+ * catalog-display field edited here — and SEO fields (separate
+ * concern, not part of this pass).
  */
 class UpdateGameRequest extends FormRequest
 {

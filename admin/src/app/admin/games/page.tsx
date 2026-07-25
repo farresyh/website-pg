@@ -21,6 +21,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
+import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import {
   type Game,
@@ -86,7 +87,8 @@ function MarkupCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (markupPerc
 
 export default function GamesPage() {
   const router = useRouter();
-  const session = getClientSession();
+  // Read in an effect, not render body — see UserDropdown.tsx for why.
+  const [session, setSession] = useState<SessionPayload | null>(null);
 
   const [games, setGames] = useState<Game[] | null>(null);
   const [search, setSearch] = useState("");
@@ -118,10 +120,12 @@ export default function GamesPage() {
   }
 
   useEffect(() => {
-    if (!session) {
+    const s = getClientSession();
+    if (!s) {
       router.replace("/login");
       return;
     }
+    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -134,7 +138,7 @@ export default function GamesPage() {
         setError(err instanceof ApiError ? err.message : "Could not load games.");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status]);
+  }, [session, search, status]);
 
   async function handleEditGameSubmit(values: UpdateGameValues) {
     if (!session || !editingGame) return;

@@ -57,6 +57,11 @@ return [
         'bearer_token' => env('GAMEVION_BEARER_TOKEN'),
         'api_key' => env('GAMEVION_API_KEY'),
         'sandbox' => env('GAMEVION_SANDBOX', true),
+        // createOrder() runs inside a DB row lock (OrderFulfillmentService)
+        // — keep these short so a hung supplier response can't hold that
+        // lock open indefinitely. See GamevionAdapter::client().
+        'timeout' => (int) env('GAMEVION_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('GAMEVION_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
     // Temporary env-based config for local/manual testing of
