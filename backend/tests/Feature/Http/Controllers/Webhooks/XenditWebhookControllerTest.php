@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers\Webhooks;
 
+use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -14,6 +15,7 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -137,9 +139,39 @@ class XenditWebhookControllerTest extends TestCase
     }
 
     /**
+     * ADR-014: fulfillment must never run inline on the webhook
+     * request thread — a slow/hung Gamevion response would otherwise
+     * hold the request (and Xendit's own delivery timeout) hostage.
+     */
+    public function test_dispatches_fulfillment_as_a_queued_job_instead_of_running_it_inline(): void
+    {
+        Queue::fake();
+
+        $order = $this->fakePaidOrder();
+        $this->bindFakePaymentGateway(true, new PaymentWebhookEvent(
+            eventType: 'payment.capture',
+            referenceId: $order->order_number,
+            paymentRequestId: 'pr-123',
+            status: PaymentStatus::Paid,
+            amountSen: 1100,
+        ));
+
+        $response = $this->postJson('/api/webhooks/xendit', [], ['x-callback-token' => 'correct-token']);
+
+        $response->assertOk();
+        $this->assertSame(PaymentStatus::Paid, $order->fresh()->payment_status);
+        // Nothing ran fulfillment inline — delivery is still untouched,
+        // waiting for the queued job to pick it up.
+        $this->assertSame(DeliveryStatus::NotStarted, $order->fresh()->delivery_status);
+
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
+    }
+
+    /**
      * The full loop this whole session's work has been building
      * toward: a verified paid webhook drives payment_status AND
-     * triggers real supplier fulfillment.
+     * (once the queued job runs — QUEUE_CONNECTION=sync in tests, so
+     * synchronously here) triggers real supplier fulfillment.
      */
     public function test_marks_paid_and_triggers_fulfillment_on_a_verified_paid_event(): void
     {

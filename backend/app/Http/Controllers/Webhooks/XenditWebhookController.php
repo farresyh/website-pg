@@ -3,9 +3,8 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
-use App\Services\Fulfillment\OrderFulfillmentService;
-use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use Illuminate\Http\JsonResponse;
@@ -19,12 +18,16 @@ use Illuminate\Support\Facades\Log;
  * actioned (PAY-1) — this is the single entry point that may ever
  * transition payment_status to Paid based on external input, so it is
  * treated as the most security-sensitive boundary in the system.
+ *
+ * ADR-014: deliberately thin — fulfillment (the part that calls
+ * Gamevion's live API) is dispatched to FulfillOrderJob rather than
+ * run inline, so a slow/hung supplier response can never hold this
+ * request (and Xendit's own webhook-delivery timeout) hostage.
  */
 class XenditWebhookController extends Controller
 {
     public function __construct(
         private readonly PaymentGateway $paymentGateway,
-        private readonly OrderFulfillmentService $fulfillment,
     ) {
     }
 
@@ -65,14 +68,7 @@ class XenditWebhookController extends Controller
 
         $order->update(['payment_status' => PaymentStatus::Paid->value]);
 
-        try {
-            $this->fulfillment->fulfill($order->fresh());
-        } catch (InvalidOrderTransitionException $e) {
-            // A concurrent webhook delivery already advanced this
-            // order past NotStarted/Failed before we got the lock —
-            // fulfill()'s own guard correctly rejected this attempt.
-            Log::info("Fulfillment skipped for order {$order->id}: {$e->getMessage()}");
-        }
+        FulfillOrderJob::dispatch($order->fresh());
 
         return response()->json(['message' => 'ok']);
     }
