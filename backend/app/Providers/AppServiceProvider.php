@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\Payment\PaymentGateway;
+use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\Xendit\XenditGateway;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
@@ -13,11 +14,20 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register any application services.
      *
-     * Single-supplier/single-gateway bindings for now — matches MVP
-     * reality (one Gamevion, one Xendit). Once the Supplier model is
-     * wired up for real multi-supplier routing, SupplierAdapter
-     * resolution moves to a per-order factory instead of one global
-     * binding; this is a deliberate placeholder, not the final shape.
+     * Single-supplier binding for now — matches MVP reality (one
+     * Gamevion). Once the Supplier model is wired up for real
+     * multi-supplier routing, SupplierAdapter resolution moves to a
+     * per-order factory instead of one global binding; this is a
+     * deliberate placeholder, not the final shape.
+     *
+     * PaymentGateway is resolved per-channel via PaymentGatewayFactory
+     * (see that class + the payment_methods migration's doc comment)
+     * rather than one hardcoded binding — CheckoutController looks up
+     * the matched PaymentMethod row's `gateway` column and asks the
+     * factory for the right implementation. PaymentGateway::class
+     * itself stays bound to Xendit as a default, since the webhook
+     * controller's route (/api/webhooks/xendit) is inherently
+     * gateway-specific by URL, not resolved per-request.
      */
     public function register(): void
     {
@@ -36,7 +46,7 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->bind(PaymentGateway::class, function () {
+        $this->app->bind('payment-gateway.xendit', function () {
             $config = config('services.xendit');
 
             return new XenditGateway(
@@ -45,6 +55,10 @@ class AppServiceProvider extends ServiceProvider
                 webhookToken: (string) $config['webhook_token'],
             );
         });
+
+        $this->app->singleton(PaymentGatewayFactory::class);
+
+        $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.xendit'));
     }
 
     /**

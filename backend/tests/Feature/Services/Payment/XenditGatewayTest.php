@@ -3,6 +3,7 @@
 namespace Tests\Feature\Services\Payment;
 
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\Xendit\XenditGateway;
 use Illuminate\Support\Facades\Http;
@@ -100,6 +101,71 @@ class XenditGatewayTest extends TestCase
         $this->assertSame('pr-123', $result->data['payment_request_id']);
         $this->assertSame('REQUIRES_ACTION', $result->data['status']);
         $this->assertSame('https://checkout.xendit.co/web/pr-123', $result->data['actions'][0]['value']);
+    }
+
+    /**
+     * 2026-07-25: discovered live that Xendit requires exactly one of
+     * `customer`/`customer_id` for at least FPX (see PaymentCustomer's
+     * doc comment) — this proves the adapter actually sends the inline
+     * `customer` object in the shape Xendit's docs specify, not just
+     * that PaymentCustomer exists as a DTO.
+     */
+    public function test_create_payment_includes_the_customer_object_when_provided(): void
+    {
+        Http::fake([
+            'api.xendit.co/*' => Http::response([
+                'payment_request_id' => 'pr-123',
+                'reference_id' => 'KRS-1',
+                'status' => 'ACCEPTING_PAYMENTS',
+                'actions' => [],
+                'request_amount' => 100.00,
+            ], 201),
+        ]);
+
+        $this->gateway()->createPayment(new PaymentRequest(
+            referenceId: 'KRS-1',
+            amountSen: 10000,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: 'AMBANK_FPX',
+            customer: new PaymentCustomer(
+                referenceId: 'KRS-1',
+                givenNames: 'Buyer One',
+                email: 'buyer@example.com',
+                mobileNumber: '+60123456789',
+            ),
+        ));
+
+        Http::assertSent(function ($request) {
+            return $request['customer']['type'] === 'INDIVIDUAL'
+                && $request['customer']['reference_id'] === 'KRS-1'
+                && $request['customer']['email'] === 'buyer@example.com'
+                && $request['customer']['mobile_number'] === '+60123456789'
+                && $request['customer']['individual_detail']['given_names'] === 'Buyer One';
+        });
+    }
+
+    public function test_create_payment_omits_customer_entirely_when_not_provided(): void
+    {
+        Http::fake([
+            'api.xendit.co/*' => Http::response([
+                'payment_request_id' => 'pr-123',
+                'reference_id' => 'KRS-1',
+                'status' => 'ACCEPTING_PAYMENTS',
+                'actions' => [],
+                'request_amount' => 100.00,
+            ], 201),
+        ]);
+
+        $this->gateway()->createPayment(new PaymentRequest(
+            referenceId: 'KRS-1',
+            amountSen: 10000,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: 'DUITNOW_PAY',
+        ));
+
+        Http::assertSent(fn ($request) => ! array_key_exists('customer', $request->data()));
     }
 
     public function test_create_payment_normalizes_a_validation_failure(): void

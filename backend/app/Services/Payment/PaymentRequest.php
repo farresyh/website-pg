@@ -19,6 +19,7 @@ final class PaymentRequest
         public readonly array $channelProperties = [],
         public readonly ?string $description = null,
         public readonly array $metadata = [],
+        public readonly ?PaymentCustomer $customer = null,
     ) {
     }
 }

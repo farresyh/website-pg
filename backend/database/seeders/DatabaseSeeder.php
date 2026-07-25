@@ -29,5 +29,7 @@ class DatabaseSeeder extends Seeder
             ['business_name' => 'Platform Owner'],
             ['markup_pct' => 0, 'status' => 'active'],
         );
+
+        $this->call(PaymentMethodSeeder::class);
     }
 }

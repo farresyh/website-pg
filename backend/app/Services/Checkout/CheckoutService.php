@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Pricing\CheckoutTotalService;
@@ -25,7 +26,6 @@ final class CheckoutService
         private readonly PricingService $pricing,
         private readonly CheckoutTotalService $checkoutTotal,
         private readonly OrderNumberService $orderNumbers,
-        private readonly PaymentGateway $paymentGateway,
     ) {
     }
 
@@ -39,8 +39,15 @@ final class CheckoutService
      * transaction would risk: a real, payable Xendit payment link
      * existing with no matching Order anywhere in the system if the
      * transaction rolled back after Xendit had already accepted it.
+     *
+     * $gateway is caller-resolved (CheckoutController looks up the
+     * matched PaymentMethod row's `gateway` column via
+     * PaymentGatewayFactory) rather than constructor-injected — a
+     * single fixed gateway can't serve a checkout that routes
+     * different channels to different gateways (multi-gateway seam,
+     * 2026-07-25, see the payment_methods migration's doc comment).
      */
-    public function initiate(CheckoutRequest $request): Order
+    public function initiate(CheckoutRequest $request, PaymentGateway $gateway): Order
     {
         $pricing = $this->pricing->calculate(
             $request->costPriceSen,
@@ -57,6 +64,7 @@ final class CheckoutService
         $order = Order::query()->create([
             'order_number' => $this->orderNumbers->generate(),
             'customer_email' => $request->customerEmail,
+            'customer_name' => $request->customerName,
             'customer_phone' => $request->customerPhone,
             'player_id' => $request->playerId,
             'server_id' => $request->serverId,
@@ -79,7 +87,7 @@ final class CheckoutService
             'payment_method' => $request->paymentMethod,
         ]);
 
-        $payment = $this->paymentGateway->createPayment(new PaymentRequest(
+        $payment = $gateway->createPayment(new PaymentRequest(
             referenceId: $order->order_number,
             amountSen: $total->finalAmount,
             currency: 'MYR',
@@ -87,6 +95,12 @@ final class CheckoutService
             channelCode: $request->channelCode,
             channelProperties: $request->channelProperties,
             description: "KedaiRuncitSoloz order {$order->order_number}",
+            customer: new PaymentCustomer(
+                referenceId: $order->order_number,
+                givenNames: $request->customerName,
+                email: $request->customerEmail,
+                mobileNumber: $request->customerPhone,
+            ),
         ));
 
         if (! $payment->success) {

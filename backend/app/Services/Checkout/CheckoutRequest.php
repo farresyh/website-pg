@@ -15,6 +15,7 @@ final class CheckoutRequest
 {
     public function __construct(
         public readonly string $customerEmail,
+        public readonly string $customerName,
         public readonly ?string $customerPhone,
         public readonly string $playerId,
         public readonly ?string $serverId,

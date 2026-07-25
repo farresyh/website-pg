@@ -5,11 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
-use App\Services\Payment\PaymentGateway;
+use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
@@ -34,7 +35,7 @@ class CheckoutController extends Controller
 {
     public function __construct(
         private readonly CheckoutService $checkout,
-        private readonly PaymentGateway $paymentGateway,
+        private readonly PaymentGatewayFactory $gatewayFactory,
         private readonly PaymentMethodFeeResolver $fees,
     ) {
     }
@@ -76,17 +77,28 @@ class CheckoutController extends Controller
             ['markup_pct' => 0, 'status' => 'active'],
         );
 
+        // Guaranteed to exist + be active by CreateCheckoutRequest's
+        // Rule::exists check — a race between validation and here
+        // (channel deactivated mid-request) surfaces as a 500 via
+        // firstOrFail(), not a silent fallback to some default
+        // gateway, since that would misroute a real payment.
+        $paymentMethod = PaymentMethod::query()
+            ->where('channel_code', $data['channel_code'])
+            ->firstOrFail();
+        $gateway = $this->gatewayFactory->make($paymentMethod->gateway);
+
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
                 customerEmail: $data['customer_email'],
+                customerName: $data['customer_name'],
                 customerPhone: $data['customer_phone'] ?? null,
                 playerId: $data['player_id'],
                 serverId: $data['server_id'] ?? null,
                 costPriceSen: $package->cost_price,
                 resellerCostPriceSen: $package->reseller_cost_price,
                 resellerMarkupPct: (float) $reseller->markup_pct,
-                paymentFeeConfig: $this->fees->resolve($data['payment_method']),
-                paymentMethod: $data['payment_method'],
+                paymentFeeConfig: $this->fees->resolve($data['channel_code']),
+                paymentMethod: $paymentMethod->category,
                 channelCode: $data['channel_code'],
                 channelProperties: $data['channel_properties'] ?? [],
                 supplierProductRef: $package->supplier_package_ref,
@@ -94,7 +106,7 @@ class CheckoutController extends Controller
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
                 resellerId: $reseller->id,
-            ));
+            ), $gateway);
         } catch (CheckoutFailedException $e) {
             throw ValidationException::withMessages([
                 'payment' => [$e->getMessage()],
@@ -103,10 +115,10 @@ class CheckoutController extends Controller
 
         // CheckoutService::initiate() only persists payment_ref onto
         // the Order, not the gateway's checkout-URL/QR "actions"
-        // payload — fetched separately here via the same PaymentGateway
-        // interface (getPayment(), already implemented and tested)
+        // payload — fetched separately here via the same resolved
+        // gateway (getPayment(), already implemented and tested)
         // rather than changing CheckoutService's own tested contract.
-        $payment = $this->paymentGateway->getPayment($order->payment_ref);
+        $payment = $gateway->getPayment($order->payment_ref);
 
         return response()->json([
             'order_number' => $order->order_number,

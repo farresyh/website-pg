@@ -24,13 +24,12 @@ class CheckoutServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function service(PaymentGateway $gateway): CheckoutService
+    private function service(): CheckoutService
     {
         return new CheckoutService(
             new PricingService(),
             new CheckoutTotalService(),
             new OrderNumberService(),
-            $gateway,
         );
     }
 
@@ -38,6 +37,7 @@ class CheckoutServiceTest extends TestCase
     {
         return new CheckoutRequest(...array_merge([
             'customerEmail' => 'buyer@example.com',
+            'customerName' => 'Buyer One',
             'customerPhone' => null,
             'playerId' => '123456',
             'serverId' => '1234',
@@ -95,7 +95,7 @@ class CheckoutServiceTest extends TestCase
     {
         $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-123']);
 
-        $order = $this->service($gateway)->initiate($this->request());
+        $order = $this->service()->initiate($this->request(), $gateway);
 
         $this->assertStringStartsWith('KRS-', $order->order_number);
         $this->assertSame(PaymentStatus::Pending, $order->payment_status);
@@ -119,7 +119,7 @@ class CheckoutServiceTest extends TestCase
         $gateway = $this->fakePaymentGateway(false, null, 'API_VALIDATION_ERROR', 'bad channel_properties');
 
         try {
-            $this->service($gateway)->initiate($this->request());
+            $this->service()->initiate($this->request(), $gateway);
             $this->fail('Expected CheckoutFailedException was not thrown.');
         } catch (CheckoutFailedException) {
             // expected

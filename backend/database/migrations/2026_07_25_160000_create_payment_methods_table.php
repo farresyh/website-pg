@@ -18,6 +18,16 @@ return new class extends Migration
      * `is_active = false` by default. Admin must confirm each channel
      * actually works (via their own Xendit Dashboard, or the "Test
      * This Channel" action) before flipping it on.
+     *
+     * `gateway` (added 2026-07-25, same session): widens the
+     * PaymentGateway seam (ADR-001 addendum) from "one gateway
+     * hardcoded" to "one gateway per channel row", ahead of the
+     * founder's stated intent to shop/split payment gateways once
+     * Xendit's fee structure is fully understood. Only 'xendit' is
+     * ever seeded/supported today — PaymentGatewayFactory throws for
+     * anything else — this is schema readiness only, matching
+     * ADR-003's "cheap architecture now, expensive feature later"
+     * precedent, not a claim that a second gateway is built.
      */
     public function up(): void
     {
@@ -26,6 +36,7 @@ return new class extends Migration
             $table->string('channel_code')->unique(); // Xendit's exact value, e.g. AMBANK_FPX, GRABPAY
             $table->string('label'); // customer/admin-facing display name
             $table->string('category'); // UI grouping only (fpx/ewallet/card/...) — fee lookup is per channel_code, not category
+            $table->string('gateway')->default('xendit'); // which PaymentGateway adapter owns this channel — see PaymentGatewayFactory
             $table->boolean('is_active')->default(false);
             $table->decimal('percentage_rate', 5, 2)->default(0);
             $table->unsignedInteger('flat_fee_sen')->default(0);

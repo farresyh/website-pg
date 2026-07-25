@@ -21,6 +21,7 @@ import Link from "next/link";
 const NAV_ITEMS: { label: string; href: string | null }[] = [
   { label: "Dashboard", href: "/middleware" },
   { label: "Product Manager", href: "/middleware/product-manager" },
+  { label: "Payment Methods", href: "/middleware/payment-methods" },
   { label: "Price Sync", href: null },
   { label: "Validate Player", href: null },
   { label: "Request Logs", href: null },

@@ -369,4 +369,35 @@ class SupplierProductControllerTest extends TestCase
         $response->assertUnprocessable();
         $this->assertSame(0, Package::query()->count());
     }
+
+    /**
+     * Discovered live 2026-07-25: calling this endpoint twice for the
+     * same raw item created two Packages selling identical inventory —
+     * the frontend only hid the "Add Again" button after promotion
+     * (client-side convenience), no backend guard existed. Now backed
+     * by a real unique index (supplier_id, supplier_package_ref), not
+     * just this friendly check.
+     */
+    public function test_promote_rejects_an_already_promoted_item(): void
+    {
+        $supplier = $this->supplier();
+        $product = $this->rawProduct($supplier);
+        $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $this->actingAsAdmin();
+
+        $first = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
+            'game_id' => $game->id,
+            'name' => '14 Diamond (13+1 Bonus)',
+        ]);
+        $first->assertCreated();
+
+        $second = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
+            'game_id' => $game->id,
+            'name' => '14 Diamond (13+1 Bonus) — duplicate attempt',
+        ]);
+
+        $second->assertUnprocessable();
+        $second->assertJsonValidationErrors('supplier_product');
+        $this->assertSame(1, Package::query()->where('supplier_package_ref', 'GV733')->count());
+    }
 }

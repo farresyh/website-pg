@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
+use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\Webhooks\XenditWebhookController;
@@ -73,6 +74,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/categories/link', [SupplierProductController::class, 'linkCategory']);
         Route::get('/', [SupplierProductController::class, 'index']);
         Route::post('/{supplier_product}/promote', [SupplierProductController::class, 'promote']);
+    });
+
+    // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway
+    // management, replaces the config/checkout.php stopgap.
+    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/payment-methods')->group(function () {
+        Route::get('/', [PaymentMethodController::class, 'index']);
+        Route::patch('/{payment_method}/status', [PaymentMethodController::class, 'updateStatus']);
+        Route::patch('/{payment_method}/fee', [PaymentMethodController::class, 'updateFee']);
+        Route::post('/{payment_method}/test', [PaymentMethodController::class, 'test']);
     });
 
     // GAME-1..5/7 — Admin Games & Packages management.

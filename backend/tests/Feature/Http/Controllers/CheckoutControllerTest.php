@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Payment\PaymentGateway;
@@ -62,7 +63,28 @@ class CheckoutControllerTest extends TestCase
 
     private function bindGateway(bool $createSucceeds = true): void
     {
-        $this->app->instance(PaymentGateway::class, $this->fakeGateway($createSucceeds));
+        $gateway = $this->fakeGateway($createSucceeds);
+        // Rebinding this container key (not PaymentGateway::class
+        // directly) is what PaymentGatewayFactory::make('xendit')
+        // resolves through — see AppServiceProvider.
+        $this->app->bind('payment-gateway.xendit', fn () => $gateway);
+        // Every test drives checkout through channel_code FPX_ABMB —
+        // needs a real, active PaymentMethod row now that channel
+        // fee/gateway config is DB-backed, not config/checkout.php.
+        $this->activeChannel();
+    }
+
+    private function activeChannel(string $channelCode = 'FPX_ABMB', array $overrides = []): PaymentMethod
+    {
+        return PaymentMethod::query()->create(array_merge([
+            'channel_code' => $channelCode,
+            'label' => 'Test Channel',
+            'category' => 'fpx',
+            'gateway' => 'xendit',
+            'is_active' => true,
+            'percentage_rate' => 0.0,
+            'flat_fee_sen' => 210,
+        ], $overrides));
     }
 
     /** @return array{game: Game, package: Package} */
@@ -89,9 +111,9 @@ class CheckoutControllerTest extends TestCase
             'game_id' => $game->id,
             'package_id' => $package->id,
             'customer_email' => 'buyer@example.com',
+            'customer_name' => 'Buyer One',
             'customer_phone' => '0123456789',
             'player_id' => '123456789',
-            'payment_method' => 'fpx',
             'channel_code' => 'FPX_ABMB',
         ], $overrides);
     }
@@ -175,7 +197,10 @@ class CheckoutControllerTest extends TestCase
     {
         $this->bindGateway();
         ['game' => $game] = $this->gameAndPackage();
-        ['package' => $otherPackage] = $this->gameAndPackage(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        ['package' => $otherPackage] = $this->gameAndPackage(
+            ['name' => 'Mobile Legends', 'slug' => 'mobile-legends'],
+            ['supplier_package_ref' => 'B'],
+        );
 
         $response = $this->postJson('/api/checkout', $this->payload($game, $otherPackage));
 
@@ -203,15 +228,27 @@ class CheckoutControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
-    public function test_rejects_an_unknown_payment_method(): void
+    public function test_rejects_an_unknown_channel_code(): void
     {
         $this->bindGateway();
         ['game' => $game, 'package' => $package] = $this->gameAndPackage();
 
-        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['payment_method' => 'bitcoin']));
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['channel_code' => 'BITCOIN']));
 
         $response->assertUnprocessable();
-        $response->assertJsonValidationErrors('payment_method');
+        $response->assertJsonValidationErrors('channel_code');
+    }
+
+    public function test_rejects_a_deactivated_channel_code(): void
+    {
+        $this->bindGateway();
+        $this->activeChannel('GRABPAY', ['category' => 'ewallet', 'is_active' => false]);
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['channel_code' => 'GRABPAY']));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('channel_code');
     }
 
     public function test_rejects_a_nonexistent_package_id(): void

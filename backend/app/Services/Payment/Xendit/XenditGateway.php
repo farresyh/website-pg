@@ -3,6 +3,7 @@
 namespace App\Services\Payment\Xendit;
 
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
@@ -22,6 +23,13 @@ use Illuminate\Support\Facades\Http;
  *    currency's major unit; this adapter converts to/from our
  *    internal integer-sen convention (unconfirmed against a live MYR
  *    sandbox response — verify empirically before production use).
+ *  - `customer` (2026-07-25 addendum): at least FPX requires exactly
+ *    one of `customer`/`customer_id` — discovered live via the
+ *    Payment Methods "Test" action, see PaymentCustomer's own doc
+ *    comment for the full story. This adapter always sends the inline
+ *    `customer` object (type=INDIVIDUAL) when the caller provides one;
+ *    it never invents `customer_id` (a reference to a pre-registered
+ *    Xendit Customer resource this platform has no reason to create).
  */
 final class XenditGateway implements PaymentGateway
 {
@@ -46,6 +54,7 @@ final class XenditGateway implements PaymentGateway
             'channel_properties' => $request->channelProperties ?: null,
             'description' => $request->description,
             'metadata' => $request->metadata ?: null,
+            'customer' => $request->customer ? $this->customerPayload($request->customer) : null,
         ], fn ($value) => $value !== null));
 
         if ($failure = $this->failureFrom($response)) {
@@ -120,6 +129,17 @@ final class XenditGateway implements PaymentGateway
         }
 
         return null;
+    }
+
+    private function customerPayload(PaymentCustomer $customer): array
+    {
+        return array_filter([
+            'type' => 'INDIVIDUAL',
+            'reference_id' => $customer->referenceId,
+            'email' => $customer->email,
+            'mobile_number' => $customer->mobileNumber,
+            'individual_detail' => ['given_names' => $customer->givenNames],
+        ], fn ($value) => $value !== null);
     }
 
     private function normalizePaymentRequest(array $body): array

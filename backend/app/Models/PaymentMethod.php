@@ -17,6 +17,7 @@ class PaymentMethod extends Model
         'channel_code',
         'label',
         'category',
+        'gateway',
         'is_active',
         'percentage_rate',
         'flat_fee_sen',

@@ -169,6 +169,22 @@ class SupplierProductController extends Controller
             ]);
         }
 
+        // Discovered live 2026-07-25: nothing previously stopped this
+        // same raw item from being promoted twice, creating two
+        // Packages selling identical inventory (the Product Manager
+        // frontend only hides the "Add Again" button once promoted —
+        // a client-side convenience, not a real guard). The unique
+        // index on (supplier_id, supplier_package_ref) is the actual
+        // guarantee; this check just turns a race into a friendly
+        // message instead of a raw SQL constraint-violation 500.
+        if (Package::query()->where('supplier_id', $supplierProduct->supplier_id)
+            ->where('supplier_package_ref', $supplierProduct->external_ref)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'supplier_product' => ['This item has already been promoted to a Package — edit the existing Package instead of promoting it again.'],
+            ]);
+        }
+
         $data = $request->validated();
         $markupPercent = (float) config('packages.default_markup_percent');
 

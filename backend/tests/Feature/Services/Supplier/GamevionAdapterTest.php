@@ -216,6 +216,50 @@ class GamevionAdapterTest extends TestCase
     }
 
     /**
+     * Discovered live 2026-07-25 (real MLBB end-to-end checkout test):
+     * Gamevion rejected "+60123456789" as `telp` with "must be between
+     * 9 and 13 digits" even though it has 11 digits — their validator
+     * fails entirely on the leading `+`. The adapter strips everything
+     * but digits before sending.
+     */
+    public function test_create_order_strips_non_digit_characters_from_the_phone_number(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => false, 'code' => 200, 'message' => 'Order Created',
+                'data' => ['invoice_number' => 'GV-1'],
+            ], 200),
+        ]);
+
+        $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'FFP5',
+            referenceNumber: 'REF-1',
+            playerId: '123456',
+            customerPhone: '+60 12-345 6789',
+        ));
+
+        Http::assertSent(fn ($request) => $request['telp'] === '60123456789');
+    }
+
+    public function test_create_order_omits_telp_entirely_when_no_phone_given(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => false, 'code' => 200, 'message' => 'Order Created',
+                'data' => ['invoice_number' => 'GV-1'],
+            ], 200),
+        ]);
+
+        $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'FFP5',
+            referenceNumber: 'REF-1',
+            playerId: '123456',
+        ));
+
+        Http::assertSent(fn ($request) => ! array_key_exists('telp', $request->data()));
+    }
+
+    /**
      * ORD-8 / ADR-006: a 409 from Gamevion means our reference_number
      * was already submitted — this is Gamevion's idempotency signal,
      * not a generic order-creation failure. The adapter surfaces it as

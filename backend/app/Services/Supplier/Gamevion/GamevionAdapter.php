@@ -26,6 +26,8 @@ use Illuminate\Support\Facades\Http;
  *    the create-order response), never our `reference_number`.
  *  - No player-validation endpoint exists at all (ADR-005 fallback
  *    applies to every game on this supplier).
+ *  - `telp` (phone) on order creation rejects a leading `+` — digits
+ *    only, discovered live 2026-07-25 (see normalizePhone()).
  */
 final class GamevionAdapter implements SupplierAdapter
 {
@@ -84,7 +86,7 @@ final class GamevionAdapter implements SupplierAdapter
             'data' => $request->serverId !== null
                 ? "{$request->playerId}|{$request->serverId}"
                 : $request->playerId,
-            'telp' => $request->customerPhone,
+            'telp' => $this->normalizePhone($request->customerPhone),
             'callback_url' => $request->callbackUrl,
         ], fn ($value) => $value !== null));
 
@@ -195,6 +197,33 @@ final class GamevionAdapter implements SupplierAdapter
         }
 
         return null;
+    }
+
+    /**
+     * Discovered live, 2026-07-25 (real end-to-end checkout test,
+     * MLBB): Gamevion's `telp` field rejects a leading `+` — our own
+     * checkout stores whatever format the customer typed
+     * (`Order.customer_phone`, e.g. "+60123456789"), and Gamevion's
+     * validator returned the confusingly-worded "telp field must be
+     * between 9 and 13 digits" for a value that *is* 11 digits, just
+     * with a `+` prefix that fails their "must be all-digit" check
+     * entirely. ADAPT-4's own principle: this is exactly the kind of
+     * supplier-specific format quirk the Adapter absorbs, not
+     * something business logic (or the customer) should need to know.
+     * Strips everything except digits — doesn't attempt to validate or
+     * reformat into a specific length, since Gamevion's own real
+     * constraint (9-13 digits) is theirs to enforce, not ours to
+     * second-guess.
+     */
+    private function normalizePhone(?string $phone): ?string
+    {
+        if ($phone === null) {
+            return null;
+        }
+
+        $digitsOnly = preg_replace('/\D/', '', $phone);
+
+        return $digitsOnly !== '' ? $digitsOnly : null;
     }
 
     /**
