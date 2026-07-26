@@ -2,13 +2,13 @@
 
 import { Lightning } from "@phosphor-icons/react/dist/ssr";
 import ProductCard from "@/components/home/ProductCard";
-import { PLACEHOLDER_GAMES } from "@/lib/placeholder-data";
+import type { Game } from "@/lib/catalog";
 import { useSearch } from "@/context/SearchContext";
 
-export default function PopularPicksSection() {
+export default function PopularPicksSection({ games: allGames }: { games: Game[] }) {
   const { query } = useSearch();
   const normalized = query.trim().toLowerCase();
-  const games = normalized ? PLACEHOLDER_GAMES.filter((g) => g.name.toLowerCase().includes(normalized)) : PLACEHOLDER_GAMES;
+  const games = normalized ? allGames.filter((g) => g.name.toLowerCase().includes(normalized)) : allGames;
 
   return (
     <section id="popular-picks" className="mx-auto max-w-[1200px] px-4 py-10">

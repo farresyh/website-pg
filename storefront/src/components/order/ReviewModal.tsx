@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
-import type { PlaceholderGame, PlaceholderPackage } from "@/lib/placeholder-data";
+import type { Game, GamePackage } from "@/lib/catalog";
 
 interface ReviewModalProps {
   open: boolean;
   onClose: () => void;
-  game: PlaceholderGame;
-  pkg: PlaceholderPackage;
+  game: Game;
+  pkg: GamePackage;
   playerId: string;
   serverId: string;
   channelLabel: string;

@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
@@ -45,6 +46,20 @@ Route::post('/games/{game}/validate-player', [PlayerValidationController::class,
 // throttled — a bit looser than checkout/validate since it's not
 // hitting a third-party API, just blunting scraping/enumeration.
 Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1');
+
+// Public game/package catalog (ADR-011) — the storefront's real data
+// source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
+// §14/§15 NEXT SESSION pointer). A distinct `catalog/` prefix, not
+// `/games`: that path is already GameController's admin-only,
+// numeric-{id}-bound resource — same method+path can't serve two
+// different auth rules, and public lookup is by slug, not id. No
+// throttle: unlike checkout/validate-player this hits no third-party
+// API and isn't money-moving, just a normal public read listing.
+Route::prefix('catalog')->group(function () {
+    Route::get('/games', [CatalogController::class, 'index']);
+    Route::get('/games/{slug}', [CatalogController::class, 'show']);
+    Route::get('/games/{slug}/packages', [CatalogController::class, 'packages']);
+});
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);

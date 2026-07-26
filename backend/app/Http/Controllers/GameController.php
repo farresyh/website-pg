@@ -139,11 +139,13 @@ class GameController extends Controller
     public static function forgetIndexCache(): void
     {
         Cache::forget('catalog.games.index');
+        CatalogController::forgetIndexCache();
     }
 
     public static function forgetPackagesCache(int $gameId): void
     {
         Cache::forget(self::packagesCacheKey($gameId));
+        CatalogController::forgetPackagesCache($gameId);
     }
 
     private static function packagesCacheKey(int $gameId): string

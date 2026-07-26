@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { validatePlayer, submitCheckout, extractCheckoutRedirectUrl, type ValidatePlayerResult } from "@/lib/checkout";
-import { PLACEHOLDER_PAYMENT_CHANNELS, type PlaceholderGame, type PlaceholderPackage } from "@/lib/placeholder-data";
+import { PLACEHOLDER_PAYMENT_CHANNELS } from "@/lib/placeholder-data";
+import type { Game, GamePackage } from "@/lib/catalog";
 import Stepper, { type StepInfo } from "@/components/order/Stepper";
 import StepCard from "@/components/order/StepCard";
 import Step1AccountInfo from "@/components/order/Step1AccountInfo";
@@ -19,8 +20,8 @@ const CHANNEL_GROUPS: { key: "fpx" | "ewallet" | "card"; label: string }[] = [
 ];
 
 interface OrderFormProps {
-  game: PlaceholderGame;
-  packages: PlaceholderPackage[];
+  game: Game;
+  packages: GamePackage[];
 }
 
 /**
@@ -86,7 +87,7 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
       setVerifyError(
         err instanceof ApiError
           ? err.message
-          : "Couldn't reach the validation service — this game isn't in the live catalog yet (placeholder data).",
+          : "Couldn't reach the validation service — please try again in a moment.",
       );
     } finally {
       setVerifying(false);
@@ -129,7 +130,7 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
       setSubmitError(
         err instanceof ApiError
           ? err.message
-          : "Couldn't reach checkout — this game/package isn't in the live catalog yet (placeholder data).",
+          : "Couldn't reach checkout — please try again in a moment.",
       );
     } finally {
       setSubmitting(false);

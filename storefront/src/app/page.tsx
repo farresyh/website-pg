@@ -11,17 +11,26 @@ import PaymentMethodsSection from "@/components/home/PaymentMethodsSection";
 import TestimonialsSection from "@/components/home/TestimonialsSection";
 import FaqSection from "@/components/home/FaqSection";
 import SeoBlurb from "@/components/home/SeoBlurb";
+import { listGames } from "@/lib/catalog";
 
-export default function HomePage() {
+// Catalog data is live/mutable (admin toggles games/packages, prices
+// change) and already cached server-side (ADR-014, 60s TTL) — this
+// page must never be baked into a static build artifact at `next
+// build` time, only rendered per-request.
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const games = await listGames();
+
   return (
     <>
       <AnnouncementBar />
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
-        <HeroSection />
-        <PopularPicksSection />
+        <HeroSection games={games} />
+        <PopularPicksSection games={games} />
         <PromotionsSection />
-        <NewArrivalsSection />
+        <NewArrivalsSection games={games} />
         <WhyChooseUsSection />
         <PaymentMethodsSection />
         <TestimonialsSection />

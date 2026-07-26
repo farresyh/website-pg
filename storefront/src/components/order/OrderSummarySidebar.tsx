@@ -1,10 +1,10 @@
 import { LockSimple } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
-import type { PlaceholderGame, PlaceholderPackage } from "@/lib/placeholder-data";
+import type { Game, GamePackage } from "@/lib/catalog";
 
 interface OrderSummarySidebarProps {
-  game: PlaceholderGame;
-  selectedPackage: PlaceholderPackage | null;
+  game: Game;
+  selectedPackage: GamePackage | null;
   playerId: string;
   serverId: string;
   ready: boolean;

@@ -67,15 +67,10 @@ class CheckoutController extends Controller
             ]);
         }
 
-        // PRD §8: exactly one Reseller row for MVP (the platform owner,
-        // markup_pct=0) — seeded by DatabaseSeeder, firstOrCreate here
-        // as a safety net so checkout never hard-fails on a fresh DB
-        // that skipped seeding (same "documented stopgap" precedent as
-        // SyncSupplierProductsCommand's Supplier row auto-creation).
-        $reseller = Reseller::query()->firstOrCreate(
-            ['business_name' => 'Platform Owner'],
-            ['markup_pct' => 0, 'status' => 'active'],
-        );
+        // PRD §8 / ADR-013: exactly one Reseller row for MVP (the
+        // platform owner, markup_pct=0) — see Reseller::platformOwner()
+        // for the firstOrCreate safety-net rationale.
+        $reseller = Reseller::platformOwner();
 
         // Guaranteed to exist + be active by CreateCheckoutRequest's
         // Rule::exists check — a race between validation and here

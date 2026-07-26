@@ -1,7 +1,7 @@
-import type { PlaceholderPackage } from "@/lib/placeholder-data";
+import type { GamePackage } from "@/lib/catalog";
 
 interface PackageGridProps {
-  packages: PlaceholderPackage[];
+  packages: GamePackage[];
   selectedId: number | null;
   onSelect: (id: number) => void;
 }

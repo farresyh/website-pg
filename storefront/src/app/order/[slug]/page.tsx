@@ -8,7 +8,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import OrderForm from "@/components/order/OrderForm";
 import ProductHeaderCard from "@/components/order/ProductHeaderCard";
 import TrustStrip from "@/components/order/TrustStrip";
-import { PLACEHOLDER_GAMES, PLACEHOLDER_PACKAGES } from "@/lib/placeholder-data";
+import { getGame, getGamePackages } from "@/lib/catalog";
 
 interface OrderPageProps {
   params: Promise<{ slug: string }>;
@@ -16,16 +16,22 @@ interface OrderPageProps {
 
 export async function generateMetadata({ params }: OrderPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const game = PLACEHOLDER_GAMES.find((g) => g.slug === slug);
-  return { title: game ? `Top Up ${game.name} — Kedai Runcit Soloz` : "Top Up — Kedai Runcit Soloz" };
+  const game = await getGame(slug);
+  if (!game) return { title: "Top Up — Kedai Runcit Soloz" };
+
+  return {
+    title: game.seoTitle || `Top Up ${game.name} — Kedai Runcit Soloz`,
+    description: game.seoDescription || undefined,
+    openGraph: game.seoOgImage ? { images: [{ url: game.seoOgImage }] } : undefined,
+  };
 }
 
 export default async function OrderPage({ params }: OrderPageProps) {
   const { slug } = await params;
-  const game = PLACEHOLDER_GAMES.find((g) => g.slug === slug);
+  const game = await getGame(slug);
   if (!game) notFound();
 
-  const packages = PLACEHOLDER_PACKAGES[slug] ?? [];
+  const packages = await getGamePackages(slug);
 
   return (
     <>

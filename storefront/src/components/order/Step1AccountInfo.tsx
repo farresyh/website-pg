@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { CheckCircle, WarningCircle, XCircle, ArrowSquareOut } from "@phosphor-icons/react/dist/ssr";
-import type { PlaceholderGame } from "@/lib/placeholder-data";
+import type { Game } from "@/lib/catalog";
 import type { ValidatePlayerResult } from "@/lib/checkout";
 import Button from "@/components/ui/Button";
 
 interface Step1AccountInfoProps {
-  game: PlaceholderGame;
+  game: Game;
   playerId: string;
   setPlayerId: (value: string) => void;
   serverId: string;

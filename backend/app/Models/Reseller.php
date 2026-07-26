@@ -36,4 +36,19 @@ class Reseller extends Model
     {
         return $this->hasMany(Order::class);
     }
+
+    /**
+     * PRD §8 / ADR-013: exactly one Reseller row for MVP, the platform
+     * owner (markup_pct=0). `firstOrCreate` is a safety net for any
+     * environment that skipped seeding — same stopgap CheckoutController
+     * already used before this was extracted as a second call site
+     * (CatalogController) made the duplication worth removing.
+     */
+    public static function platformOwner(): self
+    {
+        return static::query()->firstOrCreate(
+            ['business_name' => 'Platform Owner'],
+            ['markup_pct' => 0, 'status' => 'active'],
+        );
+    }
 }

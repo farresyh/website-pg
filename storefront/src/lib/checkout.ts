@@ -1,14 +1,11 @@
 import { apiFetch } from "@/lib/api-client";
 
 /**
- * Real request/response contracts for the two backend endpoints built
- * this session — POST /api/games/{game}/validate-player
- * (PlayerValidationController) and POST /api/checkout
- * (CheckoutController). Genuinely wired (real fetch calls, not
- * mocked) — only the `gameId`/`packageId` callers pass in are
- * currently placeholder (see placeholder-data.ts), so a call today
- * will 404/422 against the real dev DB until task #6 replaces the
- * catalog data source or the IDs happen to match a real seeded row.
+ * Real request/response contracts for two backend endpoints —
+ * POST /api/games/{game}/validate-player (PlayerValidationController)
+ * and POST /api/checkout (CheckoutController). `gameId`/`packageId`
+ * now come from the real public catalog (lib/catalog.ts), not
+ * placeholder data.
  */
 
 export type ValidatePlayerStatus = "invalid" | "region_unknown" | "wrong_region" | "valid";

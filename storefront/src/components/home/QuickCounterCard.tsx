@@ -3,13 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Button from "@/components/ui/Button";
-import { PLACEHOLDER_GAMES, QUICK_COUNTER_SLUGS } from "@/lib/placeholder-data";
+import { QUICK_COUNTER_SLUGS, type Game } from "@/lib/catalog";
 
-const quickGames = PLACEHOLDER_GAMES.filter((g) => QUICK_COUNTER_SLUGS.includes(g.slug));
-
-export default function QuickCounterCard() {
+export default function QuickCounterCard({ games }: { games: Game[] }) {
   const router = useRouter();
   const [selected, setSelected] = useState("");
+  const quickGames = games.filter((g) => QUICK_COUNTER_SLUGS.includes(g.slug));
 
   function startTopUp() {
     if (!selected) return;
@@ -27,7 +26,7 @@ export default function QuickCounterCard() {
         className="mb-2.5 min-h-11 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text focus:border-brand focus:outline-none"
       >
         <option value="">Select a game...</option>
-        {PLACEHOLDER_GAMES.map((g) => (
+        {games.map((g) => (
           <option key={g.slug} value={g.slug}>
             {g.name}
           </option>
