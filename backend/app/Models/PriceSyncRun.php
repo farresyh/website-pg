@@ -31,4 +31,9 @@ class PriceSyncRun extends Model
     {
         return $this->hasMany(PriceChangeLog::class);
     }
+
+    public function deactivationLogs(): HasMany
+    {
+        return $this->hasMany(DeactivationLog::class);
+    }
 }

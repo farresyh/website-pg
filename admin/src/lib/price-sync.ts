@@ -12,6 +12,7 @@ export interface PriceSyncRun {
   triggered_by: string | null;
   started_at: string | null;
   finished_at: string | null;
+  created_at: string;
   stats: {
     catalog_total: number;
     catalog_created: number;
@@ -20,6 +21,48 @@ export interface PriceSyncRun {
     deactivated: number;
   } | null;
   error_message: string | null;
+}
+
+export interface PriceSyncRunPage {
+  data: PriceSyncRun[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+/**
+ * ADR-016 decision #1: the five Price Sync Center stat cards.
+ */
+export interface PriceSyncStats {
+  total_games: number;
+  active_packages: number;
+  pending_reactivation_count: number;
+  last_sync_status: PriceSyncRun["status"] | null;
+  last_sync_at: string | null;
+}
+
+/**
+ * ADR-016 decision #1/#2: Sync Details modal — per-game grouped
+ * price/cost diffs and deactivations for one run. Deactivations can't
+ * be broken down by game for runs from before DeactivationLog existed
+ * — those simply render an empty list, not an error.
+ */
+export interface SyncDetailsGame {
+  game: { id: number; name: string } | null;
+  price_changes: Array<{
+    package: { id: number; name: string };
+    old_cost_price: number;
+    new_cost_price: number;
+    old_reseller_cost_price: number;
+    new_reseller_cost_price: number;
+  }>;
+  deactivated_packages: Array<{ id: number; name: string }>;
+}
+
+export interface SyncDetails {
+  run: PriceSyncRun;
+  games_touched: number;
+  games: SyncDetailsGame[];
 }
 
 /**
@@ -39,12 +82,64 @@ export interface PendingReactivation {
   supplier: { id: number; name: string } | null;
 }
 
+/**
+ * ADR-016 decision #3: "Manually Dismissed Packages" — a package an
+ * admin took out of Pending Reactivation monitoring
+ * (`deactivated_reason === 'admin'`), restorable regardless of
+ * current live supplier status.
+ */
+export interface DismissedPackage {
+  id: number;
+  name: string;
+  cost_price: number;
+  reseller_cost_price: number;
+  deactivated_reason: "admin";
+  deactivated_at: string;
+  supplier_package_ref: string;
+  game: { id: number; name: string } | null;
+  supplier: { id: number; name: string } | null;
+}
+
+export interface DismissedPackagePage {
+  data: DismissedPackage[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
 export function triggerPriceSync(token: string) {
   return apiFetch<PriceSyncRun>("/api/middleware/price-sync", { method: "POST", token });
 }
 
 export function getPriceSyncRun(token: string, runId: number) {
   return apiFetch<PriceSyncRun>(`/api/middleware/price-sync/runs/${runId}`, { token });
+}
+
+export function getPriceSyncStats(token: string) {
+  return apiFetch<PriceSyncStats>("/api/middleware/price-sync/stats", { token });
+}
+
+export function listPriceSyncRuns(token: string, page = 1) {
+  const query = page > 1 ? `?page=${page}` : "";
+
+  return apiFetch<PriceSyncRunPage>(`/api/middleware/price-sync/runs${query}`, { token });
+}
+
+export function getPriceSyncRunDetails(token: string, runId: number) {
+  return apiFetch<SyncDetails>(`/api/middleware/price-sync/runs/${runId}/details`, { token });
+}
+
+export function listDismissedPackages(token: string, page = 1) {
+  const query = page > 1 ? `?page=${page}` : "";
+
+  return apiFetch<DismissedPackagePage>(`/api/middleware/price-sync/dismissed-packages${query}`, { token });
+}
+
+export function restoreDismissedPackage(token: string, packageId: number) {
+  return apiFetch<DismissedPackage>(`/api/middleware/price-sync/dismissed-packages/${packageId}/restore`, {
+    method: "PATCH",
+    token,
+  });
 }
 
 export function listPendingReactivations(token: string) {

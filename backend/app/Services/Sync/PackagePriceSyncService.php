@@ -2,6 +2,7 @@
 
 namespace App\Services\Sync;
 
+use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\PriceChangeLog;
 use App\Models\Supplier;
@@ -66,7 +67,7 @@ final class PackagePriceSyncService
             $seenThisRun = $product && $product->last_synced_at?->timestamp === $syncedAt->timestamp;
 
             if (! $seenThisRun) {
-                if ($this->deactivate($package)) {
+                if ($this->deactivate($package, $priceSyncRunId)) {
                     $deactivated++;
                     $affectedGameIds[] = $package->game_id;
                 }
@@ -80,7 +81,7 @@ final class PackagePriceSyncService
                 $affectedGameIds[] = $package->game_id;
             }
 
-            if ($product->status_raw !== 'active' && $this->deactivate($package)) {
+            if ($product->status_raw !== 'active' && $this->deactivate($package, $priceSyncRunId)) {
                 $deactivated++;
                 $affectedGameIds[] = $package->game_id;
             }
@@ -112,7 +113,7 @@ final class PackagePriceSyncService
         ]);
     }
 
-    private function deactivate(Package $package): bool
+    private function deactivate(Package $package, ?int $priceSyncRunId): bool
     {
         if (! $package->is_active) {
             return false;
@@ -122,6 +123,11 @@ final class PackagePriceSyncService
             'is_active' => false,
             'deactivated_reason' => 'supplier_sync',
             'deactivated_at' => now(),
+        ]);
+
+        DeactivationLog::query()->create([
+            'price_sync_run_id' => $priceSyncRunId,
+            'package_id' => $package->id,
         ]);
 
         return true;

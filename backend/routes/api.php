@@ -11,6 +11,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
+use App\Http\Controllers\Middleware\DismissedPackageController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
@@ -126,18 +127,25 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{supplier_product}/promote', [SupplierProductController::class, 'promote']);
     });
 
-    // ADR-015 — Price Sync: manual trigger + status polling, plus the
-    // Pending Reactivation queue (SYNC-5/6). The full Price Sync
-    // Center dashboard/history (ADR-016) is a later, separate pass.
+    // ADR-015/ADR-016 — Price Sync: manual trigger + status polling,
+    // the Pending Reactivation queue (SYNC-5/6), and the full Price
+    // Sync Center (stat cards, Sync History + Sync Details modal,
+    // Manually Dismissed Packages).
     Route::middleware('admin.role:super_admin,admin')->prefix('middleware/price-sync')->group(function () {
         Route::post('/', [PriceSyncController::class, 'store']);
+        Route::get('/stats', [PriceSyncController::class, 'stats']);
+        Route::get('/runs', [PriceSyncController::class, 'index']);
         Route::get('/runs/{price_sync_run}', [PriceSyncController::class, 'show']);
+        Route::get('/runs/{price_sync_run}/details', [PriceSyncController::class, 'details']);
 
         Route::get('/pending-reactivations', [PendingReactivationController::class, 'index']);
         Route::patch('/pending-reactivations/{package}/approve', [PendingReactivationController::class, 'approve']);
         Route::patch('/pending-reactivations/{package}/dismiss', [PendingReactivationController::class, 'dismiss']);
         Route::post('/pending-reactivations/bulk-approve', [PendingReactivationController::class, 'bulkApprove']);
         Route::post('/pending-reactivations/bulk-dismiss', [PendingReactivationController::class, 'bulkDismiss']);
+
+        Route::get('/dismissed-packages', [DismissedPackageController::class, 'index']);
+        Route::patch('/dismissed-packages/{package}/restore', [DismissedPackageController::class, 'restore']);
     });
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway

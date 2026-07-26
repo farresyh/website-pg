@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Services\Sync;
 
+use App\Models\DeactivationLog;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\PriceChangeLog;
+use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Pricing\PackageMarkupService;
@@ -251,5 +253,39 @@ class PackagePriceSyncServiceTest extends TestCase
         $package->refresh();
         $this->assertFalse($package->is_active);
         $this->assertSame('supplier_sync', $package->deactivated_reason);
+    }
+
+    /**
+     * ADR-016 Sync Details modal: a DeactivationLog row is the only
+     * record of which package/game a given run actually turned off —
+     * price_change_logs only ever captures price changes.
+     */
+    public function test_writes_a_deactivation_log_tied_to_the_given_run(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($supplier, $game, ['is_active' => true]);
+        $run = PriceSyncRun::query()->create(['status' => 'running']);
+        $this->rawProduct($supplier, now(), ['status_raw' => 'inactive']);
+
+        $this->service()->apply($supplier, now(), priceSyncRunId: $run->id);
+
+        $log = DeactivationLog::query()->firstOrFail();
+        $this->assertSame($run->id, $log->price_sync_run_id);
+        $this->assertSame($package->id, $log->package_id);
+    }
+
+    public function test_does_not_write_a_deactivation_log_when_nothing_was_actually_deactivated(): void
+    {
+        $supplier = $this->supplier();
+        $this->package($supplier, $this->game(), [
+            'is_active' => false, 'deactivated_reason' => 'admin', 'deactivated_at' => now(),
+        ]);
+        $run = PriceSyncRun::query()->create(['status' => 'running']);
+        $this->rawProduct($supplier, now(), ['status_raw' => 'inactive']);
+
+        $this->service()->apply($supplier, now(), priceSyncRunId: $run->id);
+
+        $this->assertSame(0, DeactivationLog::query()->count());
     }
 }
