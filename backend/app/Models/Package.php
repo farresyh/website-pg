@@ -14,6 +14,8 @@ class Package extends Model
         'reseller_cost_price',
         'markup_percent',
         'is_active',
+        'deactivated_reason',
+        'deactivated_at',
         'supplier_id',
         'supplier_package_ref',
         'sort_order',
@@ -24,6 +26,7 @@ class Package extends Model
         'reseller_cost_price' => 'integer',
         'markup_percent' => 'decimal:2',
         'is_active' => 'boolean',
+        'deactivated_at' => 'datetime',
         'sort_order' => 'integer',
     ];
 

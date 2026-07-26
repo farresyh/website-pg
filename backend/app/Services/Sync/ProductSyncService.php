@@ -58,6 +58,7 @@ final class ProductSyncService
             created: $created,
             updated: $updated,
             durationMs: $durationMs,
+            syncedAt: $syncedAt,
         );
     }
 }

@@ -11,4 +11,10 @@
 
 return [
     'default_markup_percent' => (float) env('PACKAGE_DEFAULT_MARKUP_PERCENT', 15),
+
+    // ADR-015 decision #6: env-configurable so the Schedule::call()
+    // entry in routes/console.php activates for free the moment a
+    // real OS cron exists on a deployed host — this project currently
+    // runs on local Herd only, so this value is inert for now.
+    'price_sync_interval_minutes' => (int) env('PRICE_SYNC_INTERVAL_MINUTES', 10),
 ];

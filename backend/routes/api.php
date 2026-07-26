@@ -12,8 +12,10 @@ use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
+use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
+use App\Http\Controllers\Middleware\PriceSyncController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PlayerValidationController;
@@ -122,6 +124,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/categories/link', [SupplierProductController::class, 'linkCategory']);
         Route::get('/', [SupplierProductController::class, 'index']);
         Route::post('/{supplier_product}/promote', [SupplierProductController::class, 'promote']);
+    });
+
+    // ADR-015 — Price Sync: manual trigger + status polling, plus the
+    // Pending Reactivation queue (SYNC-5/6). The full Price Sync
+    // Center dashboard/history (ADR-016) is a later, separate pass.
+    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/price-sync')->group(function () {
+        Route::post('/', [PriceSyncController::class, 'store']);
+        Route::get('/runs/{price_sync_run}', [PriceSyncController::class, 'show']);
+
+        Route::get('/pending-reactivations', [PendingReactivationController::class, 'index']);
+        Route::patch('/pending-reactivations/{package}/approve', [PendingReactivationController::class, 'approve']);
+        Route::patch('/pending-reactivations/{package}/dismiss', [PendingReactivationController::class, 'dismiss']);
+        Route::post('/pending-reactivations/bulk-approve', [PendingReactivationController::class, 'bulkApprove']);
+        Route::post('/pending-reactivations/bulk-dismiss', [PendingReactivationController::class, 'bulkDismiss']);
     });
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway
