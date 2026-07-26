@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens for Kedai Runcit Soloz's storefront — palette
+ * extracted from the real brand assets (logo emblem + banner),
+ * founder-confirmed hex values, not a generic AI-dark-SaaS palette.
+ * Bebas Neue (display/headings) + Source Sans 3 (body/price/forms)
+ * loaded via next/font/google in layout.tsx, exposed here as
+ * --font-bebas/--font-source-sans CSS variables.
+ */
+@theme {
+  --font-display: var(--font-bebas), sans-serif;
+  --font-sans: var(--font-source-sans), sans-serif;
+
+  --color-brand: #007400;
+  --color-brand-light: #6cd15d;
+  --color-brand-dark: #03392c;
+  --color-on-brand: #ffffff;
+
+  --color-bg: #04140e;
+  --color-bg-deep: #020b07;
+  --color-surface: #0b2e22;
+  --color-surface-2: #123b2c;
+  --color-border: #1c5240;
+
+  --color-text: #f3f7f4;
+  --color-text-muted: #9fb8ac;
+
+  --color-amber: #f59e0b;
+  --color-error: #ef4444;
+}
+
+@layer base {
+  body {
+    @apply relative bg-bg text-text antialiased;
+    font-family: var(--font-sans);
+  }
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: 0.01em;
+  }
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

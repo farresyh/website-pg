@@ -13,6 +13,15 @@ use Illuminate\Validation\Rule;
  * supplier-integration decision made once per category, not a
  * catalog-display field edited here — and SEO fields (separate
  * concern, not part of this pass).
+ *
+ * `player_validator_profile_id`/`player_validator_enabled` ARE
+ * included here (unlike `validation_rules`) even though both live on
+ * the same `Game` row: whether the storefront shows a "Validate
+ * Player ID" button is a catalog/customer-facing toggle, not a
+ * supplier-integration data-shape decision — see the founder's own
+ * distinction in docs/prd.md §14's Player-ID Validation NEXT SESSION
+ * note (the `/admin/games` toggle was always the agreed home for
+ * this, not /middleware).
  */
 class UpdateGameRequest extends FormRequest
 {
@@ -38,6 +47,8 @@ class UpdateGameRequest extends FormRequest
             'image_url' => ['nullable', 'string', 'max:2048'],
             'banner_url' => ['nullable', 'string', 'max:2048'],
             'is_active' => ['required', 'boolean'],
+            'player_validator_profile_id' => ['nullable', 'integer', Rule::exists('player_validator_profiles', 'id')],
+            'player_validator_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

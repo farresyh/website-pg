@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PlayerValidatorProfile;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -173,6 +174,42 @@ class GameControllerTest extends TestCase
         $this->assertSame('Free Fire (Global)', $game->name);
         $this->assertSame('Battle Royale', $game->category);
         $this->assertFalse($game->is_active);
+    }
+
+    public function test_update_assigns_a_player_validator_profile_and_toggles_it_on(): void
+    {
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'MLBB Validator', 'key' => 'mlbb']);
+        $this->actingAsAdmin();
+
+        $response = $this->putJson("/api/games/{$game->id}", [
+            'name' => $game->name,
+            'slug' => $game->slug,
+            'is_active' => true,
+            'player_validator_profile_id' => $profile->id,
+            'player_validator_enabled' => true,
+        ]);
+
+        $response->assertOk();
+        $game->refresh();
+        $this->assertSame($profile->id, $game->player_validator_profile_id);
+        $this->assertTrue($game->player_validator_enabled);
+    }
+
+    public function test_update_rejects_a_nonexistent_player_validator_profile(): void
+    {
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $this->actingAsAdmin();
+
+        $response = $this->putJson("/api/games/{$game->id}", [
+            'name' => $game->name,
+            'slug' => $game->slug,
+            'is_active' => true,
+            'player_validator_profile_id' => 99999,
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['player_validator_profile_id']);
     }
 
     public function test_update_rejects_a_slug_already_used_by_another_game(): void

@@ -39,6 +39,10 @@ export interface Game {
   is_active?: boolean;
   packages_count?: number;
   validation_rules?: GameValidationRules | null;
+  /** MUI-5 follow-up — which admin-created PlayerValidatorProfile (if any) covers this game's storefront "Validate Player ID" flow. */
+  player_validator_profile_id?: number | null;
+  /** Kill-switch, independent of the profile assignment — hides the storefront button without unassigning the profile. */
+  player_validator_enabled?: boolean;
 }
 
 export interface GamePackage {
@@ -60,6 +64,8 @@ export interface UpdateGameValues {
   image_url?: string | null;
   banner_url?: string | null;
   is_active: boolean;
+  player_validator_profile_id?: number | null;
+  player_validator_enabled?: boolean;
 }
 
 export interface UpdatePackageValues {

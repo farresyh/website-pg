@@ -1,0 +1,43 @@
+import type { Metadata } from "next";
+import AnnouncementBar from "@/components/layout/AnnouncementBar";
+import SiteHeader from "@/components/layout/SiteHeader";
+import SiteFooter from "@/components/layout/SiteFooter";
+import BottomNav from "@/components/layout/BottomNav";
+import OrderStatusTracker from "@/components/order/OrderStatusTracker";
+import FaqSection from "@/components/home/FaqSection";
+
+interface OrderStatusPageProps {
+  params: Promise<{ orderNumber: string }>;
+}
+
+export async function generateMetadata({ params }: OrderStatusPageProps): Promise<Metadata> {
+  const { orderNumber } = await params;
+  return { title: `Order ${orderNumber} — Kedai Runcit Soloz` };
+}
+
+/**
+ * Reused by both the post-checkout redirect (OrderForm, right after a
+ * real payment) and by /track-order's search flow — one tracker
+ * component, two entry points, per the founder's own steer.
+ */
+export default async function OrderStatusPage({ params }: OrderStatusPageProps) {
+  const { orderNumber } = await params;
+
+  return (
+    <>
+      <AnnouncementBar />
+      <SiteHeader />
+      <main className="pb-16 lg:pb-0">
+        <div className="mx-auto max-w-[1200px] px-4 py-8">
+          <h1 className="font-display mb-6 text-2xl tracking-wide">Order Status</h1>
+          <OrderStatusTracker orderNumber={orderNumber} />
+        </div>
+        <div className="mx-auto max-w-[1200px] px-4">
+          <FaqSection />
+        </div>
+      </main>
+      <SiteFooter />
+      <BottomNav />
+    </>
+  );
+}

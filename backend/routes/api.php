@@ -13,6 +13,8 @@ use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
+use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -29,6 +31,20 @@ Route::get('/health', [HealthController::class, 'check']);
 // ADR-014: throttle:10,1 — 10/minute/IP, loose enough for a genuine
 // customer retrying a failed attempt, tight enough to blunt a flood.
 Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1');
+
+// Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
+// as checkout above) — backend half of the Player-ID Validation
+// follow-up, docs/prd.md §14. Same throttle as checkout: this hits
+// unofficial third-party provider APIs (ADR-005 addendum), tighter
+// abuse-blunting matters more here than for a normal read endpoint.
+Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:10,1');
+
+// Public "Track Order" lookup (ADR-011) — order_number (a ULID) is
+// high-entropy enough to be treated as proof of ownership on its own,
+// same trust model as a courier tracking number. Read-only, but still
+// throttled — a bit looser than checkout/validate since it's not
+// hitting a third-party API, just blunting scraping/enumeration.
+Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);

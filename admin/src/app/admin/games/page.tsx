@@ -39,6 +39,7 @@ import {
 } from "@/lib/games";
 import EditGameModal from "@/components/games/EditGameModal";
 import EditPackageModal from "@/components/games/EditPackageModal";
+import { type PlayerValidatorProfile, listPlayerValidatorProfiles } from "@/lib/player-validators";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -100,6 +101,7 @@ export default function GamesPage() {
 
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [editingPackage, setEditingPackage] = useState<GamePackage | null>(null);
+  const [validatorProfiles, setValidatorProfiles] = useState<PlayerValidatorProfile[]>([]);
 
   async function refreshGames(token: string) {
     try {
@@ -139,6 +141,18 @@ export default function GamesPage() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, search, status]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    // Powers the "Player ID Validator" picker in EditGameModal — profiles
+    // themselves are created/managed at /middleware/validators, not here.
+    listPlayerValidatorProfiles(session.token)
+      .then(setValidatorProfiles)
+      .catch(() => {
+        // Non-fatal — the games screen still works, the picker just shows "None" only.
+      });
+  }, [session]);
 
   async function handleEditGameSubmit(values: UpdateGameValues) {
     if (!session || !editingGame) return;
@@ -291,6 +305,7 @@ export default function GamesPage() {
           onSubmit={handleEditGameSubmit}
           onDelete={handleDeleteGame}
           game={editingGame}
+          validatorProfiles={validatorProfiles}
         />
         <EditPackageModal
           isOpen={editingPackage !== null}

@@ -4,8 +4,10 @@ import React, { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
+import Select from "@/components/form/Select";
 import Button from "@/components/ui/button/Button";
 import type { Game, UpdateGameValues } from "@/lib/games";
+import type { PlayerValidatorProfile } from "@/lib/player-validators";
 
 interface EditGameModalProps {
   isOpen: boolean;
@@ -13,6 +15,8 @@ interface EditGameModalProps {
   onSubmit: (values: UpdateGameValues) => Promise<void>;
   onDelete: () => Promise<void>;
   game: Game | null;
+  /** MUI-5 follow-up — profiles are created/managed at /middleware/validators; this screen only assigns one to a Game and toggles it on/off, per the founder's own catalog-vs-supplier-integration split. */
+  validatorProfiles: PlayerValidatorProfile[];
 }
 
 /**
@@ -29,12 +33,17 @@ function EditGameFields({
   onSubmit,
   onDelete,
   game,
+  validatorProfiles,
 }: Omit<EditGameModalProps, "isOpen" | "game"> & { game: Game }) {
   const [name, setName] = useState(game.name);
   const [slug, setSlug] = useState(game.slug);
   const [category, setCategory] = useState(game.category ?? "");
   const [imageUrl, setImageUrl] = useState(game.image_url ?? "");
   const [isActive, setIsActive] = useState(game.is_active ?? true);
+  const [validatorProfileId, setValidatorProfileId] = useState(
+    game.player_validator_profile_id != null ? String(game.player_validator_profile_id) : "",
+  );
+  const [validatorEnabled, setValidatorEnabled] = useState(game.player_validator_enabled ?? false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -50,6 +59,8 @@ function EditGameFields({
         category: category || null,
         image_url: imageUrl || null,
         is_active: isActive,
+        player_validator_profile_id: validatorProfileId ? Number(validatorProfileId) : null,
+        player_validator_enabled: validatorProfileId ? validatorEnabled : false,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -117,6 +128,35 @@ function EditGameFields({
             Active (visible to customers once packages exist)
           </label>
 
+          <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+            <Label htmlFor="game_validator_profile">Player ID Validator (optional)</Label>
+            <Select
+              id="game_validator_profile"
+              value={validatorProfileId}
+              onChange={(value) => {
+                setValidatorProfileId(value);
+                if (!value) setValidatorEnabled(false);
+              }}
+              options={[
+                { value: "", label: "None — no validation for this game" },
+                ...validatorProfiles.map((p) => ({ value: String(p.id), label: p.name })),
+              ]}
+            />
+            <label
+              className={`mt-3 flex items-center gap-2 text-sm ${
+                validatorProfileId ? "text-gray-700 dark:text-gray-300" : "text-gray-400 dark:text-gray-600"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={validatorEnabled}
+                disabled={!validatorProfileId}
+                onChange={(e) => setValidatorEnabled(e.target.checked)}
+              />
+              Requires Player Validation (shows the storefront &quot;Validate Player ID&quot; button)
+            </label>
+          </div>
+
           <div className="flex items-center justify-between pt-2">
             <Button type="button" variant="danger" onClick={() => setConfirmingDelete(true)} disabled={submitting}>
               Delete Game
@@ -136,10 +176,18 @@ function EditGameFields({
   );
 }
 
-export default function EditGameModal({ isOpen, onClose, onSubmit, onDelete, game }: EditGameModalProps) {
+export default function EditGameModal({ isOpen, onClose, onSubmit, onDelete, game, validatorProfiles }: EditGameModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && game && <EditGameFields onClose={onClose} onSubmit={onSubmit} onDelete={onDelete} game={game} />}
+      {isOpen && game && (
+        <EditGameFields
+          onClose={onClose}
+          onSubmit={onSubmit}
+          onDelete={onDelete}
+          game={game}
+          validatorProfiles={validatorProfiles}
+        />
+      )}
     </Modal>
   );
 }
