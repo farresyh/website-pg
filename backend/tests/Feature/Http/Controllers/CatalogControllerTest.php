@@ -7,6 +7,7 @@ use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
@@ -199,5 +200,36 @@ class CatalogControllerTest extends TestCase
         $this->patchJson("/api/packages/{$package->id}/status", ['is_active' => false])->assertOk();
 
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonCount(0);
+    }
+
+    /**
+     * Regression test for a real bug found live, 2026-07-26 (same bug
+     * class as HeroSlideControllerTest's own regression test): this
+     * app's default `database` cache store corrupts any raw object
+     * nested inside an otherwise-plain cached array on the next read.
+     * `created_at` was left as a raw Carbon instance here — confirmed
+     * live it broke on a warm-cache read (`{"__PHP_Incomplete_Class_
+     * Name":"Illuminate\\Support\\Carbon", ...}` instead of a date
+     * string). Fixed via `?->toISOString()`. PHPUnit's `array` cache
+     * driver never serializes, so this forces the real `database`
+     * store to prove the cached value is fully scalar.
+     */
+    public function test_index_survives_a_real_database_cache_round_trip(): void
+    {
+        config(['cache.default' => 'database']);
+        Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+
+        $first = $this->getJson('/api/catalog/games');
+        $first->assertOk();
+        $this->assertSame('Free Fire Global', $first->json()[0]['name']);
+        $this->assertIsString($first->json()[0]['created_at']);
+
+        $cached = Cache::store('database')->get('catalog.public.games.index');
+        $this->assertIsString($cached[0]['created_at']);
+
+        $second = $this->getJson('/api/catalog/games');
+        $second->assertOk();
+        $this->assertSame('Free Fire Global', $second->json()[0]['name']);
+        $this->assertIsString($second->json()[0]['created_at']);
     }
 }

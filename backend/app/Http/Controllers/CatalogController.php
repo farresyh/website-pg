@@ -115,7 +115,13 @@ class CatalogController extends Controller
             'extra_field' => $game->validation_rules['extra_field'] ?? null,
             'player_validator_enabled' => $game->player_validator_enabled,
             'price_from_sen' => $cheapest,
-            'created_at' => $game->created_at,
+            // Cast to a plain string, never left as a Carbon instance:
+            // this app's `database` cache store corrupts any raw
+            // object nested in a cached value on the next read
+            // (confirmed live, see HeroSlideController's doc comment)
+            // — a plain array of scalars is not, on its own, enough if
+            // one of those "scalars" is secretly still a Carbon object.
+            'created_at' => $game->created_at?->toISOString(),
         ];
     }
 

@@ -44,7 +44,14 @@ class GameController extends Controller
             return response()->json(Cache::remember(
                 'catalog.games.index',
                 self::CACHE_TTL_SECONDS,
-                fn () => Game::query()->withCount('packages')->orderBy('name')->get(),
+                // ->toArray(), not the raw Collection: this app's
+                // `database` cache store corrupts a cached value that
+                // still has real objects (Models, Carbon dates) nested
+                // inside it on the next read — confirmed live, see
+                // CatalogController's/HeroSlideController's doc
+                // comments for the full story. ->toArray() also
+                // flattens every date attribute to a plain string.
+                fn () => Game::query()->withCount('packages')->orderBy('name')->get()->toArray(),
             ));
         }
 
@@ -119,7 +126,10 @@ class GameController extends Controller
                     $package->supplier_active = $status?->status_raw === 'active';
                 });
 
-                return $packages;
+                // ->toArray(), not the raw Collection — same
+                // database-cache-store corruption reason as index()
+                // above.
+                return $packages->toArray();
             },
         );
 

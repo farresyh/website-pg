@@ -9,6 +9,7 @@ use App\Models\PlayerValidatorProfile;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -294,5 +295,59 @@ class GameControllerTest extends TestCase
         $filtered = $this->getJson('/api/games?search=Free+Fire');
         $filtered->assertJsonCount(1);
         $filtered->assertJsonPath('0.name', 'Free Fire Global');
+    }
+
+    /**
+     * Regression test for a real bug found live, 2026-07-26 (same bug
+     * class as CatalogControllerTest's/HeroSlideControllerTest's own
+     * regression tests): this app's default `database` cache store
+     * corrupts a cached value that still has real objects (Eloquent
+     * Models, Carbon dates) nested inside it on the next read —
+     * confirmed live, a warm-cache request reliably returned a broken
+     * `__PHP_Incomplete_Class_Name` JSON body before this fix.
+     * PHPUnit's `array` cache driver (phpunit.xml) never serializes at
+     * all, so it can't catch this — these tests force the real
+     * `database` store.
+     */
+    public function test_index_survives_a_real_database_cache_round_trip(): void
+    {
+        config(['cache.default' => 'database']);
+        Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        $this->actingAsAdmin();
+
+        $first = $this->getJson('/api/games');
+        $first->assertOk();
+        $this->assertSame('Free Fire Global', $first->json()[0]['name']);
+
+        $cached = Cache::store('database')->get('catalog.games.index');
+        $this->assertIsArray($cached);
+        $this->assertIsString($cached[0]['created_at']);
+
+        $second = $this->getJson('/api/games');
+        $second->assertOk();
+        $this->assertSame('Free Fire Global', $second->json()[0]['name']);
+    }
+
+    public function test_packages_survives_a_real_database_cache_round_trip(): void
+    {
+        config(['cache.default' => 'database']);
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        $this->actingAsAdmin();
+
+        $first = $this->getJson("/api/games/{$game->id}/packages");
+        $first->assertOk();
+        $this->assertSame('100 Diamonds', $first->json()[0]['name']);
+
+        $cached = Cache::store('database')->get("catalog.games.{$game->id}.packages");
+        $this->assertIsArray($cached);
+
+        $second = $this->getJson("/api/games/{$game->id}/packages");
+        $second->assertOk();
+        $this->assertSame('100 Diamonds', $second->json()[0]['name']);
     }
 }
