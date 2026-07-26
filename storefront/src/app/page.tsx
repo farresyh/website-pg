@@ -12,22 +12,23 @@ import TestimonialsSection from "@/components/home/TestimonialsSection";
 import FaqSection from "@/components/home/FaqSection";
 import SeoBlurb from "@/components/home/SeoBlurb";
 import { listGames } from "@/lib/catalog";
+import { listHeroSlides } from "@/lib/hero-slides";
 
-// Catalog data is live/mutable (admin toggles games/packages, prices
-// change) and already cached server-side (ADR-014, 60s TTL) — this
-// page must never be baked into a static build artifact at `next
-// build` time, only rendered per-request.
+// Catalog/hero-slide data is live/mutable (admin toggles games/
+// packages/slides, prices and schedules change) and already cached
+// server-side (ADR-014, 60s TTL) — this page must never be baked into
+// a static build artifact at `next build` time, only rendered per-request.
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const games = await listGames();
+  const [games, slides] = await Promise.all([listGames(), listHeroSlides()]);
 
   return (
     <>
       <AnnouncementBar />
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
-        <HeroSection games={games} />
+        <HeroSection games={games} slides={slides} />
         <PopularPicksSection games={games} />
         <PromotionsSection />
         <NewArrivalsSection games={games} />

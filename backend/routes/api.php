@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\HeroSlideController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
@@ -59,6 +61,11 @@ Route::prefix('catalog')->group(function () {
     Route::get('/games', [CatalogController::class, 'index']);
     Route::get('/games/{slug}', [CatalogController::class, 'show']);
     Route::get('/games/{slug}/packages', [CatalogController::class, 'packages']);
+
+    // Hero Banner (docs/prd.md §14/§15 backlog) — no secret-field
+    // concern here (no cost/margin data on this model), grouped under
+    // the same public "storefront content" prefix as games/packages.
+    Route::get('/hero-slides', [HeroSlideController::class, 'index']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -142,6 +149,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{validator}/mappings', [PlayerRegionMappingController::class, 'store']);
         Route::put('/{validator}/mappings/{mapping}', [PlayerRegionMappingController::class, 'update']);
         Route::delete('/{validator}/mappings/{mapping}', [PlayerRegionMappingController::class, 'destroy']);
+    });
+
+    // Hero Banner admin CRUD (docs/prd.md §14/§15 backlog).
+    Route::middleware('admin.role:super_admin,admin')->prefix('hero-slides')->group(function () {
+        Route::get('/', [AdminHeroSlideController::class, 'index']);
+        Route::post('/', [AdminHeroSlideController::class, 'store']);
+        Route::put('/{hero_slide}', [AdminHeroSlideController::class, 'update']);
+        Route::patch('/{hero_slide}/status', [AdminHeroSlideController::class, 'updateStatus']);
+        Route::delete('/{hero_slide}', [AdminHeroSlideController::class, 'destroy']);
     });
 
     // GAME-1..5/7 — Admin Games & Packages management.

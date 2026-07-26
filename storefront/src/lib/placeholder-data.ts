@@ -1,9 +1,10 @@
 /**
  * Static placeholder content for the homepage. Games/packages moved to
- * lib/catalog.ts (real backend data, task #6) — everything remaining
- * here (payment channels, hero slides, promotions, testimonials, FAQ)
- * still has no backing model, per the same "honest static content, not
- * a fake dynamic system" reasoning documented on PROMOTIONS below.
+ * lib/catalog.ts and hero slides to lib/hero-slides.ts (real backend
+ * data) — everything remaining here (payment channels, promotions,
+ * testimonials, FAQ) still has no backing model, per the same "honest
+ * static content, not a fake dynamic system" reasoning documented on
+ * PROMOTIONS below.
  */
 export interface PaymentChannel {
   /** Real Xendit Malaysia channel codes (database/seeders/PaymentMethodSeeder.php) — accurate today even though the checkout call itself will 422 until an admin activates a matching row. */
@@ -20,47 +21,6 @@ export const PLACEHOLDER_PAYMENT_CHANNELS: PaymentChannel[] = [
   { channelCode: "GRABPAY", label: "GrabPay", category: "ewallet" },
   { channelCode: "SHOPEEPAY", label: "ShopeePay", category: "ewallet" },
   { channelCode: "CARDS", label: "Card (Visa, Mastercard, etc.)", category: "card" },
-];
-
-/**
- * Hero slides use CSS gradients/diagonal shapes instead of background
- * images — no real campaign key-art files exist yet, and the original
- * draft's hotlinked Figma asset URLs (which expire ~7 days) are
- * exactly the kind of thing we're not repeating here.
- */
-export interface HeroSlide {
-  eyebrow: string;
-  title: string;
-  description: string;
-  priceFromRm?: number;
-  primaryCta: { label: string; href: string };
-  secondaryCta: { label: string; href: string };
-}
-
-export const HERO_SLIDES: HeroSlide[] = [
-  {
-    eyebrow: "Top Up Made Easy",
-    title: "Top up your favorite games in seconds",
-    description: "Pick your game, place your order, and pay your way — the fastest top-up experience in Malaysia.",
-    primaryCta: { label: "Find Games", href: "#popular-picks" },
-    secondaryCta: { label: "Track Order", href: "/track-order" },
-  },
-  {
-    eyebrow: "Limited Offer",
-    title: "PUBG Mobile — Bonus UC Weekend",
-    description: "Get extra UC on every top-up this weekend only. Instant delivery, no waiting.",
-    priceFromRm: 4.0,
-    primaryCta: { label: "Top Up Now", href: "/order/pubg-mobile" },
-    secondaryCta: { label: "View Details", href: "#popular-picks" },
-  },
-  {
-    eyebrow: "Weekly Deal",
-    title: "15% Off Steam Wallet Codes",
-    description: "Stock up on Steam Wallet credit this week and save on your next purchase.",
-    priceFromRm: 5.0,
-    primaryCta: { label: "Shop Steam Wallet", href: "/order/steam-wallet" },
-    secondaryCta: { label: "See All Deals", href: "#promotions" },
-  },
 ];
 
 /**

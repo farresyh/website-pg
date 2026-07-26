@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\AdminUser;
+use App\Models\HeroSlide;
 use App\Models\Reseller;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -31,5 +32,22 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->call(PaymentMethodSeeder::class);
+
+        // A fresh install must never show an empty homepage hero
+        // section — one generic default slide, matching the original
+        // storefront placeholder's copy (docs/prd.md §14/§15 backlog).
+        HeroSlide::query()->firstOrCreate(
+            ['title' => 'Top up your favorite games in seconds'],
+            [
+                'eyebrow' => 'Top Up Made Easy',
+                'description' => 'Pick your game, place your order, and pay your way — the fastest top-up experience in Malaysia.',
+                'primary_cta_label' => 'Find Games',
+                'primary_cta_href' => '#popular-picks',
+                'secondary_cta_label' => 'Track Order',
+                'secondary_cta_href' => '/track-order',
+                'is_active' => true,
+                'sort_order' => 0,
+            ],
+        );
     }
 }

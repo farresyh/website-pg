@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
-import { GridIcon, UserCircleIcon, DollarLineIcon, BoxLineIcon, PencilIcon, ListIcon, HorizontaLDots } from "@/icons";
+import { GridIcon, UserCircleIcon, DollarLineIcon, BoxLineIcon, PencilIcon, ListIcon, ImageIcon, HorizontaLDots } from "@/icons";
 
 /**
  * Nav items reflect only screens that actually exist — see
@@ -21,6 +21,7 @@ const navItems: NavItem[] = [
   { icon: <GridIcon />, name: "Dashboard", path: "/admin" },
   { icon: <UserCircleIcon />, name: "Admin Users", path: "/admin/users" },
   { icon: <PencilIcon />, name: "Games & Packages", path: "/admin/games" },
+  { icon: <ImageIcon />, name: "Hero Banner", path: "/admin/hero-slides" },
   { icon: <ListIcon />, name: "Orders", path: "/admin/orders" },
   { icon: <DollarLineIcon />, name: "Withdrawals", path: "/admin/withdrawals" },
   { icon: <BoxLineIcon />, name: "Vouchers", path: "/admin/vouchers" },
