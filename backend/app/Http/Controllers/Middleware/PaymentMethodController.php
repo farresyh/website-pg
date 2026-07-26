@@ -41,7 +41,14 @@ class PaymentMethodController extends Controller
             return response()->json(Cache::remember(
                 self::CACHE_KEY,
                 self::CACHE_TTL_SECONDS,
-                fn () => PaymentMethod::query()->orderBy('category')->orderBy('label')->get(),
+                // ->toArray(), not the raw Collection — this app's
+                // `database` cache store corrupts a cached value that
+                // still has real objects nested inside it on the next
+                // read (found live, 2026-07-26 — see GameController's/
+                // CatalogController's doc comments for the full story;
+                // this exact same bug was found here too during a docs
+                // accuracy pass, not caught in the original sweep).
+                fn () => PaymentMethod::query()->orderBy('category')->orderBy('label')->get()->toArray(),
             ));
         }
 

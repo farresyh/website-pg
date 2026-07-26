@@ -9,6 +9,7 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
 use Tests\TestCase;
@@ -194,5 +195,34 @@ class PaymentMethodControllerTest extends TestCase
         $filtered = $this->getJson('/api/middleware/payment-methods?category=ewallet');
         $filtered->assertJsonCount(1);
         $filtered->assertJsonPath('0.channel_code', 'GRABPAY');
+    }
+
+    /**
+     * Regression test for a real bug found live, 2026-07-26 (same bug
+     * class as GameControllerTest's/CatalogControllerTest's/
+     * HeroSlideControllerTest's own regression tests, found here
+     * during a docs-accuracy sweep rather than the original bugfix
+     * pass): this app's default `database` cache store corrupts a
+     * cached value that still has real objects nested inside it on
+     * the next read. PHPUnit's `array` cache driver (phpunit.xml)
+     * never serializes at all, so it can't catch this — this test
+     * forces the real `database` store.
+     */
+    public function test_index_survives_a_real_database_cache_round_trip(): void
+    {
+        config(['cache.default' => 'database']);
+        $this->paymentMethod(['channel_code' => 'AMBANK_FPX']);
+        $this->actingAsAdmin();
+
+        $first = $this->getJson('/api/middleware/payment-methods');
+        $first->assertOk();
+        $this->assertSame('AMBANK_FPX', $first->json()[0]['channel_code']);
+
+        $cached = Cache::store('database')->get('catalog.payment_methods.index');
+        $this->assertIsArray($cached);
+
+        $second = $this->getJson('/api/middleware/payment-methods');
+        $second->assertOk();
+        $this->assertSame('AMBANK_FPX', $second->json()[0]['channel_code']);
     }
 }
