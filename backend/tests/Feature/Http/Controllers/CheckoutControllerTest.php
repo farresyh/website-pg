@@ -6,6 +6,8 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
+use App\Models\PlayerValidation;
+use App\Models\PlayerValidatorProfile;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Payment\PaymentGateway;
@@ -103,6 +105,31 @@ class CheckoutControllerTest extends TestCase
         ], $packageOverrides));
 
         return ['game' => $game, 'package' => $package];
+    }
+
+    /** @return array{game: Game, package: Package} */
+    private function validatorEnabledGameAndPackage(array $gameOverrides = []): array
+    {
+        $profile = PlayerValidatorProfile::query()->create([
+            'name' => 'AcidGameShop',
+            'key' => 'acidgameshop',
+        ]);
+
+        return $this->gameAndPackage(array_merge([
+            'player_validator_profile_id' => $profile->id,
+            'player_validator_enabled' => true,
+        ], $gameOverrides));
+    }
+
+    private function recordValidation(Game $game, string $playerId, ?string $serverId = null, array $overrides = []): PlayerValidation
+    {
+        return PlayerValidation::query()->create(array_merge([
+            'game_id' => $game->id,
+            'player_id' => $playerId,
+            'server_id' => $serverId,
+            'status' => 'valid',
+            'validated_at' => now(),
+        ], $overrides));
     }
 
     private function payload(Game $game, Package $package, array $overrides = []): array
@@ -304,5 +331,86 @@ class CheckoutControllerTest extends TestCase
 
         $this->postJson('/api/checkout', $this->payload($game, $package))
             ->assertStatus(429);
+    }
+
+    /**
+     * The real gap this closes: a direct API call could always skip
+     * PlayerValidationController entirely — the storefront wizard's
+     * "Proceed to Payment" gate is client-side React state only, not a
+     * security boundary (ADR-011: guest checkout, no session to own it).
+     */
+    public function test_rejects_checkout_for_a_validator_enabled_game_with_no_validation_on_record(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->validatorEnabledGameAndPackage();
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('player_id');
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_accepts_checkout_for_a_validator_enabled_game_with_a_recent_valid_validation(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->validatorEnabledGameAndPackage();
+        $this->recordValidation($game, '123456789');
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['player_id' => '123456789']));
+
+        $response->assertCreated();
+    }
+
+    public function test_rejects_checkout_when_the_recorded_validation_is_for_a_different_player_id(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->validatorEnabledGameAndPackage();
+        $this->recordValidation($game, '999999999');
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['player_id' => '123456789']));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('player_id');
+    }
+
+    public function test_rejects_checkout_when_the_recorded_validation_status_is_not_valid(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->validatorEnabledGameAndPackage();
+        $this->recordValidation($game, '123456789', overrides: ['status' => 'invalid']);
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['player_id' => '123456789']));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('player_id');
+    }
+
+    public function test_rejects_checkout_when_the_recorded_validation_has_expired(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->validatorEnabledGameAndPackage();
+        $this->recordValidation($game, '123456789', overrides: ['validated_at' => now()->subMinutes(31)]);
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['player_id' => '123456789']));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('player_id');
+    }
+
+    public function test_accepts_checkout_when_the_validated_server_id_matches(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->validatorEnabledGameAndPackage([
+            'validation_rules' => ['extra_field' => 'zone_id'],
+        ]);
+        $this->recordValidation($game, '123456789', '5001');
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, [
+            'player_id' => '123456789',
+            'server_id' => '5001',
+        ]));
+
+        $response->assertCreated();
     }
 }

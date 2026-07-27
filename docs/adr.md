@@ -92,6 +92,10 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 
 **Still separate, still unconfirmed:** this new validator layer answers "is this MLBB account's region known" — it does **not** resolve Gamevion's own still-open question (this ADR's first addendum, and ADR-006's newest addendum) of how an invalid player/server ID actually surfaces when Gamevion processes a real order. The two are unrelated mechanisms; don't conflate a "yes" on one as progress on the other.
 
+**Addendum, 2026-07-27 — `CheckoutController` server-side enforcement built, closing the bypass flagged above:** surfaced by a full project audit as a real, exploitable gap — `POST /api/checkout` never checked `player_validations` at all, so any direct API call (skipping `POST /api/games/{game}/validate-player` entirely) reached a real Xendit charge and a real Gamevion order on an unconfirmed Player ID. Given ADR-004's no-cash-refund policy, the only resolution for a resulting misdelivery is retry or voucher — this made the bypass a genuine money/dispute risk, not just a spec gap.
+
+`CheckoutController::assertPlayerIdIsValidated()` now runs whenever `game.player_validator_enabled` is true: it requires a `player_validations` row matching the exact `game_id`/`player_id`/`server_id` tuple, `status='valid'`, within a rolling window (`services.player_validation.checkout_window_minutes`, default 30, env `PLAYER_VALIDATION_CHECKOUT_WINDOW_MINUTES`) — otherwise rejects with a `422` on `player_id` before any Order/payment is created. Deliberately matched on the data tuple, not a per-session/per-request token: guest checkout (this ADR, ADR-011) has no session to bind a token to, and founder confirmed data-tuple matching is sufficient — it closes "checkout with an ID that was never validated," which is the actual risk, without adding a token-issuance mechanism to solve a session-binding problem this architecture doesn't have. 6 new tests in `CheckoutControllerTest` (expired validation, wrong player_id, wrong status, matching server_id); full suite 367 tests, all green.
+
 ---
 
 ## ADR-006 (D6): Supplier Adapter/Normalizer layer is MVP, not Phase 2

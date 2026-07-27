@@ -95,4 +95,13 @@ return [
         ],
     ],
 
+    // How long a `player_validations` status=valid row (see
+    // PlayerValidationController) stays acceptable proof for
+    // CheckoutController's server-side re-check. Loose enough that a
+    // customer moving through the storefront wizard at normal pace
+    // never gets rejected for their own genuine validation going stale.
+    'player_validation' => [
+        'checkout_window_minutes' => (int) env('PLAYER_VALIDATION_CHECKOUT_WINDOW_MINUTES', 30),
+    ],
+
 ];

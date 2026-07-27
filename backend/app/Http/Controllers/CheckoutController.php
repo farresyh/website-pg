@@ -6,6 +6,7 @@ use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\PaymentMethod;
+use App\Models\PlayerValidation;
 use App\Models\Reseller;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
@@ -21,7 +22,9 @@ use Illuminate\Validation\ValidationException;
  * game's per-game validation_rules (ADR-005 addendum — Gamevion's
  * order endpoint has no field schema of its own, so we must know
  * whether a second field beyond Player ID is required before ever
- * reaching the supplier), then hands off to the already-tested
+ * reaching the supplier), re-checks player-ID validation server-side
+ * when the game requires it (see assertPlayerIdIsValidated()), then
+ * hands off to the already-tested
  * CheckoutService for pricing/Order-creation/payment-request logic —
  * this controller does not compute or trust any money value itself
  * (ORD-9's principle: cost/reseller-cost come from the stored
@@ -65,6 +68,10 @@ class CheckoutController extends Controller
             throw ValidationException::withMessages([
                 'server_id' => ["This game requires a {$this->fieldLabel($extraField)}."],
             ]);
+        }
+
+        if ($game->player_validator_enabled && $game->player_validator_profile_id !== null) {
+            $this->assertPlayerIdIsValidated($game, $data['player_id'], $data['server_id'] ?? null);
         }
 
         // PRD §8 / ADR-013: exactly one Reseller row for MVP (the
@@ -130,5 +137,35 @@ class CheckoutController extends Controller
             'server_id' => 'Server ID',
             default => 'additional field',
         };
+    }
+
+    /**
+     * PlayerValidationController's `POST /api/games/{game}/validate-player`
+     * only ever gated the storefront wizard's own "Proceed to Payment"
+     * button client-side — a UI nicety, not a security boundary, since
+     * guest checkout (ADR-011) has no session to actually own that gate.
+     * A direct `POST /api/checkout` call could always skip validation
+     * entirely. Re-check server-side here: the exact game/player_id
+     * (/server_id) tuple must have a recent `status=valid` row, matching
+     * on data rather than on any per-session token — deliberately not
+     * stricter than that (founder call, 2026-07-27 audit follow-up).
+     */
+    private function assertPlayerIdIsValidated(Game $game, string $playerId, ?string $serverId): void
+    {
+        $windowMinutes = (int) config('services.player_validation.checkout_window_minutes', 30);
+
+        $validated = PlayerValidation::query()
+            ->where('game_id', $game->id)
+            ->where('player_id', $playerId)
+            ->where('server_id', $serverId)
+            ->where('status', 'valid')
+            ->where('validated_at', '>=', now()->subMinutes($windowMinutes))
+            ->exists();
+
+        if (! $validated) {
+            throw ValidationException::withMessages([
+                'player_id' => ['Please validate this Player ID before checking out.'],
+            ]);
+        }
     }
 }
