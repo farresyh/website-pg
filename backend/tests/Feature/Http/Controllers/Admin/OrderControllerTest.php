@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Jobs\FulfillOrderJob;
+use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Order;
@@ -200,5 +201,115 @@ class OrderControllerTest extends TestCase
         $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
 
         $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertUnauthorized();
+    }
+
+    /**
+     * ADR-017: same async-dispatch discipline as retryDelivery — the
+     * admin request never blocks on a live Gamevion call.
+     */
+    public function test_resend_queues_a_resend_job_for_a_failed_order_with_a_same_game_package(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'reseller_cost_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id, 'note' => 'Bigger pack']);
+
+        $response->assertOk();
+        Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
+            && $job->packageId === $package->id
+            && $job->note === 'Bigger pack');
+    }
+
+    public function test_resend_rejects_an_order_that_is_not_failed(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    /**
+     * Decision #1: same-game swap only — cross-game rejected before
+     * ever reaching the queue.
+     */
+    public function test_resend_rejects_a_package_from_a_different_game(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $otherGame = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb']);
+        $otherGamePackage = Package::query()->create(['game_id' => $otherGame->id, 'name' => '5 Diamonds', 'cost_price' => 500, 'reseller_cost_price' => 500, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $otherGamePackage->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    public function test_resend_requires_authentication(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $order = $this->order(['game_id' => $game->id, 'delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id])->assertUnauthorized();
+    }
+
+    /**
+     * Decision #4: "Delivery Logs" — show() surfaces every resend
+     * attempt, most recent first.
+     */
+    public function test_show_includes_resend_attempt_history(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $order = $this->order(['game_id' => $game->id, 'package_id' => $package->id]);
+        \App\Models\OrderResendAttempt::query()->create([
+            'order_id' => $order->id,
+            'package_id' => $package->id,
+            'cost_price_sen' => 950,
+            'reseller_cost_price_sen' => 950,
+            'price_diff_sen' => 50,
+            'outcome' => 'success',
+            'triggered_by' => 'Admin User',
+        ]);
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('resend_attempts'));
+        $this->assertSame(50, $response->json('resend_attempts.0.price_diff_sen'));
+        $this->assertSame('Admin User', $response->json('resend_attempts.0.triggered_by'));
     }
 }

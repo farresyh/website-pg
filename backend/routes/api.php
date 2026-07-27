@@ -116,6 +116,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::post('/{order}/retry-delivery', [OrderController::class, 'retryDelivery']);
+        Route::post('/{order}/resend', [OrderController::class, 'resend']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion

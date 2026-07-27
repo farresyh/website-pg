@@ -6,6 +6,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
@@ -72,5 +73,15 @@ class Order extends Model
     public function reseller(): BelongsTo
     {
         return $this->belongsTo(Reseller::class);
+    }
+
+    /**
+     * ADR-017 decision #4: "Delivery Logs" history — every admin
+     * resend attempt, most recent first is left to the caller
+     * (OrderController::show() orders it explicitly).
+     */
+    public function resendAttempts(): HasMany
+    {
+        return $this->hasMany(OrderResendAttempt::class);
     }
 }

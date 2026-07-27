@@ -3,7 +3,15 @@
 /**
  * ORD-1..7 — list with ORD-2's status filters + search (ORD-1), a
  * detail view (ORD-6: customer info, game/package, payment info,
- * supplier response), and retry-delivery (ORD-7 / ADR-014). Voucher
+ * supplier response), and a single "Resend Delivery" action (ADR-017)
+ * that folds ORD-7's original plain retry into the same flow — the
+ * package picker defaults to the order's own package (a same-package
+ * resend behaves like the old "Retry Delivery" button did), with the
+ * option to swap to a different same-game package. The plain
+ * `POST /api/orders/{order}/retry-delivery` endpoint (ADR-014) still
+ * exists on the backend, just no longer has its own separate button
+ * here — two buttons for "try to fix a failed delivery" was more
+ * confusing than useful (founder feedback, docs/prd.md §14). Voucher
  * issuance (the other ORD-7 action) and export (ORD-5) remain a later
  * pass — see docs/prd.md §14.
  */
@@ -16,7 +24,8 @@ import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
 import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder, retryOrderDelivery } from "@/lib/orders";
+import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder } from "@/lib/orders";
+import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 
 const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -55,12 +64,12 @@ export default function OrdersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<OrderDetail | null>(null);
-  const [retrying, setRetrying] = useState(false);
-  const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [resendModalOpen, setResendModalOpen] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
-    setRetryMessage(null);
+    setResendMessage(null);
     try {
       setSelected(await getOrder(token, id));
     } catch (err) {
@@ -68,18 +77,8 @@ export default function OrdersPage() {
     }
   }
 
-  async function handleRetryDelivery() {
-    if (!session || !selected) return;
-    setRetrying(true);
-    setRetryMessage(null);
-    try {
-      await retryOrderDelivery(session.token, selected.id);
-      setRetryMessage("Retry queued — refresh in a moment to see the outcome.");
-    } catch (err) {
-      setRetryMessage(err instanceof ApiError ? err.message : "Could not queue a retry.");
-    } finally {
-      setRetrying(false);
-    }
+  function handleResent() {
+    setResendMessage("Resend queued — refresh in a moment to see the outcome and the new Delivery Logs entry.");
   }
 
   useEffect(() => {
@@ -110,6 +109,7 @@ export default function OrdersPage() {
 
   if (selected) {
     return (
+      <>
       <div>
         <button
           onClick={() => setSelected(null)}
@@ -128,13 +128,13 @@ export default function OrdersPage() {
               delivery: {selected.delivery_status}
             </Badge>
           </p>
-          {/* ORD-7 / ADR-014: only a failed delivery can be retried — mirrors the backend guard exactly. */}
+          {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. Only a failed delivery can be resent — mirrors the backend guard exactly. */}
           {selected.delivery_status === "failed" && (
-            <div className="mt-3 flex items-center gap-3">
-              <Button size="sm" onClick={handleRetryDelivery} disabled={retrying}>
-                {retrying ? "Queuing retry…" : "Retry Delivery"}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Button size="sm" onClick={() => setResendModalOpen(true)}>
+                Resend Delivery…
               </Button>
-              {retryMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{retryMessage}</span>}
+              {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
             </div>
           )}
         </div>
@@ -192,7 +192,62 @@ export default function OrdersPage() {
             )}
           </div>
         </div>
+
+        {/* ADR-017 decision #4: every resend attempt, not just the latest supplier_response. */}
+        {selected.resend_attempts.length > 0 && (
+          <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+            <h2 className="p-6 pb-0 text-sm font-semibold text-gray-800 dark:text-white/90">Delivery Logs</h2>
+            <div className="max-w-full overflow-x-auto p-6 pt-4">
+              <Table>
+                <TableHeader className="border-b border-gray-100 dark:border-gray-800">
+                  <TableRow>
+                    <TableCell isHeader className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</TableCell>
+                    <TableCell isHeader className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</TableCell>
+                    <TableCell isHeader className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Price Diff</TableCell>
+                    <TableCell isHeader className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Outcome</TableCell>
+                    <TableCell isHeader className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Triggered By</TableCell>
+                    <TableCell isHeader className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Note</TableCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {selected.resend_attempts.map((attempt) => (
+                    <TableRow key={attempt.id}>
+                      <TableCell className="px-3 py-3 text-theme-xs text-gray-500 dark:text-gray-400">
+                        {new Date(attempt.created_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-theme-sm text-gray-800 dark:text-white/90">
+                        {attempt.package?.name ?? "—"}
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-theme-sm">
+                        <span className={attempt.price_diff_sen > 0 ? "text-error-600 dark:text-error-400" : attempt.price_diff_sen < 0 ? "text-success-600 dark:text-success-400" : "text-gray-500 dark:text-gray-400"}>
+                          {attempt.price_diff_sen > 0 ? "+" : ""}
+                          {formatRm(attempt.price_diff_sen)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-theme-sm">
+                        <Badge size="sm" color={attempt.outcome === "success" ? "success" : "error"}>{attempt.outcome}</Badge>
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-theme-xs text-gray-500 dark:text-gray-400">{attempt.triggered_by ?? "—"}</TableCell>
+                      <TableCell className="px-3 py-3 text-theme-xs text-gray-500 dark:text-gray-400">{attempt.note ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
       </div>
+
+      {session && (
+        <ResendDeliveryModal
+          isOpen={resendModalOpen}
+          onClose={() => setResendModalOpen(false)}
+          onResent={handleResent}
+          order={selected}
+          token={session.token}
+        />
+      )}
+    </>
     );
   }
 
