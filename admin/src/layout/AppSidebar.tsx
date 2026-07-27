@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { icon: <UserCircleIcon />, name: "Admin Users", path: "/admin/users" },
   { icon: <PencilIcon />, name: "Games & Packages", path: "/admin/games" },
   { icon: <ImageIcon />, name: "Hero Banner", path: "/admin/hero-slides" },
+  { icon: <ImageIcon />, name: "Image Gallery", path: "/admin/gallery" },
   { icon: <ListIcon />, name: "Orders", path: "/admin/orders" },
   { icon: <DollarLineIcon />, name: "Withdrawals", path: "/admin/withdrawals" },
   { icon: <BoxLineIcon />, name: "Vouchers", path: "/admin/vouchers" },

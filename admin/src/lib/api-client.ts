@@ -51,3 +51,36 @@ export async function apiFetch<T>(
 
   return payload as T;
 }
+
+/**
+ * Multipart upload variant of apiFetch — a `FormData` body must never
+ * be JSON.stringify'd or sent with an explicit `Content-Type` (the
+ * browser sets the multipart boundary itself); everything else
+ * (base URL, auth header, error handling) matches apiFetch exactly.
+ */
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  { token }: { token?: string } = {},
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      payload?.code,
+      payload?.message ?? `Request to ${path} failed (${response.status})`,
+    );
+  }
+
+  return payload as T;
+}

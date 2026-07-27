@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\VoucherController;
@@ -173,6 +174,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{validator}/mappings', [PlayerRegionMappingController::class, 'store']);
         Route::put('/{validator}/mappings/{mapping}', [PlayerRegionMappingController::class, 'update']);
         Route::delete('/{validator}/mappings/{mapping}', [PlayerRegionMappingController::class, 'destroy']);
+    });
+
+    // IMG-1/IMG-2 — Image Gallery: upload/browse/search/delete, feeds
+    // Game.image_url / HeroSlide.image_url via copy-URL (see
+    // GalleryImageController's doc comment).
+    Route::middleware('admin.role:super_admin,admin')->prefix('gallery/images')->group(function () {
+        Route::get('/', [GalleryImageController::class, 'index']);
+        Route::post('/', [GalleryImageController::class, 'store']);
+        Route::delete('/{gallery_image}', [GalleryImageController::class, 'destroy']);
     });
 
     // Hero Banner admin CRUD (docs/prd.md §14/§15 backlog).
