@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\OrderController;
@@ -111,6 +112,16 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
         });
         Route::post('/orders/{order}/voucher', [VoucherController::class, 'storeFromOrder']);
+    });
+
+    // ADR-007 / FRAUD-1..3 - internal blacklist, independent of any
+    // supplier-provided one. "Remove" is deactivate(), never a hard
+    // delete (see the migration's own doc comment for why).
+    Route::middleware('admin.role:super_admin,admin')->prefix('blacklist')->group(function () {
+        Route::get('/', [BlacklistController::class, 'index']);
+        Route::post('/', [BlacklistController::class, 'store']);
+        Route::get('/{blacklist_entry}', [BlacklistController::class, 'show']);
+        Route::patch('/{blacklist_entry}/deactivate', [BlacklistController::class, 'deactivate']);
     });
 
     // ORD-1..7 — list + detail, plus retryDelivery (ORD-7's resolve

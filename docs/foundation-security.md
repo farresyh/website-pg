@@ -28,9 +28,9 @@
 
 ## 4. Fraud Prevention
 
-- [ ] Every order creation checks the customer/player against the internal blacklist before payment or supplier submission proceeds. (FRAUD-1, FRAUD-2)
-- [ ] The checkout/payment endpoint has its own, stricter rate limiting / velocity check distinct from general API rate limiting, to reduce card-testing (carding) abuse. (FRAUD-4)
-- [ ] Blacklist entries always require a recorded reason and are attributable to the admin who added them. (FRAUD-3)
+- [x] Every order creation checks the customer/player against the internal blacklist before payment or supplier submission proceeds. (FRAUD-1, FRAUD-2 — `BlacklistService`/`CheckoutController::assertNotBlacklisted()`, 2026-07-29)
+- [x] The checkout/payment endpoint has its own, stricter rate limiting / velocity check distinct from general API rate limiting, to reduce card-testing (carding) abuse. (FRAUD-4 — `CheckoutVelocityGuard`, counts only blacklist-triggered rejections per IP, distinct from `throttle:10,1`)
+- [x] Blacklist entries always require a recorded reason and are attributable to the admin who added them. (FRAUD-3 — `blacklist_entries.reason`/`created_by`, `/admin/blacklist`)
 
 ## 5. Payment Gateway Integrity (Xendit)
 

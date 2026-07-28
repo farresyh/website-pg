@@ -96,3 +96,17 @@ kills its own queue worker if `backend/node_modules` was never installed
 installs) — its `vite` step fails and `concurrently --kill-others` tears down
 `queue:listen` with it, visible only in the backend's own terminal output.
 See `docs/prd.md` §14's 2026-07-28 addendum.
+
+**Second known gotcha:** a new migration written during a session only runs
+automatically against the *test* databases (sqlite `:memory:` for `php artisan
+test`, the dockerized MySQL for the concurrency suite) — never against the
+actual local dev database (`backend/database/database.sqlite` or whatever
+Herd/`composer run dev` serves against). `php artisan test` passing green is
+not proof the local dev DB has the new tables/columns. A `SQLSTATE[HY000]:
+... no such table` (or "unknown column") error in the browser/Postman against
+a locally-running backend almost always means this — run `php artisan
+migrate:status` to confirm, then `php artisan migrate` — not a code bug. Any
+session that adds a migration should run `php artisan migrate` against the
+local dev DB before calling the feature done, not just the test suites — see
+`docs/prd.md` §14's 2026-07-29 Blacklist/Fraud entry for a live instance of
+this exact gotcha.

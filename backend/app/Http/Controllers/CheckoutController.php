@@ -11,6 +11,8 @@ use App\Models\Reseller;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
+use App\Services\Fraud\BlacklistService;
+use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +43,8 @@ class CheckoutController extends Controller
         private readonly CheckoutService $checkout,
         private readonly PaymentGatewayFactory $gatewayFactory,
         private readonly PaymentMethodFeeResolver $fees,
+        private readonly BlacklistService $blacklist,
+        private readonly CheckoutVelocityGuard $velocityGuard,
     ) {
     }
 
@@ -74,6 +78,8 @@ class CheckoutController extends Controller
         if ($game->player_validator_enabled && $game->player_validator_profile_id !== null) {
             $this->assertPlayerIdIsValidated($game, $data['player_id'], $data['server_id'] ?? null);
         }
+
+        $this->assertNotBlacklisted($data['player_id'], $data['customer_email'], $data['customer_phone'] ?? null, $request->ip());
 
         // PRD §8 / ADR-013: exactly one Reseller row for MVP (the
         // platform owner, markup_pct=0) — see Reseller::platformOwner()
@@ -178,5 +184,46 @@ class CheckoutController extends Controller
                 'player_id' => ['Please validate this Player ID before checking out.'],
             ]);
         }
+    }
+
+    /**
+     * ADR-007 / FRAUD-2/4, per prd.md §7.1 step 5 - checked before
+     * payment or supplier submission. The velocity guard is checked
+     * first: an IP already over FRAUD-4's threshold is rejected
+     * without even running the blacklist query, since by then it's
+     * already demonstrated probing behavior regardless of whether
+     * this particular attempt happens to match an entry. The rejection
+     * message is deliberately generic either way - never reveals
+     * *why* (blacklisted vs. rate-limited), so a real fraudster can't
+     * use the response to distinguish "wrong value, try another" from
+     * "you're rate-limited, wait it out."
+     */
+    private function assertNotBlacklisted(string $playerId, string $email, ?string $phone, ?string $ip): void
+    {
+        if ($ip !== null && $this->velocityGuard->tooManyRecentHits($ip)) {
+            throw ValidationException::withMessages([
+                'player_id' => ['This order cannot be processed.'],
+            ]);
+        }
+
+        $entry = $this->blacklist->check($playerId, $email, $phone);
+
+        if ($entry === null) {
+            return;
+        }
+
+        $this->blacklist->recordHit($entry, $playerId, $email, $phone, $ip);
+
+        if ($ip !== null) {
+            $this->velocityGuard->recordHit($ip);
+        }
+
+        Log::warning('Checkout blocked by blacklist', [
+            'blacklist_entry_id' => $entry->id,
+        ]);
+
+        throw ValidationException::withMessages([
+            'player_id' => ['This order cannot be processed.'],
+        ]);
     }
 }

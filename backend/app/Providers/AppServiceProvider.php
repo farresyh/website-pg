@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\CircuitBreaker\CircuitBreaker;
+use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\Xendit\XenditGateway;
@@ -108,6 +109,16 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(PlayerValidatorRegistry::class);
+
+        // ADR-007 / FRAUD-4
+        $this->app->bind(CheckoutVelocityGuard::class, function () {
+            $config = config('fraud.velocity');
+
+            return new CheckoutVelocityGuard(
+                threshold: $config['threshold'],
+                windowMinutes: $config['window_minutes'],
+            );
+        });
     }
 
     /**
