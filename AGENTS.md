@@ -72,6 +72,9 @@ or a one-line fix doesn't need it.
 ## Build & Test
 
 ```bash
+# All three at once (backend + admin + storefront, labeled/interleaved output, single Ctrl+C stops all)
+./scripts/dev.sh
+
 # Backend
 cd backend && composer run dev        # serve + queue:listen + pail + vite, all together
 cd backend && php artisan test        # fast suite (sqlite, no Docker)
@@ -86,4 +89,10 @@ cd storefront && npm run dev
 actual queue worker running — `composer run dev` includes one; a bare
 `php artisan serve` (or Laravel Herd on its own) does not. A stuck "Syncing…"
 state with nothing updating almost always means the worker isn't running, not
-a frontend bug — see `docs/prd.md` §14's 2026-07-27 live-testing entry.
+a frontend bug — see `docs/prd.md` §14's 2026-07-27 live-testing entry. A
+second, quieter cause of the same symptom: `composer run dev` itself silently
+kills its own queue worker if `backend/node_modules` was never installed
+(`npm install` inside `backend/`, separate from `admin/`/`storefront/`'s own
+installs) — its `vite` step fails and `concurrently --kill-others` tears down
+`queue:listen` with it, visible only in the backend's own terminal output.
+See `docs/prd.md` §14's 2026-07-28 addendum.
