@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Controllers\Auth;
 
 use App\Models\AdminUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -24,6 +25,38 @@ class AuthControllerTest extends TestCase
         $response->assertJsonStructure(['token', 'admin']);
     }
 
+    public function test_login_logs_a_successful_attempt(): void
+    {
+        Log::spy();
+        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
+
+        $this->postJson('/api/login', [
+            'email' => $admin->email,
+            'password' => 'secret-password',
+        ]);
+
+        Log::shouldHaveReceived('info')->once()->withArgs(
+            fn (string $message, array $context) => $message === 'Admin login succeeded' && $context['admin_id'] === $admin->id,
+        );
+    }
+
+    public function test_login_rate_limits_repeated_requests_from_the_same_ip(): void
+    {
+        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/login', [
+                'email' => $admin->email,
+                'password' => 'wrong-password',
+            ])->assertUnprocessable();
+        }
+
+        $this->postJson('/api/login', [
+            'email' => $admin->email,
+            'password' => 'wrong-password',
+        ])->assertStatus(429);
+    }
+
     public function test_login_rejects_wrong_password(): void
     {
         $admin = AdminUser::factory()->create(['password' => 'secret-password']);
@@ -36,6 +69,21 @@ class AuthControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
+    public function test_login_logs_a_failed_attempt_with_wrong_password(): void
+    {
+        Log::spy();
+        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
+
+        $this->postJson('/api/login', [
+            'email' => $admin->email,
+            'password' => 'wrong-password',
+        ]);
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn (string $message, array $context) => $message === 'Admin login failed: invalid credentials' && $context['email'] === $admin->email,
+        );
+    }
+
     public function test_login_rejects_a_deactivated_account(): void
     {
         $admin = AdminUser::factory()->create(['password' => 'secret-password', 'is_active' => false]);
@@ -46,6 +94,21 @@ class AuthControllerTest extends TestCase
         ]);
 
         $response->assertUnprocessable();
+    }
+
+    public function test_login_logs_a_deactivated_account_attempt(): void
+    {
+        Log::spy();
+        $admin = AdminUser::factory()->create(['password' => 'secret-password', 'is_active' => false]);
+
+        $this->postJson('/api/login', [
+            'email' => $admin->email,
+            'password' => 'secret-password',
+        ]);
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn (string $message, array $context) => $message === 'Admin login failed: account deactivated' && $context['admin_id'] === $admin->id,
+        );
     }
 
     public function test_me_returns_the_authenticated_admin(): void

@@ -14,6 +14,7 @@ final class SupplierResponse
         public readonly mixed $data,
         public readonly ?string $errorCode,
         public readonly ?string $errorMessage,
+        public readonly bool $isServerError = false,
     ) {
     }
 
@@ -22,8 +23,17 @@ final class SupplierResponse
         return new self(true, $data, null, null);
     }
 
-    public static function failure(string $errorCode, string $errorMessage): self
+    /**
+     * $isServerError distinguishes "the supplier itself is
+     * failing/unreachable" (HTTP 5xx) from a definitive business
+     * rejection (4xx - invalid product, insufficient balance, etc.).
+     * Only the former should count against CircuitBreakingSupplierAdapter
+     * (ADR-019 addendum) - a run of ordinary 4xx rejections isn't
+     * evidence the supplier is down, and tripping the breaker on those
+     * would block healthy orders for no reason.
+     */
+    public static function failure(string $errorCode, string $errorMessage, bool $isServerError = false): self
     {
-        return new self(false, null, $errorCode, $errorMessage);
+        return new self(false, null, $errorCode, $errorMessage, $isServerError);
     }
 }

@@ -8,6 +8,7 @@ use App\Models\AdminUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -20,19 +21,40 @@ class AuthController extends Controller
 {
     public function login(LoginRequest $request): JsonResponse
     {
-        $admin = AdminUser::query()->where('email', $request->validated('email'))->first();
+        $email = $request->validated('email');
+        $admin = AdminUser::query()->where('email', $email)->first();
 
         if (! $admin || ! Hash::check($request->validated('password'), $admin->password)) {
+            // ADR-019: no audit trail existed for a brute-force attempt
+            // or a compromised account before this line — email only,
+            // never the attempted password.
+            Log::warning('Admin login failed: invalid credentials', [
+                'email' => $email,
+                'ip' => $request->ip(),
+            ]);
+
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
         if (! $admin->is_active) {
+            Log::warning('Admin login failed: account deactivated', [
+                'admin_id' => $admin->id,
+                'email' => $email,
+                'ip' => $request->ip(),
+            ]);
+
             throw ValidationException::withMessages([
                 'email' => ['This account has been deactivated.'],
             ]);
         }
+
+        Log::info('Admin login succeeded', [
+            'admin_id' => $admin->id,
+            'email' => $email,
+            'ip' => $request->ip(),
+        ]);
 
         return response()->json([
             'token' => $admin->createToken('api')->plainTextToken,

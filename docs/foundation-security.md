@@ -43,7 +43,7 @@
 - [ ] No business logic reads a raw supplier response directly — every supplier is accessed only through its Adapter, which normalizes to one canonical internal shape. (ADAPT-1, ADAPT-2)
 - [ ] Never assume a supplier's auth scheme, response envelope, or validation-endpoint availability is uniform with any other supplier. Confirm per-supplier, per-game during onboarding. (D6 / ADR-006)
 - [ ] Validation-capability (`supports_validation`) is tracked per game-supplier mapping, not as a blanket flag on the Supplier record. (GAME-12)
-- [ ] A circuit breaker trips per-supplier after repeated failures — a down supplier must not be able to cascade into blocking the whole delivery queue.
+- [x] A circuit breaker trips per-supplier after repeated failures — a down supplier must not be able to cascade into blocking the whole delivery queue. (`App\Services\CircuitBreaker\CircuitBreaker` + `CircuitBreakingSupplierAdapter`, 2026-07-29 — see ADR-019's newest addendum)
 - [ ] If a supplier requires IP whitelisting, its Adapter routes through the one shared outbound proxy config (`config/services.php['proxy']`), never a supplier-specific, one-off proxy setup. (ADR-006 addendum)
 
 ## 7. Secrets & Data

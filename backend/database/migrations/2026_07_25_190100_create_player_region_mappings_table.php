@@ -32,7 +32,11 @@ return new class extends Migration
             $table->foreignId('game_id')->constrained('games')->cascadeOnDelete();
             $table->timestamps();
 
-            $table->unique(['player_validator_profile_id', 'country_code']);
+            // Explicit short name: Laravel's auto-generated name for this
+            // pair exceeds MySQL's 64-char identifier limit (only surfaces
+            // on real MySQL, not sqlite - found while verifying indexes
+            // for ADR-019).
+            $table->unique(['player_validator_profile_id', 'country_code'], 'prm_validator_country_unique');
         });
     }
 

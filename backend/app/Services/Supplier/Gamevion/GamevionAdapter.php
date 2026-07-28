@@ -193,6 +193,7 @@ final class GamevionAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 (string) $response->status(),
                 $body['message'] ?? "Gamevion request failed with HTTP {$response->status()}",
+                isServerError: $response->serverError(),
             );
         }
 

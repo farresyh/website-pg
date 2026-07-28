@@ -87,6 +87,22 @@ final class CheckoutService
             'payment_method' => $request->paymentMethod,
         ]);
 
+        // ADR-019 idempotency finding, verified directly against
+        // docs.xendit.co (not assumed): Payment Request v3 has no
+        // client-supplied idempotency-key header. Its real dedupe
+        // mechanism is server-side reference_id uniqueness — a second
+        // POST with the same reference_id (order_number, stable per
+        // Order) gets a clean 409 DATA_NOT_FOUND "Duplication is not
+        // allowed", never a second live payment request. So a
+        // TransientFailureRetryPolicy retry *within* this one call is
+        // already safe against double-charging. The gap this doesn't
+        // close: a retried POST /api/checkout HTTP request (e.g. a
+        // customer double-click, or a client-side timeout retry) calls
+        // initiate() again from scratch with a brand-new order_number
+        // each time, which Xendit's reference_id check can't catch —
+        // that needs a client-supplied checkout-level idempotency key,
+        // a request-contract change not made here (see docs/prd.md §14
+        // NEXT SESSION pointer).
         $payment = $gateway->createPayment(new PaymentRequest(
             referenceId: $order->order_number,
             amountSen: $total->finalAmount,

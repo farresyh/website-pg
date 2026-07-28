@@ -20,11 +20,12 @@ use Illuminate\Support\Facades\Storage;
  * lifecycle to this table (deleting a gallery row never cascades into
  * a Game/HeroSlide edit).
  *
- * Storage is behind Laravel's own Storage facade (config/filesystems.php's
- * `public` disk today — local, `storage/app/public` symlinked via
- * `php artisan storage:link`) precisely so a later swap to a real
- * bucket (s3/r2, once production hosting is decided — see ADR-010)
- * costs a disk-config change, not a rewrite of this controller.
+ * Storage is behind Laravel's own Storage facade, disk resolved from
+ * `config('filesystems.gallery_disk')` (defaults to `public` — local,
+ * `storage/app/public` symlinked via `php artisan storage:link`) so a
+ * later swap to a real bucket (s3/r2, once production hosting is
+ * decided — see ADR-010/ADR-020) costs a `GALLERY_DISK` env change,
+ * not a rewrite of this controller.
  */
 class GalleryImageController extends Controller
 {
@@ -50,7 +51,11 @@ class GalleryImageController extends Controller
     public function store(UploadGalleryImageRequest $request): JsonResponse
     {
         $file = $request->file('image');
-        $disk = 'public';
+        // ADR-019: was hardcoded to 'public' — now driven by
+        // config/filesystems.php's gallery_disk (GALLERY_DISK env, not
+        // the app-wide FILESYSTEM_DISK default, which this env already
+        // sets to 'local' for unrelated reasons and has no public URL).
+        $disk = config('filesystems.gallery_disk');
         $path = $file->store('gallery', $disk);
 
         $image = GalleryImage::query()->create([

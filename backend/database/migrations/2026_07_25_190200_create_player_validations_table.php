@@ -35,7 +35,12 @@ return new class extends Migration
             $table->timestamp('validated_at');
             $table->timestamps();
 
-            $table->index(['game_id', 'player_id', 'server_id', 'validated_at']);
+            // Explicit short name: Laravel's auto-generated name for this
+            // 4-column index exceeds MySQL's 64-char identifier limit
+            // (only surfaces on real MySQL, not sqlite - found while
+            // verifying indexes for ADR-019). This is the exact index
+            // CheckoutController::assertPlayerIdIsValidated() relies on.
+            $table->index(['game_id', 'player_id', 'server_id', 'validated_at'], 'player_validations_lookup_index');
         });
     }
 

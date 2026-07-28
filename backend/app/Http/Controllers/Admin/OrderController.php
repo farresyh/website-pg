@@ -38,7 +38,7 @@ class OrderController extends Controller
                 ->where('delivery_status', DeliveryStatus::Failed->value),
             'processing' => $query->where('delivery_status', DeliveryStatus::Processing->value),
             'completed' => $query->where('delivery_status', DeliveryStatus::Delivered->value),
-            'today' => $query->whereDate('created_at', now()->toDateString()),
+            'today' => $query->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()]),
             default => null,
         };
 

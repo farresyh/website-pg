@@ -14,6 +14,7 @@ use App\Services\Checkout\CheckoutService;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -110,6 +111,16 @@ class CheckoutController extends Controller
                 resellerId: $reseller->id,
             ), $gateway);
         } catch (CheckoutFailedException $e) {
+            // ADR-019: previously silent — no record anywhere of *why*
+            // a checkout failed. game_id/package_id/channel_code are
+            // enough to reproduce without logging customer PII.
+            Log::warning('Checkout failed', [
+                'game_id' => $game->id,
+                'package_id' => $package->id,
+                'channel_code' => $data['channel_code'],
+                'error' => $e->getMessage(),
+            ]);
+
             throw ValidationException::withMessages([
                 'payment' => [$e->getMessage()],
             ]);

@@ -25,7 +25,11 @@ use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/login', [AuthController::class, 'login']);
+// ADR-019: the only mutating auth-adjacent route with no throttle,
+// unlike /checkout and /validate-player below. Tighter than either
+// (5/minute/IP, not 10) — this is a brute-force/credential-stuffing
+// target, not a genuine-retry-tolerant customer action.
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
 // ADR-014: unauthenticated infra probe, DB + queue connection only —
 // no order/customer data ever touches this endpoint.

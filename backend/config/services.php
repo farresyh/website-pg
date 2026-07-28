@@ -64,6 +64,16 @@ return [
         'connect_timeout' => (int) env('GAMEVION_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
+    // ADR-019 addendum: per-supplier circuit breaker (App\Services\
+    // CircuitBreaker\CircuitBreaker) - trips after this many consecutive
+    // server-error (5xx) responses, stays open for the cooldown window.
+    // Shared across every SupplierAdapter wrapped by
+    // CircuitBreakingSupplierAdapter, not just Gamevion.
+    'circuit_breaker' => [
+        'failure_threshold' => (int) env('SUPPLIER_CIRCUIT_BREAKER_FAILURE_THRESHOLD', 3),
+        'cooldown_seconds' => (int) env('SUPPLIER_CIRCUIT_BREAKER_COOLDOWN_SECONDS', 60),
+    ],
+
     // Temporary env-based config for local/manual testing of
     // XenditGateway. Test vs. live mode is controlled by which key
     // type is set (Xendit's own convention: xnd_development_... vs
@@ -72,6 +82,12 @@ return [
         'base_url' => env('XENDIT_BASE_URL', 'https://api.xendit.co'),
         'secret_key' => env('XENDIT_SECRET_KEY'),
         'webhook_token' => env('XENDIT_WEBHOOK_TOKEN'),
+        // ADR-019: keep short so a slow Xendit response can't hold a
+        // customer-facing checkout request thread open indefinitely,
+        // compounded across retry attempts. Same discipline as
+        // GamevionAdapter's own timeout config above.
+        'timeout' => (int) env('XENDIT_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('XENDIT_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
     // Unofficial third-party MLBB validators (docs/prd.md research,

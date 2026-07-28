@@ -40,6 +40,8 @@ final class XenditGateway implements PaymentGateway
         private readonly string $baseUrl,
         private readonly string $secretKey,
         private readonly string $webhookToken,
+        private readonly int $timeoutSeconds = 10,
+        private readonly int $connectTimeoutSeconds = 5,
     ) {
     }
 
@@ -105,12 +107,21 @@ final class XenditGateway implements PaymentGateway
         };
     }
 
+    /**
+     * ADR-019: an unbounded default timeout on a customer-facing
+     * checkout path can hold a request thread open indefinitely,
+     * compounded across TransientFailureRetryPolicy's own retry
+     * attempts. Same short-timeout discipline GamevionAdapter already
+     * has, for the same reason.
+     */
     private function client(): PendingRequest
     {
         return Http::baseUrl($this->baseUrl)
             ->withBasicAuth($this->secretKey, '')
             ->withHeaders(['api-version' => self::API_VERSION])
             ->acceptJson()
+            ->timeout($this->timeoutSeconds)
+            ->connectTimeout($this->connectTimeoutSeconds)
             // ADR-014: same transient-failure-only retry policy as
             // GamevionAdapter — see TransientFailureRetryPolicy.
             ->retry([200, 500, 1000], when: TransientFailureRetryPolicy::shouldRetry(), throw: false);

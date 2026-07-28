@@ -105,6 +105,20 @@ class OrderControllerTest extends TestCase
         $this->assertSame('KRS-DONE', $response->json('data.0.order_number'));
     }
 
+    public function test_index_can_filter_by_today(): void
+    {
+        $today = $this->order(['order_number' => 'KRS-TODAY']);
+        $yesterday = $this->order(['order_number' => 'KRS-YESTERDAY']);
+        $yesterday->forceFill(['created_at' => now()->subDay()])->save();
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=today');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-TODAY', $response->json('data.0.order_number'));
+    }
+
     public function test_index_can_search_by_order_number(): void
     {
         $this->order(['order_number' => 'KRS-FINDME', 'customer_email' => 'a@example.com']);

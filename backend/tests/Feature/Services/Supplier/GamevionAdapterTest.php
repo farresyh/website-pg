@@ -297,6 +297,29 @@ class GamevionAdapterTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertSame('400', $result->errorCode);
         $this->assertSame('Insufficient balance', $result->errorMessage);
+        $this->assertFalse($result->isServerError);
+    }
+
+    /**
+     * ADR-019 addendum: CircuitBreakingSupplierAdapter only trips on
+     * isServerError - a real 5xx must be marked as one so a sustained
+     * outage (e.g. the documented sandbox 500, ADR-006) is actually
+     * detected, unlike an ordinary 4xx business rejection.
+     */
+    public function test_create_order_marks_a_server_error_as_such(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response(['message' => 'Server error'], 500),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'FFP5',
+            referenceNumber: 'REF-1',
+            playerId: '123456',
+        ));
+
+        $this->assertFalse($result->success);
+        $this->assertTrue($result->isServerError);
     }
 
     /**

@@ -17,6 +17,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Gallery Upload Disk
+    |--------------------------------------------------------------------------
+    |
+    | Admin\GalleryImageController (IMG-1/IMG-2) needs a disk that always
+    | serves a public URL, independent of whatever "default" above is set
+    | to for the rest of the app (this env already sets FILESYSTEM_DISK to
+    | "local", which has no public URL — reusing "default" here would
+    | silently break gallery uploads). ADR-019: was hardcoded to the
+    | literal string 'public'; now a real env-driven config value, so the
+    | later swap to "s3" (once a bucket exists) is a config change, not a
+    | code change.
+    |
+    */
+
+    'gallery_disk' => env('GALLERY_DISK', 'public'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

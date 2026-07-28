@@ -15,6 +15,7 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -303,6 +304,21 @@ class CheckoutControllerTest extends TestCase
         $response->assertJsonValidationErrors('payment');
         $this->assertSame(1, Order::query()->count());
         $this->assertNull(Order::query()->firstOrFail()->payment_ref);
+    }
+
+    public function test_logs_a_checkout_failure(): void
+    {
+        Log::spy();
+        $this->bindGateway(createSucceeds: false);
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        $this->postJson('/api/checkout', $this->payload($game, $package));
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn (string $message, array $context) => $message === 'Checkout failed'
+                && $context['game_id'] === $game->id
+                && $context['package_id'] === $package->id,
+        );
     }
 
     public function test_does_not_require_authentication(): void

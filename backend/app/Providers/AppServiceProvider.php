@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\Xendit\XenditGateway;
@@ -10,6 +11,7 @@ use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
 use App\Services\PlayerValidation\Providers\MoogoldValidator;
 use App\Services\PlayerValidation\Providers\NexoneValidator;
+use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use Illuminate\Support\ServiceProvider;
@@ -40,7 +42,7 @@ class AppServiceProvider extends ServiceProvider
             $config = config('services.gamevion');
             $proxy = config('services.proxy');
 
-            return new GamevionAdapter(
+            $gamevion = new GamevionAdapter(
                 baseUrl: $config['base_url'],
                 bearerToken: (string) $config['bearer_token'],
                 apiKey: (string) $config['api_key'],
@@ -48,6 +50,21 @@ class AppServiceProvider extends ServiceProvider
                 proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
+            );
+
+            // ADR-019 addendum, foundation-security.md §6, DASH-2 - a
+            // decorator, not a change to GamevionAdapter itself, so any
+            // future second supplier gets the same protection for free
+            // just by being wrapped the same way at its own binding.
+            $breakerConfig = config('services.circuit_breaker');
+
+            return new CircuitBreakingSupplierAdapter(
+                inner: $gamevion,
+                breaker: new CircuitBreaker(
+                    name: 'gamevion',
+                    failureThreshold: $breakerConfig['failure_threshold'],
+                    cooldownSeconds: $breakerConfig['cooldown_seconds'],
+                ),
             );
         });
 
@@ -58,6 +75,8 @@ class AppServiceProvider extends ServiceProvider
                 baseUrl: $config['base_url'],
                 secretKey: (string) $config['secret_key'],
                 webhookToken: (string) $config['webhook_token'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
             );
         });
 
