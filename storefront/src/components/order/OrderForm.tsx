@@ -133,10 +133,11 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
         // e-wallets) — where it sends the customer back to after they
         // complete payment on its own hosted page. We don't have the
         // order_number yet at this point (only the backend does, right
-        // before it calls Xendit), so this can't be a per-order URL —
-        // /track-order already does exactly what's needed either way:
-        // customer looks up status by order number regardless of which
-        // of the two they land on.
+        // before it calls Xendit) — this generic URL is only a fallback:
+        // CheckoutService::requestPayment() overwrites it server-side
+        // with the real /order/status/{order_number} once the Order
+        // exists, so the customer lands straight on their own order
+        // instead of the general lookup page.
         channel_properties: {
           success_return_url: `${window.location.origin}/track-order`,
           failure_return_url: `${window.location.origin}/track-order`,

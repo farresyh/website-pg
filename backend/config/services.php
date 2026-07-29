@@ -120,4 +120,13 @@ return [
         'checkout_window_minutes' => (int) env('PLAYER_VALIDATION_CHECKOUT_WINDOW_MINUTES', 30),
     ],
 
+    // Same STOREFRONT_URL env var cors.php already reads (may be
+    // comma-separated when multiple origins are allowed) — first entry
+    // is the canonical origin used to build the per-order redirect URL
+    // Xendit sends the customer back to after hosted-page payment. See
+    // CheckoutService::requestPayment().
+    'storefront' => [
+        'url' => explode(',', env('STOREFRONT_URL', 'http://localhost:3001'))[0],
+    ],
+
 ];

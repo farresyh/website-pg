@@ -62,6 +62,8 @@ class CheckoutServiceTest extends TestCase
     ): PaymentGateway {
         return new class($success, $data, $errorCode, $errorMessage) implements PaymentGateway
         {
+            public ?PaymentRequest $receivedRequest = null;
+
             public function __construct(
                 private readonly bool $success,
                 private readonly ?array $data,
@@ -72,6 +74,8 @@ class CheckoutServiceTest extends TestCase
 
             public function createPayment(PaymentRequest $request): PaymentResponse
             {
+                $this->receivedRequest = $request;
+
                 return $this->success
                     ? PaymentResponse::success($this->data)
                     : PaymentResponse::failure($this->errorCode, $this->errorMessage);
@@ -191,5 +195,31 @@ class CheckoutServiceTest extends TestCase
         $this->assertSame('pr-resumed', $resumed->payment_ref);
         $this->assertSame($originalFinalAmount, $resumed->final_amount);
         $this->assertSame(1, Order::query()->count());
+    }
+
+    /**
+     * The storefront can't know order_number when it builds the checkout
+     * request (the Order doesn't exist yet), so it sends a generic
+     * fallback return URL. Once the Order exists, requestPayment() must
+     * overwrite it with the real per-order tracking page — otherwise a
+     * redirect-based channel (FPX, some e-wallets) sends the customer
+     * back to the general order-lookup page instead of their own order.
+     */
+    public function test_initiate_overwrites_the_return_urls_with_the_orders_own_status_page(): void
+    {
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-123']);
+
+        $order = $this->service()->initiate($this->request([
+            'channelProperties' => [
+                'success_return_url' => 'http://localhost:3001/track-order',
+                'failure_return_url' => 'http://localhost:3001/track-order',
+            ],
+        ]), $gateway);
+
+        $expectedUrl = rtrim((string) config('services.storefront.url'), '/')
+            . '/order/status/' . $order->order_number;
+
+        $this->assertSame($expectedUrl, $gateway->receivedRequest->channelProperties['success_return_url']);
+        $this->assertSame($expectedUrl, $gateway->receivedRequest->channelProperties['failure_return_url']);
     }
 }

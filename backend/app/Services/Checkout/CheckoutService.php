@@ -143,6 +143,24 @@ final class CheckoutService
 
     private function requestPayment(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
     {
+        // The storefront can't put order_number in the return URLs it
+        // sends with the checkout request — it doesn't have one yet at
+        // that point (this Order didn't exist until just above/earlier
+        // in initiate()). Now that it does, overwrite whatever generic
+        // URL the storefront sent with the real per-order tracking page,
+        // so a redirect-based channel (FPX, some e-wallets) lands the
+        // customer straight on their own order's status instead of the
+        // general "look up an order" search page.
+        $orderStatusUrl = rtrim((string) config('services.storefront.url'), '/')
+            . '/order/status/' . $order->order_number;
+
+        if (array_key_exists('success_return_url', $channelProperties)) {
+            $channelProperties['success_return_url'] = $orderStatusUrl;
+        }
+        if (array_key_exists('failure_return_url', $channelProperties)) {
+            $channelProperties['failure_return_url'] = $orderStatusUrl;
+        }
+
         $payment = $gateway->createPayment(new PaymentRequest(
             referenceId: $order->order_number,
             amountSen: $order->final_amount,
