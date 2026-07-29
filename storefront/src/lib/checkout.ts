@@ -29,7 +29,7 @@ export interface CheckoutPayload {
   package_id: number;
   customer_email: string;
   customer_name: string;
-  customer_phone?: string;
+  customer_phone: string;
   player_id: string;
   server_id?: string;
   channel_code: string;

@@ -124,7 +124,7 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
         package_id: selectedPackage.id,
         customer_email: customerEmail,
         customer_name: customerName,
-        customer_phone: customerPhone || undefined,
+        customer_phone: customerPhone,
         player_id: playerId,
         server_id: game.extraField ? serverId : undefined,
         channel_code: channelCode,

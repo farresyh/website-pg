@@ -563,6 +563,27 @@ class CheckoutControllerTest extends TestCase
     }
 
     /**
+     * customer_phone made required 2026-07-30 — Gamevion's real order
+     * endpoint rejects delivery with no phone number (see
+     * CreateCheckoutRequest's doc comment, docs/adr.md's ADR-006
+     * addendum). Was previously nullable; a paid order used to only
+     * discover the missing phone at the delivery step, too late to
+     * matter to the customer.
+     */
+    public function test_rejects_checkout_without_a_customer_phone(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package);
+        unset($payload['customer_phone']);
+
+        $response = $this->postJson('/api/checkout', $payload);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('customer_phone');
+    }
+
+    /**
      * ADR-019's checkout-level idempotency fix — the actual scenario
      * this exists for: a customer double-click or client-side timeout
      * retry re-sends the exact same request. Must return the same

@@ -31,11 +31,17 @@ const labelClass = "mb-1.5 block text-[13px] font-semibold";
 /**
  * Last checkpoint before money moves — recap + contact details (the
  * reference kept an editable "receipt destination" field here; this
- * makes email/name genuinely required inputs in that same spot,
+ * makes email/name/phone genuinely required inputs in that same spot,
  * rather than a prefilled example) + a T&C checkbox that actually
  * gates "Confirm & Pay". Desktop: centered dialog. Mobile: full-screen
  * sheet. Renders only while `open`, so its scroll position/focus
  * resets fresh every time it's reopened.
+ *
+ * Phone is required (not just email/name), 2026-07-30: Gamevion's
+ * order endpoint rejects delivery with no phone number even though our
+ * own checkout previously treated it as optional — see
+ * CreateCheckoutRequest.php's doc comment and docs/adr.md's ADR-006
+ * addendum for the real production order that surfaced this.
  */
 export default function ReviewModal({
   open,
@@ -59,7 +65,12 @@ export default function ReviewModal({
 
   if (!open) return null;
 
-  const canConfirm = tcChecked && customerEmail.trim().length > 0 && customerName.trim().length > 0 && !submitting;
+  const canConfirm =
+    tcChecked &&
+    customerEmail.trim().length > 0 &&
+    customerName.trim().length > 0 &&
+    customerPhone.trim().length > 0 &&
+    !submitting;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 lg:items-center" onClick={onClose}>
@@ -112,7 +123,7 @@ export default function ReviewModal({
           </div>
           <div>
             <label htmlFor="reviewPhone" className={labelClass}>
-              Phone number (optional)
+              Phone number
             </label>
             <input
               id="reviewPhone"
@@ -121,6 +132,7 @@ export default function ReviewModal({
               onChange={(e) => setCustomerPhone(e.target.value)}
               placeholder="e.g. 012-3456789"
               className={inputClass}
+              required
             />
           </div>
         </div>

@@ -36,6 +36,13 @@ use Illuminate\Validation\Rule;
  * a second real Order/payment for it. Not DB-validated here
  * (`exists`/`unique`) — CheckoutController's own lookup is what gives
  * it meaning; this FormRequest only enforces shape.
+ *
+ * `customer_phone` made required 2026-07-30: the first real production
+ * order (docs/adr.md's ADR-006 addendum) failed delivery with Gamevion's
+ * `{"error_code":"404","error_message":"Phone number required"}` — their
+ * order endpoint needs it even though our own checkout previously marked
+ * it optional. Required at the FormRequest layer so a missing phone is
+ * caught before payment, not after a paid order fails delivery.
  */
 class CreateCheckoutRequest extends FormRequest
 {
@@ -54,7 +61,7 @@ class CreateCheckoutRequest extends FormRequest
             'package_id' => ['required', 'integer', 'exists:packages,id'],
             'customer_email' => ['required', 'email', 'max:255'],
             'customer_name' => ['required', 'string', 'max:50'], // Xendit individual_detail.given_names caps at 50
-            'customer_phone' => ['nullable', 'string', 'max:32'],
+            'customer_phone' => ['required', 'string', 'max:32'],
             'player_id' => ['required', 'string', 'max:255'],
             'server_id' => ['nullable', 'string', 'max:255'],
             'channel_code' => [
