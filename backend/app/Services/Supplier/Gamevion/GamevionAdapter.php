@@ -88,7 +88,15 @@ final class GamevionAdapter implements SupplierAdapter
                 ? "{$request->playerId}|{$request->serverId}"
                 : $request->playerId,
             'telp' => $this->normalizePhone($request->customerPhone),
-            'callback_url' => $request->callbackUrl,
+            // Gamevion's real API requires this key present in the body
+            // even when there's no real callback (their own docs example
+            // sends "" — confirmed live with Gamevion support 2026-07-29
+            // after this array_filter was silently dropping the key
+            // entirely whenever $request->callbackUrl was null, which it
+            // always was — nothing in this codebase ever sets it. `??
+            // ''` means this is never null by the time array_filter's
+            // `$value !== null` check runs, so it's never stripped.
+            'callback_url' => $request->callbackUrl ?? '',
         ], fn ($value) => $value !== null));
 
         if ($response->status() === 409) {
