@@ -25,6 +25,7 @@ final class CheckoutRequest
         public readonly PaymentMethodFeeConfig $paymentFeeConfig,
         public readonly string $paymentMethod,
         public readonly string $channelCode,
+        public readonly string $idempotencyKey,
         public readonly array $channelProperties = [],
         public readonly int $voucherDiscountSen = 0,
         public readonly ?string $supplierProductRef = null,

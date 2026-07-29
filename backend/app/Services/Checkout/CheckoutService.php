@@ -11,6 +11,7 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\PricingService;
+use Illuminate\Database\QueryException;
 
 /**
  * Orchestrates checkout INITIATION only — pricing through creating the
@@ -61,32 +62,6 @@ final class CheckoutService
             $request->paymentFeeConfig,
         );
 
-        $order = Order::query()->create([
-            'order_number' => $this->orderNumbers->generate(),
-            'customer_email' => $request->customerEmail,
-            'customer_name' => $request->customerName,
-            'customer_phone' => $request->customerPhone,
-            'player_id' => $request->playerId,
-            'server_id' => $request->serverId,
-            'game_id' => $request->gameId,
-            'package_id' => $request->packageId,
-            'supplier_id' => $request->supplierId,
-            'supplier_product_ref' => $request->supplierProductRef,
-            'reseller_id' => $request->resellerId,
-            'cost_price' => $pricing->costPrice,
-            'reseller_cost_price' => $pricing->resellerCostPrice,
-            'reseller_markup_pct' => $request->resellerMarkupPct,
-            'selling_price' => $pricing->sellingPrice,
-            'voucher_discount' => $total->voucherDiscount,
-            'transaction_fee' => $total->transactionFee,
-            'final_amount' => $total->finalAmount,
-            'platform_profit' => $pricing->platformProfit,
-            'reseller_profit' => $pricing->resellerProfit,
-            'payment_status' => PaymentStatus::Pending->value,
-            'delivery_status' => DeliveryStatus::NotStarted->value,
-            'payment_method' => $request->paymentMethod,
-        ]);
-
         // ADR-019 idempotency finding, verified directly against
         // docs.xendit.co (not assumed): Payment Request v3 has no
         // client-supplied idempotency-key header. Its real dedupe
@@ -95,27 +70,92 @@ final class CheckoutService
         // Order) gets a clean 409 DATA_NOT_FOUND "Duplication is not
         // allowed", never a second live payment request. So a
         // TransientFailureRetryPolicy retry *within* this one call is
-        // already safe against double-charging. The gap this doesn't
-        // close: a retried POST /api/checkout HTTP request (e.g. a
-        // customer double-click, or a client-side timeout retry) calls
+        // already safe against double-charging. The gap that didn't
+        // close on its own — a retried POST /api/checkout HTTP request
+        // (customer double-click, client-side timeout retry) calling
         // initiate() again from scratch with a brand-new order_number
-        // each time, which Xendit's reference_id check can't catch —
-        // that needs a client-supplied checkout-level idempotency key,
-        // a request-contract change not made here (see docs/prd.md §14
-        // NEXT SESSION pointer).
-        $payment = $gateway->createPayment(new PaymentRequest(
-            referenceId: $order->order_number,
-            amountSen: $total->finalAmount,
-            currency: 'MYR',
-            country: 'MY',
+        // each time — is closed by $request->idempotencyKey below:
+        // stamped onto the Order at creation (not after payment
+        // succeeds), under a DB-level unique constraint, so a
+        // genuinely concurrent duplicate request fails fast at the
+        // INSERT rather than ever reaching the gateway a second time.
+        try {
+            $order = Order::query()->create([
+                'order_number' => $this->orderNumbers->generate(),
+                'checkout_idempotency_key' => $request->idempotencyKey,
+                'customer_email' => $request->customerEmail,
+                'customer_name' => $request->customerName,
+                'customer_phone' => $request->customerPhone,
+                'player_id' => $request->playerId,
+                'server_id' => $request->serverId,
+                'game_id' => $request->gameId,
+                'package_id' => $request->packageId,
+                'supplier_id' => $request->supplierId,
+                'supplier_product_ref' => $request->supplierProductRef,
+                'reseller_id' => $request->resellerId,
+                'cost_price' => $pricing->costPrice,
+                'reseller_cost_price' => $pricing->resellerCostPrice,
+                'reseller_markup_pct' => $request->resellerMarkupPct,
+                'selling_price' => $pricing->sellingPrice,
+                'voucher_discount' => $total->voucherDiscount,
+                'transaction_fee' => $total->transactionFee,
+                'final_amount' => $total->finalAmount,
+                'platform_profit' => $pricing->platformProfit,
+                'reseller_profit' => $pricing->resellerProfit,
+                'payment_status' => PaymentStatus::Pending->value,
+                'delivery_status' => DeliveryStatus::NotStarted->value,
+                'payment_method' => $request->paymentMethod,
+            ]);
+        } catch (QueryException $e) {
+            if ($this->isUniqueConstraintViolation($e)) {
+                throw new DuplicateCheckoutAttemptException(
+                    "Duplicate checkout attempt for idempotency key {$request->idempotencyKey}",
+                    previous: $e,
+                );
+            }
+
+            throw $e;
+        }
+
+        return $this->requestPayment(
+            $order,
+            $gateway,
             channelCode: $request->channelCode,
             channelProperties: $request->channelProperties,
+        );
+    }
+
+    /**
+     * Retries the payment leg for an Order that already exists (found by
+     * CheckoutController via checkout_idempotency_key) but never got a
+     * payment_ref — the previous attempt's gateway call failed or the
+     * process died before recording it. Reuses the Order's own already-
+     * snapshotted pricing (ORD-9 — never recomputed here) and its own
+     * order_number as the Xendit reference_id, same as a fresh
+     * initiate() would, so Xendit's own reference_id dedupe still
+     * applies if that earlier attempt actually reached Xendit despite
+     * failing to persist locally.
+     */
+    public function resume(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties = []): Order
+    {
+        return $this->requestPayment($order, $gateway, $channelCode, $channelProperties);
+    }
+
+    private function requestPayment(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
+    {
+        $payment = $gateway->createPayment(new PaymentRequest(
+            referenceId: $order->order_number,
+            amountSen: $order->final_amount,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: $channelCode,
+            channelProperties: $channelProperties,
             description: "KedaiRuncitSoloz order {$order->order_number}",
             customer: new PaymentCustomer(
                 referenceId: $order->order_number,
-                givenNames: $request->customerName,
-                email: $request->customerEmail,
-                mobileNumber: $request->customerPhone,
+                givenNames: $order->customer_name,
+                email: $order->customer_email,
+                mobileNumber: $order->customer_phone,
             ),
         ));
 
@@ -130,5 +170,15 @@ final class CheckoutService
         ]);
 
         return $order->fresh();
+    }
+
+    /**
+     * MySQL/sqlite both surface a unique-constraint violation as
+     * SQLSTATE 23000 — narrow enough to not accidentally swallow an
+     * unrelated QueryException (e.g. a real connection failure).
+     */
+    private function isUniqueConstraintViolation(QueryException $e): bool
+    {
+        return $e->getCode() === '23000';
     }
 }

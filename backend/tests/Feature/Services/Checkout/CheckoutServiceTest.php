@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
+use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\PaymentStatus;
@@ -17,6 +18,7 @@ use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -47,6 +49,7 @@ class CheckoutServiceTest extends TestCase
             'paymentFeeConfig' => new PaymentMethodFeeConfig(0.0, 100),
             'paymentMethod' => 'duitnow',
             'channelCode' => 'DUITNOW_PAY',
+            'idempotencyKey' => (string) Str::uuid(),
             'supplierProductRef' => 'FFP5',
         ], $overrides));
     }
@@ -127,5 +130,66 @@ class CheckoutServiceTest extends TestCase
 
         $this->assertSame(1, Order::query()->count());
         $this->assertNull(Order::query()->first()->payment_ref);
+    }
+
+    public function test_initiate_stamps_the_checkout_idempotency_key_onto_the_order(): void
+    {
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-123']);
+
+        $order = $this->service()->initiate($this->request(['idempotencyKey' => 'idem-abc']), $gateway);
+
+        $this->assertSame('idem-abc', $order->checkout_idempotency_key);
+    }
+
+    /**
+     * ADR-019's checkout-level idempotency fix: the unique constraint
+     * on checkout_idempotency_key is what actually closes the race a
+     * plain app-level SELECT-then-INSERT would miss — a second
+     * initiate() call with a key that's already taken must never reach
+     * the gateway a second time.
+     */
+    public function test_initiate_throws_duplicate_checkout_attempt_when_the_key_already_exists(): void
+    {
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-123']);
+        $this->service()->initiate($this->request(['idempotencyKey' => 'idem-dup']), $gateway);
+
+        try {
+            $this->service()->initiate($this->request(['idempotencyKey' => 'idem-dup']), $gateway);
+            $this->fail('Expected DuplicateCheckoutAttemptException was not thrown.');
+        } catch (DuplicateCheckoutAttemptException) {
+            // expected
+        }
+
+        $this->assertSame(1, Order::query()->count());
+    }
+
+    /**
+     * The resume() path CheckoutController reaches when a retried
+     * request finds an Order tagged with its key but no payment_ref
+     * yet (the earlier attempt's gateway call failed). Reuses the
+     * Order's own already-snapshotted final_amount/customer fields —
+     * never recomputes pricing, matching ORD-9.
+     */
+    public function test_resume_retries_payment_for_an_existing_unpaid_order_without_recomputing_pricing(): void
+    {
+        $failingGateway = $this->fakePaymentGateway(false, null, 'API_VALIDATION_ERROR', 'bad channel_properties');
+
+        try {
+            $this->service()->initiate($this->request(['idempotencyKey' => 'idem-resume']), $failingGateway);
+            $this->fail('Expected CheckoutFailedException was not thrown.');
+        } catch (CheckoutFailedException) {
+            // expected
+        }
+
+        $order = Order::query()->firstOrFail();
+        $this->assertNull($order->payment_ref);
+        $originalFinalAmount = $order->final_amount;
+
+        $succeedingGateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-resumed']);
+        $resumed = $this->service()->resume($order, $succeedingGateway, 'DUITNOW_PAY');
+
+        $this->assertSame('pr-resumed', $resumed->payment_ref);
+        $this->assertSame($originalFinalAmount, $resumed->final_amount);
+        $this->assertSame(1, Order::query()->count());
     }
 }

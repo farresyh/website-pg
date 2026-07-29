@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { validatePlayer, submitCheckout, extractCheckoutRedirectUrl, type ValidatePlayerResult } from "@/lib/checkout";
@@ -54,6 +54,16 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // One key per Review Modal open, reused across every resubmit within
+  // that same open (double-click, retry-after-error) — a fresh open
+  // gets a fresh key, so an unrelated later purchase is never
+  // collapsed into an earlier one.
+  const idempotencyKeyRef = useRef<string | null>(null);
+
+  function openReview() {
+    idempotencyKeyRef.current = crypto.randomUUID();
+    setReviewOpen(true);
+  }
 
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
   const selectedChannel = PLACEHOLDER_PAYMENT_CHANNELS.find((c) => c.channelCode === channelCode) ?? null;
@@ -118,6 +128,19 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
         player_id: playerId,
         server_id: game.extraField ? serverId : undefined,
         channel_code: channelCode,
+        idempotency_key: idempotencyKeyRef.current ?? crypto.randomUUID(),
+        // Xendit requires these for redirect-based channels (FPX, some
+        // e-wallets) — where it sends the customer back to after they
+        // complete payment on its own hosted page. We don't have the
+        // order_number yet at this point (only the backend does, right
+        // before it calls Xendit), so this can't be a per-order URL —
+        // /track-order already does exactly what's needed either way:
+        // customer looks up status by order number regardless of which
+        // of the two they land on.
+        channel_properties: {
+          success_return_url: `${window.location.origin}/track-order`,
+          failure_return_url: `${window.location.origin}/track-order`,
+        },
       });
 
       const redirectUrl = extractCheckoutRedirectUrl(result.payment_actions);
@@ -195,7 +218,7 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
         playerId={playerId}
         serverId={game.extraField ? serverId : ""}
         ready={readyForReview}
-        onReview={() => setReviewOpen(true)}
+        onReview={openReview}
       />
 
       {selectedPackage && selectedChannel && (

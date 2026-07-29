@@ -18,6 +18,7 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -68,15 +69,27 @@ class CheckoutControllerTest extends TestCase
 
     private function bindGateway(bool $createSucceeds = true): void
     {
+        $this->rebindGateway($createSucceeds);
+        // Every test drives checkout through channel_code FPX_ABMB —
+        // needs a real, active PaymentMethod row now that channel
+        // fee/gateway config is DB-backed, not config/checkout.php.
+        $this->activeChannel();
+    }
+
+    /**
+     * Swaps the gateway fake mid-test (e.g. simulating a retry that
+     * now succeeds after an earlier attempt failed) without touching
+     * the already-created PaymentMethod row — bindGateway() itself
+     * can't be called twice in one test, since activeChannel() would
+     * try to insert a second row with the same unique channel_code.
+     */
+    private function rebindGateway(bool $createSucceeds = true): void
+    {
         $gateway = $this->fakeGateway($createSucceeds);
         // Rebinding this container key (not PaymentGateway::class
         // directly) is what PaymentGatewayFactory::make('xendit')
         // resolves through — see AppServiceProvider.
         $this->app->bind('payment-gateway.xendit', fn () => $gateway);
-        // Every test drives checkout through channel_code FPX_ABMB —
-        // needs a real, active PaymentMethod row now that channel
-        // fee/gateway config is DB-backed, not config/checkout.php.
-        $this->activeChannel();
     }
 
     private function activeChannel(string $channelCode = 'FPX_ABMB', array $overrides = []): PaymentMethod
@@ -145,6 +158,10 @@ class CheckoutControllerTest extends TestCase
             'customer_phone' => '0123456789',
             'player_id' => '123456789',
             'channel_code' => 'FPX_ABMB',
+            // Each call gets its own fresh attempt by default — tests
+            // exercising a *repeated* key pass the same idempotency_key
+            // explicitly via $overrides.
+            'idempotency_key' => (string) Str::uuid(),
         ], $overrides);
     }
 
@@ -530,5 +547,75 @@ class CheckoutControllerTest extends TestCase
 
         $response->assertUnprocessable();
         $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_rejects_checkout_without_an_idempotency_key(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package);
+        unset($payload['idempotency_key']);
+
+        $response = $this->postJson('/api/checkout', $payload);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('idempotency_key');
+    }
+
+    /**
+     * ADR-019's checkout-level idempotency fix — the actual scenario
+     * this exists for: a customer double-click or client-side timeout
+     * retry re-sends the exact same request. Must return the same
+     * order, not create (and pay for) a second one.
+     */
+    public function test_replays_the_same_order_for_a_repeated_idempotency_key_after_success(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $key = (string) Str::uuid();
+
+        $first = $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key]));
+        $first->assertCreated();
+
+        $second = $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key]));
+        $second->assertOk(); // 200 — a replay, not a newly-created resource
+        $second->assertJsonPath('order_number', $first->json('order_number'));
+
+        $this->assertSame(1, Order::query()->count());
+    }
+
+    /**
+     * The other real branch: the first attempt's payment call failed
+     * (Order created, no payment_ref), and the retry with the same key
+     * must resume that same Order rather than starting a fresh one.
+     */
+    public function test_resumes_the_existing_order_when_a_repeated_key_previously_failed_payment(): void
+    {
+        $this->bindGateway(createSucceeds: false);
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $key = (string) Str::uuid();
+
+        $first = $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key]));
+        $first->assertUnprocessable();
+        $this->assertSame(1, Order::query()->count());
+        $this->assertNull(Order::query()->firstOrFail()->payment_ref);
+
+        $this->rebindGateway(createSucceeds: true);
+        $second = $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key]));
+
+        $second->assertOk();
+        $this->assertSame(1, Order::query()->count());
+        $this->assertSame('pr-checkout-test', Order::query()->firstOrFail()->payment_ref);
+    }
+
+    public function test_a_different_idempotency_key_creates_a_genuinely_separate_order(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        $this->postJson('/api/checkout', $this->payload($game, $package))->assertCreated();
+        $this->postJson('/api/checkout', $this->payload($game, $package))->assertCreated();
+
+        $this->assertSame(2, Order::query()->count());
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Models\Game;
+use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlayerValidation;
@@ -11,8 +12,10 @@ use App\Models\Reseller;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
+use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Fraud\BlacklistService;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use Illuminate\Http\JsonResponse;
@@ -75,6 +78,31 @@ class CheckoutController extends Controller
             ]);
         }
 
+        // Guaranteed to exist + be active by CreateCheckoutRequest's
+        // Rule::exists check — a race between validation and here
+        // (channel deactivated mid-request) surfaces as a 500 via
+        // firstOrFail(), not a silent fallback to some default
+        // gateway, since that would misroute a real payment. Resolved
+        // early (before the idempotency lookup below) since both the
+        // replay branch and the normal-checkout branch need it.
+        $paymentMethod = PaymentMethod::query()
+            ->where('channel_code', $data['channel_code'])
+            ->firstOrFail();
+        $gateway = $this->gatewayFactory->make($paymentMethod->gateway);
+
+        // ADR-019's checkout-level idempotency fix: any Order already
+        // tagged with this key was created by an earlier request that
+        // already passed every check below it (player validation,
+        // blacklist/velocity) — re-running them here would be
+        // redundant at best, and would double-count a velocity hit at
+        // worst. This is a retry (double-click, client timeout retry)
+        // of an attempt already in flight or already finished, not a
+        // new checkout to re-vet.
+        $existing = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->first();
+        if ($existing !== null) {
+            return $this->respondForExistingOrder($existing, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+        }
+
         if ($game->player_validator_enabled && $game->player_validator_profile_id !== null) {
             $this->assertPlayerIdIsValidated($game, $data['player_id'], $data['server_id'] ?? null);
         }
@@ -85,16 +113,6 @@ class CheckoutController extends Controller
         // platform owner, markup_pct=0) — see Reseller::platformOwner()
         // for the firstOrCreate safety-net rationale.
         $reseller = Reseller::platformOwner();
-
-        // Guaranteed to exist + be active by CreateCheckoutRequest's
-        // Rule::exists check — a race between validation and here
-        // (channel deactivated mid-request) surfaces as a 500 via
-        // firstOrFail(), not a silent fallback to some default
-        // gateway, since that would misroute a real payment.
-        $paymentMethod = PaymentMethod::query()
-            ->where('channel_code', $data['channel_code'])
-            ->firstOrFail();
-        $gateway = $this->gatewayFactory->make($paymentMethod->gateway);
 
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
@@ -109,6 +127,7 @@ class CheckoutController extends Controller
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,
                 channelCode: $data['channel_code'],
+                idempotencyKey: $data['idempotency_key'],
                 channelProperties: $data['channel_properties'] ?? [],
                 supplierProductRef: $package->supplier_package_ref,
                 gameId: $game->id,
@@ -116,6 +135,13 @@ class CheckoutController extends Controller
                 supplierId: $package->supplier_id,
                 resellerId: $reseller->id,
             ), $gateway);
+        } catch (DuplicateCheckoutAttemptException) {
+            // Lost a genuine race — a concurrent request with the same
+            // key won the INSERT between our lookup above and now.
+            // Treat it exactly like the lookup had found it.
+            $winner = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->firstOrFail();
+
+            return $this->respondForExistingOrder($winner, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
         } catch (CheckoutFailedException $e) {
             // ADR-019: previously silent — no record anywhere of *why*
             // a checkout failed. game_id/package_id/channel_code are
@@ -145,6 +171,44 @@ class CheckoutController extends Controller
             'payment_status' => $order->payment_status,
             'payment_actions' => $payment->success ? ($payment->data['actions'] ?? []) : [],
         ], 201);
+    }
+
+    /**
+     * Idempotent-replay path for an Order already tagged with the
+     * incoming request's idempotency_key (ADR-019). If it already has a
+     * payment_ref, this is a pure replay of an attempt that already
+     * succeeded — no new work, just the same response shape a fresh
+     * checkout would have returned. If it doesn't, the previous attempt
+     * created the Order but never reached a successful payment (gateway
+     * error, or the process died in between) — retry just the payment
+     * leg via CheckoutService::resume() against this same Order, never
+     * a new one.
+     */
+    private function respondForExistingOrder(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): JsonResponse
+    {
+        if ($order->payment_ref === null) {
+            try {
+                $order = $this->checkout->resume($order, $gateway, $channelCode, $channelProperties);
+            } catch (CheckoutFailedException $e) {
+                Log::warning('Checkout resume failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                throw ValidationException::withMessages([
+                    'payment' => [$e->getMessage()],
+                ]);
+            }
+        }
+
+        $payment = $gateway->getPayment($order->payment_ref);
+
+        return response()->json([
+            'order_number' => $order->order_number,
+            'final_amount' => $order->final_amount,
+            'payment_status' => $order->payment_status,
+            'payment_actions' => $payment->success ? ($payment->data['actions'] ?? []) : [],
+        ], 200);
     }
 
     private function fieldLabel(string $extraField): string

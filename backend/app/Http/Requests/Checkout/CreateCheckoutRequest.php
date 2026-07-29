@@ -27,6 +27,15 @@ use Illuminate\Validation\Rule;
  * FPX channel (discovered live via the Payment Methods "Test" action —
  * see PaymentCustomer's own doc comment) — guest checkout never
  * collected a name before this.
+ *
+ * `idempotency_key` added 2026-07-29 (ADR-019's remaining gap, closed):
+ * client-generated once per checkout attempt (the storefront's Review
+ * Modal — see OrderForm.tsx), unchanged across a resubmit of that same
+ * attempt. CheckoutController uses it to detect a retried
+ * `POST /api/checkout` (double-click, timeout retry) and avoid creating
+ * a second real Order/payment for it. Not DB-validated here
+ * (`exists`/`unique`) — CheckoutController's own lookup is what gives
+ * it meaning; this FormRequest only enforces shape.
  */
 class CreateCheckoutRequest extends FormRequest
 {
@@ -55,6 +64,7 @@ class CreateCheckoutRequest extends FormRequest
                 Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
             ],
             'channel_properties' => ['nullable', 'array'],
+            'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
         ];
     }
 }
