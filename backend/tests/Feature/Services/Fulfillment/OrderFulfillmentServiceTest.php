@@ -157,6 +157,22 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
+     * ADR-018 decision #6: the single, explicit guard that keeps a
+     * sandbox order from ever reaching the real ledger, even though
+     * every other line of fulfill() runs completely unchanged against
+     * it (status transitions, reference_number, supplier_response).
+     */
+    public function test_fulfill_skips_ledger_credit_for_a_test_order(): void
+    {
+        $order = $this->paidOrder(['is_test' => true, 'platform_profit' => 150, 'reseller_profit' => 50]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'SANDBOX-1']))->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame(0, LedgerEntry::query()->count());
+    }
+
+    /**
      * Money genuinely received (payment_status stays Paid) — only
      * delivery didn't complete. No cash refund exists (ADR-004); this
      * needs admin resolution (retry or voucher), never silent auto-fix.

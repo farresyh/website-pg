@@ -33,7 +33,12 @@ class OrderController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Order::query()->with(['game:id,name', 'package:id,name']);
+        // ADR-018 decision #2: permanent, unconditional — never an
+        // admin-toggleable filter. This screen must be 100%
+        // trustworthy at a glance (e.g. the "Need Action" count); a
+        // sandbox order can only ever be seen/acted on via
+        // Middleware\SandboxOrderController's own is_test=true scope.
+        $query = Order::query()->where('is_test', false)->with(['game:id,name', 'package:id,name']);
 
         match ($request->query('status')) {
             'need_action' => $query
@@ -70,6 +75,14 @@ class OrderController extends Controller
      */
     public function show(Order $order): JsonResponse
     {
+        // ADR-018 decision #2: route-model binding alone can't scope by
+        // is_test (it only knows the primary key) — this stops a
+        // sandbox order id from ever being read through this
+        // real-money-facing controller.
+        if ($order->is_test) {
+            abort(404);
+        }
+
         return response()->json($order->load([
             'game', 'package', 'supplier', 'reseller',
             // ADR-017 decision #4: "Delivery Logs" — every resend
@@ -94,6 +107,14 @@ class OrderController extends Controller
      */
     public function retryDelivery(Order $order): JsonResponse
     {
+        // ADR-018 decision #2: a sandbox order id must never reach the
+        // real, queued GamevionAdapter path — it exists only for the
+        // sandbox's own synchronous FakeSupplierAdapter flow
+        // (Middleware\SandboxOrderController::resend()).
+        if ($order->is_test) {
+            abort(404);
+        }
+
         if ($order->delivery_status !== DeliveryStatus::Failed) {
             throw ValidationException::withMessages([
                 'delivery_status' => ['Only an order with a failed delivery can be retried.'],
@@ -115,6 +136,11 @@ class OrderController extends Controller
      */
     public function resend(ResendOrderDeliveryRequest $request, Order $order): JsonResponse
     {
+        // ADR-018 decision #2: same reasoning as retryDelivery() above.
+        if ($order->is_test) {
+            abort(404);
+        }
+
         if ($order->delivery_status !== DeliveryStatus::Failed) {
             throw ValidationException::withMessages([
                 'delivery_status' => ['Only an order with a failed delivery can be resent.'],

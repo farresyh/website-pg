@@ -133,9 +133,19 @@ final class OrderFulfillmentService
      * entries (PRD §8 LedgerEntry) — kept as two rows even though MVP
      * has only the single internal owner-reseller, so this never needs
      * to change when Phase 2 onboards real third-party resellers.
+     *
+     * ADR-018 decision #6: the single, explicit guard that keeps a
+     * sandbox order from ever reaching the real ledger — chosen over a
+     * parallel "sandbox fulfillment service" so every other line above
+     * this method stays 100% shared and unduplicated between real and
+     * test orders.
      */
     private function creditProfit(Order $order): void
     {
+        if ($order->is_test) {
+            return;
+        }
+
         $this->ledger->credit('platform', null, $order->platform_profit, 'order_profit', 'order', $order->id);
         $this->ledger->credit('reseller', $order->reseller_id, $order->reseller_profit, 'order_profit', 'order', $order->id);
     }

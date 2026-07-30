@@ -19,6 +19,7 @@ use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\PriceSyncController;
+use App\Http\Controllers\Middleware\SandboxOrderController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PlayerValidationController;
@@ -132,6 +133,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::post('/{order}/retry-delivery', [OrderController::class, 'retryDelivery']);
         Route::post('/{order}/resend', [OrderController::class, 'resend']);
+    });
+
+    // ADR-018: a middleware-only sandbox for exercising the real Order
+    // lifecycle (status transitions, resend, Delivery Logs) without
+    // touching real data or real money — fully separate from
+    // /orders above, every query unconditionally scoped to is_test.
+    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/sandbox')->group(function () {
+        Route::get('/', [SandboxOrderController::class, 'index']);
+        Route::post('/', [SandboxOrderController::class, 'store']);
+        Route::get('/{order}', [SandboxOrderController::class, 'show']);
+        Route::post('/{order}/resend', [SandboxOrderController::class, 'resend']);
+        Route::delete('/{order}', [SandboxOrderController::class, 'destroy']);
+        Route::delete('/', [SandboxOrderController::class, 'destroyAll']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion

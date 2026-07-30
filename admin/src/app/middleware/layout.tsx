@@ -25,6 +25,7 @@ const NAV_ITEMS: { label: string; href: string | null }[] = [
   { label: "Price Sync", href: "/middleware/price-sync" },
   { label: "Validators", href: "/middleware/validators" },
   { label: "Validate Player", href: null },
+  { label: "Sandbox", href: "/middleware/sandbox" },
   { label: "Request Logs", href: null },
   { label: "Developer / API Tester", href: null },
 ];

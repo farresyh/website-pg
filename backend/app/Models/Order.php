@@ -14,6 +14,7 @@ class Order extends Model
         'order_number',
         'checkout_idempotency_key',
         'reference_number',
+        'is_test',
         'customer_email',
         'customer_name',
         'customer_phone',
@@ -42,6 +43,7 @@ class Order extends Model
     ];
 
     protected $casts = [
+        'is_test' => 'boolean',
         'cost_price' => 'integer',
         'reseller_cost_price' => 'integer',
         'reseller_markup_pct' => 'decimal:2',

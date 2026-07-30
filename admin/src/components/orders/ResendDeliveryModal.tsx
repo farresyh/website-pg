@@ -9,6 +9,7 @@ import Button from "@/components/ui/button/Button";
 import { ApiError } from "@/lib/api-client";
 import { listGamePackages, type GamePackage } from "@/lib/games";
 import { resendOrderDelivery, validatePlayerForResend, type OrderDetail } from "@/lib/orders";
+import { resendSandboxOrderDelivery } from "@/lib/sandboxOrders";
 
 interface ResendDeliveryModalProps {
   isOpen: boolean;
@@ -16,6 +17,15 @@ interface ResendDeliveryModalProps {
   onResent: () => void;
   order: OrderDetail;
   token: string;
+  /**
+   * ADR-018 decision #5/#8: this modal is shared between /admin/orders
+   * and /middleware/sandbox — sandbox mode swaps the target endpoint
+   * and adds the outcome picker (simulate success, or failure with a
+   * canned error) that FakeSupplierAdapter needs. Everything else
+   * (package picker, live cost reconciliation, player-ID re-validation
+   * gate) behaves identically in both contexts.
+   */
+  sandbox?: boolean;
 }
 
 function formatRm(sen: number): string {
@@ -33,13 +43,19 @@ function formatRm(sen: number): string {
  * decision #6). Renders as a child of <Modal>, which unmounts while
  * closed — fresh state every open, same convention as CreateValidatorModal.
  */
-function ResendDeliveryFields({ onClose, onResent, order, token }: Omit<ResendDeliveryModalProps, "isOpen">) {
+function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit<ResendDeliveryModalProps, "isOpen">) {
   const [packages, setPackages] = useState<GamePackage[] | null>(null);
   const [packagesError, setPackagesError] = useState<string | null>(null);
   const [packageId, setPackageId] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ADR-018 decision #5: only meaningful in sandbox mode — the admin
+  // picks what FakeSupplierAdapter should return this attempt.
+  const [simulateSuccess, setSimulateSuccess] = useState(true);
+  const [errorCode, setErrorCode] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<"valid" | "invalid" | null>(null);
@@ -98,7 +114,17 @@ function ResendDeliveryFields({ onClose, onResent, order, token }: Omit<ResendDe
     setSubmitting(true);
     setError(null);
     try {
-      await resendOrderDelivery(token, order.id, { package_id: packageId, note: note.trim() || undefined });
+      if (sandbox) {
+        await resendSandboxOrderDelivery(token, order.id, {
+          package_id: packageId,
+          note: note.trim() || undefined,
+          simulate_success: simulateSuccess,
+          error_code: !simulateSuccess ? errorCode.trim() || undefined : undefined,
+          error_message: !simulateSuccess ? errorMessage.trim() || undefined : undefined,
+        });
+      } else {
+        await resendOrderDelivery(token, order.id, { package_id: packageId, note: note.trim() || undefined });
+      }
       onResent();
       onClose();
     } catch (err) {
@@ -190,6 +216,41 @@ function ResendDeliveryFields({ onClose, onResent, order, token }: Omit<ResendDe
           </div>
         )}
 
+        {sandbox && (
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <Label>Simulated Outcome (sandbox only)</Label>
+            <div className="mt-1 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSimulateSuccess(true)}
+                className={`rounded-lg px-3 py-1.5 text-sm ${simulateSuccess ? "bg-success-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+              >
+                Simulate Success
+              </button>
+              <button
+                type="button"
+                onClick={() => setSimulateSuccess(false)}
+                className={`rounded-lg px-3 py-1.5 text-sm ${!simulateSuccess ? "bg-error-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+              >
+                Simulate Failure
+              </button>
+            </div>
+
+            {!simulateSuccess && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <Label htmlFor="sandbox_error_code">Error Code (Optional)</Label>
+                  <Input id="sandbox_error_code" placeholder="e.g. insufficient_balance" value={errorCode} onChange={(e) => setErrorCode(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="sandbox_error_message">Error Message (Optional)</Label>
+                  <Input id="sandbox_error_message" placeholder="e.g. Simulated insufficient supplier balance" value={errorMessage} onChange={(e) => setErrorMessage(e.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <Label htmlFor="resend_note">Note (Optional)</Label>
           <Input id="resend_note" placeholder="e.g. Customer requested a bigger pack" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -200,7 +261,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token }: Omit<ResendDe
             Cancel
           </Button>
           <Button type="submit" disabled={!canSubmit}>
-            {submitting ? "Queuing…" : isSamePackage ? "Retry Delivery" : "Resend Delivery"}
+            {submitting ? (sandbox ? "Submitting…" : "Queuing…") : isSamePackage ? "Retry Delivery" : "Resend Delivery"}
           </Button>
         </div>
       </form>
@@ -208,10 +269,10 @@ function ResendDeliveryFields({ onClose, onResent, order, token }: Omit<ResendDe
   );
 }
 
-export default function ResendDeliveryModal({ isOpen, onClose, onResent, order, token }: ResendDeliveryModalProps) {
+export default function ResendDeliveryModal({ isOpen, onClose, onResent, order, token, sandbox }: ResendDeliveryModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
-      {isOpen && <ResendDeliveryFields onClose={onClose} onResent={onResent} order={order} token={token} />}
+      {isOpen && <ResendDeliveryFields onClose={onClose} onResent={onResent} order={order} token={token} sandbox={sandbox} />}
     </Modal>
   );
 }

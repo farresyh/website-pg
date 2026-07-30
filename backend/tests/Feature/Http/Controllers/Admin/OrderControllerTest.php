@@ -348,4 +348,54 @@ class OrderControllerTest extends TestCase
         $this->assertSame(50, $response->json('resend_attempts.0.price_diff_sen'));
         $this->assertSame('Admin User', $response->json('resend_attempts.0.triggered_by'));
     }
+
+    /**
+     * ADR-018 decision #2: permanent, unconditional exclusion — a
+     * sandbox order must never appear on this real, money-critical
+     * screen, regardless of what status filter is applied.
+     */
+    public function test_index_never_includes_sandbox_orders(): void
+    {
+        $this->order(['order_number' => 'KRS-SANDBOX-1', 'is_test' => true]);
+        $this->order(['order_number' => 'KRS-REAL-1', 'is_test' => false]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-REAL-1', $response->json('data.0.order_number'));
+    }
+
+    public function test_show_404s_for_a_sandbox_order(): void
+    {
+        $order = $this->order(['is_test' => true]);
+        $this->actingAsAdmin();
+
+        $this->getJson("/api/orders/{$order->id}")->assertNotFound();
+    }
+
+    public function test_retry_delivery_404s_for_a_sandbox_order(): void
+    {
+        $order = $this->order(['is_test' => true, 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertNotFound();
+    }
+
+    public function test_resend_404s_for_a_sandbox_order(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $order = $this->order([
+            'is_test' => true,
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        $this->actingAsAdmin();
+
+        $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id])->assertNotFound();
+    }
 }

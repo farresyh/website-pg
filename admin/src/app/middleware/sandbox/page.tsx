@@ -1,19 +1,15 @@
 "use client";
 
 /**
- * ORD-1..7 — list with ORD-2's status filters + search (ORD-1), a
- * detail view (ORD-6: customer info, game/package, payment info,
- * supplier response), and a single "Resend Delivery" action (ADR-017)
- * that folds ORD-7's original plain retry into the same flow — the
- * package picker defaults to the order's own package (a same-package
- * resend behaves like the old "Retry Delivery" button did), with the
- * option to swap to a different same-game package. The plain
- * `POST /api/orders/{order}/retry-delivery` endpoint (ADR-014) still
- * exists on the backend, just no longer has its own separate button
- * here — two buttons for "try to fix a failed delivery" was more
- * confusing than useful (founder feedback, docs/prd.md §14). Voucher
- * issuance (the other ORD-7 action) and export (ORD-5) remain a later
- * pass — see docs/prd.md §14.
+ * ADR-018: a middleware-only tool for exercising the real Order
+ * lifecycle (status transitions, OrderResendService's validation
+ * logic, order_resend_attempts audit trail, this exact UI) without
+ * touching real data or real money. Every order here is created
+ * directly at delivery_status=failed (decision #4) so it's instantly
+ * usable with the same Resend Delivery flow /admin/orders uses —
+ * decision #8's shared components (OrderDetailCards, DeliveryLogsTable,
+ * ResendDeliveryModal in sandbox mode) render identically to that
+ * screen, against this page's own is_test-scoped endpoints.
  */
 
 import { useEffect, useState } from "react";
@@ -24,19 +20,20 @@ import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
 import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder } from "@/lib/orders";
+import { type OrderListItem, type OrderPage } from "@/lib/orders";
+import {
+  type SandboxOrderDetail,
+  type CreateSandboxOrderValues,
+  listSandboxOrders,
+  getSandboxOrder,
+  createSandboxOrder,
+  deleteSandboxOrder,
+  deleteAllSandboxOrders,
+} from "@/lib/sandboxOrders";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
-
-const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "need_action", label: "Need Action" },
-  { value: "processing", label: "Processing" },
-  { value: "completed", label: "Completed" },
-  { value: "awaiting_payment", label: "Awaiting Payment" },
-  { value: "today", label: "Today" },
-];
+import CreateSandboxOrderModal from "@/components/middleware/CreateSandboxOrderModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -55,33 +52,67 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
   failed: "error",
 };
 
-export default function OrdersPage() {
+export default function SandboxOrdersPage() {
   const router = useRouter();
-  // Read in an effect, not render body — see UserDropdown.tsx for why.
   const [session, setSession] = useState<SessionPayload | null>(null);
 
-  const [status, setStatus] = useState<OrderStatusFilter>("all");
   const [search, setSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [page, setPage] = useState<OrderPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [selected, setSelected] = useState<OrderDetail | null>(null);
+  const [selected, setSelected] = useState<SandboxOrderDetail | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [resendModalOpen, setResendModalOpen] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+
+  async function refreshList() {
+    if (!session) return;
+    listSandboxOrders(session.token, { search: search || undefined, page: pageNumber })
+      .then(setPage)
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load test orders."));
+  }
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
     setResendMessage(null);
     try {
-      setSelected(await getOrder(token, id));
+      setSelected(await getSandboxOrder(token, id));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load this order.");
+      setError(err instanceof ApiError ? err.message : "Could not load this test order.");
     }
   }
 
+  async function refreshSelected() {
+    if (!session || !selected) return;
+    setSelected(await getSandboxOrder(session.token, selected.id));
+  }
+
   function handleResent() {
-    setResendMessage("Resend queued — refresh in a moment to see the outcome and the new Delivery Logs entry.");
+    setResendMessage("Resend complete — see the outcome below and the new Delivery Logs entry.");
+    refreshSelected();
+  }
+
+  async function handleCreate(values: CreateSandboxOrderValues) {
+    if (!session) return;
+    await createSandboxOrder(session.token, values);
+    setCreateModalOpen(false);
+    refreshList();
+  }
+
+  async function handleDelete(id: number) {
+    if (!session) return;
+    await deleteSandboxOrder(session.token, id);
+    setSelected(null);
+    refreshList();
+  }
+
+  async function handleDeleteAll() {
+    if (!session) return;
+    if (!confirm("Delete every test order? This cannot be undone.")) return;
+    await deleteAllSandboxOrders(session.token);
+    setSelected(null);
+    refreshList();
   }
 
   useEffect(() => {
@@ -97,77 +128,93 @@ export default function OrdersPage() {
   useEffect(() => {
     setPageNumber(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, search]);
+  }, [search]);
 
   useEffect(() => {
-    if (!session) return;
-
-    listOrders(session.token, { status, search: search || undefined, page: pageNumber })
-      .then(setPage)
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Could not load orders.");
-      });
+    refreshList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, status, search, pageNumber]);
+  }, [session, search, pageNumber]);
 
   if (selected) {
     return (
       <>
-      <div>
-        <button
-          onClick={() => setSelected(null)}
-          className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
-        >
-          ← Back to orders
-        </button>
+        <div>
+          <button
+            onClick={() => {
+              setSelected(null);
+              // Sandbox resends are synchronous (unlike the real,
+              // queued flow /admin/orders shows) — the list's delivery
+              // badge would otherwise stay stale until the next
+              // search/page change, which is avoidable here since the
+              // outcome is already known by the time this is clicked.
+              refreshList();
+            }}
+            className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+          >
+            ← Back to test orders
+          </button>
 
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{selected.order_number}</h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Badge size="sm" color={paymentStatusColor[selected.payment_status]}>
-              payment: {selected.payment_status}
-            </Badge>
-            <Badge size="sm" color={deliveryStatusColor[selected.delivery_status]}>
-              delivery: {selected.delivery_status}
-            </Badge>
-          </p>
-          {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. Only a failed delivery can be resent — mirrors the backend guard exactly. */}
-          {selected.delivery_status === "failed" && (
+          <div className="mb-6">
+            <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{selected.order_number}</h1>
+            <p className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <Badge size="sm" color="warning">sandbox</Badge>
+              <Badge size="sm" color={paymentStatusColor[selected.payment_status]}>
+                payment: {selected.payment_status}
+              </Badge>
+              <Badge size="sm" color={deliveryStatusColor[selected.delivery_status]}>
+                delivery: {selected.delivery_status}
+              </Badge>
+            </p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Button size="sm" onClick={() => setResendModalOpen(true)}>
-                Resend Delivery…
+              {selected.delivery_status === "failed" && (
+                <Button size="sm" onClick={() => setResendModalOpen(true)}>
+                  Resend Delivery…
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => handleDelete(selected.id)}>
+                Delete Test Order
               </Button>
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
             </div>
-          )}
+          </div>
+
+          <OrderDetailCards order={selected} />
+          <DeliveryLogsTable attempts={selected.resend_attempts} />
         </div>
 
-        <OrderDetailCards order={selected} />
-
-        {/* ADR-017 decision #4: every resend attempt, not just the latest supplier_response. */}
-        <DeliveryLogsTable attempts={selected.resend_attempts} />
-      </div>
-
-      {session && (
-        <ResendDeliveryModal
-          isOpen={resendModalOpen}
-          onClose={() => setResendModalOpen(false)}
-          onResent={handleResent}
-          order={selected}
-          token={session.token}
-        />
-      )}
-    </>
+        {session && (
+          <ResendDeliveryModal
+            isOpen={resendModalOpen}
+            onClose={() => setResendModalOpen(false)}
+            onResent={handleResent}
+            order={selected}
+            token={session.token}
+            sandbox
+          />
+        )}
+      </>
     );
   }
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Orders</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Every order created via checkout — real customer purchases only.
-        </p>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Sandbox Test Orders</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            ADR-018 — real Order rows, fully isolated from real data and real money. Never visible on /admin/orders,
+            never touches the real ledger, delivery is always simulated (FakeSupplierAdapter), never the real
+            Gamevion.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={handleDeleteAll}>
+            Delete All Test Orders
+          </Button>
+          <Button size="sm" onClick={() => setCreateModalOpen(true)}>
+            Create Test Order…
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -176,25 +223,14 @@ export default function OrdersPage() {
         </p>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4">
         <input
           type="text"
-          placeholder="Search order # or customer email…"
+          placeholder="Search order #…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
-        <div className="flex gap-2">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatus(f.value)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${status === f.value ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
@@ -203,10 +239,8 @@ export default function OrdersPage() {
             <TableHeader className="border-b border-gray-100 dark:border-gray-800">
               <TableRow>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order #</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game / Package</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Amount</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Payment</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Delivery</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
@@ -216,15 +250,11 @@ export default function OrdersPage() {
               {page?.data.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{order.order_number}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{order.customer_email}</TableCell>
                   <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                     {order.game?.name ?? "—"}
                     {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
                   </TableCell>
                   <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={paymentStatusColor[order.payment_status]}>{order.payment_status}</Badge>
-                  </TableCell>
                   <TableCell className="px-5 py-4 text-theme-sm">
                     <Badge size="sm" color={deliveryStatusColor[order.delivery_status]}>{order.delivery_status}</Badge>
                   </TableCell>
@@ -242,7 +272,7 @@ export default function OrdersPage() {
           </Table>
 
           {page?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No orders found.</p>
+            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No test orders yet.</p>
           )}
           {page === null && !error && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
@@ -262,6 +292,15 @@ export default function OrdersPage() {
             </Button>
           </div>
         </div>
+      )}
+
+      {session && (
+        <CreateSandboxOrderModal
+          isOpen={createModalOpen}
+          onClose={() => setCreateModalOpen(false)}
+          onSubmit={handleCreate}
+          token={session.token}
+        />
       )}
     </div>
   );
