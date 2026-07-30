@@ -33,6 +33,10 @@ final class ResendOrderDeliveryJob implements ShouldQueue
         public readonly ?string $note,
         public readonly ?string $triggeredBy,
     ) {
+        // ADR-020 decision #5 — same queue as FulfillOrderJob, same
+        // reasoning. onQueue(), not a redeclared $queue property — see
+        // FulfillOrderJob's own constructor for why.
+        $this->onQueue('orders');
     }
 
     public function backoff(): array

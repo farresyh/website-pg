@@ -40,6 +40,13 @@ final class SyncSupplierPricesJob implements ShouldQueue
     public function __construct(
         public readonly PriceSyncRun $run,
     ) {
+        // ADR-020 decision #5 — deliberately its own queue, separate
+        // from FulfillOrderJob/ResendOrderDeliveryJob's `orders` queue:
+        // this job can run long over many catalog items, and must never
+        // delay an urgent, money-touching order job sitting behind it
+        // in the same queue. onQueue(), not a redeclared $queue property
+        // — see FulfillOrderJob's own constructor for why.
+        $this->onQueue('price-sync');
     }
 
     public function handle(ProductSyncService $productSync, PackagePriceSyncService $packageSync, SupplierAdapter $adapter): void

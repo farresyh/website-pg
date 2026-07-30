@@ -1,0 +1,116 @@
+# ADR-020 Phase 1 (decision #9) — Phase 1 only. The SSH-deploy job
+# (docker compose pull && up -d, migrate, GET /api/health rollback check)
+# is deliberately NOT included here — it needs a real droplet IP/SSH key
+# that don't exist yet (ADR-020 decision #10). Add it once those exist,
+# rather than committing a stub job that can't run.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+      - run: composer install --no-progress --prefer-dist
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - run: php artisan test
+
+  # This is the mechanism that already caught the MySQL 64-char
+  # identifier-length bug twice (ADR-021 addendum, docs/adr.md) — running
+  # it on every push is the permanent guardrail against a 3rd instance,
+  # which is why this session deliberately didn't build a separate
+  # bespoke static-analysis test for the same thing.
+  backend-concurrency:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: kerox
+          MYSQL_USER: kerox
+          MYSQL_PASSWORD: kerox
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+      - run: composer install --no-progress --prefer-dist
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - run: php artisan test -c phpunit.concurrency.xml
+
+  admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: npx eslint .
+
+  storefront:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: storefront
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: storefront/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: npx eslint .
+
+  # Needs DIGITALOCEAN_ACCESS_TOKEN (repo secret) and a real DO Container
+  # Registry to already exist — neither is provisioned yet. This job is
+  # structurally complete but will fail at the doctl auth step until both
+  # exist; that's an explicit, separate action, not part of this pass.
+  build-and-push:
+    if: github.ref == 'refs/heads/main'
+    needs: [backend-tests, backend-concurrency, admin, storefront]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - run: doctl registry login --expiry-seconds 600
+      - run: docker build -t registry.digitalocean.com/kedairuncitsoloz/backend:${{ github.sha }} ./backend
+      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} -t registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }} ./admin
+      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} -t registry.digitalocean.com/kedairuncitsoloz/storefront:${{ github.sha }} ./storefront
+      - run: docker push registry.digitalocean.com/kedairuncitsoloz/backend:${{ github.sha }}
+      - run: docker push registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }}
+      - run: docker push registry.digitalocean.com/kedairuncitsoloz/storefront:${{ github.sha }}

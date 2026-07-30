@@ -101,6 +101,14 @@ class FulfillOrderJobTest extends TestCase
         $this->assertSame([10, 30, 60], $job->backoff());
     }
 
+    /** ADR-020 decision #5 — dedicated queue so a slow Price Sync run can never head-of-line-block this. */
+    public function test_runs_on_the_orders_queue(): void
+    {
+        $job = new FulfillOrderJob($this->paidOrder());
+
+        $this->assertSame('orders', $job->queue);
+    }
+
     public function test_handle_fulfills_the_order(): void
     {
         $order = $this->paidOrder();

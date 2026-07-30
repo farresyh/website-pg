@@ -121,6 +121,15 @@ class ResendOrderDeliveryJobTest extends TestCase
         $this->assertSame([10, 30, 60], $job->backoff());
     }
 
+    /** ADR-020 decision #5 — same queue as FulfillOrderJob, same reasoning. */
+    public function test_runs_on_the_orders_queue(): void
+    {
+        [$order, $package] = $this->failedOrderWithPackage();
+        $job = new ResendOrderDeliveryJob($order, $package->id, null, 'Admin');
+
+        $this->assertSame('orders', $job->queue);
+    }
+
     public function test_handle_resends_the_order_against_the_given_package(): void
     {
         [$order, $package] = $this->failedOrderWithPackage();

@@ -40,6 +40,13 @@ final class FulfillOrderJob implements ShouldQueue
     public function __construct(
         public readonly Order $order,
     ) {
+        // ADR-020 decision #5 — money-critical/customer-facing, kept on
+        // its own queue so a slow SyncSupplierPricesJob run can never
+        // head-of-line-block this. onQueue(), not a redeclared $queue
+        // property — Queueable already declares that property, and PHP
+        // rejects a class re-declaring a trait property with a
+        // different default.
+        $this->onQueue('orders');
     }
 
     public function backoff(): array

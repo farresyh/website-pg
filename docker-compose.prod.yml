@@ -1,0 +1,92 @@
+# ADR-020 Phase 1 — production runtime stack. Distinct from
+# backend/docker-compose.yml (ADR-010, local-dev-only real MySQL for the
+# concurrency test suite) — that file is untouched and unrelated to this one.
+#
+# No `mysql` service: production DB is DigitalOcean Managed MySQL, off-box
+# (ADR-020 decision #2). No object-storage service: DigitalOcean Spaces is
+# external too. Cloudflare Origin CA/SSL termination happens on the
+# droplet's own host-level Nginx (ADR-020 decision #8) reverse-proxying to
+# this stack's `nginx` service's published port — not configured here,
+# since it needs the real droplet's filesystem to set up.
+
+services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - php-fpm
+    ports:
+      - "8080:80"
+    volumes:
+      - ./backend/public:/var/www/html/public:ro
+      - ./backend/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+  php-fpm:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/public:/var/www/html/public:ro
+
+  # ADR-020 decision #5 — split by queue so a slow SyncSupplierPricesJob
+  # run (queue `price-sync`) can never head-of-line-block an urgent
+  # FulfillOrderJob/ResendOrderDeliveryJob (queue `orders`). Flags per this
+  # session's own research against Laravel's official queue:work docs.
+  # 1 process each for now (zero real traffic today, per ADR-021) — scale
+  # `queue-worker-orders` via `docker compose up -d --scale
+  # queue-worker-orders=2` once real order volume justifies it, no code
+  # change needed to do that.
+  queue-worker-orders:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    command: php artisan queue:work --queue=orders --tries=3 --sleep=3 --max-jobs=1000 --max-time=3600
+
+  queue-worker-price-sync:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    command: php artisan queue:work --queue=price-sync --tries=1 --sleep=3 --max-jobs=1000 --max-time=3600
+
+  # NEXT_PUBLIC_API_URL is the one env var both Next.js apps actually read
+  # (grep-confirmed) — passed as a build arg since it's inlined into the
+  # client bundle at build time, not read at container-start (see each
+  # Dockerfile's own comment). Compose reads it from a `.env` file in this
+  # same directory (Docker Compose's own convention, distinct from
+  # backend/admin/storefront's own .env.local files) — not committed here.
+  admin:
+    build:
+      context: ./admin
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./admin/.env.local
+
+  storefront:
+    build:
+      context: ./storefront
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    env_file:
+      - ./storefront/.env.local
+
+  # ADR-020 decision #3 — cache-only, never the queue driver (queue stays
+  # on the `database` driver, per ADR-014 decision #1, now backed by
+  # Managed MySQL). No published port — only reachable over the compose
+  # network.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no

@@ -116,4 +116,13 @@ class SyncSupplierPricesJobTest extends TestCase
         $this->assertSame('failed', $run->status);
         $this->assertNotNull($run->error_message);
     }
+
+    /** ADR-020 decision #5 — its own queue, deliberately separate from the `orders` queue. */
+    public function test_runs_on_the_price_sync_queue(): void
+    {
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+        $job = new SyncSupplierPricesJob($run);
+
+        $this->assertSame('price-sync', $job->queue);
+    }
 }
