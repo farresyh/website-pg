@@ -11,15 +11,34 @@ use Illuminate\Database\Seeder;
  * (fetched live from docs.xendit.co/docs/available-payment-channels,
  * 2026-07-25 — the same static reference list referenced in
  * docs/prd.md §14's Payment Methods design-discussion note). All rows
- * start `is_active = false` and default fee rates: Xendit has no API
- * to report which channels are actually enabled for this merchant
- * account or the contracted rate, so admin must confirm each one
- * (Dashboard or "Test This Channel") and set the real rate before
- * flipping it on. FPX flat-fee default and card/e-wallet
- * percentage+flat default mirror the same figures the deleted
- * config/checkout.php stopgap used (already proven against
- * CheckoutTotalServiceTest's worked examples) — a starting point, not
- * a confirmed contracted rate for every individual channel.
+ * start `is_active = false`: Xendit has no API to report which
+ * channels are actually enabled for this merchant account, so admin
+ * must confirm each one (Dashboard or "Test This Channel") before
+ * flipping it on.
+ *
+ * **Fee defaults corrected 2026-07-30** against Xendit's own published
+ * Malaysia rate card (xendit.co/en/pricing, xendit.co/en-my/malaysia —
+ * fetched live, not the deleted config/checkout.php stopgap's guessed
+ * figures the previous version of this seeder carried forward). Xendit
+ * itself notes actual contracted rates may differ per merchant
+ * agreement/volume — this is the public list price, a much better
+ * starting point than the prior placeholder, still not a substitute
+ * for admin confirming the real contracted rate per channel.
+ *
+ * Two known gaps this correction does not (and cannot) close:
+ * - **`CARDS` is one Xendit channel code covering three real rate
+ *   tiers** (domestic debit 1.90%, domestic credit 2.00%,
+ *   international 3.80%, all +RM0.90) — which tier applies is decided
+ *   by the card presented at payment time, not selectable in advance,
+ *   so this single row can only approximate one figure (kept at the
+ *   debit/floor rate, 1.90%). Real fees on credit/international cards
+ *   will exceed what this row reports.
+ * - **`AMBANK_VIRTUAL_ACCOUNT` stays at 0%/RM0, still deliberately
+ *   unconfirmed** — Xendit's published rate is 0.50% (minimum RM1.00)
+ *   + RM0.90, but `percentage_rate`/`flat_fee_sen` has no minimum-floor
+ *   concept, so a naive 0.50%+90sen would understate the fee on small
+ *   transactions. Needs a schema decision, not a guessed number, before
+ *   this channel is ever activated.
  */
 class PaymentMethodSeeder extends Seeder
 {
@@ -75,16 +94,33 @@ class PaymentMethodSeeder extends Seeder
         'WECHATPAY' => 'WeChat Pay',
     ];
 
+    /**
+     * Per-channel e-wallet percentage rate — Xendit prices each
+     * e-wallet differently (xendit.co/en/pricing, 2026-07-30), unlike
+     * FPX where only the personal/business split matters.
+     */
+    private const EWALLET_RATES = [
+        'GRABPAY' => 2.00,
+        'TOUCHNGO' => 1.80,
+        'SHOPEEPAY' => 2.50,
+        'WECHATPAY' => 2.50,
+    ];
+
     public function run(): void
     {
         foreach (self::FPX_BANKS as $code => $label) {
-            $this->upsert($code, $label, 'fpx', percentageRate: 0.0, flatFeeSen: 210);
+            // Personal RM1.20 + RM0.90 = RM2.10; Business RM2.00 + RM0.90 = RM2.90
+            // (xendit.co/en/pricing, 2026-07-30).
+            $flatFeeSen = str_ends_with($code, '_BUSINESS') ? 290 : 210;
+            $this->upsert($code, $label, 'fpx', percentageRate: 0.0, flatFeeSen: $flatFeeSen);
         }
 
         foreach (self::EWALLETS as $code => $label) {
-            $this->upsert($code, $label, 'ewallet', percentageRate: 1.9, flatFeeSen: 90);
+            $this->upsert($code, $label, 'ewallet', percentageRate: self::EWALLET_RATES[$code], flatFeeSen: 90);
         }
 
+        // Domestic debit rate — see class doc comment for why credit
+        // (2.00%) and international (3.80%) aren't modeled separately.
         $this->upsert('CARDS', 'Card (Visa, Mastercard, etc.)', 'card', percentageRate: 1.9, flatFeeSen: 90);
 
         // Fee rate genuinely unconfirmed for this one — admin must set
