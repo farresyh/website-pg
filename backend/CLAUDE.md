@@ -62,4 +62,9 @@ php artisan app:gamevion-smoke-test                         # hits the real Game
 Migrations: verify new foreign-key columns actually get a standalone index on
 real MySQL via `SHOW INDEX FROM <table>` — `foreignId()->constrained()` has
 already been found, once, to not reliably leave one on its own (see the
-`packages.supplier_id` fix, `docs/adr.md`).
+`packages.supplier_id` fix, `docs/adr.md`). Also check any new multi-column
+`unique()`/`index()` (or a long table name + long FK column) against MySQL's
+64-character identifier limit — Laravel auto-names these as
+`table_col1_col2..._suffix`, sqlite never enforces the limit so `php artisan
+test` won't catch it, and this has already bitten `player_region_mappings`
+and `player_validations` once each (see ADR-021's addendum, `docs/adr.md`).
