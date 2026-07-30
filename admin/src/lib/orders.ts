@@ -67,7 +67,7 @@ export interface OrderPage {
   total: number;
 }
 
-export type OrderStatusFilter = "all" | "need_action" | "processing" | "completed" | "today";
+export type OrderStatusFilter = "all" | "need_action" | "processing" | "completed" | "awaiting_payment" | "today";
 
 export function listOrders(
   token: string,

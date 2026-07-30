@@ -25,8 +25,11 @@ class OrderController extends Controller
     /**
      * `status` (ORD-2): need_action (paid but delivery failed —
      * customer's money is in, credits never arrived), processing
-     * (delivery attempt in flight), completed (delivered), today,
-     * or omitted for all.
+     * (delivery attempt in flight), completed (delivered),
+     * awaiting_payment (still pending 30+ minutes after checkout —
+     * ADR-021/PAY-3's own visibility gap for a webhook that never
+     * arrived; ReconcilePendingPaymentsCommand acts on the same window),
+     * today, or omitted for all.
      */
     public function index(Request $request): JsonResponse
     {
@@ -38,6 +41,9 @@ class OrderController extends Controller
                 ->where('delivery_status', DeliveryStatus::Failed->value),
             'processing' => $query->where('delivery_status', DeliveryStatus::Processing->value),
             'completed' => $query->where('delivery_status', DeliveryStatus::Delivered->value),
+            'awaiting_payment' => $query
+                ->where('payment_status', PaymentStatus::Pending->value)
+                ->where('created_at', '<=', now()->subMinutes(30)),
             'today' => $query->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()]),
             default => null,
         };

@@ -32,6 +32,7 @@ const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "need_action", label: "Need Action" },
   { value: "processing", label: "Processing" },
   { value: "completed", label: "Completed" },
+  { value: "awaiting_payment", label: "Awaiting Payment" },
   { value: "today", label: "Today" },
 ];
 

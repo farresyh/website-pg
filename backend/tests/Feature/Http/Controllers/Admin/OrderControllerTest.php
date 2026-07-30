@@ -105,6 +105,28 @@ class OrderControllerTest extends TestCase
         $this->assertSame('KRS-DONE', $response->json('data.0.order_number'));
     }
 
+    /**
+     * ADR-021 (PAY-3) — surfaces an order whose Xendit webhook never
+     * arrived. Matches the same 30-minute window
+     * ReconcilePendingPaymentsCommand itself acts on.
+     */
+    public function test_index_can_filter_by_awaiting_payment(): void
+    {
+        $stuck = $this->order(['order_number' => 'KRS-STUCK-PENDING']);
+        $stuck->forceFill(['created_at' => now()->subMinutes(45)])->save();
+        $this->order(['order_number' => 'KRS-FRESH-PENDING']); // just checked out, webhook hasn't had time to arrive yet
+        $this->order(['order_number' => 'KRS-ALREADY-PAID', 'payment_status' => PaymentStatus::Paid->value])
+            ->forceFill(['created_at' => now()->subMinutes(45)])->save();
+
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=awaiting_payment');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-STUCK-PENDING', $response->json('data.0.order_number'));
+    }
+
     public function test_index_can_filter_by_today(): void
     {
         $today = $this->order(['order_number' => 'KRS-TODAY']);

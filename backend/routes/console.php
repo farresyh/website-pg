@@ -26,3 +26,20 @@ Schedule::call(function () {
 })->cron("*/{$priceSyncIntervalMinutes} * * * *")
     ->name('price-sync')
     ->withoutOverlapping();
+
+// ADR-021 (PAY-3) — same inert-until-real-cron pattern as Price Sync
+// above: activates for free once a real OS cron exists on a deployed
+// host, a no-op locally today. Catches orders whose Xendit webhook
+// never arrived — see ReconcilePendingPaymentsCommand's own docblock.
+Schedule::call(fn () => Artisan::call('app:reconcile-pending-payments'))
+    ->cron('*/15 * * * *')
+    ->name('payment-reconciliation')
+    ->withoutOverlapping();
+
+// ADR-021 — same inert-until-real-cron pattern as above. Prunes
+// player_validations PII past its retention window — see
+// PrunePlayerValidationsCommand's own docblock.
+Schedule::call(fn () => Artisan::call('app:prune-player-validations'))
+    ->daily()
+    ->name('player-validation-pruning')
+    ->withoutOverlapping();

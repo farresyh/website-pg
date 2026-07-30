@@ -116,8 +116,15 @@ return [
     // CheckoutController's server-side re-check. Loose enough that a
     // customer moving through the storefront wizard at normal pace
     // never gets rejected for their own genuine validation going stale.
+    // retention_days (ADR-021): a player_validations row is written on
+    // every storefront validation attempt, not just completed orders, so
+    // it accumulates PII faster than real order volume — 7 days, grilled
+    // down from an initial 30-day proposal, is judged enough for a
+    // realistic support/troubleshooting window. See
+    // PrunePlayerValidationsCommand.
     'player_validation' => [
         'checkout_window_minutes' => (int) env('PLAYER_VALIDATION_CHECKOUT_WINDOW_MINUTES', 30),
+        'retention_days' => (int) env('PLAYER_VALIDATION_RETENTION_DAYS', 7),
     ],
 
     // Same STOREFRONT_URL env var cors.php already reads (may be
@@ -127,6 +134,20 @@ return [
     // CheckoutService::requestPayment().
     'storefront' => [
         'url' => explode(',', env('STOREFRONT_URL', 'http://localhost:3001'))[0],
+    ],
+
+    // ADR-021 (PAY-3) — ReconcilePendingPaymentsCommand's own thresholds.
+    // pending_after_minutes: how stale a payment_status=pending order must
+    // be before it's even worth asking Xendit about (a checkout from 30
+    // seconds ago just hasn't had its webhook arrive yet — not a real gap).
+    // flag_after_hours: the fallback safety-net cap — no terminal answer
+    // from Xendit after this long means "flag for admin review", never
+    // "assume failed", since the gateway state might still be genuinely
+    // open (grilled explicitly in ADR-021, not decided by elapsed time
+    // alone).
+    'payment_reconciliation' => [
+        'pending_after_minutes' => (int) env('PAYMENT_RECONCILIATION_PENDING_AFTER_MINUTES', 30),
+        'flag_after_hours' => (int) env('PAYMENT_RECONCILIATION_FLAG_AFTER_HOURS', 24),
     ],
 
 ];
