@@ -511,3 +511,49 @@ Shipped and verified: migration + `Order::$fillable`, `CreateCheckoutRequest` (`
 - Decision 9's Phase 2 (Playwright E2E) is the explicit next priority once this ADR is settled — do not let it quietly slide indefinitely the way a "someday" item can.
 - This ADR is independent of, and does not change, `ADR-019`'s own fix-now list (login rate-limiting, Xendit idempotency key, the `SupplierCircuitBreaker`, etc.) — those remain separately tracked pure-code items with no infra dependency; don't conflate "production host is now decided" with "those are now done."
 - Implementation (Dockerfiles, Compose file, GitHub Actions workflow, actual droplet/Managed-DB/Spaces provisioning) is explicitly deferred to a new session, per the founder's own instruction this session.
+
+---
+
+## ADR-021: Next-session priority re-sequencing — payment reconciliation before deployment infra
+
+**Status:** Accepted — 2026-07-30 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, following a deeper read-only audit this session)
+
+**Context:** `prd.md`'s own "NEXT SESSION" pointer (2026-07-29) recorded the founder's stated backlog order: (1) **ADR-020 Phase 1** infra (Dockerfiles/`docker-compose.prod.yml`/GitHub Actions CI), (2) **Playwright E2E**, (3) the **MySQL 64-char identifier-length migration sweep**. A deeper read-only audit this session (prompted by the founder explicitly asking to be challenged on this ordering, not have it echoed back) surfaced findings not previously connected to each other:
+
+- `Admin\OrderController::index()`'s `status` filter (`need_action`/`processing`/`completed`/`today`) has **no way to surface an order stuck at `payment_status=pending`** — a paid-but-undelivered order is at least visible via `need_action`; a payment whose webhook never arrived is invisible except by scrolling the entire unfiltered list. This means `foundation-security.md`'s already-flagged "no reconciliation job (ORD-10/PAY-3)" gap isn't just "no automation" — there is currently **no manual compensating visibility either** for this specific failure mode.
+- No git remote is configured for this repository at all (`git remote -v` empty, a pre-existing condition already noted in ADR-014's 2026-07-24 security review) — a concrete, previously-uncalled-out blocker specifically for ADR-020 Phase 1's CI/CD half, since GitHub Actions needs the repo hosted on GitHub to ever run.
+- Zero Dockerfiles, no `docker-compose.prod.yml`, no `.github/workflows/` exist anywhere in the repo — ADR-020 Phase 1 is 100% unstarted, confirmed by direct inspection, not assumed.
+- The MySQL 64-char identifier-length bug pattern (`ADR-019`'s addendum) has already been hit twice by accident (`player_region_mappings`, `player_validations`), both only surfacing on real MySQL, never sqlite.
+- `player_validations` rows (customer nickname, country, player/server ID) are written on every validation attempt and never pruned — no TTL, no scheduled cleanup command exists anywhere in `app/Console`.
+
+Grilled directly with the founder on the premise underlying the reordering: the storefront is **not** live for real customers today — the one real end-to-end order proven `delivered` (ADR-006's addendum) was the founder's own deliberate test, not organic traffic. Go-live has no fixed date and depends on how quickly the rest of the system is finished. This means the reconciliation gap is **not** an active, ongoing money-loss event today (an earlier framing this ADR corrects) — it is cheap insurance against an undated but possibly-imminent go-live, which is a different, weaker claim than "live risk now," and changes how strongly it should outrank infra work.
+
+**Decision:**
+
+1. **Revised next-session priority order:** (1) Payment reconciliation job — **PAY-3 scope only**, see Decision 2; (2) a small hardening batch — the MySQL 64-char sweep + a new `player_validations` pruning command, see Decision 3; (3) ADR-020 Phase 1 infra, now unblocked on the git-remote question (Decision 4); (4) Playwright E2E, kept sequenced after Phase 1 so it can run in CI immediately rather than being retrofitted in later — this part of the founder's original order is unchanged, only its position relative to items 1–2 moves.
+
+2. **Reconciliation job — PAY-3 (payment-side) only, ORD-10 (delivery-side/Gamevion) explicitly deferred.** Delivery-side ambiguity already has a partial compensating tool — an admin can manually trigger "Resend Delivery" on any `need_action` order — so its visibility gap is judged less sharp than payment-side's current zero-visibility. Design, grilled point by point:
+   - **Seam discipline:** the job resolves the order's gateway via the existing `PaymentGatewayFactory` (the same per-channel resolution `CheckoutService::requestPayment()`/`resume()` already use) and calls the canonical `PaymentGateway::getPayment()` — never a Xendit-specific SDK/API call directly. If a second gateway is ever bound, this job needs no change. (Confirmed by reading `app/Services/Payment/PaymentGateway.php` directly — `getPayment()` already exists precisely for this shape of call.)
+   - **Trigger:** a new `Schedule::call()` entry, same inert-until-real-cron pattern already established for Price Sync (ADR-015 decision #6) — runs every 15 minutes, checking orders with `payment_status = pending` older than 30 minutes.
+   - **Resolution is terminal-status-driven, not time-driven.** Confirmed directly against `docs.xendit.co/apidocs/create-payment-request` (not assumed): a Xendit Payment Request has a real, documented terminal status vocabulary — `ACCEPTING_PAYMENTS`/`REQUIRES_ACTION`/`AUTHORIZED`/`CANCELED`/`EXPIRED`/`SUCCEEDED`/`FAILED` — so the job acts on Xendit's own answer, not on elapsed time alone:
+     - `SUCCEEDED` → recover via the existing, unmodified `OrderFulfillmentService::fulfill()` path (already idempotent and row-locked) — exactly what a normal webhook delivery would have triggered, no new business logic invented.
+     - A terminal failure (`EXPIRED`/`FAILED`/`CANCELED`) → mark the order `failed`.
+     - Still no terminal answer after **24 hours** (a fallback safety-net cap, not the primary decision driver — rejected an earlier framing of "24h elapsed ⇒ auto-fail," since that would override a gateway state that might still genuinely be open) → flag for admin review instead of guessing.
+   - This mirrors the money-safety discipline already established elsewhere in this codebase (no auto cash-refund per ADR-004, maker-checker per WTH-5/VCH-6): automate only the safe/clear direction, escalate the genuinely ambiguous one to a human.
+   - **New, small UI gap to close alongside it:** add a filter/section to `/admin/orders` surfacing orders stuck at `payment_status = pending` — the blind spot the audit found. Not previously scoped by ORD-2's named filter states.
+
+3. **Hardening batch, bundled for the same session since both are small and zero-dependency:**
+   - **MySQL 64-char identifier-length sweep** — a deliberate audit of every migration file for the pattern already hit twice by accident, rather than waiting to find a third instance the same way.
+   - **`player_validations` pruning command** — new scheduled cleanup, **7-day retention** (grilled down from an initial 30-day proposal): the founder's own correction — validation is triggered on every attempt a customer makes, not just on completed orders, so a 30-day window accumulates far more rows than actual order volume ever would. 7 days is judged enough for a realistic support/troubleshooting window without unbounded PII growth.
+
+4. **Git remote — resolved as a decision, not yet executed.** Founder's own account, a **private** repository. Recorded here so ADR-020 Phase 1's CI/CD half isn't blocked on this question again next session; actually creating and pushing to the remote is a separate, explicit action for whenever Phase 1 work begins, not performed as part of this planning session.
+
+**Rationale:** The reordering is not "infra doesn't matter" — it's sequencing cheap, zero-dependency, no-regret hardening (reconciliation, the MySQL sweep, PII pruning) ahead of a larger, currently-blocked piece of work (infra, blocked on a founder decision this ADR now resolves) whose own direct risk from a few more weeks' delay is low precisely because nothing is deployed yet to protect. Doing the small items first costs the infra work nothing — none of items 1–2 touch `AppServiceProvider`'s bindings, `PaymentGateway`/`SupplierAdapter` interfaces, or anything ADR-020 depends on.
+
+**Consequence to track:**
+- This ADR changes *sequencing*, not scope — every item the founder's original pointer named (ADR-020 Phase 1, Playwright E2E, MySQL sweep) is still committed to, just reordered. Don't read this as any of them being dropped.
+- ORD-10 (delivery-side/Gamevion reconciliation) remains open and untouched by this ADR — still tracked in `foundation-security.md` §3 as a real, separate gap, revisit once PAY-3 ships and proves the pattern.
+- The 24-hour fallback cap in Decision 2 is deliberately conservative (flag, don't auto-decide) — if false "flagged for review" cases turn out to be common in practice once this ships, that threshold or Xendit's actual default expiry duration (not confirmed from docs this session — only that `EXPIRED` is a real status, not its default TTL) is worth re-investigating, not silently tuned without recording why.
+- Update `prd.md` §14/§15 as each item in the revised order actually ships, per this doc's own established convention.
+
+---
