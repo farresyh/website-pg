@@ -11,19 +11,57 @@ class PaymentMethodSeederTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_seeds_all_channels_inactive_by_default_on_the_xendit_gateway(): void
+    public function test_seeds_all_channels_inactive_by_default(): void
     {
         (new PaymentMethodSeeder())->run();
 
         $this->assertGreaterThan(40, PaymentMethod::query()->count());
         $this->assertSame(0, PaymentMethod::query()->where('is_active', true)->count());
-        $this->assertSame(
-            PaymentMethod::query()->count(),
-            PaymentMethod::query()->where('gateway', 'xendit')->count(),
-        );
         $this->assertTrue(PaymentMethod::query()->where('channel_code', 'AMBANK_FPX')->exists());
         $this->assertTrue(PaymentMethod::query()->where('channel_code', 'GRABPAY')->exists());
         $this->assertTrue(PaymentMethod::query()->where('channel_code', 'CARDS')->exists());
+    }
+
+    /**
+     * ADR-022 decision 5 / this ADR's newest addendum item 6 — CHIP's
+     * FPX channel codes are CHIP's own real enum values ('fpx',
+     * 'fpx_b2b1'), stored as-is (same pass-through convention Xendit's
+     * own channel codes already use — no translation table). Flat fee
+     * only, no percentage component (chip-in.asia/collect, confirmed
+     * 2026-07-30 during the multi-gateway research): RM1 personal /
+     * RM2 business. `method_key` is deliberately its own value, NOT
+     * shared with any of the 39 Xendit FPX bank rows — CHIP's FPX is a
+     * single generic redirect (customer picks their bank on CHIP's own
+     * hosted page, confirmed against CHIP's real OpenAPI spec,
+     * 2026-08-03), not a per-bank equivalent of any one Xendit row, so
+     * the 1:1 method_key exclusivity this project built (task 2) does
+     * not apply here — switching FPX from Xendit to CHIP is a
+     * deliberate admin migration action (deactivate the Xendit rows,
+     * activate these), not something the mutual-exclusivity guard
+     * needs to enforce automatically.
+     */
+    public function test_seeds_chip_fpx_channels_inactive_with_their_own_method_keys(): void
+    {
+        (new PaymentMethodSeeder())->run();
+
+        $personal = PaymentMethod::query()->where('channel_code', 'fpx')->firstOrFail();
+        $this->assertSame('chip', $personal->gateway);
+        $this->assertSame('fpx', $personal->category);
+        $this->assertFalse($personal->is_active);
+        $this->assertSame('fpx_chip', $personal->method_key);
+        $this->assertSame(0.0, (float) $personal->percentage_rate);
+        $this->assertSame(100, $personal->flat_fee_sen);
+
+        $business = PaymentMethod::query()->where('channel_code', 'fpx_b2b1')->firstOrFail();
+        $this->assertSame('chip', $business->gateway);
+        $this->assertSame('fpx_chip_b2b1', $business->method_key);
+        $this->assertSame(200, $business->flat_fee_sen);
+
+        // method_key stays distinct from every Xendit FPX bank row —
+        // no automatic conflict, per the doc comment above.
+        $this->assertFalse(
+            PaymentMethod::query()->where('method_key', $personal->method_key)->where('gateway', 'xendit')->exists(),
+        );
     }
 
     /**
@@ -53,6 +91,27 @@ class PaymentMethodSeederTest extends TestCase
 
         $this->assertSame($percentageRate, (float) $method->percentage_rate, "percentage_rate mismatch for {$channelCode}");
         $this->assertSame($flatFeeSen, $method->flat_fee_sen, "flat_fee_sen mismatch for {$channelCode}");
+    }
+
+    /**
+     * ADR-022's newest addendum, decision 4 — every seeded row gets a
+     * method_key so PaymentMethodController::updateStatus()'s
+     * mutual-exclusivity guard has something to key on once a second
+     * gateway's rows exist. Today's Xendit-only rows each get a
+     * distinct key derived from their own channel_code (no two rows
+     * represent the same real-world method yet).
+     */
+    public function test_seeds_a_distinct_method_key_for_every_channel(): void
+    {
+        (new PaymentMethodSeeder())->run();
+
+        $method = PaymentMethod::query()->where('channel_code', 'AMBANK_FPX')->firstOrFail();
+        $this->assertSame('ambank_fpx', $method->method_key);
+
+        $this->assertSame(
+            PaymentMethod::query()->count(),
+            PaymentMethod::query()->distinct('method_key')->count('method_key'),
+        );
     }
 
     public function test_running_twice_does_not_duplicate_rows(): void

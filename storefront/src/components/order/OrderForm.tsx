@@ -4,8 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { validatePlayer, submitCheckout, extractCheckoutRedirectUrl, type ValidatePlayerResult } from "@/lib/checkout";
-import { PLACEHOLDER_PAYMENT_CHANNELS } from "@/lib/placeholder-data";
 import type { Game, GamePackage } from "@/lib/catalog";
+import type { PaymentChannel } from "@/lib/payment-methods";
 import Stepper, { type StepInfo } from "@/components/order/Stepper";
 import StepCard from "@/components/order/StepCard";
 import Step1AccountInfo from "@/components/order/Step1AccountInfo";
@@ -22,6 +22,7 @@ const CHANNEL_GROUPS: { key: "fpx" | "ewallet" | "card"; label: string }[] = [
 interface OrderFormProps {
   game: Game;
   packages: GamePackage[];
+  paymentChannels: PaymentChannel[];
 }
 
 /**
@@ -34,7 +35,7 @@ interface OrderFormProps {
  * real last checkpoint (T&C + contact details) before submitCheckout()
  * ever fires.
  */
-export default function OrderForm({ game, packages }: OrderFormProps) {
+export default function OrderForm({ game, packages, paymentChannels }: OrderFormProps) {
   const router = useRouter();
 
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
@@ -66,7 +67,7 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
   }
 
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
-  const selectedChannel = PLACEHOLDER_PAYMENT_CHANNELS.find((c) => c.channelCode === channelCode) ?? null;
+  const selectedChannel = paymentChannels.find((c) => c.channelCode === channelCode) ?? null;
 
   // Editing the ID after Step 1 was completed invalidates that
   // completion — re-lock downstream steps rather than trust stale state.
@@ -188,7 +189,7 @@ export default function OrderForm({ game, packages }: OrderFormProps) {
 
         <StepCard number={3} title="Choose Payment Method" locked={!step2Complete} lockHint="Choose a package first">
           {CHANNEL_GROUPS.map((group) => {
-            const channels = PLACEHOLDER_PAYMENT_CHANNELS.filter((c) => c.category === group.key);
+            const channels = paymentChannels.filter((c) => c.category === group.key);
             if (channels.length === 0) return null;
             return (
               <div key={group.key} className="mb-3.5 last:mb-0">

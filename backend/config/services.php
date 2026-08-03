@@ -90,6 +90,24 @@ return [
         'connect_timeout' => (int) env('XENDIT_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
+    /**
+     * ADR-022 — CHIP Collect (docs.chip-in.asia). No separate
+     * sandbox base URL is documented; CHIP tests using the same
+     * production endpoint with test-mode API keys (confirmed against
+     * CHIP's own OpenAPI spec, 2026-08-03 — don't assume otherwise).
+     * `webhook_public_key_ttl` controls how long ChipGateway caches
+     * the RSA public key fetched from `GET /public_key/` before
+     * re-fetching (webhook verification, ADR-022 decision 3).
+     */
+    'chip' => [
+        'base_url' => env('CHIP_BASE_URL', 'https://gate.chip-in.asia/api/v1'),
+        'secret_key' => env('CHIP_SECRET_KEY'),
+        'brand_id' => env('CHIP_BRAND_ID'),
+        'timeout' => (int) env('CHIP_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('CHIP_CONNECT_TIMEOUT_SECONDS', 5),
+        'webhook_public_key_ttl' => (int) env('CHIP_WEBHOOK_PUBLIC_KEY_TTL_SECONDS', 86400),
+    ],
+
     // Unofficial third-party MLBB validators (docs/prd.md research,
     // confirmed live 2026-07-25) — no API keys, since all three are
     // public unauthenticated form/JSON endpoints. Short timeouts since

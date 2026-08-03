@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\Xendit\XenditGateway;
@@ -78,6 +79,19 @@ class AppServiceProvider extends ServiceProvider
                 webhookToken: (string) $config['webhook_token'],
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
+
+        $this->app->bind('payment-gateway.chip', function () {
+            $config = config('services.chip');
+
+            return new ChipGateway(
+                baseUrl: $config['base_url'],
+                secretKey: (string) $config['secret_key'],
+                brandId: (string) $config['brand_id'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+                webhookPublicKeyTtlSeconds: $config['webhook_public_key_ttl'],
             );
         });
 

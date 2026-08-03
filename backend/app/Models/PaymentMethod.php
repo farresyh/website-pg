@@ -15,6 +15,7 @@ class PaymentMethod extends Model
 {
     protected $fillable = [
         'channel_code',
+        'method_key',
         'label',
         'category',
         'gateway',

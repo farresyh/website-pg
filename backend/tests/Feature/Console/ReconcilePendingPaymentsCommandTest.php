@@ -11,7 +11,9 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -40,6 +42,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
             'reseller_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
+            'payment_gateway' => 'xendit',
             'payment_ref' => 'xnd_payment_ref_'.uniqid(),
         ], $overrides));
     }
@@ -52,9 +55,18 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
         return $order->fresh();
     }
 
-    private function bindFakeGateway(string $status): void
+    /**
+     * Binds a fake behind the same `payment-gateway.<name>` container
+     * key PaymentGatewayFactory::make() resolves through (see
+     * CheckoutControllerTest's own bindGateway()) — not the plain
+     * PaymentGateway::class default binding, since the command now
+     * resolves per-order by the Order's own recorded payment_gateway
+     * (ADR-022's newest addendum, decision 1) rather than a single
+     * fixed gateway for every order.
+     */
+    private function bindFakeGateway(string $status, string $gateway = 'xendit'): void
     {
-        $this->app->bind(PaymentGateway::class, fn () => new class($status) implements PaymentGateway
+        $this->app->bind("payment-gateway.{$gateway}", fn () => new class($status) implements PaymentGateway
         {
             public function __construct(private readonly string $status) {}
 
@@ -63,12 +75,25 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
                 throw new RuntimeException('not used in this test');
             }
 
+            /**
+             * Mirrors what a real PaymentGateway::getPayment() must now
+             * do (ADR-022's newest addendum, found while building
+             * ChipGateway): translate the gateway's own raw status
+             * string into the typed PaymentStatus enum here, inside the
+             * fake gateway itself — never leave that to the caller.
+             */
             public function getPayment(string $paymentRequestId): PaymentResponse
             {
-                return PaymentResponse::success(['status' => $this->status]);
+                $status = match ($this->status) {
+                    'SUCCEEDED' => \App\Services\Order\PaymentStatus::Paid,
+                    'EXPIRED', 'FAILED', 'CANCELED' => \App\Services\Order\PaymentStatus::Failed,
+                    default => \App\Services\Order\PaymentStatus::Pending,
+                };
+
+                return PaymentResponse::success(['status' => $this->status], status: $status);
             }
 
-            public function verifyWebhookSignature(string $providedToken): bool
+            public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used in this test');
             }
@@ -184,5 +209,53 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
 
         $this->assertSame(PaymentStatus::Pending, $order->fresh()->payment_status);
         Bus::assertNotDispatched(FulfillOrderJob::class);
+    }
+
+    /**
+     * ADR-022's newest addendum, decision 1 — the whole point of this
+     * fix: two stale orders recorded against two different gateways
+     * must each be asked their OWN gateway, never cross-routed. Before
+     * this fix, every order was asked via one single container-default
+     * PaymentGateway binding regardless of which gateway it actually
+     * checked out with.
+     */
+    public function test_resolves_each_orders_own_recorded_gateway_instead_of_one_fixed_gateway(): void
+    {
+        Bus::fake();
+        $this->bindFakeGateway('SUCCEEDED', 'xendit');
+        $this->bindFakeGateway('FAILED', 'chip');
+
+        $xenditOrder = $this->stalePending(['order_number' => 'KRS-XENDIT', 'payment_gateway' => 'xendit']);
+        $chipOrder = $this->stalePending(['order_number' => 'KRS-CHIP', 'payment_gateway' => 'chip']);
+
+        $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
+
+        $this->assertSame(PaymentStatus::Paid, $xenditOrder->fresh()->payment_status);
+        $this->assertSame(PaymentStatus::Failed, $chipOrder->fresh()->payment_status);
+        Bus::assertDispatched(FulfillOrderJob::class, fn ($job) => $job->order->id === $xenditOrder->id);
+    }
+
+    /**
+     * Should be near-impossible after the Order-creation stamping fix
+     * (CheckoutService::initiate() always sets payment_gateway) — but
+     * if it ever happens, it signals a checkout bug, not routine
+     * payment ambiguity, so it gets Log::error() (not flagIfStale()'s
+     * Log::warning()) and is never guessed at a default gateway, which
+     * would risk silently re-misrouting the order.
+     */
+    public function test_skips_and_logs_an_error_for_an_order_with_no_recorded_payment_gateway(): void
+    {
+        Log::spy();
+        Bus::fake();
+        // Proves the gateway is never even called for this order — a
+        // fallback guess would still resolve to 'xendit' and succeed.
+        $this->bindFakeGateway('SUCCEEDED', 'xendit');
+        $order = $this->stalePending(['order_number' => 'KRS-NO-GATEWAY', 'payment_gateway' => null]);
+
+        $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
+
+        $this->assertSame(PaymentStatus::Pending, $order->fresh()->payment_status);
+        Bus::assertNotDispatched(FulfillOrderJob::class);
+        Log::shouldHaveReceived('error')->once();
     }
 }

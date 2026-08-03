@@ -17,6 +17,7 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -55,7 +56,7 @@ class CheckoutControllerTest extends TestCase
                 ]);
             }
 
-            public function verifyWebhookSignature(string $providedToken): bool
+            public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used in this test');
             }
@@ -184,6 +185,25 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame($package->id, $order->package_id);
         $this->assertSame(500, $order->selling_price); // reseller_cost_price + 0% reseller markup
         $this->assertSame('pr-checkout-test', $order->payment_ref);
+    }
+
+    /**
+     * ADR-022's newest addendum, decision 1: the Order snapshots which
+     * gateway/channel it checked out with (from the PaymentMethod row
+     * already resolved above), so ReconcilePendingPaymentsCommand can
+     * resolve the correct PaymentGateway per order once a second
+     * gateway exists.
+     */
+    public function test_stamps_the_resolved_payment_methods_gateway_and_channel_code_onto_the_order(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        $this->postJson('/api/checkout', $this->payload($game, $package))->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('xendit', $order->payment_gateway);
+        $this->assertSame('FPX_ABMB', $order->channel_code);
     }
 
     public function test_seeds_the_single_platform_reseller_if_missing_and_uses_zero_markup(): void

@@ -10,10 +10,12 @@ use Illuminate\Database\Seeder;
  * SET-7/SET-11: seeds the real Xendit Malaysia channel-code registry
  * (fetched live from docs.xendit.co/docs/available-payment-channels,
  * 2026-07-25 — the same static reference list referenced in
- * docs/prd.md §14's Payment Methods design-discussion note). All rows
- * start `is_active = false`: Xendit has no API to report which
- * channels are actually enabled for this merchant account, so admin
- * must confirm each one (Dashboard or "Test This Channel") before
+ * docs/prd.md §14's Payment Methods design-discussion note), plus
+ * CHIP's own FPX channel codes (ADR-022, `seedChip()` below). All rows
+ * start `is_active = false`: neither gateway has an API to report
+ * which channels are actually enabled for this merchant account, so
+ * admin must confirm each one (Dashboard, "Test This Channel", or for
+ * CHIP a real `app:chip-smoke-test` pass — ADR-022 decision 5) before
  * flipping it on.
  *
  * **Fee defaults corrected 2026-07-30** against Xendit's own published
@@ -126,13 +128,63 @@ class PaymentMethodSeeder extends Seeder
         // Fee rate genuinely unconfirmed for this one — admin must set
         // it via updateFee before activating, not a guessed default.
         $this->upsert('AMBANK_VIRTUAL_ACCOUNT', 'AmBank Virtual Account', 'virtual_account', percentageRate: 0.0, flatFeeSen: 0);
+
+        $this->seedChip();
     }
 
-    private function upsert(string $channelCode, string $label, string $category, float $percentageRate, int $flatFeeSen): void
+    /**
+     * ADR-022 decision 5 / newest addendum item 6 — CHIP Collect's own
+     * FPX channel codes ('fpx', 'fpx_b2b1'), stored as-is (chip-in.asia
+     * doesn't expose per-bank codes the way Xendit does — customer
+     * picks their bank on CHIP's own hosted checkout page). Flat fee
+     * only, confirmed against chip-in.asia/collect 2026-07-30: RM1
+     * personal / RM2 business — an unconditional saving over Xendit's
+     * own flat FPX fee (RM2.10/RM2.90), the whole reason ADR-022
+     * adopted CHIP. Both start `is_active = false`: no live CHIP
+     * account exists yet, and ADR-022 decision 5 explicitly forbids
+     * flipping either live before `app:chip-smoke-test` passes.
+     * `method_key` is each row's own value, deliberately not shared
+     * with any Xendit FPX row — see PaymentMethodSeederTest's own doc
+     * comment for why a 1:1 conflict doesn't apply here.
+     */
+    private function seedChip(): void
+    {
+        $this->upsertChip('fpx', 'Other Banks (FPX)', 'fpx', percentageRate: 0.0, flatFeeSen: 100, methodKey: 'fpx_chip');
+        $this->upsertChip('fpx_b2b1', 'Other Banks (FPX Business)', 'fpx', percentageRate: 0.0, flatFeeSen: 200, methodKey: 'fpx_chip_b2b1');
+    }
+
+    private function upsertChip(string $channelCode, string $label, string $category, float $percentageRate, int $flatFeeSen, string $methodKey): void
     {
         PaymentMethod::query()->firstOrCreate(
             ['channel_code' => $channelCode],
             [
+                'method_key' => $methodKey,
+                'label' => $label,
+                'category' => $category,
+                'gateway' => 'chip',
+                'is_active' => false,
+                'percentage_rate' => $percentageRate,
+                'flat_fee_sen' => $flatFeeSen,
+                'requires_issuer' => false,
+            ],
+        );
+    }
+
+    /**
+     * `method_key` defaults to the lowercased channel_code — every row
+     * seeded here is Xendit-only today, so no two rows represent the
+     * same real-world method yet (see the migration's own doc comment
+     * and ADR-022's newest addendum, decision 4). A future CHIP row
+     * representing the same real method (e.g. TnG) should pass the
+     * matching existing key explicitly via $methodKey, not rely on
+     * this default.
+     */
+    private function upsert(string $channelCode, string $label, string $category, float $percentageRate, int $flatFeeSen, ?string $methodKey = null): void
+    {
+        PaymentMethod::query()->firstOrCreate(
+            ['channel_code' => $channelCode],
+            [
+                'method_key' => $methodKey ?? strtolower($channelCode),
                 'label' => $label,
                 'category' => $category,
                 'gateway' => 'xendit',

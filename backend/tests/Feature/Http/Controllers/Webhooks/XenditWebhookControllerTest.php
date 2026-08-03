@@ -15,6 +15,7 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
@@ -63,7 +64,7 @@ class XenditWebhookControllerTest extends TestCase
                 throw new RuntimeException('not used in this test');
             }
 
-            public function verifyWebhookSignature(string $providedToken): bool
+            public function verifyWebhookSignature(Request $request): bool
             {
                 return $this->validSignature;
             }

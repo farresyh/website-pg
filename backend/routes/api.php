@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\CatalogController;
+use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PlayerValidationController;
 use App\Http\Controllers\TrackOrderController;
+use App\Http\Controllers\Webhooks\ChipWebhookController;
 use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -76,6 +78,11 @@ Route::prefix('catalog')->group(function () {
     // concern here (no cost/margin data on this model), grouped under
     // the same public "storefront content" prefix as games/packages.
     Route::get('/hero-slides', [HeroSlideController::class, 'index']);
+
+    // ADR-022's newest addendum, decision 5 — gateway-agnostic active
+    // channel listing, replacing the storefront's hardcoded
+    // PLACEHOLDER_PAYMENT_CHANNELS.
+    Route::get('/payment-methods', [PaymentMethodCatalogController::class, 'index']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -242,3 +249,4 @@ Route::middleware('auth:sanctum')->group(function () {
 // Not behind auth:sanctum — Xendit isn't an admin user. Signature
 // verification inside the controller is the auth mechanism (PAY-1).
 Route::post('/webhooks/xendit', [XenditWebhookController::class, 'handle']);
+Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle']);

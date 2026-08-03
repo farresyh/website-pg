@@ -105,6 +105,8 @@ final class CheckoutService
                 'payment_status' => PaymentStatus::Pending->value,
                 'delivery_status' => DeliveryStatus::NotStarted->value,
                 'payment_method' => $request->paymentMethod,
+                'payment_gateway' => $request->paymentGateway,
+                'channel_code' => $request->channelCode,
             ]);
         } catch (QueryException $e) {
             if ($this->isUniqueConstraintViolation($e)) {

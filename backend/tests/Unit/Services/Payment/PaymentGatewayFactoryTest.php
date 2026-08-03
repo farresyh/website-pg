@@ -2,10 +2,12 @@
 
 namespace Tests\Unit\Services\Payment;
 
+use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\UnsupportedPaymentGatewayException;
 use App\Services\Payment\Xendit\XenditGateway;
+use Illuminate\Http\Request;
 use Tests\TestCase;
 
 class PaymentGatewayFactoryTest extends TestCase
@@ -18,6 +20,20 @@ class PaymentGatewayFactoryTest extends TestCase
 
         $this->assertInstanceOf(PaymentGateway::class, $gateway);
         $this->assertInstanceOf(XenditGateway::class, $gateway);
+    }
+
+    /**
+     * ADR-022 — confirms 'chip' resolves for real, not just 'xendit',
+     * now that ChipGateway is bound in AppServiceProvider.
+     */
+    public function test_resolves_the_chip_gateway_bound_in_the_container(): void
+    {
+        $factory = $this->app->make(PaymentGatewayFactory::class);
+
+        $gateway = $factory->make('chip');
+
+        $this->assertInstanceOf(PaymentGateway::class, $gateway);
+        $this->assertInstanceOf(ChipGateway::class, $gateway);
     }
 
     public function test_throws_for_an_unbound_gateway_name(): void
@@ -49,7 +65,7 @@ class PaymentGatewayFactoryTest extends TestCase
                 return \App\Services\Payment\PaymentResponse::success([]);
             }
 
-            public function verifyWebhookSignature(string $providedToken): bool
+            public function verifyWebhookSignature(Request $request): bool
             {
                 return true;
             }

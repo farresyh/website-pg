@@ -24,6 +24,7 @@ final class CheckoutRequest
         public readonly float $resellerMarkupPct,
         public readonly PaymentMethodFeeConfig $paymentFeeConfig,
         public readonly string $paymentMethod,
+        public readonly string $paymentGateway,
         public readonly string $channelCode,
         public readonly string $idempotencyKey,
         public readonly array $channelProperties = [],

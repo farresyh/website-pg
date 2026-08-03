@@ -8,8 +8,10 @@ use Illuminate\Contracts\Container\Container;
  * Resolves a PaymentGateway implementation by name, keyed on
  * `payment_methods.gateway` — the per-channel widening of ADR-001's
  * originally single-gateway seam (see the create_payment_methods_table
- * migration's doc comment for why). Only 'xendit' is real today
- * (bound as `payment-gateway.xendit` in AppServiceProvider); any
+ * migration's doc comment for why). `'xendit'` and `'chip'` (ADR-022)
+ * are bound today, as `payment-gateway.xendit`/`payment-gateway.chip`
+ * in AppServiceProvider — CHIP not yet flipped live for any real
+ * channel until its own smoke test passes (ADR-022 decision 5); any
  * other value throws rather than silently defaulting to Xendit, since
  * that would misroute a real payment to the wrong processor. A second
  * gateway is added here only once it's actually researched and built

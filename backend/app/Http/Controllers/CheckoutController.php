@@ -126,6 +126,7 @@ class CheckoutController extends Controller
                 resellerMarkupPct: (float) $reseller->markup_pct,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,
+                paymentGateway: $paymentMethod->gateway,
                 channelCode: $data['channel_code'],
                 idempotencyKey: $data['idempotency_key'],
                 channelProperties: $data['channel_properties'] ?? [],

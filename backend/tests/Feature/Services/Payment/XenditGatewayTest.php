@@ -6,6 +6,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\Xendit\XenditGateway;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -214,16 +215,89 @@ class XenditGatewayTest extends TestCase
         $this->assertTrue($result->success);
         $this->assertSame('SUCCEEDED', $result->data['status']);
         $this->assertSame(10000, $result->data['amount_sen']);
+        $this->assertSame(PaymentStatus::Paid, $result->status);
+    }
+
+    /**
+     * ADR-022's newest addendum: a real gap found while building
+     * ChipGateway — getPayment()/createPayment() must return a typed
+     * PaymentStatus, never leave a business-logic caller
+     * (ReconcilePendingPaymentsCommand) matching on Xendit's own raw
+     * status vocabulary directly.
+     */
+    public function test_get_payment_maps_a_non_terminal_status_to_pending(): void
+    {
+        Http::fake([
+            'api.xendit.co/*' => Http::response([
+                'payment_request_id' => 'pr-123',
+                'reference_id' => 'KRS-1',
+                'status' => 'REQUIRES_ACTION',
+                'actions' => [],
+                'request_amount' => 100.00,
+            ], 200),
+        ]);
+
+        $result = $this->gateway()->getPayment('pr-123');
+
+        $this->assertSame(PaymentStatus::Pending, $result->status);
+    }
+
+    public function test_get_payment_maps_expired_to_failed(): void
+    {
+        Http::fake([
+            'api.xendit.co/*' => Http::response([
+                'payment_request_id' => 'pr-123',
+                'reference_id' => 'KRS-1',
+                'status' => 'EXPIRED',
+                'actions' => [],
+                'request_amount' => 100.00,
+            ], 200),
+        ]);
+
+        $result = $this->gateway()->getPayment('pr-123');
+
+        $this->assertSame(PaymentStatus::Failed, $result->status);
+    }
+
+    public function test_create_payment_maps_status_to_typed_pending(): void
+    {
+        Http::fake([
+            'api.xendit.co/*' => Http::response([
+                'payment_request_id' => 'pr-123',
+                'reference_id' => 'KRS-1',
+                'status' => 'REQUIRES_ACTION',
+                'actions' => [],
+                'request_amount' => 100.00,
+            ], 201),
+        ]);
+
+        $result = $this->gateway()->createPayment(new PaymentRequest(
+            referenceId: 'KRS-1',
+            amountSen: 10000,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: 'DUITNOW_PAY',
+        ));
+
+        $this->assertSame(PaymentStatus::Pending, $result->status);
+    }
+
+    private function webhookRequest(string $token): Request
+    {
+        $request = Request::create('/api/webhooks/xendit', 'POST');
+        $request->headers->set('x-callback-token', $token);
+
+        return $request;
     }
 
     public function test_verify_webhook_signature_accepts_the_matching_token(): void
     {
-        $this->assertTrue($this->gateway()->verifyWebhookSignature('test-webhook-token'));
+        $this->assertTrue($this->gateway()->verifyWebhookSignature($this->webhookRequest('test-webhook-token')));
     }
 
     public function test_verify_webhook_signature_rejects_a_mismatched_token(): void
     {
-        $this->assertFalse($this->gateway()->verifyWebhookSignature('wrong-token'));
+        $this->assertFalse($this->gateway()->verifyWebhookSignature($this->webhookRequest('wrong-token')));
     }
 
     /**

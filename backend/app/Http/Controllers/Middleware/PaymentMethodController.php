@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Models\PaymentMethod;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -11,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * SET-7/SET-11 — see the create_payment_methods_table migration's doc
@@ -69,10 +71,46 @@ class PaymentMethodController extends Controller
             'is_active' => ['required', 'boolean'],
         ]);
 
+        if ($validated['is_active']) {
+            $this->assertMethodKeyNotActiveElsewhere($paymentMethod);
+        }
+
         $paymentMethod->update(['is_active' => $validated['is_active']]);
         Cache::forget(self::CACHE_KEY);
+        // Only this action changes what the public listing shows
+        // (label/channel_code/category never change here) — updateFee()
+        // and test() don't touch is_active, so they don't need to
+        // invalidate the public cache too.
+        PaymentMethodCatalogController::forgetCache();
 
         return response()->json($paymentMethod);
+    }
+
+    /**
+     * ADR-022's newest addendum, decision 4: at most one row per
+     * `method_key` (the real-world payment method, independent of
+     * gateway) may be active at a time — otherwise a customer would
+     * see two visually-identical buttons for the same method routed
+     * through two different processors, unable to tell which is which.
+     * A null `method_key` opts a row out of this check entirely.
+     */
+    private function assertMethodKeyNotActiveElsewhere(PaymentMethod $paymentMethod): void
+    {
+        if ($paymentMethod->method_key === null) {
+            return;
+        }
+
+        $conflict = PaymentMethod::query()
+            ->where('method_key', $paymentMethod->method_key)
+            ->where('id', '!=', $paymentMethod->id)
+            ->where('is_active', true)
+            ->exists();
+
+        if ($conflict) {
+            throw ValidationException::withMessages([
+                'is_active' => ['Another gateway is already active for this payment method. Deactivate it first.'],
+            ]);
+        }
     }
 
     public function updateFee(Request $request, PaymentMethod $paymentMethod): JsonResponse

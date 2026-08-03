@@ -18,6 +18,7 @@ use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -48,6 +49,7 @@ class CheckoutServiceTest extends TestCase
             'resellerMarkupPct' => 0.0,
             'paymentFeeConfig' => new PaymentMethodFeeConfig(0.0, 100),
             'paymentMethod' => 'duitnow',
+            'paymentGateway' => 'xendit',
             'channelCode' => 'DUITNOW_PAY',
             'idempotencyKey' => (string) Str::uuid(),
             'supplierProductRef' => 'FFP5',
@@ -86,7 +88,7 @@ class CheckoutServiceTest extends TestCase
                 throw new RuntimeException('not used in this test');
             }
 
-            public function verifyWebhookSignature(string $providedToken): bool
+            public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used in this test');
             }
@@ -134,6 +136,27 @@ class CheckoutServiceTest extends TestCase
 
         $this->assertSame(1, Order::query()->count());
         $this->assertNull(Order::query()->first()->payment_ref);
+    }
+
+    /**
+     * ADR-022's newest addendum, decision 1: the Order snapshots which
+     * gateway/channel it checked out with so ReconcilePendingPaymentsCommand
+     * can resolve the correct PaymentGateway per order once a second
+     * gateway exists — never a live-follow of the payment_methods row
+     * (that row is mutable admin config, the Order's own history must not
+     * silently change if it's later edited).
+     */
+    public function test_initiate_stamps_the_payment_gateway_and_channel_code_onto_the_order(): void
+    {
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-123']);
+
+        $order = $this->service()->initiate($this->request([
+            'paymentGateway' => 'chip',
+            'channelCode' => 'CHIP_FPX_B2C',
+        ]), $gateway);
+
+        $this->assertSame('chip', $order->payment_gateway);
+        $this->assertSame('CHIP_FPX_B2C', $order->channel_code);
     }
 
     public function test_initiate_stamps_the_checkout_idempotency_key_onto_the_order(): void

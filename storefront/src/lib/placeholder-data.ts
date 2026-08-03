@@ -1,27 +1,11 @@
 /**
  * Static placeholder content for the homepage. Games/packages moved to
- * lib/catalog.ts and hero slides to lib/hero-slides.ts (real backend
- * data) — everything remaining here (payment channels, promotions,
- * testimonials, FAQ) still has no backing model, per the same "honest
- * static content, not a fake dynamic system" reasoning documented on
- * PROMOTIONS below.
+ * lib/catalog.ts, hero slides to lib/hero-slides.ts, and payment
+ * channels to lib/payment-methods.ts (all real backend data) —
+ * everything remaining here (promotions, testimonials, FAQ) still has
+ * no backing model, per the same "honest static content, not a fake
+ * dynamic system" reasoning documented on PROMOTIONS below.
  */
-export interface PaymentChannel {
-  /** Real Xendit Malaysia channel codes (database/seeders/PaymentMethodSeeder.php) — accurate today even though the checkout call itself will 422 until an admin activates a matching row. */
-  channelCode: string;
-  label: string;
-  category: "fpx" | "ewallet" | "card";
-}
-
-export const PLACEHOLDER_PAYMENT_CHANNELS: PaymentChannel[] = [
-  { channelCode: "MAYB2U_FPX", label: "Maybank2U", category: "fpx" },
-  { channelCode: "CIMB_FPX", label: "CIMB Bank", category: "fpx" },
-  { channelCode: "PUBLIC_FPX", label: "Public Bank", category: "fpx" },
-  { channelCode: "TOUCHNGO", label: "Touch 'n Go eWallet", category: "ewallet" },
-  { channelCode: "GRABPAY", label: "GrabPay", category: "ewallet" },
-  { channelCode: "SHOPEEPAY", label: "ShopeePay", category: "ewallet" },
-  { channelCode: "CARDS", label: "Card (Visa, Mastercard, etc.)", category: "card" },
-];
 
 /**
  * Manually curated for v1 — no Promotion model/admin screen exists

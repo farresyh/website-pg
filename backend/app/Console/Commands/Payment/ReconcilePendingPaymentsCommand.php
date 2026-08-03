@@ -5,7 +5,7 @@ namespace App\Console\Commands\Payment;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Order\PaymentStatus;
-use App\Services\Payment\PaymentGateway;
+use App\Services\Payment\PaymentGatewayFactory;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -18,27 +18,32 @@ use Illuminate\Support\Facades\Log;
  * channel completed, etc.). Runs on a schedule (see routes/console.php),
  * same inert-until-real-cron pattern as SyncSupplierPricesJob.
  *
- * Deliberately resolves the gateway via the default PaymentGateway
- * binding, not App\Services\Payment\PaymentGatewayFactory — Order never
- * persists the specific channel_code it checked out with (only the
- * coarser `payment_method` category), so there is no stored value to
- * feed the factory. XenditWebhookController already makes the same
- * simplification for the same reason. Only one gateway ('xendit') is
- * bound today; revisit both call sites together if a second is ever
- * added.
+ * Resolves the gateway per-order via PaymentGatewayFactory, keyed on
+ * the Order's own `payment_gateway` snapshot (ADR-022's newest
+ * addendum, decision 1) — not a single fixed binding — since different
+ * orders may now have gone through different gateways. If an order
+ * somehow has no recorded `payment_gateway` (should be structurally
+ * near-impossible after CheckoutService::initiate() started stamping
+ * it), it is skipped and logged at error level as a checkout bug
+ * signal, never guessed at a default gateway — a wrong guess would
+ * silently re-misroute exactly the order this fix exists to protect.
  *
- * Resolution is terminal-status-driven, not time-driven — acts on
- * Xendit's own answer (confirmed against docs.xendit.co: SUCCEEDED /
- * EXPIRED / FAILED / CANCELED are real terminal Payment Request
- * statuses), never guesses from elapsed time alone. The 24h cap is a
- * fallback safety net for "still ambiguous", not the primary decision
- * driver.
+ * Resolution is terminal-status-driven, not time-driven — acts on the
+ * gateway's own answer, never guesses from elapsed time alone. Matches
+ * on `PaymentResponse::$status` (a typed PaymentStatus), never a raw
+ * gateway-specific string (Xendit's SUCCEEDED/EXPIRED/... vs. CHIP's
+ * paid/error/...) — each PaymentGateway::getPayment() implementation
+ * normalizes its own vocabulary into that enum before returning, the
+ * same discipline parseWebhookEvent() already had (a real gap found
+ * and closed while building ChipGateway, ADR-022's newest addendum).
+ * The 24h cap is a fallback safety net for "still ambiguous", not the
+ * primary decision driver.
  */
 #[Signature('app:reconcile-pending-payments')]
-#[Description('Ask Xendit for the real status of orders stuck at payment_status=pending and recover or fail them accordingly.')]
+#[Description('Ask each order\'s own payment gateway for its real status and recover or fail stuck payment_status=pending orders accordingly.')]
 class ReconcilePendingPaymentsCommand extends Command
 {
-    public function handle(PaymentGateway $gateway): int
+    public function handle(PaymentGatewayFactory $gatewayFactory): int
     {
         $pendingAfterMinutes = (int) config('services.payment_reconciliation.pending_after_minutes');
         $flagAfterHours = (int) config('services.payment_reconciliation.flag_after_hours');
@@ -52,15 +57,26 @@ class ReconcilePendingPaymentsCommand extends Command
         $this->info("Checking {$orders->count()} stuck-pending order(s)...");
 
         foreach ($orders as $order) {
-            $this->reconcile($order, $gateway, $flagAfterHours);
+            $this->reconcile($order, $gatewayFactory, $flagAfterHours);
         }
 
         return self::SUCCESS;
     }
 
-    private function reconcile(Order $order, PaymentGateway $gateway, int $flagAfterHours): void
+    private function reconcile(Order $order, PaymentGatewayFactory $gatewayFactory, int $flagAfterHours): void
     {
         Log::withContext(['order_number' => $order->order_number, 'payment_request_id' => $order->payment_ref]);
+
+        if ($order->payment_gateway === null) {
+            Log::error('Payment reconciliation: order has no payment_gateway recorded — checkout stamping bug, investigate CheckoutService', [
+                'order_number' => $order->order_number,
+                'payment_request_id' => $order->payment_ref,
+            ]);
+
+            return;
+        }
+
+        $gateway = $gatewayFactory->make($order->payment_gateway);
 
         $payment = $gateway->getPayment($order->payment_ref);
 
@@ -73,12 +89,12 @@ class ReconcilePendingPaymentsCommand extends Command
             return;
         }
 
-        $status = $payment->data['status'] ?? null;
-
-        match ($status) {
-            'SUCCEEDED' => $this->recover($order),
-            'EXPIRED', 'FAILED', 'CANCELED' => $order->update(['payment_status' => PaymentStatus::Failed->value]),
-            default => $this->flagIfStale($order, $flagAfterHours, $status),
+        match ($payment->status) {
+            PaymentStatus::Paid => $this->recover($order),
+            PaymentStatus::Failed => $order->update(['payment_status' => PaymentStatus::Failed->value]),
+            // PaymentStatus::Pending, or null (a gateway that somehow
+            // didn't set it) — both genuinely ambiguous, never guessed at.
+            default => $this->flagIfStale($order, $flagAfterHours, $payment->data['status'] ?? null),
         };
     }
 

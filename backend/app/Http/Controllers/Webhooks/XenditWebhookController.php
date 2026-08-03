@@ -33,9 +33,7 @@ class XenditWebhookController extends Controller
 
     public function handle(Request $request): JsonResponse
     {
-        $token = $request->header('x-callback-token', '');
-
-        if (! $this->paymentGateway->verifyWebhookSignature($token)) {
+        if (! $this->paymentGateway->verifyWebhookSignature($request)) {
             Log::warning('Rejected Xendit webhook: invalid callback token');
 
             return response()->json(['message' => 'invalid signature'], 401);

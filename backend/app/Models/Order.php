@@ -37,6 +37,8 @@ class Order extends Model
         'payment_status',
         'delivery_status',
         'payment_method',
+        'payment_gateway',
+        'channel_code',
         'payment_ref',
         'supplier_ref',
         'supplier_response',

@@ -9,6 +9,7 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
@@ -27,6 +28,7 @@ class PaymentMethodControllerTest extends TestCase
     {
         return PaymentMethod::query()->create(array_merge([
             'channel_code' => 'AMBANK_FPX',
+            'method_key' => 'ambank_fpx',
             'label' => 'AmBank',
             'category' => 'fpx',
             'gateway' => 'xendit',
@@ -63,7 +65,7 @@ class PaymentMethodControllerTest extends TestCase
                 throw new RuntimeException('not used in this test');
             }
 
-            public function verifyWebhookSignature(string $providedToken): bool
+            public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used in this test');
             }
@@ -120,6 +122,86 @@ class PaymentMethodControllerTest extends TestCase
 
         $response->assertOk();
         $this->assertTrue($paymentMethod->fresh()->is_active);
+    }
+
+    /**
+     * ADR-022's newest addendum, decision 4: `method_key` identifies
+     * the real-world payment method independent of gateway (e.g. "TnG
+     * eWallet"), separate from the gateway-specific `channel_code`. At
+     * most one row per `method_key` may be active at a time, so a
+     * customer never sees two visually-identical buttons for the same
+     * real method routed through two different processors.
+     */
+    public function test_update_status_blocks_activating_a_channel_whose_method_key_is_already_active_elsewhere(): void
+    {
+        $this->actingAsAdmin();
+        $this->paymentMethod([
+            'channel_code' => 'TOUCHNGO',
+            'method_key' => 'tng',
+            'gateway' => 'xendit',
+            'is_active' => true,
+        ]);
+        $chipTng = $this->paymentMethod([
+            'channel_code' => 'CHIP_TNG',
+            'method_key' => 'tng',
+            'gateway' => 'chip',
+            'is_active' => false,
+        ]);
+
+        $response = $this->patchJson("/api/middleware/payment-methods/{$chipTng->id}/status", [
+            'is_active' => true,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertFalse($chipTng->fresh()->is_active);
+    }
+
+    public function test_update_status_allows_activating_a_channel_whose_method_key_is_not_active_elsewhere(): void
+    {
+        $this->actingAsAdmin();
+        $this->paymentMethod([
+            'channel_code' => 'TOUCHNGO',
+            'method_key' => 'tng',
+            'gateway' => 'xendit',
+            'is_active' => false,
+        ]);
+        $chipTng = $this->paymentMethod([
+            'channel_code' => 'CHIP_TNG',
+            'method_key' => 'tng',
+            'gateway' => 'chip',
+            'is_active' => false,
+        ]);
+
+        $response = $this->patchJson("/api/middleware/payment-methods/{$chipTng->id}/status", [
+            'is_active' => true,
+        ]);
+
+        $response->assertOk();
+        $this->assertTrue($chipTng->fresh()->is_active);
+    }
+
+    public function test_update_status_allows_deactivating_even_when_another_row_shares_the_method_key(): void
+    {
+        $this->actingAsAdmin();
+        $xenditTng = $this->paymentMethod([
+            'channel_code' => 'TOUCHNGO',
+            'method_key' => 'tng',
+            'gateway' => 'xendit',
+            'is_active' => true,
+        ]);
+        $this->paymentMethod([
+            'channel_code' => 'CHIP_TNG',
+            'method_key' => 'tng',
+            'gateway' => 'chip',
+            'is_active' => false,
+        ]);
+
+        $response = $this->patchJson("/api/middleware/payment-methods/{$xenditTng->id}/status", [
+            'is_active' => false,
+        ]);
+
+        $response->assertOk();
+        $this->assertFalse($xenditTng->fresh()->is_active);
     }
 
     public function test_update_fee_changes_the_stored_rate(): void

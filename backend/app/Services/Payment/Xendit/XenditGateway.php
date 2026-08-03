@@ -11,6 +11,7 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -64,7 +65,9 @@ final class XenditGateway implements PaymentGateway
             return $failure;
         }
 
-        return PaymentResponse::success($this->normalizePaymentRequest($response->json()));
+        $normalized = $this->normalizePaymentRequest($response->json());
+
+        return PaymentResponse::success($normalized, status: $this->mapPaymentRequestStatus($normalized['status'] ?? ''));
     }
 
     public function getPayment(string $paymentRequestId): PaymentResponse
@@ -75,12 +78,14 @@ final class XenditGateway implements PaymentGateway
             return $failure;
         }
 
-        return PaymentResponse::success($this->normalizePaymentRequest($response->json()));
+        $normalized = $this->normalizePaymentRequest($response->json());
+
+        return PaymentResponse::success($normalized, status: $this->mapPaymentRequestStatus($normalized['status'] ?? ''));
     }
 
-    public function verifyWebhookSignature(string $providedToken): bool
+    public function verifyWebhookSignature(Request $request): bool
     {
-        return hash_equals($this->webhookToken, $providedToken);
+        return hash_equals($this->webhookToken, $request->header('x-callback-token', ''));
     }
 
     public function parseWebhookEvent(array $payload): PaymentWebhookEvent
@@ -96,6 +101,24 @@ final class XenditGateway implements PaymentGateway
             amountSen: $this->majorUnitToSen($data['request_amount'] ?? 0),
             failureCode: $data['failure_code'] ?? null,
         );
+    }
+
+    /**
+     * The Payment Request resource's own `status` field (returned by
+     * both create and get) — distinct from mapStatus() below, which
+     * reads a webhook payload keyed by event type. Confirmed against
+     * docs.xendit.co (see ReconcilePendingPaymentsCommand's own doc
+     * comment): SUCCEEDED/EXPIRED/FAILED/CANCELED are the real
+     * terminal statuses; anything else (PENDING, REQUIRES_ACTION,
+     * AUTHORIZED, ...) is genuinely still in flight.
+     */
+    private function mapPaymentRequestStatus(string $rawStatus): PaymentStatus
+    {
+        return match ($rawStatus) {
+            'SUCCEEDED' => PaymentStatus::Paid,
+            'EXPIRED', 'FAILED', 'CANCELED' => PaymentStatus::Failed,
+            default => PaymentStatus::Pending,
+        };
     }
 
     private function mapStatus(string $eventType, string $rawStatus): PaymentStatus

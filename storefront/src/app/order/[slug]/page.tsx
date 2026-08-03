@@ -9,6 +9,7 @@ import OrderForm from "@/components/order/OrderForm";
 import ProductHeaderCard from "@/components/order/ProductHeaderCard";
 import TrustStrip from "@/components/order/TrustStrip";
 import { getGame, getGamePackages } from "@/lib/catalog";
+import { listPaymentChannels } from "@/lib/payment-methods";
 
 interface OrderPageProps {
   params: Promise<{ slug: string }>;
@@ -32,6 +33,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
   if (!game) notFound();
 
   const packages = await getGamePackages(slug);
+  const paymentChannels = await listPaymentChannels();
 
   return (
     <>
@@ -52,7 +54,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
         <div className="mx-auto max-w-[1200px] px-4 pb-10">
           <ProductHeaderCard game={game} />
-          <OrderForm game={game} packages={packages} />
+          <OrderForm game={game} packages={packages} paymentChannels={paymentChannels} />
         </div>
 
         <TrustStrip />

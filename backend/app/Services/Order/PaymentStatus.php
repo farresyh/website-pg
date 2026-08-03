@@ -3,7 +3,8 @@
 namespace App\Services\Order;
 
 /**
- * Reflects Xendit only — never the supplier. See DeliveryStatus.
+ * Reflects the payment gateway only (Xendit, CHIP, ...) — never the
+ * supplier. See DeliveryStatus.
  */
 enum PaymentStatus: string
 {
