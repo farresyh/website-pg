@@ -14,6 +14,7 @@ use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
 use App\Services\PlayerValidation\Providers\MoogoldValidator;
 use App\Services\PlayerValidation\Providers\NexoneValidator;
 use App\Services\Supplier\CircuitBreakingSupplierAdapter;
+use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use Illuminate\Support\ServiceProvider;
@@ -40,35 +41,51 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(SupplierAdapter::class, function () {
-            $config = config('services.gamevion');
-            $proxy = config('services.proxy');
+        // ADR-023 decision #6: the real checkout->fulfillment pipeline
+        // runs against a real, separately-booted server process during
+        // Playwright E2E (not an in-process PHPUnit `Http::fake()`,
+        // which can't reach a different process's HTTP client at all)
+        // — so faking Gamevion for E2E has to happen at this container-
+        // binding level instead, gated to a dedicated `e2e` environment
+        // only. Reuses ADR-018's own FakeSupplierAdapter (already a
+        // real, tested SupplierAdapter implementation with zero network
+        // calls) rather than inventing a second fake. Always-success:
+        // E2E's job is exercising the real UI/pipeline wiring, not
+        // supplier failure handling, which PHPUnit's OrderFulfillmentService
+        // tests already cover.
+        if ($this->app->environment('e2e')) {
+            $this->app->bind(SupplierAdapter::class, fn () => new FakeSupplierAdapter(simulateSuccess: true));
+        } else {
+            $this->app->bind(SupplierAdapter::class, function () {
+                $config = config('services.gamevion');
+                $proxy = config('services.proxy');
 
-            $gamevion = new GamevionAdapter(
-                baseUrl: $config['base_url'],
-                bearerToken: (string) $config['bearer_token'],
-                apiKey: (string) $config['api_key'],
-                sandbox: (bool) $config['sandbox'],
-                proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
-                timeoutSeconds: $config['timeout'],
-                connectTimeoutSeconds: $config['connect_timeout'],
-            );
+                $gamevion = new GamevionAdapter(
+                    baseUrl: $config['base_url'],
+                    bearerToken: (string) $config['bearer_token'],
+                    apiKey: (string) $config['api_key'],
+                    sandbox: (bool) $config['sandbox'],
+                    proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
+                    timeoutSeconds: $config['timeout'],
+                    connectTimeoutSeconds: $config['connect_timeout'],
+                );
 
-            // ADR-019 addendum, foundation-security.md §6, DASH-2 - a
-            // decorator, not a change to GamevionAdapter itself, so any
-            // future second supplier gets the same protection for free
-            // just by being wrapped the same way at its own binding.
-            $breakerConfig = config('services.circuit_breaker');
+                // ADR-019 addendum, foundation-security.md §6, DASH-2 - a
+                // decorator, not a change to GamevionAdapter itself, so any
+                // future second supplier gets the same protection for free
+                // just by being wrapped the same way at its own binding.
+                $breakerConfig = config('services.circuit_breaker');
 
-            return new CircuitBreakingSupplierAdapter(
-                inner: $gamevion,
-                breaker: new CircuitBreaker(
-                    name: 'gamevion',
-                    failureThreshold: $breakerConfig['failure_threshold'],
-                    cooldownSeconds: $breakerConfig['cooldown_seconds'],
-                ),
-            );
-        });
+                return new CircuitBreakingSupplierAdapter(
+                    inner: $gamevion,
+                    breaker: new CircuitBreaker(
+                        name: 'gamevion',
+                        failureThreshold: $breakerConfig['failure_threshold'],
+                        cooldownSeconds: $breakerConfig['cooldown_seconds'],
+                    ),
+                );
+            });
+        }
 
         $this->app->bind('payment-gateway.xendit', function () {
             $config = config('services.xendit');

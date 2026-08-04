@@ -17,8 +17,10 @@ use Illuminate\Validation\ValidationException;
 /**
  * ORD-1..7 — read-only list + detail, plus retryDelivery (ORD-7's
  * resolve action — ADR-014) and resend (ADR-017's richer, package-swap
- * counterpart). Voucher issuance (the other ORD-7 action) and export
- * (ORD-5) remain out of scope here. See docs/prd.md §14.
+ * counterpart). Voucher issuance itself is VoucherController::storeFromOrder()
+ * (its own controller) — show() only eager-loads the `voucher` relation
+ * so the Admin Panel knows whether one's already been issued for this
+ * order. Export (ORD-5) remains out of scope here. See docs/prd.md §14.
  */
 class OrderController extends Controller
 {
@@ -84,7 +86,7 @@ class OrderController extends Controller
         }
 
         return response()->json($order->load([
-            'game', 'package', 'supplier', 'reseller',
+            'game', 'package', 'supplier', 'reseller', 'voucher',
             // ADR-017 decision #4: "Delivery Logs" — every resend
             // attempt, most recent first, alongside the package it
             // actually used (may differ from the order's own).

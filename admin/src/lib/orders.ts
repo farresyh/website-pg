@@ -1,10 +1,11 @@
 import { apiFetch } from "@/lib/api-client";
 import type { Game } from "@/lib/games";
+import type { Voucher } from "@/lib/vouchers";
 
 /**
  * ORD-1..7 — list + detail + retry-delivery (ORD-7 / ADR-014) +
- * resend (ADR-017's package-swap counterpart). Voucher issuance (the
- * other ORD-7 action) and export (ORD-5) are a later pass; see
+ * resend (ADR-017's package-swap counterpart) + issueVoucherFromOrder
+ * (ORD-7's other resolution path). Export (ORD-5) is a later pass; see
  * backend/app/Http/Controllers/Admin/OrderController.php.
  */
 export interface OrderListItem {
@@ -58,6 +59,10 @@ export interface OrderDetail extends OrderListItem {
   supplier: { id: number; name: string } | null;
   reseller: { id: number; business_name: string } | null;
   resend_attempts: OrderResendAttempt[];
+  // VCH-7: null until VoucherController::storeFromOrder() has been
+  // called for this order — the unique index on vouchers.order_id
+  // guarantees at most one.
+  voucher: Voucher | null;
 }
 
 export interface OrderPage {
@@ -119,4 +124,17 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
     method: "POST",
     body: { player_id: playerId, server_id: serverId || undefined },
   });
+}
+
+/**
+ * ORD-7's other resolution path (ADR-004: retry-delivery or voucher,
+ * never a cash refund). Backend computes and bounds the amount from
+ * what the customer actually paid (`final_amount - transaction_fee`)
+ * — this call never sends an amount. Backend also rejects (422)
+ * unless delivery_status is already "failed" and no voucher has been
+ * issued for this order yet (enforced by a real unique index, not
+ * just this check).
+ */
+export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string } = {}) {
+  return apiFetch<Voucher>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
 }

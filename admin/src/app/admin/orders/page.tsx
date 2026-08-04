@@ -11,9 +11,10 @@
  * `POST /api/orders/{order}/retry-delivery` endpoint (ADR-014) still
  * exists on the backend, just no longer has its own separate button
  * here — two buttons for "try to fix a failed delivery" was more
- * confusing than useful (founder feedback, docs/prd.md §14). Voucher
- * issuance (the other ORD-7 action) and export (ORD-5) remain a later
- * pass — see docs/prd.md §14.
+ * confusing than useful (founder feedback, docs/prd.md §14). "Issue
+ * Voucher" (ORD-7's other resolution path, ADR-004) sits alongside
+ * Resend Delivery, hidden once `order.voucher` is already set (at
+ * most one per order). Export (ORD-5) remains a later pass.
  */
 
 import { useEffect, useState } from "react";
@@ -25,7 +26,9 @@ import { getClientSession } from "@/lib/session";
 import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder } from "@/lib/orders";
+import type { Voucher } from "@/lib/vouchers";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
+import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
 
@@ -69,10 +72,13 @@ export default function OrdersPage() {
   const [selected, setSelected] = useState<OrderDetail | null>(null);
   const [resendModalOpen, setResendModalOpen] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [voucherModalOpen, setVoucherModalOpen] = useState(false);
+  const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
     setResendMessage(null);
+    setVoucherMessage(null);
     try {
       setSelected(await getOrder(token, id));
     } catch (err) {
@@ -82,6 +88,11 @@ export default function OrdersPage() {
 
   function handleResent() {
     setResendMessage("Resend queued — refresh in a moment to see the outcome and the new Delivery Logs entry.");
+  }
+
+  function handleVoucherIssued(voucher: Voucher) {
+    setVoucherMessage(`Voucher ${voucher.code} issued.`);
+    setSelected((current) => (current ? { ...current, voucher } : current));
   }
 
   useEffect(() => {
@@ -137,8 +148,20 @@ export default function OrdersPage() {
               <Button size="sm" onClick={() => setResendModalOpen(true)}>
                 Resend Delivery…
               </Button>
+              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check). */}
+              {!selected.voucher && (
+                <Button size="sm" variant="outline" onClick={() => setVoucherModalOpen(true)}>
+                  Issue Voucher…
+                </Button>
+              )}
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
+              {voucherMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{voucherMessage}</span>}
             </div>
+          )}
+          {selected.voucher && (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              Voucher <span className="font-medium text-gray-800 dark:text-white/90">{selected.voucher.code}</span> already issued for this order.
+            </p>
           )}
         </div>
 
@@ -149,13 +172,22 @@ export default function OrdersPage() {
       </div>
 
       {session && (
-        <ResendDeliveryModal
-          isOpen={resendModalOpen}
-          onClose={() => setResendModalOpen(false)}
-          onResent={handleResent}
-          order={selected}
-          token={session.token}
-        />
+        <>
+          <ResendDeliveryModal
+            isOpen={resendModalOpen}
+            onClose={() => setResendModalOpen(false)}
+            onResent={handleResent}
+            order={selected}
+            token={session.token}
+          />
+          <IssueVoucherModal
+            isOpen={voucherModalOpen}
+            onClose={() => setVoucherModalOpen(false)}
+            onIssued={handleVoucherIssued}
+            order={selected}
+            token={session.token}
+          />
+        </>
       )}
     </>
     );

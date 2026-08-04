@@ -75,6 +75,10 @@ cd admin && npm run lint && npx tsc --noEmit
 cd storefront && npm run lint && npx tsc --noEmit
 ```
 
+```bash
+cd e2e && npm test   # Playwright, 3 golden paths (ADR-023) — boots its own throwaway backend+DB, real Chromium
+```
+
 ## Documentation
 
 | Doc | What's in it |

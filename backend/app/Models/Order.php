@@ -7,6 +7,7 @@ use App\Services\Order\PaymentStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
@@ -88,5 +89,15 @@ class Order extends Model
     public function resendAttempts(): HasMany
     {
         return $this->hasMany(OrderResendAttempt::class);
+    }
+
+    /**
+     * VCH-7 (ORD-7's other resolution path): at most one, enforced by
+     * the unique index on vouchers.order_id, not just app logic — see
+     * VoucherController::storeFromOrder().
+     */
+    public function voucher(): HasOne
+    {
+        return $this->hasOne(Voucher::class);
     }
 }

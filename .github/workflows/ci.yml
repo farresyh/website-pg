@@ -94,6 +94,53 @@ jobs:
       - run: npm run build
       - run: npx eslint .
 
+  # ADR-023 — the 3 golden-path tests only (guest checkout->payment->
+  # order status; admin login->Resend Delivery; admin login->Issue
+  # Voucher), Chromium only. Gamevion is faked unconditionally
+  # (APP_ENV=e2e, AppServiceProvider::register()) — no secret needed
+  # for that. Xendit is hit for real against its own working sandbox
+  # (decision #6) and needs a real test-mode key: XENDIT_TEST_SECRET_KEY
+  # is NOT yet added as a repo secret — until it is, this job passes
+  # the 2 admin specs and fails only the checkout spec at the real
+  # Xendit API call, the same "structurally complete, blocked on an
+  # unprovisioned secret" gap this file's own build-and-push job below
+  # already carries for DIGITALOCEAN_ACCESS_TOKEN. Deliberately absent
+  # from build-and-push's own `needs:` list — ADR-020 decision #9
+  # explicitly does not require Playwright to gate a deploy, since
+  # Phase 1's existing test gate (396+ backend tests, concurrency
+  # proofs) is already strong; this job surfaces regressions without
+  # blocking shipping on it.
+  playwright:
+    runs-on: ubuntu-latest
+    env:
+      XENDIT_SECRET_KEY: ${{ secrets.XENDIT_TEST_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+      - run: composer install --no-progress --prefer-dist
+        working-directory: backend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+        working-directory: admin
+      - run: npm ci
+        working-directory: storefront
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install chromium --with-deps
+        working-directory: e2e
+      - run: npx playwright test
+        working-directory: e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/test-results/
+          retention-days: 7
+
   # Needs DIGITALOCEAN_ACCESS_TOKEN (repo secret) and a real DO Container
   # Registry to already exist — neither is provisioned yet. This job is
   # structurally complete but will fail at the doctl auth step until both

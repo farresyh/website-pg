@@ -350,6 +350,43 @@ class OrderControllerTest extends TestCase
     }
 
     /**
+     * The Admin Panel's "Issue Voucher" button (Orders page) needs to
+     * know whether one already exists for this order, without a
+     * separate lookup — show() eager-loads the voucher relation.
+     */
+    public function test_show_includes_the_issued_voucher_when_one_exists(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'payment_status' => PaymentStatus::Paid->value]);
+        \App\Models\Voucher::query()->create([
+            'order_id' => $order->id,
+            'code' => 'VC-TESTCODE',
+            'customer_email' => $order->customer_email,
+            'amount' => 1000,
+            'remaining' => 1000,
+            'status' => 'active',
+            'reason' => 'Delivery failed - refund voucher',
+            'created_by' => AdminUser::factory()->create()->id,
+        ]);
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('voucher.code', 'VC-TESTCODE');
+    }
+
+    public function test_show_voucher_is_null_when_none_issued(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('voucher', null);
+    }
+
+    /**
      * ADR-018 decision #2: permanent, unconditional exclusion — a
      * sandbox order must never appear on this real, money-critical
      * screen, regardless of what status filter is applied.

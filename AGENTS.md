@@ -83,6 +83,16 @@ cd backend && docker compose up -d && php artisan test -c phpunit.concurrency.xm
 # Admin / Storefront (run separately, each has its own dev server)
 cd admin && npm run dev               # or: npm run build && npm run lint
 cd storefront && npm run dev
+
+# E2E (ADR-023) — the 3 golden-path tests (checkout->payment->order status;
+# admin login->Resend Delivery; admin login->Issue Voucher), Chromium only.
+# Boots its own throwaway backend+DB — never touches the local dev DB.
+# Storefront checkout needs a real Xendit test-mode key: export
+# XENDIT_SECRET_KEY before running, or that one spec fails at the real
+# Xendit API call while the 2 admin specs still pass. Wired into CI
+# (.github/workflows/ci.yml's `playwright` job) — this is for running it
+# locally.
+cd e2e && npm test
 ```
 
 **Known gotcha:** a queued job (Price Sync, order fulfillment/resend) needs an
@@ -110,3 +120,16 @@ session that adds a migration should run `php artisan migrate` against the
 local dev DB before calling the feature done, not just the test suites — see
 `docs/prd.md` §14's 2026-07-29 Blacklist/Fraud entry for a live instance of
 this exact gotcha.
+
+**Third known gotcha:** `php artisan serve` re-reads `backend/.env` for the
+process it actually spawns and only passes through a small Laravel-hardcoded
+list of env vars from the calling shell (`APP_ENV`, `PATH`, a few Herd/Xdebug
+vars — `ServeCommand::$passthroughVariables`) — every other exported var
+(`DB_DATABASE`, `QUEUE_CONNECTION`, etc.) is silently dropped and falls back
+to whatever `.env` already has, *unless* `--no-reload` is passed, which
+passes the full calling-shell environment through unfiltered instead. Found
+building `e2e/scripts/boot-backend.sh` (ADR-023): without `--no-reload`, a
+script that exports `DB_DATABASE` to point `serve` at a throwaway DB silently
+serves requests against the real local dev DB instead, with no error — the
+served process just quietly uses `.env`'s own value. Any script that boots
+`php artisan serve` against env vars set outside `.env` needs `--no-reload`.
