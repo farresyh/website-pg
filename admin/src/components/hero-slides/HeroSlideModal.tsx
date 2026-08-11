@@ -153,6 +153,7 @@ function HeroSlideFields({
             <Label htmlFor="slide_image_url">Image URL (optional)</Label>
             <Input id="slide_image_url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Paste a hosted image URL" />
             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+              Recommended 1600×800px (2:1) — matches the hero slider&apos;s display ratio at desktop width.
               No banner falls back to the storefront&apos;s default gradient treatment.
             </p>
           </div>

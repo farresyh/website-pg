@@ -122,6 +122,9 @@ function EditGameFields({
           <div>
             <Label htmlFor="game_image_url">Image URL (optional)</Label>
             <Input id="game_image_url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+              Recommended 800×500px (16:10) — matches the product card&apos;s image ratio.
+            </p>
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
