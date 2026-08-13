@@ -24,7 +24,7 @@ class UpdatePackageMarkupRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'markup_percent' => ['required', 'numeric', 'min:0'],
+            'markup_percent' => ['required', 'numeric', 'min:0', 'max:1000'],
         ];
     }
 }

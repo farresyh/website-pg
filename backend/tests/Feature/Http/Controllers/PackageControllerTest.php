@@ -125,6 +125,15 @@ class PackageControllerTest extends TestCase
             ->assertUnprocessable();
     }
 
+    public function test_update_markup_rejects_an_unbounded_value(): void
+    {
+        $package = $this->package();
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/markup", ['markup_percent' => 1001])
+            ->assertUnprocessable();
+    }
+
     public function test_update_status_toggles_active_inline(): void
     {
         $package = $this->package(['is_active' => true]);
