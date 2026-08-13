@@ -89,6 +89,22 @@ class XenditWebhookController extends Controller
             return response()->json(['message' => 'acknowledged']);
         }
 
+        // Defense-in-depth: payment_ref already binds this webhook to
+        // one specific, fixed-amount payment request created by
+        // requestPayment() (amountSen: $order->final_amount), and a
+        // signature-verified SUCCEEDED status from Xendit already
+        // implies the full requested amount was received — this is a
+        // second, independent check, not the only thing standing
+        // between an underpayment and free fulfillment.
+        if ($event->amountSen !== $order->final_amount) {
+            Log::error('Rejected Xendit webhook: amount mismatch', [
+                'expected_sen' => $order->final_amount,
+                'received_sen' => $event->amountSen,
+            ]);
+
+            return response()->json(['message' => 'amount mismatch'], 409);
+        }
+
         $order->update(['payment_status' => PaymentStatus::Paid->value]);
 
         FulfillOrderJob::dispatch($order->fresh());

@@ -211,6 +211,29 @@ class ChipWebhookControllerTest extends TestCase
         $this->assertSame('GV-ALREADY-DONE', $order->fresh()->supplier_ref);
     }
 
+    /**
+     * Defense-in-depth: mirrors XenditWebhookControllerTest's own
+     * amount-mismatch rejection.
+     */
+    public function test_rejects_a_paid_webhook_when_the_amount_does_not_match_the_order(): void
+    {
+        Queue::fake();
+        $privateKey = $this->fakeChipPublicKey();
+        $order = $this->fakePaidOrder();
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'paid',
+            'purchase' => ['total' => 1],
+        ], $privateKey);
+
+        $response->assertStatus(409);
+        $this->assertSame(PaymentStatus::Pending, $order->fresh()->payment_status);
+        Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
     public function test_marks_payment_failed_without_attempting_fulfillment_on_a_failure_event(): void
     {
         $privateKey = $this->fakeChipPublicKey();

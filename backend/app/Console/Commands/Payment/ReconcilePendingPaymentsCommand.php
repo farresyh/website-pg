@@ -6,6 +6,7 @@ use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\Payment\PaymentResponse;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -91,7 +92,7 @@ class ReconcilePendingPaymentsCommand extends Command
         }
 
         match ($payment->status) {
-            PaymentStatus::Paid => $this->recover($order),
+            PaymentStatus::Paid => $this->recover($order, $payment),
             PaymentStatus::Failed => $this->markFailed($order, $vouchers),
             // PaymentStatus::Pending, or null (a gateway that somehow
             // didn't set it) — both genuinely ambiguous, never guessed at.
@@ -119,9 +120,25 @@ class ReconcilePendingPaymentsCommand extends Command
      * already flipped this order to Paid and dispatched fulfillment
      * before this run got to it).
      */
-    private function recover(Order $order): void
+    private function recover(Order $order, PaymentResponse $payment): void
     {
         if ($order->payment_status === PaymentStatus::Paid) {
+            return;
+        }
+
+        // Defense-in-depth — same amount cross-check as the webhook
+        // controllers' own Paid branch. This pull-based path already
+        // asks the gateway directly (harder to forge than a webhook
+        // delivery), but a mismatch here still signals something is
+        // wrong enough to not silently fulfill for free.
+        $amountSen = is_array($payment->data) ? ($payment->data['amount_sen'] ?? null) : null;
+
+        if ($amountSen !== $order->final_amount) {
+            Log::error('Payment reconciliation: amount mismatch, refusing to mark paid', [
+                'expected_sen' => $order->final_amount,
+                'received_sen' => $amountSen,
+            ]);
+
             return;
         }
 

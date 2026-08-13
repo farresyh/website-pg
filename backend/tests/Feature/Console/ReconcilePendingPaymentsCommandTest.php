@@ -92,7 +92,12 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
                     default => \App\Services\Order\PaymentStatus::Pending,
                 };
 
-                return PaymentResponse::success(['status' => $this->status], status: $status);
+                // amount_sen fixed at 1100 to match order()'s own
+                // default final_amount — every test in this file that
+                // exercises the Paid/recover() branch relies on this
+                // matching, same as real gateway getPayment() always
+                // populating it from the gateway's own response.
+                return PaymentResponse::success(['status' => $this->status, 'amount_sen' => 1100], status: $status);
             }
 
             public function verifyWebhookSignature(Request $request): bool
@@ -195,6 +200,46 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
 
         $this->assertSame(500, $voucher->fresh()->remaining);
         $this->assertSame('restored', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+    }
+
+    /**
+     * Defense-in-depth: mirrors the webhook controllers' own amount
+     * cross-check — a gateway reporting Paid with an amount that
+     * doesn't match this order's final_amount is never recovered.
+     */
+    public function test_refuses_to_recover_when_the_gateway_reported_amount_does_not_match_the_order(): void
+    {
+        Bus::fake();
+        Log::spy();
+        $this->app->bind('payment-gateway.xendit', fn () => new class implements PaymentGateway
+        {
+            public function createPayment(PaymentRequest $request): PaymentResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function getPayment(string $paymentRequestId): PaymentResponse
+            {
+                return PaymentResponse::success(['status' => 'SUCCEEDED', 'amount_sen' => 1], status: PaymentStatus::Paid);
+            }
+
+            public function verifyWebhookSignature(Request $request): bool
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function parseWebhookEvent(array $payload): PaymentWebhookEvent
+            {
+                throw new RuntimeException('not used in this test');
+            }
+        });
+        $order = $this->stalePending(['order_number' => 'KRS-AMOUNT-MISMATCH']);
+
+        $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
+
+        $this->assertSame(PaymentStatus::Pending, $order->fresh()->payment_status);
+        Bus::assertNotDispatched(FulfillOrderJob::class);
+        Log::shouldHaveReceived('error')->once();
     }
 
     public function test_leaves_an_ambiguous_status_untouched_when_still_within_the_flag_window(): void

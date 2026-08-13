@@ -91,6 +91,17 @@ class ChipWebhookController extends Controller
             return response()->json(['message' => 'acknowledged']);
         }
 
+        // Defense-in-depth — see XenditWebhookController's identical
+        // check for the full reasoning.
+        if ($event->amountSen !== $order->final_amount) {
+            Log::error('Rejected CHIP webhook: amount mismatch', [
+                'expected_sen' => $order->final_amount,
+                'received_sen' => $event->amountSen,
+            ]);
+
+            return response()->json(['message' => 'amount mismatch'], 409);
+        }
+
         $order->update(['payment_status' => PaymentStatus::Paid->value]);
 
         FulfillOrderJob::dispatch($order->fresh());
