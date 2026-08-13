@@ -25,6 +25,7 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PlayerValidationController;
 use App\Http\Controllers\TrackOrderController;
+use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
 use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -46,6 +47,15 @@ Route::get('/health', [HealthController::class, 'check']);
 // ADR-014: throttle:10,1 — 10/minute/IP, loose enough for a genuine
 // customer retrying a failed attempt, tight enough to blunt a flood.
 Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1');
+
+// ADR-024 decision #1's "Apply" button — read-only preview, never
+// locks or spends a voucher's remaining balance (VoucherService::
+// redeem() only ever runs inside the real /checkout call above). Same
+// throttle as checkout: a bearer-code-guessing probe is exactly the
+// abuse this rate limit exists to blunt, and the ownership-lock check
+// inside VoucherService::preview() already keeps a wrong guess from
+// revealing anything either way.
+Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware('throttle:10,1');
 
 // Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
 // as checkout above) — backend half of the Player-ID Validation
@@ -116,6 +126,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin,admin')->group(function () {
         Route::prefix('vouchers')->group(function () {
             Route::get('/', [VoucherController::class, 'index']);
+            Route::get('/{voucher}', [VoucherController::class, 'show']);
             Route::post('/', [VoucherController::class, 'store']);
             Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
         });

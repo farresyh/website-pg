@@ -12,6 +12,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -68,6 +69,7 @@ class OrderFulfillmentTestFulfill extends Command
             new ReferenceNumberService(),
             $adapter,
             new LedgerService(),
+            app(VoucherService::class),
         );
 
         try {

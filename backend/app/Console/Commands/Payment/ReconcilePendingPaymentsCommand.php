@@ -6,6 +6,7 @@ use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -43,7 +44,7 @@ use Illuminate\Support\Facades\Log;
 #[Description('Ask each order\'s own payment gateway for its real status and recover or fail stuck payment_status=pending orders accordingly.')]
 class ReconcilePendingPaymentsCommand extends Command
 {
-    public function handle(PaymentGatewayFactory $gatewayFactory): int
+    public function handle(PaymentGatewayFactory $gatewayFactory, VoucherService $vouchers): int
     {
         $pendingAfterMinutes = (int) config('services.payment_reconciliation.pending_after_minutes');
         $flagAfterHours = (int) config('services.payment_reconciliation.flag_after_hours');
@@ -57,13 +58,13 @@ class ReconcilePendingPaymentsCommand extends Command
         $this->info("Checking {$orders->count()} stuck-pending order(s)...");
 
         foreach ($orders as $order) {
-            $this->reconcile($order, $gatewayFactory, $flagAfterHours);
+            $this->reconcile($order, $gatewayFactory, $vouchers, $flagAfterHours);
         }
 
         return self::SUCCESS;
     }
 
-    private function reconcile(Order $order, PaymentGatewayFactory $gatewayFactory, int $flagAfterHours): void
+    private function reconcile(Order $order, PaymentGatewayFactory $gatewayFactory, VoucherService $vouchers, int $flagAfterHours): void
     {
         Log::withContext(['order_number' => $order->order_number, 'payment_request_id' => $order->payment_ref]);
 
@@ -91,11 +92,25 @@ class ReconcilePendingPaymentsCommand extends Command
 
         match ($payment->status) {
             PaymentStatus::Paid => $this->recover($order),
-            PaymentStatus::Failed => $order->update(['payment_status' => PaymentStatus::Failed->value]),
+            PaymentStatus::Failed => $this->markFailed($order, $vouchers),
             // PaymentStatus::Pending, or null (a gateway that somehow
             // didn't set it) — both genuinely ambiguous, never guessed at.
             default => $this->flagIfStale($order, $flagAfterHours, $payment->data['status'] ?? null),
         };
+    }
+
+    /**
+     * ADR-024 decision #6a — the second of the two paths (alongside
+     * the webhook's own terminal-Failed branch) that can catch a
+     * customer who applied a voucher then abandoned the gateway page
+     * entirely, without even the webhook ever firing. restore() is a
+     * no-op if this order never used a voucher.
+     */
+    private function markFailed(Order $order, VoucherService $vouchers): void
+    {
+        $order->update(['payment_status' => PaymentStatus::Failed->value]);
+
+        $vouchers->restore($order->id);
     }
 
     /**

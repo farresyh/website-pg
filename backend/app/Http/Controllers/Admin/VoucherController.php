@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Voucher;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,8 +31,10 @@ use Illuminate\Validation\ValidationException;
  */
 class VoucherController extends Controller
 {
-    public function __construct(private readonly LedgerService $ledger)
-    {
+    public function __construct(
+        private readonly LedgerService $ledger,
+        private readonly VoucherService $vouchers,
+    ) {
     }
 
     public function index(): JsonResponse
@@ -58,6 +61,41 @@ class VoucherController extends Controller
                 ],
             ],
             'vouchers' => $vouchers,
+        ]);
+    }
+
+    /**
+     * ADR-024 decision #9 — the voucher detail page: usage history is
+     * `voucher_redemptions` rows (real audit trail, not reconstructed
+     * from `remaining` alone), each with its own order link. Stat
+     * cards are computed here rather than client-side so the admin
+     * panel never has to duplicate this arithmetic.
+     */
+    public function show(Voucher $voucher): JsonResponse
+    {
+        $voucher->load(['redemptions.order:id,order_number', 'sourceOrder:id,order_number']);
+
+        $totalUsed = (int) $voucher->redemptions->whereIn('status', ['reserved', 'committed'])->sum('amount');
+        $restored = (int) $voucher->redemptions->where('status', 'restored')->sum('amount');
+        $pending = $voucher->redemptions->where('status', 'reserved')->count();
+        $resolved = $voucher->redemptions->whereIn('status', ['committed', 'restored'])->count();
+        $committed = $voucher->redemptions->where('status', 'committed')->count();
+
+        return response()->json([
+            'voucher' => $voucher,
+            'stats' => [
+                'original' => $voucher->amount,
+                'remaining' => $voucher->remaining,
+                'total_used' => $totalUsed,
+                'restored' => $restored,
+                'pending' => $pending,
+                // Of every redemption that's actually been resolved one
+                // way or the other (committed or restored), what share
+                // stuck (committed) rather than bounced back — undefined
+                // (0) until at least one has resolved, never a divide-
+                // by-zero.
+                'success_rate' => $resolved > 0 ? (int) round($committed / $resolved * 100) : 0,
+            ],
         ]);
     }
 
@@ -111,16 +149,29 @@ class VoucherController extends Controller
         // index on vouchers.order_id (migration 2026_07_25_140000) is
         // the actual serialization point; a second request that loses
         // the race hits it here instead of double-issuing a voucher.
+        //
+        // ADR-024 decision #7: if this order itself spent a different
+        // voucher (X) to pay part of its own price, giving up on
+        // delivery must restore X's balance in the same transaction as
+        // issuing this new voucher (Y) for the order's cash portion —
+        // two independent, un-merged vouchers, never one combined
+        // amount. restore() is a no-op if this order never redeemed
+        // one, so it's always safe to call unconditionally here.
         try {
-            $voucher = $this->issue(
-                customerEmail: $order->customer_email,
-                amount: $amount,
-                reason: $validated['reason'] ?? "Delivery failed - refund voucher for order {$order->order_number}",
-                expiresAt: null,
-                createdBy: $request->user()->id,
-                approvedBy: null,
-                orderId: $order->id,
-            );
+            $voucher = DB::transaction(function () use ($order, $amount, $validated, $request) {
+                $this->vouchers->restore($order->id);
+
+                return $this->issue(
+                    customerEmail: $order->customer_email,
+                    customerPhone: $order->customer_phone,
+                    amount: $amount,
+                    reason: $validated['reason'] ?? "Delivery failed - refund voucher for order {$order->order_number}",
+                    expiresAt: null,
+                    createdBy: $request->user()->id,
+                    approvedBy: null,
+                    orderId: $order->id,
+                );
+            });
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages([
                 'order' => ['A voucher has already been issued for this order.'],
@@ -158,12 +209,14 @@ class VoucherController extends Controller
         int $createdBy,
         ?int $approvedBy,
         ?int $orderId = null,
+        ?string $customerPhone = null,
     ): Voucher {
-        return DB::transaction(function () use ($customerEmail, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId) {
+        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId) {
             $voucher = Voucher::query()->create([
                 'order_id' => $orderId,
                 'code' => $this->generateCode(),
                 'customer_email' => $customerEmail,
+                'customer_phone' => $customerPhone,
                 'amount' => $amount,
                 'remaining' => $amount,
                 'status' => 'active',

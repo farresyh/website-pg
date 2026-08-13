@@ -26,6 +26,7 @@ class Order extends Model
         'supplier_id',
         'supplier_product_ref',
         'reseller_id',
+        'voucher_id',
         'cost_price',
         'reseller_cost_price',
         'reseller_markup_pct',
@@ -99,5 +100,17 @@ class Order extends Model
     public function voucher(): HasOne
     {
         return $this->hasOne(Voucher::class);
+    }
+
+    /**
+     * ADR-024 decision #2 — the inverse relation: which Voucher (if
+     * any) this order itself spent to pay for part of its price. At
+     * most one, enforced by voucher_redemptions.order_id's unique
+     * index. Distinct from voucher() above, which is Path B's "a
+     * voucher was issued because this order failed."
+     */
+    public function voucherRedemption(): HasOne
+    {
+        return $this->hasOne(VoucherRedemption::class);
     }
 }

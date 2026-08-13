@@ -20,6 +20,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -41,6 +42,7 @@ class ResendOrderDeliveryJobTest extends TestCase
                 new ReferenceNumberService(),
                 $adapter,
                 new LedgerService(),
+                new VoucherService(),
             ),
             new PricingService(),
         );

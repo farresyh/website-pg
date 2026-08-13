@@ -2,15 +2,23 @@
 
 namespace Tests\Concurrency;
 
+use App\Models\Order;
 use App\Models\Voucher;
+use App\Services\Order\DeliveryStatus;
+use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
 
 /**
- * Same rationale as LedgerWithdrawConcurrencyTest: proves the voucher row
- * lock (VCH-5) actually prevents double-spend, not just that the
- * arithmetic is correct in isolation.
+ * ADR-024. Proves the voucher row lock (VCH-5, unchanged by ADR-024)
+ * actually serializes two DIFFERENT orders redeeming the same voucher
+ * at once — the real "same customer, two browser tabs" scenario the
+ * founder raised, not just that the arithmetic is correct in
+ * isolation. voucher_redemptions.order_id's own unique index (ADR-024
+ * decision #2) is a second, independent guarantee against the same
+ * order double-redeeming, covered separately by VoucherServiceTest's
+ * idempotency case on the fast sqlite suite.
  *
  * Requires: docker compose up -d (backend/docker-compose.yml)
  * Run with: php artisan test -c phpunit.concurrency.xml
@@ -20,9 +28,9 @@ class VoucherRedeemConcurrencyTest extends TestCase
     // Not RefreshDatabase — see LedgerWithdrawConcurrencyTest for why.
     use DatabaseMigrations;
 
-    public function test_only_one_of_two_simultaneous_redemptions_succeeds_when_combined_amount_exceeds_remaining(): void
+    public function test_only_one_of_two_simultaneous_redemptions_from_two_orders_succeeds_when_combined_amount_exceeds_remaining(): void
     {
-        Voucher::query()->create([
+        $voucher = Voucher::query()->create([
             'code' => 'KRS-RACE-1',
             'customer_email' => 'race@example.com',
             'amount' => 1000,
@@ -30,6 +38,9 @@ class VoucherRedeemConcurrencyTest extends TestCase
             'status' => 'active',
             'reason' => 'concurrency test',
         ]);
+
+        $orderA = $this->order('KRS-RACE-ORDER-A');
+        $orderB = $this->order('KRS-RACE-ORDER-B');
 
         $resultFileA = tempnam(sys_get_temp_dir(), 'voucher_test_');
         $resultFileB = tempnam(sys_get_temp_dir(), 'voucher_test_');
@@ -44,12 +55,13 @@ class VoucherRedeemConcurrencyTest extends TestCase
             'DB_PASSWORD' => 'kerox',
         ];
 
-        $command = fn (string $resultFile) => [
-            PHP_BINARY, 'artisan', 'app:voucher-test-redeem', 'KRS-RACE-1', '700', $resultFile,
+        $command = fn (int $orderId, string $resultFile) => [
+            PHP_BINARY, 'artisan', 'app:voucher-test-redeem',
+            (string) $voucher->id, (string) $orderId, '700', 'race@example.com', $resultFile,
         ];
 
-        $processA = Process::path(base_path())->env($env)->start($command($resultFileA));
-        $processB = Process::path(base_path())->env($env)->start($command($resultFileB));
+        $processA = Process::path(base_path())->env($env)->start($command($orderA->id, $resultFileA));
+        $processB = Process::path(base_path())->env($env)->start($command($orderB->id, $resultFileB));
 
         $processA->wait();
         $processB->wait();
@@ -67,7 +79,24 @@ class VoucherRedeemConcurrencyTest extends TestCase
         $this->assertCount(1, $successes, 'Expected exactly one success, got: ' . json_encode($outcomes));
         $this->assertCount(1, $failures, 'Expected exactly one failure, got: ' . json_encode($outcomes));
 
-        $voucher = Voucher::query()->where('code', 'KRS-RACE-1')->first();
-        $this->assertSame(300, $voucher->remaining);
+        $this->assertSame(300, $voucher->fresh()->remaining);
+    }
+
+    private function order(string $orderNumber): Order
+    {
+        return Order::query()->create([
+            'order_number' => $orderNumber,
+            'customer_email' => 'race@example.com',
+            'player_id' => '123456',
+            'cost_price' => 900,
+            'reseller_cost_price' => 900,
+            'selling_price' => 1000,
+            'transaction_fee' => 0,
+            'final_amount' => 1000,
+            'platform_profit' => 100,
+            'reseller_profit' => 0,
+            'payment_status' => PaymentStatus::Pending->value,
+            'delivery_status' => DeliveryStatus::NotStarted->value,
+        ]);
     }
 }

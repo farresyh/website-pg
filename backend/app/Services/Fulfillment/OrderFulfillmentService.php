@@ -8,6 +8,7 @@ use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -33,6 +34,7 @@ final class OrderFulfillmentService
         private readonly ReferenceNumberService $referenceNumbers,
         private readonly SupplierAdapter $supplier,
         private readonly LedgerService $ledger,
+        private readonly VoucherService $vouchers,
     ) {
     }
 
@@ -123,6 +125,13 @@ final class OrderFulfillmentService
             ]);
 
             $this->creditProfit($locked);
+
+            // ADR-024 decision #6 — both payment and delivery succeeded,
+            // the third and final outcome of the voucher-redemption
+            // three-outcome model: any reserved redemption this order
+            // made is now permanent, never restored. No-op if this
+            // order never used a voucher.
+            $this->vouchers->commit($locked->id);
 
             return $locked->fresh();
         });

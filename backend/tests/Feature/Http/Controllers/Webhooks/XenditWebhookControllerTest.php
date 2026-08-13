@@ -4,6 +4,8 @@ namespace Tests\Feature\Http\Controllers\Webhooks;
 
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
@@ -239,5 +241,42 @@ class XenditWebhookControllerTest extends TestCase
         $fresh = $order->fresh();
         $this->assertSame(PaymentStatus::Failed, $fresh->payment_status);
         $this->assertSame(DeliveryStatus::NotStarted, $fresh->delivery_status);
+    }
+
+    /**
+     * ADR-024 decision #6a — a terminal Failed webhook is one of the
+     * two real restore triggers: the customer reached the gateway page
+     * (locking the voucher) but payment ultimately failed.
+     */
+    public function test_restores_a_reserved_voucher_redemption_on_a_failure_event(): void
+    {
+        $voucher = Voucher::query()->create([
+            'code' => 'KRS-WEBHOOK-VOUCHER',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 300,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->fakePaidOrder(['voucher_id' => $voucher->id, 'voucher_discount' => 200]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $voucher->id,
+            'order_id' => $order->id,
+            'amount' => 200,
+            'status' => 'reserved',
+        ]);
+
+        $this->bindFakePaymentGateway(true, new PaymentWebhookEvent(
+            eventType: 'payment.failure',
+            referenceId: $order->order_number,
+            paymentRequestId: 'pr-123',
+            status: PaymentStatus::Failed,
+            amountSen: 1100,
+        ));
+
+        $this->postJson('/api/webhooks/xendit', [], ['x-callback-token' => 'correct-token'])->assertOk();
+
+        $this->assertSame(500, $voucher->fresh()->remaining);
+        $this->assertSame('restored', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
     }
 }

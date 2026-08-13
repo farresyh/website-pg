@@ -7,6 +7,7 @@ use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +29,7 @@ class XenditWebhookController extends Controller
 {
     public function __construct(
         private readonly PaymentGateway $paymentGateway,
+        private readonly VoucherService $vouchers,
     ) {
     }
 
@@ -74,6 +76,15 @@ class XenditWebhookController extends Controller
 
         if ($event->status !== PaymentStatus::Paid) {
             $order->update(['payment_status' => $event->status->value]);
+
+            // ADR-024 decision #6a: a terminal Failed status (never a
+            // merely intermediate Pending update some gateways also
+            // send) is one of the two real restore triggers — gives
+            // back any reserved voucher redemption this order made. A
+            // no-op if this order never used a voucher.
+            if ($event->status === PaymentStatus::Failed) {
+                $this->vouchers->restore($order->id);
+            }
 
             return response()->json(['message' => 'acknowledged']);
         }

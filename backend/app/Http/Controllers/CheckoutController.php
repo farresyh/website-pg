@@ -15,9 +15,11 @@ use App\Services\Checkout\CheckoutService;
 use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Fraud\BlacklistService;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
+use App\Services\Voucher\InvalidVoucherException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -36,9 +38,11 @@ use Illuminate\Validation\ValidationException;
  * (ORD-9's principle: cost/reseller-cost come from the stored
  * Package, never from client input).
  *
- * No voucher-at-checkout support yet (VoucherService::redeem() exists
- * but isn't wired here) — deliberately out of scope for this pass, see
- * docs/prd.md §14.
+ * Voucher-at-checkout (ADR-024): only `voucher_code` is ever accepted
+ * from the client, passed through to CheckoutService untouched — the
+ * discount amount, ownership match, and the real locked redemption are
+ * all resolved server-side inside CheckoutService/VoucherService, this
+ * controller never computes or trusts any of that itself either.
  */
 class CheckoutController extends Controller
 {
@@ -130,6 +134,7 @@ class CheckoutController extends Controller
                 channelCode: $data['channel_code'],
                 idempotencyKey: $data['idempotency_key'],
                 channelProperties: $data['channel_properties'] ?? [],
+                voucherCode: $data['voucher_code'] ?? null,
                 supplierProductRef: $package->supplier_package_ref,
                 gameId: $game->id,
                 packageId: $package->id,
@@ -157,21 +162,18 @@ class CheckoutController extends Controller
             throw ValidationException::withMessages([
                 'payment' => [$e->getMessage()],
             ]);
+        } catch (InvalidVoucherException) {
+            // ADR-024: thrown by VoucherService::preview() before any
+            // Order is created — nothing to roll back. The message is
+            // deliberately generic (see preview()'s own doc comment),
+            // never distinguishing "wrong owner" from "doesn't exist"
+            // from the client's point of view.
+            throw ValidationException::withMessages([
+                'voucher_code' => ['This voucher code is not valid for this order.'],
+            ]);
         }
 
-        // CheckoutService::initiate() only persists payment_ref onto
-        // the Order, not the gateway's checkout-URL/QR "actions"
-        // payload — fetched separately here via the same resolved
-        // gateway (getPayment(), already implemented and tested)
-        // rather than changing CheckoutService's own tested contract.
-        $payment = $gateway->getPayment($order->payment_ref);
-
-        return response()->json([
-            'order_number' => $order->order_number,
-            'final_amount' => $order->final_amount,
-            'payment_status' => $order->payment_status,
-            'payment_actions' => $payment->success ? ($payment->data['actions'] ?? []) : [],
-        ], 201);
+        return $this->buildCheckoutResponse($order, $gateway, 201);
     }
 
     /**
@@ -187,6 +189,16 @@ class CheckoutController extends Controller
      */
     private function respondForExistingOrder(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): JsonResponse
     {
+        // ADR-024 decision #5: an order already settled entirely by a
+        // voucher has payment_ref permanently null and payment_status
+        // already Paid — resume() (which calls the gateway) is neither
+        // needed nor safe to call for it. Both conditions together are
+        // the same "never pending, never needs the gateway" signal
+        // settleWithVoucher() itself relies on.
+        if ($order->payment_ref === null && $order->payment_status === PaymentStatus::Paid) {
+            return $this->buildCheckoutResponse($order, $gateway, 200);
+        }
+
         if ($order->payment_ref === null) {
             try {
                 $order = $this->checkout->resume($order, $gateway, $channelCode, $channelProperties);
@@ -202,14 +214,36 @@ class CheckoutController extends Controller
             }
         }
 
-        $payment = $gateway->getPayment($order->payment_ref);
+        return $this->buildCheckoutResponse($order, $gateway, 200);
+    }
+
+    /**
+     * Shared response shape for a fresh checkout and an idempotent
+     * replay alike. ADR-024 decision #5: an order settled entirely by
+     * a voucher has no payment_ref at all — calling
+     * `$gateway->getPayment(null)` for it would be meaningless (no
+     * gateway was ever involved), so `payment_actions` stays an empty
+     * array and the storefront's own signal to skip any redirect is
+     * `payment_status === "paid"` immediately in this response, rather
+     * than a separate flag — a normal (non-voucher-settled) order is
+     * structurally never already Paid at this point, since that only
+     * ever happens later via webhook/reconciliation.
+     */
+    private function buildCheckoutResponse(Order $order, PaymentGateway $gateway, int $status): JsonResponse
+    {
+        $actions = [];
+
+        if ($order->payment_ref !== null) {
+            $payment = $gateway->getPayment($order->payment_ref);
+            $actions = $payment->success ? ($payment->data['actions'] ?? []) : [];
+        }
 
         return response()->json([
             'order_number' => $order->order_number,
             'final_amount' => $order->final_amount,
             'payment_status' => $order->payment_status,
-            'payment_actions' => $payment->success ? ($payment->data['actions'] ?? []) : [],
-        ], 200);
+            'payment_actions' => $actions,
+        ], $status);
     }
 
     private function fieldLabel(string $extraField): string

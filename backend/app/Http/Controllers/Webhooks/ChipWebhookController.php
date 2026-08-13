@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -39,8 +40,10 @@ class ChipWebhookController extends Controller
 {
     private readonly PaymentGateway $paymentGateway;
 
-    public function __construct(PaymentGatewayFactory $gatewayFactory)
-    {
+    public function __construct(
+        PaymentGatewayFactory $gatewayFactory,
+        private readonly VoucherService $vouchers,
+    ) {
         $this->paymentGateway = $gatewayFactory->make('chip');
     }
 
@@ -78,6 +81,12 @@ class ChipWebhookController extends Controller
 
         if ($event->status !== PaymentStatus::Paid) {
             $order->update(['payment_status' => $event->status->value]);
+
+            // ADR-024 decision #6a — see XenditWebhookController's own
+            // identical branch for the full reasoning.
+            if ($event->status === PaymentStatus::Failed) {
+                $this->vouchers->restore($order->id);
+            }
 
             return response()->json(['message' => 'acknowledged']);
         }

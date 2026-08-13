@@ -19,6 +19,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\FakeSupplierAdapter;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -147,6 +148,7 @@ class SandboxOrderController extends Controller
             new ReferenceNumberService(),
             $adapter,
             app(LedgerService::class),
+            app(VoucherService::class),
         );
 
         $resend = new OrderResendService($fulfillment, app(PricingService::class));

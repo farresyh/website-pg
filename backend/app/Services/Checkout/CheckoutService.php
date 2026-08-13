@@ -2,6 +2,7 @@
 
 namespace App\Services\Checkout;
 
+use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderNumberService;
@@ -11,7 +12,11 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\PricingService;
+use App\Services\Voucher\InvalidVoucherException;
+use App\Services\Voucher\VoucherPreview;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Orchestrates checkout INITIATION only — pricing through creating the
@@ -27,6 +32,7 @@ final class CheckoutService
         private readonly PricingService $pricing,
         private readonly CheckoutTotalService $checkoutTotal,
         private readonly OrderNumberService $orderNumbers,
+        private readonly VoucherService $vouchers,
     ) {
     }
 
@@ -56,11 +62,30 @@ final class CheckoutService
             $request->resellerMarkupPct,
         );
 
+        // ADR-024 decision #3: resolved server-side from the voucher's
+        // own stored code/remaining/ownership — never a client-
+        // submitted discount amount (ORD-9). preview() only reads, it
+        // never locks or mutates — the real, locked spend happens
+        // later, in requestPayment()/settleWithVoucher() below,
+        // matching decision #1's exact timing.
+        $voucherPreview = $request->voucherCode !== null
+            ? $this->vouchers->preview($request->voucherCode, $request->customerEmail, $request->customerPhone, $pricing->sellingPrice)
+            : null;
+
         $total = $this->checkoutTotal->calculate(
             $pricing->sellingPrice,
-            $request->voucherDiscountSen,
+            $voucherPreview?->discountSen ?? 0,
             $request->paymentFeeConfig,
         );
+
+        // ADR-024 decision #5: a voucher covering the full price means
+        // feeBase is 0 — CheckoutTotalService's own transactionFee
+        // formula would still apply a payment method's flat-fee
+        // component even at feeBase=0 (only the percentage component
+        // scales with the base), which makes no sense for an order
+        // that never touches a payment gateway at all. Forced to 0
+        // here rather than trusting that formula for this branch.
+        $fullyCoveredByVoucher = $total->feeBase === 0 && $voucherPreview !== null;
 
         // ADR-019 idempotency finding, verified directly against
         // docs.xendit.co (not assumed): Payment Request v3 has no
@@ -93,16 +118,17 @@ final class CheckoutService
                 'supplier_id' => $request->supplierId,
                 'supplier_product_ref' => $request->supplierProductRef,
                 'reseller_id' => $request->resellerId,
+                'voucher_id' => $voucherPreview?->voucherId,
                 'cost_price' => $pricing->costPrice,
                 'reseller_cost_price' => $pricing->resellerCostPrice,
                 'reseller_markup_pct' => $request->resellerMarkupPct,
                 'selling_price' => $pricing->sellingPrice,
                 'voucher_discount' => $total->voucherDiscount,
-                'transaction_fee' => $total->transactionFee,
-                'final_amount' => $total->finalAmount,
+                'transaction_fee' => $fullyCoveredByVoucher ? 0 : $total->transactionFee,
+                'final_amount' => $fullyCoveredByVoucher ? 0 : $total->finalAmount,
                 'platform_profit' => $pricing->platformProfit,
                 'reseller_profit' => $pricing->resellerProfit,
-                'payment_status' => PaymentStatus::Pending->value,
+                'payment_status' => $fullyCoveredByVoucher ? PaymentStatus::Paid->value : PaymentStatus::Pending->value,
                 'delivery_status' => DeliveryStatus::NotStarted->value,
                 'payment_method' => $request->paymentMethod,
                 'payment_gateway' => $request->paymentGateway,
@@ -117,6 +143,10 @@ final class CheckoutService
             }
 
             throw $e;
+        }
+
+        if ($fullyCoveredByVoucher) {
+            return $this->settleWithVoucher($order, $voucherPreview);
         }
 
         return $this->requestPayment(
@@ -141,6 +171,35 @@ final class CheckoutService
     public function resume(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties = []): Order
     {
         return $this->requestPayment($order, $gateway, $channelCode, $channelProperties);
+    }
+
+    /**
+     * ADR-024 decision #5 — a voucher fully covers the price: no
+     * gateway call, no fee, straight to fulfillment (same job a real
+     * webhook would dispatch, just triggered from checkout instead).
+     * payment_ref stays permanently null for an order settled this
+     * way — a real, structural signal that no gateway was ever
+     * involved, confirmed to never collide with
+     * ReconcilePendingPaymentsCommand (its own query only ever selects
+     * payment_status=pending, never Paid).
+     */
+    private function settleWithVoucher(Order $order, VoucherPreview $voucherPreview): Order
+    {
+        try {
+            $this->vouchers->redeem(
+                $voucherPreview->voucherId,
+                $order->id,
+                $order->voucher_discount,
+                $order->customer_email,
+                $order->customer_phone,
+            );
+        } catch (InvalidVoucherException $e) {
+            $this->logAcceptedVoucherRedemptionRace($order, $e);
+        }
+
+        FulfillOrderJob::dispatch($order->fresh());
+
+        return $order->fresh();
     }
 
     private function requestPayment(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
@@ -189,7 +248,53 @@ final class CheckoutService
             'payment_ref' => $payment->data['payment_request_id'] ?? null,
         ]);
 
+        // ADR-024 decision #1: the voucher lock happens here, after the
+        // gateway has confirmed a real, redirectable payment request
+        // exists — never before creating the Order or before this
+        // point. A gateway failure above (the `! $payment->success`
+        // branch) never reaches this line, so a failed createPayment()
+        // call never touches the voucher's remaining balance at all —
+        // nothing to restore for that failure mode. Reachable from both
+        // initiate() and resume(), so voucher_id is read off the Order
+        // itself rather than threaded through as a separate parameter.
+        if ($order->voucher_id !== null) {
+            try {
+                $this->vouchers->redeem(
+                    $order->voucher_id,
+                    $order->id,
+                    $order->voucher_discount,
+                    $order->customer_email,
+                    $order->customer_phone,
+                );
+            } catch (InvalidVoucherException $e) {
+                $this->logAcceptedVoucherRedemptionRace($order, $e);
+            }
+        }
+
         return $order->fresh();
+    }
+
+    /**
+     * ADR-024's accepted residual race: preview() (unlocked) validated
+     * this voucher moments ago, but redeem()'s locked re-check failed —
+     * only reachable if a second, near-simultaneous order from the
+     * same customer (the voucher's ownership lock rules out anyone
+     * else) drained the same voucher first. By this point the customer
+     * has already been charged (or the order already marked Paid) at
+     * the discounted amount; ADR-004 forbids clawing that back, so
+     * fulfillment always proceeds regardless. Logged at error level so
+     * it surfaces for admin/ledger reconciliation rather than passing
+     * silently, matching this codebase's existing "escalate the
+     * genuinely ambiguous case to a human" convention
+     * (ReconcilePendingPaymentsCommand::flagIfStale()).
+     */
+    private function logAcceptedVoucherRedemptionRace(Order $order, InvalidVoucherException $e): void
+    {
+        Log::error('Voucher redemption failed after the order was already committed to its discounted price', [
+            'order_number' => $order->order_number,
+            'voucher_id' => $order->voucher_id,
+            'error' => $e->getMessage(),
+        ]);
     }
 
     /**

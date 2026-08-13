@@ -9,6 +9,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\Voucher;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -232,6 +233,36 @@ class OrderControllerTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    /**
+     * ADR-024 decision #8 — once a voucher has been issued for this
+     * order (the admin's own "give up" decision), a later successful
+     * resend must never be possible, or the customer would be
+     * double-compensated (goods delivered and a voucher already held).
+     */
+    public function test_retry_delivery_rejects_an_order_with_an_already_issued_voucher(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        Voucher::query()->create([
+            'order_id' => $order->id,
+            'code' => 'KRS-GUARD-TEST',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
     public function test_retry_delivery_requires_authentication(): void
     {
         $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
@@ -265,6 +296,41 @@ class OrderControllerTest extends TestCase
         Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
             && $job->packageId === $package->id
             && $job->note === 'Bigger pack');
+    }
+
+    /**
+     * ADR-024 decision #8 — see the identical retryDelivery() guard
+     * test above for the full reasoning.
+     */
+    public function test_resend_rejects_an_order_with_an_already_issued_voucher(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'reseller_cost_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        Voucher::query()->create([
+            'order_id' => $order->id,
+            'code' => 'KRS-GUARD-TEST-2',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
     }
 
     public function test_resend_rejects_an_order_that_is_not_failed(): void

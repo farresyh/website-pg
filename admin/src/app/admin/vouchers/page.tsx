@@ -1,10 +1,13 @@
 "use client";
 
 /**
- * VCH-1..6. Only Path A (standalone, from this page) has a UI so far —
- * Path B (auto-computed refund for a failed order) has a backend
- * endpoint (POST /orders/{order}/voucher) but no trigger point yet,
- * since there's no Orders admin UI to add a "Create Voucher" button to.
+ * VCH-1..6. Path A (standalone, from this page) and Path B (auto-
+ * computed refund for a failed order, triggered from /admin/orders'
+ * "Issue Voucher…" button) both land here for viewing. ADR-024
+ * decision #9: the detail view (usage history, restore/commit trail)
+ * follows the same "selected state on this page, no dynamic route"
+ * pattern OrderDetailCards already established for /admin/orders —
+ * this codebase has no [id]/page.tsx routes anywhere yet.
  */
 
 import { useEffect, useState } from "react";
@@ -19,7 +22,10 @@ import { ApiError } from "@/lib/api-client";
 import {
   type Voucher,
   type VoucherIndexResponse,
+  type VoucherRedemption,
+  type VoucherShowResponse,
   listVouchers,
+  getVoucher,
   createVoucher,
   revokeVoucher,
 } from "@/lib/vouchers";
@@ -36,12 +42,31 @@ function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
+}
+
 const statusColor: Record<Voucher["status"], "success" | "light" | "warning" | "error"> = {
   active: "success",
   exhausted: "light",
   expired: "warning",
   revoked: "error",
 };
+
+const redemptionStatusColor: Record<VoucherRedemption["status"], "warning" | "success" | "light"> = {
+  reserved: "warning",
+  committed: "success",
+  restored: "light",
+};
+
+const DETAIL_STAT_CARDS: { key: keyof VoucherShowResponse["stats"]; label: string; isRm: boolean }[] = [
+  { key: "original", label: "Original", isRm: true },
+  { key: "remaining", label: "Remaining", isRm: true },
+  { key: "total_used", label: "Total Used", isRm: true },
+  { key: "restored", label: "Restored", isRm: true },
+  { key: "success_rate", label: "Success Rate", isRm: false },
+  { key: "pending", label: "Pending", isRm: false },
+];
 
 export default function VouchersPage() {
   const router = useRouter();
@@ -52,6 +77,9 @@ export default function VouchersPage() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+
+  const [selected, setSelected] = useState<VoucherShowResponse | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   async function refresh(token: string) {
     try {
@@ -97,6 +125,154 @@ export default function VouchersPage() {
     } finally {
       setRevokingId(null);
     }
+  }
+
+  async function openDetail(voucherId: number) {
+    if (!session) return;
+    setDetailError(null);
+    try {
+      setSelected(await getVoucher(session.token, voucherId));
+    } catch (err) {
+      setDetailError(err instanceof ApiError ? err.message : "Could not load voucher details.");
+    }
+  }
+
+  async function closeDetail() {
+    setSelected(null);
+    if (session) await refresh(session.token);
+  }
+
+  if (selected) {
+    const { voucher, stats } = selected;
+
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={closeDetail}
+          className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+        >
+          ← Back to vouchers
+        </button>
+
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{voucher.code}</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Voucher Details</p>
+          </div>
+          {voucher.status === "active" && (
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={revokingId === voucher.id}
+              onClick={async () => {
+                await handleRevoke(voucher);
+                await openDetail(voucher.id);
+              }}
+            >
+              Revoke
+            </Button>
+          )}
+        </div>
+
+        {detailError && (
+          <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+            {detailError}
+          </p>
+        )}
+
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+          <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">Voucher Information</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Status</p>
+              <Badge size="sm" color={statusColor[voucher.status]}>{voucher.status}</Badge>
+            </div>
+            <div>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Customer Email</p>
+              <p className="text-theme-sm text-gray-800 dark:text-white/90">{voucher.customer_email}</p>
+            </div>
+            <div>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Customer Phone</p>
+              <p className="text-theme-sm text-gray-800 dark:text-white/90">{voucher.customer_phone ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Created</p>
+              <p className="text-theme-sm text-gray-800 dark:text-white/90">{formatDate(voucher.created_at)}</p>
+            </div>
+            <div>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Expires</p>
+              <p className="text-theme-sm text-gray-800 dark:text-white/90">
+                {voucher.expires_at ? formatDate(voucher.expires_at) : "Never"}
+              </p>
+            </div>
+            <div>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Source Order</p>
+              <p className="text-theme-sm text-gray-800 dark:text-white/90">
+                {voucher.source_order?.order_number ?? "—"}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Reason</p>
+            <p className="mt-1 rounded-lg bg-gray-50 px-3 py-2 text-theme-sm text-gray-800 dark:bg-white/[0.03] dark:text-white/90">
+              {voucher.reason}
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
+          {DETAIL_STAT_CARDS.map(({ key, label, isRm }) => (
+            <div key={key} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</p>
+              <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
+                {isRm ? formatRm(stats[key]) : key === "success_rate" ? `${stats[key]}%` : stats[key]}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="border-b border-gray-100 px-5 py-3 dark:border-gray-800">
+            <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Usage History</h2>
+          </div>
+          <div className="max-w-full overflow-x-auto">
+            <Table>
+              <TableHeader className="border-b border-gray-100 dark:border-gray-800">
+                <TableRow>
+                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</TableCell>
+                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</TableCell>
+                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
+                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</TableCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {voucher.redemptions.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                      {r.order?.order_number ?? `order #${r.order_id}`}
+                    </TableCell>
+                    <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                      -{formatRm(r.amount)}
+                    </TableCell>
+                    <TableCell className="px-5 py-4 text-theme-sm">
+                      <Badge size="sm" color={redemptionStatusColor[r.status]}>{r.status}</Badge>
+                    </TableCell>
+                    <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                      {formatDate(r.created_at)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {voucher.redemptions.length === 0 && (
+              <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Not used yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -150,7 +326,13 @@ export default function VouchersPage() {
               {data?.vouchers.map((v) => (
                 <TableRow key={v.id}>
                   <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                    {v.code}
+                    <button
+                      type="button"
+                      className="hover:text-brand-500 dark:hover:text-brand-400"
+                      onClick={() => openDetail(v.id)}
+                    >
+                      {v.code}
+                    </button>
                     {v.order_id && (
                       <span className="ml-2 text-theme-xs text-gray-400">order #{v.order_id}</span>
                     )}
@@ -162,13 +344,20 @@ export default function VouchersPage() {
                     <Badge size="sm" color={statusColor[v.status]}>{v.status}</Badge>
                   </TableCell>
                   <TableCell className="px-5 py-4 text-theme-sm">
-                    {v.status === "active" ? (
-                      <Button size="sm" variant="danger" disabled={revokingId === v.id} onClick={() => handleRevoke(v)}>
-                        Revoke
-                      </Button>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                        onClick={() => openDetail(v.id)}
+                      >
+                        View
+                      </button>
+                      {v.status === "active" && (
+                        <Button size="sm" variant="danger" disabled={revokingId === v.id} onClick={() => handleRevoke(v)}>
+                          Revoke
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

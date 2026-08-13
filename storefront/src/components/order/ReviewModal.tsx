@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
+import { ApiError } from "@/lib/api-client";
+import { previewVoucher, type VoucherPreviewResult } from "@/lib/vouchers";
 import type { Game, GamePackage } from "@/lib/catalog";
 
 interface ReviewModalProps {
@@ -22,6 +24,8 @@ interface ReviewModalProps {
   submitting: boolean;
   submitError: string | null;
   onConfirm: () => void;
+  /** ADR-024 — the applied voucher's code, or null once cleared/removed. */
+  onVoucherChange: (code: string | null) => void;
 }
 
 const inputClass =
@@ -60,8 +64,14 @@ export default function ReviewModal({
   submitting,
   submitError,
   onConfirm,
+  onVoucherChange,
 }: ReviewModalProps) {
   const [tcChecked, setTcChecked] = useState(false);
+
+  const [voucherCode, setVoucherCode] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; result: VoucherPreviewResult } | null>(null);
 
   if (!open) return null;
 
@@ -71,6 +81,38 @@ export default function ReviewModal({
     customerName.trim().length > 0 &&
     customerPhone.trim().length > 0 &&
     !submitting;
+
+  async function handleApplyVoucher() {
+    if (voucherCode.trim().length === 0) return;
+    if (customerEmail.trim().length === 0) {
+      setVoucherError("Enter your email address above first.");
+      return;
+    }
+
+    setApplying(true);
+    setVoucherError(null);
+    try {
+      const result = await previewVoucher(game.id, pkg.id, voucherCode.trim(), customerEmail, customerPhone);
+      setAppliedVoucher({ code: voucherCode.trim(), result });
+      onVoucherChange(voucherCode.trim());
+    } catch (err) {
+      setAppliedVoucher(null);
+      onVoucherChange(null);
+      setVoucherError(err instanceof ApiError ? err.message : "Couldn't check that voucher — please try again.");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  function handleRemoveVoucher() {
+    setAppliedVoucher(null);
+    setVoucherCode("");
+    setVoucherError(null);
+    onVoucherChange(null);
+  }
+
+  const discountRm = (appliedVoucher?.result.discount ?? 0) / 100;
+  const payableRm = Math.max(0, pkg.priceRm - discountRm);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 lg:items-center" onClick={onClose}>
@@ -139,9 +181,56 @@ export default function ReviewModal({
 
         <hr className="mb-5 border-border" />
 
-        <div className="mb-5 flex items-center justify-between">
-          <span className="text-base font-extrabold">Total</span>
-          <span className="text-xl font-extrabold text-brand-light">RM{pkg.priceRm.toFixed(2)}</span>
+        <div className="mb-5">
+          <label htmlFor="reviewVoucher" className={labelClass}>
+            Voucher Code
+          </label>
+          {appliedVoucher ? (
+            <div className="flex items-center justify-between rounded-lg border border-brand/40 bg-brand/10 px-3.5 py-2.5">
+              <span className="text-sm font-semibold">{appliedVoucher.code}</span>
+              <button type="button" onClick={handleRemoveVoucher} className="text-[13px] font-semibold text-text-muted hover:text-error">
+                Remove
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                id="reviewVoucher"
+                type="text"
+                value={voucherCode}
+                onChange={(e) => setVoucherCode(e.target.value)}
+                placeholder="Enter voucher code"
+                className={inputClass}
+              />
+              <Button onClick={handleApplyVoucher} disabled={applying || voucherCode.trim().length === 0} className="shrink-0 px-4">
+                {applying ? "Checking…" : "Apply"}
+              </Button>
+            </div>
+          )}
+          {voucherError && <p className="mt-1.5 text-[12.5px] text-error">{voucherError}</p>}
+        </div>
+
+        <hr className="mb-5 border-border" />
+
+        <div className="mb-5 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className={appliedVoucher ? "text-sm text-text-muted" : "text-base font-extrabold"}>Total</span>
+            <span className={appliedVoucher ? "text-sm text-text-muted line-through" : "text-xl font-extrabold text-brand-light"}>
+              RM{pkg.priceRm.toFixed(2)}
+            </span>
+          </div>
+          {appliedVoucher && (
+            <>
+              <div className="flex items-center justify-between text-sm text-brand-light">
+                <span>Voucher discount</span>
+                <span>-RM{discountRm.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-base font-extrabold">You Pay</span>
+                <span className="text-xl font-extrabold text-brand-light">RM{payableRm.toFixed(2)}</span>
+              </div>
+            </>
+          )}
         </div>
 
         <label className="mb-4 flex cursor-pointer items-start gap-2.5">
@@ -160,7 +249,7 @@ export default function ReviewModal({
         {submitError && <p className="mb-4 rounded-lg border border-error/40 bg-error/10 p-3 text-[13px] text-error">{submitError}</p>}
 
         <Button onClick={onConfirm} disabled={!canConfirm} className="w-full justify-center">
-          {submitting ? "Processing…" : `Confirm & Pay RM${pkg.priceRm.toFixed(2)}`}
+          {submitting ? "Processing…" : payableRm === 0 ? "Confirm — Fully Covered by Voucher" : `Confirm & Pay RM${payableRm.toFixed(2)}`}
         </Button>
       </div>
     </div>

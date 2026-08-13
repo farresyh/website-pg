@@ -11,6 +11,9 @@ use App\Models\PlayerValidation;
 use App\Models\PlayerValidatorProfile;
 use App\Models\Reseller;
 use App\Models\Supplier;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
+use App\Jobs\FulfillOrderJob;
 use App\Services\Fraud\BlacklistEntryType;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
@@ -19,6 +22,7 @@ use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -658,5 +662,104 @@ class CheckoutControllerTest extends TestCase
         $this->postJson('/api/checkout', $this->payload($game, $package))->assertCreated();
 
         $this->assertSame(2, Order::query()->count());
+    }
+
+    private function voucher(array $overrides = []): Voucher
+    {
+        return Voucher::query()->create(array_merge([
+            'code' => 'KRS-CHECKOUT-TEST',
+            'customer_email' => 'buyer@example.com',
+            'customer_phone' => null,
+            'amount' => 1000,
+            'remaining' => 1000,
+            'status' => 'active',
+            'reason' => 'test voucher',
+        ], $overrides));
+    }
+
+    /**
+     * ADR-024 decision #1/#4 — feeBase (and therefore the gateway-
+     * charged fee) is computed on the cash portion only, never the
+     * voucher-covered portion. Decision #1: redemption happens after
+     * the gateway confirms success, so it's already reflected by the
+     * time this response returns.
+     */
+    public function test_partial_cover_voucher_reduces_fee_base_and_redeems_after_gateway_success(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage(); // selling_price = 500
+        $voucher = $this->voucher(['remaining' => 200]);
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['voucher_code' => $voucher->code]));
+
+        $response->assertCreated();
+        $response->assertJsonPath('payment_status', 'pending');
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame($voucher->id, $order->voucher_id);
+        $this->assertSame(200, $order->voucher_discount);
+        // feeBase = 500 - 200 = 300; flat_fee_sen = 210 from activeChannel().
+        $this->assertSame(210, $order->transaction_fee);
+        $this->assertSame(510, $order->final_amount);
+        $this->assertNotNull($order->payment_ref);
+
+        $this->assertSame(0, $voucher->fresh()->remaining);
+        $this->assertSame('exhausted', $voucher->fresh()->status);
+        $redemption = VoucherRedemption::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame(200, $redemption->amount);
+        $this->assertSame('reserved', $redemption->status);
+    }
+
+    /**
+     * ADR-024 decision #5 — the real gap this decision closed: a
+     * flat-fee channel (activeChannel() seeds flat_fee_sen=210) must
+     * not charge that fee at all once the gateway is skipped entirely.
+     */
+    public function test_full_cover_voucher_skips_gateway_and_settles_immediately(): void
+    {
+        Queue::fake();
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage(); // selling_price = 500
+        $voucher = $this->voucher(['remaining' => 1000]);
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['voucher_code' => $voucher->code]));
+
+        $response->assertCreated();
+        $response->assertJsonPath('payment_status', 'paid');
+        $response->assertJsonPath('payment_actions', []);
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame($voucher->id, $order->voucher_id);
+        $this->assertSame(500, $order->voucher_discount); // capped at selling_price, not the full 1000 remaining
+        $this->assertSame(0, $order->transaction_fee);
+        $this->assertSame(0, $order->final_amount);
+        $this->assertNull($order->payment_ref);
+        $this->assertSame('paid', $order->payment_status->value);
+
+        $this->assertSame(500, $voucher->fresh()->remaining); // 1000 - 500, not fully exhausted
+
+        Queue::assertPushed(
+            FulfillOrderJob::class,
+            fn ($job) => $job->order->id === $order->id,
+        );
+    }
+
+    /**
+     * ORD-9/ADR-024 decision #3 — an invalid code (here: right code,
+     * wrong customer) is rejected before any Order is created, with
+     * the same generic message VoucherService::preview() always uses.
+     */
+    public function test_rejects_checkout_with_a_voucher_that_does_not_belong_to_this_customer(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $voucher = $this->voucher(['customer_email' => 'someone-else@example.com']);
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['voucher_code' => $voucher->code]));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('voucher_code');
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(1000, $voucher->fresh()->remaining);
     }
 }

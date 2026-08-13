@@ -61,8 +61,16 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
   // collapsed into an earlier one.
   const idempotencyKeyRef = useRef<string | null>(null);
 
+  // ADR-024 — set by ReviewModal's own Apply button, read back here so
+  // the final POST /api/checkout can include it. Reset on every fresh
+  // Review Modal open, same reasoning as the idempotency key: an
+  // unrelated later purchase must never inherit an earlier attempt's
+  // applied voucher.
+  const [voucherCode, setVoucherCode] = useState<string | null>(null);
+
   function openReview() {
     idempotencyKeyRef.current = crypto.randomUUID();
+    setVoucherCode(null);
     setReviewOpen(true);
   }
 
@@ -130,6 +138,7 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
         server_id: game.extraField ? serverId : undefined,
         channel_code: channelCode,
         idempotency_key: idempotencyKeyRef.current ?? crypto.randomUUID(),
+        voucher_code: voucherCode ?? undefined,
         // Xendit requires these for redirect-based channels (FPX, some
         // e-wallets) — where it sends the customer back to after they
         // complete payment on its own hosted page. We don't have the
@@ -241,6 +250,7 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
           submitting={submitting}
           submitError={submitError}
           onConfirm={handleConfirmPayment}
+          onVoucherChange={setVoucherCode}
         />
       )}
     </div>

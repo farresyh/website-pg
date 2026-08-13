@@ -8,6 +8,7 @@ use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\Voucher;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Http\JsonResponse;
@@ -123,6 +124,17 @@ class OrderController extends Controller
             ]);
         }
 
+        // ADR-024 decision #8: once a voucher has been issued for this
+        // order (the admin's own "give up" decision — VoucherController
+        // ::storeFromOrder()), Resend Delivery must never succeed again
+        // — a later successful resend would double-compensate the
+        // customer (goods delivered *and* a voucher already in hand).
+        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['A voucher has already been issued for this order — it cannot be resent.'],
+            ]);
+        }
+
         FulfillOrderJob::dispatch($order);
 
         return response()->json(['message' => 'Delivery retry queued.']);
@@ -146,6 +158,14 @@ class OrderController extends Controller
         if ($order->delivery_status !== DeliveryStatus::Failed) {
             throw ValidationException::withMessages([
                 'delivery_status' => ['Only an order with a failed delivery can be resent.'],
+            ]);
+        }
+
+        // ADR-024 decision #8 — see retryDelivery()'s identical guard
+        // for the full reasoning.
+        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['A voucher has already been issued for this order — it cannot be resent.'],
             ]);
         }
 

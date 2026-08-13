@@ -4,6 +4,8 @@ namespace Tests\Feature\Console;
 
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
@@ -156,6 +158,43 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_marks_an_order_failed_when_the_gateway_reports_canceled(): void
     {
         $this->assertMarksOrderFailedOnTerminalFailure('CANCELED');
+    }
+
+    /**
+     * ADR-024 decision #6a — the second of the two real restore
+     * triggers: a customer who reached the gateway page (locking the
+     * voucher) but whose payment was never confirmed by a webhook at
+     * all, only caught later by this stale-pending sweep.
+     */
+    public function test_restores_a_reserved_voucher_redemption_when_reconciliation_finds_a_terminal_failure(): void
+    {
+        Bus::fake();
+        $this->bindFakeGateway('EXPIRED');
+
+        $voucher = Voucher::query()->create([
+            'code' => 'KRS-RECONCILE-VOUCHER',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 300,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->stalePending([
+            'order_number' => 'KRS-RECONCILE-VOUCHER-ORDER',
+            'voucher_id' => $voucher->id,
+            'voucher_discount' => 200,
+        ]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $voucher->id,
+            'order_id' => $order->id,
+            'amount' => 200,
+            'status' => 'reserved',
+        ]);
+
+        $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
+
+        $this->assertSame(500, $voucher->fresh()->remaining);
+        $this->assertSame('restored', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
     }
 
     public function test_leaves_an_ambiguous_status_untouched_when_still_within_the_flag_window(): void

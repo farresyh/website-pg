@@ -42,6 +42,14 @@ export interface CheckoutPayload {
    * second one. See CheckoutController's idempotency_key lookup.
    */
   idempotency_key: string;
+  /**
+   * ADR-024: only the code itself, never a discount amount (ORD-9) —
+   * CheckoutService resolves the real discount server-side from the
+   * voucher's own stored remaining/ownership, the same way
+   * lib/vouchers.ts's previewVoucher() already does for the Review
+   * Modal's own "Apply" preview.
+   */
+  voucher_code?: string;
 }
 
 export interface CheckoutResult {

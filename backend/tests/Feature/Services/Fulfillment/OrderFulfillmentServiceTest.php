@@ -15,6 +15,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -31,6 +32,7 @@ class OrderFulfillmentServiceTest extends TestCase
             new ReferenceNumberService(),
             $adapter,
             new LedgerService(),
+            new VoucherService(),
         );
     }
 
@@ -231,5 +233,38 @@ class OrderFulfillmentServiceTest extends TestCase
                 'error_code' => 'timeout',
                 'error_message' => 'Supplier timed out',
             ]);
+    }
+
+    /**
+     * ADR-024 decision #6 — the third and final outcome of the
+     * voucher-redemption three-outcome model: both payment and
+     * delivery succeeded, so a reserved redemption becomes committed
+     * (permanent), never restored.
+     */
+    public function test_fulfill_commits_a_reserved_voucher_redemption_on_delivery(): void
+    {
+        $voucher = \App\Models\Voucher::query()->create([
+            'code' => 'VC-TESTCOMMIT',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 1000,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $order = $this->paidOrder(['voucher_id' => $voucher->id, 'voucher_discount' => 500]);
+
+        \App\Models\VoucherRedemption::query()->create([
+            'voucher_id' => $voucher->id,
+            'order_id' => $order->id,
+            'amount' => 500,
+            'status' => 'reserved',
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($order);
+
+        $this->assertSame('committed', \App\Models\VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+        // Committing must never touch the voucher's own remaining balance.
+        $this->assertSame(500, $voucher->fresh()->remaining);
     }
 }

@@ -43,6 +43,11 @@ use Illuminate\Validation\Rule;
  * order endpoint needs it even though our own checkout previously marked
  * it optional. Required at the FormRequest layer so a missing phone is
  * caught before payment, not after a paid order fails delivery.
+ *
+ * `voucher_code` added 2026-08-13 (ADR-024): only the code itself is
+ * accepted from the client — never a discount amount (ORD-9).
+ * CheckoutService resolves it server-side against the voucher's own
+ * stored remaining/ownership at pricing time.
  */
 class CreateCheckoutRequest extends FormRequest
 {
@@ -72,6 +77,7 @@ class CreateCheckoutRequest extends FormRequest
             ],
             'channel_properties' => ['nullable', 'array'],
             'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
+            'voucher_code' => ['nullable', 'string', 'max:32'],
         ];
     }
 }
