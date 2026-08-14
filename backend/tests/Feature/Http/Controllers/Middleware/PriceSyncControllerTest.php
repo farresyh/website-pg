@@ -21,7 +21,7 @@ class PriceSyncControllerTest extends TestCase
 
     private function actingAsAdmin(): AdminUser
     {
-        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        $admin = AdminUser::factory()->create(['role' => 'super_admin']);
         Sanctum::actingAs($admin);
 
         return $admin;
@@ -30,6 +30,13 @@ class PriceSyncControllerTest extends TestCase
     public function test_store_requires_authentication(): void
     {
         $this->postJson('/api/middleware/price-sync')->assertUnauthorized();
+    }
+
+    public function test_regular_admin_is_forbidden(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->postJson('/api/middleware/price-sync')->assertForbidden();
     }
 
     /**

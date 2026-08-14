@@ -50,7 +50,14 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Was `null` (never expires) — fresh audit, 2026-08-14, flagged an
+    // indefinitely-lived admin bearer token as a real gap (leaked log/XSS/
+    // stolen device grants permanent access). 720 min (12h) covers a full
+    // admin shift without forcing a mid-session re-login; admin/lib/
+    // api-client.ts now handles the resulting 401 by clearing the client
+    // session and redirecting to /login instead of every page growing its
+    // own handling.
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION_MINUTES', 720),
 
     /*
     |--------------------------------------------------------------------------

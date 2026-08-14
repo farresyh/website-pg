@@ -22,7 +22,11 @@ class CreateVoucherRequest extends FormRequest
     {
         return [
             'customer_email' => ['required', 'email'],
-            'amount' => ['required', 'integer', 'min:1'],
+            // Ceiling added 2026-08-14 (fresh audit) — a Super Admin fat-
+            // fingering an extra digit had no floor/ceiling sanity check
+            // the way markup_percent already got one; RM 10,000 comfortably
+            // exceeds any real single-order compensation amount.
+            'amount' => ['required', 'integer', 'min:1', 'max:1000000'],
             'reason' => ['required', 'string', 'max:1000'],
             'expires_at' => ['nullable', 'date', 'after:now'],
         ];

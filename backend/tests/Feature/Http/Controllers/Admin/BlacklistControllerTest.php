@@ -15,7 +15,7 @@ class BlacklistControllerTest extends TestCase
 
     private function actingAsAdmin(): AdminUser
     {
-        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        $admin = AdminUser::factory()->create(['role' => 'super_admin']);
         Sanctum::actingAs($admin);
 
         return $admin;
@@ -24,6 +24,18 @@ class BlacklistControllerTest extends TestCase
     public function test_index_requires_authentication(): void
     {
         $this->getJson('/api/blacklist')->assertUnauthorized();
+    }
+
+    public function test_regular_admin_is_forbidden(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->getJson('/api/blacklist')->assertForbidden();
+        $this->postJson('/api/blacklist', [
+            'type' => 'player_id',
+            'value' => '123456',
+            'reason' => 'test',
+        ])->assertForbidden();
     }
 
     public function test_admin_can_create_a_blacklist_entry(): void

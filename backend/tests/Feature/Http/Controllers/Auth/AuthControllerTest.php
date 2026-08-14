@@ -25,6 +25,29 @@ class AuthControllerTest extends TestCase
         $response->assertJsonStructure(['token', 'admin']);
     }
 
+    public function test_token_older_than_the_configured_expiration_is_rejected(): void
+    {
+        // Was `null` (never expires) — fixed 2026-08-14, fresh audit.
+        // Sanctum's `expiration` config enforces a rolling window off each
+        // token's `created_at`, not a stored `expires_at` set at issuance —
+        // so this proves the enforcement, not just the config value.
+        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
+
+        $login = $this->postJson('/api/login', [
+            'email' => $admin->email,
+            'password' => 'secret-password',
+        ])->assertOk();
+        $plainToken = $login->json('token');
+
+        $admin->tokens()->sole()->forceFill([
+            'created_at' => now()->subMinutes(config('sanctum.expiration') + 1),
+        ])->save();
+
+        $this->withHeader('Authorization', "Bearer {$plainToken}")
+            ->getJson('/api/me')
+            ->assertUnauthorized();
+    }
+
     public function test_login_logs_a_successful_attempt(): void
     {
         Log::spy();

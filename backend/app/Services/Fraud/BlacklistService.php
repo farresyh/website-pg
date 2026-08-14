@@ -4,6 +4,7 @@ namespace App\Services\Fraud;
 
 use App\Models\BlacklistEntry;
 use App\Models\BlacklistHit;
+use Illuminate\Support\Str;
 
 /**
  * ADR-007 / FRAUD-1..2: independent of whatever blacklist (if any) a
@@ -32,7 +33,15 @@ final class BlacklistService
                 }
 
                 if ($email !== null) {
-                    $query->orWhere(fn ($q) => $q->where('type', BlacklistEntryType::Email)->where('value', $email));
+                    // Case-insensitive on both sides — an entry saved as
+                    // "Fraud@Example.com" must still catch "fraud@example.com"
+                    // at checkout. Matches VoucherService::assertUsable's own
+                    // Str::lower() convention for the same kind of email
+                    // match. Found inconsistent, fresh audit, 2026-08-14.
+                    $query->orWhere(
+                        fn ($q) => $q->where('type', BlacklistEntryType::Email)
+                            ->whereRaw('LOWER(value) = ?', [Str::lower($email)])
+                    );
                 }
 
                 if ($phone !== null) {

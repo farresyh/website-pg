@@ -50,6 +50,16 @@ class BlacklistServiceTest extends TestCase
         $this->assertSame($entry->id, $result->id);
     }
 
+    public function test_matches_a_blacklisted_email_case_insensitively(): void
+    {
+        $entry = $this->entry(['type' => BlacklistEntryType::Email->value, 'value' => 'Fraud@Example.com']);
+
+        $result = (new BlacklistService())->check('999999', 'fraud@example.com', null);
+
+        $this->assertNotNull($result);
+        $this->assertSame($entry->id, $result->id);
+    }
+
     public function test_returns_null_when_nothing_matches(): void
     {
         $this->entry();

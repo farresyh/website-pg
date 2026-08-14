@@ -126,6 +126,26 @@ class XenditWebhookControllerTest extends TestCase
         $this->assertSame(PaymentStatus::Pending, $order->fresh()->payment_status);
     }
 
+    public function test_rate_limits_repeated_requests_from_the_same_ip(): void
+    {
+        $order = $this->fakePaidOrder();
+        $this->bindFakePaymentGateway(false, new PaymentWebhookEvent(
+            eventType: 'payment.capture',
+            referenceId: $order->order_number,
+            paymentRequestId: 'pr-123',
+            status: PaymentStatus::Paid,
+            amountSen: 1100,
+        ));
+
+        for ($i = 0; $i < 120; $i++) {
+            $this->postJson('/api/webhooks/xendit', [], ['x-callback-token' => 'wrong-token'])
+                ->assertUnauthorized();
+        }
+
+        $this->postJson('/api/webhooks/xendit', [], ['x-callback-token' => 'wrong-token'])
+            ->assertStatus(429);
+    }
+
     public function test_returns_404_when_no_order_matches_the_payment_request_id(): void
     {
         $this->bindFakePaymentGateway(true, new PaymentWebhookEvent(

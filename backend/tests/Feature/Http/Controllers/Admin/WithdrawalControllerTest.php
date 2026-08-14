@@ -42,6 +42,17 @@ class WithdrawalControllerTest extends TestCase
         $this->assertDatabaseHas('withdrawals', ['amount' => 10_000, 'status' => 'pending']);
     }
 
+    public function test_amount_above_the_sanity_ceiling_is_rejected(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/withdrawals', $this->validPayload(['amount' => 100_000_001]));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('amount');
+        $this->assertDatabaseCount('withdrawals', 0);
+    }
+
     public function test_request_exceeding_available_balance_is_rejected(): void
     {
         $this->fundPlatformLedger(5_000);

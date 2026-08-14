@@ -15,7 +15,15 @@ class PlayerRegionMappingControllerTest extends TestCase
 
     private function actingAsAdmin(): void
     {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+    }
+
+    public function test_regular_admin_is_forbidden(): void
+    {
+        $validator = $this->validator();
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->postJson("/api/middleware/validators/{$validator->id}/mappings", [])->assertForbidden();
     }
 
     private function game(array $overrides = []): Game

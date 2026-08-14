@@ -136,7 +136,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // ADR-007 / FRAUD-1..3 - internal blacklist, independent of any
     // supplier-provided one. "Remove" is deactivate(), never a hard
     // delete (see the migration's own doc comment for why).
-    Route::middleware('admin.role:super_admin,admin')->prefix('blacklist')->group(function () {
+    // Super Admin only, per PRD §3 Users & Roles ("Admin ... Cannot
+    // modify ... blacklist rules") — fixed 2026-08-14, this route group
+    // previously also let a regular Admin through.
+    Route::middleware('admin.role:super_admin')->prefix('blacklist')->group(function () {
         Route::get('/', [BlacklistController::class, 'index']);
         Route::post('/', [BlacklistController::class, 'store']);
         Route::get('/{blacklist_entry}', [BlacklistController::class, 'show']);
@@ -157,7 +160,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // lifecycle (status transitions, resend, Delivery Logs) without
     // touching real data or real money — fully separate from
     // /orders above, every query unconditionally scoped to is_test.
-    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/sandbox')->group(function () {
+    // Super Admin only — this whole /middleware/* area is per PRD §3
+    // (see admin/src/app/middleware/layout.tsx's own doc comment);
+    // fixed 2026-08-14, previously also let a regular Admin through.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/sandbox')->group(function () {
         Route::get('/', [SandboxOrderController::class, 'index']);
         Route::post('/', [SandboxOrderController::class, 'store']);
         Route::get('/{order}', [SandboxOrderController::class, 'show']);
@@ -169,7 +175,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion
     // mirror (supplier_products), link a category group to a Game
     // once, then promote individual rows into real Packages.
-    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/supplier-products')->group(function () {
+    // Super Admin only — supplier config, per PRD §3; fixed 2026-08-14.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/supplier-products')->group(function () {
         Route::get('/categories', [SupplierProductController::class, 'categories']);
         Route::post('/categories/link', [SupplierProductController::class, 'linkCategory']);
         Route::get('/', [SupplierProductController::class, 'index']);
@@ -180,7 +187,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // the Pending Reactivation queue (SYNC-5/6), and the full Price
     // Sync Center (stat cards, Sync History + Sync Details modal,
     // Manually Dismissed Packages).
-    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/price-sync')->group(function () {
+    // Super Admin only — supplier config, per PRD §3; fixed 2026-08-14.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/price-sync')->group(function () {
         Route::post('/', [PriceSyncController::class, 'store']);
         Route::get('/stats', [PriceSyncController::class, 'stats']);
         Route::get('/runs', [PriceSyncController::class, 'index']);
@@ -199,7 +207,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway
     // management, replaces the config/checkout.php stopgap.
-    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/payment-methods')->group(function () {
+    // Super Admin only — payment gateway config, per PRD §3; fixed 2026-08-14.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/payment-methods')->group(function () {
         Route::get('/', [PaymentMethodController::class, 'index']);
         Route::patch('/{payment_method}/status', [PaymentMethodController::class, 'updateStatus']);
         Route::patch('/{payment_method}/fee', [PaymentMethodController::class, 'updateFee']);
@@ -211,7 +220,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Region-routing mappings are nested under the profile they
     // belong to, not a flat list — see PlayerValidatorProfileController's
     // doc comment for why (founder correction, 2026-07-25).
-    Route::middleware('admin.role:super_admin,admin')->prefix('middleware/validators')->group(function () {
+    // Super Admin only — supplier validator config, per PRD §3; fixed 2026-08-14.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/validators')->group(function () {
         Route::get('/', [PlayerValidatorProfileController::class, 'index']);
         Route::get('/available-keys', [PlayerValidatorProfileController::class, 'availableKeys']);
         Route::post('/', [PlayerValidatorProfileController::class, 'store']);
@@ -259,5 +269,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // Not behind auth:sanctum — Xendit isn't an admin user. Signature
 // verification inside the controller is the auth mechanism (PAY-1).
-Route::post('/webhooks/xendit', [XenditWebhookController::class, 'handle']);
-Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle']);
+// Rate-limited distinct from the general `api` group (which has no throttle
+// enabled at all, per bootstrap/app.php) — bounds the cost of an unsigned
+// flood before signature verification runs, without risking a real gateway
+// retry burst getting throttled. Found absent, fresh audit, 2026-08-14.
+Route::post('/webhooks/xendit', [XenditWebhookController::class, 'handle'])->middleware('throttle:120,1');
+Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])->middleware('throttle:120,1');

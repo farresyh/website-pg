@@ -67,6 +67,21 @@ class VoucherControllerTest extends TestCase
         $this->assertDatabaseCount('vouchers', 0);
     }
 
+    public function test_amount_above_the_sanity_ceiling_is_rejected_even_for_super_admin(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->superAdmin()->create());
+
+        $response = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000_001,
+            'reason' => 'Fat-fingered amount',
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('amount');
+        $this->assertDatabaseCount('vouchers', 0);
+    }
+
     public function test_super_admin_can_create_a_voucher_at_or_above_threshold(): void
     {
         Sanctum::actingAs(AdminUser::factory()->superAdmin()->create());

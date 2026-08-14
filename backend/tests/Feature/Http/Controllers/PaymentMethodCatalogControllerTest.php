@@ -82,7 +82,7 @@ class PaymentMethodCatalogControllerTest extends TestCase
         $paymentMethod = $this->make(['is_active' => false]);
         $this->getJson('/api/catalog/payment-methods')->assertJsonCount(0);
 
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
         $this->patchJson("/api/middleware/payment-methods/{$paymentMethod->id}/status", ['is_active' => true])
             ->assertOk();
 

@@ -27,7 +27,14 @@ class SandboxOrderControllerTest extends TestCase
 
     private function actingAsAdmin(): void
     {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin', 'name' => 'Test Admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin', 'name' => 'Test Admin']));
+    }
+
+    public function test_regular_admin_is_forbidden(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->getJson('/api/middleware/sandbox')->assertForbidden();
     }
 
     private function gameWithPackage(array $packageOverrides = []): array

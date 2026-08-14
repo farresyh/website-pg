@@ -21,7 +21,14 @@ class PaymentMethodControllerTest extends TestCase
 
     private function actingAsAdmin(): void
     {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+    }
+
+    public function test_regular_admin_is_forbidden(): void
+    {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->getJson('/api/middleware/payment-methods')->assertForbidden();
     }
 
     private function paymentMethod(array $overrides = []): PaymentMethod

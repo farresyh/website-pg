@@ -6,7 +6,25 @@
  * only forwards requests and surfaces whatever the backend returns.
  */
 
+import { clearClientSession } from "@/lib/session";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
+
+/**
+ * A 401 here means Sanctum rejected the bearer token outright (expired or
+ * revoked) — distinct from a 403 (authenticated but wrong role), which
+ * callers still handle themselves. Sanctum tokens gained a real expiration
+ * 2026-08-14 (previously `null` forever, foundation-security.md gap); this
+ * is the one central place to react to that instead of every page growing
+ * its own expired-session redirect.
+ */
+function handleUnauthenticated(status: number): void {
+  if (status !== 401 || typeof window === "undefined") return;
+  clearClientSession();
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+}
 
 export class ApiError extends Error {
   constructor(
@@ -42,6 +60,7 @@ export async function apiFetch<T>(
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
+    handleUnauthenticated(response.status);
     throw new ApiError(
       response.status,
       payload?.code,
@@ -75,6 +94,7 @@ export async function apiUpload<T>(
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
+    handleUnauthenticated(response.status);
     throw new ApiError(
       response.status,
       payload?.code,

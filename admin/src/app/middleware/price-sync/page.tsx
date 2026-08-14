@@ -68,6 +68,7 @@ export default function PriceSyncPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [rowBusyId, setRowBusyId] = useState<number | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [dismissedPage, setDismissedPage] = useState<DismissedPackagePage | null>(null);
@@ -225,8 +226,9 @@ export default function PriceSyncPage() {
   }
 
   async function handleBulk(action: "approve" | "dismiss") {
-    if (!session || selected.size === 0) return;
+    if (!session || selected.size === 0 || bulkBusy) return;
     setError(null);
+    setBulkBusy(true);
     const ids = Array.from(selected);
     try {
       if (action === "approve") {
@@ -240,6 +242,8 @@ export default function PriceSyncPage() {
       if (action === "dismiss") refreshDismissed(session.token, dismissedPageNumber);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Could not bulk ${action}.`);
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -367,10 +371,10 @@ export default function PriceSyncPage() {
         <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Pending Reactivation</h2>
         {selected.size > 0 && (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => handleBulk("approve")}>
+            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => handleBulk("approve")}>
               Approve All ({selected.size})
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBulk("dismiss")}>
+            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => handleBulk("dismiss")}>
               Dismiss All ({selected.size})
             </Button>
           </div>
