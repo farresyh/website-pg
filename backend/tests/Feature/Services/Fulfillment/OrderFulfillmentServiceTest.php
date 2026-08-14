@@ -267,4 +267,82 @@ class OrderFulfillmentServiceTest extends TestCase
         // Committing must never touch the voucher's own remaining balance.
         $this->assertSame(500, $voucher->fresh()->remaining);
     }
+
+    /**
+     * ADR-026: duplicate_reference is Gamevion's own idempotency signal
+     * that a prior attempt for this reference_number already reached
+     * them — structurally different from every other failure, so it
+     * must route to needs_review, never a plain failed.
+     */
+    public function test_fulfill_marks_needs_review_on_a_duplicate_reference_response(): void
+    {
+        $order = $this->paidOrder();
+
+        $result = $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'Gamevion already has an order for this reference number'))
+            ->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $this->assertSame(PaymentStatus::Paid, $result->payment_status);
+        $this->assertSame('duplicate_reference', $result->supplier_response['error_code']);
+    }
+
+    public function test_fulfill_logs_a_distinct_warning_for_needs_review(): void
+    {
+        Log::spy();
+        $order = $this->paidOrder();
+
+        $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'dup'))
+            ->fulfill($order);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->with('Delivery ambiguous — needs manual review', [
+                'error_code' => 'duplicate_reference',
+                'error_message' => 'dup',
+            ]);
+    }
+
+    public function test_mark_delivered_manually_transitions_from_needs_review_and_sets_supplier_ref(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true))
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL1', 'confirmed via Gamevion dashboard', 'Jane Admin');
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame('GV-RAPI-MANUAL1', $result->supplier_ref);
+        $this->assertTrue($result->supplier_response['manually_confirmed']);
+        $this->assertSame('Jane Admin', $result->supplier_response['confirmed_by']);
+        $this->assertSame('confirmed via Gamevion dashboard', $result->supplier_response['note']);
+    }
+
+    public function test_mark_delivered_manually_credits_ledger_profit(): void
+    {
+        $order = $this->paidOrder([
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'platform_profit' => 150,
+            'reseller_profit' => 50,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL2', null, 'Jane Admin');
+
+        $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
+        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+    }
+
+    /**
+     * ADR-026 decision 4a: deliberately only reachable from
+     * needs_review — no other state lets an admin's own claim
+     * substitute for a real supplier confirmation.
+     */
+    public function test_mark_delivered_manually_rejects_when_not_needs_review(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL3', null, 'Jane Admin');
+    }
 }

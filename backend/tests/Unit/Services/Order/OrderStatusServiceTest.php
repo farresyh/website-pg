@@ -103,4 +103,78 @@ class OrderStatusServiceTest extends TestCase
 
         $service->markDeliveryFailed(DeliveryStatus::NotStarted);
     }
+
+    /**
+     * ADR-026 decision 4b: needs_review must re-enter processing so
+     * Resend Delivery works from that state, same as the existing
+     * Failed retry path.
+     */
+    public function test_allows_retry_from_needs_review_when_payment_is_paid(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->startDelivery(PaymentStatus::Paid, DeliveryStatus::NeedsReview);
+
+        $this->assertSame(DeliveryStatus::Processing, $result);
+    }
+
+    /**
+     * ADR-026 — a fresh duplicate_reference response arrives while
+     * Processing (a first attempt or a retry both set Processing
+     * before calling the supplier).
+     */
+    public function test_marks_needs_review_from_processing(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->markNeedsReview(DeliveryStatus::Processing);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result);
+    }
+
+    /**
+     * ADR-026 — the other legitimate entry point: a stale
+     * duplicate_reference recorded before this state existed,
+     * caught by ReconcilePendingDeliveriesCommand's one-time catch-up.
+     */
+    public function test_marks_needs_review_from_failed(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->markNeedsReview(DeliveryStatus::Failed);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result);
+    }
+
+    public function test_rejects_marking_needs_review_when_not_processing_or_failed(): void
+    {
+        $service = new OrderStatusService();
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $service->markNeedsReview(DeliveryStatus::NotStarted);
+    }
+
+    public function test_marks_delivered_manually_from_needs_review(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->markDeliveredManually(DeliveryStatus::NeedsReview);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result);
+    }
+
+    /**
+     * ADR-026 decision 4a: deliberately only reachable from
+     * needs_review — no other state lets an admin's own claim
+     * substitute for a real supplier confirmation.
+     */
+    public function test_rejects_marking_delivered_manually_when_not_needs_review(): void
+    {
+        $service = new OrderStatusService();
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $service->markDeliveredManually(DeliveryStatus::Failed);
+    }
 }

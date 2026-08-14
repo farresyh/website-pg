@@ -171,6 +171,26 @@ class OrderResendServiceTest extends TestCase
     }
 
     /**
+     * ADR-026 decision 4b: this job-level re-check (assertResendable())
+     * is separate from OrderController::resend()'s own pre-check — both
+     * must independently allow needs_review, or the controller could
+     * accept the request while the actual queued job silently rejects
+     * it.
+     */
+    public function test_allows_resend_from_a_needs_review_order(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $package, null, 'Admin');
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+    }
+
+    /**
      * Decision #2: cost_price/reseller_cost_price/selling_price/
      * final_amount/transaction_fee are the historical charged record —
      * never rewritten by a resend, same-package or not.

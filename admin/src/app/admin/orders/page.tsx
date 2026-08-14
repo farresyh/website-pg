@@ -14,7 +14,11 @@
  * confusing than useful (founder feedback, docs/prd.md §14). "Issue
  * Voucher" (ORD-7's other resolution path, ADR-004) sits alongside
  * Resend Delivery, hidden once `order.voucher` is already set (at
- * most one per order). Export (ORD-5) remains a later pass.
+ * most one per order). ADR-026 (ORD-10): a `needs_review` order gets
+ * the same Resend Delivery action plus a new "Mark as Delivered…" —
+ * "Issue Voucher" is deliberately never shown for this state (decision
+ * 4c), the one exit this feature does not open. Export (ORD-5) remains
+ * a later pass.
  */
 
 import { useEffect, useState } from "react";
@@ -29,12 +33,15 @@ import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusF
 import type { Voucher } from "@/lib/vouchers";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
+import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
+import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
 
 const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "need_action", label: "Need Action" },
+  { value: "needs_review", label: "Needs Review" },
   { value: "processing", label: "Processing" },
   { value: "completed", label: "Completed" },
   { value: "awaiting_payment", label: "Awaiting Payment" },
@@ -56,6 +63,7 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
   processing: "warning",
   delivered: "success",
   failed: "error",
+  needs_review: "warning",
 };
 
 export default function OrdersPage() {
@@ -74,11 +82,14 @@ export default function OrdersPage() {
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [voucherModalOpen, setVoucherModalOpen] = useState(false);
   const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
+  const [markDeliveredModalOpen, setMarkDeliveredModalOpen] = useState(false);
+  const [markDeliveredMessage, setMarkDeliveredMessage] = useState<string | null>(null);
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
     setResendMessage(null);
     setVoucherMessage(null);
+    setMarkDeliveredMessage(null);
     try {
       setSelected(await getOrder(token, id));
     } catch (err) {
@@ -93,6 +104,11 @@ export default function OrdersPage() {
   function handleVoucherIssued(voucher: Voucher) {
     setVoucherMessage(`Voucher ${voucher.code} issued.`);
     setSelected((current) => (current ? { ...current, voucher } : current));
+  }
+
+  function handleMarkedDelivered(updated: OrderDetail) {
+    setMarkDeliveredMessage("Delivery confirmed manually — ledger profit credited.");
+    setSelected(updated);
   }
 
   useEffect(() => {
@@ -142,20 +158,30 @@ export default function OrdersPage() {
               delivery: {selected.delivery_status}
             </Badge>
           </p>
-          {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. Only a failed delivery can be resent — mirrors the backend guard exactly. */}
-          {selected.delivery_status === "failed" && (
+          {/* ADR-026: the ambiguous-outcome case — cross-reference banner, plus "Mark as Delivered" instead of "Issue Voucher" (decision 4c: voucher issuance is deliberately never available from this state). */}
+          {selected.delivery_status === "needs_review" && <NeedsReviewBanner order={selected} />}
+
+          {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. A failed or needs_review delivery can be resent (ADR-026 decision 4b) — mirrors the backend guard exactly. */}
+          {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Button size="sm" onClick={() => setResendModalOpen(true)}>
                 Resend Delivery…
               </Button>
-              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check). */}
-              {!selected.voucher && (
+              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for needs_review at all (ADR-026 decision 4c). */}
+              {selected.delivery_status === "failed" && !selected.voucher && (
                 <Button size="sm" variant="outline" onClick={() => setVoucherModalOpen(true)}>
                   Issue Voucher…
                 </Button>
               )}
+              {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. */}
+              {selected.delivery_status === "needs_review" && (
+                <Button size="sm" variant="outline" onClick={() => setMarkDeliveredModalOpen(true)}>
+                  Mark as Delivered…
+                </Button>
+              )}
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
               {voucherMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{voucherMessage}</span>}
+              {markDeliveredMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</span>}
             </div>
           )}
           {selected.voucher && (
@@ -184,6 +210,13 @@ export default function OrdersPage() {
             isOpen={voucherModalOpen}
             onClose={() => setVoucherModalOpen(false)}
             onIssued={handleVoucherIssued}
+            order={selected}
+            token={session.token}
+          />
+          <MarkDeliveredModal
+            isOpen={markDeliveredModalOpen}
+            onClose={() => setMarkDeliveredModalOpen(false)}
+            onConfirmed={handleMarkedDelivered}
             order={selected}
             token={session.token}
           />

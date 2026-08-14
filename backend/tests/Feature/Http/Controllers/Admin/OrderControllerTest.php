@@ -80,6 +80,24 @@ class OrderControllerTest extends TestCase
         $this->assertSame('KRS-NEEDS-ACTION', $response->json('data.0.order_number'));
     }
 
+    /**
+     * ADR-026 — needs_review is deliberately its own filter, distinct
+     * from need_action: "Issue Voucher" is never available for these,
+     * only "Mark as Delivered" or "Resend Delivery".
+     */
+    public function test_index_can_filter_by_needs_review(): void
+    {
+        $this->order(['order_number' => 'KRS-NEEDS-REVIEW', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->order(['order_number' => 'KRS-NEEDS-ACTION', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=needs_review');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-NEEDS-REVIEW', $response->json('data.0.order_number'));
+    }
+
     public function test_index_can_filter_by_processing(): void
     {
         $this->order(['order_number' => 'KRS-PROCESSING', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Processing->value]);
@@ -261,6 +279,25 @@ class OrderControllerTest extends TestCase
 
         $response->assertUnprocessable();
         Queue::assertNothingPushed();
+    }
+
+    /**
+     * ADR-026 decision 4b — the same retry mechanism resolves a
+     * needs_review order, not just a plain Failed one.
+     */
+    public function test_retry_delivery_queues_a_fulfillment_job_for_a_needs_review_order(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
     }
 
     public function test_retry_delivery_requires_authentication(): void
@@ -500,5 +537,100 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id])->assertNotFound();
+    }
+
+    /**
+     * ADR-026 decision 4a — the one needs_review exit that isn't a
+     * retry. Synchronous (no queue involved), so a plain assertOk() +
+     * field check proves the whole path, matching this class's own
+     * style for non-queued actions.
+     */
+    public function test_mark_delivered_confirms_a_needs_review_order(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", [
+            'supplier_ref' => 'GV-RAPI-CONFIRMED1',
+            'note' => 'Confirmed via Gamevion dashboard, TARGET/SERVICE/date matched.',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('delivery_status', 'delivered');
+        $response->assertJsonPath('supplier_ref', 'GV-RAPI-CONFIRMED1');
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+    }
+
+    public function test_mark_delivered_requires_a_supplier_ref(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", []);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('supplier_ref');
+    }
+
+    public function test_mark_delivered_rejects_an_order_that_is_not_needs_review(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1']);
+
+        $response->assertUnprocessable();
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
+    public function test_mark_delivered_rejects_an_order_with_an_already_issued_voucher(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        Voucher::query()->create([
+            'order_id' => $order->id,
+            'code' => 'KRS-GUARD-TEST-2',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1']);
+
+        $response->assertUnprocessable();
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    public function test_mark_delivered_404s_for_a_sandbox_order(): void
+    {
+        $order = $this->order([
+            'is_test' => true,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        $this->actingAsAdmin();
+
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])->assertNotFound();
+    }
+
+    public function test_mark_delivered_requires_authentication(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])->assertUnauthorized();
     }
 }

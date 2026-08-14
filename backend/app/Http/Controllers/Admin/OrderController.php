@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\Voucher;
+use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Http\JsonResponse;
@@ -27,7 +29,10 @@ class OrderController extends Controller
 {
     /**
      * `status` (ORD-2): need_action (paid but delivery failed —
-     * customer's money is in, credits never arrived), processing
+     * customer's money is in, credits never arrived), needs_review
+     * (ADR-026/ORD-10 — an ambiguous delivery outcome, distinct from
+     * need_action: "Issue Voucher" is deliberately not available here,
+     * only "Mark as Delivered" or "Resend Delivery"), processing
      * (delivery attempt in flight), completed (delivered),
      * awaiting_payment (still pending 30+ minutes after checkout —
      * ADR-021/PAY-3's own visibility gap for a webhook that never
@@ -47,6 +52,7 @@ class OrderController extends Controller
             'need_action' => $query
                 ->where('payment_status', PaymentStatus::Paid->value)
                 ->where('delivery_status', DeliveryStatus::Failed->value),
+            'needs_review' => $query->where('delivery_status', DeliveryStatus::NeedsReview->value),
             'processing' => $query->where('delivery_status', DeliveryStatus::Processing->value),
             'completed' => $query->where('delivery_status', DeliveryStatus::Delivered->value),
             'awaiting_payment' => $query
@@ -105,8 +111,9 @@ class OrderController extends Controller
      * Failed → Processing transition (that's how the very first retry
      * attempt inside fulfill() itself works) — this only adds an
      * admin-facing trigger for it, guarded here so a request against a
-     * non-Failed order gets an immediate, clear rejection instead of a
-     * job that's silently a no-op.
+     * non-Failed/non-needs_review order gets an immediate, clear
+     * rejection instead of a job that's silently a no-op. needs_review
+     * added by ADR-026 decision 4b — same retry mechanism resolves it.
      */
     public function retryDelivery(Order $order): JsonResponse
     {
@@ -118,9 +125,9 @@ class OrderController extends Controller
             abort(404);
         }
 
-        if ($order->delivery_status !== DeliveryStatus::Failed) {
+        if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a failed delivery can be retried.'],
+                'delivery_status' => ['Only an order with a failed or needs-review delivery can be retried.'],
             ]);
         }
 
@@ -155,9 +162,9 @@ class OrderController extends Controller
             abort(404);
         }
 
-        if ($order->delivery_status !== DeliveryStatus::Failed) {
+        if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a failed delivery can be resent.'],
+                'delivery_status' => ['Only an order with a failed or needs-review delivery can be resent.'],
             ]);
         }
 
@@ -185,5 +192,44 @@ class OrderController extends Controller
         );
 
         return response()->json(['message' => 'Resend queued.']);
+    }
+
+    /**
+     * ADR-026 decision 4a — the one exit from needs_review that isn't a
+     * retry. Synchronous (not queued): this makes no supplier call at
+     * all, only a DB write + ledger credit, same as
+     * OrderFulfillmentService::fulfill()'s own success branch.
+     */
+    public function markDelivered(MarkOrderDeliveredRequest $request, Order $order, OrderFulfillmentService $fulfillment): JsonResponse
+    {
+        // ADR-018 decision #2: same reasoning as retryDelivery()/resend() above.
+        if ($order->is_test) {
+            abort(404);
+        }
+
+        if ($order->delivery_status !== DeliveryStatus::NeedsReview) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['Only an order in needs-review can be manually marked delivered.'],
+            ]);
+        }
+
+        // ADR-024 decision #8 — see retryDelivery()'s identical guard
+        // for the full reasoning. Structurally shouldn't be reachable
+        // (Issue Voucher is blocked from needs_review, ADR-026 decision
+        // 4c), kept as the same defensive check its siblings carry.
+        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['A voucher has already been issued for this order — it cannot be marked delivered.'],
+            ]);
+        }
+
+        $result = $fulfillment->markDeliveredManually(
+            $order,
+            $request->validated('supplier_ref'),
+            $request->validated('note'),
+            $request->user()->name,
+        );
+
+        return response()->json($result);
     }
 }

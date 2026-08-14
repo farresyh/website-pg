@@ -19,13 +19,17 @@ use Illuminate\Support\Facades\Log;
  * payment-gateway webhook — that verification/idempotency check
  * happens before this is ever called, not inside it).
  *
- * Deliberately does NOT attempt automatic reconciliation on a
- * duplicate-reference response — Gamevion's error-body shape for that
- * case isn't confirmed (see GamevionAdapter), and the real
- * reconciliation job (ORD-10) is separately scoped and not built yet.
- * Any supplier failure, including duplicate-reference, is surfaced as
- * delivery_status=failed with the raw adapter response attached, for
- * admin review (ORD-7) — never auto-retried or silently swallowed.
+ * ADR-026 (ORD-10): a duplicate_reference response — Gamevion's own
+ * idempotency signal that a prior attempt for this reference_number
+ * already reached them — routes straight to delivery_status=needs_review
+ * instead of a plain failed, regardless of whether this call is a
+ * fresh first attempt or a retry (ReconcilePendingDeliveriesCommand's
+ * own re-dispatch included). No automated resolution is attempted
+ * beyond that: Gamevion's check-status endpoint needs its own invoice
+ * number, which duplicate_reference never supplies, and neither its
+ * API nor its dashboard support a reference-number lookup (confirmed
+ * live, see ADR-026's Context) — only an admin manually cross-checking
+ * Gamevion's dashboard can resolve it (markDeliveredManually() below).
  */
 final class OrderFulfillmentService
 {
@@ -96,8 +100,19 @@ final class OrderFulfillmentService
             ));
 
             if (! $result->success) {
+                // ADR-026: duplicate_reference is structurally different
+                // from every other failure — it's evidence an order for
+                // this reference_number already reached Gamevion, not
+                // evidence it was rejected. Routes to needs_review, never
+                // failed, so it can never be mistaken for a plain
+                // resolvable failure (and, critically, never reaches
+                // VoucherController::storeFromOrder()'s Failed-only gate).
+                $isDuplicateReference = $result->errorCode === 'duplicate_reference';
+
                 $locked->update([
-                    'delivery_status' => $this->orderStatus->markDeliveryFailed($processingStatus)->value,
+                    'delivery_status' => $isDuplicateReference
+                        ? $this->orderStatus->markNeedsReview($processingStatus)->value
+                        : $this->orderStatus->markDeliveryFailed($processingStatus)->value,
                     'supplier_response' => [
                         'error_code' => $result->errorCode,
                         'error_message' => $result->errorMessage,
@@ -110,7 +125,7 @@ final class OrderFulfillmentService
                 // so without this line it would be silent until someone
                 // looks. Grep by reference_number/order_number to find
                 // the matching webhook/job lines for full context.
-                Log::warning('Delivery failed', [
+                Log::warning($isDuplicateReference ? 'Delivery ambiguous — needs manual review' : 'Delivery failed', [
                     'error_code' => $result->errorCode,
                     'error_message' => $result->errorMessage,
                 ]);
@@ -132,6 +147,52 @@ final class OrderFulfillmentService
             // made is now permanent, never restored. No-op if this
             // order never used a voucher.
             $this->vouchers->commit($locked->id);
+
+            return $locked->fresh();
+        });
+    }
+
+    /**
+     * ADR-026 decision 4a — the one exit from `needs_review` that isn't
+     * a retry: an admin manually cross-referenced Gamevion's own
+     * dashboard (no automated lookup exists, see this class's own
+     * doc comment) and confirmed the real invoice. Deliberately requires
+     * that invoice number as input, not just a confirm click — it
+     * closes the exact `supplier_ref` gap that caused the ambiguity in
+     * the first place, giving this order the same audit trail a normal
+     * delivery would have had. Same lock/transaction discipline as
+     * fulfill() itself, and the same ledger-credit + voucher-commit
+     * calls a normal successful delivery makes — this order genuinely
+     * is delivered now, just confirmed by a human instead of a live API
+     * response.
+     */
+    public function markDeliveredManually(Order $order, string $supplierRef, ?string $note, string $confirmedBy): Order
+    {
+        return DB::transaction(function () use ($order, $supplierRef, $note, $confirmedBy) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            $deliveredStatus = $this->orderStatus->markDeliveredManually($locked->delivery_status);
+
+            Log::withContext(['reference_number' => $locked->reference_number]);
+
+            $locked->update([
+                'supplier_ref' => $supplierRef,
+                'supplier_response' => [
+                    'manually_confirmed' => true,
+                    'confirmed_by' => $confirmedBy,
+                    'note' => $note,
+                    'confirmed_at' => now()->toISOString(),
+                ],
+                'delivery_status' => $deliveredStatus->value,
+            ]);
+
+            $this->creditProfit($locked);
+            $this->vouchers->commit($locked->id);
+
+            Log::info('Delivery manually confirmed after needs_review', [
+                'supplier_ref' => $supplierRef,
+                'confirmed_by' => $confirmedBy,
+            ]);
 
             return $locked->fresh();
         });

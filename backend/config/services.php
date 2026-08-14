@@ -168,4 +168,12 @@ return [
         'flag_after_hours' => (int) env('PAYMENT_RECONCILIATION_FLAG_AFTER_HOURS', 24),
     ],
 
+    // ADR-026 (ORD-10) — 15 minutes comfortably exceeds FulfillOrderJob's
+    // own worst-case retry-exhaustion window (HTTP-layer + job-layer
+    // retries combined), so anything still stuck past this point is
+    // genuinely ambiguous, not just "still retrying".
+    'delivery_reconciliation' => [
+        'stale_after_minutes' => (int) env('DELIVERY_RECONCILIATION_STALE_AFTER_MINUTES', 15),
+    ],
+
 ];

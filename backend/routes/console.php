@@ -36,6 +36,15 @@ Schedule::call(fn () => Artisan::call('app:reconcile-pending-payments'))
     ->name('payment-reconciliation')
     ->withoutOverlapping();
 
+// ADR-026 (ORD-10) — delivery-side counterpart to the payment
+// reconciliation above, same inert-until-real-cron pattern. Catches
+// orders whose Gamevion order-creation outcome is ambiguous — see
+// ReconcilePendingDeliveriesCommand's own docblock.
+Schedule::call(fn () => Artisan::call('app:reconcile-pending-deliveries'))
+    ->cron('*/15 * * * *')
+    ->name('delivery-reconciliation')
+    ->withoutOverlapping();
+
 // ADR-021 — same inert-until-real-cron pattern as above. Prunes
 // player_validations PII past its retention window — see
 // PrunePlayerValidationsCommand's own docblock.

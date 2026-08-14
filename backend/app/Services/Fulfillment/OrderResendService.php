@@ -91,13 +91,14 @@ final class OrderResendService
     /**
      * Mirrors OrderController::retryDelivery()'s own guard exactly —
      * ADR-017 doesn't loosen it, it only adds package-swap/reconciliation
-     * on top of the same "only a failed delivery can be resent" rule.
+     * on top of the same "only a failed (or, per ADR-026, needs_review)
+     * delivery can be resent" rule.
      */
     private function assertResendable(Order $order): void
     {
-        if ($order->delivery_status !== DeliveryStatus::Failed) {
+        if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a failed delivery can be resent.'],
+                'delivery_status' => ['Only an order with a failed or needs-review delivery can be resent.'],
             ]);
         }
     }

@@ -50,6 +50,10 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
   processing: "warning",
   delivered: "success",
   failed: "error",
+  // ADR-026's needs_review is a real-Gamevion-ambiguity concept — the
+  // sandbox's synchronous FakeSupplierAdapter flow never produces it,
+  // this key exists only to satisfy the shared OrderListItem type.
+  needs_review: "warning",
 };
 
 export default function SandboxOrdersPage() {

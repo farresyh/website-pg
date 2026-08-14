@@ -154,6 +154,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::post('/{order}/retry-delivery', [OrderController::class, 'retryDelivery']);
         Route::post('/{order}/resend', [OrderController::class, 'resend']);
+        // ADR-026 decision 4a — the one needs_review exit that isn't a retry.
+        Route::post('/{order}/mark-delivered', [OrderController::class, 'markDelivered']);
     });
 
     // ADR-018: a middleware-only sandbox for exercising the real Order

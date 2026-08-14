@@ -19,7 +19,7 @@ export interface OrderListItem {
   final_amount: number;
   platform_profit: number;
   payment_status: "pending" | "paid" | "failed";
-  delivery_status: "not_started" | "processing" | "delivered" | "failed";
+  delivery_status: "not_started" | "processing" | "delivered" | "failed" | "needs_review";
   payment_method: string | null;
   created_at: string;
   game: { id: number; name: string } | null;
@@ -72,7 +72,14 @@ export interface OrderPage {
   total: number;
 }
 
-export type OrderStatusFilter = "all" | "need_action" | "processing" | "completed" | "awaiting_payment" | "today";
+export type OrderStatusFilter =
+  | "all"
+  | "need_action"
+  | "needs_review"
+  | "processing"
+  | "completed"
+  | "awaiting_payment"
+  | "today";
 
 export function listOrders(
   token: string,
@@ -137,4 +144,16 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
  */
 export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string } = {}) {
   return apiFetch<Voucher>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
+}
+
+/**
+ * ADR-026 decision 4a — the one needs_review exit that isn't a retry.
+ * `supplier_ref` is required: Gamevion's dashboard has no
+ * reference-number search (confirmed live, ADR-026's Context), so the
+ * admin must cross-reference by date range + player ID + game and
+ * paste back the real invoice number they find there. Backend rejects
+ * (422) unless delivery_status is already "needs_review".
+ */
+export function markOrderDelivered(token: string, id: number, values: { supplier_ref: string; note?: string }) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}/mark-delivered`, { method: "POST", token, body: values });
 }
