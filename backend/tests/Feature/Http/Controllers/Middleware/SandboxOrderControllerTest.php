@@ -198,6 +198,115 @@ class SandboxOrderControllerTest extends TestCase
         ])->assertOk();
     }
 
+    /**
+     * ADR-026: `error_code` is free-text, so `duplicate_reference`
+     * reaches needs_review through the exact same
+     * OrderFulfillmentService::fulfill() logic a real ambiguous
+     * Gamevion response would — no sandbox-specific wiring needed.
+     */
+    public function test_resend_with_duplicate_reference_error_code_reaches_needs_review(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $this->actingAsAdmin();
+        $orderId = $this->createSandboxOrder($game, $package);
+
+        $response = $this->postJson("/api/middleware/sandbox/{$orderId}/resend", [
+            'package_id' => $package->id,
+            'simulate_success' => false,
+            'error_code' => 'duplicate_reference',
+            'error_message' => 'Gamevion already has an order for this reference number',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(DeliveryStatus::NeedsReview->value, $response->json('delivery_status'));
+    }
+
+    /**
+     * ADR-026 decision 4b's sandbox counterpart — the same retry
+     * mechanism resolves a needs_review test order, not just a failed
+     * one.
+     */
+    public function test_resend_from_needs_review_is_allowed(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $this->actingAsAdmin();
+        $orderId = $this->createSandboxOrder($game, $package);
+        $this->postJson("/api/middleware/sandbox/{$orderId}/resend", [
+            'package_id' => $package->id,
+            'simulate_success' => false,
+            'error_code' => 'duplicate_reference',
+        ])->assertOk();
+
+        $response = $this->postJson("/api/middleware/sandbox/{$orderId}/resend", [
+            'package_id' => $package->id,
+            'simulate_success' => true,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(DeliveryStatus::Delivered->value, $response->json('delivery_status'));
+    }
+
+    /**
+     * ADR-026 decision 4a's sandbox counterpart — same
+     * OrderFulfillmentService::markDeliveredManually() a real
+     * needs_review order uses, so no LedgerEntry is written even
+     * though the response looks otherwise identical to a real one.
+     */
+    public function test_mark_delivered_confirms_a_needs_review_test_order_without_touching_the_ledger(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $this->actingAsAdmin();
+        $orderId = $this->createSandboxOrder($game, $package);
+        $this->postJson("/api/middleware/sandbox/{$orderId}/resend", [
+            'package_id' => $package->id,
+            'simulate_success' => false,
+            'error_code' => 'duplicate_reference',
+        ])->assertOk();
+
+        $response = $this->postJson("/api/middleware/sandbox/{$orderId}/mark-delivered", [
+            'supplier_ref' => 'GV-SANDBOX-MANUAL1',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(DeliveryStatus::Delivered->value, $response->json('delivery_status'));
+        $this->assertSame('GV-SANDBOX-MANUAL1', $response->json('supplier_ref'));
+        $this->assertSame(0, LedgerEntry::query()->count());
+    }
+
+    public function test_mark_delivered_rejects_a_test_order_that_is_not_needs_review(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $this->actingAsAdmin();
+        $orderId = $this->createSandboxOrder($game, $package); // starts at delivery_status=failed
+
+        $response = $this->postJson("/api/middleware/sandbox/{$orderId}/mark-delivered", [
+            'supplier_ref' => 'GV-1',
+        ]);
+
+        $response->assertUnprocessable();
+    }
+
+    public function test_mark_delivered_404s_for_a_real_order(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $order = Order::query()->create([
+            'order_number' => 'KRS-REAL-MARK-DELIVERED',
+            'is_test' => false,
+            'customer_email' => 'buyer@example.com',
+            'player_id' => '123456',
+            'game_id' => $game->id,
+            'package_id' => $package->id,
+            'cost_price' => 421, 'reseller_cost_price' => 500, 'selling_price' => 500,
+            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'reseller_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        $this->actingAsAdmin();
+
+        $this->postJson("/api/middleware/sandbox/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])
+            ->assertNotFound();
+    }
+
     public function test_resend_never_calls_the_real_supplier_adapter_binding(): void
     {
         // No Http::fake()/mock of GamevionAdapter is set up at all in

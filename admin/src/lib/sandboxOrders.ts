@@ -65,6 +65,16 @@ export function resendSandboxOrderDelivery(token: string, id: number, values: Re
   return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/resend`, { method: "POST", token, body: values });
 }
 
+/**
+ * ADR-026 decision 4a's sandbox counterpart — same
+ * OrderFulfillmentService::markDeliveredManually() a real needs_review
+ * order uses, so no LedgerEntry is written even though the response
+ * shape is identical to a real one.
+ */
+export function markSandboxOrderDelivered(token: string, id: number, values: { supplier_ref: string; note?: string }) {
+  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/mark-delivered`, { method: "POST", token, body: values });
+}
+
 export function deleteSandboxOrder(token: string, id: number) {
   return apiFetch<{ message: string }>(`/api/middleware/sandbox/${id}`, { method: "DELETE", token });
 }

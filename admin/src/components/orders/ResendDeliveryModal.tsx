@@ -240,7 +240,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
               <div className="mt-3 space-y-3">
                 <div>
                   <Label htmlFor="sandbox_error_code">Error Code (Optional)</Label>
-                  <Input id="sandbox_error_code" placeholder="e.g. insufficient_balance" value={errorCode} onChange={(e) => setErrorCode(e.target.value)} />
+                  <Input id="sandbox_error_code" placeholder="e.g. insufficient_balance, or duplicate_reference to test needs_review (ADR-026)" value={errorCode} onChange={(e) => setErrorCode(e.target.value)} />
                 </div>
                 <div>
                   <Label htmlFor="sandbox_error_message">Error Message (Optional)</Label>

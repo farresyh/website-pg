@@ -20,7 +20,7 @@ import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
 import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderPage } from "@/lib/orders";
+import { type OrderListItem, type OrderPage, type OrderDetail } from "@/lib/orders";
 import {
   type SandboxOrderDetail,
   type CreateSandboxOrderValues,
@@ -31,6 +31,8 @@ import {
   deleteAllSandboxOrders,
 } from "@/lib/sandboxOrders";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
+import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
+import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
 import CreateSandboxOrderModal from "@/components/middleware/CreateSandboxOrderModal";
@@ -50,9 +52,10 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
   processing: "warning",
   delivered: "success",
   failed: "error",
-  // ADR-026's needs_review is a real-Gamevion-ambiguity concept — the
-  // sandbox's synchronous FakeSupplierAdapter flow never produces it,
-  // this key exists only to satisfy the shared OrderListItem type.
+  // ADR-026 — reachable here too: resend()'s error_code field is
+  // free-text, so typing "duplicate_reference" reaches needs_review
+  // through the same OrderFulfillmentService::fulfill() logic a real
+  // ambiguous Gamevion response would.
   needs_review: "warning",
 };
 
@@ -69,6 +72,8 @@ export default function SandboxOrdersPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [resendModalOpen, setResendModalOpen] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [markDeliveredModalOpen, setMarkDeliveredModalOpen] = useState(false);
+  const [markDeliveredMessage, setMarkDeliveredMessage] = useState<string | null>(null);
 
   async function refreshList() {
     if (!session) return;
@@ -80,6 +85,7 @@ export default function SandboxOrdersPage() {
   async function openOrder(token: string, id: number) {
     setSelected(null);
     setResendMessage(null);
+    setMarkDeliveredMessage(null);
     try {
       setSelected(await getSandboxOrder(token, id));
     } catch (err) {
@@ -95,6 +101,14 @@ export default function SandboxOrdersPage() {
   function handleResent() {
     setResendMessage("Resend complete — see the outcome below and the new Delivery Logs entry.");
     refreshSelected();
+  }
+
+  function handleMarkedDelivered(updated: OrderDetail) {
+    setMarkDeliveredMessage("Delivery confirmed manually.");
+    // Always a sandbox row here — this handler is only ever passed to
+    // the sandbox-mode MarkDeliveredModal below, which always resolves
+    // via markSandboxOrderDelivered() (a SandboxOrderDetail response).
+    setSelected(updated as SandboxOrderDetail);
   }
 
   async function handleCreate(values: CreateSandboxOrderValues) {
@@ -169,16 +183,26 @@ export default function SandboxOrdersPage() {
                 delivery: {selected.delivery_status}
               </Badge>
             </p>
+            {selected.delivery_status === "needs_review" && <NeedsReviewBanner order={selected} sandbox />}
+
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {selected.delivery_status === "failed" && (
+              {/* ADR-026 decision 4b's sandbox counterpart — the same retry mechanism resolves a needs_review test order, not just a failed one. */}
+              {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
                 <Button size="sm" onClick={() => setResendModalOpen(true)}>
                   Resend Delivery…
+                </Button>
+              )}
+              {/* ADR-026 decision 4a's sandbox counterpart. */}
+              {selected.delivery_status === "needs_review" && (
+                <Button size="sm" variant="outline" onClick={() => setMarkDeliveredModalOpen(true)}>
+                  Mark as Delivered…
                 </Button>
               )}
               <Button size="sm" variant="outline" onClick={() => handleDelete(selected.id)}>
                 Delete Test Order
               </Button>
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
+              {markDeliveredMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</span>}
             </div>
           </div>
 
@@ -187,14 +211,24 @@ export default function SandboxOrdersPage() {
         </div>
 
         {session && (
-          <ResendDeliveryModal
-            isOpen={resendModalOpen}
-            onClose={() => setResendModalOpen(false)}
-            onResent={handleResent}
-            order={selected}
-            token={session.token}
-            sandbox
-          />
+          <>
+            <ResendDeliveryModal
+              isOpen={resendModalOpen}
+              onClose={() => setResendModalOpen(false)}
+              onResent={handleResent}
+              order={selected}
+              token={session.token}
+              sandbox
+            />
+            <MarkDeliveredModal
+              isOpen={markDeliveredModalOpen}
+              onClose={() => setMarkDeliveredModalOpen(false)}
+              onConfirmed={handleMarkedDelivered}
+              order={selected}
+              token={session.token}
+              sandbox
+            />
+          </>
         )}
       </>
     );

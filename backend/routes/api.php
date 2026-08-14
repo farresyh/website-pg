@@ -170,6 +170,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [SandboxOrderController::class, 'store']);
         Route::get('/{order}', [SandboxOrderController::class, 'show']);
         Route::post('/{order}/resend', [SandboxOrderController::class, 'resend']);
+        // ADR-026 decision 4a's sandbox counterpart.
+        Route::post('/{order}/mark-delivered', [SandboxOrderController::class, 'markDelivered']);
         Route::delete('/{order}', [SandboxOrderController::class, 'destroy']);
         Route::delete('/', [SandboxOrderController::class, 'destroyAll']);
     });

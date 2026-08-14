@@ -7,6 +7,7 @@ import Input from "@/components/form/input/InputField";
 import Button from "@/components/ui/button/Button";
 import { ApiError } from "@/lib/api-client";
 import { markOrderDelivered, type OrderDetail } from "@/lib/orders";
+import { markSandboxOrderDelivered } from "@/lib/sandboxOrders";
 
 interface MarkDeliveredModalProps {
   isOpen: boolean;
@@ -14,6 +15,14 @@ interface MarkDeliveredModalProps {
   onConfirmed: (order: OrderDetail) => void;
   order: OrderDetail;
   token: string;
+  /**
+   * ADR-026 — shared with /admin/orders, same pattern
+   * ResendDeliveryModal already established: sandbox mode swaps the
+   * target endpoint only, since markDeliveredManually() never touches
+   * a real supplier and creditProfit()'s own is_test guard already
+   * keeps the ledger untouched either way.
+   */
+  sandbox?: boolean;
 }
 
 /**
@@ -26,7 +35,7 @@ interface MarkDeliveredModalProps {
  * place. Renders as a child of <Modal>, same fresh-state-per-open
  * convention as IssueVoucherModal/ResendDeliveryModal.
  */
-function MarkDeliveredFields({ onClose, onConfirmed, order, token }: Omit<MarkDeliveredModalProps, "isOpen">) {
+function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Omit<MarkDeliveredModalProps, "isOpen">) {
   const [supplierRef, setSupplierRef] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -37,10 +46,10 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token }: Omit<MarkDe
     setSubmitting(true);
     setError(null);
     try {
-      const updated = await markOrderDelivered(token, order.id, {
-        supplier_ref: supplierRef.trim(),
-        note: note.trim() || undefined,
-      });
+      const values = { supplier_ref: supplierRef.trim(), note: note.trim() || undefined };
+      const updated = sandbox
+        ? await markSandboxOrderDelivered(token, order.id, values)
+        : await markOrderDelivered(token, order.id, values);
       onConfirmed(updated);
       onClose();
     } catch (err) {
@@ -54,11 +63,17 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token }: Omit<MarkDe
     <div className="max-w-lg p-6">
       <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Mark as Delivered</h3>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-        Only use this after confirming the real outcome on Gamevion&apos;s own dashboard (search by date range +
-        Player ID <span className="font-medium">{order.player_id}</span> + game{" "}
-        <span className="font-medium">{order.game?.name ?? "—"}</span> — there is no reference-number search
-        there). Paste the exact invoice number you find. This credits ledger profit immediately and cannot be
-        undone.
+        {sandbox ? (
+          <>Sandbox mode — no real Gamevion order exists to look up. Enter any value to exercise this flow.</>
+        ) : (
+          <>
+            Only use this after confirming the real outcome on Gamevion&apos;s own dashboard (search by date range +
+            Player ID <span className="font-medium">{order.player_id}</span> + game{" "}
+            <span className="font-medium">{order.game?.name ?? "—"}</span> — there is no reference-number search
+            there). Paste the exact invoice number you find. This credits ledger profit immediately and cannot be
+            undone.
+          </>
+        )}
       </p>
 
       {error && (
@@ -101,10 +116,10 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token }: Omit<MarkDe
   );
 }
 
-export default function MarkDeliveredModal({ isOpen, onClose, onConfirmed, order, token }: MarkDeliveredModalProps) {
+export default function MarkDeliveredModal({ isOpen, onClose, onConfirmed, order, token, sandbox }: MarkDeliveredModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
-      {isOpen && <MarkDeliveredFields onClose={onClose} onConfirmed={onConfirmed} order={order} token={token} />}
+      {isOpen && <MarkDeliveredFields onClose={onClose} onConfirmed={onConfirmed} order={order} token={token} sandbox={sandbox} />}
     </Modal>
   );
 }

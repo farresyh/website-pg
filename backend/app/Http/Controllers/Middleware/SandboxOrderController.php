@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\Middleware\CreateSandboxOrderRequest;
 use App\Http\Requests\Middleware\ResendSandboxOrderDeliveryRequest;
 use App\Models\Game;
@@ -34,6 +35,14 @@ use Illuminate\Validation\ValidationException;
  * entirely (decision #3), delivery never calls the real Gamevion
  * adapter (decision #5), and creditProfit() is guarded against sandbox
  * orders at the source (decision #6) — see docs/adr.md.
+ *
+ * ADR-026: resend()'s `error_code` field is free-text, so typing
+ * `duplicate_reference` reaches DeliveryStatus::NeedsReview through
+ * the exact same OrderFulfillmentService::fulfill() logic a real
+ * ambiguous Gamevion response would — no sandbox-specific wiring
+ * needed for that transition. markDelivered() below is the sandbox
+ * counterpart to Admin\OrderController::markDelivered() (ADR-026
+ * decision 4a), letting that resolution path be exercised here too.
  */
 class SandboxOrderController extends Controller
 {
@@ -158,6 +167,34 @@ class SandboxOrderController extends Controller
             $targetPackage,
             $request->validated('note'),
             $request->user()?->name,
+        );
+
+        return response()->json($result->fresh(['game', 'package', 'supplier', 'reseller', 'resendAttempts']));
+    }
+
+    /**
+     * ADR-026 decision 4a's sandbox counterpart — same
+     * OrderFulfillmentService::markDeliveredManually() a real
+     * needs_review order uses, so creditProfit()'s existing decision
+     * #6 is_test guard applies here unchanged (no new guard needed to
+     * keep this off the real ledger). No voucher-exists check, unlike
+     * the real controller's — sandbox has no voucher feature at all.
+     */
+    public function markDelivered(MarkOrderDeliveredRequest $request, Order $order, OrderFulfillmentService $fulfillment): JsonResponse
+    {
+        $this->assertIsSandboxOrder($order);
+
+        if ($order->delivery_status !== DeliveryStatus::NeedsReview) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['Only a test order in needs-review can be marked delivered.'],
+            ]);
+        }
+
+        $result = $fulfillment->markDeliveredManually(
+            $order,
+            $request->validated('supplier_ref'),
+            $request->validated('note'),
+            $request->user()?->name ?? 'Sandbox Tester',
         );
 
         return response()->json($result->fresh(['game', 'package', 'supplier', 'reseller', 'resendAttempts']));
