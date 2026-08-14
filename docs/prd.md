@@ -1019,6 +1019,8 @@ Admin: `OrderController` gained `markDelivered()` (`POST /api/orders/{order}/mar
 
 Explicitly **out of this triage, deferred until the founder resolves them externally**: `ADR-020`'s remaining provisioning (droplet/Managed MySQL/Registry/SSH-deploy — needs founder go-ahead + spend), CHIP gateway (blocked on account approval), country-based gateway routing (`ADR-022`'s newest addendum — out of scope until multi-currency/multi-country architecture is planned).
 
+**Note for whenever the ADR-020 provisioning session happens:** a capacity discussion against the founder's real order history (`docs/orders.csv`, 28,848 rows, 230 days) is recorded as an addendum to [ADR-020](./adr.md) — droplet/Managed MySQL tier both check out against today's volume and a projected 10–20x growth (RM1–2m/month), with a real load test and the single-droplet redundancy trigger flagged as the two open items to revisit at that session, not before.
+
 ---
 
 *This document serves as a blueprint for building the new system. v0.3 reflects a pre-build security/financial-integrity hardening pass — see `adr.md` for why each major decision was made, and `foundation-security.md` for the actionable checklist derived from those decisions. Technical details may evolve as architectural decisions are finalized, but any change to a recorded ADR should be deliberate and documented, not incidental.*
