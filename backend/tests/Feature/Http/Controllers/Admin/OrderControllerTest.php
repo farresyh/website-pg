@@ -562,6 +562,15 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('delivery_status', 'delivered');
         $response->assertJsonPath('supplier_ref', 'GV-RAPI-CONFIRMED1');
         $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+        // Found live via the ADR-023 admin-mark-delivered E2E spec:
+        // markDeliveredManually() returns a bare $locked->fresh() with
+        // no relations loaded — without show()'s own eager-load
+        // mirrored here, this key is missing from the JSON entirely
+        // (not null), which crashed the admin panel's own
+        // DeliveryLogsTable on the now-undefined resend_attempts once
+        // it replaced the full OrderDetail with this response.
+        $response->assertJsonPath('resend_attempts', []);
+        $response->assertJsonStructure(['game', 'package', 'supplier', 'reseller', 'voucher']);
     }
 
     public function test_mark_delivered_requires_a_supplier_ref(): void

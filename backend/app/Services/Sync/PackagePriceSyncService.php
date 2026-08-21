@@ -10,6 +10,7 @@ use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -144,16 +145,28 @@ final class PackagePriceSyncService
             $threshold = (float) config('packages.price_swing_threshold_percent');
 
             if ($swingPercent > $threshold) {
-                // Decision #5: a package with an already-unresolved
-                // pending anomaly is skipped, not re-flagged into a
-                // second row, on any later run.
-                if (PendingPriceChange::query()->where('package_id', $package->id)->where('status', 'pending')->exists()) {
-                    return 'skipped';
-                }
+                // Decision #5's "skip if already pending" check and the
+                // row it writes must be atomic — without a lock, two
+                // sync runs evaluating this package at the same moment
+                // (e.g. an overlapping scheduled run + a manual "Sync
+                // All Prices Now" click) could both pass the exists()
+                // check before either inserts, producing two open
+                // PendingPriceChange rows for one package. Locking the
+                // Package row itself (not a new table-specific lock)
+                // serializes any concurrent evaluation of this package,
+                // matching this codebase's existing row-lock convention
+                // (LedgerService::withdraw()/VoucherService::redeem()).
+                return DB::transaction(function () use ($package, $newCostPrice, $priceSyncRunId) {
+                    Package::query()->whereKey($package->id)->lockForUpdate()->firstOrFail();
 
-                $this->flagPriceAnomaly($package, $newCostPrice, $priceSyncRunId);
+                    if (PendingPriceChange::query()->where('package_id', $package->id)->where('status', 'pending')->exists()) {
+                        return 'skipped';
+                    }
 
-                return 'anomaly_flagged';
+                    $this->flagPriceAnomaly($package, $newCostPrice, $priceSyncRunId);
+
+                    return 'anomaly_flagged';
+                });
             }
         }
 

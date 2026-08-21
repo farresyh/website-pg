@@ -230,6 +230,15 @@ class OrderController extends Controller
             $request->user()->name,
         );
 
-        return response()->json($result);
+        // Same relations as show() — the frontend's OrderDetail type
+        // requires game/package/voucher/resend_attempts, and
+        // markDeliveredManually() returns a bare $locked->fresh() with
+        // none of them loaded. Found live: without this, the admin
+        // panel's own setSelected(updated) crashes rendering
+        // DeliveryLogsTable on the now-undefined resend_attempts.
+        return response()->json($result->load([
+            'game', 'package', 'supplier', 'reseller', 'voucher',
+            'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
+        ]));
     }
 }

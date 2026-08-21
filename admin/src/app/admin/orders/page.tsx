@@ -181,8 +181,16 @@ export default function OrdersPage() {
               )}
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
               {voucherMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{voucherMessage}</span>}
-              {markDeliveredMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</span>}
             </div>
+          )}
+          {/* Rendered outside the failed/needs_review-gated block above,
+              deliberately — unlike resend/voucher, a successful Mark as
+              Delivered moves delivery_status to "delivered" in the same
+              render that sets this message, which would otherwise
+              unmount it before an admin ever saw it (found live via the
+              ADR-023 admin-mark-delivered E2E spec). */}
+          {markDeliveredMessage && (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</p>
           )}
           {selected.voucher && (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">

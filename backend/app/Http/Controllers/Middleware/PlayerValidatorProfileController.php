@@ -4,13 +4,13 @@ namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Middleware\StorePlayerValidatorProfileRequest;
+use App\Http\Requests\Middleware\TestPlayerValidatorProfileRequest;
 use App\Http\Requests\Middleware\UpdatePlayerValidatorProfileRequest;
 use App\Models\PlayerValidatorProfile;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
 use App\Services\PlayerValidation\UnsupportedPlayerValidatorException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 /**
  * MUI-5 — "Validators": admin-created profiles, each pointing at a
@@ -93,12 +93,9 @@ class PlayerValidatorProfileController extends Controller
      * PaymentMethodController::test() never itself returning an error
      * status even when the channel test fails.
      */
-    public function test(Request $request, PlayerValidatorProfile $validator, PlayerValidatorRegistry $registry): JsonResponse
+    public function test(TestPlayerValidatorProfileRequest $request, PlayerValidatorProfile $validator, PlayerValidatorRegistry $registry): JsonResponse
     {
-        $data = $request->validate([
-            'player_id' => ['required', 'string'],
-            'server_id' => ['nullable', 'string'],
-        ]);
+        $data = $request->validated();
 
         try {
             $result = $registry->resolve($validator->key)->validate($data['player_id'], $data['server_id'] ?? null);

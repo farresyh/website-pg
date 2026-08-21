@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Checkout;
 
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -48,6 +49,15 @@ use Illuminate\Validation\Rule;
  * accepted from the client — never a discount amount (ORD-9).
  * CheckoutService resolves it server-side against the voucher's own
  * stored remaining/ownership at pricing time.
+ *
+ * `channel_properties` inner keys allowlisted 2026-08-21: the only keys
+ * the storefront has ever sent are `success_return_url`/
+ * `failure_return_url` (OrderForm.tsx), and CheckoutService::requestPayment()
+ * overwrites both server-side anyway before they reach Xendit. A bare
+ * `POST /api/checkout` caller (bypassing the storefront) had no boundary
+ * check stopping it from stuffing arbitrary extra keys into this array,
+ * which then flowed straight into XenditGateway::createPaymentRequest()'s
+ * real payload unfiltered.
  */
 class CreateCheckoutRequest extends FormRequest
 {
@@ -75,7 +85,18 @@ class CreateCheckoutRequest extends FormRequest
                 'max:64',
                 Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
             ],
-            'channel_properties' => ['nullable', 'array'],
+            'channel_properties' => [
+                'nullable',
+                'array',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    $allowed = ['success_return_url', 'failure_return_url'];
+                    $unknown = array_diff(array_keys($value ?? []), $allowed);
+
+                    if ($unknown !== []) {
+                        $fail('The '.$attribute.' field contains unsupported keys: '.implode(', ', $unknown).'.');
+                    }
+                },
+            ],
             'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
             'voucher_code' => ['nullable', 'string', 'max:32'],
         ];

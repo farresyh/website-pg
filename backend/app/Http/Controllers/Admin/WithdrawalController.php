@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Withdrawal\CreateWithdrawalRequest;
+use App\Http\Requests\Withdrawal\RejectWithdrawalRequest;
 use App\Models\Withdrawal;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Ledger\LedgerService;
@@ -143,7 +144,7 @@ class WithdrawalController extends Controller
      * has its ledger debit written; reversing that is a deliberately
      * deferred edge case (see docs/prd.md §14).
      */
-    public function reject(Request $request, Withdrawal $withdrawal): JsonResponse
+    public function reject(RejectWithdrawalRequest $request, Withdrawal $withdrawal): JsonResponse
     {
         if ($withdrawal->status !== WithdrawalStatus::Pending) {
             throw ValidationException::withMessages([
@@ -151,14 +152,10 @@ class WithdrawalController extends Controller
             ]);
         }
 
-        $validated = $request->validate([
-            'admin_note' => ['nullable', 'string', 'max:1000'],
-        ]);
-
         $withdrawal->update([
             'status' => WithdrawalStatus::Rejected,
             'approved_by' => $request->user()->id,
-            'admin_note' => $validated['admin_note'] ?? null,
+            'admin_note' => $request->validated('admin_note'),
         ]);
 
         return response()->json($withdrawal);

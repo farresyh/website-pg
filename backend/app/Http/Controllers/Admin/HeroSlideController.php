@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\HeroSlideController as PublicHeroSlideController;
 use App\Http\Requests\HeroSlides\SaveHeroSlideRequest;
+use App\Http\Requests\HeroSlides\UpdateHeroSlideStatusRequest;
 use App\Models\HeroSlide;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 /**
  * docs/prd.md §14/§15 backlog: "Hero Banner / Campaign management."
@@ -49,13 +49,9 @@ class HeroSlideController extends Controller
         return response()->json($heroSlide);
     }
 
-    public function updateStatus(Request $request, HeroSlide $heroSlide): JsonResponse
+    public function updateStatus(UpdateHeroSlideStatusRequest $request, HeroSlide $heroSlide): JsonResponse
     {
-        $validated = $request->validate([
-            'is_active' => ['required', 'boolean'],
-        ]);
-
-        $heroSlide->update(['is_active' => $validated['is_active']]);
+        $heroSlide->update(['is_active' => $request->validated('is_active')]);
         PublicHeroSlideController::forgetCache();
 
         return response()->json($heroSlide);

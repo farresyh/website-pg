@@ -12,6 +12,7 @@ export const E2E_ADMIN_PASSWORD = "password";
 export const E2E_GAME_SLUG = "e2e-test-game";
 export const E2E_VOUCHER_FIXTURE_ORDER_NUMBER = "KRS-E2E-VOUCHER-FIXTURE";
 export const E2E_RESEND_FIXTURE_ORDER_NUMBER = "KRS-E2E-RESEND-FIXTURE";
+export const E2E_NEEDS_REVIEW_FIXTURE_ORDER_NUMBER = "KRS-E2E-NEEDSREVIEW-FIXTURE";
 
 /** Must match boot-backend.sh's default — only used to simulate the Xendit webhook, never sent to or checked by Xendit itself. */
 export const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || "e2e-local-webhook-token";

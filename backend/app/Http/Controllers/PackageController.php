@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Games\UpdatePackageMarkupRequest;
 use App\Http\Requests\Games\UpdatePackageRequest;
+use App\Http\Requests\Games\UpdatePackageStatusRequest;
 use App\Models\Package;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 /**
  * GAME-7/GAME-4: admin edits or removes an already-promoted Package.
@@ -50,13 +50,9 @@ class PackageController extends Controller
      * updateStatus — a dedicated lightweight endpoint rather than
      * requiring the full edit form just to flip one flag.
      */
-    public function updateStatus(Request $request, Package $package): JsonResponse
+    public function updateStatus(UpdatePackageStatusRequest $request, Package $package): JsonResponse
     {
-        $validated = $request->validate([
-            'is_active' => ['required', 'boolean'],
-        ]);
-
-        $package->update(['is_active' => $validated['is_active']]);
+        $package->update(['is_active' => $request->validated('is_active')]);
         GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);

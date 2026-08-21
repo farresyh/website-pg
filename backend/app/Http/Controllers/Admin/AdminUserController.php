@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateAdminUserRequest;
 use App\Http\Requests\Admin\UpdateAdminUserRequest;
+use App\Http\Requests\Admin\UpdateAdminUserStatusRequest;
 use App\Models\AdminUser;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -49,19 +49,17 @@ class AdminUserController extends Controller
      * single-admin setup (or a mistake) locks out the only account that
      * could undo it.
      */
-    public function updateStatus(Request $request, AdminUser $admin_user): JsonResponse
+    public function updateStatus(UpdateAdminUserStatusRequest $request, AdminUser $admin_user): JsonResponse
     {
-        $validated = $request->validate([
-            'is_active' => ['required', 'boolean'],
-        ]);
+        $isActive = $request->validated('is_active');
 
-        if ($admin_user->is($request->user()) && ! $validated['is_active']) {
+        if ($admin_user->is($request->user()) && ! $isActive) {
             throw ValidationException::withMessages([
                 'is_active' => ['You cannot deactivate your own account.'],
             ]);
         }
 
-        $admin_user->update(['is_active' => $validated['is_active']]);
+        $admin_user->update(['is_active' => $isActive]);
 
         return response()->json($admin_user);
     }

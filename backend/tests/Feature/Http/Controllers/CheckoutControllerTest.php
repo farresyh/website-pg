@@ -608,6 +608,46 @@ class CheckoutControllerTest extends TestCase
     }
 
     /**
+     * `channel_properties` inner keys allowlisted 2026-08-21 — the only
+     * keys the storefront has ever sent (success/failure_return_url) are
+     * overwritten server-side anyway (CheckoutService::requestPayment()),
+     * so a direct API caller stuffing in extra keys has no legitimate use
+     * and previously flowed straight through to Xendit unfiltered.
+     */
+    public function test_rejects_channel_properties_with_an_unsupported_key(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package, [
+            'channel_properties' => [
+                'success_return_url' => 'https://example.com/ok',
+                'card_details' => ['cvn' => '123'],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/checkout', $payload);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('channel_properties');
+    }
+
+    public function test_accepts_channel_properties_with_only_allowlisted_keys(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package, [
+            'channel_properties' => [
+                'success_return_url' => 'https://example.com/ok',
+                'failure_return_url' => 'https://example.com/fail',
+            ],
+        ]);
+
+        $response = $this->postJson('/api/checkout', $payload);
+
+        $response->assertCreated();
+    }
+
+    /**
      * ADR-019's checkout-level idempotency fix — the actual scenario
      * this exists for: a customer double-click or client-side timeout
      * retry re-sends the exact same request. Must return the same

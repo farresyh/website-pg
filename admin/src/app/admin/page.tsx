@@ -32,13 +32,28 @@ export default function AdminDashboardPage() {
       return;
     }
 
+    // Guards against navigating away (or React StrictMode's dev-mode
+    // double-invoke) before this resolves — without it, a page
+    // navigation that aborts the in-flight fetch was misread as "session
+    // invalid" and wiped a perfectly valid session (found live via a
+    // Playwright E2E race: landing on /admin then immediately
+    // navigating to /admin/orders, per ADR-023).
+    let cancelled = false;
+
     apiFetch<Admin>("/api/me", { token: session.token })
-      .then(setAdmin)
+      .then((data) => {
+        if (!cancelled) setAdmin(data);
+      })
       .catch((err: unknown) => {
+        if (cancelled) return;
         clearClientSession();
         setError(err instanceof ApiError ? err.message : "Session expired.");
         router.replace("/login");
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (error) {

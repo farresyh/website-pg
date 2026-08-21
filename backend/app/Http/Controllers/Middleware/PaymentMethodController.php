@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\PaymentMethodCatalogController;
+use App\Http\Requests\Middleware\UpdatePaymentMethodFeeRequest;
+use App\Http\Requests\Middleware\UpdatePaymentMethodStatusRequest;
 use App\Models\PaymentMethod;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -65,17 +67,15 @@ class PaymentMethodController extends Controller
      * channel actually works (own Dashboard or the test() action
      * below), never on by default (the migration seeds is_active=false).
      */
-    public function updateStatus(Request $request, PaymentMethod $paymentMethod): JsonResponse
+    public function updateStatus(UpdatePaymentMethodStatusRequest $request, PaymentMethod $paymentMethod): JsonResponse
     {
-        $validated = $request->validate([
-            'is_active' => ['required', 'boolean'],
-        ]);
+        $isActive = $request->validated('is_active');
 
-        if ($validated['is_active']) {
+        if ($isActive) {
             $this->assertMethodKeyNotActiveElsewhere($paymentMethod);
         }
 
-        $paymentMethod->update(['is_active' => $validated['is_active']]);
+        $paymentMethod->update(['is_active' => $isActive]);
         Cache::forget(self::CACHE_KEY);
         // Only this action changes what the public listing shows
         // (label/channel_code/category never change here) — updateFee()
@@ -113,14 +113,9 @@ class PaymentMethodController extends Controller
         }
     }
 
-    public function updateFee(Request $request, PaymentMethod $paymentMethod): JsonResponse
+    public function updateFee(UpdatePaymentMethodFeeRequest $request, PaymentMethod $paymentMethod): JsonResponse
     {
-        $validated = $request->validate([
-            'percentage_rate' => ['required', 'numeric', 'min:0', 'max:100'],
-            'flat_fee_sen' => ['required', 'integer', 'min:0'],
-        ]);
-
-        $paymentMethod->update($validated);
+        $paymentMethod->update($request->validated());
         Cache::forget(self::CACHE_KEY);
 
         return response()->json($paymentMethod);

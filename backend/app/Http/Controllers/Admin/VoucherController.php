@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Voucher\CreateVoucherRequest;
+use App\Http\Requests\Voucher\StoreVoucherFromOrderRequest;
 use App\Models\Order;
 use App\Models\Voucher;
 use App\Services\Ledger\LedgerService;
@@ -123,7 +124,7 @@ class VoucherController extends Controller
         return response()->json($voucher, 201);
     }
 
-    public function storeFromOrder(Request $request, Order $order): JsonResponse
+    public function storeFromOrder(StoreVoucherFromOrderRequest $request, Order $order): JsonResponse
     {
         if ($order->delivery_status !== DeliveryStatus::Failed) {
             throw ValidationException::withMessages([
@@ -136,10 +137,6 @@ class VoucherController extends Controller
                 'order' => ['A voucher has already been issued for this order.'],
             ]);
         }
-
-        $validated = $request->validate([
-            'reason' => ['nullable', 'string', 'max:1000'],
-        ]);
 
         $amount = $order->final_amount - $order->transaction_fee;
 
@@ -158,14 +155,14 @@ class VoucherController extends Controller
         // amount. restore() is a no-op if this order never redeemed
         // one, so it's always safe to call unconditionally here.
         try {
-            $voucher = DB::transaction(function () use ($order, $amount, $validated, $request) {
+            $voucher = DB::transaction(function () use ($order, $amount, $request) {
                 $this->vouchers->restore($order->id);
 
                 return $this->issue(
                     customerEmail: $order->customer_email,
                     customerPhone: $order->customer_phone,
                     amount: $amount,
-                    reason: $validated['reason'] ?? "Delivery failed - refund voucher for order {$order->order_number}",
+                    reason: $request->validated('reason') ?? "Delivery failed - refund voucher for order {$order->order_number}",
                     expiresAt: null,
                     createdBy: $request->user()->id,
                     approvedBy: null,

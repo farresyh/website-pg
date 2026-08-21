@@ -22,10 +22,12 @@ use Illuminate\Database\Seeder;
  * storefront wizard's Step 1 to a plain "Continue" gate — validator
  * chains are a separate, unfaked third-party mechanism this ADR never
  * scoped to touch), one active Xendit channel (checkout requires at
- * least one), and two pre-existing failed orders — one for the Issue
- * Voucher test, a separate one for the Resend Delivery test, so
- * neither test's own state change (issuing a voucher; resending to
- * "delivered") can affect the other regardless of run order. Whoever's
+ * least one), and pre-existing orders for each admin golden path —
+ * one failed order for the Issue Voucher test, a separate failed order
+ * for the Resend Delivery test, and a needs_review order for the Mark
+ * as Delivered test (ADR-026/ADR-023 Trigger A) — so neither test's own
+ * state change (issuing a voucher; resending to "delivered"; marking
+ * delivered) can affect the others regardless of run order. Whoever's
  * PR changes Game/Package/Order/PaymentMethod schema owns updating
  * this file in the same PR — see ADR-023 decision #7.
  */
@@ -128,6 +130,35 @@ class E2ESeeder extends Seeder
                 'reseller_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::Failed->value,
+                'payment_gateway' => 'xendit',
+            ],
+        );
+
+        // Fixture for the "admin -> needs_review order -> Mark as
+        // Delivered" golden path (ADR-026/ADR-023 Trigger A — a new
+        // order-resolution mechanism beyond retry-delivery/voucher).
+        // Kept fully separate from the two fixtures above.
+        Order::query()->firstOrCreate(
+            ['order_number' => 'KRS-E2E-NEEDSREVIEW-FIXTURE'],
+            [
+                'reference_number' => 'REF-E2E-NEEDSREVIEW-FIXTURE',
+                'is_test' => false,
+                'customer_email' => 'e2e-needsreview-fixture@example.com',
+                'customer_name' => 'E2E NeedsReview Fixture',
+                'customer_phone' => '0100000002',
+                'player_id' => '000002',
+                'game_id' => $game->id,
+                'package_id' => $package->id,
+                'supplier_id' => $supplier->id,
+                'cost_price' => $package->cost_price,
+                'reseller_cost_price' => $package->reseller_cost_price,
+                'selling_price' => 600,
+                'transaction_fee' => 21,
+                'final_amount' => 621,
+                'platform_profit' => 100,
+                'reseller_profit' => 0,
+                'payment_status' => PaymentStatus::Paid->value,
+                'delivery_status' => DeliveryStatus::NeedsReview->value,
                 'payment_gateway' => 'xendit',
             ],
         );
