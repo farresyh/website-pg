@@ -7,6 +7,7 @@ use App\Models\AdminUser;
 use App\Models\DeactivationLog;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PendingPriceChange;
 use App\Models\PriceChangeLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
@@ -128,9 +129,12 @@ class PriceSyncControllerTest extends TestCase
         ]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => 'Pending', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
-            'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now(),
+            'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now()->subMinutes(20),
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV2',
         ]);
+        // last_synced_at must be AFTER deactivated_at — PendingReactivationFinder
+        // only counts a supplier_products row as confirming reactivation when it
+        // was touched by a sync run that happened after the package went offline.
         \App\Models\SupplierProduct::query()->create([
             'supplier_id' => $supplier->id, 'external_ref' => 'GV2', 'name' => 'Pending', 'status_raw' => 'active', 'last_synced_at' => now(),
         ]);
@@ -145,6 +149,30 @@ class PriceSyncControllerTest extends TestCase
         $response->assertJsonPath('pending_reactivation_count', 1);
         $response->assertJsonPath('last_sync_status', 'success');
         $response->assertJsonPath('last_sync_at', $run->finished_at->toJSON());
+    }
+
+    /**
+     * ADR-025 decision #8: same live-count pattern as
+     * pending_reactivation_count, for the sixth section's stat card.
+     */
+    public function test_stats_reports_the_pending_price_change_count(): void
+    {
+        $supplier = $this->supplier();
+        $package = Package::query()->create([
+            'game_id' => $this->game()->id, 'name' => 'Flagged', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'is_active' => false, 'deactivated_reason' => 'price_anomaly', 'deactivated_at' => now(),
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV1',
+        ]);
+        PendingPriceChange::query()->create([
+            'package_id' => $package->id, 'old_cost_price' => 1000, 'proposed_cost_price' => 1600,
+            'old_reseller_cost_price' => 1150, 'proposed_reseller_cost_price' => 1840, 'status' => 'pending',
+        ]);
+
+        $this->actingAsAdmin();
+        $response = $this->getJson('/api/middleware/price-sync/stats');
+
+        $response->assertOk();
+        $response->assertJsonPath('pending_price_change_count', 1);
     }
 
     /**

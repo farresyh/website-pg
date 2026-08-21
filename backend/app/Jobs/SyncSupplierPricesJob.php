@@ -93,6 +93,8 @@ final class SyncSupplierPricesJob implements ShouldQueue
                 'catalog_updated' => $stage1->updated,
                 'price_changed' => $stage2->priceChanged,
                 'deactivated' => $stage2->deactivated,
+                'floor_rejected' => $stage2->floorRejected,
+                'price_anomalies' => $stage2->anomaliesFlagged,
             ],
         ]);
     }

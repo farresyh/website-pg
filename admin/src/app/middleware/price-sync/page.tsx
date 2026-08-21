@@ -23,6 +23,7 @@ import {
   type PendingReactivation,
   type DismissedPackage,
   type DismissedPackagePage,
+  type PendingPriceChange,
   triggerPriceSync,
   getPriceSyncRun,
   getPriceSyncStats,
@@ -34,8 +35,12 @@ import {
   bulkDismissPendingReactivations,
   listDismissedPackages,
   restoreDismissedPackage,
+  listPendingPriceChanges,
+  approvePendingPriceChange,
+  dismissPendingPriceChange,
 } from "@/lib/price-sync";
 import SyncDetailsModal from "@/components/price-sync/SyncDetailsModal";
+import PendingPriceChangeSection from "@/components/price-sync/PendingPriceChangeSection";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -74,6 +79,9 @@ export default function PriceSyncPage() {
   const [dismissedPage, setDismissedPage] = useState<DismissedPackagePage | null>(null);
   const [dismissedPageNumber, setDismissedPageNumber] = useState(1);
   const [restoringId, setRestoringId] = useState<number | null>(null);
+
+  const [pendingPriceChanges, setPendingPriceChanges] = useState<PendingPriceChange[] | null>(null);
+  const [priceChangeBusyId, setPriceChangeBusyId] = useState<number | null>(null);
 
   const [historyPage, setHistoryPage] = useState<PriceSyncRunPage | null>(null);
   const [historyPageNumber, setHistoryPageNumber] = useState(1);
@@ -124,14 +132,23 @@ export default function PriceSyncPage() {
       });
   }, []);
 
+  const refreshPendingPriceChanges = useCallback((token: string) => {
+    listPendingPriceChanges(token)
+      .then(setPendingPriceChanges)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load pending price changes.");
+      });
+  }, []);
+
   const refreshAll = useCallback(
     (token: string) => {
       refreshStats(token);
       refreshPending(token);
       refreshDismissed(token, dismissedPageNumber);
       refreshHistory(token, historyPageNumber);
+      refreshPendingPriceChanges(token);
     },
-    [refreshStats, refreshPending, refreshDismissed, refreshHistory, dismissedPageNumber, historyPageNumber],
+    [refreshStats, refreshPending, refreshDismissed, refreshHistory, refreshPendingPriceChanges, dismissedPageNumber, historyPageNumber],
   );
 
   useEffect(() => {
@@ -264,6 +281,36 @@ export default function PriceSyncPage() {
     }
   }
 
+  async function handleApprovePriceChange(id: number) {
+    if (!session) return;
+    setError(null);
+    setPriceChangeBusyId(id);
+    try {
+      await approvePendingPriceChange(session.token, id);
+      setPendingPriceChanges((prev) => prev?.filter((p) => p.id !== id) ?? null);
+      refreshStats(session.token);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not approve this price change.");
+    } finally {
+      setPriceChangeBusyId(null);
+    }
+  }
+
+  async function handleDismissPriceChange(id: number) {
+    if (!session) return;
+    setError(null);
+    setPriceChangeBusyId(id);
+    try {
+      await dismissPendingPriceChange(session.token, id);
+      setPendingPriceChanges((prev) => prev?.filter((p) => p.id !== id) ?? null);
+      refreshStats(session.token);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not dismiss this price change.");
+    } finally {
+      setPriceChangeBusyId(null);
+    }
+  }
+
   function toggleSelected(id: number) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -286,8 +333,9 @@ export default function PriceSyncPage() {
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Price Sync Center</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Propagates supplier price changes onto every promoted Package and turns off items the supplier can no
-            longer fulfill (ADR-015). No approval gate on price either direction; a deactivated item only ever comes
-            back via the Pending Reactivation review below.
+            longer fulfill (ADR-015). Only a swing past the review threshold is gated (ADR-025) — everything else
+            applies with no approval either direction; a deactivated item only ever comes back via the review
+            sections below.
           </p>
         </div>
         <div className="flex gap-2">
@@ -307,7 +355,7 @@ export default function PriceSyncPage() {
       )}
 
       {/* ADR-016 decision #1: stat cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">Total Games</p>
           <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.total_games ?? "—"}</p>
@@ -319,6 +367,10 @@ export default function PriceSyncPage() {
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">Pending Reactivation</p>
           <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.pending_reactivation_count ?? "—"}</p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Pending Price Change</p>
+          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.pending_price_change_count ?? "—"}</p>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">Last Sync Status</p>
@@ -358,6 +410,12 @@ export default function PriceSyncPage() {
                     Catalog: {shown.stats.catalog_total} total ({shown.stats.catalog_created} new,{" "}
                     {shown.stats.catalog_updated} updated) · {shown.stats.price_changed} package
                     {shown.stats.price_changed === 1 ? "" : "s"} repriced · {shown.stats.deactivated} deactivated
+                    {!!shown.stats.price_anomalies && (
+                      <span className="text-warning-600 dark:text-warning-400"> · {shown.stats.price_anomalies} flagged (price anomaly)</span>
+                    )}
+                    {!!shown.stats.floor_rejected && (
+                      <span className="text-error-600 dark:text-error-400"> · {shown.stats.floor_rejected} rejected (invalid price)</span>
+                    )}
                   </p>
                 )}
               </>
@@ -434,6 +492,14 @@ export default function PriceSyncPage() {
           )}
         </div>
       </div>
+
+      {/* Pending Price Change (ADR-025 decision #8) */}
+      <PendingPriceChangeSection
+        items={pendingPriceChanges}
+        busyId={priceChangeBusyId}
+        onApprove={handleApprovePriceChange}
+        onDismiss={handleDismissPriceChange}
+      />
 
       {/* Manually Dismissed Packages (ADR-016 decision #3) */}
       <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white/90">Manually Dismissed Packages</h2>

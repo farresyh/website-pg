@@ -18,6 +18,8 @@ final class PackagePriceSyncResult
         public readonly int $priceChanged,
         public readonly int $deactivated,
         public readonly array $affectedGameIds,
+        public readonly int $floorRejected = 0,
+        public readonly int $anomaliesFlagged = 0,
     ) {
     }
 }

@@ -93,8 +93,46 @@ class SyncSupplierPricesJobTest extends TestCase
         $this->assertNotNull($run->finished_at);
         $this->assertSame(1, $run->stats['price_changed']);
         $this->assertSame(0, $run->stats['deactivated']);
+        $this->assertSame(0, $run->stats['floor_rejected']);
+        $this->assertSame(0, $run->stats['price_anomalies']);
 
         $this->assertSame(1200, $package->refresh()->cost_price); // 12.0 MYR -> 1200 sen
+    }
+
+    /** ADR-025 decision #1: surfaced in the run's own stats, not just the counters this session's audit found missing. */
+    public function test_job_surfaces_floor_rejections_and_price_anomalies_in_run_stats(): void
+    {
+        config(['packages.price_swing_threshold_percent' => 50]);
+        $supplier = Supplier::query()->create([
+            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR',
+        ]);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV733',
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '28 Diamond', 'cost_price' => 2000, 'reseller_cost_price' => 2300,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV734',
+        ]);
+
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 16.0, 'active'), // +60%, over threshold
+            new SupplierCatalogItem('GV734', '28 Diamond', 'Mobile Legends', 0.0, 'active'), // floor violation
+        ]);
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(\App\Services\Sync\ProductSyncService::class),
+            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(SupplierAdapter::class),
+        );
+
+        $run->refresh();
+        $this->assertSame('success', $run->status);
+        $this->assertSame(1, $run->stats['price_anomalies']);
+        $this->assertSame(1, $run->stats['floor_rejected']);
     }
 
     public function test_job_marks_the_run_failed_when_the_adapter_call_fails(): void

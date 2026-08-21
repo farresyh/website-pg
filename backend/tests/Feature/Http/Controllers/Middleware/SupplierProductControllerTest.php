@@ -378,6 +378,26 @@ class SupplierProductControllerTest extends TestCase
     }
 
     /**
+     * ADR-025 decision #1: the same floor check the sync path enforces
+     * applies here too — a zero price is never legitimate.
+     */
+    public function test_promote_rejects_a_product_with_a_zero_price(): void
+    {
+        $supplier = $this->supplier();
+        $product = $this->rawProduct($supplier, ['price_sen' => 0]);
+        $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
+            'game_id' => $game->id,
+            'name' => '14 Diamond',
+        ]);
+
+        $response->assertUnprocessable();
+        $this->assertSame(0, Package::query()->count());
+    }
+
+    /**
      * Discovered live 2026-07-25: calling this endpoint twice for the
      * same raw item created two Packages selling identical inventory —
      * the frontend only hid the "Add Again" button after promotion

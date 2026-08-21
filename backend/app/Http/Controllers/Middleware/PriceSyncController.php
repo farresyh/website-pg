@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PendingPriceChange;
 use App\Models\PriceSyncRun;
 use App\Services\Sync\PendingReactivationFinder;
 use Illuminate\Http\JsonResponse;
@@ -41,11 +42,13 @@ class PriceSyncController extends Controller
     }
 
     /**
-     * ADR-016 decision #1: the five stat cards. "Total Games"/"Active
+     * ADR-016 decision #1: the stat cards. "Total Games"/"Active
      * Packages" are simple platform-wide counts (only one supplier
      * exists today, so no per-supplier scoping is needed yet). Pending
      * Reactivation count reuses the same live query the queue itself
      * uses, not a separate cached number that could drift from it.
+     * `pending_price_change_count` (ADR-025 decision #8) is the same
+     * live-count pattern for the sixth section.
      */
     public function stats(): JsonResponse
     {
@@ -55,6 +58,7 @@ class PriceSyncController extends Controller
             'total_games' => Game::query()->count(),
             'active_packages' => Package::query()->where('is_active', true)->count(),
             'pending_reactivation_count' => $this->pendingReactivations->find()->count(),
+            'pending_price_change_count' => PendingPriceChange::query()->where('status', 'pending')->count(),
             'last_sync_status' => $lastRun?->status,
             'last_sync_at' => $lastRun?->finished_at ?? $lastRun?->created_at,
         ]);

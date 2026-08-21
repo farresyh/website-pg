@@ -170,6 +170,17 @@ class SupplierProductController extends Controller
             ]);
         }
 
+        // ADR-025 decision #1: cost_price is never legitimately zero
+        // or negative — the same floor check propagatePrice()'s own
+        // sync path enforces, applied here too so every write site to
+        // Package.cost_price agrees, not just the ones an admin
+        // happens to notice.
+        if ($supplierProduct->price_sen <= 0) {
+            throw ValidationException::withMessages([
+                'supplier_product' => ['This item\'s supplier price is invalid (zero or negative) — cannot promote.'],
+            ]);
+        }
+
         // Discovered live 2026-07-25: nothing previously stopped this
         // same raw item from being promoted twice, creating two
         // Packages selling identical inventory (the Product Manager

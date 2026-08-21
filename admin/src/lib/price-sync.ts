@@ -19,6 +19,10 @@ export interface PriceSyncRun {
     catalog_updated: number;
     price_changed: number;
     deactivated: number;
+    // ADR-025 decision #1: absent on any run recorded before this
+    // shipped — older Sync History rows simply show nothing for these.
+    floor_rejected?: number;
+    price_anomalies?: number;
   } | null;
   error_message: string | null;
 }
@@ -37,6 +41,7 @@ export interface PriceSyncStats {
   total_games: number;
   active_packages: number;
   pending_reactivation_count: number;
+  pending_price_change_count: number;
   last_sync_status: PriceSyncRun["status"] | null;
   last_sync_at: string | null;
 }
@@ -173,5 +178,45 @@ export function bulkDismissPendingReactivations(token: string, packageIds: numbe
     method: "POST",
     token,
     body: { package_ids: packageIds },
+  });
+}
+
+/**
+ * ADR-025 decision #2/#8: a supplier price swing large enough to
+ * cross the configured threshold, blocked from being applied until an
+ * admin reviews it here.
+ */
+export interface PendingPriceChange {
+  id: number;
+  old_cost_price: number;
+  proposed_cost_price: number;
+  old_reseller_cost_price: number;
+  proposed_reseller_cost_price: number;
+  status: "pending" | "approved" | "dismissed";
+  created_at: string;
+  package: {
+    id: number;
+    name: string;
+    supplier_package_ref: string;
+    game: { id: number; name: string } | null;
+    supplier: { id: number; name: string } | null;
+  };
+}
+
+export function listPendingPriceChanges(token: string) {
+  return apiFetch<PendingPriceChange[]>("/api/middleware/price-sync/pending-price-changes", { token });
+}
+
+export function approvePendingPriceChange(token: string, id: number) {
+  return apiFetch<PendingPriceChange>(`/api/middleware/price-sync/pending-price-changes/${id}/approve`, {
+    method: "PATCH",
+    token,
+  });
+}
+
+export function dismissPendingPriceChange(token: string, id: number) {
+  return apiFetch<PendingPriceChange>(`/api/middleware/price-sync/pending-price-changes/${id}/dismiss`, {
+    method: "PATCH",
+    token,
   });
 }

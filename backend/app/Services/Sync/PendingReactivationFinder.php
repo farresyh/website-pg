@@ -14,6 +14,21 @@ use Illuminate\Database\Eloquent\Collection;
  * flag. Shared between PendingReactivationController (the actual
  * queue) and PriceSyncController::stats() (just the count), so the
  * query lives in exactly one place.
+ *
+ * A `supplier_products` row's `status_raw` is only ever touched by a
+ * sync run that actually saw that item — a package deactivated for
+ * *vanishing* from the catalog (`! $seenThisRun` in
+ * PackagePriceSyncService::apply()) leaves its own `supplier_products`
+ * row completely untouched, so that row's `status_raw` is still
+ * whatever it was *before* the deactivation (almost always 'active',
+ * since the item was sellable up to that point) — stale evidence that
+ * predates the very deactivation it would otherwise seem to explain
+ * away. `last_synced_at > deactivated_at` requires the 'active' signal
+ * to come from a sync that ran *after* the package went offline, not
+ * leftover state from before — found live 2026-08-21 while verifying
+ * ADR-025 against a real Gamevion sync, confirmed structural (not a
+ * side-effect of a long gap between syncs) via a short-gap repro in
+ * PendingReactivationFinderTest.
  */
 final class PendingReactivationFinder
 {
@@ -28,14 +43,17 @@ final class PendingReactivationFinder
             ->where('deactivated_reason', 'supplier_sync')
             ->get();
 
-        $activeAtSupplierRefs = SupplierProduct::query()
+        $confirmedActiveSince = SupplierProduct::query()
             ->whereIn('external_ref', $packages->pluck('supplier_package_ref'))
             ->where('status_raw', 'active')
-            ->pluck('external_ref')
-            ->all();
+            ->get(['external_ref', 'last_synced_at'])
+            ->keyBy('external_ref');
 
-        return $packages->filter(
-            fn (Package $package) => in_array($package->supplier_package_ref, $activeAtSupplierRefs, true),
-        );
+        return $packages->filter(function (Package $package) use ($confirmedActiveSince) {
+            $product = $confirmedActiveSince->get($package->supplier_package_ref);
+
+            return $product && $package->deactivated_at !== null
+                && $product->last_synced_at?->greaterThan($package->deactivated_at);
+        });
     }
 }
