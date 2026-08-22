@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->call(PaymentMethodSeeder::class);
+        $this->call(CrawlerRuleSeeder::class);
 
         // A fresh install must never show an empty homepage hero
         // section — one generic default slide, matching the original

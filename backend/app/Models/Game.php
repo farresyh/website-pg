@@ -26,6 +26,9 @@ class Game extends Model
         'seo_description_local',
         'seo_keywords',
         'seo_og_image',
+        'schema_brand',
+        'schema_category',
+        'no_index',
     ];
 
     protected $casts = [
@@ -34,6 +37,7 @@ class Game extends Model
         'supplier_mappings' => 'array',
         'validation_rules' => 'array',
         'player_validator_enabled' => 'boolean',
+        'no_index' => 'boolean',
     ];
 
     public function packages(): HasMany

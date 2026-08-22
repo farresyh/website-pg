@@ -145,6 +145,9 @@ class CatalogController extends Controller
             'seo_description_local' => $game->seo_description_local,
             'seo_keywords' => $game->seo_keywords,
             'seo_og_image' => $game->seo_og_image,
+            'schema_brand' => $game->schema_brand,
+            'schema_category' => $game->schema_category,
+            'no_index' => $game->no_index,
         ];
     }
 

@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS=--use-system-ca next dev",
-    "build": "next build",
+    "build": "NODE_OPTIONS=--use-system-ca next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@next/third-parties": "^16.3.2",
     "@phosphor-icons/react": "^2.1.10",
     "next": "^16.3.1",
     "react": "19.2.4",

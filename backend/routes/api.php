@@ -2,9 +2,14 @@
 
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\BlacklistController;
+use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\GalleryImageController;
+use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\RedirectController;
+use App\Http\Controllers\Admin\SeoController as AdminSeoController;
+use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
@@ -16,6 +21,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
+use App\Http\Controllers\SeoController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
@@ -102,6 +108,16 @@ Route::prefix('catalog')->group(function () {
     // SOCIAL_LINKS and the three previously-nonexistent legal pages.
     Route::get('/branding', [BrandingController::class, 'show']);
     Route::get('/legal/{page}', [BrandingController::class, 'legal']);
+
+    // ADR-029 — public SEO data: settings/templates/pixel IDs for
+    // generateMetadata(), redirects for middleware.ts's in-memory
+    // cache, scripts for layout injection, crawler rules for
+    // app/robots.ts.
+    Route::get('/seo/settings', [SeoController::class, 'settings']);
+    Route::get('/seo/redirects', [SeoController::class, 'redirects']);
+    Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1');
+    Route::get('/seo/scripts', [SeoController::class, 'scripts']);
+    Route::get('/seo/robots', [SeoController::class, 'robots']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -233,6 +249,36 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/footer', [SettingsController::class, 'updateFooter']);
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
+    });
+
+    // ADR-029 — SEO Management: Overview, Global Settings/Meta
+    // Templates (one table, decision 2), Game SEO (decision 11),
+    // Redirects (decision 3/9), Scripts (addendum 2 decision 13),
+    // Crawler (addendum 2 decision 14). Same tier as Settings above —
+    // decision 6, no reseller self-service portal yet.
+    Route::middleware('admin.role:super_admin')->prefix('seo')->group(function () {
+        Route::get('/overview', [AdminSeoController::class, 'overview']);
+        Route::get('/settings', [AdminSeoController::class, 'settings']);
+        Route::put('/settings', [AdminSeoController::class, 'updateSettings']);
+
+        Route::get('/games', [GameSeoController::class, 'index']);
+        Route::get('/games/{game}', [GameSeoController::class, 'show']);
+        Route::put('/games/{game}', [GameSeoController::class, 'update']);
+
+        Route::get('/redirects', [RedirectController::class, 'index']);
+        Route::post('/redirects', [RedirectController::class, 'store']);
+        Route::put('/redirects/{redirect}', [RedirectController::class, 'update']);
+        Route::delete('/redirects/{redirect}', [RedirectController::class, 'destroy']);
+
+        Route::get('/scripts', [SeoScriptController::class, 'index']);
+        Route::post('/scripts', [SeoScriptController::class, 'store']);
+        Route::put('/scripts/{seo_script}', [SeoScriptController::class, 'update']);
+        Route::delete('/scripts/{seo_script}', [SeoScriptController::class, 'destroy']);
+
+        Route::get('/crawler-rules', [CrawlerRuleController::class, 'index']);
+        Route::post('/crawler-rules', [CrawlerRuleController::class, 'store']);
+        Route::put('/crawler-rules/{crawler_rule}', [CrawlerRuleController::class, 'update']);
+        Route::delete('/crawler-rules/{crawler_rule}', [CrawlerRuleController::class, 'destroy']);
     });
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway

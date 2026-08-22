@@ -25,6 +25,9 @@ interface CatalogGameWire {
   seo_title?: string | null;
   seo_description?: string | null;
   seo_og_image?: string | null;
+  schema_brand?: string | null;
+  schema_category?: string | null;
+  no_index?: boolean;
 }
 
 interface CatalogPackageWire {
@@ -53,6 +56,9 @@ export interface GameDetail extends Game {
   seoTitle: string | null;
   seoDescription: string | null;
   seoOgImage: string | null;
+  schemaBrand: string | null;
+  schemaCategory: string | null;
+  noIndex: boolean;
 }
 
 export interface GamePackage {
@@ -81,6 +87,9 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
     seoTitle: wire.seo_title ?? null,
     seoDescription: wire.seo_description ?? null,
     seoOgImage: wire.seo_og_image ?? null,
+    schemaBrand: wire.schema_brand ?? null,
+    schemaCategory: wire.schema_category ?? null,
+    noIndex: wire.no_index ?? false,
   };
 }
 
