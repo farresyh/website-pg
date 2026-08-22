@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
-import { GridIcon, UserCircleIcon, DollarLineIcon, BoxLineIcon, PencilIcon, ListIcon, ImageIcon, BlockIcon, HorizontaLDots } from "@/icons";
+import { GridIcon, UserCircleIcon, DollarLineIcon, BoxLineIcon, PencilIcon, ListIcon, ImageIcon, BlockIcon, SettingsIcon, HorizontaLDots } from "@/icons";
 
 /**
  * Nav items reflect only screens that actually exist — see
@@ -27,6 +27,7 @@ const navItems: NavItem[] = [
   { icon: <DollarLineIcon />, name: "Withdrawals", path: "/admin/withdrawals" },
   { icon: <BoxLineIcon />, name: "Vouchers", path: "/admin/vouchers" },
   { icon: <BlockIcon />, name: "Blacklist", path: "/admin/blacklist" },
+  { icon: <SettingsIcon />, name: "Settings", path: "/admin/settings" },
 ];
 
 const AppSidebar: React.FC = () => {

@@ -43,6 +43,14 @@ class Reseller extends Model
      * environment that skipped seeding — same stopgap CheckoutController
      * already used before this was extracted as a second call site
      * (CatalogController) made the duplication worth removing.
+     *
+     * ADR-028 decision 9: every call site, kept current so a future
+     * Phase 2 domain-routing session can find all of them from here,
+     * not by re-reading every ADR that ever mentioned one —
+     * CheckoutController, CatalogController, VoucherPreviewController,
+     * Middleware\SandboxOrderController, BrandingController (public
+     * branding/footer/legal endpoint, ADR-028 addendum), and
+     * Admin\SettingsController (the same reseller's own edit side).
      */
     public static function platformOwner(): self
     {

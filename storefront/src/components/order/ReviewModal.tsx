@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-client";
@@ -241,8 +242,11 @@ export default function ReviewModal({
             className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-brand"
           />
           <span className="text-[12.5px] leading-relaxed text-text-muted">
-            I agree to the Terms &amp; Conditions and confirm that the Player ID above is correct. Delivery to an incorrect ID cannot be
-            reversed.
+            I agree to the{" "}
+            <Link href="/terms" target="_blank" className="text-brand-light underline" onClick={(e) => e.stopPropagation()}>
+              Terms &amp; Conditions
+            </Link>{" "}
+            and confirm that the Player ID above is correct. Delivery to an incorrect ID cannot be reversed.
           </span>
         </label>
 

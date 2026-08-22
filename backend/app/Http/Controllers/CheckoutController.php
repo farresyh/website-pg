@@ -7,6 +7,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
+use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
 use App\Models\Reseller;
 use App\Services\Checkout\CheckoutFailedException;
@@ -57,6 +58,20 @@ class CheckoutController extends Controller
 
     public function store(CreateCheckoutRequest $request): JsonResponse
     {
+        // ADR-028 decision 8: maintenance mode blocks new checkout
+        // submissions only — browsing, order tracking, and payment/
+        // webhook routes stay live on purpose, so a customer who
+        // already paid can still track their order and an in-flight
+        // webhook can still land and fulfil. Enforced right here, not
+        // as a blanket route-group gate.
+        $platformSettings = PlatformSettings::current();
+        if ($platformSettings->maintenance_mode) {
+            return response()->json([
+                'message' => $platformSettings->maintenance_message
+                    ?: 'The store is temporarily unavailable for maintenance. Please try again shortly.',
+            ], 503);
+        }
+
         $data = $request->validated();
 
         $game = Game::query()->findOrFail($data['game_id']);

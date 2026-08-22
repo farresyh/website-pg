@@ -573,6 +573,23 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame(0, Order::query()->count());
     }
 
+    /** ADR-028 decision 8: maintenance mode blocks new checkout submissions only. */
+    public function test_rejects_checkout_when_maintenance_mode_is_on(): void
+    {
+        $this->bindGateway();
+        \App\Models\PlatformSettings::query()->create([
+            'maintenance_mode' => true,
+            'maintenance_message' => 'Back in 10 minutes.',
+        ]);
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package);
+
+        $response = $this->postJson('/api/checkout', $payload);
+
+        $response->assertStatus(503);
+        $response->assertJson(['message' => 'Back in 10 minutes.']);
+    }
+
     public function test_rejects_checkout_without_an_idempotency_key(): void
     {
         $this->bindGateway();

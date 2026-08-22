@@ -10,6 +10,11 @@ export const metadata: Metadata = {
   title: "Track Order — Kedai Runcit Soloz",
 };
 
+// SiteFooter now fetches live branding data (ADR-028 addendum) —
+// same reasoning as HomePage's own dynamic export: never bake this
+// into a static build artifact.
+export const dynamic = "force-dynamic";
+
 export default function TrackOrderPage() {
   return (
     <>

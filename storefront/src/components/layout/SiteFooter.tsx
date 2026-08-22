@@ -1,31 +1,20 @@
 import Link from "next/link";
-import { FacebookLogo, InstagramLogo, XLogo, YoutubeLogo } from "@phosphor-icons/react/dist/ssr";
+import { FacebookLogo, InstagramLogo } from "@phosphor-icons/react/dist/ssr";
 import Logo from "@/components/ui/Logo";
 import { PAYMENT_METHODS } from "@/lib/placeholder-data";
+import { getBranding } from "@/lib/branding";
 
-const FOOTER_COLUMNS = [
-  {
-    heading: "Products",
-    links: ["Mobile Legends", "PUBG Mobile", "Genshin Impact", "Valorant Points", "Steam Wallet"],
-  },
-  {
-    heading: "Company",
-    links: ["About Us", "Terms & Conditions", "Privacy Policy", "Partners"],
-  },
-  {
-    heading: "Support",
-    links: ["Contact Us", "FAQ", "WhatsApp Support", "How to Buy"],
-  },
-];
+/**
+ * ADR-028 + its 2026-08-22 addendum — real branding/footer-games/legal
+ * links replace the old hardcoded FOOTER_COLUMNS/SOCIAL_LINKS/Products
+ * list. An async Server Component (not a page-level export) rendering
+ * its own data is simpler here than prop-drilling branding through
+ * every one of this component's 4 call sites.
+ */
+export default async function SiteFooter() {
+  const branding = await getBranding();
+  const currentYear = new Date().getFullYear();
 
-const SOCIAL_LINKS = [
-  { label: "Facebook", icon: FacebookLogo, href: "#" },
-  { label: "Instagram", icon: InstagramLogo, href: "#" },
-  { label: "X", icon: XLogo, href: "#" },
-  { label: "YouTube", icon: YoutubeLogo, href: "#" },
-];
-
-export default function SiteFooter() {
   return (
     <footer className="border-t border-border bg-bg-deep pt-10 pb-6">
       <div className="mx-auto max-w-[1200px] px-4">
@@ -33,36 +22,73 @@ export default function SiteFooter() {
           <div>
             <Link href="/" className="flex items-center gap-2">
               <Logo size={32} />
-              <span className="font-display text-lg tracking-wide">Kedai Runcit Soloz</span>
+              <span className="font-display text-lg tracking-wide">{branding.storeName}</span>
             </Link>
-            <p className="mt-2.5 max-w-[320px] text-sm leading-relaxed text-text-muted">
-              Kedai Runcit Soloz is the go-to digital top-up store for Malaysia&apos;s gaming community. Fast, secure
-              top-ups with guaranteed automatic delivery.
-            </p>
+            {branding.description && (
+              <p className="mt-2.5 max-w-[320px] text-sm leading-relaxed text-text-muted">{branding.description}</p>
+            )}
             <div className="mt-4 flex gap-2.5">
-              {SOCIAL_LINKS.map(({ label, icon: Icon, href }) => (
+              {branding.socialLinks.facebook && (
                 <a
-                  key={label}
-                  href={href}
-                  aria-label={label}
+                  href={branding.socialLinks.facebook}
+                  aria-label="Facebook"
                   className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-muted hover:text-brand-light"
                 >
-                  <Icon size={16} />
+                  <FacebookLogo size={16} />
                 </a>
-              ))}
+              )}
+              {branding.socialLinks.instagram && (
+                <a
+                  href={branding.socialLinks.instagram}
+                  aria-label="Instagram"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-muted hover:text-brand-light"
+                >
+                  <InstagramLogo size={16} />
+                </a>
+              )}
             </div>
           </div>
 
-          {FOOTER_COLUMNS.map((col) => (
-            <div key={col.heading}>
-              <h5 className="mb-3.5 text-[12.5px] font-bold tracking-wide text-brand-light uppercase">{col.heading}</h5>
+          {branding.footerGames.length > 0 && (
+            <div>
+              <h5 className="mb-3.5 text-[12.5px] font-bold tracking-wide text-brand-light uppercase">Top Up Games</h5>
               <ul className="space-y-2.5 text-sm text-text-muted">
-                {col.links.map((link) => (
-                  <li key={link}>{link}</li>
+                {branding.footerGames.map((game) => (
+                  <li key={game.id}>
+                    <Link href={`/order/${game.slug}`} className="hover:text-brand-light">
+                      {game.name}
+                    </Link>
+                  </li>
                 ))}
               </ul>
             </div>
-          ))}
+          )}
+
+          <div>
+            <h5 className="mb-3.5 text-[12.5px] font-bold tracking-wide text-brand-light uppercase">Company</h5>
+            <ul className="space-y-2.5 text-sm text-text-muted">
+              <li>
+                <Link href="/about-us" className="hover:text-brand-light">About Us</Link>
+              </li>
+              <li>
+                <Link href="/terms" className="hover:text-brand-light">Terms &amp; Conditions</Link>
+              </li>
+              <li>
+                <Link href="/privacy" className="hover:text-brand-light">Privacy Policy</Link>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h5 className="mb-3.5 text-[12.5px] font-bold tracking-wide text-brand-light uppercase">Support</h5>
+            <ul className="space-y-2.5 text-sm text-text-muted">
+              {branding.supportEmail && <li>{branding.supportEmail}</li>}
+              {branding.supportPhone && <li>{branding.supportPhone}</li>}
+              <li>
+                <Link href="/track-order" className="hover:text-brand-light">Track Order</Link>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div className="mb-5 border-t border-border pt-5">
@@ -77,7 +103,7 @@ export default function SiteFooter() {
         </div>
 
         <div className="flex flex-col gap-2 border-t border-border pt-4.5 text-xs text-text-muted lg:flex-row lg:items-center lg:justify-between">
-          <span>© 2026 Kedai Runcit Soloz Sdn Bhd. All Rights Reserved.</span>
+          <span>{branding.footerText ?? `© ${currentYear} ${branding.storeName}. All Rights Reserved.`}</span>
           <span>Made for Gamers, By Gamers.</span>
         </div>
       </div>

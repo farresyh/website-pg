@@ -5,9 +5,11 @@ use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\CheckoutController;
@@ -94,6 +96,12 @@ Route::prefix('catalog')->group(function () {
     // channel listing, replacing the storefront's hardcoded
     // PLACEHOLDER_PAYMENT_CHANNELS.
     Route::get('/payment-methods', [PaymentMethodCatalogController::class, 'index']);
+
+    // ADR-028 + its 2026-08-22 addendum — branding/footer/legal
+    // content, replacing SiteFooter.tsx's hardcoded FOOTER_COLUMNS/
+    // SOCIAL_LINKS and the three previously-nonexistent legal pages.
+    Route::get('/branding', [BrandingController::class, 'show']);
+    Route::get('/legal/{page}', [BrandingController::class, 'legal']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -213,6 +221,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/pending-price-changes', [PendingPriceChangeController::class, 'index']);
         Route::patch('/pending-price-changes/{pending_price_change}/approve', [PendingPriceChangeController::class, 'approve']);
         Route::patch('/pending-price-changes/{pending_price_change}/dismiss', [PendingPriceChangeController::class, 'dismiss']);
+    });
+
+    // ADR-028 + its 2026-08-22 addendum — Store Branding / Footer
+    // Settings / Platform Settings, the three Settings-screen tabs.
+    // Super Admin only, same tier as Price Sync/Payment Methods (both
+    // are supplier/gateway/platform-wide config, per PRD §3).
+    Route::middleware('admin.role:super_admin')->prefix('settings')->group(function () {
+        Route::get('/', [SettingsController::class, 'index']);
+        Route::put('/branding', [SettingsController::class, 'updateBranding']);
+        Route::put('/footer', [SettingsController::class, 'updateFooter']);
+        Route::put('/platform', [SettingsController::class, 'updatePlatform']);
+        Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
     });
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway
