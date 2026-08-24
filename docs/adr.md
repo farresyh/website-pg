@@ -1103,3 +1103,131 @@ This ADR also narrows `ADR-011` (storefront stays guest-checkout, no Customer ac
 23. **Only `/llms.txt` (the concise root convention) — `/llms-full.txt` deliberately not built.** llms.txt itself is a young, not-yet-officially-adopted proposal (unlike robots.txt, which every real crawler already respects); building a second, less-established variant on top of an already-unproven one isn't justified yet. Revisit only if real adoption signal shows up.
 
 **Consequence to track (addendum 4):** llms.txt has no confirmed, universal consumer today the way robots.txt does — Google/Bing/social-preview bots are proven; which AI systems, if any, actually fetch and use `/llms.txt` is still an open question industry-wide. Built because it's cheap and harmless (a markdown GET route, `force-dynamic`, no new storage), not because adoption is proven. If the convention is abandoned by the community, this route costs nothing to leave in place or remove later — no data model depends on it.
+
+---
+
+## ADR-030: Digiflazz supplier integration — buyer-role adapter, prepaid games only (design only, not yet built)
+
+**Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+
+**Context:** The founder is negotiating with Digiflazz as a second supplier alongside Gamevion. Digiflazz is an H2H (head-to-head) aggregator; we connect as its **Buyer** through its REST API (`developer.digiflazz.com`, read live this session, not assumed — the full connection matrix for Jabber/API/FM/IRS/Otomax/etc. was reviewed, and only the API path applies to us). Scope was locked with the founder: **prepaid games only** (instant top-up), buyer role first. The **Seller** role (selling our own stock into Digiflazz's network — Digiflazz's buyers would order from us and we would expose an inbound endpoint plus a callback) was evaluated and deliberately rejected for now: we have no upstream inventory of our own to fulfill, we are ourselves a reseller, so the seller role has no business-model fit until we become a real distributor.
+
+Digiflazz's relevant API surface (all JSON, all POST, responses wrapped in a `data` variable): `/v1/cek-saldo` (`cmd: deposit`), `/v1/price-list` (`cmd: prepaid`/`pasca`), `/v1/transaction` (topup). **The MD5 signature formula is per-endpoint, not one shared formula** — corrected during a founder-requested re-check of this ADR against the live docs, 2026-08-24: `cek-saldo` signs `md5(username + apiKey + "depo")`, `price-list` signs `md5(username + apiKey + "pricelist")`, and only `/v1/transaction` (topup, and its checkStatus re-submit) signs `md5(username + apiKey + ref_id)` — `ref_id` is our own unique reference there, which is a meaningful advantage over Gamevion (see ADR-032). Each adapter method must build its own literal signature string; assuming one formula across all three endpoints produces `rc: 41` (invalid signature) on `checkBalance()`/`listProducts()`. `price-list` is documented as **not real-time** (10-15 minutes stale) with an explicit recommendation to cache it in our own DB — exactly the existing `supplier_products` staging pattern. No player-validation endpoint exists (ADR-005's fallback applies to every game). Live test this session confirmed the first request returned `rc: 45 / "IP Anda tidak kami kenali"` — credentials and signature were accepted and the only blocker was the outbound-IP whitelist, which is precisely what the supplier wants to see to configure.
+
+Key differences from Gamevion the adapter must absorb (ADR-006's own "never assume uniformity" principle): statuses are Indonesian (`Sukses`/`Pending`/`Gagal`) with `rc` codes; `createOrder` can return **Pending** (async — resolved later, see ADR-032); `checkStatus` is a re-submit of `/v1/transaction` with the same `ref_id` (an idempotent status query, **not** a new transaction — this closes the reference-number-lookup gap that makes ADR-026's `NeedsReview` unresolvable against Gamevion); IP whitelisting applies in both directions; game player-id input formats are **not documented** in the public API docs (must be verified live against the sandbox / with the supplier); two documented operational warnings — don't re-call the same transaction within 1 minute, and never re-submit a `ref_id` older than 90 days (it creates a NEW transaction) — are handled by ADR-032's guards.
+
+**Decision:**
+
+1. **New `DigiflazzAdapter` implementing `SupplierAdapter`** (buyer role, prepaid games only). Method mapping: `checkBalance()` → `/v1/cek-saldo`; `listProducts()` → `/v1/price-list` (`cmd: prepaid`); `createOrder()` → `/v1/transaction`; `checkStatus()` → `/v1/transaction` re-submitted with `ref_id` = `supplierRef`; `validatePlayer()` → `ValidationNotSupportedException` (ADR-005).
+2. **The adapter stays protocol-faithful: `listProducts()` returns the full prepaid catalog.** The "games only" business filter lives in `ProductSyncService`, reading a game category/brand whitelist from `Supplier.api_config` — not in the adapter. Business policy (we only sell game top-up) is separated from supplier protocol.
+3. **`testing: true` flag** driven by `services.digiflazz.testing` config, sent per-request only when true (mirrors Gamevion's `GAMEVION_SANDBOX` pattern).
+4. **`max_price` deliberately not implemented now** — recorded as a deferred enhancement. `SupplierOrderRequest` carries no price information, so implementing it would require reshaping a stable seam for a feature whose margin risk is already guarded by price sync + ADR-025's floor/swing checks. Revisit only with a real need.
+5. **`normalizeCustomerNo()` is config-driven** (`playerId` + optional `serverId`, configurable separator); the exact Digiflazz MLBB format is verified at `app:digiflazz-smoke-test` against the sandbox after the account is verified — the public docs do not document game player-id formats.
+6. **Config + plumbing:** `config/services.php['digiflazz']` (env-based credentials, same pattern as Gamevion), optional `SUPPLIER_PROXY_URL` proxy for the outbound-IP whitelist (the pre-existing proxy seam), and the `CircuitBreakingSupplierAdapter` decorator wrapper (ADR-019) — the adapter itself is unchanged for circuit breaking.
+7. **New `app:digiflazz-smoke-test`** (mirrors `GamevionSmokeTest`) and `tests/Feature/Services/Supplier/DigiflazzAdapterTest.php` (mirrors `GamevionAdapterTest`'s success/failure/status-mapping cases). Digiflazz's official prepaid test cases (`buyer_sku_code: xld10`) are the live-verification vehicle — **all four**, not three (corrected 2026-08-24 re-check): `087800001230`→Sukses, `087800001232`→Gagal, `087800001233`→Pending-then-callback-Sukses, `087800001234`→Pending-then-callback-Gagal. The fourth case is the one that actually exercises ADR-032's riskiest path (`Pending`→`Failed` via webhook, the exact double-compensation guard `VoucherController::storeFromOrder()`'s Failed-only gate protects) — omitting it from the smoke test/adapter test would leave that path never live-verified.
+8. **The adapter normalizes raw statuses into `SupplierResponse`'s normalized outcome** (`delivered`/`pending`/`failure`) per ADR-032 — it never exposes `Sukses`/`Pending`/`Gagal` to business logic.
+
+**Rationale:** Scope is prepaid games because that is the business (instant top-up); postpaid (PLN/PDAM/BPJS) and hotel APIs exist but are deliberately not implemented. Protocol-faithful adapter + policy-in-sync-layer keeps the adapter reusable across suppliers and the business filter changeable per supplier without touching protocol handling — the same ADAPT-1/3 reasoning that formalized `SupplierCatalogItem`. Deferring `max_price` avoids reshaping a stable seam for a safety net ADR-025 already provides. Everything Digiflazz-specific is absorbed inside the adapter or `api_config`, so no core service learns Digiflazz's name.
+
+**Consequence to track:**
+- This ADR records design intent only — update `docs/prd.md` §14/§15 once this ships (same convention as ADR-025/026).
+- Digiflazz prices are **IDR** — see ADR-033 for conversion.
+- The Pending state + webhook/poll finalization are **ADR-032**'s work, not this ADR's.
+- Outbound IP (or the proxy's IP) must be whitelisted at Digiflazz; and Digiflazz's `52.74.250.133` must be whitelisted on our side before webhooks can be accepted (ADR-032).
+- The 90-day re-submit rule is enforced in ADR-032's reconcile guards, not here.
+
+---
+
+## ADR-031: Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (design only, not yet built)
+
+**Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+
+**Context:** `AppServiceProvider` currently binds a single global `SupplierAdapter` to Gamevion — its own comment calls this *"a deliberate placeholder, not the final shape"* (`AppServiceProvider.php:27-31`). The data model is already multi-supplier-ready: `Package` carries `supplier_id` + `supplier_package_ref`, `Order` carries `supplier_id` + `supplier_product_ref`, and `CheckoutService` already stores both at checkout. What does not exist is **resolution** — `OrderFulfillmentService::fulfill()` calls `$this->supplier->createOrder(...)` against the one global adapter without ever reading `$order->supplier_id`, so a Digiflazz-backed package would today still be submitted to Gamevion. ADR-030 (second supplier) makes this gap real.
+
+**Decision:**
+
+1. **New `SupplierAdapterFactory`** that resolves an adapter implementation by supplier slug/id through container bindings (`supplier-adapter.<slug>`), mirroring the proven `PaymentGatewayFactory` precedent on the payment side. Throws `UnsupportedSupplierException` for unregistered slugs. The single global `SupplierAdapter` binding is removed; `PaymentGateway::class` keeps its own default-binding asymmetry only because webhook URLs are inherently gateway-specific (unchanged).
+2. **One Package = one supplier.** Equivalent denominations across suppliers are separate `Package` rows (see ADR-034 for storefront dedup). **No auto-failover for MVP** — deliberately; an order's supplier is fixed at package-curation time, never decided at delivery.
+3. **`OrderFulfillmentService::fulfill()` and `OrderResendService` resolve the adapter by `$order->supplier_id`**, not a globally injected adapter. The `e2e` environment's `FakeSupplierAdapter` binding (ADR-023 decision #6) stays exactly as it is.
+4. **Sync commands loop over suppliers:** `app:sync-supplier-products` and `SyncSupplierPricesJob` iterate active `Supplier` rows, resolving each via the factory (the existing hardcoded `firstOrCreate(['slug' => 'gamevion'])` stopgap becomes a loop). `ProductSyncService`/`PackagePriceSyncService` already take a `Supplier` and operate per-supplier via `supplier_id` — unchanged.
+5. **Invariant: no supplier name appears in core services** (fulfillment, order-status, sync, pricing, checkout, reconcile). Only adapters, per-supplier webhook controllers, config/services, and tests are supplier-named. Supplier quirks live in adapters and `Supplier.api_config`.
+
+**Rationale:** This mirrors the payment side's already-proven factory pattern rather than inventing a new one. One-Package-one-supplier is the cheapest correct routing model — the schema already supports it, it keeps fulfillment deterministic, and it avoids the money-critical complexity of failover. A future supplier C costs exactly: one adapter + one config block + one factory binding + one thin webhook controller — zero changes to the state machine, fulfillment, sync, or pricing. The invariant (decision 5) is what makes that true; without it, "add a supplier" degrades into "fork the services."
+
+**Consequence to track:**
+- **Verify (don't change) the latent Gap-X behavior** during reconcile generalization: `ReconcilePendingDeliveriesCommand::retryStuckProcessing()` re-dispatches `FulfillOrderJob` for `Processing`+null-`supplier_ref` orders, but `FulfillOrderJob` catches `InvalidOrderTransitionException` (`FulfillOrderJob.php:67`) and `startDelivery()` rejects `Processing` — so that re-dispatch may be a no-op. It may also be unreachable in practice because `fulfill()` runs inside a single transaction (a hard crash rolls back to `NotStarted`). Verify with the existing tests; do not alter behavior in this ADR.
+- Circuit-breaker names must become per-supplier (currently hardcoded `'gamevion'` in `AppServiceProvider`).
+
+---
+
+## ADR-032: Async supplier delivery — `DeliveryStatus::Pending` + normalized `SupplierResponse` outcome + webhook & poll finalization (design only, not yet built)
+
+**Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+
+**Context:** Digiflazz `createOrder` can return `status: "Pending"` (`rc: 03`) — the transaction is accepted but not yet delivered, resolving later via webhook/callback. Our delivery state machine (`DeliveryStatus`: `NotStarted`/`Processing`/`Delivered`/`Failed`/`NeedsReview`) has **no way to hold an order in "supplier accepted, awaiting async completion"**. `Processing` is transient — set and resolved inside `fulfill()`'s same transaction, never a persistent waiting state. Gamevion resolves synchronously (createOrder success → `Delivered`); its "processing" is a raw API value never persisted as a `DeliveryStatus`.
+
+Mapping Pending→`Delivered` would lie to the customer. Mapping Pending→`Failed` risks **double compensation**: `VoucherController::storeFromOrder()` issues store-credit on `Failed`-only (the ADR-026 decision 4c precedent), so a top-up that later completes would give the customer both the credit *and* a refund voucher. `SupplierResponse` (`SupplierResponse.php`) currently distinguishes only `success`/`failure` — there is no "accepted but pending" outcome, so routing by supplier name would violate ADAPT-1/3. The founder chose **both** webhook (primary) and poll (backup).
+
+**Decision:**
+
+1. **New `DeliveryStatus::Pending`** — "supplier accepted, awaiting final outcome". `Processing` stays the transient in-flight state (Gamevion's sync path unchanged). New transitions: `Processing→Pending`, `Pending→Delivered`, `Pending→Failed`.
+2. **`SupplierResponse` gains a normalized outcome** — additive, backward-compatible: `success()` (delivered now), new `pending()` (accepted, async), `failure()`. Each adapter maps its raw statuses (Gamevion always `success`; Digiflazz `Sukses`→`success`, `Pending`→`pending`, `Gagal`→`failure`). `fulfill()` branches on the normalized outcome, **never on supplier identity**. This is the single additive interface change the whole Digiflazz plan needs.
+3. **`OrderFulfillmentService::finalizePendingDelivery(order, outcome)`** — the one money path out of `Pending`: `lockForUpdate()` + transition guard + `creditProfit()` + voucher `commit()` (mirrors `markDeliveredManually`). Idempotent (a second call observes `Delivered` and is rejected) and covered by a real concurrency test (duplicate webhook delivery).
+4. **Webhook (primary):** a thin `DigiflazzWebhookController` — verifies `X-Hub-Signature` (`sha1=HMAC(body, secret)`, secret from config), handles `X-Digiflazz-Event` `create`/`update` (ignores the hotel-only `resend`), maps the payload's `ref_id` (= our `reference_number`) to the order, and calls the shared `finalizePendingDelivery`. Digiflazz IP `52.74.250.133` is whitelisted on our side. Webhook controllers stay per-supplier (URL + signature verification differ per supplier) but all converge on the same finalize.
+5. **Poll (backup):** `ReconcilePendingDeliveriesCommand` gains a generic branch — stale `Pending` orders (per-supplier `pending_stale_minutes`, default ~10) dispatch a new `CheckSupplierDeliveryJob`, which resolves the adapter by `order.supplier_id`, calls `checkStatus`, and routes the normalized outcome through the same finalize. Never calls a supplier synchronously from a scheduled command (ADR-014). Still-`Pending` stays for the next run.
+6. **Operational guards are config, not hardcoded branches** (`Supplier.api_config`): `status_check_min_interval` (Digiflazz warns against re-calling the same transaction within 1 minute — reconcile cadence respects it) and `max_reconcile_age_days` (never re-submit a `ref_id` older than 90 days — Digiflazz creates a NEW transaction — such orders are auto-flagged for manual review instead).
+7. **Deliberately not opened:** voucher issuance from `Pending` stays `Failed`-only (ADR-026 decision 4c) — the double-compensation guard is preserved.
+
+**Rationale:** A typed `Pending` state plus a normalized outcome on `SupplierResponse` keeps the state machine honest and supplier-agnostic — a future async supplier (webhook-only, poll-only, or both) needs exactly this and nothing else, and no core service ever learns a supplier's name. Webhook-primary + poll-backup covers missed webhooks without any single delivery mechanism being load-bearing. Config-driven guards keep supplier operational constraints (1-minute, 90-day) out of generic code. The single `finalizePendingDelivery` money path guarantees credit and voucher-commit happen exactly once regardless of which mechanism resolves the order.
+
+**Consequence to track:**
+- Audit every `match`/`switch` over `DeliveryStatus` — `OrderController`'s status filters, `OrderStatusService`'s transition guards, and the frontend display mapping — for the new `Pending` case (the same checklist ADR-026 recorded for `NeedsReview`; TypeScript exhaustiveness needs the same check).
+- Storefront Track Order renders `Processing` and `Pending` with the **same customer-friendly copy** ("topup sedang diproses" — they mean the same thing to a customer); the admin panel shows raw states.
+- New concurrency test for `finalizePendingDelivery` under duplicate webhook delivery (real-MySQL suite, per `backend/CLAUDE.md` convention).
+- `checkStatus` semantics now genuinely differ per supplier (Gamevion: their invoice number; Digiflazz: our `ref_id`) — the `SupplierAdapter` interface already accommodates this, but the reconcile command must resolve the adapter per order rather than assume one shape.
+
+---
+
+## ADR-033: Foreign-currency supplier pricing — FX-rate conversion at sync time (design only, not yet built)
+
+**Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+
+**Context:** Digiflazz prices are **IDR**; Gamevion is **MYR**; the storefront sells in MYR. Every money column in this codebase is integer sen (RM 1.00 = `100`), and `PricingService`, the catalog, and checkout all assume MYR. `Supplier` already has a `currency` column, and `supplier_products.price_sen` (MYR sen) is written by `ProductSyncService::sync()` (`ProductSyncService.php:45`) directly from the adapter's price — currently assuming the adapter price is MYR.
+
+The founder's earlier question — "rate berubah tiap hari, bukan patut fetch ikut API FX?" — was answered **yes**. A static admin-edited rate goes stale and silently erodes margin or inflates prices. `open.er-api.com` (the keyless open endpoint) was verified this session: no API key required, **updates once per day** — our ~once-per-day sync fits trivially. (Correction, 2026-08-24 re-check: the "1.5K requests/month" figure recorded earlier belongs to ExchangeRate-API's separate *keyed* Free tier, not this keyless open endpoint, which states no monthly cap of its own — doesn't change the decision, our usage is trivial either way, but the earlier citation was wrong.) Its data is "indicative midpoint" rates, fine for price estimation (which is exactly our use) and explicitly unsuitable for settlement (we never settle in IDR). Rounding: the founder chose **`ceil`** to protect margin (e.g. 83.33 sen → 84, never 83).
+
+**Decision:**
+
+1. **`CurrencyRateService::rate(from, to)`** — fetches from a keyless FX API (open.er-api.com primary; verify at build), caches with TTL ~12-24h (free tier updates daily, and a same-day cache keeps a single sync run deterministic), and **falls back to the last-known stored rate on API failure — the sync never blocks**. Stores the raw fetched rate + source + `fetched_at` for audit.
+2. **`currency_rates` table** (`from`, `to`, `rate`, `source`, `fetched_at`) — append-only, keyed by pair so any future non-MYR supplier reuses it (matches the codebase's audit-table convention: `price_change_logs`/`deactivation_logs`/`order_resend_attempts`).
+3. **Conversion point is `ProductSyncService::sync()`** when writing `price_sen`, keyed on `$supplier->currency`: `MYR` → `round(price * 100)` (unchanged); `IDR` → `ceil(price / rate * 100)`. This is the single boundary — `PackagePriceSyncService`, `PricingService`, catalog, and checkout stay MYR-sen and are untouched. Adapters stay protocol-faithful and return source-currency prices.
+4. **ADR-025 is the automatic safety net:** a large rate move produces a large `price_sen` swing, which trips the existing swing threshold and queues a `PendingPriceChange` for admin review instead of auto-applying — auto-fetch cannot silently eat margin.
+5. Config: FX API URL + timeouts in `config/services.php`.
+
+**Rationale:** Converting once at the system boundary (the staging write) keeps every downstream consumer MYR-sen with zero changes — the cheapest correct seam. Auto-fetch keeps costs honest as rates move; the fallback + audit table + ADR-025 safety net are what make the third-party dependency safe rather than a risk. `ceil` protects margin by construction per the founder's decision.
+
+**Consequence to track:**
+- The FX API is a new third-party dependency; the project has been bitten twice by undocumented API quirks (Xendit's `customer` object, Gamevion's `telp` format). open.er-api.com is far simpler, but the fallback + audit + ADR-025 are **mandatory, not optional**.
+- The rate used per sync run is recorded in `currency_rates`; combined with `PriceChangeLog`'s old/new sen values, any "was the rate stale?" question is answerable after the fact.
+- `currency_rates` grows one row per fetch (~daily) — trivial; never cleaned (append-only convention).
+
+---
+
+## ADR-034: Storefront best-price selection — `packages.denomination` (design only, not yet built)
+
+**Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+
+**Context:** Once Digiflazz exists, the same product is sold by two suppliers — e.g. "14 Diamonds" on both Gamevion and Digiflazz. The storefront would show two near-identical `Package` rows with no way to know they are equivalent, and the founder explicitly wants: **only the cheaper supplier's package shows**. `Package.name` is free text with no stable equivalence key, and the money rule (ORD-9) requires the winning package to be chosen server-side from stored `cost_price`+`markup`, never by the client.
+
+**Decision:**
+
+1. **New `packages.denomination` (nullable int)** — the package's inherent value (diamond amount). It is a property of the *package itself*, not a supplier link. Equivalence key is `(game_id, denomination)`.
+2. **`CatalogController` dedups by `(game_id, denomination)`:** among active packages, compute the customer-facing price server-side (existing `PricingService`) and expose only the cheapest. Its `supplier_id`/`supplier_package_ref` flow into checkout (already supported end-to-end).
+3. **Backfill: leave existing packages empty.** When an admin promotes a Digiflazz package, they set `denomination` on it and on the equivalent Gamevion package if it is still empty; dedup activates at that point. No mass backfill now — there is only one supplier today.
+4. **`denomination` is admin-curated at promote/edit time** — no auto-matching by product name (names differ across suppliers; guessing equivalence from free text is worse than explicit curation).
+
+**Rationale:** A stable equivalence key plus server-side price selection keeps the feature correct and supplier-agnostic — it works for any N suppliers without the code knowing who they are. Deferring the column's population until a second supplier exists avoids building dedup behavior against a hypothetical.
+
+**Consequence to track:**
+- `denomination` fits integer-amount products (MLBB diamonds); non-integer products leave it null and render exactly as today (no dedup).
+- If a future admin override ("feature this package even though it's not cheapest") is wanted, it is a separate flag decision later, not part of this ADR.
