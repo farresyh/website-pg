@@ -7,14 +7,12 @@ use App\Http\Requests\Voucher\CreateVoucherRequest;
 use App\Http\Requests\Voucher\StoreVoucherFromOrderRequest;
 use App\Models\Order;
 use App\Models\Voucher;
-use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -33,7 +31,6 @@ use Illuminate\Validation\ValidationException;
 class VoucherController extends Controller
 {
     public function __construct(
-        private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
     ) {
     }
@@ -112,7 +109,7 @@ class VoucherController extends Controller
             ]);
         }
 
-        $voucher = $this->issue(
+        $voucher = $this->vouchers->issue(
             customerEmail: $data['customer_email'],
             amount: $data['amount'],
             reason: $data['reason'],
@@ -158,7 +155,7 @@ class VoucherController extends Controller
             $voucher = DB::transaction(function () use ($order, $amount, $request) {
                 $this->vouchers->restore($order->id);
 
-                return $this->issue(
+                return $this->vouchers->issue(
                     customerEmail: $order->customer_email,
                     customerPhone: $order->customer_phone,
                     amount: $amount,
@@ -191,50 +188,4 @@ class VoucherController extends Controller
         return response()->json($voucher);
     }
 
-    /**
-     * The Voucher row and its ledger debit are two separate writes —
-     * without a transaction, a crash/connection-drop between them
-     * leaves a Voucher with no matching ledger entry, quietly breaking
-     * ADR-002's "ledger is the sole source of truth" guarantee for this
-     * one path. Found during the 2026-07-25 codebase audit.
-     */
-    private function issue(
-        string $customerEmail,
-        int $amount,
-        string $reason,
-        ?string $expiresAt,
-        int $createdBy,
-        ?int $approvedBy,
-        ?int $orderId = null,
-        ?string $customerPhone = null,
-    ): Voucher {
-        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId) {
-            $voucher = Voucher::query()->create([
-                'order_id' => $orderId,
-                'code' => $this->generateCode(),
-                'customer_email' => $customerEmail,
-                'customer_phone' => $customerPhone,
-                'amount' => $amount,
-                'remaining' => $amount,
-                'status' => 'active',
-                'expires_at' => $expiresAt,
-                'reason' => $reason,
-                'created_by' => $createdBy,
-                'approved_by' => $approvedBy,
-            ]);
-
-            $this->ledger->credit('platform', null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
-
-            return $voucher;
-        });
-    }
-
-    private function generateCode(): string
-    {
-        do {
-            $code = 'VC-'.Str::upper(Str::random(8));
-        } while (Voucher::query()->where('code', $code)->exists());
-
-        return $code;
-    }
 }

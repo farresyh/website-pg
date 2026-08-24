@@ -55,7 +55,7 @@ class FulfillOrderJobTest extends TestCase
             new ReferenceNumberService(),
             $adapter,
             new LedgerService(),
-            new VoucherService(),
+            new VoucherService(new LedgerService()),
         );
     }
 

@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Services\Voucher;
 
+use App\Models\AdminUser;
 use App\Models\Order;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Voucher\InvalidVoucherException;
@@ -51,6 +53,31 @@ class VoucherServiceTest extends TestCase
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));
+    }
+
+    /**
+     * Moved here from VoucherController during the 2026-08-24 audit
+     * (was a private controller method) — proves the move preserved
+     * the atomic Voucher-row + ledger-debit write (ADR-002).
+     */
+    public function test_issue_creates_voucher_and_debits_platform_ledger_atomically(): void
+    {
+        $admin = AdminUser::factory()->create(['role' => 'admin']);
+
+        $voucher = app(VoucherService::class)->issue(
+            customerEmail: 'a@example.com',
+            amount: 5_000,
+            reason: 'Goodwill credit',
+            expiresAt: null,
+            createdBy: $admin->id,
+            approvedBy: null,
+        );
+
+        $this->assertSame(5_000, $voucher->amount);
+        $this->assertSame(5_000, $voucher->remaining);
+        $this->assertSame('active', $voucher->status);
+        $this->assertNotNull($voucher->code);
+        $this->assertSame(-5_000, app(LedgerService::class)->balance('platform', null));
     }
 
     public function test_preview_caps_discount_at_remaining(): void

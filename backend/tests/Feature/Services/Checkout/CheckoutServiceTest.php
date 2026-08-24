@@ -17,6 +17,7 @@ use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingService;
+use App\Services\Ledger\LedgerService;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -34,7 +35,7 @@ class CheckoutServiceTest extends TestCase
             new PricingService(),
             new CheckoutTotalService(),
             new OrderNumberService(),
-            new VoucherService(),
+            new VoucherService(new LedgerService()),
         );
     }
 

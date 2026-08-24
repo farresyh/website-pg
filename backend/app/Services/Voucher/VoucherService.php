@@ -4,20 +4,74 @@ namespace App\Services\Voucher;
 
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Services\Ledger\LedgerService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * ADR-024. Three operations on a Voucher's `remaining` wallet balance,
- * none of which ever write a `ledger_entries` row — the voucher's full
- * liability is already booked once, at issuance
- * (VoucherController::issue()'s `voucher_issued` debit). Everything
- * here only moves bookkeeping about which part of that already-booked
- * liability is currently spent.
+ * ADR-024. issue() books the voucher's full liability once, at
+ * creation (a `voucher_issued` debit) — preview()/redeem()/commit()/
+ * restore() never write a `ledger_entries` row themselves; they only
+ * move bookkeeping about which part of that already-booked liability
+ * is currently spent.
  */
 final class VoucherService
 {
+    public function __construct(private readonly LedgerService $ledger)
+    {
+    }
+
+    /**
+     * The Voucher row and its ledger debit are two separate writes —
+     * without a transaction, a crash/connection-drop between them
+     * leaves a Voucher with no matching ledger entry, quietly breaking
+     * ADR-002's "ledger is the sole source of truth" guarantee for this
+     * one path. Found during the 2026-07-25 codebase audit; moved here
+     * from VoucherController (which held this money-write inline)
+     * during the 2026-08-24 audit, matching every other money path in
+     * this class.
+     */
+    public function issue(
+        string $customerEmail,
+        int $amount,
+        string $reason,
+        ?string $expiresAt,
+        int $createdBy,
+        ?int $approvedBy,
+        ?int $orderId = null,
+        ?string $customerPhone = null,
+    ): Voucher {
+        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId) {
+            $voucher = Voucher::query()->create([
+                'order_id' => $orderId,
+                'code' => $this->generateCode(),
+                'customer_email' => $customerEmail,
+                'customer_phone' => $customerPhone,
+                'amount' => $amount,
+                'remaining' => $amount,
+                'status' => 'active',
+                'expires_at' => $expiresAt,
+                'reason' => $reason,
+                'created_by' => $createdBy,
+                'approved_by' => $approvedBy,
+            ]);
+
+            $this->ledger->credit('platform', null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
+
+            return $voucher;
+        });
+    }
+
+    private function generateCode(): string
+    {
+        do {
+            $code = 'VC-'.Str::upper(Str::random(8));
+        } while (Voucher::query()->where('code', $code)->exists());
+
+        return $code;
+    }
+
     /**
      * Read-only — never locks, never mutates. The Apply-button check
      * (ADR-024 decision #1): validates the code is usable for this
