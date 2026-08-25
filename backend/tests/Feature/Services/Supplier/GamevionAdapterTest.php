@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\Supplier;
 
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -346,7 +347,7 @@ class GamevionAdapterTest extends TestCase
             ], 200),
         ]);
 
-        $result = $this->adapter()->checkStatus('GV-RAPI-1A2B3C4D5E6F');
+        $result = $this->adapter()->checkStatus(new SupplierStatusCheckRequest('GV-RAPI-1A2B3C4D5E6F'));
 
         Http::assertSent(fn ($request) => $request['order_id'] === 'GV-RAPI-1A2B3C4D5E6F');
 
@@ -360,7 +361,7 @@ class GamevionAdapterTest extends TestCase
             'api.gamevion.com/*' => Http::response(['message' => 'Order not found'], 404),
         ]);
 
-        $result = $this->adapter()->checkStatus('GV-UNKNOWN');
+        $result = $this->adapter()->checkStatus(new SupplierStatusCheckRequest('GV-UNKNOWN'));
 
         $this->assertFalse($result->success);
         $this->assertSame('404', $result->errorCode);

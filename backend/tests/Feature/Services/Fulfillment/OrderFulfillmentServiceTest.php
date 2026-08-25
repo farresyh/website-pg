@@ -17,6 +17,7 @@ use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierOutcome;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,7 +112,7 @@ class OrderFulfillmentServiceTest extends TestCase
                     : SupplierResponse::failure($this->errorCode, $this->errorMessage);
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 throw new RuntimeException('not used in this test');
             }
@@ -147,7 +148,7 @@ class OrderFulfillmentServiceTest extends TestCase
                 return SupplierResponse::pending($this->data);
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 throw new RuntimeException('not used in this test');
             }
@@ -188,7 +189,7 @@ class OrderFulfillmentServiceTest extends TestCase
                 throw new RuntimeException('supplier B must never be called for a supplier-A order');
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 throw new RuntimeException('supplier B must never be called for a supplier-A order');
             }

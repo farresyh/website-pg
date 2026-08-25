@@ -20,7 +20,7 @@ interface SupplierAdapter
 
     public function createOrder(SupplierOrderRequest $request): SupplierResponse;
 
-    public function checkStatus(string $supplierRef): SupplierResponse;
+    public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse;
 
     /**
      * @throws ValidationNotSupportedException when this supplier has no

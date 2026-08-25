@@ -10,6 +10,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -61,7 +62,7 @@ class ProductSyncServiceTest extends TestCase
                 throw new RuntimeException('not used in this test');
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 throw new RuntimeException('not used in this test');
             }
@@ -131,6 +132,47 @@ class ProductSyncServiceTest extends TestCase
         ]));
 
         $this->assertNull(SupplierProduct::query()->firstOrFail()->price_sen);
+    }
+
+    /**
+     * ADR-030 decision 2: the "games only" business filter lives here,
+     * reading a category whitelist from Supplier.api_config — never in
+     * the adapter, which stays protocol-faithful and returns the full
+     * prepaid catalog (Digiflazz's real catalog includes PLN/pulsa/
+     * non-game items this platform never sells).
+     */
+    public function test_sync_filters_by_category_whitelist_when_the_supplier_has_one_configured(): void
+    {
+        $supplier = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR',
+            'api_config' => ['category_whitelist' => ['Mobile Legends']],
+        ]);
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem('xld10', 'MLBB 10 Diamonds', 'Mobile Legends', 3200.0, 'active'),
+            new SupplierCatalogItem('pln20', 'PLN Token 20k', 'PLN Prepaid', 21000.0, 'active'),
+        ]);
+
+        $result = (new ProductSyncService())->sync($supplier, $adapter);
+
+        $this->assertSame(1, $result->total);
+        $this->assertSame(1, SupplierProduct::query()->count());
+        $this->assertSame('xld10', SupplierProduct::query()->firstOrFail()->external_ref);
+    }
+
+    public function test_sync_mirrors_every_category_when_no_whitelist_is_configured(): void
+    {
+        $supplier = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => [],
+        ]);
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem('xld10', 'MLBB 10 Diamonds', 'Mobile Legends', 3200.0, 'active'),
+            new SupplierCatalogItem('pln20', 'PLN Token 20k', 'PLN Prepaid', 21000.0, 'active'),
+        ]);
+
+        $result = (new ProductSyncService())->sync($supplier, $adapter);
+
+        $this->assertSame(2, $result->total);
+        $this->assertSame(2, SupplierProduct::query()->count());
     }
 
     public function test_sync_throws_and_writes_nothing_when_the_adapter_call_fails(): void

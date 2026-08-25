@@ -29,11 +29,13 @@ final class ProductSyncService
             );
         }
 
+        $items = $this->applyCategoryWhitelist($supplier, $response->data);
+
         $syncedAt = Carbon::now();
         $created = 0;
         $updated = 0;
 
-        foreach ($response->data as $item) {
+        foreach ($items as $item) {
             $row = SupplierProduct::query()->updateOrCreate(
                 [
                     'supplier_id' => $supplier->id,
@@ -54,11 +56,37 @@ final class ProductSyncService
         $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
         return new ProductSyncResult(
-            total: count($response->data),
+            total: count($items),
             created: $created,
             updated: $updated,
             durationMs: $durationMs,
             syncedAt: $syncedAt,
         );
+    }
+
+    /**
+     * ADR-030 decision 2: the "games only" business filter — deliberately
+     * lives here, not in any SupplierAdapter, so a protocol-faithful
+     * adapter (Digiflazz's real catalog spans PLN/pulsa/hotel/etc., not
+     * just games) never has to know this platform's own business
+     * policy. No whitelist configured (Gamevion today: `api_config`
+     * carries none) means no filtering — mirrors everything, unchanged
+     * from this method's pre-ADR-030 behavior.
+     *
+     * @param  SupplierCatalogItem[]  $items
+     * @return SupplierCatalogItem[]
+     */
+    private function applyCategoryWhitelist(Supplier $supplier, array $items): array
+    {
+        $whitelist = $supplier->api_config['category_whitelist'] ?? null;
+
+        if (! is_array($whitelist) || $whitelist === []) {
+            return $items;
+        }
+
+        return array_values(array_filter(
+            $items,
+            fn ($item) => in_array($item->category, $whitelist, true),
+        ));
     }
 }

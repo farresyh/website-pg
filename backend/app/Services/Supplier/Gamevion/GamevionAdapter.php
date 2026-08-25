@@ -7,6 +7,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -124,10 +125,10 @@ final class GamevionAdapter implements SupplierAdapter
         ]);
     }
 
-    public function checkStatus(string $supplierRef): SupplierResponse
+    public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
     {
         $response = $this->client()->post('/api/check-status', [
-            'order_id' => $supplierRef,
+            'order_id' => $request->supplierRef,
         ]);
 
         if ($failure = $this->failureFrom($response)) {

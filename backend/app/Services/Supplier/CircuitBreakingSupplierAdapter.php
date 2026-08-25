@@ -40,9 +40,9 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
         return $this->guarded(fn () => $this->inner->createOrder($request));
     }
 
-    public function checkStatus(string $supplierRef): SupplierResponse
+    public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
     {
-        return $this->guarded(fn () => $this->inner->checkStatus($supplierRef));
+        return $this->guarded(fn () => $this->inner->checkStatus($request));
     }
 
     public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse

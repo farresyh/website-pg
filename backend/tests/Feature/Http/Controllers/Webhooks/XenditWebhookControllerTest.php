@@ -16,6 +16,7 @@ use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -105,7 +106,7 @@ class XenditWebhookControllerTest extends TestCase
                 return SupplierResponse::success(['supplier_ref' => 'GV-WEBHOOK-TEST']);
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 throw new RuntimeException('not used in this test');
             }

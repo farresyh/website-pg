@@ -12,6 +12,7 @@ use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -48,7 +49,7 @@ class SyncSupplierPricesJobTest extends TestCase
                 throw new RuntimeException('not used in this test');
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 throw new RuntimeException('not used in this test');
             }

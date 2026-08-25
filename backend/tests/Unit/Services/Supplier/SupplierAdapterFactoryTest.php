@@ -6,6 +6,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\UnsupportedSupplierException;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Tests\TestCase;
@@ -17,6 +18,16 @@ class SupplierAdapterFactoryTest extends TestCase
         $factory = $this->app->make(SupplierAdapterFactory::class);
 
         $adapter = $factory->make('gamevion');
+
+        $this->assertInstanceOf(SupplierAdapter::class, $adapter);
+    }
+
+    /** ADR-030 — confirms the real production binding, not just a test double. */
+    public function test_resolves_the_digiflazz_adapter_bound_in_the_container(): void
+    {
+        $factory = $this->app->make(SupplierAdapterFactory::class);
+
+        $adapter = $factory->make('digiflazz');
 
         $this->assertInstanceOf(SupplierAdapter::class, $adapter);
     }
@@ -55,7 +66,7 @@ class SupplierAdapterFactoryTest extends TestCase
                 return SupplierResponse::success([]);
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 return SupplierResponse::success([]);
             }

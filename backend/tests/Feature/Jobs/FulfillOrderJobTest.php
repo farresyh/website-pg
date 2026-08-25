@@ -15,6 +15,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -93,7 +94,7 @@ class FulfillOrderJobTest extends TestCase
                     : SupplierResponse::failure('500', 'Server error');
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 throw new RuntimeException('not used in this test');
             }

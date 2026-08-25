@@ -14,6 +14,7 @@ use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
 use App\Services\PlayerValidation\Providers\MoogoldValidator;
 use App\Services\PlayerValidation\Providers\NexoneValidator;
 use App\Services\Supplier\CircuitBreakingSupplierAdapter;
+use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
@@ -100,6 +101,37 @@ class AppServiceProvider extends ServiceProvider
                     inner: $gamevion,
                     breaker: new CircuitBreaker(
                         name: 'gamevion',
+                        failureThreshold: $breakerConfig['failure_threshold'],
+                        cooldownSeconds: $breakerConfig['cooldown_seconds'],
+                    ),
+                );
+            });
+
+            // ADR-030 — same CircuitBreakingSupplierAdapter wrapping
+            // shape as 'gamevion' above, its own independent breaker
+            // (name 'digiflazz', per ADR-031's consequence note this
+            // comment predicted).
+            $this->app->bind('supplier-adapter.digiflazz', function () {
+                $config = config('services.digiflazz');
+                $proxy = config('services.proxy');
+
+                $digiflazz = new DigiflazzAdapter(
+                    baseUrl: $config['base_url'],
+                    username: (string) $config['username'],
+                    apiKey: (string) $config['api_key'],
+                    testing: (bool) $config['testing'],
+                    customerNoSeparator: (string) $config['customer_no_separator'],
+                    proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
+                    timeoutSeconds: $config['timeout'],
+                    connectTimeoutSeconds: $config['connect_timeout'],
+                );
+
+                $breakerConfig = config('services.circuit_breaker');
+
+                return new CircuitBreakingSupplierAdapter(
+                    inner: $digiflazz,
+                    breaker: new CircuitBreaker(
+                        name: 'digiflazz',
                         failureThreshold: $breakerConfig['failure_threshold'],
                         cooldownSeconds: $breakerConfig['cooldown_seconds'],
                     ),

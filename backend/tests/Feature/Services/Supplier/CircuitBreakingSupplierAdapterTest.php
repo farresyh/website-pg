@@ -7,6 +7,7 @@ use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Tests\TestCase;
 
@@ -44,7 +45,7 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
                 return $this->checkBalance();
             }
 
-            public function checkStatus(string $supplierRef): SupplierResponse
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
             {
                 return $this->checkBalance();
             }

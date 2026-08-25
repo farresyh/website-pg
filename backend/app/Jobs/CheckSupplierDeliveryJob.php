@@ -7,6 +7,7 @@ use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOutcome;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -49,11 +50,20 @@ final class CheckSupplierDeliveryJob implements ShouldQueue
 
         $adapter = $supplierAdapters->make($this->order->supplier->slug);
 
-        // ADR-030 decision 1: checkStatus() is a status re-submit
-        // keyed on our own reference_number (Digiflazz's `ref_id`) —
-        // not supplier_ref, which a genuinely Pending order may not
-        // have received yet.
-        $result = $adapter->checkStatus($this->order->reference_number);
+        // ADR-030 decision 1 / ADR-032 addendum: checkStatus() is a
+        // status re-submit keyed on our own reference_number
+        // (Digiflazz's `ref_id`) — not supplier_ref, which a genuinely
+        // Pending order may not have received yet. Digiflazz's own
+        // re-submit also requires the original buyer_sku_code +
+        // customer_no (confirmed against their real docs while
+        // building DigiflazzAdapter), which is why this request
+        // carries productRef/playerId/serverId too, not just the ref.
+        $result = $adapter->checkStatus(new SupplierStatusCheckRequest(
+            supplierRef: $this->order->reference_number,
+            productRef: $this->order->supplier_product_ref,
+            playerId: $this->order->player_id,
+            serverId: $this->order->server_id,
+        ));
 
         try {
             match ($result->outcome) {

@@ -59,10 +59,10 @@ final class FakeSupplierAdapter implements SupplierAdapter
         ]);
     }
 
-    public function checkStatus(string $supplierRef): SupplierResponse
+    public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
     {
         return SupplierResponse::success([
-            'supplier_ref' => $supplierRef,
+            'supplier_ref' => $request->supplierRef,
             'product_name' => 'Sandbox Simulated Delivery',
             'status' => $this->simulateSuccess ? 'delivered' : 'failed',
             'serial_number' => null,

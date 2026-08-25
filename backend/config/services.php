@@ -64,6 +64,25 @@ return [
         'connect_timeout' => (int) env('GAMEVION_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
+    // ADR-030 — same temporary env-based stopgap as 'gamevion' above,
+    // same reasoning (moves to encrypted Supplier.api_config once a
+    // real Digiflazz account exists to configure through the UI).
+    'digiflazz' => [
+        'base_url' => env('DIGIFLAZZ_BASE_URL', 'https://api.digiflazz.com'),
+        'username' => env('DIGIFLAZZ_USERNAME'),
+        'api_key' => env('DIGIFLAZZ_API_KEY'),
+        // ADR-030 decision 3 — sent per-request only when true, mirrors
+        // GAMEVION_SANDBOX's own env-flag pattern.
+        'testing' => env('DIGIFLAZZ_TESTING', true),
+        // ADR-030 decision 5 — the exact MLBB customer_no format isn't
+        // documented publicly; verified live at app:digiflazz-smoke-test
+        // once the account/IP whitelist is confirmed. Best-guess default
+        // mirrors GamevionAdapter's own playerId|serverId pipe convention.
+        'customer_no_separator' => env('DIGIFLAZZ_CUSTOMER_NO_SEPARATOR', '|'),
+        'timeout' => (int) env('DIGIFLAZZ_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('DIGIFLAZZ_CONNECT_TIMEOUT_SECONDS', 5),
+    ],
+
     // ADR-019 addendum: per-supplier circuit breaker (App\Services\
     // CircuitBreaker\CircuitBreaker) - trips after this many consecutive
     // server-error (5xx) responses, stays open for the cooldown window.
