@@ -8,6 +8,14 @@
 # droplet's own host-level Nginx (ADR-020 decision #8) reverse-proxying to
 # this stack's `nginx` service's published port — not configured here,
 # since it needs the real droplet's filesystem to set up.
+#
+# ADR-037 — this same file is deployed twice on the same droplet (once for
+# production, once for staging), each from its own directory checkout with
+# its own .env/.env.local files. NGINX_PORT/ADMIN_PORT/STOREFRONT_PORT
+# (this directory's own .env, same convention as NEXT_PUBLIC_API_URL below
+# — not committed) let the two deployments bind different host ports;
+# container/network names already isolate via `docker compose -p <project>`.
+# Unset, all three default to production's original values.
 
 services:
   nginx:
@@ -15,8 +23,13 @@ services:
     restart: unless-stopped
     depends_on:
       - php-fpm
+    # Parameterized (ADR-037 decision #6) so a staging deploy of this same
+    # file, in its own directory checkout on the same droplet, can bind
+    # different host ports and coexist with production — container/network
+    # names already isolate for free via `docker compose -p <project>`.
+    # Defaults match production's original fixed ports unchanged.
     ports:
-      - "8080:80"
+      - "${NGINX_PORT:-8080}:80"
     volumes:
       - ./backend/public:/var/www/html/public:ro
       - ./backend/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -67,7 +80,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${ADMIN_PORT:-3000}:3000"
     env_file:
       - ./admin/.env.local
 
@@ -78,7 +91,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "${STOREFRONT_PORT:-3001}:3000"
     env_file:
       - ./storefront/.env.local
 

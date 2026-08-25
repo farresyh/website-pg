@@ -299,7 +299,7 @@ Found and fixed in **all four** existing `Cache::remember()` call sites, not jus
 
 ---
 
-## ADR-015: Price Sync — cost propagation + deactivation detection (design only, not yet built)
+## ADR-015: Price Sync — cost propagation + deactivation detection (built 2026-07-26)
 
 **Status:** Accepted (design) — 2026-07-26 (grilled with the founder one decision at a time, using the `codebase-design`/`domain-modeling` vocabulary, before any code — explicit founder instruction: this session is audit + research + plan only, build happens next session)
 
@@ -366,7 +366,7 @@ Terminology (decision #2), the Refresh/Sync-All separation (decision #4), and Cu
 
 ---
 
-## ADR-017: Order Resend Delivery — same-game package swap + live price reconciliation (design only, not yet built)
+## ADR-017: Order Resend Delivery — same-game package swap + live price reconciliation (built 2026-07-27)
 
 **Status:** Accepted (design) — 2026-07-27 (grilled with the founder one decision at a time, informed by direct review of the legacy KeroxShop admin's own "Resend Delivery" modal and Order Details screen — real screenshots, not recalled from memory — per this project's long-standing rule that the legacy system is UI/UX reference only, never a source of product facts, [`legacy-reference-notes.md`](./legacy-reference-notes.md))
 
@@ -499,7 +499,7 @@ Shipped and verified: migration + `Order::$fillable`, `CreateCheckoutRequest` (`
 
 ---
 
-## ADR-020: Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fronted (design only, not yet built or purchased)
+## ADR-020: Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fronted (Phase 1 built 2026-07-30 — droplet purchase + SSH-deploy still outstanding, see addendum)
 
 **Status:** Accepted (design) — 2026-07-29 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, against the founder's own prior research — a DigitalOcean pricing-calculator screenshot and a hand-drawn architecture diagram — same discipline as ADR-014 through ADR-019; explicit founder instruction: draft the full ADR now, build happens in a new session)
 
@@ -634,7 +634,7 @@ The MySQL 64-char sweep was run directly, read-only, against real code before wr
 
 ---
 
-## ADR-022: Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment (design only, not yet built)
+## ADR-022: Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment (built 2026-08-04)
 
 **Status:** Accepted — 2026-07-30 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, following primary-source research on CHIP and HitPay)
 
@@ -739,7 +739,7 @@ This prompted researching two candidate gateways — **CHIP** (`chip-in.asia`) a
 
 ---
 
-## ADR-024: Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (design only, not yet built)
+## ADR-024: Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14)
 
 **Status:** Accepted (design) — 2026-08-13 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -798,7 +798,7 @@ Admin UI (decision 9): new `VoucherController::show()` (stats + `redemptions.ord
 
 ---
 
-## ADR-025: Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price (design only, not yet built)
+## ADR-025: Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price (built 2026-08-21)
 
 **Status:** Accepted (design) — 2026-08-14 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -844,7 +844,7 @@ Question 2 — decided: **keep the threshold as a flat percentage, no absolute-s
 
 ---
 
-## ADR-026: Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-creation failures (design only, not yet built)
+## ADR-026: Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-creation failures (built 2026-08-14)
 
 **Status:** Accepted (design) — 2026-08-14, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched.
 
@@ -1106,7 +1106,7 @@ This ADR also narrows `ADR-011` (storefront stays guest-checkout, no Customer ac
 
 ---
 
-## ADR-030: Digiflazz supplier integration — buyer-role adapter, prepaid games only (design only, not yet built)
+## ADR-030: Digiflazz supplier integration — buyer-role adapter, prepaid games only (built 2026-08-25)
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -1138,7 +1138,7 @@ Key differences from Gamevion the adapter must absorb (ADR-006's own "never assu
 
 ---
 
-## ADR-031: Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (design only, not yet built)
+## ADR-031: Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (built 2026-08-25)
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -1160,7 +1160,7 @@ Key differences from Gamevion the adapter must absorb (ADR-006's own "never assu
 
 ---
 
-## ADR-032: Async supplier delivery — `DeliveryStatus::Pending` + normalized `SupplierResponse` outcome + webhook & poll finalization (design only, not yet built)
+## ADR-032: Async supplier delivery — `DeliveryStatus::Pending` + normalized `SupplierResponse` outcome + webhook & poll finalization (built 2026-08-25)
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -1188,7 +1188,7 @@ Mapping Pending→`Delivered` would lie to the customer. Mapping Pending→`Fail
 
 ---
 
-## ADR-033: Foreign-currency supplier pricing — FX-rate conversion at sync time (design only, not yet built)
+## ADR-033: Foreign-currency supplier pricing — FX-rate conversion at sync time (built 2026-08-25)
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -1297,3 +1297,40 @@ Two other directions were considered and rejected this session before landing on
 - New `vouchers.status = 'merged'` value. `status` is a plain string column (no DB enum constraint, migration comment already lists `active|exhausted|expired|revoked`), so schema-safe — but every existing status-badge/display mapping in the admin frontend needs an explicit case for it, not a silent fallthrough, matching the same exhaustiveness discipline ADR-026/032 already established for `delivery_status`.
 - This reopens and narrows ADR-024 decision #7, not the whole ADR — decision #7's default (`storeFromOrder()` always restores + mints two separate vouchers) is unchanged; this ADR only adds a new, separate, admin-opt-in path to consolidate them afterward when a real need surfaces.
 - `voucher_merges` is append-only, same convention as `price_change_logs`/`deactivation_logs`/`order_resend_attempts` — never edited or deleted once written.
+
+---
+
+## ADR-037: Staging/production git branch model + staging environment infra (design only, not yet built)
+
+**Status:** Accepted (design) — 2026-08-25 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+
+**Context:** No branch has ever been cut from `main` for a feature/fix in this repo — every session so far has committed straight to `main` (see the git log; `staging` doesn't exist yet). ADR-020 already decided the production host shape (DO droplet + Managed MySQL + Docker Compose + Cloudflare) and its own CI/CD half (GitHub Actions, `push:main` → test → build → push images → SSH-deploy), but the SSH-deploy job itself was never built and no branch discipline was ever layered on top of it. The founder raised, prompted by external research on common staging/production practice: features/fixes should never branch directly from `main`; every change should branch from a `staging` integration branch, deploy to a staging environment, get verified there, then `staging` merges into `main` for the real production deploy. This ADR settles whether that model fits this project's actual scale and existing infra, and what it costs.
+
+Real numbers grounding the infra half (ADR-020's own capacity analysis, real order CSV, 28,848 rows): this business runs ~RM136.6k/month average (RM66.5k–244k range), ~125 orders/day, and the existing single 8 GiB/4 vCPU droplet comfortably carries even 20x that volume. This is greenfield — no git remote, no production deploy, no staging environment exist yet, so there is nothing to migrate off of; every decision below is a fresh build, not a cutover.
+
+A targeted, read-only scan of the current codebase (grep for hardcoded domains, read of `docker-compose.prod.yml`, `.github/workflows/ci.yml`, and the payment/supplier adapters' env-var handling) was run before finalizing this ADR, specifically to check whether running staging and production side by side would trip over any existing assumption. One real blocker was found (Decision 6 below); everything else — webhook/callback URL construction, `ci.yml`'s extensibility, env/secrets handling — was already environment-clean.
+
+**Decision:**
+
+1. **Branch model: `staging` (integration) and `main` (production), both protected, PR-only, required CI status checks.** Every feature/fix branch is cut from `staging`, never `main`. `staging` merges into `main` only once verified in the staging environment.
+2. **Emergency exception: `hotfix/*` branches may cut directly from `main`, scoped strictly to P0 incidents (payment/ledger/checkout down).** After a hotfix merges into `main`, `main` is merged straight back into `staging` immediately (not cherry-picked) — `main` should never diverge from `staging` except through a hotfix, so a plain merge is the clean, low-risk way to re-sync, with no risk of missing a partial cherry-pick.
+3. **Merge strategy: merge-commit (`--no-ff`) everywhere — `staging`→`main`, and the hotfix `main`→`staging` re-sync. Never squash.** Matches this repo's existing granular-commit convention (`git log` today is per-commit, not squashed) and keeps a money-critical system's history traceable back to the exact commit that shipped a given change.
+4. **Staging shares the existing production droplet — a second Docker Compose stack, not a second droplet.** At today's scale (headroom for 20x current volume, per ADR-020's capacity analysis), a fully separate droplet + Managed MySQL (~$50–60/month extra) buys isolation this business doesn't need yet. Staging's database is a **containerized MySQL on the same droplet, not a second Managed MySQL instance** — no real money/customer data ever lives there, so the extra durability/backup guarantees Managed MySQL provides for production have no matching need in staging.
+5. **Staging domain: a subdomain of whatever domain this project ultimately ships under, `staging.<domain>`** — same Cloudflare-proxied pattern ADR-020 already established for production. **The production domain/business name itself is not yet finalized** (this project's own branding is still an open question, unrelated to this ADR) — this decision fixes the *shape* (subdomain), not the literal string, which gets filled in once that's settled.
+6. **`docker-compose.prod.yml`'s host port bindings must be parameterized before a staging stack can run on the same droplet — confirmed real, not hypothetical, via this session's scan.** Today `nginx` binds `8080:80`, `admin` binds `3000:3000`, `storefront` binds `3001:3000` — fixed host ports that a second stack from the same file would collide on. No fix needed for container/network/volume naming — the file sets none of `container_name:`/custom `networks:`/named volumes, so Compose's own per-project prefixing (`docker compose -p staging ...`) already isolates those for free. The fix is either env-parameterized port lines (`${NGINX_PORT:-8080}`) or a small `docker-compose.staging.yml` override pinning different host ports (e.g. 8081/3010/3011) — a build-time detail, not a further design decision.
+7. **Staging containers get Docker Compose resource limits (`deploy.resources.limits`), production containers don't.** Staging traffic is internal verification only, never real customer load — capping it is what makes "share the droplet" safe; an uncapped staging load spike (e.g. someone running a local load test against it) could otherwise degrade production sharing the same box.
+8. **Staging deploy is fully automatic, mirroring ADR-020 decision #9's no-manual-approval-gate philosophy for production.** A new `push: branches: [staging]` trigger in `ci.yml` builds+pushes a `staging`-tagged image and SSH-deploys it — additive to the existing workflow, confirmed by this session's scan not to conflict with `build-and-push`'s existing `if: github.ref == 'refs/heads/main'` gate. The staging environment itself *is* the approval gate before promoting to `main` — a second manual click at the staging-deploy step would be a redundant gate on top of that.
+9. **Staging's deploy pipeline gets the same discipline as production's planned pipeline: automatic `php artisan migrate` (never `migrate:fresh`), then `GET /api/health` + auto-rollback to the previous image tag on failure.** Staging deploying first (upstream of `main`) is what makes it a real gate — a migration bug (e.g. the 64-char MySQL identifier issue this project has already hit twice) surfaces on staging's own deploy, not production's.
+10. **Staging uses real sandbox credentials, not fakes: Xendit test-mode key (same pattern `e2e` already established), `GAMEVION_SANDBOX=true`, and Digiflazz's own sandbox mode** — both suppliers confirmed to have a real sandbox, so staging can verify actual integration behavior rather than a stubbed approximation. **Known caveat carried forward, not new:** per ADR-019's own tracked bug, running a real Price Sync while `GAMEVION_SANDBOX=true` falsely deactivates every real promoted package (Gamevion's sandbox catalog returns only one hardcoded simulation product) — this applies identically to staging and must not be triggered there for real.
+11. **Staging data is seed/fixture data the team creates deliberately (extending `e2e/fixtures`'s existing pattern), never a clone of real production data, anonymized or otherwise.** Production holds real customer PII and real money history; even an "anonymized" clone adds real handling risk for no benefit at this project's scale and team size.
+12. **This ADR's branch rule lands in root `AGENTS.md`'s "Working Conventions" section only — not `backend/CLAUDE.md`/`admin/CLAUDE.md`/`storefront/CLAUDE.md`.** Branch/deploy workflow is a repo-wide git convention; the per-app `CLAUDE.md` files are scoped to app-specific technical guidance (their own stated purpose, e.g. the Next.js-version warning), not process rules that apply identically across the whole monorepo.
+13. **No extra PR-review gate beyond CI passing green.** This is a solo-founder-plus-AI-agent workflow, not a multi-engineer team — a mandatory second-reviewer/code-review-skill gate would be process weight with no matching risk reduction at this team size. `/code-review` stays available at the founder's discretion, not a hard merge requirement.
+
+**Rationale:** The branch model itself (protected `staging`/`main`, hotfix exception, merge-commit) is standard practice adopted because it directly serves this project's own stated goal — "clean code haruslah verified sebelum sampai production" — at negligible process cost for a small team. The infra shape (shared droplet, containerized staging DB, no second Managed MySQL) is sized to this project's *real*, CSV-verified transaction volume rather than a generically "safe" but unjustified doubling of infrastructure spend — the same discipline ADR-020's own capacity analysis already established. Real sandbox credentials over fakes buys staging actual confidence that a feature verified there will behave the same in production, which is the entire point of having a staging gate at all.
+
+**Consequence to track:**
+- ~~`docker-compose.prod.yml`'s host-port parameterization (Decision 6) is a genuine prerequisite — must ship before the first staging deploy, not discovered mid-deploy.~~ **Done, same session** — `nginx`/`admin`/`storefront` ports now read `${NGINX_PORT:-8080}`/`${ADMIN_PORT:-3000}`/`${STOREFRONT_PORT:-3001}`, defaults unchanged, validated via `docker compose config`.
+- The SSH-deploy CI job (both staging and production halves) is still unbuilt — ADR-020's addendum already flagged production's half as deferred; this ADR adds staging's half to that same still-open item, not a new gap.
+- Staging's own GitHub Actions secrets (SSH target/port on the shared droplet, whether `XENDIT_TEST_SECRET_KEY` is reused from `e2e`'s existing secret or a separate one, `GAMEVION_SANDBOX`/Digiflazz sandbox toggles in staging's `.env`) are implementation detail for the build session, not decided here.
+- Production domain/business name (Decision 5) remains genuinely unresolved — revisit `staging.<domain>`'s literal value once that's settled; does not block building the rest of this ADR.
+- Per Decision 10's carried-forward caveat: staging must never run a real Price Sync against Gamevion while its sandbox is active, same operational-only mitigation ADR-019 already established for any environment.

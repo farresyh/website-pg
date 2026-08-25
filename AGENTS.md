@@ -60,6 +60,26 @@ Next.js-version warning specific to that app. This file covers the whole repo;
   commit-message template may suggest one — ignore it unless that setting is
   present.
 
+## Branch Workflow (ADR-037)
+
+- **Never branch from `main`.** Every feature/fix branch is cut from
+  `staging`, PRs back into `staging`, gets verified in the staging
+  environment, and only then does `staging` merge into `main` for
+  production. Both `staging` and `main` are protected, PR-only, with
+  required CI checks.
+- **One exception: `hotfix/*` branches may cut directly from `main`**, scoped
+  strictly to P0 incidents (payment/ledger/checkout down) where waiting on
+  the full staging cycle isn't acceptable. Immediately after a hotfix merges
+  into `main`, merge `main` back into `staging` (a plain merge, not a
+  cherry-pick) so `staging` never drifts behind.
+- **Merge commits only (`--no-ff`), never squash** — for `staging`→`main`
+  and the hotfix `main`→`staging` re-sync alike. Matches this repo's
+  existing granular-commit history and keeps a money-critical system's
+  changes traceable to the exact commit that shipped them.
+- No extra review gate beyond CI passing green — this is a solo-founder
+  workflow, not a multi-engineer team. `/code-review` is available at the
+  founder's discretion, not a merge requirement.
+
 ## Multi-Agent Work
 
 Use the standard `Agent`/`Task` tooling directly — spawn a background agent
