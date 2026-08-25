@@ -10,6 +10,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -44,6 +45,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 5_000,
             'reason' => 'Goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertCreated();
@@ -61,6 +63,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 50_000,
             'reason' => 'Large goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertUnprocessable();
@@ -75,6 +78,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 1_000_001,
             'reason' => 'Fat-fingered amount',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertUnprocessable();
@@ -90,6 +94,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 50_000,
             'reason' => 'Large goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertCreated();
@@ -103,6 +108,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 1_000,
             'reason' => 'Test',
+            'idempotency_key' => (string) Str::uuid(),
         ])->assertCreated();
 
         $response = $this->getJson('/api/vouchers');
@@ -261,5 +267,101 @@ class VoucherControllerTest extends TestCase
         $response = $this->getJson('/api/vouchers');
 
         $response->assertUnauthorized();
+    }
+
+    public function test_rejects_a_standalone_voucher_without_an_idempotency_key(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('idempotency_key');
+    }
+
+    /**
+     * ADR-035 — the actual scenario this guard exists for: a network
+     * timeout retry (or a double-click) resubmits the identical
+     * idempotency_key. Must return the same Voucher, not mint a second
+     * one and double-debit the platform ledger.
+     */
+    public function test_replays_the_same_voucher_for_a_repeated_idempotency_key(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $key = (string) Str::uuid();
+
+        $first = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => $key,
+        ]);
+        $first->assertCreated();
+
+        $second = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => $key,
+        ]);
+        $second->assertCreated();
+
+        $this->assertSame($first->json('id'), $second->json('id'));
+        $this->assertDatabaseCount('vouchers', 1);
+        $this->assertSame(-1_000, app(LedgerService::class)->balance('platform', null));
+    }
+
+    public function test_a_different_idempotency_key_creates_a_genuinely_separate_voucher(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $first = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+        $first->assertCreated();
+
+        $second = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit (unrelated, same customer)',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+        $second->assertCreated();
+
+        $this->assertNotSame($first->json('id'), $second->json('id'));
+        $this->assertDatabaseCount('vouchers', 2);
+        $this->assertSame(-2_000, app(LedgerService::class)->balance('platform', null));
+    }
+
+    public function test_a_preexisting_idempotency_key_replays_that_voucher_instead_of_erroring(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        Voucher::query()->create([
+            'code' => 'VC-EXISTING',
+            'idempotency_key' => 'shared-key',
+            'customer_email' => 'someone-else@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'Pre-existing voucher',
+        ]);
+
+        $response = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => 'shared-key',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('code', 'VC-EXISTING');
+        $this->assertDatabaseCount('vouchers', 1);
     }
 }

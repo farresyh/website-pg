@@ -66,6 +66,7 @@ export interface CreateVoucherValues {
   amount: number;
   reason: string;
   expires_at?: string | null;
+  idempotency_key: string;
 }
 
 export function listVouchers(token: string) {
