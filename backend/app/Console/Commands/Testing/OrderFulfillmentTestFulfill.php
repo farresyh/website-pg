@@ -9,6 +9,7 @@ use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -64,10 +65,12 @@ class OrderFulfillmentTestFulfill extends Command
             }
         };
 
+        app()->bind("supplier-adapter.{$order->supplier->slug}", fn () => $adapter);
+
         $service = new OrderFulfillmentService(
             new OrderStatusService(),
             new ReferenceNumberService(),
-            $adapter,
+            app(SupplierAdapterFactory::class),
             new LedgerService(),
             app(VoucherService::class),
         );

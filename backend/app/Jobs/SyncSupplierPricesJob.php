@@ -7,7 +7,7 @@ use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Services\Sync\PackagePriceSyncService;
 use App\Services\Sync\ProductSyncService;
-use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -49,53 +49,90 @@ final class SyncSupplierPricesJob implements ShouldQueue
         $this->onQueue('price-sync');
     }
 
-    public function handle(ProductSyncService $productSync, PackagePriceSyncService $packageSync, SupplierAdapter $adapter): void
+    /**
+     * ADR-031 decision 4: loops every active Supplier, resolving each
+     * one's own adapter via SupplierAdapterFactory — replaces the
+     * earlier single hardcoded Gamevion binding. Stats aggregate
+     * (summed) across every supplier that actually completed; one
+     * supplier's failure (adapter unbound, or its own sync throwing)
+     * is logged and skipped, never blocking the rest — mirrors
+     * SyncSupplierProductsCommand's own per-supplier isolation. The
+     * whole run is only marked 'failed' if every active supplier
+     * failed; a partial success still records real, useful stats.
+     */
+    public function handle(ProductSyncService $productSync, PackagePriceSyncService $packageSync, SupplierAdapterFactory $supplierAdapters): void
     {
         $this->run->update(['status' => 'running', 'started_at' => now()]);
 
-        // Hardcoded to the single Gamevion binding — same deliberate
-        // placeholder as SyncSupplierProductsCommand, becomes a loop
-        // over active suppliers once a per-Supplier adapter factory
-        // exists (AppServiceProvider's own admitted gap).
-        $supplier = Supplier::query()->firstOrCreate(
+        // Deliberate stopgap, unchanged from before this ADR: nothing
+        // else in the codebase creates the Gamevion Supplier row yet,
+        // so a fresh install still has at least one to sync.
+        Supplier::query()->firstOrCreate(
             ['slug' => 'gamevion'],
             ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
         );
 
-        try {
-            $stage1 = $productSync->sync($supplier, $adapter);
-            $stage2 = $packageSync->apply($supplier, $stage1->syncedAt, $this->run->id);
-        } catch (Throwable $e) {
+        $suppliers = Supplier::query()->where('is_active', true)->get();
+
+        $stats = [
+            'catalog_total' => 0, 'catalog_created' => 0, 'catalog_updated' => 0,
+            'price_changed' => 0, 'deactivated' => 0, 'floor_rejected' => 0, 'price_anomalies' => 0,
+        ];
+        $affectedGameIds = [];
+        $succeeded = 0;
+        $lastError = null;
+
+        foreach ($suppliers as $supplier) {
+            try {
+                $adapter = $supplierAdapters->make($supplier->slug);
+                $stage1 = $productSync->sync($supplier, $adapter);
+                $stage2 = $packageSync->apply($supplier, $stage1->syncedAt, $this->run->id);
+            } catch (Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::error('SyncSupplierPricesJob: supplier sync failed', [
+                    'run_id' => $this->run->id,
+                    'supplier_slug' => $supplier->slug,
+                    'exception' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            $succeeded++;
+            $stats['catalog_total'] += $stage1->total;
+            $stats['catalog_created'] += $stage1->created;
+            $stats['catalog_updated'] += $stage1->updated;
+            $stats['price_changed'] += $stage2->priceChanged;
+            $stats['deactivated'] += $stage2->deactivated;
+            $stats['floor_rejected'] += $stage2->floorRejected;
+            $stats['price_anomalies'] += $stage2->anomaliesFlagged;
+            $affectedGameIds = [...$affectedGameIds, ...$stage2->affectedGameIds];
+        }
+
+        if ($succeeded === 0 && $suppliers->isNotEmpty()) {
             $this->run->update([
                 'status' => 'failed',
                 'finished_at' => now(),
-                'error_message' => $e->getMessage(),
+                'error_message' => $lastError,
             ]);
-            Log::error('SyncSupplierPricesJob failed', ['run_id' => $this->run->id, 'exception' => $e->getMessage()]);
 
             return;
         }
 
-        foreach ($stage2->affectedGameIds as $gameId) {
+        $affectedGameIds = array_unique($affectedGameIds);
+
+        foreach ($affectedGameIds as $gameId) {
             GameController::forgetPackagesCache($gameId);
         }
 
-        if ($stage2->affectedGameIds !== []) {
+        if ($affectedGameIds !== []) {
             GameController::forgetIndexCache();
         }
 
         $this->run->update([
             'status' => 'success',
             'finished_at' => now(),
-            'stats' => [
-                'catalog_total' => $stage1->total,
-                'catalog_created' => $stage1->created,
-                'catalog_updated' => $stage1->updated,
-                'price_changed' => $stage2->priceChanged,
-                'deactivated' => $stage2->deactivated,
-                'floor_rejected' => $stage2->floorRejected,
-                'price_anomalies' => $stage2->anomaliesFlagged,
-            ],
+            'stats' => $stats,
         ]);
     }
 }

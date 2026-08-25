@@ -8,6 +8,7 @@ use App\Models\Package;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
@@ -20,9 +21,9 @@ class SyncSupplierPricesJobTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function bindFakeAdapter(bool $success, array $items = []): void
+    private function bindFakeAdapter(bool $success, array $items = [], string $slug = 'gamevion'): void
     {
-        $this->app->bind(SupplierAdapter::class, fn () => new class($success, $items) implements SupplierAdapter
+        $this->app->bind("supplier-adapter.{$slug}", fn () => new class($success, $items) implements SupplierAdapter
         {
             public function __construct(
                 private readonly bool $success,
@@ -84,7 +85,7 @@ class SyncSupplierPricesJobTest extends TestCase
         (new SyncSupplierPricesJob($run))->handle(
             app(\App\Services\Sync\ProductSyncService::class),
             app(\App\Services\Sync\PackagePriceSyncService::class),
-            app(SupplierAdapter::class),
+            app(SupplierAdapterFactory::class),
         );
 
         $run->refresh();
@@ -126,7 +127,7 @@ class SyncSupplierPricesJobTest extends TestCase
         (new SyncSupplierPricesJob($run))->handle(
             app(\App\Services\Sync\ProductSyncService::class),
             app(\App\Services\Sync\PackagePriceSyncService::class),
-            app(SupplierAdapter::class),
+            app(SupplierAdapterFactory::class),
         );
 
         $run->refresh();
@@ -147,12 +148,75 @@ class SyncSupplierPricesJobTest extends TestCase
         (new SyncSupplierPricesJob($run))->handle(
             app(\App\Services\Sync\ProductSyncService::class),
             app(\App\Services\Sync\PackagePriceSyncService::class),
-            app(SupplierAdapter::class),
+            app(SupplierAdapterFactory::class),
         );
 
         $run->refresh();
         $this->assertSame('failed', $run->status);
         $this->assertNotNull($run->error_message);
+    }
+
+    /**
+     * ADR-031 decision 4: loops every active Supplier, aggregating
+     * stats across all of them — proves it with two real suppliers,
+     * not just the single Gamevion stopgap this job used to hardcode.
+     */
+    public function test_job_syncs_every_active_supplier_and_aggregates_stats(): void
+    {
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => [], 'currency' => 'IDR']);
+
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV733',
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '20 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'xld20',
+        ]);
+
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 12.0, 'active'),
+        ], 'gamevion');
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('xld20', '20 Diamond', 'Mobile Legends', 11.0, 'active'),
+        ], 'digiflazz-test');
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(\App\Services\Sync\ProductSyncService::class),
+            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+        );
+
+        $run->refresh();
+        $this->assertSame('success', $run->status);
+        $this->assertSame(2, $run->stats['price_changed']); // one per supplier
+    }
+
+    /** ADR-031: an inactive supplier is never synced. */
+    public function test_job_skips_an_inactive_supplier(): void
+    {
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        Supplier::query()->create(['name' => 'Retired', 'slug' => 'retired-supplier', 'api_config' => [], 'currency' => 'MYR', 'is_active' => false]);
+
+        $this->bindFakeAdapter(true, []);
+        // No 'supplier-adapter.retired-supplier' binding at all — if the
+        // job tried to sync it, SupplierAdapterFactory::make() would
+        // throw UnsupportedSupplierException and this run would fail.
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(\App\Services\Sync\ProductSyncService::class),
+            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+        );
+
+        $run->refresh();
+        $this->assertSame('success', $run->status);
     }
 
     /** ADR-020 decision #5 — its own queue, deliberately separate from the `orders` queue. */

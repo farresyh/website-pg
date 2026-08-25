@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Controllers\Webhooks;
 
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Order\DeliveryStatus;
@@ -28,10 +29,17 @@ class XenditWebhookControllerTest extends TestCase
 
     private function fakePaidOrder(array $overrides = []): Order
     {
+        $supplierId = $overrides['supplier_id']
+            ?? Supplier::query()->firstOrCreate(
+                ['slug' => 'gamevion'],
+                ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
+            )->id;
+
         return Order::query()->create(array_merge([
             'order_number' => 'KRS-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
+            'supplier_id' => $supplierId,
             'supplier_product_ref' => 'FFP5',
             'cost_price' => 900,
             'reseller_cost_price' => 900,
@@ -80,7 +88,7 @@ class XenditWebhookControllerTest extends TestCase
 
     private function bindFakeSupplierAdapter(): void
     {
-        $this->app->bind(SupplierAdapter::class, fn () => new class implements SupplierAdapter
+        $this->app->bind('supplier-adapter.gamevion', fn () => new class implements SupplierAdapter
         {
             public function checkBalance(): SupplierResponse
             {

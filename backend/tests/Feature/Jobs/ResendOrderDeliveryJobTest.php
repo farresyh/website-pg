@@ -17,6 +17,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -36,11 +37,13 @@ class ResendOrderDeliveryJobTest extends TestCase
 
     private function resendService(SupplierAdapter $adapter): OrderResendService
     {
+        $this->app->bind('supplier-adapter.gamevion', fn () => $adapter);
+
         return new OrderResendService(
             new OrderFulfillmentService(
                 new OrderStatusService(),
                 new ReferenceNumberService(),
-                $adapter,
+                $this->app->make(SupplierAdapterFactory::class),
                 new LedgerService(),
                 new VoucherService(new LedgerService()),
             ),

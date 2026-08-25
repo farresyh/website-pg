@@ -20,6 +20,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\FakeSupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -134,10 +135,12 @@ class SandboxOrderController extends Controller
      * Decision #5: synchronous, inline, no queue dispatch — a sandbox
      * order never depends on a queue worker actually running. Builds
      * its own OrderResendService/OrderFulfillmentService instance
-     * directly, constructor-injecting FakeSupplierAdapter with the
-     * outcome the admin picked, rather than resolving SupplierAdapter
-     * through the container's default binding (which stays
-     * GamevionAdapter, untouched, for the real Admin\OrderController
+     * directly, binding FakeSupplierAdapter with the outcome the admin
+     * picked under the target package's own real supplier slug (ADR-031:
+     * OrderResendService moves the order onto that supplier before
+     * fulfill() ever runs) rather than resolving through whatever real
+     * adapter is normally bound for that slug (GamevionAdapter/
+     * DigiflazzAdapter, untouched, for the real Admin\OrderController
      * path).
      */
     public function resend(ResendSandboxOrderDeliveryRequest $request, Order $order): JsonResponse
@@ -152,10 +155,12 @@ class SandboxOrderController extends Controller
             $request->validated('error_message'),
         );
 
+        app()->bind("supplier-adapter.{$targetPackage->supplier->slug}", fn () => $adapter);
+
         $fulfillment = new OrderFulfillmentService(
             new OrderStatusService(),
             new ReferenceNumberService(),
-            $adapter,
+            app(SupplierAdapterFactory::class),
             app(LedgerService::class),
             app(VoucherService::class),
         );

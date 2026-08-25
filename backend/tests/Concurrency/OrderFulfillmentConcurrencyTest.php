@@ -4,6 +4,7 @@ namespace Tests\Concurrency;
 
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -32,10 +33,18 @@ class OrderFulfillmentConcurrencyTest extends TestCase
 
     public function test_only_one_of_two_simultaneous_fulfillment_attempts_succeeds(): void
     {
+        // ADR-031: fulfill() now resolves its adapter by the order's
+        // own supplier_id — app:order-fulfillment-test-fulfill binds
+        // its fake under this real supplier's slug (see that command).
+        $supplier = Supplier::query()->create([
+            'name' => 'Race Test Supplier', 'slug' => 'race-test-supplier', 'api_config' => [], 'currency' => 'MYR',
+        ]);
+
         $order = Order::query()->create([
             'order_number' => 'KRS-RACE-1',
             'customer_email' => 'race@example.com',
             'player_id' => '123456',
+            'supplier_id' => $supplier->id,
             'supplier_product_ref' => 'FFP5',
             'cost_price' => 900,
             'reseller_cost_price' => 900,

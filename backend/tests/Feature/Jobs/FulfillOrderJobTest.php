@@ -4,6 +4,7 @@ namespace Tests\Feature\Jobs;
 
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Models\Supplier;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -11,6 +12,7 @@ use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -31,10 +33,17 @@ class FulfillOrderJobTest extends TestCase
 
     private function paidOrder(array $overrides = []): Order
     {
+        $supplierId = $overrides['supplier_id']
+            ?? Supplier::query()->firstOrCreate(
+                ['slug' => 'gamevion'],
+                ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
+            )->id;
+
         return Order::query()->create(array_merge([
             'order_number' => 'KRS-JOB-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
+            'supplier_id' => $supplierId,
             'supplier_product_ref' => 'FFP5',
             'cost_price' => 900,
             'reseller_cost_price' => 900,
@@ -50,10 +59,12 @@ class FulfillOrderJobTest extends TestCase
 
     private function fulfillmentService(SupplierAdapter $adapter): OrderFulfillmentService
     {
+        $this->app->bind('supplier-adapter.gamevion', fn () => $adapter);
+
         return new OrderFulfillmentService(
             new OrderStatusService(),
             new ReferenceNumberService(),
-            $adapter,
+            $this->app->make(SupplierAdapterFactory::class),
             new LedgerService(),
             new VoucherService(new LedgerService()),
         );

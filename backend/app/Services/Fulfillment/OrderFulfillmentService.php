@@ -6,7 +6,7 @@ use App\Models\Order;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
-use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
@@ -36,7 +36,7 @@ final class OrderFulfillmentService
     public function __construct(
         private readonly OrderStatusService $orderStatus,
         private readonly ReferenceNumberService $referenceNumbers,
-        private readonly SupplierAdapter $supplier,
+        private readonly SupplierAdapterFactory $supplierAdapters,
         private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
     ) {
@@ -73,6 +73,19 @@ final class OrderFulfillmentService
                 );
             }
 
+            // ADR-031: one Package = one supplier, fixed at
+            // package-curation/checkout time — resolved fresh on every
+            // call (including a retry) rather than cached on this
+            // service, since a resend (OrderResendService) can change
+            // which supplier an order targets between attempts.
+            if ($locked->supplier_id === null) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} has no supplier_id set — cannot resolve a SupplierAdapter",
+                );
+            }
+
+            $adapter = $this->supplierAdapters->make($locked->supplier->slug);
+
             // ORD-8: generated once, reused on every retry of this
             // order — resolve() returns the existing value unchanged
             // if this is a retry after a prior failure.
@@ -91,7 +104,7 @@ final class OrderFulfillmentService
                 'delivery_status' => $processingStatus->value,
             ]);
 
-            $result = $this->supplier->createOrder(new SupplierOrderRequest(
+            $result = $adapter->createOrder(new SupplierOrderRequest(
                 productRef: $locked->supplier_product_ref,
                 referenceNumber: $referenceNumber,
                 playerId: $locked->player_id,

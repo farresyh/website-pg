@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\Fulfillment;
 
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\Supplier;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -12,6 +13,7 @@ use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -25,24 +27,43 @@ class OrderFulfillmentServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * ADR-031: binds $adapter under this test's own default supplier
+     * slug and resolves OrderFulfillmentService through the real
+     * SupplierAdapterFactory — every other test in this file exercises
+     * a single supplier and doesn't care about routing itself (that's
+     * test_fulfill_routes_to_the_adapter_bound_for_the_orders_own_supplier's
+     * job), so this stays a one-adapter-in, one-service-out helper.
+     */
     private function service(SupplierAdapter $adapter): OrderFulfillmentService
     {
+        $this->app->bind('supplier-adapter.'.self::DEFAULT_SUPPLIER_SLUG, fn () => $adapter);
+
         return new OrderFulfillmentService(
             new OrderStatusService(),
             new ReferenceNumberService(),
-            $adapter,
+            $this->app->make(SupplierAdapterFactory::class),
             new LedgerService(),
             new VoucherService(new LedgerService()),
         );
     }
 
+    private const DEFAULT_SUPPLIER_SLUG = 'test-supplier';
+
     private function paidOrder(array $overrides = []): Order
     {
+        $supplierId = $overrides['supplier_id']
+            ?? Supplier::query()->firstOrCreate(
+                ['slug' => self::DEFAULT_SUPPLIER_SLUG],
+                ['name' => 'Test Supplier', 'api_config' => [], 'currency' => 'MYR'],
+            )->id;
+
         return Order::query()->create(array_merge([
             'order_number' => 'KRS-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
             'server_id' => '1234',
+            'supplier_id' => $supplierId,
             'supplier_product_ref' => 'FFP5',
             'cost_price' => 900,
             'reseller_cost_price' => 900,
@@ -99,6 +120,61 @@ class OrderFulfillmentServiceTest extends TestCase
                 throw new ValidationNotSupportedException('not used in this test');
             }
         };
+    }
+
+    /**
+     * ADR-031: fulfill() resolves the adapter to call by the order's
+     * own supplier_id, through SupplierAdapterFactory — never a single
+     * globally-injected adapter. Two suppliers bound, order points at
+     * one of them; the other must never be touched.
+     */
+    public function test_fulfill_routes_to_the_adapter_bound_for_the_orders_own_supplier(): void
+    {
+        $supplierA = Supplier::query()->create(['name' => 'Supplier A', 'slug' => 'supplier-a', 'api_config' => [], 'currency' => 'MYR']);
+        $supplierB = Supplier::query()->create(['name' => 'Supplier B', 'slug' => 'supplier-b', 'api_config' => [], 'currency' => 'MYR']);
+
+        $this->app->bind("supplier-adapter.{$supplierA->slug}", fn () => $this->fakeSupplierAdapter(true, ['supplier_ref' => 'FROM-A']));
+        $this->app->bind("supplier-adapter.{$supplierB->slug}", fn () => new class implements SupplierAdapter
+        {
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('supplier B must never be called for a supplier-A order');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('supplier B must never be called for a supplier-A order');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('supplier B must never be called for a supplier-A order');
+            }
+
+            public function checkStatus(string $supplierRef): SupplierResponse
+            {
+                throw new RuntimeException('supplier B must never be called for a supplier-A order');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        });
+
+        $order = $this->paidOrder(['supplier_id' => $supplierA->id]);
+
+        $service = new OrderFulfillmentService(
+            new OrderStatusService(),
+            new ReferenceNumberService(),
+            $this->app->make(SupplierAdapterFactory::class),
+            new LedgerService(),
+            new VoucherService(new LedgerService()),
+        );
+
+        $result = $service->fulfill($order);
+
+        $this->assertSame('FROM-A', $result->supplier_ref);
     }
 
     /**

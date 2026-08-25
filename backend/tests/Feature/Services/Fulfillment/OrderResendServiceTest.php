@@ -18,6 +18,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -35,13 +36,21 @@ class OrderResendServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function service(SupplierAdapter $adapter): OrderResendService
+    /**
+     * ADR-031: binds $adapter under 'gamevion' — every test in this
+     * file creates its order/original/swap packages against the same
+     * supplier() fixture (slug 'gamevion'), so this default matches
+     * whichever package the order ends up routed to after a swap.
+     */
+    private function service(SupplierAdapter $adapter, string $supplierSlug = 'gamevion'): OrderResendService
     {
+        $this->app->bind("supplier-adapter.{$supplierSlug}", fn () => $adapter);
+
         return new OrderResendService(
             new OrderFulfillmentService(
                 new OrderStatusService(),
                 new ReferenceNumberService(),
-                $adapter,
+                $this->app->make(SupplierAdapterFactory::class),
                 new LedgerService(),
                 new VoucherService(new LedgerService()),
             ),

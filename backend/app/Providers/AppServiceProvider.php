@@ -17,6 +17,7 @@ use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -24,12 +25,12 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register any application services.
      *
-     * Single-supplier binding for now — matches MVP reality (one
-     * Gamevion). Once the Supplier model is wired up for real
-     * multi-supplier routing, SupplierAdapter resolution moves to a
-     * per-order factory instead of one global binding; this is a
-     * deliberate placeholder, not the final shape.
+     * SupplierAdapter is resolved per-supplier via SupplierAdapterFactory
+     * (ADR-031, mirrors PaymentGatewayFactory below) — OrderFulfillmentService
+     * looks up the order's own `supplier_id` and asks the factory for
+     * the right implementation, rather than one global binding.
      *
+
      * PaymentGateway is resolved per-channel via PaymentGatewayFactory
      * (see that class + the payment_methods migration's doc comment)
      * rather than one hardcoded binding — CheckoutController looks up
@@ -53,10 +54,21 @@ class AppServiceProvider extends ServiceProvider
         // E2E's job is exercising the real UI/pipeline wiring, not
         // supplier failure handling, which PHPUnit's OrderFulfillmentService
         // tests already cover.
+        //
+        // ADR-031: SupplierAdapter::class's single global binding is
+        // replaced by per-supplier `supplier-adapter.<slug>` bindings,
+        // resolved through SupplierAdapterFactory (mirrors
+        // PaymentGatewayFactory on the payment side) — the e2e branch
+        // keeps its original SupplierAdapter::class binding unchanged
+        // (decision #3: "stays exactly as it is") and additionally
+        // registers the same Fake under `supplier-adapter.e2e-fake-supplier`,
+        // the slug E2ESeeder actually gives its Supplier row, since
+        // that's the key OrderFulfillmentService now resolves by.
         if ($this->app->environment('e2e')) {
             $this->app->bind(SupplierAdapter::class, fn () => new FakeSupplierAdapter(simulateSuccess: true));
+            $this->app->bind('supplier-adapter.e2e-fake-supplier', fn () => new FakeSupplierAdapter(simulateSuccess: true));
         } else {
-            $this->app->bind(SupplierAdapter::class, function () {
+            $this->app->bind('supplier-adapter.gamevion', function () {
                 $config = config('services.gamevion');
                 $proxy = config('services.proxy');
 
@@ -74,6 +86,14 @@ class AppServiceProvider extends ServiceProvider
                 // decorator, not a change to GamevionAdapter itself, so any
                 // future second supplier gets the same protection for free
                 // just by being wrapped the same way at its own binding.
+                // ADR-031 consequence ("breaker names must become
+                // per-supplier"): satisfied structurally, not by
+                // genericizing this closure — each supplier gets its own
+                // `supplier-adapter.<slug>` binding with its own literal
+                // breaker name matching that slug (see ADR-030's future
+                // `supplier-adapter.digiflazz` binding for the second
+                // instance of this same shape), so no two suppliers ever
+                // share one breaker's failure count.
                 $breakerConfig = config('services.circuit_breaker');
 
                 return new CircuitBreakingSupplierAdapter(
@@ -86,6 +106,8 @@ class AppServiceProvider extends ServiceProvider
                 );
             });
         }
+
+        $this->app->singleton(SupplierAdapterFactory::class);
 
         $this->app->bind('payment-gateway.xendit', function () {
             $config = config('services.xendit');
