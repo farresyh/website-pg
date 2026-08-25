@@ -1242,9 +1242,9 @@ The founder's earlier question — "rate berubah tiap hari, bukan patut fetch ik
 
 ---
 
-## ADR-035: Voucher Path A double-submission guard — idempotency key, mirroring checkout (design only, not yet built)
+## ADR-035: Voucher Path A double-submission guard — idempotency key, mirroring checkout (built 2026-08-26)
 
-**Status:** Accepted (design) — 2026-08-25 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+**Status:** Accepted — grilled 2026-08-25, built 2026-08-26 exactly as designed, no changes on contact with code
 
 **Context:** Parked from the 2026-08-24 fat-controller audit: unlike Path B (`VoucherController::storeFromOrder()`), which serializes on `vouchers.order_id`'s unique index, Path A (`VoucherController::store()`, admin-issued standalone voucher) has no natural equivalence key — two rapid identical submissions (double-click, or a client-side network timeout/retry) genuinely create two separate valid `Voucher` rows, each with its own ledger debit (`VoucherService::issue()`). The audit recorded three candidate designs without picking one: an idempotency key + unique constraint, accepting the risk as-is, or a short debounce lock.
 
@@ -1263,9 +1263,11 @@ An exact precedent already exists in this codebase for the identical problem: `o
 **Rationale:** Mirrors a pattern already proven correct in this exact codebase for the identical class of problem, rather than inventing a new mechanism for a solved problem — lowest risk, fastest to build correctly, and one less pattern for a future reader to learn. A request-scoped key (not content-scoped) is the only shape that satisfies both "catch a silent network retry" and "never block a legitimate identical-looking second voucher" at the same time — a debounce lock keyed on content (customer+amount+window) would satisfy the first at the cost of the second.
 
 **Consequence to track:**
-- New migration for `vouchers.idempotency_key` (nullable, unique).
-- `CreateVoucherRequest` gains validation for the new field (required from the frontend, since without it there is nothing to key on).
-- `CreateVoucherModal.tsx` needs the same stable-per-open-UUID `useRef` shape `OrderForm.tsx` already established — not a new pattern to invent.
+- ~~New migration for `vouchers.idempotency_key` (nullable, unique).~~ Built: `2026_08_26_090000_add_idempotency_key_to_vouchers_table.php`.
+- ~~`CreateVoucherRequest` gains validation for the new field (required from the frontend, since without it there is nothing to key on).~~ Built: `required|string|min:8|max:100`.
+- ~~`CreateVoucherModal.tsx` needs the same stable-per-open-UUID `useRef` shape `OrderForm.tsx` already established — not a new pattern to invent.~~ Built: lazy-init `useRef` (mount-is-the-open-event, since `CreateVoucherFields` already fully unmounts while closed — no explicit reset-on-open call needed the way `OrderForm.tsx`'s `openReview()` requires one).
+
+**Built 2026-08-26 — no scope changes on contact with code.** `VoucherController::store()` gained the same fast-path-lookup-then-unique-constraint-catch shape as `storeFromOrder()`/`CheckoutController` (`UniqueConstraintViolationException`, re-reads and returns the winning row). `VoucherService::issue()` gained an optional `idempotencyKey` param. 5 new backend tests (missing key rejected, repeated key replays the same voucher with no double ledger debit, a different key creates a genuinely separate voucher, a pre-existing key row is replayed rather than erroring); full backend suite **723/723 green** (up from 719). `admin/` `tsc --noEmit` clean. Migration applied to the local dev DB (this repo's own documented gotcha, handled not hit blind).
 
 ---
 

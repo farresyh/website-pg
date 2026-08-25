@@ -62,6 +62,12 @@ Next.js-version warning specific to that app. This file covers the whole repo;
 
 ## Branch Workflow (ADR-037)
 
+- **Before editing any file for a build/fix task, run `git branch
+  --show-current` first.** If it comes back `staging` or `main`, cut a
+  `fix/*`/`feature/*` branch off `staging` (see below) before touching
+  anything — don't edit first and branch afterward. This step has been
+  skipped in practice even with this file loaded, so treat it as the actual
+  first action of the task, not implied by the rules below it.
 - **Never branch from `main`.** Every feature/fix branch is cut from
   `staging`, PRs back into `staging`, gets verified in the staging
   environment, and only then does `staging` merge into `main` for

@@ -29,6 +29,15 @@ class CreateVoucherRequest extends FormRequest
             'amount' => ['required', 'integer', 'min:1', 'max:1000000'],
             'reason' => ['required', 'string', 'max:1000'],
             'expires_at' => ['nullable', 'date', 'after:now'],
+            // ADR-035: client-generated once per CreateVoucherModal open
+            // (CreateVoucherModal.tsx), unchanged across a resubmit of
+            // that same attempt — mirrors CreateCheckoutRequest's own
+            // idempotency_key exactly. Required: without it there is
+            // nothing for VoucherController::store() to key a duplicate-
+            // submission guard on. Not DB-validated here (`unique`) —
+            // the controller's own lookup + the DB unique constraint on
+            // vouchers.idempotency_key are what give it meaning.
+            'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
         ];
     }
 }

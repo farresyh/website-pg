@@ -41,11 +41,13 @@ final class VoucherService
         ?int $approvedBy,
         ?int $orderId = null,
         ?string $customerPhone = null,
+        ?string $idempotencyKey = null,
     ): Voucher {
-        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId) {
+        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId, $idempotencyKey) {
             $voucher = Voucher::query()->create([
                 'order_id' => $orderId,
                 'code' => $this->generateCode(),
+                'idempotency_key' => $idempotencyKey,
                 'customer_email' => $customerEmail,
                 'customer_phone' => $customerPhone,
                 'amount' => $amount,

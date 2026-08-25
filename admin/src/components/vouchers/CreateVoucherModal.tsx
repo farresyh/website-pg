@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
@@ -24,6 +24,15 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
   const [expiresAt, setExpiresAt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // ADR-035: one key per modal open, reused across every resubmit of
+  // this same attempt (double-click, timeout retry) — CreateVoucherFields
+  // fully unmounts while the modal is closed (see this file's own
+  // fresh-mount-per-open note), so this component's mount already *is*
+  // the "modal open" event; a fresh open always gets a fresh key.
+  const idempotencyKeyRef = useRef<string | null>(null);
+  if (idempotencyKeyRef.current === null) {
+    idempotencyKeyRef.current = crypto.randomUUID();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,6 +51,7 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
         amount: amountSen,
         reason,
         expires_at: expiresAt || null,
+        idempotency_key: idempotencyKeyRef.current!,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
