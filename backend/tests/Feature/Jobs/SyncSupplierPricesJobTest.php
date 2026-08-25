@@ -15,6 +15,7 @@ use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -181,8 +182,16 @@ class SyncSupplierPricesJobTest extends TestCase
             new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 12.0, 'active'),
         ], 'gamevion');
         $this->bindFakeAdapter(true, [
-            new SupplierCatalogItem('xld20', '20 Diamond', 'Mobile Legends', 11.0, 'active'),
+            // A realistic IDR magnitude (~44,000) so the converted sen
+            // value lands close to the package's existing cost_price
+            // (1000 sen) — ADR-033: 44000 * 0.000228 rate * 100 sen =
+            // ~1004 sen, well inside ADR-025's swing threshold, so this
+            // counts as an ordinary price_changed like Gamevion's own
+            // item, not a flagged anomaly.
+            new SupplierCatalogItem('xld20', '20 Diamond', 'Mobile Legends', 44000.0, 'active'),
         ], 'digiflazz-test');
+        // ADR-033: digiflazz-test is IDR, so ProductSyncService needs a real (faked) FX rate to convert with.
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
@@ -195,6 +204,66 @@ class SyncSupplierPricesJobTest extends TestCase
         $run->refresh();
         $this->assertSame('success', $run->status);
         $this->assertSame(2, $run->stats['price_changed']); // one per supplier
+    }
+
+    /**
+     * ADR-033 addendum decision 3: fx_rates_used is an array from day
+     * one (even with only one real non-MYR pair today) — Gamevion's
+     * own MYR sync contributes nothing to it.
+     */
+    public function test_job_records_the_fx_rate_used_for_a_non_myr_supplier(): void
+    {
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => [], 'currency' => 'IDR']);
+
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV733',
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '20 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'xld20',
+        ]);
+
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 12.0, 'active'),
+        ], 'gamevion');
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('xld20', '20 Diamond', 'Mobile Legends', 44000.0, 'active'),
+        ], 'digiflazz-test');
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(\App\Services\Sync\ProductSyncService::class),
+            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+        );
+
+        $run->refresh();
+        $this->assertSame(
+            [['from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000228, 'source' => 'open.er-api.com']],
+            $run->stats['fx_rates_used'],
+        );
+    }
+
+    public function test_job_records_an_empty_fx_rates_used_array_when_every_supplier_is_myr(): void
+    {
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $this->bindFakeAdapter(true, []);
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(\App\Services\Sync\ProductSyncService::class),
+            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+        );
+
+        $run->refresh();
+        $this->assertSame([], $run->stats['fx_rates_used']);
     }
 
     /** ADR-031: an inactive supplier is never synced. */

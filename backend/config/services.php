@@ -83,6 +83,19 @@ return [
         'connect_timeout' => (int) env('DIGIFLAZZ_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
+    // ADR-033 — keyless, no API key needed. CurrencyRateService reads
+    // this directly (no per-currency-pair adapter, so no AppServiceProvider
+    // binding needed the way gamevion/digiflazz's own adapters have one).
+    'fx_api' => [
+        'base_url' => env('FX_API_BASE_URL', 'https://open.er-api.com/v6/latest'),
+        'source' => env('FX_API_SOURCE', 'open.er-api.com'),
+        // ADR-033 decision 1 — ~12-24h: the free tier updates once
+        // daily, and a same-day cache keeps a single sync run
+        // deterministic (every package priced from the same fetch).
+        'cache_ttl_seconds' => (int) env('FX_API_CACHE_TTL_SECONDS', 86400),
+        'timeout' => (int) env('FX_API_TIMEOUT_SECONDS', 5),
+    ],
+
     // ADR-019 addendum: per-supplier circuit breaker (App\Services\
     // CircuitBreaker\CircuitBreaker) - trips after this many consecutive
     // server-error (5xx) responses, stays open for the cooldown window.

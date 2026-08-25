@@ -23,6 +23,11 @@ export interface PriceSyncRun {
     // shipped — older Sync History rows simply show nothing for these.
     floor_rejected?: number;
     price_anomalies?: number;
+    // ADR-033 addendum decision 3: absent on any run recorded before
+    // this shipped, same convention as floor_rejected/price_anomalies
+    // above — empty (not absent) on any run that touched only MYR
+    // suppliers.
+    fx_rates_used?: Array<{ from: string; to: string; rate: number; source: string }>;
   } | null;
   error_message: string | null;
 }
@@ -219,4 +224,30 @@ export function dismissPendingPriceChange(token: string, id: number) {
     method: "PATCH",
     token,
   });
+}
+
+/**
+ * ADR-033 addendum decision 1/2: one row per FX API fetch, generic
+ * across any currency pair — the "FX Rate History" section's data.
+ */
+export interface CurrencyRate {
+  id: number;
+  from: string;
+  to: string;
+  rate: number;
+  source: string;
+  fetched_at: string;
+}
+
+export interface CurrencyRatePage {
+  data: CurrencyRate[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+export function listCurrencyRates(token: string, page = 1) {
+  const query = page > 1 ? `?page=${page}` : "";
+
+  return apiFetch<CurrencyRatePage>(`/api/middleware/price-sync/fx-rates${query}`, { token });
 }

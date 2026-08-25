@@ -14,12 +14,18 @@ use Illuminate\Support\Carbon;
  */
 final class ProductSyncResult
 {
+    /**
+     * @param  array{from: string, to: string, rate: float}|null  $fxRateUsed  ADR-033 addendum: null for a MYR
+     *         supplier (no conversion happened); the exact rate this run converted every non-MYR price with
+     *         otherwise — folded into PriceSyncRun.stats.fx_rates_used for the Price Sync Center's own display.
+     */
     public function __construct(
         public readonly int $total,
         public readonly int $created,
         public readonly int $updated,
         public readonly int $durationMs,
         public readonly Carbon $syncedAt,
+        public readonly ?array $fxRateUsed = null,
     ) {
     }
 }

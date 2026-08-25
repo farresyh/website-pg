@@ -24,6 +24,7 @@ use App\Http\Controllers\HeroSlideController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
+use App\Http\Controllers\Middleware\CurrencyRateController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
@@ -237,6 +238,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/pending-price-changes', [PendingPriceChangeController::class, 'index']);
         Route::patch('/pending-price-changes/{pending_price_change}/approve', [PendingPriceChangeController::class, 'approve']);
         Route::patch('/pending-price-changes/{pending_price_change}/dismiss', [PendingPriceChangeController::class, 'dismiss']);
+
+        // ADR-033 addendum decision 1 — FX Rate History section.
+        Route::get('/fx-rates', [CurrencyRateController::class, 'index']);
     });
 
     // ADR-028 + its 2026-08-22 addendum — Store Branding / Footer

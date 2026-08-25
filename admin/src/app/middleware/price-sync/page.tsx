@@ -4,8 +4,11 @@
  * ADR-016: the full Price Sync Center — stat cards, Last Sync
  * Details, Pending Reactivation (SYNC-5/6, ADR-015), Manually
  * Dismissed Packages, and a paginated Sync History opening a
- * per-game Sync Details modal. Currency Rate (SYNC-3) is deliberately
- * omitted per ADR-016 decision #6 — no non-MYR supplier exists yet.
+ * per-game Sync Details modal. Currency Rate (SYNC-3) was originally
+ * omitted per ADR-016 decision #6 (no non-MYR supplier existed yet) —
+ * superseded once ADR-030/033 actually built one: the "Rate used"
+ * line in Last Sync Details and the new FX Rate History section below
+ * (ADR-033 addendum) close SYNC-3 for real.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -24,6 +27,7 @@ import {
   type DismissedPackage,
   type DismissedPackagePage,
   type PendingPriceChange,
+  type CurrencyRatePage,
   triggerPriceSync,
   getPriceSyncRun,
   getPriceSyncStats,
@@ -38,9 +42,11 @@ import {
   listPendingPriceChanges,
   approvePendingPriceChange,
   dismissPendingPriceChange,
+  listCurrencyRates,
 } from "@/lib/price-sync";
 import SyncDetailsModal from "@/components/price-sync/SyncDetailsModal";
 import PendingPriceChangeSection from "@/components/price-sync/PendingPriceChangeSection";
+import FxRateHistorySection from "@/components/price-sync/FxRateHistorySection";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -86,6 +92,9 @@ export default function PriceSyncPage() {
   const [historyPage, setHistoryPage] = useState<PriceSyncRunPage | null>(null);
   const [historyPageNumber, setHistoryPageNumber] = useState(1);
   const [detailsRunId, setDetailsRunId] = useState<number | null>(null);
+
+  const [fxRatesPage, setFxRatesPage] = useState<CurrencyRatePage | null>(null);
+  const [fxRatesPageNumber, setFxRatesPageNumber] = useState(1);
 
   useEffect(() => {
     const s = getClientSession();
@@ -140,6 +149,14 @@ export default function PriceSyncPage() {
       });
   }, []);
 
+  const refreshFxRates = useCallback((token: string, page: number) => {
+    listCurrencyRates(token, page)
+      .then(setFxRatesPage)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load FX rate history.");
+      });
+  }, []);
+
   const refreshAll = useCallback(
     (token: string) => {
       refreshStats(token);
@@ -147,8 +164,19 @@ export default function PriceSyncPage() {
       refreshDismissed(token, dismissedPageNumber);
       refreshHistory(token, historyPageNumber);
       refreshPendingPriceChanges(token);
+      refreshFxRates(token, fxRatesPageNumber);
     },
-    [refreshStats, refreshPending, refreshDismissed, refreshHistory, refreshPendingPriceChanges, dismissedPageNumber, historyPageNumber],
+    [
+      refreshStats,
+      refreshPending,
+      refreshDismissed,
+      refreshHistory,
+      refreshPendingPriceChanges,
+      refreshFxRates,
+      dismissedPageNumber,
+      historyPageNumber,
+      fxRatesPageNumber,
+    ],
   );
 
   useEffect(() => {
@@ -168,6 +196,12 @@ export default function PriceSyncPage() {
     refreshHistory(session.token, historyPageNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, historyPageNumber]);
+
+  useEffect(() => {
+    if (!session) return;
+    refreshFxRates(session.token, fxRatesPageNumber);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, fxRatesPageNumber]);
 
   useEffect(() => {
     if (!session || !run || !RUN_IN_FLIGHT.has(run.status)) {
@@ -418,6 +452,12 @@ export default function PriceSyncPage() {
                     )}
                   </p>
                 )}
+                {/* ADR-033 addendum decision 1/3: only ever non-empty once a real non-MYR supplier's sync runs. */}
+                {shown.status === "success" && !!shown.stats?.fx_rates_used?.length && (
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Rate used: {shown.stats.fx_rates_used.map((r) => `1 ${r.from} = ${r.rate} ${r.to}`).join(", ")}
+                  </p>
+                )}
               </>
             );
           })()}
@@ -618,6 +658,15 @@ export default function PriceSyncPage() {
           </div>
         </div>
       )}
+
+      {/* FX Rate History (ADR-033 addendum decision 1/2/4) */}
+      <div className="mt-8">
+        <FxRateHistorySection
+          page={fxRatesPage}
+          onPrevious={() => setFxRatesPageNumber((p) => p - 1)}
+          onNext={() => setFxRatesPageNumber((p) => p + 1)}
+        />
+      </div>
 
       {session && (
         <SyncDetailsModal

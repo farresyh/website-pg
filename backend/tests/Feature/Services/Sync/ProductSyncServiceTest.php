@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\Sync;
 
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Currency\CurrencyRateService;
 use App\Services\Sync\ProductSyncFailedException;
 use App\Services\Sync\ProductSyncService;
 use App\Services\Supplier\SupplierAdapter;
@@ -13,6 +14,7 @@ use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -82,7 +84,7 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('MLBB14', '14 Diamond (13+1 Bonus)', 'MOBA', 11.64, 'active'),
         ]);
 
-        $result = (new ProductSyncService())->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
 
         $this->assertSame(2, $result->total);
         $this->assertSame(2, $result->created);
@@ -106,11 +108,11 @@ class ProductSyncServiceTest extends TestCase
     {
         $supplier = $this->supplier();
 
-        (new ProductSyncService())->sync($supplier, $this->fakeAdapter(true, [
+        (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $this->fakeAdapter(true, [
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
         ]));
 
-        $result = (new ProductSyncService())->sync($supplier, $this->fakeAdapter(true, [
+        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $this->fakeAdapter(true, [
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds (renamed)', 'Free Fire', 12.5, 'active'),
         ]));
 
@@ -127,7 +129,7 @@ class ProductSyncServiceTest extends TestCase
     {
         $supplier = $this->supplier();
 
-        (new ProductSyncService())->sync($supplier, $this->fakeAdapter(true, [
+        (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $this->fakeAdapter(true, [
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', null, 'inactive'),
         ]));
 
@@ -143,6 +145,7 @@ class ProductSyncServiceTest extends TestCase
      */
     public function test_sync_filters_by_category_whitelist_when_the_supplier_has_one_configured(): void
     {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
         $supplier = Supplier::query()->create([
             'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR',
             'api_config' => ['category_whitelist' => ['Mobile Legends']],
@@ -152,7 +155,7 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('pln20', 'PLN Token 20k', 'PLN Prepaid', 21000.0, 'active'),
         ]);
 
-        $result = (new ProductSyncService())->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
 
         $this->assertSame(1, $result->total);
         $this->assertSame(1, SupplierProduct::query()->count());
@@ -161,6 +164,7 @@ class ProductSyncServiceTest extends TestCase
 
     public function test_sync_mirrors_every_category_when_no_whitelist_is_configured(): void
     {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
         $supplier = Supplier::query()->create([
             'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => [],
         ]);
@@ -169,10 +173,64 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('pln20', 'PLN Token 20k', 'PLN Prepaid', 21000.0, 'active'),
         ]);
 
-        $result = (new ProductSyncService())->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
 
         $this->assertSame(2, $result->total);
         $this->assertSame(2, SupplierProduct::query()->count());
+    }
+
+    /**
+     * ADR-033 decision 3: the single conversion boundary — a
+     * non-MYR supplier's raw price is converted to MYR sen here, and
+     * only here, using CurrencyRateService's fetched rate. `ceil`
+     * (not `round`) protects margin by construction, per the founder's
+     * own decision.
+     */
+    public function test_sync_converts_a_non_myr_supplier_price_to_myr_sen(): void
+    {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => []]);
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem('xld10', 'MLBB 10 Diamonds', 'Mobile Legends', 3200.0, 'active'),
+        ]);
+
+        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+
+        // 3200 IDR * 0.000228 MYR/IDR = 0.7296 MYR = 72.96 sen -> ceil -> 73 sen.
+        $this->assertSame(73, SupplierProduct::query()->firstOrFail()->price_sen);
+        $this->assertSame(['from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000228, 'source' => 'open.er-api.com'], $result->fxRateUsed);
+    }
+
+    public function test_sync_leaves_fx_rate_used_null_for_a_myr_supplier(): void
+    {
+        $supplier = $this->supplier();
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]);
+
+        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+
+        $this->assertNull($result->fxRateUsed);
+    }
+
+    /**
+     * The fallback (CurrencyRateService's own concern) keeps a
+     * one-off FX outage from silently corrupting a whole sync run —
+     * it surfaces as the same ProductSyncFailedException a supplier
+     * adapter failure already produces, only when NO rate exists to
+     * fall back to at all (the vanishingly rare first-ever-fetch case).
+     */
+    public function test_sync_throws_when_the_fx_rate_is_unavailable_and_none_was_ever_stored(): void
+    {
+        Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => []]);
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem('xld10', 'MLBB 10 Diamonds', 'Mobile Legends', 3200.0, 'active'),
+        ]);
+
+        $this->expectException(ProductSyncFailedException::class);
+
+        (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
     }
 
     public function test_sync_throws_and_writes_nothing_when_the_adapter_call_fails(): void
@@ -181,7 +239,7 @@ class ProductSyncServiceTest extends TestCase
         $adapter = $this->fakeAdapter(false, [], 'timeout', 'Gamevion did not respond');
 
         try {
-            (new ProductSyncService())->sync($supplier, $adapter);
+            (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
             $this->fail('Expected ProductSyncFailedException was not thrown.');
         } catch (ProductSyncFailedException) {
             // expected

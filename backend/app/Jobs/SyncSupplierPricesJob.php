@@ -77,6 +77,10 @@ final class SyncSupplierPricesJob implements ShouldQueue
         $stats = [
             'catalog_total' => 0, 'catalog_created' => 0, 'catalog_updated' => 0,
             'price_changed' => 0, 'deactivated' => 0, 'floor_rejected' => 0, 'price_anomalies' => 0,
+            // ADR-033 addendum decision 3: an array from day one — a
+            // MYR-only run (Gamevion alone, today's only real case)
+            // simply leaves this empty, not null/absent.
+            'fx_rates_used' => [],
         ];
         $affectedGameIds = [];
         $succeeded = 0;
@@ -106,6 +110,11 @@ final class SyncSupplierPricesJob implements ShouldQueue
             $stats['deactivated'] += $stage2->deactivated;
             $stats['floor_rejected'] += $stage2->floorRejected;
             $stats['price_anomalies'] += $stage2->anomaliesFlagged;
+
+            if ($stage1->fxRateUsed !== null) {
+                $stats['fx_rates_used'][] = $stage1->fxRateUsed;
+            }
+
             $affectedGameIds = [...$affectedGameIds, ...$stage2->affectedGameIds];
         }
 
