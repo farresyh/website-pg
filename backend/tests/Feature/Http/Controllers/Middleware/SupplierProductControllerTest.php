@@ -343,6 +343,50 @@ class SupplierProductControllerTest extends TestCase
         $this->assertTrue($package->is_active);
     }
 
+    /**
+     * ADR-034 decision 3: denomination can be curated right at promote
+     * time (the other half — editing an already-promoted package — is
+     * PackageControllerTest::test_update_denomination_sets_the_value).
+     */
+    public function test_promote_accepts_an_optional_denomination(): void
+    {
+        config(['packages.default_markup_percent' => 15.0]);
+
+        $supplier = $this->supplier();
+        $product = $this->rawProduct($supplier);
+        $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
+            'game_id' => $game->id,
+            'name' => '14 Diamond (13+1 Bonus)',
+            'denomination' => 14,
+        ]);
+
+        $response->assertCreated();
+        $package = Package::query()->where('supplier_package_ref', 'GV733')->firstOrFail();
+        $this->assertSame(14, $package->denomination);
+    }
+
+    public function test_promote_leaves_denomination_null_when_omitted(): void
+    {
+        config(['packages.default_markup_percent' => 15.0]);
+
+        $supplier = $this->supplier();
+        $product = $this->rawProduct($supplier);
+        $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
+            'game_id' => $game->id,
+            'name' => '14 Diamond (13+1 Bonus)',
+        ]);
+
+        $response->assertCreated();
+        $package = Package::query()->where('supplier_package_ref', 'GV733')->firstOrFail();
+        $this->assertNull($package->denomination);
+    }
+
     public function test_promote_rejects_without_a_game_id(): void
     {
         $supplier = $this->supplier();

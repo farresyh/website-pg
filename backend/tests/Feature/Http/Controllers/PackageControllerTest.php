@@ -145,6 +145,63 @@ class PackageControllerTest extends TestCase
         $this->assertFalse($package->refresh()->is_active);
     }
 
+    /**
+     * ADR-034 decision 3: denomination is admin-curated at edit time
+     * (not just promote time) — this is how an admin backfills the
+     * equivalence key onto an already-promoted package.
+     */
+    public function test_update_denomination_sets_the_value(): void
+    {
+        $package = $this->package(['denomination' => null]);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$package->id}/denomination", [
+            'denomination' => 100,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(100, $package->refresh()->denomination);
+    }
+
+    public function test_update_denomination_can_clear_it_back_to_null(): void
+    {
+        $package = $this->package(['denomination' => 100]);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$package->id}/denomination", [
+            'denomination' => null,
+        ]);
+
+        $response->assertOk();
+        $this->assertNull($package->refresh()->denomination);
+    }
+
+    public function test_update_denomination_rejects_zero(): void
+    {
+        $package = $this->package();
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/denomination", ['denomination' => 0])
+            ->assertUnprocessable();
+    }
+
+    public function test_update_denomination_rejects_a_negative_value(): void
+    {
+        $package = $this->package();
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/denomination", ['denomination' => -5])
+            ->assertUnprocessable();
+    }
+
+    public function test_update_denomination_requires_authentication(): void
+    {
+        $package = $this->package();
+
+        $this->patchJson("/api/packages/{$package->id}/denomination", ['denomination' => 100])
+            ->assertUnauthorized();
+    }
+
     public function test_destroy_removes_the_package(): void
     {
         $package = $this->package();

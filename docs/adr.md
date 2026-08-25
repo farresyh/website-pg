@@ -1221,7 +1221,7 @@ The founder's earlier question — "rate berubah tiap hari, bukan patut fetch ik
 
 ---
 
-## ADR-034: Storefront best-price selection — `packages.denomination` (design only, not yet built)
+## ADR-034: Storefront best-price selection — `packages.denomination` (built 2026-08-25)
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 

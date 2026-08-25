@@ -10,6 +10,7 @@ class Package extends Model
     protected $fillable = [
         'game_id',
         'name',
+        'denomination',
         'cost_price',
         'reseller_cost_price',
         'markup_percent',
@@ -22,6 +23,7 @@ class Package extends Model
     ];
 
     protected $casts = [
+        'denomination' => 'integer',
         'cost_price' => 'integer',
         'reseller_cost_price' => 'integer',
         'markup_percent' => 'decimal:2',

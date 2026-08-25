@@ -32,6 +32,10 @@ class PromoteSupplierProductRequest extends FormRequest
         return [
             'game_id' => ['required', 'integer', 'exists:games,id'],
             'name' => ['required', 'string', 'max:255'],
+            // ADR-034 decision 3/4: optional, admin-curated, never
+            // auto-matched by name — the storefront best-price dedup
+            // equivalence key. Left null promotes exactly as before.
+            'denomination' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

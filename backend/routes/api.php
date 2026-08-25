@@ -343,6 +343,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/packages/{package}', [PackageController::class, 'update']);
         Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
         Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
+        Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
         Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
     });
 });

@@ -95,6 +95,49 @@ class GameControllerTest extends TestCase
     }
 
     /**
+     * ADR-034 follow-up, founder feedback 2026-08-25: denomination
+     * ascending reads naturally cheapest-first for the admin (smaller
+     * amount usually = cheaper), and matches how the storefront's own
+     * dedup already treats denomination as the meaningful sort key —
+     * previously this was alphabetical by name, which put "10209
+     * Diamonds" before "1192 Diamonds" (string sort, not numeric).
+     * Packages without a curated denomination yet sort last (by name),
+     * not first — an unset value has no known "size" to sort by.
+     */
+    public function test_packages_orders_by_denomination_ascending_with_nulls_last(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '10209 Diamonds', 'denomination' => 10209, 'cost_price' => 61805, 'reseller_cost_price' => 71076,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '13 + 1 Diamonds', 'denomination' => 14, 'cost_price' => 94, 'reseller_cost_price' => 103,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B',
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '1252 + 194 Diamonds', 'denomination' => null, 'cost_price' => 9345, 'reseller_cost_price' => 10747,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'C',
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '1192 Diamonds', 'denomination' => 1192, 'cost_price' => 7281, 'reseller_cost_price' => 8373,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'D',
+        ]);
+
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/games/{$game->id}/packages");
+
+        $response->assertOk();
+        $this->assertSame(
+            ['13 + 1 Diamonds', '1192 Diamonds', '10209 Diamonds', '1252 + 194 Diamonds'],
+            collect($response->json())->pluck('name')->all(),
+        );
+    }
+
+    /**
      * `supplier_active` (founder revision, 2026-07-25): a read-only
      * indicator distinct from `is_active` (our own control) — has the
      * supplier turned this item off on their own side, per the last

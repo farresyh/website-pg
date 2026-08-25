@@ -114,7 +114,17 @@ class GameController extends Controller
             self::packagesCacheKey($game->id),
             self::CACHE_TTL_SECONDS,
             function () use ($game) {
-                $packages = $game->packages()->orderBy('name')->get();
+                // ADR-034 follow-up (founder feedback, 2026-08-25):
+                // smallest denomination first reads as cheapest-first
+                // to an admin, and sorts numerically rather than the
+                // previous alphabetical-by-name (which put "10209
+                // Diamonds" before "1192 Diamonds"). Packages without
+                // a curated denomination yet sort last, by name.
+                $packages = $game->packages()
+                    ->orderByRaw('denomination IS NULL')
+                    ->orderBy('denomination')
+                    ->orderBy('name')
+                    ->get();
 
                 $supplierStatuses = SupplierProduct::query()
                     ->whereIn('external_ref', $packages->pluck('supplier_package_ref'))

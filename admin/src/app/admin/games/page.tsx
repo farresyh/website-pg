@@ -35,6 +35,7 @@ import {
   updatePackage,
   updatePackageMarkup,
   updatePackageStatus,
+  updatePackageDenomination,
   deletePackage,
 } from "@/lib/games";
 import EditGameModal from "@/components/games/EditGameModal";
@@ -79,6 +80,45 @@ function MarkupCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (markupPerc
         />
         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
       </div>
+      <Button size="sm" disabled={saving} onClick={handleUpdate}>
+        {saving ? "…" : "Update"}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * ADR-034 decision 3: the edit-time half of curating denomination —
+ * same fresh-mount-per-value-change reasoning as MarkupCell above
+ * (`key={`${pkg.id}-${pkg.denomination}`}` at the call site). Empty
+ * input submits `null` — an admin can clear a wrongly-set value.
+ */
+function DenominationCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (denomination: number | null) => Promise<void> }) {
+  const [value, setValue] = useState(pkg.denomination === null ? "" : String(pkg.denomination));
+  const [saving, setSaving] = useState(false);
+
+  async function handleUpdate() {
+    const trimmed = value.trim();
+    const denomination = trimmed === "" ? null : parseInt(trimmed, 10);
+    if (denomination !== null && (!Number.isFinite(denomination) || denomination < 1)) return;
+
+    setSaving(true);
+    try {
+      await onUpdate(denomination);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="—"
+        className="h-9 w-16 rounded-lg border border-gray-300 px-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+      />
       <Button size="sm" disabled={saving} onClick={handleUpdate}>
         {saving ? "…" : "Update"}
       </Button>
@@ -210,6 +250,18 @@ export default function GamesPage() {
     }
   }
 
+  async function handleUpdateDenomination(pkg: GamePackage, denomination: number | null) {
+    if (!session) return;
+    setError(null);
+    try {
+      // Merge, don't replace — same reasoning as handleUpdateMarkup.
+      const updated = await updatePackageDenomination(session.token, pkg.id, denomination);
+      setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, ...updated } : p)) ?? null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update denomination.");
+    }
+  }
+
   if (selected) {
     return (
       <div>
@@ -243,6 +295,7 @@ export default function GamesPage() {
                 <TableRow>
                   <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
                   <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</TableCell>
+                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Denomination</TableCell>
                   <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</TableCell>
                   <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Markup %</TableCell>
                   <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</TableCell>
@@ -271,6 +324,13 @@ export default function GamesPage() {
                       )}
                       <br />
                       <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
+                    </TableCell>
+                    <TableCell className="px-5 py-4 text-theme-sm">
+                      <DenominationCell
+                        key={`${pkg.id}-${pkg.denomination}`}
+                        pkg={pkg}
+                        onUpdate={(denomination) => handleUpdateDenomination(pkg, denomination)}
+                      />
                     </TableCell>
                     <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</TableCell>
                     <TableCell className="px-5 py-4 text-theme-sm">

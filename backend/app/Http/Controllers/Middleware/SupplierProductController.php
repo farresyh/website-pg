@@ -203,6 +203,7 @@ class SupplierProductController extends Controller
         $package = Package::query()->create([
             'game_id' => $data['game_id'],
             'name' => $data['name'],
+            'denomination' => $data['denomination'] ?? null,
             'cost_price' => $supplierProduct->price_sen,
             'markup_percent' => $markupPercent,
             'reseller_cost_price' => $markup->calculateResellerCostPrice($supplierProduct->price_sen, $markupPercent),

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Games\UpdatePackageDenominationRequest;
 use App\Http\Requests\Games\UpdatePackageMarkupRequest;
 use App\Http\Requests\Games\UpdatePackageRequest;
 use App\Http\Requests\Games\UpdatePackageStatusRequest;
@@ -53,6 +54,21 @@ class PackageController extends Controller
     public function updateStatus(UpdatePackageStatusRequest $request, Package $package): JsonResponse
     {
         $package->update(['is_active' => $request->validated('is_active')]);
+        GameController::forgetPackagesCache($package->game_id);
+
+        return response()->json($package);
+    }
+
+    /**
+     * ADR-034 decision 3/4: admin-curated, not auto-matched by name —
+     * this is the edit-time half (promote-time half is
+     * SupplierProductController::promote()), used to backfill the
+     * equivalence key onto an already-promoted package (e.g. the
+     * existing Gamevion package once a matching Digiflazz one exists).
+     */
+    public function updateDenomination(UpdatePackageDenominationRequest $request, Package $package): JsonResponse
+    {
+        $package->update(['denomination' => $request->validated('denomination')]);
         GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);

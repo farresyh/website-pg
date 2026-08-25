@@ -157,6 +157,132 @@ class CatalogControllerTest extends TestCase
         $this->assertSame(330, $response->json()[0]['selling_price_sen']);
     }
 
+    /**
+     * ADR-034: two active packages sharing a (game_id, denomination)
+     * equivalence key are the same product sold by two suppliers —
+     * the storefront must show only the cheaper one, never both.
+     */
+    public function test_packages_dedups_by_denomination_keeping_the_cheaper_one(): void
+    {
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamonds (Gamevion)', 'denomination' => 14,
+            'cost_price' => 500, 'reseller_cost_price' => 600,
+            'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV14', 'is_active' => true,
+        ]);
+        $cheaper = Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamonds (Digiflazz)', 'denomination' => 14,
+            'cost_price' => 480, 'reseller_cost_price' => 550,
+            'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'DF14', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $packages = $response->json();
+        $this->assertCount(1, $packages);
+        $this->assertSame($cheaper->id, $packages[0]['id']);
+        $this->assertSame(550, $packages[0]['selling_price_sen']);
+    }
+
+    /**
+     * Non-integer-amount products (bundles/passes) stay null forever
+     * (ADR-034's own Consequence) — must never be collapsed together
+     * just because they share the same null "value".
+     */
+    public function test_packages_with_null_denomination_are_never_deduped(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Starlight Membership', 'denomination' => null,
+            'cost_price' => 500, 'reseller_cost_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-SL', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass', 'denomination' => null,
+            'cost_price' => 500, 'reseller_cost_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-WP', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $this->assertCount(2, $response->json());
+    }
+
+    /**
+     * Deterministic tie-break (lower package id) when two duplicate
+     * packages price identically — not specified by the ADR itself,
+     * but the pick must be stable across requests, not arbitrary.
+     */
+    public function test_packages_dedup_tie_breaks_on_lower_package_id(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+        $first = Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamonds (A)', 'denomination' => 14,
+            'cost_price' => 500, 'reseller_cost_price' => 550,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A14', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamonds (B)', 'denomination' => 14,
+            'cost_price' => 500, 'reseller_cost_price' => 550,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B14', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $packages = $response->json();
+        $this->assertCount(1, $packages);
+        $this->assertSame($first->id, $packages[0]['id']);
+    }
+
+    /**
+     * ADR-034 follow-up, founder feedback 2026-08-25: same reasoning
+     * as GameController::packages()'s own admin-side ordering change —
+     * smallest denomination first reads as cheapest-first, sorts
+     * numerically instead of alphabetically-by-name. Packages without
+     * a curated denomination sort last, by name.
+     */
+    public function test_packages_orders_by_denomination_ascending_with_nulls_last(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '10209 Diamonds', 'denomination' => 10209,
+            'cost_price' => 61805, 'reseller_cost_price' => 71076,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '13 + 1 Diamonds', 'denomination' => 14,
+            'cost_price' => 94, 'reseller_cost_price' => 103,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '1252 + 194 Diamonds', 'denomination' => null,
+            'cost_price' => 9345, 'reseller_cost_price' => 10747,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'C', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '1192 Diamonds', 'denomination' => 1192,
+            'cost_price' => 7281, 'reseller_cost_price' => 8373,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'D', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $this->assertSame(
+            ['13 + 1 Diamonds', '1192 Diamonds', '10209 Diamonds', '1252 + 194 Diamonds'],
+            collect($response->json())->pluck('name')->all(),
+        );
+    }
+
     public function test_packages_404s_for_an_inactive_game(): void
     {
         Game::query()->create(['name' => 'Discontinued', 'slug' => 'discontinued', 'is_active' => false]);

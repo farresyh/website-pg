@@ -48,6 +48,8 @@ export interface Game {
 export interface GamePackage {
   id: number;
   name: string;
+  /** ADR-034: the package's inherent value (e.g. diamond/UC amount) — storefront best-price dedup key is (game_id, denomination). Null for non-integer-amount products (bundles/passes). */
+  denomination: number | null;
   cost_price: number;
   reseller_cost_price: number;
   markup_percent: string; // decimal cast serializes as a string
@@ -110,6 +112,15 @@ export function updatePackageStatus(token: string, packageId: number, isActive: 
     method: "PATCH",
     token,
     body: { is_active: isActive },
+  });
+}
+
+/** ADR-034 decision 3: the edit-time half of curating denomination — the promote-time half is PromoteValues/promoteSupplierProduct. Pass null to clear it. */
+export function updatePackageDenomination(token: string, packageId: number, denomination: number | null) {
+  return apiFetch<GamePackage>(`/api/packages/${packageId}/denomination`, {
+    method: "PATCH",
+    token,
+    body: { denomination },
   });
 }
 

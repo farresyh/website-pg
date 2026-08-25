@@ -56,6 +56,8 @@ export interface LinkCategoryValues {
 export interface PromoteValues {
   game_id: number;
   name: string;
+  /** ADR-034 decision 3/4: optional, admin-curated, never auto-matched by name — the storefront best-price dedup key. Leave unset to promote exactly as before. */
+  denomination?: number | null;
 }
 
 export function listSupplierProducts(token: string, params: { search?: string; category?: string; page?: number } = {}) {

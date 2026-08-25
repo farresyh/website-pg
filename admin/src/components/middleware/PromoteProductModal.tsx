@@ -39,6 +39,7 @@ function PromoteProductFields({
   gameName: string;
 }) {
   const [finalName, setFinalName] = useState(product.name);
+  const [denomination, setDenomination] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,7 +48,8 @@ function PromoteProductFields({
     setError(null);
     setSubmitting(true);
     try {
-      await onSubmit({ name: finalName });
+      const parsedDenomination = denomination.trim() === "" ? null : parseInt(denomination, 10);
+      await onSubmit({ name: finalName, denomination: parsedDenomination });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -83,6 +85,19 @@ function PromoteProductFields({
         <div>
           <Label htmlFor="final_name">Final Package Name (shown to customers)</Label>
           <Input id="final_name" value={finalName} onChange={(e) => setFinalName(e.target.value)} required />
+        </div>
+
+        <div>
+          <Label htmlFor="denomination">Denomination (optional)</Label>
+          <Input
+            id="denomination"
+            value={denomination}
+            onChange={(e) => setDenomination(e.target.value)}
+            placeholder="e.g. 14 for 14 Diamonds"
+          />
+          <p className="mt-1 text-theme-xs text-gray-400">
+            Set this to let the storefront hide a pricier duplicate from another supplier selling the same amount.
+          </p>
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
