@@ -8,6 +8,15 @@ import { getBranding } from "@/lib/branding";
 import { getSeoSettings, getSeoScripts } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 
+// Branding/SEO settings are live, admin-editable data (same reasoning
+// already applied to page.tsx/sitemap.ts/robots.ts/etc.) — never bake
+// into a static next build artifact. Without this, Next.js's own
+// auto-generated /_not-found route tries to statically prerender
+// through this layout at build time, requiring a reachable backend
+// that doesn't exist in CI (or during a Docker image build, before a
+// real production backend is even up).
+export const dynamic = "force-dynamic";
+
 const bebasNeue = Bebas_Neue({
   subsets: ["latin"],
   weight: "400",
