@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Fulfillment;
 
+use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Order\DeliveryStatus;
@@ -45,6 +46,13 @@ use Illuminate\Support\Facades\Log;
  * support a reference-number lookup. needs_review exists because no
  * automated resolution is possible with Gamevion's currently-confirmed
  * surface, not because this command doesn't try hard enough.
+ *
+ * ADR-032 decision 5 adds a third, structurally different job: the
+ * poll backup for an async supplier's Pending state (checkStalePending()
+ * below) — this one CAN resolve via SupplierAdapter::checkStatus(),
+ * unlike Gap X/Y above, since an async supplier's own status-check
+ * endpoint is keyed on our own reference_number, not a supplier-side
+ * invoice number we may not have yet.
  */
 #[Signature('app:reconcile-pending-deliveries')]
 #[Description('Retry ambiguously-stuck deliveries once, and flag genuinely unresolvable ones for manual review.')]
@@ -56,6 +64,7 @@ class ReconcilePendingDeliveriesCommand extends Command
 
         $this->retryStuckProcessing($staleAfterMinutes);
         $this->flagStaleDuplicateReferences($staleAfterMinutes, $orderStatus);
+        $this->checkStalePending($orderStatus);
 
         return self::SUCCESS;
     }
@@ -113,6 +122,59 @@ class ReconcilePendingDeliveriesCommand extends Command
                 Log::withContext(['order_number' => $locked->order_number]);
                 Log::warning('Delivery reconciliation: flagged stale duplicate_reference for manual review');
             });
+        }
+    }
+
+    /**
+     * ADR-032 decision 5/6 — the poll backup to a supplier webhook.
+     * Per-order thresholds read from Supplier.api_config, falling back
+     * to the config defaults, since only an async supplier (Digiflazz)
+     * has real operational rules here (Gamevion never reaches Pending
+     * at all). Never calls the supplier synchronously from this
+     * scheduled command (ADR-014) — dispatches CheckSupplierDeliveryJob
+     * instead, which does its own lockForUpdate() via
+     * finalizePendingDelivery(), same as retryStuckProcessing() above.
+     */
+    private function checkStalePending(OrderStatusService $orderStatus): void
+    {
+        $defaultStaleMinutes = (int) config('services.delivery_reconciliation.pending_stale_minutes');
+        $defaultMaxAgeDays = (int) config('services.delivery_reconciliation.max_reconcile_age_days');
+
+        $orders = Order::query()
+            ->where('delivery_status', DeliveryStatus::Pending->value)
+            ->with('supplier')
+            ->get();
+
+        foreach ($orders as $order) {
+            $apiConfig = $order->supplier?->api_config ?? [];
+            $staleMinutes = $apiConfig['pending_stale_minutes'] ?? $defaultStaleMinutes;
+            $maxAgeDays = $apiConfig['max_reconcile_age_days'] ?? $defaultMaxAgeDays;
+
+            if ($order->created_at->lte(now()->subDays($maxAgeDays))) {
+                DB::transaction(function () use ($order, $orderStatus) {
+                    $locked = Order::query()->lockForUpdate()->find($order->id);
+
+                    if ($locked === null || $locked->delivery_status !== DeliveryStatus::Pending) {
+                        return;
+                    }
+
+                    $needsReview = $orderStatus->markNeedsReview($locked->delivery_status);
+
+                    $locked->update(['delivery_status' => $needsReview->value]);
+
+                    Log::withContext(['order_number' => $locked->order_number]);
+                    Log::warning('Delivery reconciliation: Pending order too old to safely re-poll, flagged for review');
+                });
+
+                continue;
+            }
+
+            if ($order->updated_at->lte(now()->subMinutes($staleMinutes))) {
+                Log::withContext(['order_number' => $order->order_number]);
+                Log::info('Delivery reconciliation: dispatching stale-pending status check');
+
+                CheckSupplierDeliveryJob::dispatch($order);
+            }
         }
     }
 }

@@ -174,6 +174,19 @@ return [
     // genuinely ambiguous, not just "still retrying".
     'delivery_reconciliation' => [
         'stale_after_minutes' => (int) env('DELIVERY_RECONCILIATION_STALE_AFTER_MINUTES', 15),
+
+        // ADR-032 decision 6 — defaults for an async supplier's own
+        // "don't re-check within N minutes" guard (Digiflazz docs:
+        // don't re-call the same transaction within 1 minute).
+        // Overridable per-supplier via Supplier.api_config['pending_stale_minutes'].
+        'pending_stale_minutes' => (int) env('DELIVERY_RECONCILIATION_PENDING_STALE_MINUTES', 10),
+
+        // Digiflazz docs: never re-submit a ref_id older than 90 days
+        // — it creates a NEW transaction rather than checking the old
+        // one. A Pending order this old is auto-flagged for manual
+        // review instead of polled. Overridable per-supplier via
+        // Supplier.api_config['max_reconcile_age_days'].
+        'max_reconcile_age_days' => (int) env('DELIVERY_RECONCILIATION_MAX_RECONCILE_AGE_DAYS', 90),
     ],
 
 ];

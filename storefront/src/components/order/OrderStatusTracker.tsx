@@ -44,12 +44,19 @@ function deriveStages(order: TrackedOrder): Stage[] {
     ];
   }
 
+  // ADR-032: Pending (an async supplier accepted the order but hasn't
+  // confirmed the final outcome) reads identically to Processing here
+  // — to a customer both mean "topup sedang diproses", the mechanism
+  // resolving it (webhook/poll vs. a synchronous call) isn't their
+  // concern.
+  const delivering = order.delivery_status === "processing" || order.delivery_status === "pending";
+
   return [
     { label: "Payment Received", sub: paid ? "Paid" : "Waiting", state: paid ? "done" : "active" },
     {
       label: "Processing",
-      sub: order.delivery_status === "delivered" ? "Delivered" : order.delivery_status === "processing" ? "Delivering…" : "Waiting",
-      state: order.delivery_status === "delivered" ? "done" : paid && order.delivery_status === "processing" ? "active" : "pending",
+      sub: order.delivery_status === "delivered" ? "Delivered" : delivering ? "Delivering…" : "Waiting",
+      state: order.delivery_status === "delivered" ? "done" : paid && delivering ? "active" : "pending",
     },
     { label: "Order Complete", sub: order.delivery_status === "delivered" ? "Done" : "Waiting", state: order.delivery_status === "delivered" ? "done" : "pending" },
   ];

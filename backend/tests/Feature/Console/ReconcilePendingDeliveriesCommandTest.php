@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Console;
 
+use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,5 +135,64 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
         $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
 
         Bus::assertNotDispatched(FulfillOrderJob::class);
+    }
+
+    /** ADR-032 decision 5: a stale Pending order dispatches the poll's own status check. */
+    public function test_dispatches_a_status_check_for_a_stale_pending_order(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order(['supplier_id' => $supplier->id, 'delivery_status' => DeliveryStatus::Pending->value]);
+        $order->forceFill(['updated_at' => now()->subMinutes(15)])->save();
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertDispatched(CheckSupplierDeliveryJob::class, fn ($job) => $job->order->id === $order->id);
+    }
+
+    public function test_does_not_dispatch_a_status_check_for_a_recently_pending_order(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $this->order(['supplier_id' => $supplier->id, 'delivery_status' => DeliveryStatus::Pending->value]); // updated_at is "now"
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertNotDispatched(CheckSupplierDeliveryJob::class);
+    }
+
+    /** A per-supplier override (Supplier.api_config) takes priority over the config default. */
+    public function test_respects_a_per_supplier_pending_stale_minutes_override(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR',
+            'api_config' => ['pending_stale_minutes' => 2],
+        ]);
+        $order = $this->order(['supplier_id' => $supplier->id, 'delivery_status' => DeliveryStatus::Pending->value]);
+        $order->forceFill(['updated_at' => now()->subMinutes(5)])->save(); // stale under the 2-min override, not the 10-min default
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertDispatched(CheckSupplierDeliveryJob::class);
+    }
+
+    /**
+     * ADR-032 decision 6: Digiflazz's own 90-day re-submit rule — a
+     * Pending order this old is auto-flagged for manual review instead
+     * of polled, never re-checked (a re-submit that old creates a NEW
+     * transaction rather than checking the existing one).
+     */
+    public function test_flags_a_pending_order_older_than_max_reconcile_age_for_manual_review(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order(['supplier_id' => $supplier->id, 'delivery_status' => DeliveryStatus::Pending->value]);
+        $order->forceFill(['created_at' => now()->subDays(91), 'updated_at' => now()->subDays(91)])->save();
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        Bus::assertNotDispatched(CheckSupplierDeliveryJob::class);
     }
 }

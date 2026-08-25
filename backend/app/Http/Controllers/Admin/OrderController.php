@@ -32,12 +32,15 @@ class OrderController extends Controller
      * customer's money is in, credits never arrived), needs_review
      * (ADR-026/ORD-10 — an ambiguous delivery outcome, distinct from
      * need_action: "Issue Voucher" is deliberately not available here,
-     * only "Mark as Delivered" or "Resend Delivery"), processing
-     * (delivery attempt in flight), completed (delivered),
-     * awaiting_payment (still pending 30+ minutes after checkout —
-     * ADR-021/PAY-3's own visibility gap for a webhook that never
-     * arrived; ReconcilePendingPaymentsCommand acts on the same window),
-     * today, or omitted for all.
+     * only "Mark as Delivered" or "Resend Delivery"), pending_delivery
+     * (ADR-032 — an async supplier accepted the order but hasn't
+     * confirmed the final outcome yet; resolves itself via webhook or
+     * ReconcilePendingDeliveriesCommand's own poll, no admin action
+     * available here), processing (delivery attempt in flight),
+     * completed (delivered), awaiting_payment (still pending 30+
+     * minutes after checkout — ADR-021/PAY-3's own visibility gap for
+     * a webhook that never arrived; ReconcilePendingPaymentsCommand
+     * acts on the same window), today, or omitted for all.
      */
     public function index(Request $request): JsonResponse
     {
@@ -53,6 +56,7 @@ class OrderController extends Controller
                 ->where('payment_status', PaymentStatus::Paid->value)
                 ->where('delivery_status', DeliveryStatus::Failed->value),
             'needs_review' => $query->where('delivery_status', DeliveryStatus::NeedsReview->value),
+            'pending_delivery' => $query->where('delivery_status', DeliveryStatus::Pending->value),
             'processing' => $query->where('delivery_status', DeliveryStatus::Processing->value),
             'completed' => $query->where('delivery_status', DeliveryStatus::Delivered->value),
             'awaiting_payment' => $query

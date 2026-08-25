@@ -8,6 +8,7 @@ use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
+use App\Services\Supplier\SupplierOutcome;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -112,7 +113,25 @@ final class OrderFulfillmentService
                 customerPhone: $locked->customer_phone,
             ));
 
-            if (! $result->success) {
+            // ADR-032: branches on the adapter's normalized outcome,
+            // never on raw success/failure alone — a Pending response
+            // (async supplier, e.g. Digiflazz) is neither a clean
+            // delivery nor a rejection, and must never be mistaken for
+            // either.
+            if ($result->outcome === SupplierOutcome::Pending) {
+                $locked->update([
+                    'delivery_status' => $this->orderStatus->markPending($processingStatus)->value,
+                    'supplier_response' => $result->data,
+                ]);
+
+                Log::info('Delivery pending — awaiting async supplier confirmation', [
+                    'supplier_response' => $result->data,
+                ]);
+
+                return $locked->fresh();
+            }
+
+            if ($result->outcome === SupplierOutcome::Failure) {
                 // ADR-026: duplicate_reference is structurally different
                 // from every other failure — it's evidence an order for
                 // this reference_number already reached Gamevion, not
@@ -160,6 +179,71 @@ final class OrderFulfillmentService
             // made is now permanent, never restored. No-op if this
             // order never used a voucher.
             $this->vouchers->commit($locked->id);
+
+            return $locked->fresh();
+        });
+    }
+
+    /**
+     * ADR-032 decision 3 — the one money path out of Pending, reached
+     * by a supplier webhook (primary) or the reconcile poll's own
+     * check (backup, CheckSupplierDeliveryJob), never called directly
+     * from fulfill() itself. $outcome must be Success or Failure — a
+     * Pending order is by definition not yet finalized, so passing
+     * Pending here is a caller bug, not a legitimate state.
+     *
+     * Idempotent by construction: OrderStatusService::finalizePendingSuccess()/
+     * finalizePendingFailure() both require the order to currently be
+     * Pending, so a second call (e.g. a duplicate webhook delivery)
+     * observes the already-advanced state and throws
+     * InvalidOrderTransitionException — same lock-then-guard pattern
+     * fulfill() itself already uses for the identical PAY-2 reason.
+     */
+    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null): Order
+    {
+        if ($outcome === SupplierOutcome::Pending) {
+            throw new OrderFulfillmentException(
+                "finalizePendingDelivery() cannot be called with outcome=pending for order #{$order->id} — a Pending order is not yet finalized",
+            );
+        }
+
+        return DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            Log::withContext(['reference_number' => $locked->reference_number]);
+
+            if ($outcome === SupplierOutcome::Success) {
+                $deliveredStatus = $this->orderStatus->finalizePendingSuccess($locked->delivery_status);
+
+                $locked->update([
+                    'supplier_ref' => $supplierRef ?? $locked->supplier_ref,
+                    'supplier_response' => $supplierResponse ?? $locked->supplier_response,
+                    'delivery_status' => $deliveredStatus->value,
+                ]);
+
+                $this->creditProfit($locked);
+                $this->vouchers->commit($locked->id);
+
+                Log::info('Pending delivery finalized as delivered', ['supplier_ref' => $supplierRef]);
+
+                return $locked->fresh();
+            }
+
+            $failedStatus = $this->orderStatus->finalizePendingFailure($locked->delivery_status);
+
+            $locked->update([
+                'supplier_response' => $supplierResponse ?? $locked->supplier_response,
+                'delivery_status' => $failedStatus->value,
+            ]);
+
+            // Deliberately no voucher/ledger action here — a Pending
+            // order finalized as Failed lands on the exact same Failed
+            // state a synchronous rejection would, so the existing
+            // Failed-only voucher-issuance gate
+            // (VoucherController::storeFromOrder()) applies unchanged.
+            // No cash was ever taken from the ledger for this order, so
+            // there is nothing to reverse (ADR-004).
+            Log::warning('Pending delivery finalized as failed', ['supplier_response' => $supplierResponse]);
 
             return $locked->fresh();
         });

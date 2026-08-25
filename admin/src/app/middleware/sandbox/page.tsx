@@ -47,7 +47,7 @@ const paymentStatusColor: Record<OrderListItem["payment_status"], "warning" | "s
   failed: "error",
 };
 
-const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "warning" | "success" | "error"> = {
+const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "warning" | "success" | "error" | "info"> = {
   not_started: "light",
   processing: "warning",
   delivered: "success",
@@ -57,6 +57,10 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
   // through the same OrderFulfillmentService::fulfill() logic a real
   // ambiguous Gamevion response would.
   needs_review: "warning",
+  // ADR-032 — sandbox orders can't structurally reach this (FakeSupplierAdapter
+  // only ever simulates success/failure, never an async Pending), TS
+  // just needs the key to satisfy the shared OrderListItem type.
+  pending: "info",
 };
 
 export default function SandboxOrdersPage() {

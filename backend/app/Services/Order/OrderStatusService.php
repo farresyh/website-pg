@@ -58,12 +58,16 @@ final class OrderStatusService
      * set Processing before calling the supplier); a stale one is
      * caught by ReconcilePendingDeliveriesCommand's one-time catch-up
      * of rows still sitting at Failed from before this state existed.
+     *
+     * ADR-032 decision 6 adds a third: a Pending order too old to
+     * safely re-poll (Digiflazz's 90-day re-submit rule) is flagged
+     * here too, rather than left polling forever or silently dropped.
      */
     public function markNeedsReview(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
     {
-        if (!in_array($currentDeliveryStatus, [DeliveryStatus::Processing, DeliveryStatus::Failed], true)) {
+        if (!in_array($currentDeliveryStatus, [DeliveryStatus::Processing, DeliveryStatus::Failed, DeliveryStatus::Pending], true)) {
             throw new InvalidOrderTransitionException(
-                "Cannot mark needs review: delivery_status is {$currentDeliveryStatus->value}, must be processing or failed",
+                "Cannot mark needs review: delivery_status is {$currentDeliveryStatus->value}, must be processing, failed, or pending",
             );
         }
 
@@ -88,5 +92,58 @@ final class OrderStatusService
         }
 
         return DeliveryStatus::Delivered;
+    }
+
+    /**
+     * ADR-032: a supplier accepted the order but hasn't confirmed the
+     * final outcome synchronously (Digiflazz's async Pending) — only
+     * reachable from Processing, same entry point fulfill() already
+     * uses for a synchronous success/failure.
+     */
+    public function markPending(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
+    {
+        if ($currentDeliveryStatus !== DeliveryStatus::Processing) {
+            throw new InvalidOrderTransitionException(
+                "Cannot mark pending: delivery_status is {$currentDeliveryStatus->value}, must be processing",
+            );
+        }
+
+        return DeliveryStatus::Pending;
+    }
+
+    /**
+     * ADR-032 decision 3 — the one money-crediting exit from Pending,
+     * reached by OrderFulfillmentService::finalizePendingDelivery()
+     * via a supplier webhook or the reconcile poll's own check. A
+     * second call once already Delivered throws here (idempotency is
+     * enforced by this guard, not by the caller re-checking first).
+     */
+    public function finalizePendingSuccess(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
+    {
+        if ($currentDeliveryStatus !== DeliveryStatus::Pending) {
+            throw new InvalidOrderTransitionException(
+                "Cannot finalize pending delivery as delivered: delivery_status is {$currentDeliveryStatus->value}, must be pending",
+            );
+        }
+
+        return DeliveryStatus::Delivered;
+    }
+
+    /**
+     * ADR-032 decision 3/7 — a Pending order's real, terminal failure.
+     * Lands on the same Failed state a synchronous rejection would,
+     * so the existing Failed-only voucher-issuance gate
+     * (VoucherController::storeFromOrder()) applies unchanged — no
+     * separate double-compensation guard needed.
+     */
+    public function finalizePendingFailure(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
+    {
+        if ($currentDeliveryStatus !== DeliveryStatus::Pending) {
+            throw new InvalidOrderTransitionException(
+                "Cannot finalize pending delivery as failed: delivery_status is {$currentDeliveryStatus->value}, must be pending",
+            );
+        }
+
+        return DeliveryStatus::Failed;
     }
 }

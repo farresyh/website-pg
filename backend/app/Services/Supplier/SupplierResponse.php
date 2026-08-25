@@ -15,12 +15,28 @@ final class SupplierResponse
         public readonly ?string $errorCode,
         public readonly ?string $errorMessage,
         public readonly bool $isServerError = false,
+        public readonly SupplierOutcome $outcome = SupplierOutcome::Failure,
     ) {
     }
 
     public static function success(mixed $data): self
     {
-        return new self(true, $data, null, null);
+        return new self(true, $data, null, null, outcome: SupplierOutcome::Success);
+    }
+
+    /**
+     * ADR-032: an async supplier (Digiflazz) accepted the order but
+     * hasn't confirmed the final outcome yet — genuinely distinct from
+     * both success() (delivered now) and failure() (definitively
+     * rejected). $success stays false (no delivery has actually
+     * happened), matching every pre-ADR-032 caller that only ever
+     * checked ->success — OrderFulfillmentService is the only caller
+     * that needs to distinguish Pending from a real Failure, and it
+     * does so via ->outcome, not ->success.
+     */
+    public static function pending(mixed $data): self
+    {
+        return new self(false, $data, null, null, outcome: SupplierOutcome::Pending);
     }
 
     /**
@@ -34,6 +50,6 @@ final class SupplierResponse
      */
     public static function failure(string $errorCode, string $errorMessage, bool $isServerError = false): self
     {
-        return new self(false, null, $errorCode, $errorMessage, $isServerError);
+        return new self(false, null, $errorCode, $errorMessage, $isServerError, SupplierOutcome::Failure);
     }
 }

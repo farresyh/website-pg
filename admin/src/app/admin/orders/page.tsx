@@ -42,6 +42,7 @@ const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "need_action", label: "Need Action" },
   { value: "needs_review", label: "Needs Review" },
+  { value: "pending_delivery", label: "Pending (Supplier)" },
   { value: "processing", label: "Processing" },
   { value: "completed", label: "Completed" },
   { value: "awaiting_payment", label: "Awaiting Payment" },
@@ -58,12 +59,16 @@ const paymentStatusColor: Record<OrderListItem["payment_status"], "warning" | "s
   failed: "error",
 };
 
-const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "warning" | "success" | "error"> = {
+const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "warning" | "success" | "error" | "info"> = {
   not_started: "light",
   processing: "warning",
   delivered: "success",
   failed: "error",
   needs_review: "warning",
+  // ADR-032 — a distinct color from "processing" so an admin can tell
+  // at a glance this is waiting on an async supplier, not a normal
+  // in-flight delivery attempt.
+  pending: "info",
 };
 
 export default function OrdersPage() {

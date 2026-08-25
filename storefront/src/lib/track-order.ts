@@ -13,7 +13,7 @@ export interface TrackedOrder {
   server_id: string | null;
   final_amount: number; // sen
   payment_status: "pending" | "paid" | "failed";
-  delivery_status: "not_started" | "processing" | "delivered" | "failed";
+  delivery_status: "not_started" | "processing" | "delivered" | "failed" | "pending";
   created_at: string;
 }
 

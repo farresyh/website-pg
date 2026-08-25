@@ -15,6 +15,7 @@ use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
+use App\Services\Supplier\SupplierOutcome;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Voucher\VoucherService;
@@ -108,6 +109,42 @@ class OrderFulfillmentServiceTest extends TestCase
                 return $this->success
                     ? SupplierResponse::success($this->data)
                     : SupplierResponse::failure($this->errorCode, $this->errorMessage);
+            }
+
+            public function checkStatus(string $supplierRef): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+    }
+
+    /** ADR-032: an async supplier accepted the order but hasn't confirmed the final outcome yet. */
+    private function fakePendingSupplierAdapter(array $data = []): SupplierAdapter
+    {
+        return new class($data) implements SupplierAdapter
+        {
+            public function __construct(private readonly array $data)
+            {
+            }
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                return SupplierResponse::pending($this->data);
             }
 
             public function checkStatus(string $supplierRef): SupplierResponse
@@ -232,6 +269,25 @@ class OrderFulfillmentServiceTest extends TestCase
 
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+    }
+
+    /**
+     * ADR-032: an async supplier's Pending response is neither a
+     * clean delivery nor a failure — no ledger credit, no voucher
+     * commit, order parked in Pending until finalizePendingDelivery()
+     * resolves it later (webhook or poll).
+     */
+    public function test_fulfill_marks_pending_on_a_pending_supplier_response(): void
+    {
+        $order = $this->paidOrder(['platform_profit' => 150, 'reseller_profit' => 50]);
+
+        $result = $this->service($this->fakePendingSupplierAdapter(['trx_id' => 'DGFLZ-1']))->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+        $this->assertSame(PaymentStatus::Paid, $result->payment_status);
+        $this->assertSame(['trx_id' => 'DGFLZ-1'], $result->supplier_response);
+        $this->assertNull($result->supplier_ref);
+        $this->assertSame(0, LedgerEntry::query()->count());
     }
 
     /**
@@ -420,5 +476,101 @@ class OrderFulfillmentServiceTest extends TestCase
 
         $this->service($this->fakeSupplierAdapter(true))
             ->markDeliveredManually($order, 'GV-RAPI-MANUAL3', null, 'Jane Admin');
+    }
+
+    /**
+     * ADR-032 decision 3: the webhook/poll-driven money path out of
+     * Pending — reached via createOrder()'s async acceptance, not a
+     * synchronous fulfill() call.
+     */
+    public function test_finalize_pending_delivery_marks_delivered_and_credits_ledger_on_success(): void
+    {
+        $order = $this->paidOrder([
+            'delivery_status' => DeliveryStatus::Pending->value,
+            'platform_profit' => 150,
+            'reseller_profit' => 50,
+        ]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($order, SupplierOutcome::Success, 'DGFLZ-FINAL-1', ['status' => 'Sukses']);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame('DGFLZ-FINAL-1', $result->supplier_ref);
+        $this->assertSame(['status' => 'Sukses'], $result->supplier_response);
+        $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
+        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+    }
+
+    /**
+     * ADR-032 decision 7: a Pending order finalized as Failed lands on
+     * the same Failed state a synchronous rejection would — no ledger
+     * effect, and the existing Failed-only voucher gate applies
+     * unchanged (no separate double-compensation guard needed here).
+     */
+    public function test_finalize_pending_delivery_marks_failed_and_skips_ledger_on_failure(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Pending->value]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($order, SupplierOutcome::Failure, null, ['status' => 'Gagal']);
+
+        $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
+        $this->assertSame(['status' => 'Gagal'], $result->supplier_response);
+        $this->assertSame(PaymentStatus::Paid, $result->payment_status);
+        $this->assertSame(0, LedgerEntry::query()->count());
+    }
+
+    public function test_finalize_pending_delivery_commits_a_reserved_voucher_redemption_on_success(): void
+    {
+        $voucher = \App\Models\Voucher::query()->create([
+            'code' => 'VC-TESTPENDINGCOMMIT',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 1000,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->paidOrder([
+            'delivery_status' => DeliveryStatus::Pending->value,
+            'voucher_id' => $voucher->id,
+            'voucher_discount' => 500,
+        ]);
+        \App\Models\VoucherRedemption::query()->create([
+            'voucher_id' => $voucher->id,
+            'order_id' => $order->id,
+            'amount' => 500,
+            'status' => 'reserved',
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($order, SupplierOutcome::Success, 'DGFLZ-FINAL-2');
+
+        $this->assertSame('committed', \App\Models\VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+    }
+
+    /**
+     * Idempotency: a second finalize (duplicate webhook delivery, or a
+     * webhook racing the poll) observes the already-advanced state and
+     * is rejected — OrderStatusService's own guard, not a re-check
+     * this method has to duplicate.
+     */
+    public function test_finalize_pending_delivery_rejects_when_not_pending(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Delivered->value]);
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($order, SupplierOutcome::Success, 'DGFLZ-FINAL-3');
+    }
+
+    public function test_finalize_pending_delivery_rejects_being_called_with_outcome_pending(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Pending->value]);
+
+        $this->expectException(\App\Services\Fulfillment\OrderFulfillmentException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($order, SupplierOutcome::Pending);
     }
 }

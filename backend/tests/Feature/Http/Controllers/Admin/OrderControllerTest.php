@@ -98,6 +98,20 @@ class OrderControllerTest extends TestCase
         $this->assertSame('KRS-NEEDS-REVIEW', $response->json('data.0.order_number'));
     }
 
+    /** ADR-032: an async supplier accepted the order but hasn't confirmed the final outcome yet. */
+    public function test_index_can_filter_by_pending_delivery(): void
+    {
+        $this->order(['order_number' => 'KRS-DELIVERY-PENDING', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Pending->value]);
+        $this->order(['order_number' => 'KRS-PROCESSING-NOT-PENDING', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Processing->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=pending_delivery');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-DELIVERY-PENDING', $response->json('data.0.order_number'));
+    }
+
     public function test_index_can_filter_by_processing(): void
     {
         $this->order(['order_number' => 'KRS-PROCESSING', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Processing->value]);

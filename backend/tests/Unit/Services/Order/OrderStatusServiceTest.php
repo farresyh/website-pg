@@ -155,6 +155,22 @@ class OrderStatusServiceTest extends TestCase
         $service->markNeedsReview(DeliveryStatus::NotStarted);
     }
 
+    /**
+     * ADR-032 decision 6: a Pending order too old to safely re-poll
+     * (Digiflazz's 90-day re-submit rule — polling past that creates a
+     * NEW transaction instead of checking the old one) is auto-flagged
+     * for manual review, the same genuinely-unresolvable-automatically
+     * signal ADR-026 already established.
+     */
+    public function test_marks_needs_review_from_pending(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->markNeedsReview(DeliveryStatus::Pending);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result);
+    }
+
     public function test_marks_delivered_manually_from_needs_review(): void
     {
         $service = new OrderStatusService();
@@ -176,5 +192,67 @@ class OrderStatusServiceTest extends TestCase
         $this->expectException(InvalidOrderTransitionException::class);
 
         $service->markDeliveredManually(DeliveryStatus::Failed);
+    }
+
+    /**
+     * ADR-032: a supplier that accepted the order but hasn't confirmed
+     * final delivery yet (Digiflazz's async Pending) — only reachable
+     * from Processing, same entry point as a normal synchronous
+     * success/failure.
+     */
+    public function test_marks_pending_from_processing(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->markPending(DeliveryStatus::Processing);
+
+        $this->assertSame(DeliveryStatus::Pending, $result);
+    }
+
+    public function test_rejects_marking_pending_when_not_processing(): void
+    {
+        $service = new OrderStatusService();
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $service->markPending(DeliveryStatus::NotStarted);
+    }
+
+    /** ADR-032 decision 3: the webhook/poll-driven exit confirming real delivery. */
+    public function test_finalizes_pending_success_from_pending(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->finalizePendingSuccess(DeliveryStatus::Pending);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result);
+    }
+
+    public function test_rejects_finalizing_pending_success_when_not_pending(): void
+    {
+        $service = new OrderStatusService();
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $service->finalizePendingSuccess(DeliveryStatus::Processing);
+    }
+
+    /** ADR-032 decision 3: the webhook/poll-driven exit confirming a real, terminal failure. */
+    public function test_finalizes_pending_failure_from_pending(): void
+    {
+        $service = new OrderStatusService();
+
+        $result = $service->finalizePendingFailure(DeliveryStatus::Pending);
+
+        $this->assertSame(DeliveryStatus::Failed, $result);
+    }
+
+    public function test_rejects_finalizing_pending_failure_when_not_pending(): void
+    {
+        $service = new OrderStatusService();
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $service->finalizePendingFailure(DeliveryStatus::Processing);
     }
 }

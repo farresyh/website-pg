@@ -7,6 +7,10 @@ const PAYMENT_LABELS: Record<string, { label: string; tone: "success" | "warning
 const DELIVERY_LABELS: Record<string, { label: string; tone: "success" | "warning" | "error" }> = {
   delivered: { label: "Delivered", tone: "success" },
   processing: { label: "Processing", tone: "warning" },
+  // ADR-032: an async supplier accepted the order but hasn't confirmed
+  // the final outcome yet — same customer-facing copy as "processing",
+  // since to a customer both mean "topup sedang diproses".
+  pending: { label: "Processing", tone: "warning" },
   not_started: { label: "Waiting for Payment", tone: "warning" },
   failed: { label: "Delivery Failed", tone: "error" },
 };

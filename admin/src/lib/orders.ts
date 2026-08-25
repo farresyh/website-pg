@@ -19,7 +19,7 @@ export interface OrderListItem {
   final_amount: number;
   platform_profit: number;
   payment_status: "pending" | "paid" | "failed";
-  delivery_status: "not_started" | "processing" | "delivered" | "failed" | "needs_review";
+  delivery_status: "not_started" | "processing" | "delivered" | "failed" | "needs_review" | "pending";
   payment_method: string | null;
   created_at: string;
   game: { id: number; name: string } | null;
@@ -76,6 +76,7 @@ export type OrderStatusFilter =
   | "all"
   | "need_action"
   | "needs_review"
+  | "pending_delivery"
   | "processing"
   | "completed"
   | "awaiting_payment"
