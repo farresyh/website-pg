@@ -64,7 +64,7 @@ php artisan db:seed --class="Database\\Seeders\\E2ESeeder" --force
 # real queued job (FulfillOrderJob) must actually run for the checkout
 # golden path to ever reach "Delivered".
 trap 'kill 0' EXIT INT TERM
-php artisan queue:work --queue=orders,price-sync --tries=1 --sleep=1 &
+php artisan queue:work --queue=orders,price-sync,backups --tries=1 --sleep=1 &
 
 # --no-reload is NOT optional here: Laravel's ServeCommand re-reads
 # backend/.env for the actual served process and only passes through a
