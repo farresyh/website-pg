@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
+import { parseResponse } from "@/lib/schema-validation";
 
 /**
  * ADR-028 + its 2026-08-22 addendum — real store branding/footer/legal
@@ -6,24 +8,26 @@ import { apiFetch } from "@/lib/api-client";
  * SOCIAL_LINKS and the three previously-nonexistent legal pages.
  * `{store_name}` is already substituted server-side (BrandingController)
  * — nothing here re-does that.
+ *
+ * ADR-044: schemas are the source of truth for the wire shapes below.
  */
 
-interface BrandingFooterGameWire {
-  id: number;
-  name: string;
-  slug: string;
-}
+const BrandingFooterGameWireSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  slug: z.string(),
+});
 
-interface BrandingWire {
-  store_name: string;
-  description: string | null;
-  support_email: string | null;
-  support_phone: string | null;
-  telegram_contact_link: string | null;
-  social_links: { facebook?: string; instagram?: string } | null;
-  footer_text: string | null;
-  footer_games: BrandingFooterGameWire[];
-}
+const BrandingWireSchema = z.object({
+  store_name: z.string(),
+  description: z.string().nullable(),
+  support_email: z.string().nullable(),
+  support_phone: z.string().nullable(),
+  telegram_contact_link: z.string().nullable(),
+  social_links: z.object({ facebook: z.string().optional(), instagram: z.string().optional() }).nullable(),
+  footer_text: z.string().nullable(),
+  footer_games: z.array(BrandingFooterGameWireSchema),
+});
 
 export interface Branding {
   storeName: string;
@@ -36,7 +40,9 @@ export interface Branding {
 }
 
 export async function getBranding(): Promise<Branding> {
-  const wire = await apiFetch<BrandingWire>("/api/catalog/branding");
+  const path = "/api/catalog/branding";
+  const raw = await apiFetch<unknown>(path);
+  const wire = parseResponse(BrandingWireSchema, raw, "BrandingWire", path);
 
   return {
     storeName: wire.store_name,
@@ -51,8 +57,12 @@ export async function getBranding(): Promise<Branding> {
 
 export type LegalPage = "terms" | "privacy" | "about-us";
 
+const LegalContentWireSchema = z.object({ content: z.string().nullable() });
+
 /** Already sanitized + `{store_name}`-substituted server-side — safe to render as-is. */
 export async function getLegalContent(page: LegalPage): Promise<string | null> {
-  const wire = await apiFetch<{ content: string | null }>(`/api/catalog/legal/${page}`);
+  const path = `/api/catalog/legal/${page}`;
+  const raw = await apiFetch<unknown>(path);
+  const wire = parseResponse(LegalContentWireSchema, raw, "LegalContentWire", path);
   return wire.content;
 }

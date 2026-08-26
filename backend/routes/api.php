@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
+use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\GameController;
@@ -51,6 +52,12 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,
 // ADR-014: unauthenticated infra probe, DB + queue connection only —
 // no order/customer data ever touches this endpoint.
 Route::get('/health', [HealthController::class, 'check']);
+
+// ADR-044 decision 8 — public (both admin's Bearer-token and
+// storefront's guest context report here), throttled log sink for a
+// zod response-schema mismatch. Not a general error-monitoring
+// endpoint — see ClientErrorController's own doc comment.
+Route::post('/client-errors', [ClientErrorController::class, 'store'])->middleware('throttle:30,1');
 
 // Guest checkout (ADR-011) — no Customer auth exists, deliberately not
 // behind auth:sanctum. Money fields are still never client-trusted

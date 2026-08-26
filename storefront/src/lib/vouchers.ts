@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
+import { parseResponse } from "@/lib/schema-validation";
 
 /**
  * ADR-024 decision #1's "Apply" button — read-only preview, never
@@ -8,22 +10,27 @@ import { apiFetch } from "@/lib/api-client";
  * server-computed here (ORD-9): gameId/packageId, not a price, is
  * what's sent — VoucherPreviewController recomputes the real selling
  * price from the stored Package itself.
+ *
+ * ADR-044: schema is the source of truth for the response shape below.
  */
 
-export interface VoucherPreviewResult {
-  selling_price: number;
-  discount: number;
-  remaining_after: number;
-}
+const VoucherPreviewResultSchema = z.object({
+  selling_price: z.number(),
+  discount: z.number(),
+  remaining_after: z.number(),
+});
 
-export function previewVoucher(
+export type VoucherPreviewResult = z.infer<typeof VoucherPreviewResultSchema>;
+
+export async function previewVoucher(
   gameId: number,
   packageId: number,
   voucherCode: string,
   customerEmail: string,
   customerPhone?: string,
 ) {
-  return apiFetch<VoucherPreviewResult>("/api/vouchers/preview", {
+  const path = "/api/vouchers/preview";
+  const raw = await apiFetch<unknown>(path, {
     method: "POST",
     body: {
       game_id: gameId,
@@ -33,4 +40,5 @@ export function previewVoucher(
       customer_phone: customerPhone || undefined,
     },
   });
+  return parseResponse(VoucherPreviewResultSchema, raw, "VoucherPreviewResult", path);
 }
