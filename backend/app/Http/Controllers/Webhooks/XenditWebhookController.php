@@ -105,7 +105,7 @@ class XenditWebhookController extends Controller
             return response()->json(['message' => 'amount mismatch'], 409);
         }
 
-        $order->update(['payment_status' => PaymentStatus::Paid->value]);
+        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
 
         FulfillOrderJob::dispatch($order->fresh());
 

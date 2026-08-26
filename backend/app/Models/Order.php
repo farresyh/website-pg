@@ -37,6 +37,7 @@ class Order extends Model
         'platform_profit',
         'reseller_profit',
         'payment_status',
+        'paid_at',
         'delivery_status',
         'payment_method',
         'payment_gateway',
@@ -58,6 +59,7 @@ class Order extends Model
         'platform_profit' => 'integer',
         'reseller_profit' => 'integer',
         'payment_status' => PaymentStatus::class,
+        'paid_at' => 'datetime',
         'delivery_status' => DeliveryStatus::class,
         'supplier_response' => 'array',
     ];
