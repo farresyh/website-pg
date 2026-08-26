@@ -22,6 +22,7 @@ use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
 use App\Http\Controllers\SeoController;
+use App\Http\Controllers\Middleware\BackupController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\CurrencyRateController;
@@ -285,6 +286,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/crawler-rules', [CrawlerRuleController::class, 'store']);
         Route::put('/crawler-rules/{crawler_rule}', [CrawlerRuleController::class, 'update']);
         Route::delete('/crawler-rules/{crawler_rule}', [CrawlerRuleController::class, 'destroy']);
+    });
+
+    // ADR-039 decision 9/10 — Database Backups: unified run history
+    // (BAK-1/2), manual "Backup Now" trigger (BAK-3), download/delete
+    // (BAK-4). Super Admin only, same tier as Settings/Price Sync — no
+    // restore endpoint anywhere here (decision 5, CLI/artisan-only).
+    Route::middleware('admin.role:super_admin')->prefix('middleware/backups')->group(function () {
+        Route::get('/', [BackupController::class, 'index']);
+        Route::get('/stats', [BackupController::class, 'stats']);
+        Route::post('/', [BackupController::class, 'store']);
+        Route::get('/{backup_run}', [BackupController::class, 'show']);
+        Route::get('/{backup_run}/download', [BackupController::class, 'download']);
+        Route::delete('/{backup_run}', [BackupController::class, 'destroy']);
     });
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway

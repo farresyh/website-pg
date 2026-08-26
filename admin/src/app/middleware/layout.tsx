@@ -32,6 +32,7 @@ const NAV_ITEMS: { label: string; href: string | null }[] = [
   { label: "Validators", href: "/middleware/validators" },
   { label: "Validate Player", href: null },
   { label: "Sandbox", href: "/middleware/sandbox" },
+  { label: "Backups", href: "/middleware/backups" },
   { label: "Request Logs", href: null },
   { label: "Developer / API Tester", href: null },
 ];

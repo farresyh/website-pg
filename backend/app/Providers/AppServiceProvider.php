@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Listeners\Backup\LogAndAlertBackupFailure;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Payment\Chip\ChipGateway;
@@ -19,7 +20,10 @@ use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Backup\Events\BackupHasFailed;
+use Spatie\Backup\Events\CleanupHasFailed;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -211,6 +215,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // ADR-039 decision 7: listens to spatie/laravel-backup's own raw
+        // domain events (config/backup.php disables its built-in
+        // notification channels) so alerting reaches every current
+        // `admin_users` row rather than one static config address.
+        Event::listen(BackupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleBackupHasFailed']);
+        Event::listen(CleanupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleCleanupHasFailed']);
     }
 }

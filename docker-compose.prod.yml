@@ -67,6 +67,18 @@ services:
       - ./backend/.env
     command: php artisan queue:work --queue=price-sync --tries=1 --sleep=3 --max-jobs=1000 --max-time=3600
 
+  # ADR-039 — RunDatabaseBackupJob's own queue, same head-of-line-blocking
+  # rationale as the two workers above: a slow dump+restore-test cycle
+  # must never sit behind (or delay) an urgent order/price-sync job, and
+  # vice versa.
+  queue-worker-backups:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    command: php artisan queue:work --queue=backups --tries=1 --sleep=3 --max-jobs=1000 --max-time=3600
+
   # NEXT_PUBLIC_API_URL is the one env var both Next.js apps actually read
   # (grep-confirmed) — passed as a build arg since it's inlined into the
   # client bundle at build time, not read at container-start (see each

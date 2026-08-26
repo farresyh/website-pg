@@ -52,3 +52,23 @@ Schedule::call(fn () => Artisan::call('app:prune-player-validations'))
     ->daily()
     ->name('player-validation-pruning')
     ->withoutOverlapping();
+
+// ADR-039 decision 2 — same inert-until-real-cron pattern as above.
+// `--triggered-by=system` distinguishes this from the manual "Backup
+// Now" admin action, both of which go through the same
+// RunBackupCommand (dump -> locate archive -> decision 8's restore
+// test -> one BackupRun row).
+Schedule::command('app:run-backup', ['--triggered-by' => 'system'])
+    ->dailyAt('02:00')
+    ->name('database-backup')
+    ->withoutOverlapping();
+
+// ADR-039 decision 6 — retention/auto-thinning (7 daily + 4 weekly + 6
+// monthly, config/backup.php's `cleanup.default_strategy`). Scheduled
+// an hour after the backup above (not chained — Laravel's scheduler has
+// no native "run after this other named task" dependency) so a fresh
+// run always exists on disk before old ones are thinned.
+Schedule::command('backup:clean')
+    ->dailyAt('03:00')
+    ->name('database-backup-cleanup')
+    ->withoutOverlapping();
