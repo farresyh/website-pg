@@ -1,5 +1,6 @@
 import React from "react";
 
+// TODO(ADR-038): migrate to PrimeReact's `Select` (Tailwind mode) next time this file is opened for other work — lower priority, see ADR-038.
 interface Option {
   value: string;
   label: string;

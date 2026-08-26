@@ -35,6 +35,16 @@ Next.js-version warning specific to that app. This file covers the whole repo;
 - **New business terms get pinned before they leak into code** as ad-hoc
   naming — use `/mattpocock-skills:domain-modeling` (see PRD §13 Glossary for
   the terms already pinned: ledger, reference_number vs order_number, etc.).
+- **Admin UI components migrate to PrimeReact (Tailwind mode) opportunistically, per ADR-038.**
+  If you open a file in `admin/` that still uses a hand-rolled TailAdmin
+  primitive (`Table`, `Modal`, `Dropdown`/`DropdownItem`, `Badge`, `Button`,
+  or a basic form input from `components/form`) for work unrelated to this
+  migration, swap it for the PrimeReact-Tailwind equivalent as part of that
+  same change — don't leave it for a dedicated migration pass. Never force a
+  migration on an already-tested, live screen just to swap its component
+  library; the trigger is always "already touching this file for another
+  reason." `RichTextEditor` is exempt (no PrimeReact equivalent exists). See
+  `docs/prd.md`'s PrimeReact Migration Tracker for per-screen status.
 - **Money is never trusted from the client.** Price, cost, and profit are
   always computed server-side from stored `Package`/`Game` data at the moment
   of use — see ORD-9 in `docs/prd.md` and `PricingService`. If you find

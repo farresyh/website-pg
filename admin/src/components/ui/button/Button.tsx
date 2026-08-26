@@ -1,5 +1,6 @@
 import React, { ReactNode } from "react";
 
+// TODO(ADR-038): migrate to PrimeReact's `Button`/`ButtonGroup` (Tailwind mode) next time this file is opened for other work.
 interface ButtonProps {
   children: ReactNode;
   size?: "sm" | "md";
