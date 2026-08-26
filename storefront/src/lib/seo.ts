@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
+import { parseResponse } from "@/lib/schema-validation";
 
 /**
  * ADR-029 — public SEO data consumed server-side: settings/templates/
@@ -7,35 +9,43 @@ import { apiFetch } from "@/lib/api-client";
  * middleware.ts to proxy.ts, confirmed against this project's own
  * bundled docs per storefront/AGENTS.md), scripts for layout
  * injection, crawler rules for app/robots.ts.
+ *
+ * ADR-044: schemas are the source of truth for the wire shapes below.
  */
 
-export interface SeoSettings {
-  default_meta_title: string | null;
-  default_meta_description: string | null;
-  default_og_image: string | null;
-  meta_title_template: string | null;
-  meta_description_template: string | null;
-  ga_measurement_id: string | null;
-  fb_pixel_id: string | null;
-  tiktok_pixel_id: string | null;
-  schema_organization_enabled: boolean;
-  schema_product_enabled: boolean;
-  schema_breadcrumb_enabled: boolean;
-}
+const SeoSettingsSchema = z.object({
+  default_meta_title: z.string().nullable(),
+  default_meta_description: z.string().nullable(),
+  default_og_image: z.string().nullable(),
+  meta_title_template: z.string().nullable(),
+  meta_description_template: z.string().nullable(),
+  ga_measurement_id: z.string().nullable(),
+  fb_pixel_id: z.string().nullable(),
+  tiktok_pixel_id: z.string().nullable(),
+  schema_organization_enabled: z.boolean(),
+  schema_product_enabled: z.boolean(),
+  schema_breadcrumb_enabled: z.boolean(),
+});
 
-export interface SeoScriptWire {
-  location: "head" | "body_end";
-  code: string;
-  priority: number;
-}
+export type SeoSettings = z.infer<typeof SeoSettingsSchema>;
 
-export interface CrawlerRuleWire {
-  bot_name: string;
-  user_agent: string;
-  is_allowed: boolean;
-  crawl_delay: number | null;
-  disallow_paths: string[] | null;
-}
+const SeoScriptWireSchema = z.object({
+  location: z.enum(["head", "body_end"]),
+  code: z.string(),
+  priority: z.number(),
+});
+
+export type SeoScriptWire = z.infer<typeof SeoScriptWireSchema>;
+
+const CrawlerRuleWireSchema = z.object({
+  bot_name: z.string(),
+  user_agent: z.string(),
+  is_allowed: z.boolean(),
+  crawl_delay: z.number().nullable(),
+  disallow_paths: z.array(z.string()).nullable(),
+});
+
+export type CrawlerRuleWire = z.infer<typeof CrawlerRuleWireSchema>;
 
 /**
  * No `next: { revalidate }` on any of these three — every call site
@@ -49,15 +59,21 @@ export interface CrawlerRuleWire {
  * serving the fresh row.
  */
 export async function getSeoSettings(): Promise<SeoSettings> {
-  return apiFetch<SeoSettings>("/api/catalog/seo/settings");
+  const path = "/api/catalog/seo/settings";
+  const raw = await apiFetch<unknown>(path);
+  return parseResponse(SeoSettingsSchema, raw, "SeoSettings", path);
 }
 
 export async function getSeoScripts(): Promise<SeoScriptWire[]> {
-  return apiFetch<SeoScriptWire[]>("/api/catalog/seo/scripts");
+  const path = "/api/catalog/seo/scripts";
+  const raw = await apiFetch<unknown>(path);
+  return parseResponse(z.array(SeoScriptWireSchema), raw, "SeoScriptWire[]", path);
 }
 
 export async function getCrawlerRules(): Promise<CrawlerRuleWire[]> {
-  return apiFetch<CrawlerRuleWire[]>("/api/catalog/seo/robots");
+  const path = "/api/catalog/seo/robots";
+  const raw = await apiFetch<unknown>(path);
+  return parseResponse(z.array(CrawlerRuleWireSchema), raw, "CrawlerRuleWire[]", path);
 }
 
 /**

@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
+import { parseResponse } from "@/lib/schema-validation";
 
 /**
  * Real request/response contracts for two backend endpoints —
@@ -6,34 +8,56 @@ import { apiFetch } from "@/lib/api-client";
  * and POST /api/checkout (CheckoutController). `gameId`/`packageId`
  * now come from the real public catalog (lib/catalog.ts), not
  * placeholder data.
+ *
+ * ADR-044: schemas are the source of truth for these shapes (`z.infer`
+ * below), not separately hand-written interfaces — a schema and an
+ * interface describing the same wire shape would just be two copies of
+ * the same fact able to drift apart, which is what this ADR exists to
+ * close.
  */
 
-export type ValidatePlayerStatus = "invalid" | "region_unknown" | "wrong_region" | "valid";
+const ValidatePlayerResultSchema = z.object({
+  status: z.enum(["invalid", "region_unknown", "wrong_region", "valid"]),
+  nickname: z.string().nullable(),
+  country_code: z.string().nullable(),
+  redirect_game: z.object({ slug: z.string(), name: z.string() }).nullable(),
+});
 
-export interface ValidatePlayerResult {
-  status: ValidatePlayerStatus;
-  nickname: string | null;
-  country_code: string | null;
-  redirect_game: { slug: string; name: string } | null;
-}
+export type ValidatePlayerResult = z.infer<typeof ValidatePlayerResultSchema>;
+export type ValidatePlayerStatus = ValidatePlayerResult["status"];
 
-export function validatePlayer(gameId: number, playerId: string, serverId?: string) {
-  return apiFetch<ValidatePlayerResult>(`/api/games/${gameId}/validate-player`, {
+export async function validatePlayer(gameId: number, playerId: string, serverId?: string) {
+  const path = `/api/games/${gameId}/validate-player`;
+  const raw = await apiFetch<unknown>(path, {
     method: "POST",
     body: { player_id: playerId, server_id: serverId || undefined },
   });
+  return parseResponse(ValidatePlayerResultSchema, raw, "ValidatePlayerResult", path);
 }
 
-export interface CheckoutPayload {
-  game_id: number;
-  package_id: number;
-  customer_email: string;
-  customer_name: string;
-  customer_phone: string;
-  player_id: string;
-  server_id?: string;
-  channel_code: string;
-  channel_properties?: Record<string, unknown>;
+/**
+ * User-entered contact fields only (ADR-044 decision 4) — request-side
+ * validation, client-side UX only, never a security boundary. Mirrors
+ * `CreateCheckoutRequest::rules()` exactly (email/max:255,
+ * name/max:50, phone/max:32) so this never rejects input the backend
+ * would have accepted, or vice versa.
+ */
+export const CheckoutContactSchema = z.object({
+  customer_email: z.string().trim().min(1, "Enter your email address.").email("Enter a valid email address.").max(255),
+  customer_name: z.string().trim().min(1, "Enter your full name.").max(50, "Name must be 50 characters or fewer."),
+  customer_phone: z.string().trim().min(1, "Enter your phone number.").max(32, "Phone number must be 32 characters or fewer."),
+});
+
+export type CheckoutContact = z.infer<typeof CheckoutContactSchema>;
+
+const CheckoutPayloadSchema = z.object({
+  game_id: z.number(),
+  package_id: z.number(),
+  ...CheckoutContactSchema.shape,
+  player_id: z.string(),
+  server_id: z.string().optional(),
+  channel_code: z.string(),
+  channel_properties: z.record(z.string(), z.unknown()).optional(),
   /**
    * Generated once per checkout attempt (OrderForm.tsx, when the Review
    * Modal opens) and reused across a resubmit of that same attempt —
@@ -41,7 +65,7 @@ export interface CheckoutPayload {
    * into the original Order instead of creating (and paying for) a
    * second one. See CheckoutController's idempotency_key lookup.
    */
-  idempotency_key: string;
+  idempotency_key: z.string(),
   /**
    * ADR-024: only the code itself, never a discount amount (ORD-9) —
    * CheckoutService resolves the real discount server-side from the
@@ -49,28 +73,40 @@ export interface CheckoutPayload {
    * lib/vouchers.ts's previewVoucher() already does for the Review
    * Modal's own "Apply" preview.
    */
-  voucher_code?: string;
-}
+  voucher_code: z.string().optional(),
+});
 
-export interface CheckoutResult {
-  order_number: string;
+export type CheckoutPayload = z.infer<typeof CheckoutPayloadSchema>;
+
+const CheckoutResultSchema = z.object({
+  order_number: z.string(),
   /** Sen, same convention as every money field on the backend (ORD-9) — never computed client-side. */
-  final_amount: number;
-  payment_status: string;
+  final_amount: z.number(),
+  payment_status: z.string(),
   /**
    * Xendit's Payment Request v3 `actions` payload, passed through
    * unchanged by CheckoutController — for a redirect-based channel
    * (FPX, confirmed live 2026-07-29) this is really an ARRAY of
-   * `{type, descriptor, value}` objects (e.g.
-   * `[{type:"REDIRECT_CUSTOMER", descriptor:"WEB_URL", value:"https://..."}]`),
-   * not a flat object. Typed `unknown` rather than a specific shape
-   * since it isn't confirmed uniform across every channel/gateway yet.
+   * `{type, descriptor, value}` objects, not a flat object. Left
+   * unvalidated/`unknown` here — its real shape isn't confirmed
+   * uniform across every channel/gateway yet; extractCheckoutRedirectUrl()
+   * below does its own narrow, defensive parsing of it.
    */
-  payment_actions: unknown;
-}
+  payment_actions: z.unknown(),
+});
 
-export function submitCheckout(payload: CheckoutPayload) {
-  return apiFetch<CheckoutResult>("/api/checkout", { method: "POST", body: payload });
+export type CheckoutResult = z.infer<typeof CheckoutResultSchema>;
+
+export async function submitCheckout(payload: CheckoutPayload) {
+  const path = "/api/checkout";
+  // Re-validates the full payload right before it leaves the app — the
+  // contact fields were already checked against CheckoutContactSchema
+  // upstream (OrderForm.tsx), this catches a caller-side bug in the
+  // rest of the shape (e.g. a missing idempotency_key) loudly, in dev,
+  // instead of round-tripping to the backend to find out.
+  const body = CheckoutPayloadSchema.parse(payload);
+  const raw = await apiFetch<unknown>(path, { method: "POST", body });
+  return parseResponse(CheckoutResultSchema, raw, "CheckoutResult", path);
 }
 
 /**

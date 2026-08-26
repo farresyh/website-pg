@@ -3,7 +3,13 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
-import { validatePlayer, submitCheckout, extractCheckoutRedirectUrl, type ValidatePlayerResult } from "@/lib/checkout";
+import {
+  validatePlayer,
+  submitCheckout,
+  extractCheckoutRedirectUrl,
+  CheckoutContactSchema,
+  type ValidatePlayerResult,
+} from "@/lib/checkout";
 import type { Game, GamePackage } from "@/lib/catalog";
 import type { PaymentChannel } from "@/lib/payment-methods";
 import Stepper, { type StepInfo } from "@/components/order/Stepper";
@@ -125,15 +131,30 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
 
   async function handleConfirmPayment() {
     if (!selectedPackage || !channelCode) return;
+
+    // ADR-044 decision 4 — client-side UX only, never a security
+    // boundary; CreateCheckoutRequest is still sole authority server-side.
+    // Catches a malformed email/name/phone before the round trip instead
+    // of after, using the same rules as the backend FormRequest.
+    const contact = CheckoutContactSchema.safeParse({
+      customer_email: customerEmail,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+    });
+    if (!contact.success) {
+      setSubmitError(contact.error.issues[0]?.message ?? "Check your contact details and try again.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
     try {
       const result = await submitCheckout({
         game_id: game.id,
         package_id: selectedPackage.id,
-        customer_email: customerEmail,
-        customer_name: customerName,
-        customer_phone: customerPhone,
+        customer_email: contact.data.customer_email,
+        customer_name: contact.data.customer_name,
+        customer_phone: contact.data.customer_phone,
         player_id: playerId,
         server_id: game.extraField ? serverId : undefined,
         channel_code: channelCode,
