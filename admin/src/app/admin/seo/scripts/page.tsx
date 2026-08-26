@@ -9,26 +9,26 @@ import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { listSeoScripts, createSeoScript, updateSeoScript, deleteSeoScript, type SeoScript } from "@/lib/seo";
 import SaveSeoScriptModal from "@/components/seo/SaveSeoScriptModal";
 
 export default function SeoScriptsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [scripts, setScripts] = useState<SeoScript[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SeoScript | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  async function refresh(token: string) {
-    try {
-      setScripts(await listSeoScripts(token));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load scripts.");
-    }
+  function refresh(token: string) {
+    return listSeoScripts(token)
+      .then(setScripts)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load scripts.");
+      });
   }
 
   useEffect(() => {
@@ -37,7 +37,6 @@ export default function SeoScriptsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     refresh(s.token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

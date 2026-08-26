@@ -15,7 +15,7 @@ import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon, PencilIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type AdminUser,
@@ -34,7 +34,7 @@ export default function AdminUsersPage() {
   // during SSR, and reading it directly during render caused the known
   // hydration mismatch on other screens (see UserDropdown.tsx). Fixed
   // here as part of standardizing on this pattern, 2026-07-25 audit.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +56,6 @@ export default function AdminUsersPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
 
     listAdminUsers(s.token)
       .then(setUsers)

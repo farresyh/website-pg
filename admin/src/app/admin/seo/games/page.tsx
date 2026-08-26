@@ -10,7 +10,7 @@ import Badge from "@/components/ui/badge/Badge";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { listGameSeo, type GameSeoListItem, type GameSeoStatus } from "@/lib/seo";
 
@@ -38,18 +38,18 @@ export default function GameSeoListPage() {
 function GameSeoListPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [games, setGames] = useState<GameSeoListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState(searchParams.get("filter") ?? "");
 
-  async function refresh(token: string) {
-    try {
-      setGames(await listGameSeo(token, { search: search || undefined, filter: (filter || undefined) as GameSeoStatus | undefined }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load games.");
-    }
+  function refresh(token: string) {
+    return listGameSeo(token, { search: search || undefined, filter: (filter || undefined) as GameSeoStatus | undefined })
+      .then(setGames)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load games.");
+      });
   }
 
   useEffect(() => {
@@ -58,7 +58,6 @@ function GameSeoListPageInner() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     refresh(s.token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

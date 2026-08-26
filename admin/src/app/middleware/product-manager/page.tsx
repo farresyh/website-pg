@@ -14,7 +14,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type SupplierProduct,
@@ -78,7 +78,7 @@ function CheckoutInputEditor({
 export default function ProductManagerPage() {
   const router = useRouter();
   // Read in an effect, not render body — see UserDropdown.tsx for why.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [categories, setCategories] = useState<SupplierProductCategory[] | null>(null);
   const [games, setGames] = useState<Game[]>([]);
@@ -125,7 +125,6 @@ export default function ProductManagerPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
 
     listGames(s.token).then(setGames).catch(() => {
       // Non-fatal — "new game" mode in the link modal still works without the picker.
@@ -141,7 +140,7 @@ export default function ProductManagerPage() {
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load categories.");
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session, categorySearch]);
 
   async function handleLinkSubmit(values: LinkCategoryValues) {

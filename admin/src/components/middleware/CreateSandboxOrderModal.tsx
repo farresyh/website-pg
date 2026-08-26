@@ -35,6 +35,16 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   const [packages, setPackages] = useState<GamePackage[] | null>(null);
   const [packageId, setPackageId] = useState<number | null>(null);
 
+  // Adjusted during render (React's own pattern for "reset state when a
+  // prop/other state changes"), not in the effect below — this way the
+  // effect only performs the actual async fetch, no synchronous setState.
+  const [packagesGameId, setPackagesGameId] = useState<number | null>(gameId);
+  if (gameId !== packagesGameId) {
+    setPackagesGameId(gameId);
+    setPackageId(null);
+    setPackages(null);
+  }
+
   const [playerId, setPlayerId] = useState("");
   const [serverId, setServerId] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -50,8 +60,6 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   }, []);
 
   useEffect(() => {
-    setPackageId(null);
-    setPackages(null);
     if (!gameId) return;
     listGamePackages(token, gameId).then((all) => setPackages(all.filter((p) => p.is_active)));
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -18,7 +18,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { type OrderListItem, type OrderPage, type OrderDetail } from "@/lib/orders";
 import {
@@ -65,10 +65,17 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
 
 export default function SandboxOrdersPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [search, setSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
+  // Adjusted during render, not in an effect — see orders/page.tsx for
+  // why (resets pagination to 1 whenever the search term changes).
+  const [paginationSearchKey, setPaginationSearchKey] = useState(search);
+  if (paginationSearchKey !== search) {
+    setPaginationSearchKey(search);
+    setPageNumber(1);
+  }
   const [page, setPage] = useState<OrderPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -143,14 +150,8 @@ export default function SandboxOrdersPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    setPageNumber(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
 
   useEffect(() => {
     refreshList();

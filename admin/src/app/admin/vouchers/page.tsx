@@ -17,7 +17,7 @@ import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type Voucher,
@@ -76,7 +76,7 @@ const DETAIL_STAT_CARDS: { key: keyof VoucherShowResponse["stats"]; label: strin
 export default function VouchersPage() {
   const router = useRouter();
   // Read in an effect, not render body — see UserDropdown.tsx for why.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [data, setData] = useState<VoucherIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +106,6 @@ export default function VouchersPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
 
     listVouchers(s.token)
       .then(setData)

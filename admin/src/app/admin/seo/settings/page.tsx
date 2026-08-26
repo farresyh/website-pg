@@ -8,7 +8,7 @@ import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getSeoSettings, updateSeoSettings, type SeoSettings } from "@/lib/seo";
 
@@ -29,7 +29,7 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 export default function SeoGlobalSettingsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [settings, setSettings] = useState<SeoSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -41,7 +41,6 @@ export default function SeoGlobalSettingsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     getSeoSettings(s.token)
       .then(setSettings)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load SEO settings."));
@@ -98,7 +97,7 @@ export default function SeoGlobalSettingsPage() {
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
           <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Default Meta (SEO-2)</h2>
           <p className="mb-4 text-theme-xs text-gray-500 dark:text-gray-400">
-            Fallback used wherever a specific game's own SEO title/description is empty.
+            Fallback used wherever a specific game&apos;s own SEO title/description is empty.
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">

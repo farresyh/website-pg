@@ -27,7 +27,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder } from "@/lib/orders";
 import type { Voucher } from "@/lib/vouchers";
@@ -74,11 +74,20 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
 export default function OrdersPage() {
   const router = useRouter();
   // Read in an effect, not render body — see UserDropdown.tsx for why.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [status, setStatus] = useState<OrderStatusFilter>("all");
   const [search, setSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
+  // Adjusted during render (React's own pattern for "reset state when
+  // other state changes"), not in an effect — resets pagination to 1
+  // whenever the filter/search changes, without a synchronous setState
+  // call inside an effect.
+  const [paginationFilterKey, setPaginationFilterKey] = useState({ status, search });
+  if (paginationFilterKey.status !== status || paginationFilterKey.search !== search) {
+    setPaginationFilterKey({ status, search });
+    setPageNumber(1);
+  }
   const [page, setPage] = useState<OrderPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,14 +131,8 @@ export default function OrdersPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    setPageNumber(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, search]);
 
   useEffect(() => {
     if (!session) return;
@@ -139,7 +142,7 @@ export default function OrdersPage() {
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load orders.");
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session, status, search, pageNumber]);
 
   if (selected) {

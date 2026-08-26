@@ -16,7 +16,7 @@ import Button from "@/components/ui/button/Button";
 import CreateValidatorModal from "@/components/middleware/CreateValidatorModal";
 import ValidatorCard from "@/components/middleware/ValidatorCard";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type PlayerRegionMapping,
@@ -36,7 +36,7 @@ import { type Game, listGames } from "@/lib/games";
 
 export default function ValidatorsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [validators, setValidators] = useState<PlayerValidatorProfile[] | null>(null);
   const [availableKeys, setAvailableKeys] = useState<AvailableValidatorKey[]>([]);
   const [games, setGames] = useState<Game[]>([]);
@@ -49,7 +49,6 @@ export default function ValidatorsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,7 +67,7 @@ export default function ValidatorsPage() {
     load(session.token).catch((err: unknown) => {
       setError(err instanceof ApiError ? err.message : "Could not load validators.");
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session]);
 
   async function handleRefresh() {

@@ -21,7 +21,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type Game,
@@ -129,7 +129,7 @@ function DenominationCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (deno
 export default function GamesPage() {
   const router = useRouter();
   // Read in an effect, not render body — see UserDropdown.tsx for why.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [games, setGames] = useState<Game[] | null>(null);
   const [search, setSearch] = useState("");
@@ -167,7 +167,6 @@ export default function GamesPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -179,7 +178,7 @@ export default function GamesPage() {
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load games.");
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session, search, status]);
 
   useEffect(() => {

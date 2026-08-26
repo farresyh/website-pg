@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type HeroSlide,
@@ -27,7 +27,7 @@ import HeroSlideModal from "@/components/hero-slides/HeroSlideModal";
 
 export default function HeroSlidesPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [slides, setSlides] = useState<HeroSlide[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,12 +35,12 @@ export default function HeroSlidesPage() {
   const [creating, setCreating] = useState(false);
   const [editingSlide, setEditingSlide] = useState<HeroSlide | null>(null);
 
-  async function refresh(token: string) {
-    try {
-      setSlides(await listHeroSlides(token));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load hero slides.");
-    }
+  function refresh(token: string) {
+    return listHeroSlides(token)
+      .then(setSlides)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load hero slides.");
+      });
   }
 
   useEffect(() => {
@@ -49,14 +49,13 @@ export default function HeroSlidesPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!session) return;
     refresh(session.token);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session]);
 
   async function handleCreateSubmit(values: SaveHeroSlideValues) {

@@ -9,14 +9,14 @@ import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { listCrawlerRules, createCrawlerRule, updateCrawlerRule, deleteCrawlerRule, getSeoSettings, updateSeoSettings, type CrawlerRule } from "@/lib/seo";
 import SaveCrawlerRuleModal from "@/components/seo/SaveCrawlerRuleModal";
 
 export default function CrawlerRulesPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [rules, setRules] = useState<CrawlerRule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,12 +27,12 @@ export default function CrawlerRulesPage() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
 
-  async function refresh(token: string) {
-    try {
-      setRules(await listCrawlerRules(token));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load crawler rules.");
-    }
+  function refresh(token: string) {
+    return listCrawlerRules(token)
+      .then(setRules)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load crawler rules.");
+      });
   }
 
   useEffect(() => {
@@ -41,7 +41,6 @@ export default function CrawlerRulesPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     refresh(s.token);
     getSeoSettings(s.token)
       .then((settings) => setDefaultDisallow((settings.crawler_default_disallow_paths ?? []).join("\n")))

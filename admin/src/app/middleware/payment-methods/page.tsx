@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type PaymentMethod,
@@ -91,7 +91,7 @@ function FeeCell({
 
 export default function PaymentMethodsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [methods, setMethods] = useState<PaymentMethod[] | null>(null);
   const [category, setCategory] = useState<string>("all");
@@ -104,7 +104,6 @@ export default function PaymentMethodsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -116,7 +115,7 @@ export default function PaymentMethodsPage() {
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load payment methods.");
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session, category]);
 
   async function handleToggleStatus(method: PaymentMethod) {
