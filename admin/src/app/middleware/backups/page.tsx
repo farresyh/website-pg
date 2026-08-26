@@ -36,7 +36,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type BackupRun,
@@ -81,7 +81,7 @@ function filenameOf(run: BackupRun): string {
 
 export default function BackupsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [stats, setStats] = useState<BackupStats | null>(null);
   const [historyPage, setHistoryPage] = useState<BackupRunPage | null>(null);
@@ -98,7 +98,6 @@ export default function BackupsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

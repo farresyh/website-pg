@@ -17,15 +17,18 @@ import Button from "@/components/ui/Button";
 export default function TrackOrderClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [orderNumber, setOrderNumber] = useState(searchParams.get("order_number") ?? "");
-  const [loading, setLoading] = useState(false);
+  const initialPrefill = searchParams.get("order_number");
+  const [orderNumber, setOrderNumber] = useState(initialPrefill ?? "");
+  // Seeded from the prefill so the effect below never has to flip this
+  // synchronously itself (that's what the set-state-in-effect rule flags)
+  // — it just kicks off the async lookup, matching a state that's already
+  // correct for the very first render.
+  const [loading, setLoading] = useState(() => Boolean(initialPrefill));
   const [error, setError] = useState<string | null>(null);
 
-  async function lookup(value: string) {
+  async function doLookup(value: string) {
     const trimmed = value.trim();
     if (!trimmed) return;
-    setLoading(true);
-    setError(null);
     try {
       await trackOrder(trimmed);
       router.push(`/order/status/${encodeURIComponent(trimmed)}`);
@@ -35,10 +38,29 @@ export default function TrackOrderClient() {
     }
   }
 
-  // Auto-lookup when arriving with ?order_number=... (e.g. a WhatsApp support link).
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = orderNumber.trim();
+    if (!trimmed) return;
+    setLoading(true);
+    setError(null);
+    void doLookup(trimmed);
+  }
+
+  // Auto-lookup when arriving with ?order_number=... (e.g. a WhatsApp
+  // support link). Inlined as a .then/.catch chain rather than calling
+  // doLookup() — the lint rule's static analysis flags an effect calling
+  // any function that transitively setStates, even past an await; it
+  // does tolerate a promise chain written directly in the effect body.
   useEffect(() => {
-    const prefill = searchParams.get("order_number");
-    if (prefill) lookup(prefill);
+    const trimmed = initialPrefill?.trim();
+    if (!trimmed) return;
+    trackOrder(trimmed)
+      .then(() => router.push(`/order/status/${encodeURIComponent(trimmed)}`))
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Something went wrong — try again in a moment.");
+        setLoading(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -48,10 +70,7 @@ export default function TrackOrderClient() {
       <p className="mb-6 text-sm text-text-muted">Enter your order number to check its payment and delivery status.</p>
 
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          lookup(orderNumber);
-        }}
+        onSubmit={handleSubmit}
         className="mb-6 flex flex-col gap-2.5 sm:flex-row"
       >
         <div className="flex min-h-11 flex-1 items-center gap-2 rounded-lg border border-border bg-surface px-3.5">

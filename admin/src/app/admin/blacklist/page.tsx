@@ -12,8 +12,8 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
+import { useClientSession } from "@/hooks/useClientSession";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import {
   type BlacklistEntry,
@@ -33,8 +33,7 @@ const TYPE_LABEL: Record<BlacklistEntry["type"], string> = {
 
 export default function BlacklistPage() {
   const router = useRouter();
-  // Read in an effect, not render body — see UserDropdown.tsx for why.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [data, setData] = useState<BlacklistIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,12 +50,17 @@ export default function BlacklistPage() {
   }
 
   useEffect(() => {
+    // A plain function call, not the useClientSession() hook above: this
+    // effect needs an immediate, authoritative read the moment it runs
+    // (real browser/sessionStorage, no SSR/hydration snapshot involved),
+    // not the hook's hydration-safe-but-eventually-consistent value —
+    // using the hook here raced its own resync on a hard navigation and
+    // fired a false redirect while a valid session existed, caught live.
     const s = getClientSession();
     if (!s) {
       router.replace("/login");
       return;
     }
-    setSession(s);
 
     listBlacklistEntries(s.token)
       .then(setData)

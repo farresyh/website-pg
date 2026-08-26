@@ -10,13 +10,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getSeoOverview, type SeoOverview } from "@/lib/seo";
 
 export default function SeoOverviewPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [data, setData] = useState<SeoOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +26,6 @@ export default function SeoOverviewPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     getSeoOverview(s.token)
       .then(setData)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load SEO overview."));

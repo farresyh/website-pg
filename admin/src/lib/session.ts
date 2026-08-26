@@ -14,6 +14,11 @@ import type { SessionPayload } from "@/lib/auth";
 
 const STORAGE_KEY = "kerox_admin_session";
 
+// Fired on same-tab writes so useClientSession() (see hooks/) picks up a
+// login/logout immediately — the native "storage" event only fires in
+// *other* tabs, never the tab that made the change.
+export const SESSION_CHANGE_EVENT = "kerox-admin-session-change";
+
 export function getClientSession(): SessionPayload | null {
   if (typeof window === "undefined") return null;
 
@@ -29,8 +34,10 @@ export function getClientSession(): SessionPayload | null {
 
 export function setClientSession(session: SessionPayload): void {
   window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
 }
 
 export function clearClientSession(): void {
   window.sessionStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
 }

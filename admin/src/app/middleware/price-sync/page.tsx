@@ -17,7 +17,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type PriceSyncRun,
@@ -71,7 +71,7 @@ const runStatusColor: Record<PriceSyncRun["status"], "light" | "warning" | "succ
 
 export default function PriceSyncPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [stats, setStats] = useState<PriceSyncStats | null>(null);
   const [run, setRun] = useState<PriceSyncRun | null>(null);
@@ -102,7 +102,6 @@ export default function PriceSyncPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

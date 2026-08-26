@@ -8,26 +8,26 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { listRedirects, createRedirect, updateRedirect, deleteRedirect, type Redirect } from "@/lib/seo";
 import SaveRedirectModal from "@/components/seo/SaveRedirectModal";
 
 export default function RedirectsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [redirects, setRedirects] = useState<Redirect[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Redirect | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  async function refresh(token: string) {
-    try {
-      setRedirects(await listRedirects(token));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load redirects.");
-    }
+  function refresh(token: string) {
+    return listRedirects(token)
+      .then(setRedirects)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load redirects.");
+      });
   }
 
   useEffect(() => {
@@ -36,7 +36,6 @@ export default function RedirectsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     refresh(s.token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
