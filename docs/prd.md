@@ -520,6 +520,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - **xenPlatform :** Xendit's product for platform/marketplace businesses — sub-account creation and automatic payment splitting between platform and merchants. Deferred to Phase 2 (ADR-001).
 - **Blacklist :** Internal, platform-owned list of player IDs/contacts blocked from ordering due to prior fraud/chargeback history, independent of any supplier-side blacklist (ADR-007).
 - **Method Key :** A stable identifier for a real-world payment method (e.g. `tng`, `fpx_maybank2u`, `grabpay`) independent of which `PaymentGateway` processes it — distinct from `channel_code` (gateway-specific, unique per `payment_methods` row) and `category` (coarser grouping like `fpx`/`ewallet` that legitimately holds several different active methods at once). Exists so at most one gateway's row for the same customer-facing method can be active at a time (ADR-022's newest addendum).
+- **Voucher Merge :** An admin-triggered, opt-in action that consolidates two or more of one customer's active vouchers into a single new code, sized to the sources' combined `remaining` (not their original `amount`). The sources are voided (`status = 'merged'`, `remaining = 0`) — never deleted — and no `ledger_entries` row is written, since the liability was already booked once by each source's own original issuance. Distinct from *redemption* (spending a voucher at checkout) and from Path B's *restore* (giving a reserved amount back to `remaining`) — a merge never happens automatically and is never part of the checkout flow itself (ADR-036).
 
 ---
 
@@ -1235,6 +1236,7 @@ Still explicitly out of scope until the founder resolves them externally: `ADR-0
 8. **A real E2E golden path for voucher-at-checkout** — needs its own short discussion against ADR-023's bounded-growth policy before building, not an automatic yes.
 9. **Backend test coverage for ADR-029's SEO controllers** — CRUD/cache logic mirrors already-tested patterns closely enough that its build pass shipped without new tests; worth a dedicated pass before a second reseller or production traffic depends on that module.
 10. **Real SEO field content** — mechanism is built (ADR-029); GA measurement ID, FB/TikTok pixel IDs, meta title/description templates, per-game `seo_*` copy all still empty/default. Founder's own content-entry task, not a dev task.
+11. **New, same session: ADR-037's staging deploy pipeline (decisions 4-11) is still unbuilt** — only decision 6's port-parameterization prerequisite shipped so far. The git branch model half (decisions 1-3, 12, 13) is separately confirmed built and in live daily use as of this session (see ADR-037's own updated header/status) — this item is specifically the shared-droplet Compose stack, `staging.<domain>` subdomain, and the CI `push:staging` deploy trigger, none of which exist yet.
 
 Still explicitly out of scope until the founder resolves them externally: `ADR-020`'s remaining provisioning, CHIP gateway approval, country-based gateway routing.
 

@@ -1306,9 +1306,9 @@ Two other directions were considered and rejected this session before landing on
 
 ---
 
-## ADR-037: Staging/production git branch model + staging environment infra (design only, not yet built)
+## ADR-037: Staging/production git branch model + staging environment infra (branch model built 2026-08-26; staging infra still not built)
 
-**Status:** Accepted (design) — 2026-08-25 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+**Status:** Accepted — grilled 2026-08-25. **Branch model (decisions 1-3, 12, 13) is built and in live use**, confirmed 2026-08-26: `AGENTS.md`'s Branch Workflow section exists, and the same session cut `fix/voucher-path-a-idempotency-guard` off `staging`, merged PR #1 into `staging` via a real `--no-ff` merge commit (`git log --pretty=format:"%H %P"` confirmed two parents), then cut `feature/voucher-merge` off a freshly-pulled `staging` for the next piece of work — the model working end-to-end for real, not just documented. **Decisions 4-11 (the actual staging deploy pipeline, shared-droplet Compose stack, `staging.<domain>` subdomain, CI `push:staging` trigger) remain unbuilt** — only decision 6's port-parameterization prerequisite has shipped so far (see Consequence to track below).
 
 **Context:** No branch has ever been cut from `main` for a feature/fix in this repo — every session so far has committed straight to `main` (see the git log; `staging` doesn't exist yet). ADR-020 already decided the production host shape (DO droplet + Managed MySQL + Docker Compose + Cloudflare) and its own CI/CD half (GitHub Actions, `push:main` → test → build → push images → SSH-deploy), but the SSH-deploy job itself was never built and no branch discipline was ever layered on top of it. The founder raised, prompted by external research on common staging/production practice: features/fixes should never branch directly from `main`; every change should branch from a `staging` integration branch, deploy to a staging environment, get verified there, then `staging` merges into `main` for the real production deploy. This ADR settles whether that model fits this project's actual scale and existing infra, and what it costs.
 
