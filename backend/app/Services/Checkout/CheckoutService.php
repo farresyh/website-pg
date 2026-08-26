@@ -129,6 +129,7 @@ final class CheckoutService
                 'platform_profit' => $pricing->platformProfit,
                 'reseller_profit' => $pricing->resellerProfit,
                 'payment_status' => $fullyCoveredByVoucher ? PaymentStatus::Paid->value : PaymentStatus::Pending->value,
+                'paid_at' => $fullyCoveredByVoucher ? now() : null,
                 'delivery_status' => DeliveryStatus::NotStarted->value,
                 'payment_method' => $request->paymentMethod,
                 'payment_gateway' => $request->paymentGateway,

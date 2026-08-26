@@ -142,7 +142,7 @@ class ReconcilePendingPaymentsCommand extends Command
             return;
         }
 
-        $order->update(['payment_status' => PaymentStatus::Paid->value]);
+        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
 
         FulfillOrderJob::dispatch($order->fresh());
 

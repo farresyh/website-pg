@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -178,6 +179,22 @@ Route::middleware('auth:sanctum')->group(function () {
     // ORD-1..7 — list + detail, plus retryDelivery (ORD-7's resolve
     // action, ADR-014). Makes a real order's outcome visible in the
     // Admin Panel and gives an operator a way to act on a failure.
+    // RPT-1..3 — see ReportService's doc comment for the grilled/pinned
+    // sales & profit definitions. Same role tier as Orders/Withdrawals:
+    // both already expose profit fields, Reports is read-only on top.
+    Route::middleware('admin.role:super_admin,admin')->prefix('reports')->group(function () {
+        Route::get('/resellers', [ReportController::class, 'resellers']);
+        Route::get('/summary', [ReportController::class, 'summary']);
+        Route::get('/trend', [ReportController::class, 'trend']);
+        Route::get('/daily-breakdown', [ReportController::class, 'dailyBreakdown']);
+        Route::get('/top-games', [ReportController::class, 'topGames']);
+        Route::get('/breakdown/games', [ReportController::class, 'gameBreakdown']);
+        Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
+        Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
+        Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
+        Route::get('/export', [ReportController::class, 'export']);
+    });
+
     Route::middleware('admin.role:super_admin,admin')->prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::get('/{order}', [OrderController::class, 'show']);

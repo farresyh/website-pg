@@ -124,6 +124,7 @@ class SandboxOrderController extends Controller
             'platform_profit' => $pricing->platformProfit,
             'reseller_profit' => $pricing->resellerProfit,
             'payment_status' => PaymentStatus::Paid->value,
+            'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Failed->value,
             'payment_method' => 'sandbox',
         ]);

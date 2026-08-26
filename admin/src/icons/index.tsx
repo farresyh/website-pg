@@ -138,3 +138,38 @@ export const ImageIcon = (props: IconProps) => (
     />
   </svg>
 );
+
+export const ChartLineIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M4 20V4M4 20H20M4 15.5L9 10.5L13 14.5L20 7.5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const TrendUpIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M4 16L9.5 10.5L13.5 14.5L20 8M20 8H14.5M20 8V13.5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const TagIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M4.75 5.5C4.75 5.08579 5.08579 4.75 5.5 4.75H11.1893C11.3881 4.75 11.5789 4.82902 11.7197 4.96967L19.2803 12.5303C19.5732 12.8232 19.5732 13.2981 19.2803 13.5909L13.5909 19.2803C13.2981 19.5732 12.8232 19.5732 12.5303 19.2803L4.96967 11.7197C4.82902 11.5789 4.75 11.3881 4.75 11.1893V5.5ZM5.5 3.25C4.25736 3.25 3.25 4.25736 3.25 5.5V11.1893C3.25 11.7861 3.48705 12.3583 3.90901 12.7803L11.4697 20.3409C12.3576 21.2288 13.7936 21.2288 14.6816 20.3409L20.3409 14.6816C21.2288 13.7936 21.2288 12.3576 20.3409 11.4697L12.7803 3.90901C12.3583 3.48705 11.7861 3.25 11.1893 3.25H5.5ZM8.5 9.25C8.91421 9.25 9.25 8.91421 9.25 8.5C9.25 8.08579 8.91421 7.75 8.5 7.75C8.08579 7.75 7.75 8.08579 7.75 8.5C7.75 8.91421 8.08579 9.25 8.5 9.25Z"
+      fill="currentColor"
+    />
+  </svg>
+);
