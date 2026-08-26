@@ -1,5 +1,6 @@
 import type React from "react";
 
+// TODO(ADR-038): migrate to PrimeReact's `Menu`/`Popover` (Tailwind mode) next time this file is opened for other work.
 interface DropdownItemProps {
   onClick?: () => void;
   className?: string;

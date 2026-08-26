@@ -1,5 +1,6 @@
 import React from "react";
 
+// TODO(ADR-038): migrate to PrimeReact's `Tag` (Tailwind mode) next time this file is opened for other work.
 type BadgeVariant = "light" | "solid";
 type BadgeSize = "sm" | "md";
 type BadgeColor = "primary" | "success" | "error" | "warning" | "info" | "light" | "dark";

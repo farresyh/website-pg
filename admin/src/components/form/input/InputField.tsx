@@ -1,5 +1,6 @@
 import React, { FC } from "react";
 
+// TODO(ADR-038): migrate to PrimeReact's `InputText` (Tailwind mode) next time this file is opened for other work — lower priority, see ADR-038.
 interface InputProps {
   type?: "text" | "email" | "password" | "tel";
   id?: string;

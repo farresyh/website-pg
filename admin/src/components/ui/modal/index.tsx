@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect } from "react";
 
+// TODO(ADR-038): migrate to PrimeReact's `Dialog` (Tailwind mode) next time this file is opened for other work.
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;

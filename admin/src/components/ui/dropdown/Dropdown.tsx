@@ -3,6 +3,7 @@
 import type React from "react";
 import { useEffect, useRef } from "react";
 
+// TODO(ADR-038): migrate to PrimeReact's `Menu`/`Popover` (Tailwind mode) next time this file is opened for other work.
 interface DropdownProps {
   isOpen: boolean;
   onClose: () => void;
