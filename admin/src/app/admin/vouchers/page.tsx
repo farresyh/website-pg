@@ -28,8 +28,10 @@ import {
   getVoucher,
   createVoucher,
   revokeVoucher,
+  mergeVouchers,
 } from "@/lib/vouchers";
 import CreateVoucherModal from "@/components/vouchers/CreateVoucherModal";
+import MergeVouchersModal from "@/components/vouchers/MergeVouchersModal";
 
 const STAT_CARDS: { key: keyof VoucherIndexResponse["stats"]; label: string }[] = [
   { key: "active", label: "Active" },
@@ -46,11 +48,14 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
-const statusColor: Record<Voucher["status"], "success" | "light" | "warning" | "error"> = {
+const statusColor: Record<Voucher["status"], "success" | "light" | "warning" | "error" | "dark"> = {
   active: "success",
   exhausted: "light",
   expired: "warning",
   revoked: "error",
+  // ADR-036 — a merge's voided source, distinct from "exhausted"
+  // (spent through redemption) or "revoked" (an admin pulled it).
+  merged: "dark",
 };
 
 const redemptionStatusColor: Record<VoucherRedemption["status"], "warning" | "success" | "light"> = {
@@ -77,6 +82,12 @@ export default function VouchersPage() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+
+  // ADR-036 — only active vouchers are ever selectable (enforced by
+  // the checkbox itself, below); the server is still the real guard
+  // on same-customer/active-status.
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
 
   const [selected, setSelected] = useState<VoucherShowResponse | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -109,6 +120,20 @@ export default function VouchersPage() {
     if (!session) return;
     await createVoucher(session.token, values);
     setIsModalOpen(false);
+    await refresh(session.token);
+  }
+
+  function toggleSelected(voucherId: number) {
+    setSelectedIds((prev) =>
+      prev.includes(voucherId) ? prev.filter((id) => id !== voucherId) : [...prev, voucherId],
+    );
+  }
+
+  async function handleMerge(values: Parameters<typeof mergeVouchers>[1]) {
+    if (!session) return;
+    await mergeVouchers(session.token, values);
+    setIsMergeModalOpen(false);
+    setSelectedIds([]);
     await refresh(session.token);
   }
 
@@ -221,6 +246,31 @@ export default function VouchersPage() {
           </div>
         </div>
 
+        {(voucher.merges_as_target.length > 0 || voucher.merge_as_source) && (
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+            <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">Merge History</h2>
+            {voucher.merge_as_source && (
+              <p className="mb-3 text-theme-sm text-gray-700 dark:text-gray-300">
+                Merged into <span className="font-medium">{voucher.merge_as_source.target_voucher?.code ?? "—"}</span>
+              </p>
+            )}
+            {voucher.merges_as_target.length > 0 && (
+              <div>
+                <p className="mb-2 text-theme-xs text-gray-500 dark:text-gray-400">Consolidated from:</p>
+                <ul className="space-y-2">
+                  {voucher.merges_as_target.map((m) => (
+                    <li key={m.id} className="text-theme-sm text-gray-700 dark:text-gray-300">
+                      <span className="font-medium">{m.source_voucher?.code ?? `voucher #${m.source_voucher_id}`}</span>
+                      {" — "}
+                      {m.reason} <span className="text-theme-xs text-gray-400">({formatDate(m.created_at)})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
           {DETAIL_STAT_CARDS.map(({ key, label, isRm }) => (
             <div key={key} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -284,9 +334,16 @@ export default function VouchersPage() {
             Create and manage customer store-credit vouchers.
           </p>
         </div>
-        <Button size="sm" startIcon={<PlusIcon />} onClick={() => setIsModalOpen(true)}>
-          Create Voucher
-        </Button>
+        <div className="flex items-center gap-3">
+          {selectedIds.length >= 2 && (
+            <Button size="sm" variant="outline" onClick={() => setIsMergeModalOpen(true)}>
+              Merge Selected ({selectedIds.length})
+            </Button>
+          )}
+          <Button size="sm" startIcon={<PlusIcon />} onClick={() => setIsModalOpen(true)}>
+            Create Voucher
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -314,6 +371,7 @@ export default function VouchersPage() {
           <Table>
             <TableHeader className="border-b border-gray-100 dark:border-gray-800">
               <TableRow>
+                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">{null}</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Code</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</TableCell>
@@ -325,6 +383,16 @@ export default function VouchersPage() {
             <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
               {data?.vouchers.map((v) => (
                 <TableRow key={v.id}>
+                  <TableCell className="px-5 py-4">
+                    {v.status === "active" && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(v.id)}
+                        onChange={() => toggleSelected(v.id)}
+                        aria-label={`Select ${v.code} for merge`}
+                      />
+                    )}
+                  </TableCell>
                   <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                     <button
                       type="button"
@@ -374,6 +442,12 @@ export default function VouchersPage() {
       </div>
 
       <CreateVoucherModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreate} />
+      <MergeVouchersModal
+        isOpen={isMergeModalOpen}
+        vouchers={data?.vouchers.filter((v) => selectedIds.includes(v.id)) ?? []}
+        onClose={() => setIsMergeModalOpen(false)}
+        onSubmit={handleMerge}
+      />
     </div>
   );
 }

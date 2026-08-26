@@ -152,6 +152,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin,admin')->group(function () {
         Route::prefix('vouchers')->group(function () {
             Route::get('/', [VoucherController::class, 'index']);
+            // ADR-036 — admin-triggered voucher consolidation.
+            Route::post('/merge', [VoucherController::class, 'merge']);
             Route::get('/{voucher}', [VoucherController::class, 'show']);
             Route::post('/', [VoucherController::class, 'store']);
             Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
