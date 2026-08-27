@@ -5,7 +5,6 @@ namespace App\Events;
 use App\Models\Order;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
-use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -20,16 +19,13 @@ use Illuminate\Queue\SerializesModels;
  * internal financial/operational fields `backend/AGENTS.md` reserves for
  * admin-only responses.
  *
- * `ShouldDispatchAfterCommit`: every current writer of
- * payment_status/delivery_status (OrderFulfillmentService's three
- * transition methods, both payment webhooks, the reconciliation command)
- * updates the Order inside `DB::transaction()`/`lockForUpdate()` —
- * broadcasting must wait for that transaction to actually commit, both so
- * a rolled-back change is never announced and so a future Redis-backed
- * queue (ADR-048) can't pick this job up before the commit is even
- * visible to it.
+ * Dispatched from `OrderObserver` via its own `DB::afterCommit()` +
+ * try/catch, not by this class implementing `ShouldDispatchAfterCommit` —
+ * see that observer's own doc comment for why (a real reproduced bug: a
+ * Reverb-unreachable broadcast must never be allowed to throw out of the
+ * `DB::transaction()` it's reporting on).
  */
-final class OrderStatusUpdated implements ShouldBroadcast, ShouldDispatchAfterCommit
+final class OrderStatusUpdated implements ShouldBroadcast
 {
     use Dispatchable, SerializesModels;
 

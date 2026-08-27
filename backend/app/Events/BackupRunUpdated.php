@@ -5,7 +5,6 @@ namespace App\Events;
 use App\Models\BackupRun;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
-use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -17,8 +16,12 @@ use Illuminate\Queue\SerializesModels;
  * page" rather than tracking one run's fields incrementally — so this
  * stays a single admin-wide channel, not one per run, and the payload
  * only needs to say *that* something changed, not carry the full row.
+ *
+ * Dispatched from `BackupRunObserver` via its own `DB::afterCommit()` +
+ * try/catch, not by this class implementing `ShouldDispatchAfterCommit`
+ * — see `OrderObserver`'s doc comment for the real bug this avoids.
  */
-final class BackupRunUpdated implements ShouldBroadcast, ShouldDispatchAfterCommit
+final class BackupRunUpdated implements ShouldBroadcast
 {
     use Dispatchable, SerializesModels;
 

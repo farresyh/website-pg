@@ -5,7 +5,6 @@ namespace App\Events;
 use App\Models\PriceSyncRun;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
-use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -16,8 +15,12 @@ use Illuminate\Queue\SerializesModels;
  * (no customer-financial-field concern the way OrderStatusUpdated has),
  * authorized in routes/channels.php against the same `super_admin` role
  * `/middleware/price-sync`'s own REST routes already require.
+ *
+ * Dispatched from `PriceSyncRunObserver` via its own `DB::afterCommit()`
+ * + try/catch, not by this class implementing `ShouldDispatchAfterCommit`
+ * — see `OrderObserver`'s doc comment for the real bug this avoids.
  */
-final class PriceSyncRunUpdated implements ShouldBroadcast, ShouldDispatchAfterCommit
+final class PriceSyncRunUpdated implements ShouldBroadcast
 {
     use Dispatchable, SerializesModels;
 
