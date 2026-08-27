@@ -114,7 +114,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       XENDIT_SECRET_KEY: ${{ secrets.XENDIT_TEST_SECRET_KEY }}
-      DEBUG: pw:webserver
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
