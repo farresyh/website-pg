@@ -35,6 +35,7 @@ use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\PriceSyncController;
 use App\Http\Controllers\Middleware\SandboxOrderController;
+use App\Http\Controllers\Middleware\SupplierController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PlayerValidationController;
@@ -238,6 +239,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/mark-delivered', [SandboxOrderController::class, 'markDelivered']);
         Route::delete('/{order}', [SandboxOrderController::class, 'destroy']);
         Route::delete('/', [SandboxOrderController::class, 'destroyAll']);
+    });
+
+    // ADR-046 — Supplier Management: SUPP-1/CRUD/SUPP-5 only (SUPP-2/3/4
+    // deliberately not built here, already covered by Product Manager
+    // below — see ADR-046's Context). Super Admin only — supplier
+    // config, per PRD §3.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/suppliers')->group(function () {
+        Route::get('/', [SupplierController::class, 'index']);
+        Route::get('/available-slugs', [SupplierController::class, 'availableSlugs']);
+        Route::post('/', [SupplierController::class, 'store']);
+        Route::put('/{supplier}', [SupplierController::class, 'update']);
+        Route::patch('/{supplier}/status', [SupplierController::class, 'updateStatus']);
+        Route::delete('/{supplier}', [SupplierController::class, 'destroy']);
+        Route::post('/{supplier}/refresh-balance', [SupplierController::class, 'refreshBalance']);
+        Route::patch('/{supplier}/packages/status', [SupplierController::class, 'updatePackagesStatus']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion

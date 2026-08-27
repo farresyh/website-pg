@@ -6,6 +6,7 @@ use App\Models\Supplier;
 use App\Services\Sync\ProductSyncFailedException;
 use App\Services\Sync\ProductSyncService;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Services\Supplier\UnsupportedSupplierException;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -27,11 +28,13 @@ use Illuminate\Console\Command;
  * (Digiflazz, ADR-030) is expected to already exist as a real row by
  * the time this command runs.
  *
- * A supplier whose adapter isn't bound (UnsupportedSupplierException)
- * or whose own sync fails is logged and skipped, not fatal to the
- * whole run — one broken supplier must never block every other
- * supplier's sync. Overall exit code is FAILURE only if every active
- * supplier failed.
+ * A supplier whose adapter isn't bound (UnsupportedSupplierException),
+ * isn't configured yet (SupplierNotConfiguredException — ADR-046: a
+ * freshly-created row with empty api_config, before an admin sets its
+ * credentials via Supplier Management), or whose own sync fails is
+ * logged and skipped, not fatal to the whole run — one broken supplier
+ * must never block every other supplier's sync. Overall exit code is
+ * FAILURE only if every active supplier failed.
  */
 #[Signature('app:sync-supplier-products')]
 #[Description('Sync every active supplier\'s raw product catalog into the supplier_products staging table.')]
@@ -53,7 +56,7 @@ class SyncSupplierProductsCommand extends Command
             try {
                 $adapter = $supplierAdapters->make($supplier->slug);
                 $result = $service->sync($supplier, $adapter);
-            } catch (UnsupportedSupplierException|ProductSyncFailedException $e) {
+            } catch (UnsupportedSupplierException|SupplierNotConfiguredException|ProductSyncFailedException $e) {
                 $this->error("Supplier '{$supplier->slug}' sync failed: {$e->getMessage()}");
 
                 continue;

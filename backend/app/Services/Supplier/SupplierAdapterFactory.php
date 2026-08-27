@@ -38,4 +38,23 @@ final class SupplierAdapterFactory
 
         return $this->container->make($key);
     }
+
+    /**
+     * ADR-046 decision 4: the Supplier Management screen's `slug`
+     * dropdown reads this rather than a hardcoded list, so it stays
+     * accurate the moment a new supplier gets its own container
+     * binding — no separate list to keep in sync (and keeps this
+     * factory, not the admin-CRUD layer, as the one place that knows
+     * which slugs actually have an implementation).
+     *
+     * @return list<string>
+     */
+    public function registeredSlugs(): array
+    {
+        return collect(array_keys($this->container->getBindings()))
+            ->filter(fn (string $key) => str_starts_with($key, 'supplier-adapter.'))
+            ->map(fn (string $key) => substr($key, strlen('supplier-adapter.')))
+            ->values()
+            ->all();
+    }
 }
