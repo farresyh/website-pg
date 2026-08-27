@@ -156,7 +156,9 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
       - run: doctl registry login --expiry-seconds 600
       - run: docker build -t registry.digitalocean.com/kedairuncitsoloz/backend:${{ github.sha }} ./backend
-      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} -t registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }} ./admin
+      # ADR-047 decision 1/3/5 — see the storefront build below for why
+      # these evaluate safely to empty strings until Reverb is deployed.
+      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} --build-arg NEXT_PUBLIC_REVERB_APP_KEY=${{ vars.NEXT_PUBLIC_REVERB_APP_KEY }} --build-arg NEXT_PUBLIC_REVERB_HOST=${{ vars.NEXT_PUBLIC_REVERB_HOST }} --build-arg NEXT_PUBLIC_REVERB_PORT=${{ vars.NEXT_PUBLIC_REVERB_PORT }} --build-arg NEXT_PUBLIC_REVERB_SCHEME=${{ vars.NEXT_PUBLIC_REVERB_SCHEME }} -t registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }} ./admin
       # ADR-047 decision 1/5 — NEXT_PUBLIC_REVERB_* vars.* are unset until
       # Reverb is actually deployed; evaluate to empty strings until then,
       # which is safe (OrderStatusTracker's poll fallback covers it, per

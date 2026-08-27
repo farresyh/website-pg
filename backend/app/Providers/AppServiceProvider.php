@@ -3,9 +3,13 @@
 namespace App\Providers;
 
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Models\BackupRun;
 use App\Models\Order;
+use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Observers\BackupRunObserver;
 use App\Observers\OrderObserver;
+use App\Observers\PriceSyncRunObserver;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Payment\Chip\ChipGateway;
@@ -262,5 +266,7 @@ class AppServiceProvider extends ServiceProvider
         // doc comment for why this is a model observer, not a call added
         // to every individual writer.
         Order::observe(OrderObserver::class);
+        PriceSyncRun::observe(PriceSyncRunObserver::class);
+        BackupRun::observe(BackupRunObserver::class);
     }
 }

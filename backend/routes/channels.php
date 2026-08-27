@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AdminUser;
 use Illuminate\Support\Facades\Broadcast;
 
 // ADR-047 decision 2: storefront order-status updates broadcast on a
@@ -9,9 +10,22 @@ use Illuminate\Support\Facades\Broadcast;
 // `GET /api/track-order/{orderNumber}` endpoint; this channel relies on the
 // identical trust boundary, deliberately not gated by a channel-auth check.
 
-// ADR-047 decision 3: admin-side channels (Price Sync / Backups / Sandbox /
-// Dashboard health run-status) are PRIVATE, authorized here against the
-// authenticated admin user — same bearer-token boundary every other
-// `auth:sanctum` route already requires. Added as each of those four
-// conversions ships (see docs/prd.md's pointer list, items 2-5 of
-// ADR-047 decision 1's sequence) — none built yet.
+// ADR-047 decision 3: admin-side channels are PRIVATE, authorized against
+// the authenticated admin user resolved by `auth:sanctum` on
+// `POST /api/broadcasting/auth` (bootstrap/app.php) — each channel's role
+// check mirrors its own REST routes' `admin.role:` middleware exactly
+// (routes/api.php), so a channel never grants broadcast access a role
+// couldn't already get through the ordinary API.
+
+// Price Sync (`/middleware/price-sync`) — super_admin only, one channel
+// per run (mirrors PriceSyncController::show()'s per-run lookup).
+Broadcast::channel('price-sync-run.{runId}', function (AdminUser $admin, int $runId) {
+    return $admin->role === 'super_admin' && $admin->is_active;
+});
+
+// Backups (`/middleware/backups`) — super_admin only, one admin-wide
+// channel (the screen refetches its whole list/stats on any change, not
+// one run's fields incrementally — see BackupRunUpdated's own doc comment).
+Broadcast::channel('backups', function (AdminUser $admin) {
+    return $admin->role === 'super_admin' && $admin->is_active;
+});

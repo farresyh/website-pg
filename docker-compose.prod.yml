@@ -91,6 +91,12 @@ services:
       context: ./admin
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        # ADR-047 decision 1/3/5 — same Reverb build-arg wiring as
+        # storefront below (Price Sync/Backups' private channels).
+        NEXT_PUBLIC_REVERB_APP_KEY: ${NEXT_PUBLIC_REVERB_APP_KEY}
+        NEXT_PUBLIC_REVERB_HOST: ${NEXT_PUBLIC_REVERB_HOST}
+        NEXT_PUBLIC_REVERB_PORT: ${NEXT_PUBLIC_REVERB_PORT:-443}
+        NEXT_PUBLIC_REVERB_SCHEME: ${NEXT_PUBLIC_REVERB_SCHEME:-https}
     restart: unless-stopped
     ports:
       - "${ADMIN_PORT:-3000}:3000"
