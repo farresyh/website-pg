@@ -29,6 +29,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Backup\Events\BackupHasFailed;
 use Spatie\Backup\Events\CleanupHasFailed;
@@ -268,5 +269,13 @@ class AppServiceProvider extends ServiceProvider
         Order::observe(OrderObserver::class);
         PriceSyncRun::observe(PriceSyncRunObserver::class);
         BackupRun::observe(BackupRunObserver::class);
+
+        // ADR-048 addendum: same `web`-session/super_admin gate as
+        // HorizonServiceProvider::gate() — Pulse doesn't generate its own
+        // service provider, so this is the one place Laravel\Pulse\Http\
+        // Middleware\Authorize's `viewPulse` gate can be defined.
+        Gate::define('viewPulse', function ($user = null) {
+            return $user !== null && $user->is_active && $user->role === 'super_admin';
+        });
     }
 }

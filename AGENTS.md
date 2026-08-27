@@ -9,7 +9,7 @@ change to those paths with the same care the existing code already does.
 
 | Path | What | Notes |
 | --- | --- | --- |
-| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, `database`-driver queue/cache (see ADR-014/019) |
+| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, Redis-driver queue (Horizon, ADR-048) + `database`-driver cache (see ADR-014/019) |
 | `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery |
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011) |
 | `docs/` | `prd.md` (spec + build-status log), `adr.md` (decision log), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
@@ -112,7 +112,8 @@ or a one-line fix doesn't need it.
 ./scripts/dev.sh
 
 # Backend
-cd backend && composer run dev        # serve + queue:listen + pail + vite, all together
+cd backend && docker compose up -d redis  # ADR-048: QUEUE_CONNECTION=redis, composer run dev's horizon process needs this running first
+cd backend && composer run dev        # serve + horizon + pail + vite, all together
 cd backend && php artisan test        # fast suite (sqlite, no Docker)
 cd backend && docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurrency/locking proofs, needs real MySQL
 
@@ -132,16 +133,22 @@ cd e2e && npm test
 ```
 
 **Known gotcha:** a queued job (Price Sync, order fulfillment/resend) needs an
-actual queue worker running — `composer run dev` includes one; a bare
-`php artisan serve` (or Laravel Herd on its own) does not. A stuck "Syncing…"
-state with nothing updating almost always means the worker isn't running, not
-a frontend bug — see `docs/prd.md` §14's 2026-07-27 live-testing entry. A
-second, quieter cause of the same symptom: `composer run dev` itself silently
-kills its own queue worker if `backend/node_modules` was never installed
-(`npm install` inside `backend/`, separate from `admin/`/`storefront/`'s own
-installs) — its `vite` step fails and `concurrently --kill-others` tears down
-`queue:listen` with it, visible only in the backend's own terminal output.
-See `docs/prd.md` §14's 2026-07-28 addendum.
+actual queue worker running — `composer run dev` includes one (`php artisan
+horizon`, since ADR-048); a bare `php artisan serve` (or Laravel Herd on its
+own) does not. A stuck "Syncing…" state with nothing updating almost always
+means the worker isn't running, not a frontend bug — see `docs/prd.md` §14's
+2026-07-27 live-testing entry. A second, quieter cause of the same symptom:
+`composer run dev` itself silently kills its own queue worker if
+`backend/node_modules` was never installed (`npm install` inside `backend/`,
+separate from `admin/`/`storefront/`'s own installs) — its `vite` step fails
+and `concurrently --kill-others` tears down `horizon` with it, visible only
+in the backend's own terminal output. See `docs/prd.md` §14's 2026-07-28
+addendum. **Third cause, since ADR-048:** `horizon` itself needs
+`backend/docker-compose.yml`'s `redis` service running (`QUEUE_CONNECTION`
+moved off `database` onto `redis`, and Horizon has no `database`-driver
+fallback) — if that container isn't up, `horizon`'s pane in `composer run
+dev`'s output shows a connection-refused error, not a silent no-op, but it's
+easy to miss in interleaved terminal output.
 
 **Second known gotcha:** a new migration written during a session only runs
 automatically against the *test* databases (sqlite `:memory:` for `php artisan
