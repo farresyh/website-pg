@@ -23,6 +23,7 @@ services:
     restart: unless-stopped
     depends_on:
       - php-fpm
+      - reverb
     # Parameterized (ADR-037 decision #6) so a staging deploy of this same
     # file, in its own directory checkout on the same droplet, can bind
     # different host ports and coexist with production — container/network
@@ -101,6 +102,15 @@ services:
       context: ./storefront
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        # ADR-047 decision 1/5 — public-facing Reverb connection details
+        # (through nginx's /app/ proxy + Cloudflare, not the internal
+        # compose-network `reverb` hostname `php-fpm`/queue workers use).
+        # Read from this directory's own .env, same convention as
+        # NEXT_PUBLIC_API_URL above.
+        NEXT_PUBLIC_REVERB_APP_KEY: ${NEXT_PUBLIC_REVERB_APP_KEY}
+        NEXT_PUBLIC_REVERB_HOST: ${NEXT_PUBLIC_REVERB_HOST}
+        NEXT_PUBLIC_REVERB_PORT: ${NEXT_PUBLIC_REVERB_PORT:-443}
+        NEXT_PUBLIC_REVERB_SCHEME: ${NEXT_PUBLIC_REVERB_SCHEME:-https}
     restart: unless-stopped
     ports:
       - "${STOREFRONT_PORT:-3001}:3000"
@@ -115,3 +125,19 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: redis-server --save "" --appendonly no
+
+  # ADR-047 decision 5 — Reverb's own realtime WebSocket server, same
+  # image/build as php-fpm (only the command differs, same pattern as the
+  # queue-worker-* services above). No published port: browser traffic
+  # reaches it only via `nginx`'s `/app/` reverse-proxy below (one TLS/
+  # domain surface for HTTP and WebSocket alike); `php-fpm`/the
+  # queue-worker-* containers publish events to it directly over the
+  # compose network (REVERB_HOST=reverb in backend/.env), never through
+  # nginx either.
+  reverb:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    command: php artisan reverb:start --host=0.0.0.0

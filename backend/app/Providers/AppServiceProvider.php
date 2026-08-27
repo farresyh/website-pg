@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Models\Order;
 use App\Models\Supplier;
+use App\Observers\OrderObserver;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Payment\Chip\ChipGateway;
@@ -253,5 +255,12 @@ class AppServiceProvider extends ServiceProvider
         // `admin_users` row rather than one static config address.
         Event::listen(BackupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleBackupHasFailed']);
         Event::listen(CleanupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleCleanupHasFailed']);
+
+        // ADR-047 decision 1 — broadcasts OrderStatusUpdated whenever
+        // payment_status/delivery_status actually changes, replacing
+        // storefront's OrderStatusTracker poll. See OrderObserver's own
+        // doc comment for why this is a model observer, not a call added
+        // to every individual writer.
+        Order::observe(OrderObserver::class);
     }
 }

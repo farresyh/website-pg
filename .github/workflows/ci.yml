@@ -157,7 +157,12 @@ jobs:
       - run: doctl registry login --expiry-seconds 600
       - run: docker build -t registry.digitalocean.com/kedairuncitsoloz/backend:${{ github.sha }} ./backend
       - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} -t registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }} ./admin
-      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} -t registry.digitalocean.com/kedairuncitsoloz/storefront:${{ github.sha }} ./storefront
+      # ADR-047 decision 1/5 — NEXT_PUBLIC_REVERB_* vars.* are unset until
+      # Reverb is actually deployed; evaluate to empty strings until then,
+      # which is safe (OrderStatusTracker's poll fallback covers it, per
+      # storefront/src/lib/echo.ts's own doc comment). Wired here now so
+      # nobody has to remember to touch this job again once Reverb ships.
+      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} --build-arg NEXT_PUBLIC_REVERB_APP_KEY=${{ vars.NEXT_PUBLIC_REVERB_APP_KEY }} --build-arg NEXT_PUBLIC_REVERB_HOST=${{ vars.NEXT_PUBLIC_REVERB_HOST }} --build-arg NEXT_PUBLIC_REVERB_PORT=${{ vars.NEXT_PUBLIC_REVERB_PORT }} --build-arg NEXT_PUBLIC_REVERB_SCHEME=${{ vars.NEXT_PUBLIC_REVERB_SCHEME }} -t registry.digitalocean.com/kedairuncitsoloz/storefront:${{ github.sha }} ./storefront
       - run: docker push registry.digitalocean.com/kedairuncitsoloz/backend:${{ github.sha }}
       - run: docker push registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }}
       - run: docker push registry.digitalocean.com/kedairuncitsoloz/storefront:${{ github.sha }}
