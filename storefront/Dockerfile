@@ -16,6 +16,19 @@ WORKDIR /app
 # enough for this one variable.
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# ADR-047 decision 1/5 — same build-time-inlining requirement as
+# NEXT_PUBLIC_API_URL above. Reverb client config (getEcho(),
+# src/lib/echo.ts); OrderStatusTracker degrades to poll-only if
+# NEXT_PUBLIC_REVERB_APP_KEY is unset (decision 4's fallback), so an
+# environment that hasn't provisioned Reverb yet still builds and runs.
+ARG NEXT_PUBLIC_REVERB_APP_KEY
+ARG NEXT_PUBLIC_REVERB_HOST
+ARG NEXT_PUBLIC_REVERB_PORT
+ARG NEXT_PUBLIC_REVERB_SCHEME
+ENV NEXT_PUBLIC_REVERB_APP_KEY=$NEXT_PUBLIC_REVERB_APP_KEY
+ENV NEXT_PUBLIC_REVERB_HOST=$NEXT_PUBLIC_REVERB_HOST
+ENV NEXT_PUBLIC_REVERB_PORT=$NEXT_PUBLIC_REVERB_PORT
+ENV NEXT_PUBLIC_REVERB_SCHEME=$NEXT_PUBLIC_REVERB_SCHEME
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

@@ -3,12 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, WhatsappLogo } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
-import { trackOrder, type TrackedOrder } from "@/lib/track-order";
+import { getEcho } from "@/lib/echo";
+import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
 
-const POLL_INTERVAL_MS = 5000;
-const MAX_POLLS = 24; // ~2 minutes
+// ADR-047 decision 1/4: Reverb push (subscribed below) is now the primary
+// path — a status change reaches this component the moment
+// OrderStatusUpdated broadcasts, not on the next poll tick. This interval
+// is deliberately kept, at a much slower cadence, as the one fallback
+// decision 4 requires: if the WebSocket never connects (misconfigured env,
+// a network that blocks it) or a push event is somehow missed, the
+// customer still sees their order resolve within one polling window,
+// never stuck silently on a stale state.
+const POLL_INTERVAL_MS = 20000;
+const MAX_POLLS = 18; // ~6 minutes of fallback-poll safety net
 
 type StageState = "done" | "active" | "pending" | "failed";
 
@@ -99,6 +108,33 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
     return () => {
       cancelled = true;
       clearTimeout(timer);
+    };
+  }, [orderNumber]);
+
+  // ADR-047 decisions 1/2 — public channel keyed by the order's own
+  // order_number (guest checkout, ADR-011, no auth possible or needed —
+  // see OrderStatusUpdated.php's own doc comment for why this is safe).
+  // Skipped entirely when Reverb isn't configured for this environment
+  // (E2E's throwaway backend, a preview deploy that hasn't set the
+  // NEXT_PUBLIC_REVERB_* vars yet) — the poll loop above is a complete
+  // fallback on its own, this is purely an enhancement on top of it.
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_REVERB_APP_KEY) return;
+
+    const channelName = `order.${orderNumber}`;
+    const channel = getEcho().channel(channelName);
+
+    channel.listen(".order.status.updated", (payload: unknown) => {
+      const parsed = TrackedOrderSchema.safeParse(payload);
+      if (parsed.success) {
+        setOrder(parsed.data);
+        setError(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      getEcho().leave(channelName);
     };
   }, [orderNumber]);
 

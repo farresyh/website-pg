@@ -9,7 +9,7 @@
  * restore action exists anywhere on this page.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { getEcho } from "@/lib/echo";
 import { ApiError } from "@/lib/api-client";
 import {
   type BackupRun,
@@ -48,8 +49,6 @@ import {
   deleteBackupRun,
   downloadBackupRun,
 } from "@/lib/backups";
-
-const RUN_IN_FLIGHT = new Set<BackupRun["status"]>(["queued", "running"]);
 
 const statusSeverity: Record<BackupRun["status"], "secondary" | "warn" | "success" | "danger"> = {
   queued: "secondary",
@@ -90,7 +89,6 @@ export default function BackupsPage() {
   const [triggering, setTriggering] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [confirmDeleteRun, setConfirmDeleteRun] = useState<BackupRun | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const s = getClientSession();
@@ -137,25 +135,27 @@ export default function BackupsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, historyPageNumber]);
 
-  // A run in flight (queued/running) anywhere on the current page keeps
-  // polling until it settles — mirrors Price Sync Center's own pattern.
-  const hasRunInFlight = historyPage?.data.some((run) => RUN_IN_FLIGHT.has(run.status)) ?? false;
-
+  // ADR-047 decisions 1/3/4 — replaces the 3s "any run in flight" poll
+  // with a push subscription on the shared admin-wide `backups` channel.
+  // No in-flight gating needed here the way the old poll had — a
+  // subscription costs nothing while idle (unlike an interval timer), so
+  // this just stays listening for the page's whole lifetime and refetches
+  // on whatever change actually happens. If Reverb isn't reachable, the
+  // page simply shows its last-loaded state until the admin navigates
+  // away and back — the same accepted degrade Price Sync's conversion has.
   useEffect(() => {
-    if (!session || !hasRunInFlight) {
-      if (pollRef.current) clearInterval(pollRef.current);
-      return;
-    }
+    if (!session || !process.env.NEXT_PUBLIC_REVERB_APP_KEY) return;
 
-    pollRef.current = setInterval(() => {
+    const channel = getEcho().private("backups");
+    channel.listen(".backup-run.status.updated", () => {
       refreshAll(session.token);
-    }, 3000);
+    });
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      getEcho().leave("backups");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, hasRunInFlight]);
+  }, [session]);
 
   async function handleTrigger() {
     if (!session) return;

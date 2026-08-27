@@ -11,13 +11,14 @@
  * (ADR-033 addendum) close SYNC-3 for real.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { getEcho } from "@/lib/echo";
 import { ApiError } from "@/lib/api-client";
 import {
   type PriceSyncRun,
@@ -29,7 +30,6 @@ import {
   type PendingPriceChange,
   type CurrencyRatePage,
   triggerPriceSync,
-  getPriceSyncRun,
   getPriceSyncStats,
   listPriceSyncRuns,
   listPendingReactivations,
@@ -80,7 +80,6 @@ export default function PriceSyncPage() {
   const [error, setError] = useState<string | null>(null);
   const [rowBusyId, setRowBusyId] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [dismissedPage, setDismissedPage] = useState<DismissedPackagePage | null>(null);
   const [dismissedPageNumber, setDismissedPageNumber] = useState(1);
@@ -202,30 +201,30 @@ export default function PriceSyncPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, fxRatesPageNumber]);
 
+  // ADR-047 decisions 1/3/4 — replaces the 2s poll above with a push
+  // subscription on this run's own private channel. Admin-side screens
+  // drop polling entirely once converted (unlike the storefront's
+  // OrderStatusTracker) — if Reverb isn't reachable, this run's card
+  // simply sits at its last-known state until the admin navigates away
+  // and back, an accepted degrade for internal ops tooling.
   useEffect(() => {
-    if (!session || !run || !RUN_IN_FLIGHT.has(run.status)) {
-      if (pollRef.current) clearInterval(pollRef.current);
-      return;
-    }
+    if (!session || !run || !RUN_IN_FLIGHT.has(run.status) || !process.env.NEXT_PUBLIC_REVERB_APP_KEY) return;
 
-    pollRef.current = setInterval(() => {
-      getPriceSyncRun(session.token, run.id)
-        .then((updated) => {
-          setRun(updated);
-          if (!RUN_IN_FLIGHT.has(updated.status)) {
-            refreshAll(session.token);
-          }
-        })
-        .catch(() => {
-          // A transient poll failure isn't fatal — the next tick retries.
-        });
-    }, 2000);
+    const channelName = `price-sync-run.${run.id}`;
+    const channel = getEcho().private(channelName);
+
+    channel.listen(".price-sync-run.status.updated", (updated: PriceSyncRun) => {
+      setRun(updated);
+      if (!RUN_IN_FLIGHT.has(updated.status)) {
+        refreshAll(session.token);
+      }
+    });
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      getEcho().leave(channelName);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, run]);
+  }, [session, run?.id, run?.status]);
 
   async function handleTrigger() {
     if (!session) return;
