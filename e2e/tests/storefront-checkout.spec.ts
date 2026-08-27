@@ -66,16 +66,12 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   const login = await request.post(`${BACKEND_URL}/api/login`, {
     data: { email: E2E_ADMIN_EMAIL, password: E2E_ADMIN_PASSWORD },
   });
-  const loginBody = await login.json();
-  console.log("DEBUG login status", login.status(), JSON.stringify(loginBody));
-  const { token } = loginBody;
+  const { token } = await login.json();
 
   const search = await request.get(`${BACKEND_URL}/api/orders?search=${encodeURIComponent(orderNumber)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const searchBody = await search.json();
-  console.log("DEBUG search status", search.status(), JSON.stringify(searchBody));
-  const { data } = searchBody;
+  const { data } = await search.json();
   const orderId: number = data[0].id;
 
   const detail = await request.get(`${BACKEND_URL}/api/orders/${orderId}`, {

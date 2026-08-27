@@ -49,7 +49,21 @@ use Illuminate\Support\Facades\Route;
 // unlike /checkout and /validate-player below. Tighter than either
 // (5/minute/IP, not 10) — this is a brute-force/credential-stuffing
 // target, not a genuine-retry-tolerant customer action.
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+//
+// Explicit `login` prefix — found live, 2026-08-27: ThrottleRequests'
+// default key is sha1($route->getDomain().'|'.$request->ip()), which
+// never includes the route path/URI at all. Every throttle:N,1 route
+// below with no prefix of its own shares that exact same bucket per
+// IP, regardless of each route's own configured maxAttempts — a guest
+// hitting /checkout, /client-errors, /validate-player etc. from the
+// same IP silently eats into /login's 5/minute budget (and vice
+// versa). Surfaced by the storefront-checkout E2E spec's own admin
+// API login getting a genuine 429 after only 1 real login attempt,
+// once the earlier playwright webServer-boot bug (see
+// e2e/scripts/boot-backend.sh) stopped masking it. Every throttle:
+// route in this file now gets its own prefix for the same reason,
+// not just this one.
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1,login');
 
 // ADR-014: unauthenticated infra probe, DB + queue connection only —
 // no order/customer data ever touches this endpoint.
@@ -59,7 +73,7 @@ Route::get('/health', [HealthController::class, 'check']);
 // storefront's guest context report here), throttled log sink for a
 // zod response-schema mismatch. Not a general error-monitoring
 // endpoint — see ClientErrorController's own doc comment.
-Route::post('/client-errors', [ClientErrorController::class, 'store'])->middleware('throttle:30,1');
+Route::post('/client-errors', [ClientErrorController::class, 'store'])->middleware('throttle:30,1,client-errors');
 
 // Guest checkout (ADR-011) — no Customer auth exists, deliberately not
 // behind auth:sanctum. Money fields are still never client-trusted
@@ -67,7 +81,7 @@ Route::post('/client-errors', [ClientErrorController::class, 'store'])->middlewa
 // Game/Package config, never from this request's own body.
 // ADR-014: throttle:10,1 — 10/minute/IP, loose enough for a genuine
 // customer retrying a failed attempt, tight enough to blunt a flood.
-Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1,checkout');
 
 // ADR-024 decision #1's "Apply" button — read-only preview, never
 // locks or spends a voucher's remaining balance (VoucherService::
@@ -76,21 +90,21 @@ Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('thro
 // abuse this rate limit exists to blunt, and the ownership-lock check
 // inside VoucherService::preview() already keeps a wrong guess from
 // revealing anything either way.
-Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware('throttle:10,1,voucher-preview');
 
 // Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
 // as checkout above) — backend half of the Player-ID Validation
 // follow-up, docs/prd.md §14. Same throttle as checkout: this hits
 // unofficial third-party provider APIs (ADR-005 addendum), tighter
 // abuse-blunting matters more here than for a normal read endpoint.
-Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:10,1,validate-player');
 
 // Public "Track Order" lookup (ADR-011) — order_number (a ULID) is
 // high-entropy enough to be treated as proof of ownership on its own,
 // same trust model as a courier tracking number. Read-only, but still
 // throttled — a bit looser than checkout/validate since it's not
 // hitting a third-party API, just blunting scraping/enumeration.
-Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1');
+Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1,track-order');
 
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
@@ -127,7 +141,7 @@ Route::prefix('catalog')->group(function () {
     // app/robots.ts.
     Route::get('/seo/settings', [SeoController::class, 'settings']);
     Route::get('/seo/redirects', [SeoController::class, 'redirects']);
-    Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1');
+    Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1,redirect-hit');
     Route::get('/seo/scripts', [SeoController::class, 'scripts']);
     Route::get('/seo/robots', [SeoController::class, 'robots']);
 });
@@ -421,5 +435,5 @@ Route::middleware('auth:sanctum')->group(function () {
 // enabled at all, per bootstrap/app.php) — bounds the cost of an unsigned
 // flood before signature verification runs, without risking a real gateway
 // retry burst getting throttled. Found absent, fresh audit, 2026-08-14.
-Route::post('/webhooks/xendit', [XenditWebhookController::class, 'handle'])->middleware('throttle:120,1');
-Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])->middleware('throttle:120,1');
+Route::post('/webhooks/xendit', [XenditWebhookController::class, 'handle'])->middleware('throttle:120,1,webhook-xendit');
+Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])->middleware('throttle:120,1,webhook-chip');
