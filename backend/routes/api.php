@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
+use App\Http\Controllers\Admin\CustomerAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
@@ -227,6 +228,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
         Route::get('/export', [ReportController::class, 'export']);
+    });
+
+    Route::middleware('admin.role:super_admin,admin')->prefix('customer-analytics')->group(function () {
+        Route::get('/summary', [CustomerAnalyticsController::class, 'summary']);
+        Route::get('/customers', [CustomerAnalyticsController::class, 'customers']);
+        Route::get('/export', [CustomerAnalyticsController::class, 'export']);
     });
 
     Route::middleware('admin.role:super_admin,admin')->prefix('orders')->group(function () {

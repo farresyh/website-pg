@@ -26,6 +26,7 @@ class UpdatePlatformSettingsRequest extends FormRequest
         return [
             'maintenance_mode' => ['required', 'boolean'],
             'maintenance_message' => ['nullable', 'string'],
+            'vip_spend_threshold_sen' => ['required', 'integer', 'min:0'],
             'telegram_notifications_enabled' => ['required', 'boolean'],
             'telegram_bot_token' => ['nullable', 'string', 'max:255'],
             'telegram_chat_id' => ['nullable', 'string', 'max:255'],
