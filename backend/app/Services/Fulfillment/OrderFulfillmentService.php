@@ -169,6 +169,7 @@ final class OrderFulfillmentService
                 'supplier_ref' => $result->data['supplier_ref'] ?? null,
                 'supplier_response' => $result->data,
                 'delivery_status' => $this->orderStatus->markDelivered($processingStatus)->value,
+                'delivered_at' => now(),
             ]);
 
             $this->creditProfit($locked);
@@ -219,6 +220,7 @@ final class OrderFulfillmentService
                     'supplier_ref' => $supplierRef ?? $locked->supplier_ref,
                     'supplier_response' => $supplierResponse ?? $locked->supplier_response,
                     'delivery_status' => $deliveredStatus->value,
+                    'delivered_at' => now(),
                 ]);
 
                 $this->creditProfit($locked);
@@ -281,6 +283,7 @@ final class OrderFulfillmentService
                     'confirmed_at' => now()->toISOString(),
                 ],
                 'delivery_status' => $deliveredStatus->value,
+                'delivered_at' => now(),
             ]);
 
             $this->creditProfit($locked);

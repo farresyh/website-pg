@@ -255,6 +255,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertStringStartsWith('REF-', $result->reference_number);
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
         $this->assertSame('GV-RAPI-1A2B3C4D5E6F', $result->supplier_ref);
+        $this->assertNotNull($result->delivered_at);
     }
 
     /**
@@ -447,6 +448,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertTrue($result->supplier_response['manually_confirmed']);
         $this->assertSame('Jane Admin', $result->supplier_response['confirmed_by']);
         $this->assertSame('confirmed via Gamevion dashboard', $result->supplier_response['note']);
+        $this->assertNotNull($result->delivered_at);
     }
 
     public function test_mark_delivered_manually_credits_ledger_profit(): void
@@ -500,6 +502,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertSame(['status' => 'Sukses'], $result->supplier_response);
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+        $this->assertNotNull($result->delivered_at);
     }
 
     /**
