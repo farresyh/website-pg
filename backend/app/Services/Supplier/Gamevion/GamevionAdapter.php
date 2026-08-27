@@ -44,9 +44,20 @@ final class GamevionAdapter implements SupplierAdapter
     ) {
     }
 
+    /**
+     * ADR-046 addendum: always queries Gamevion's real/production
+     * account, never the sandbox one — regardless of $this->sandbox
+     * (which exists for testing order-routing, a separate concern).
+     * Found live: X-ENVIRONMENT: sandbox routes check-balance to a
+     * *different* account with its own (fake, test-money) balance, not
+     * a sandboxed view of the same real number — a balance-monitoring
+     * screen (SUPP-1/DASH-2) showing that instead of the real balance
+     * whenever an admin happens to have sandbox mode on is a real
+     * money-visibility risk, not a cosmetic one.
+     */
     public function checkBalance(): SupplierResponse
     {
-        $response = $this->client()->post('/api/check-balance');
+        $response = $this->client(forceProduction: true)->post('/api/check-balance');
 
         if ($failure = $this->failureFrom($response)) {
             return $failure;
@@ -164,13 +175,13 @@ final class GamevionAdapter implements SupplierAdapter
      * Every request goes through this one client, so the timeout
      * applies uniformly, not just to createOrder().
      */
-    private function client(): PendingRequest
+    private function client(bool $forceProduction = false): PendingRequest
     {
         $client = Http::baseUrl($this->baseUrl)
             ->withHeaders(array_filter([
                 'Authorization' => "Bearer {$this->bearerToken}",
                 'X-API-KEY' => $this->apiKey,
-                'X-ENVIRONMENT' => $this->sandbox ? 'sandbox' : null,
+                'X-ENVIRONMENT' => ($this->sandbox && ! $forceProduction) ? 'sandbox' : null,
             ]))
             ->timeout($this->timeoutSeconds)
             ->connectTimeout($this->connectTimeoutSeconds)

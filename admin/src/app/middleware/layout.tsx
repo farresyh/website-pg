@@ -26,6 +26,7 @@ import { getClientSession } from "@/lib/session";
 // TODO (§6.20), same placeholder-until-built discipline as before.
 const NAV_ITEMS: { label: string; href: string | null }[] = [
   { label: "Dashboard", href: "/middleware" },
+  { label: "Suppliers", href: "/middleware/suppliers" },
   { label: "Product Manager", href: "/middleware/product-manager" },
   { label: "Payment Methods", href: "/middleware/payment-methods" },
   { label: "Price Sync", href: "/middleware/price-sync" },

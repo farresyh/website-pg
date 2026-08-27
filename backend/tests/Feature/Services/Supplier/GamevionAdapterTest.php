@@ -45,6 +45,28 @@ class GamevionAdapterTest extends TestCase
         });
     }
 
+    /**
+     * ADR-046 addendum: check-balance always queries the real account
+     * — sandbox mode routes to a *different* account with its own fake
+     * balance, found live while testing the Supplier Management
+     * screen. A balance-monitoring tool showing that instead of the
+     * real number whenever sandbox happens to be on is a real
+     * money-visibility risk.
+     */
+    public function test_check_balance_never_sends_the_sandbox_header_even_when_sandbox_is_enabled(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => false, 'code' => 200, 'message' => 'Success',
+                'data' => ['user_name' => 'Melpa Digital', 'user_balance' => '150000.00'],
+            ], 200),
+        ]);
+
+        $this->adapter(sandbox: true)->checkBalance();
+
+        Http::assertSent(fn ($request) => ! $request->hasHeader('X-ENVIRONMENT'));
+    }
+
     public function test_check_balance_normalizes_the_response(): void
     {
         Http::fake([

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Models\Supplier;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Payment\Chip\ChipGateway;
@@ -20,6 +21,7 @@ use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierNotConfiguredException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Backup\Events\BackupHasFailed;
@@ -74,14 +76,20 @@ class AppServiceProvider extends ServiceProvider
             $this->app->bind('supplier-adapter.e2e-fake-supplier', fn () => new FakeSupplierAdapter(simulateSuccess: true));
         } else {
             $this->app->bind('supplier-adapter.gamevion', function () {
+                // ADR-046 decision 2: credentials/mode come from the
+                // `gamevion` Supplier row's api_config, not .env — the
+                // pre-ADR-046 stopgap this replaces. timeout/connect_timeout
+                // stay config-based (cross-cutting, not per-supplier
+                // secret/mode state — ADR-046 decision 3's own scoping).
+                $apiConfig = $this->supplierApiConfig('gamevion');
                 $config = config('services.gamevion');
                 $proxy = config('services.proxy');
 
                 $gamevion = new GamevionAdapter(
-                    baseUrl: $config['base_url'],
-                    bearerToken: (string) $config['bearer_token'],
-                    apiKey: (string) $config['api_key'],
-                    sandbox: (bool) $config['sandbox'],
+                    baseUrl: $apiConfig['base_url'],
+                    bearerToken: (string) $apiConfig['bearer_token'],
+                    apiKey: (string) $apiConfig['api_key'],
+                    sandbox: (bool) $apiConfig['sandbox'],
                     proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                     timeoutSeconds: $config['timeout'],
                     connectTimeoutSeconds: $config['connect_timeout'],
@@ -116,15 +124,17 @@ class AppServiceProvider extends ServiceProvider
             // (name 'digiflazz', per ADR-031's consequence note this
             // comment predicted).
             $this->app->bind('supplier-adapter.digiflazz', function () {
+                // ADR-046 decision 2 — same cutover as 'gamevion' above.
+                $apiConfig = $this->supplierApiConfig('digiflazz');
                 $config = config('services.digiflazz');
                 $proxy = config('services.proxy');
 
                 $digiflazz = new DigiflazzAdapter(
-                    baseUrl: $config['base_url'],
-                    username: (string) $config['username'],
-                    apiKey: (string) $config['api_key'],
-                    testing: (bool) $config['testing'],
-                    customerNoSeparator: (string) $config['customer_no_separator'],
+                    baseUrl: $apiConfig['base_url'],
+                    username: (string) $apiConfig['username'],
+                    apiKey: (string) $apiConfig['api_key'],
+                    testing: (bool) $apiConfig['testing'],
+                    customerNoSeparator: (string) $apiConfig['customer_no_separator'],
                     proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                     timeoutSeconds: $config['timeout'],
                     connectTimeoutSeconds: $config['connect_timeout'],
@@ -208,6 +218,28 @@ class AppServiceProvider extends ServiceProvider
                 windowMinutes: $config['window_minutes'],
             );
         });
+    }
+
+    /**
+     * ADR-046 decision 2: the single place both supplier-adapter
+     * bindings above read their credentials/mode from — the
+     * `Supplier` row's encrypted api_config, replacing the old
+     * config('services.<slug>') stopgap. Throws rather than
+     * constructing an adapter with null credentials, since that would
+     * fail confusingly deep inside a real API call instead of at
+     * resolve-time.
+     */
+    private function supplierApiConfig(string $slug): array
+    {
+        $supplier = Supplier::query()->where('slug', $slug)->first();
+
+        if ($supplier === null || empty($supplier->api_config)) {
+            throw new SupplierNotConfiguredException(
+                "Supplier '{$slug}' has no api_config configured — set it via the Supplier Management screen.",
+            );
+        }
+
+        return $supplier->api_config;
     }
 
     /**
