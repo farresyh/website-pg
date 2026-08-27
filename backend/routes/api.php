@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
@@ -189,6 +190,16 @@ Route::middleware('auth:sanctum')->group(function () {
     // RPT-1..3 — see ReportService's doc comment for the grilled/pinned
     // sales & profit definitions. Same role tier as Orders/Withdrawals:
     // both already expose profit fields, Reports is read-only on top.
+    // DASH-1..6 (ADR-045) — same read-only-overview role tier as
+    // Reports, no reason to restrict further.
+    Route::middleware('admin.role:super_admin,admin')->prefix('dashboard')->group(function () {
+        Route::get('/summary', [DashboardController::class, 'summary']);
+        Route::get('/health', [DashboardController::class, 'health']);
+        Route::get('/funnel', [DashboardController::class, 'funnel']);
+        Route::get('/top-games', [DashboardController::class, 'topGames']);
+        Route::get('/hourly-activity', [DashboardController::class, 'hourlyActivity']);
+    });
+
     Route::middleware('admin.role:super_admin,admin')->prefix('reports')->group(function () {
         Route::get('/resellers', [ReportController::class, 'resellers']);
         Route::get('/summary', [ReportController::class, 'summary']);

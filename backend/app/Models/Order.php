@@ -39,6 +39,7 @@ class Order extends Model
         'payment_status',
         'paid_at',
         'delivery_status',
+        'delivered_at',
         'payment_method',
         'payment_gateway',
         'channel_code',
@@ -61,6 +62,7 @@ class Order extends Model
         'payment_status' => PaymentStatus::class,
         'paid_at' => 'datetime',
         'delivery_status' => DeliveryStatus::class,
+        'delivered_at' => 'datetime',
         'supplier_response' => 'array',
     ];
 
