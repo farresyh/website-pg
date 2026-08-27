@@ -15,6 +15,7 @@ class PlatformSettings extends Model
 
     protected $fillable = [
         'currency',
+        'vip_spend_threshold_sen',
         'maintenance_mode',
         'maintenance_message',
         'telegram_notifications_enabled',
@@ -23,12 +24,17 @@ class PlatformSettings extends Model
     ];
 
     protected $casts = [
+        'vip_spend_threshold_sen' => 'integer',
         'maintenance_mode' => 'boolean',
         'telegram_notifications_enabled' => 'boolean',
     ];
 
     public static function current(): self
     {
-        return static::query()->firstOrCreate([], ['currency' => 'MYR']);
+        // Both defaults are given explicitly, not left to the column's DB
+        // DEFAULT — Eloquent never re-fetches a server-applied default
+        // after INSERT, so a freshly-created row would read back null in
+        // memory (ADR-049's VIP threshold needs an int, not null).
+        return static::query()->firstOrCreate([], ['currency' => 'MYR', 'vip_spend_threshold_sen' => 500000]);
     }
 }

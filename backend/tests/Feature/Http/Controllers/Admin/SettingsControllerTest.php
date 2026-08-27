@@ -145,6 +145,7 @@ class SettingsControllerTest extends TestCase
         $response = $this->putJson('/api/settings/platform', [
             'maintenance_mode' => true,
             'maintenance_message' => 'Back soon',
+            'vip_spend_threshold_sen' => 500000,
             'telegram_notifications_enabled' => true,
             'telegram_bot_token' => 'abc123',
             'telegram_chat_id' => '-100999',
@@ -153,8 +154,23 @@ class SettingsControllerTest extends TestCase
         $response->assertOk();
         $this->assertDatabaseHas('platform_settings', [
             'maintenance_mode' => true,
+            'vip_spend_threshold_sen' => 500000,
             'telegram_notifications_enabled' => true,
         ]);
+    }
+
+    public function test_update_platform_persists_vip_spend_threshold(): void
+    {
+        $this->actingAsSuperAdmin();
+
+        $response = $this->putJson('/api/settings/platform', [
+            'maintenance_mode' => false,
+            'vip_spend_threshold_sen' => 750000,
+            'telegram_notifications_enabled' => false,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(750000, \App\Models\PlatformSettings::current()->vip_spend_threshold_sen);
     }
 
     public function test_bulk_markup_updates_every_active_package_and_logs_a_price_change(): void

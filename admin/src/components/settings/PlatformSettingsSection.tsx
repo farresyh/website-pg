@@ -30,6 +30,7 @@ export default function PlatformSettingsSection({
   platform: PlatformSettings;
   onSaved: () => void;
 }) {
+  const [vipThresholdRm, setVipThresholdRm] = useState(String(platform.vip_spend_threshold_sen / 100));
   const [maintenanceMode, setMaintenanceMode] = useState(platform.maintenance_mode);
   const [maintenanceMessage, setMaintenanceMessage] = useState(platform.maintenance_message ?? "");
   const [telegramEnabled, setTelegramEnabled] = useState(platform.telegram_notifications_enabled);
@@ -43,12 +44,19 @@ export default function PlatformSettingsSection({
   const [markupResult, setMarkupResult] = useState<string | null>(null);
 
   async function handleSave() {
+    const vipThresholdSen = Math.round(parseFloat(vipThresholdRm) * 100);
+    if (!Number.isFinite(vipThresholdSen) || vipThresholdSen < 0) {
+      setError("Enter a valid VIP spend threshold.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
       await updatePlatformSettings(token, {
         maintenance_mode: maintenanceMode,
         maintenance_message: maintenanceMessage || null,
+        vip_spend_threshold_sen: vipThresholdSen,
         telegram_notifications_enabled: telegramEnabled,
         telegram_bot_token: telegramBotToken || null,
         telegram_chat_id: telegramChatId || null,
@@ -101,6 +109,11 @@ export default function PlatformSettingsSection({
             <Label htmlFor="payment_channels">Payment channels &amp; fees</Label>
             <Input id="payment_channels" value="Managed in Payment Methods" disabled />
             <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">Stays at /middleware/payment-methods — not moved here.</p>
+          </div>
+          <div>
+            <Label htmlFor="vip_spend_threshold">VIP spend threshold (RM)</Label>
+            <Input id="vip_spend_threshold" value={vipThresholdRm} onChange={(e) => setVipThresholdRm(e.target.value)} placeholder="5000" />
+            <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">Lifetime spend a customer needs to be tagged VIP in Customer Analytics (ADR-049).</p>
           </div>
         </div>
       </div>

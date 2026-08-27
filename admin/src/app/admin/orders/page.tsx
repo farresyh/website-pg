@@ -21,8 +21,8 @@
  * a later pass.
  */
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
@@ -72,7 +72,17 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
 };
 
 export default function OrdersPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}>
+      <OrdersPageInner />
+    </Suspense>
+  );
+}
+
+/** Wrapped in Suspense above — useSearchParams() (ORD-6 deep-link from Customer Analytics) requires it. */
+function OrdersPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   // Read in an effect, not render body — see UserDropdown.tsx for why.
   const session = useClientSession();
 
@@ -145,12 +155,38 @@ export default function OrdersPage() {
      
   }, [session, status, search, pageNumber]);
 
+  // ORD-6 deep-link — Customer Analytics' Order History rows link here
+  // as /admin/orders?order={id}. A plain .then()/.catch() chain, not
+  // openOrder() (which resets several message states synchronously as
+  // its first statements) — calling that directly in an effect body
+  // would reintroduce the exact set-state-in-effect pattern this
+  // codebase already had a dedicated cleanup pass for.
+  const orderIdParam = searchParams.get("order");
+
+  useEffect(() => {
+    if (!session || !orderIdParam) return;
+
+    const id = Number(orderIdParam);
+    if (!Number.isFinite(id)) return;
+
+    getOrder(session.token, id)
+      .then(setSelected)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load this order.");
+      });
+  }, [session, orderIdParam]);
+
   if (selected) {
     return (
       <>
       <div>
         <button
-          onClick={() => setSelected(null)}
+          onClick={() => {
+            setSelected(null);
+            // Drop the deep-link query param too, or navigating "back"
+            // would still point at this same order on refresh/re-mount.
+            if (orderIdParam) router.replace("/admin/orders");
+          }}
           className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
         >
           ← Back to orders
