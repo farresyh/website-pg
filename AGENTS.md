@@ -169,3 +169,17 @@ script that exports `DB_DATABASE` to point `serve` at a throwaway DB silently
 serves requests against the real local dev DB instead, with no error — the
 served process just quietly uses `.env`'s own value. Any script that boots
 `php artisan serve` against env vars set outside `.env` needs `--no-reload`.
+
+**Fourth known gotcha:** capturing an `artisan` command's output via shell
+command substitution (`` $(...) ``) is only safe with `--no-ansi`. Symfony
+Console force-decorates output with ANSI color codes whenever it detects the
+`GITHUB_ACTIONS` env var, even though the command's stdout is being piped
+into a variable, not a real TTY — so the captured string silently contains
+escape-sequence bytes on CI while looking completely clean in any local
+shell (no `GITHUB_ACTIONS` var there). Found in `e2e/scripts/boot-backend.sh`
+(`export APP_KEY="$(php artisan key:generate --show)"`, 2026-08-27): the
+corrupted `APP_KEY` broke nothing until the first real encrypted write
+(`Supplier.api_config`, ADR-046), which then surfaced only as Playwright's
+generic "Process from config.webServer was not able to start" — see
+`docs/prd.md` §14's 2026-08-27 entry for the full root-cause chain. Any
+script that captures `artisan` output into a variable needs `--no-ansi`.

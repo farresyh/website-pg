@@ -80,6 +80,34 @@ class AuthControllerTest extends TestCase
         ])->assertStatus(429);
     }
 
+    /**
+     * Found live, 2026-08-27: ThrottleRequests' default key is
+     * sha1($route->getDomain().'|'.$request->ip()) — no route path at
+     * all — so every throttle:N,1 route without its own prefix shares
+     * one bucket per IP. A guest hitting /client-errors repeatedly was
+     * silently eating into /login's 5/minute budget from the same IP.
+     * Every throttle: route in routes/api.php now carries its own
+     * prefix (`throttle:5,1,login`, `throttle:30,1,client-errors`,
+     * etc.) precisely so this can't happen — this test pins that.
+     */
+    public function test_login_rate_limit_is_not_shared_with_other_throttled_routes(): void
+    {
+        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/client-errors', [
+                'schema' => 'Test',
+                'path' => '/test',
+                'error' => 'test drift',
+            ]);
+        }
+
+        $this->postJson('/api/login', [
+            'email' => $admin->email,
+            'password' => 'secret-password',
+        ])->assertOk();
+    }
+
     public function test_login_rejects_wrong_password(): void
     {
         $admin = AdminUser::factory()->create(['password' => 'secret-password']);

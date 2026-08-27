@@ -39,7 +39,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR/backend"
 
 export APP_ENV=e2e
-export APP_KEY="${APP_KEY:-$(php artisan key:generate --show)}"
+# --no-ansi is required here, not cosmetic: Symfony Console detects the
+# GITHUB_ACTIONS env var and force-decorates output with ANSI codes even
+# though this command's stdout is being captured via $(), not a real TTY —
+# `key:generate --show` wraps the key in a `<comment>` tag, so without
+# --no-ansi the captured APP_KEY on CI silently contains escape-sequence
+# bytes around the base64 key. Harmless until the first real encryption
+# happens — surfaced as "Unsupported cipher or incorrect key length" the
+# moment E2ESeeder writes Supplier.api_config (encrypted cast, ADR-046),
+# not at key-generation time itself. Never reproduced locally: no
+# GITHUB_ACTIONS env var, so Symfony never force-decorates a non-TTY pipe.
+export APP_KEY="${APP_KEY:-$(php artisan key:generate --show --no-ansi)}"
 export DB_CONNECTION=sqlite
 export DB_DATABASE="$ROOT_DIR/backend/database/e2e.sqlite"
 export QUEUE_CONNECTION=database
