@@ -324,6 +324,9 @@ class CustomerAnalyticsServiceTest extends TestCase
 
         $this->assertSame(80, $rows['KRS-delivered']['system_profit']);
         $this->assertSame(10, $rows['KRS-delivered']['reseller_profit']);
+        // Admin's Order History → /admin/orders?order={id} deep link
+        // needs the real numeric id, not just order_number.
+        $this->assertSame($delivered->id, $rows['KRS-delivered']['id']);
         $this->assertNull($rows['KRS-pending']['system_profit']);
         $this->assertNull($rows['KRS-pending']['reseller_profit']);
     }

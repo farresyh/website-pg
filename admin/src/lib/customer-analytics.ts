@@ -96,6 +96,7 @@ export interface CustomerTopBreakdownRow {
 }
 
 export interface CustomerOrderHistoryRow {
+  id: number;
   order_number: string;
   paid_at: string;
   package_name: string;

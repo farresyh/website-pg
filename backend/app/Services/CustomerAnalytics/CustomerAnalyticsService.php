@@ -256,6 +256,7 @@ final class CustomerAnalyticsService
                 $entries = $profitByOrder->get($order->id);
 
                 return [
+                    'id' => $order->id,
                     'order_number' => $order->order_number,
                     'paid_at' => $order->paid_at->setTimezone(self::TIMEZONE)->toIso8601String(),
                     'package_name' => $order->package?->name ?? 'Unknown Package',

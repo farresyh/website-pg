@@ -356,7 +356,11 @@ export default function CustomerDetailPage() {
                     const row = item as unknown as CustomerDetail["order_history"][number];
 
                     return (
-                      <DataTableRow key={row.order_number}>
+                      <DataTableRow
+                        key={row.order_number}
+                        className="cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02]"
+                        onClick={() => router.push(`/admin/orders?order=${row.id}`)}
+                      >
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {row.order_number}
                         </DataTableCell>
