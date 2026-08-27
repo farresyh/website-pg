@@ -18,9 +18,10 @@
  * real enforcement layer, not this.
  */
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getClientSession } from "@/lib/session";
+import { mintOpsLink, type OpsTarget } from "@/lib/ops";
 
 // Only pages that actually exist are real links — the rest are still
 // TODO (§6.20), same placeholder-until-built discipline as before.
@@ -38,12 +39,42 @@ const NAV_ITEMS: { label: string; href: string | null }[] = [
   { label: "Developer / API Tester", href: null },
 ];
 
+// ADR-048 addendum — not Next.js pages: each opens a new tab against a
+// freshly-minted signed URL (see @/lib/ops.ts). Same nav placement/tier
+// as every screen above (this whole area is already super_admin-gated).
+const OPS_ITEMS: { label: string; target: OpsTarget }[] = [
+  { label: "Horizon (Queues)", target: "horizon" },
+  { label: "Pulse (App Health)", target: "pulse" },
+];
+
 export default function MiddlewareLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const [openingTarget, setOpeningTarget] = useState<OpsTarget | null>(null);
+
+  // Opens a blank tab synchronously (inside the click handler, before the
+  // `await`) so Safari/Chrome's popup blocker still treats it as a real
+  // user gesture — setting `.location` on it once the mint resolves avoids
+  // the async-gap popup block that `window.open(url)` after an `await`
+  // would otherwise hit.
+  const openOps = async (target: OpsTarget) => {
+    const session = getClientSession();
+    if (!session) return;
+
+    const tab = window.open("", "_blank");
+    setOpeningTarget(target);
+    try {
+      const { url } = await mintOpsLink(session.token, target);
+      if (tab) tab.location.href = url;
+    } catch {
+      tab?.close();
+    } finally {
+      setOpeningTarget(null);
+    }
+  };
 
   useEffect(() => {
     const session = getClientSession();
@@ -75,6 +106,21 @@ export default function MiddlewareLayout({
               </li>
             ),
           )}
+        </ul>
+        <p className="mt-6 mb-4 text-sm font-semibold">Ops</p>
+        <ul className="space-y-2 text-sm text-black/70 dark:text-white/70">
+          {OPS_ITEMS.map((item) => (
+            <li key={item.target}>
+              <button
+                type="button"
+                onClick={() => openOps(item.target)}
+                disabled={openingTarget === item.target}
+                className="hover:text-brand-500 dark:hover:text-brand-400 disabled:opacity-50"
+              >
+                {openingTarget === item.target ? "Opening…" : item.label}
+              </button>
+            </li>
+          ))}
         </ul>
       </nav>
       <main className="flex-1 p-6">{children}</main>

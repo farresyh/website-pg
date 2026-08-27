@@ -18,17 +18,16 @@ use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
-use App\Http\Controllers\ClientErrorController;
-use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
-use App\Http\Controllers\SeoController;
 use App\Http\Controllers\Middleware\BackupController;
-use App\Http\Controllers\Middleware\DismissedPackageController;
-use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\CurrencyRateController;
+use App\Http\Controllers\Middleware\DismissedPackageController;
+use App\Http\Controllers\Middleware\OpsAccessController;
+use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
@@ -38,7 +37,9 @@ use App\Http\Controllers\Middleware\SandboxOrderController;
 use App\Http\Controllers\Middleware\SupplierController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
+use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
@@ -364,6 +365,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{backup_run}', [BackupController::class, 'show']);
         Route::get('/{backup_run}/download', [BackupController::class, 'download']);
         Route::delete('/{backup_run}', [BackupController::class, 'destroy']);
+    });
+
+    // ADR-048 addendum — mints a short-lived (5 min) signed URL that
+    // bootstraps the one `web`-guard session this backend ever creates
+    // (OpsAccessController's own doc comment has the full story). Super
+    // Admin only, same tier as every other /middleware/* route.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/ops')->group(function () {
+        Route::post('/{target}/link', [OpsAccessController::class, 'mint']);
     });
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway

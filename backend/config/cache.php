@@ -1,5 +1,8 @@
 <?php
 
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterval;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 return [
@@ -129,8 +132,33 @@ return [
     | storage. By default, no PHP classes will be unserialized from your
     | cache to prevent gadget chain attacks if your APP_KEY is leaked.
     |
+    | ADR-048 addendum: narrow allowlist, not `true` (blanket-allow), kept
+    | consistent with this app's own established discipline
+    | (backend/AGENTS.md: "Cache::remember() values must be plain arrays,
+    | never a raw Eloquent Model/Collection") — our own code never caches
+    | objects, so this list exists only to unblock `laravel/pulse`'s
+    | vendor internals (its Livewire dashboard cards cache these 4 exact
+    | types via `Cache::flexible()`, confirmed by grepping its source),
+    | not to reopen the gadget-chain surface generally. This is a single
+    | global setting (`Cache\CacheManager::getSerializableClasses()` reads
+    | it for every store, ignoring which store asked), so it applies
+    | app-wide, not just to Pulse's own `redis` cache connection — narrow
+    | list, not blanket `true`, is what keeps that acceptable. Found live,
+    | 2026-08-27/28: every Pulse dashboard card 500'd ("incomplete
+    | object... unserialize()") with this at `false`, PHP's own
+    | documented behavior for `unserialize(..., ['allowed_classes' =>
+    | false])` — silently downgrades every object to
+    | `__PHP_Incomplete_Class` instead of erroring at serialize-time, so
+    | it wasn't caught by this session's earlier `redis`-cache-driver fix
+    | (config/pulse.php) alone.
+    |
     */
 
-    'serializable_classes' => false,
+    'serializable_classes' => [
+        Collection::class,
+        stdClass::class,
+        CarbonImmutable::class,
+        CarbonInterval::class,
+    ],
 
 ];
