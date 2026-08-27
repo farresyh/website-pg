@@ -46,6 +46,22 @@ class CustomerAnalyticsController extends Controller
         ]);
     }
 
+    /**
+     * ANL-5 (ADR-050) — always the customer's full lifetime detail
+     * across every reseller (decision 6); no reseller_id/date filter
+     * accepted here, unlike the list/summary/export endpoints above.
+     */
+    public function show(string $email): JsonResponse
+    {
+        $detail = $this->analytics->customerDetail($email);
+
+        if ($detail === null) {
+            return response()->json(['message' => 'Customer not found.'], 404);
+        }
+
+        return response()->json($detail);
+    }
+
     public function export(Request $request): StreamedResponse
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);

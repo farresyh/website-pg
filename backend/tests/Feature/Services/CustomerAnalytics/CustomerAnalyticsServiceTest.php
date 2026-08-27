@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Services\CustomerAnalytics;
 
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\Reseller;
+use App\Models\Supplier;
 use App\Services\CustomerAnalytics\CustomerAnalyticsService;
 use App\Services\CustomerAnalytics\CustomerSegment;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Carbon\CarbonImmutable;
@@ -220,5 +224,143 @@ class CustomerAnalyticsServiceTest extends TestCase
 
         // 1 of 2 customers (50%) has more than one lifetime order.
         $this->assertSame(50.0, $stats['repeat_rate_pct']);
+    }
+
+    public function test_customer_detail_returns_null_for_unknown_email(): void
+    {
+        $this->assertNull($this->analytics->customerDetail('nobody@example.com'));
+    }
+
+    public function test_customer_detail_reports_basic_identity_and_stats(): void
+    {
+        $this->order([
+            'customer_email' => 'detail@example.com',
+            'customer_name' => 'Detail Person',
+            'customer_phone' => '0123456789',
+            'final_amount' => 1000,
+            'paid_at' => CarbonImmutable::now()->subDays(10),
+        ]);
+        $this->order([
+            'customer_email' => 'detail@example.com',
+            'order_number' => 'KRS-detail-2',
+            'final_amount' => 2000,
+            'paid_at' => CarbonImmutable::now()->subDays(5),
+        ]);
+
+        $detail = $this->analytics->customerDetail('detail@example.com');
+
+        $this->assertSame('detail@example.com', $detail['customer_email']);
+        $this->assertSame('Detail Person', $detail['customer_name']);
+        $this->assertSame('0123456789', $detail['customer_phone']);
+        $this->assertSame(2, $detail['stats']['total_orders']);
+        $this->assertSame(3000, $detail['stats']['total_spent']);
+        $this->assertSame(1500, $detail['stats']['avg_order_value']);
+    }
+
+    /**
+     * ADR-050 decision 2 — the Profit Analysis panel's 5 lines only
+     * count delivered orders, even though stats()/total_orders above
+     * stays Paid-scoped and would include the undelivered one too.
+     */
+    public function test_profit_analysis_only_counts_delivered_orders(): void
+    {
+        $delivered = $this->order([
+            'customer_email' => 'mixed@example.com',
+            'final_amount' => 1100,
+            'cost_price' => 900,
+            'transaction_fee' => 100,
+            'platform_profit' => 100,
+            'reseller_profit' => 20,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+        ]);
+        (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $delivered->id);
+        (new LedgerService)->credit('reseller', null, 20, 'order_profit', 'order', $delivered->id);
+
+        // Paid but never delivered — counts toward stats()/total_spent,
+        // must NOT count toward any Profit Analysis line.
+        $this->order([
+            'customer_email' => 'mixed@example.com',
+            'order_number' => 'KRS-undelivered',
+            'final_amount' => 5000,
+            'cost_price' => 4000,
+            'transaction_fee' => 500,
+            'delivery_status' => DeliveryStatus::Pending->value,
+        ]);
+
+        $detail = $this->analytics->customerDetail('mixed@example.com');
+
+        $this->assertSame(2, $detail['stats']['total_orders']);
+        $this->assertSame(6100, $detail['stats']['total_spent']);
+
+        $this->assertSame(1100, $detail['profit_analysis']['total_revenue']);
+        $this->assertSame(900, $detail['profit_analysis']['supplier_cost']);
+        $this->assertSame(100, $detail['profit_analysis']['transaction_fees']);
+        $this->assertSame(20, $detail['profit_analysis']['reseller_commission']);
+        $this->assertSame(100, $detail['profit_analysis']['system_profit']);
+    }
+
+    public function test_order_history_shows_dash_for_undelivered_profit(): void
+    {
+        $delivered = $this->order([
+            'customer_email' => 'history@example.com',
+            'order_number' => 'KRS-delivered',
+            'final_amount' => 1000,
+            'platform_profit' => 80,
+            'reseller_profit' => 10,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+        ]);
+        (new LedgerService)->credit('platform', null, 80, 'order_profit', 'order', $delivered->id);
+        (new LedgerService)->credit('reseller', null, 10, 'order_profit', 'order', $delivered->id);
+
+        $this->order([
+            'customer_email' => 'history@example.com',
+            'order_number' => 'KRS-pending',
+            'final_amount' => 2000,
+            'delivery_status' => DeliveryStatus::Pending->value,
+        ]);
+
+        $detail = $this->analytics->customerDetail('history@example.com');
+        $rows = collect($detail['order_history'])->keyBy('order_number');
+
+        $this->assertSame(80, $rows['KRS-delivered']['system_profit']);
+        $this->assertSame(10, $rows['KRS-delivered']['reseller_profit']);
+        $this->assertNull($rows['KRS-pending']['system_profit']);
+        $this->assertNull($rows['KRS-pending']['reseller_profit']);
+    }
+
+    public function test_top_packages_and_resellers_rank_by_spend(): void
+    {
+        $resellerA = Reseller::query()->create(['business_name' => 'Reseller A', 'markup_pct' => 5]);
+        $resellerB = Reseller::query()->create(['business_name' => 'Reseller B', 'markup_pct' => 5]);
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $packageA = Package::query()->create(['game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 400, 'reseller_cost_price' => 450, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $packageB = Package::query()->create(['game_id' => $game->id, 'name' => '172 Diamonds', 'cost_price' => 800, 'reseller_cost_price' => 850, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
+
+        $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-a', 'package_id' => $packageA->id, 'reseller_id' => $resellerA->id, 'final_amount' => 500]);
+        $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-b', 'package_id' => $packageB->id, 'reseller_id' => $resellerB->id, 'final_amount' => 2000]);
+
+        $detail = $this->analytics->customerDetail('ranker@example.com');
+
+        $this->assertSame('172 Diamonds', $detail['top_packages'][0]['name']);
+        $this->assertSame(2000, $detail['top_packages'][0]['total_spent']);
+        $this->assertSame('Reseller B', $detail['top_resellers'][0]['name']);
+        $this->assertSame(2000, $detail['top_resellers'][0]['total_spent']);
+    }
+
+    public function test_monthly_trend_buckets_by_paid_month(): void
+    {
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => CarbonImmutable::now()->subMonths(1)->startOfMonth()->addDays(5)]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => CarbonImmutable::now()->subMonths(1)->startOfMonth()->addDays(10)]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-3', 'final_amount' => 2000, 'paid_at' => CarbonImmutable::now()]);
+
+        $detail = $this->analytics->customerDetail('trend@example.com');
+        $trend = collect($detail['monthly_trend'])->keyBy('month');
+
+        $lastMonthKey = CarbonImmutable::now()->subMonths(1)->format('Y-m');
+        $thisMonthKey = CarbonImmutable::now()->format('Y-m');
+
+        $this->assertSame(1500, $trend[$lastMonthKey]['total_spent']);
+        $this->assertSame(2000, $trend[$thisMonthKey]['total_spent']);
     }
 }

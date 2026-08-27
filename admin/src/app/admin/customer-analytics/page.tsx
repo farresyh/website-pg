@@ -255,7 +255,11 @@ export default function CustomerAnalyticsPage() {
                     const row = item as unknown as CustomerAnalyticsRow;
 
                     return (
-                      <DataTableRow key={row.customer_email}>
+                      <DataTableRow
+                        key={row.customer_email}
+                        className="cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02]"
+                        onClick={() => router.push(`/admin/customer-analytics/${encodeURIComponent(row.customer_email)}`)}
+                      >
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {row.customer_email}
                         </DataTableCell>

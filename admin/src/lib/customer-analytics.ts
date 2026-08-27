@@ -64,6 +64,66 @@ export function getCustomerAnalyticsCustomers(token: string, filters: CustomerAn
   return apiFetch<{ customers: CustomerAnalyticsRow[] }>(`/api/customer-analytics/customers${query}`, { token });
 }
 
+/** ANL-5 (ADR-050) — full drill-down for one customer, always their full lifetime across every reseller. */
+export interface CustomerDetailStats {
+  total_orders: number;
+  total_spent: number;
+  avg_order_value: number;
+  customer_since: string;
+}
+
+/** ADR-050 decision 2 — scoped to delivered orders only, a narrower population than the stats above. */
+export interface CustomerProfitAnalysis {
+  total_revenue: number;
+  supplier_cost: number;
+  reseller_commission: number;
+  transaction_fees: number;
+  system_profit: number;
+}
+
+export interface CustomerMonthlyTrendPoint {
+  month: string;
+  label: string;
+  total_spent: number;
+}
+
+export interface CustomerTopBreakdownRow {
+  id: number | null;
+  name: string;
+  orders_count: number;
+  total_spent: number;
+  pct_of_spend: number;
+}
+
+export interface CustomerOrderHistoryRow {
+  order_number: string;
+  paid_at: string;
+  package_name: string;
+  reseller_name: string;
+  final_amount: number;
+  reseller_profit: number | null;
+  system_profit: number | null;
+  delivery_status: string;
+}
+
+export interface CustomerDetail {
+  customer_email: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  segment: CustomerSegment | null;
+  segment_label: string;
+  stats: CustomerDetailStats;
+  profit_analysis: CustomerProfitAnalysis;
+  monthly_trend: CustomerMonthlyTrendPoint[];
+  top_packages: CustomerTopBreakdownRow[];
+  top_resellers: CustomerTopBreakdownRow[];
+  order_history: CustomerOrderHistoryRow[];
+}
+
+export function getCustomerDetail(token: string, email: string) {
+  return apiFetch<CustomerDetail>(`/api/customer-analytics/customers/${encodeURIComponent(email)}`, { token });
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /** Bearer-token-gated binary download — same pattern as exportReport(). */

@@ -85,4 +85,30 @@ class CustomerAnalyticsControllerTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('text/csv', $response->headers->get('Content-Type'));
     }
+
+    public function test_show_requires_authentication(): void
+    {
+        $this->getJson('/api/customer-analytics/customers/buyer@example.com')->assertUnauthorized();
+    }
+
+    public function test_show_returns_404_for_unknown_customer(): void
+    {
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/customer-analytics/customers/nobody@example.com')->assertNotFound();
+    }
+
+    public function test_show_returns_pinned_shape_for_a_url_encoded_email(): void
+    {
+        $this->actingAsAdmin();
+        $this->order(['customer_email' => 'buyer@example.com']);
+
+        $this->getJson('/api/customer-analytics/customers/'.urlencode('buyer@example.com'))
+            ->assertOk()
+            ->assertJsonStructure([
+                'customer_email', 'customer_name', 'customer_phone', 'segment', 'segment_label',
+                'stats', 'profit_analysis', 'monthly_trend', 'top_packages', 'top_resellers', 'order_history',
+            ])
+            ->assertJson(['customer_email' => 'buyer@example.com']);
+    }
 }

@@ -2,11 +2,14 @@
 
 namespace App\Services\CustomerAnalytics;
 
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PlatformSettings;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
  * ANL-1..4 (docs/prd.md §6.12). Grilled and pinned as ADR-049 before any
@@ -147,6 +150,192 @@ final class CustomerAnalyticsService
         usort($rows, fn (array $a, array $b) => $b['total_spent'] <=> $a['total_spent']);
 
         return $rows;
+    }
+
+    /**
+     * ANL-5 (ADR-050) — full drill-down for one customer. Returns null
+     * if the email has no Paid, non-test orders at all.
+     *
+     * Two deliberately different scopes on one page (ADR-050 decision
+     * 2): stats/monthly-trend/top-packages/top-resellers/order-history
+     * are Paid-scoped (same rule as the list screen); the Profit
+     * Analysis panel is scoped to *delivered* orders only, so its five
+     * lines (Revenue/Cost/Commission/Fees/Profit) share one population
+     * and actually reconcile — a paid-but-undelivered order otherwise
+     * contributes real spend but zero recognized profit (ReportService's
+     * own rule), which would silently break that arithmetic.
+     *
+     * Always the customer's full lifetime data across every reseller
+     * (ADR-050 decision 6) — the $resellerId list-filter is deliberately
+     * not accepted here.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function customerDetail(string $customerEmail): ?array
+    {
+        $orders = $this->scopedOrders(null)
+            ->where('customer_email', $customerEmail)
+            ->with(['package:id,name', 'reseller:id,business_name'])
+            ->orderByDesc('paid_at')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        $vipThresholdSen = PlatformSettings::current()->vip_spend_threshold_sen;
+
+        $totalOrders = $orders->count();
+        $totalSpent = (int) $orders->sum('final_amount');
+        $firstOrderAt = CarbonImmutable::parse($orders->min('paid_at'));
+        $lastOrderAt = CarbonImmutable::parse($orders->max('paid_at'));
+
+        $segment = $this->classify([
+            'total_spent' => $totalSpent,
+            'orders_count' => $totalOrders,
+            'first_order_at' => $firstOrderAt,
+            'last_order_at' => $lastOrderAt,
+        ], $vipThresholdSen);
+
+        $delivered = $orders->where('delivery_status', DeliveryStatus::Delivered->value);
+
+        $profitByOrder = LedgerEntry::query()
+            ->where('type', 'order_profit')
+            ->where('reference_type', 'order')
+            ->whereIn('reference_id', $delivered->pluck('id'))
+            ->get(['reference_id', 'owner_type', 'amount'])
+            ->groupBy('reference_id');
+
+        $resellerCommission = 0;
+        $systemProfit = 0;
+        foreach ($profitByOrder as $entries) {
+            $resellerCommission += (int) $entries->where('owner_type', 'reseller')->sum('amount');
+            $systemProfit += (int) $entries->where('owner_type', 'platform')->sum('amount');
+        }
+
+        $firstNamedOrder = $orders->first(fn (Order $o) => $o->customer_name !== null);
+        $firstPhonedOrder = $orders->first(fn (Order $o) => $o->customer_phone !== null);
+
+        return [
+            'customer_email' => $customerEmail,
+            'customer_name' => $firstNamedOrder?->customer_name,
+            'customer_phone' => $firstPhonedOrder?->customer_phone,
+            'segment' => $segment?->value,
+            'segment_label' => $segment?->label() ?? '—',
+            'stats' => [
+                'total_orders' => $totalOrders,
+                'total_spent' => $totalSpent,
+                'avg_order_value' => (int) round($totalSpent / $totalOrders),
+                'customer_since' => $firstOrderAt->setTimezone(self::TIMEZONE)->toDateString(),
+            ],
+            'profit_analysis' => [
+                'total_revenue' => (int) $delivered->sum('final_amount'),
+                'supplier_cost' => (int) $delivered->sum('cost_price'),
+                'reseller_commission' => $resellerCommission,
+                'transaction_fees' => (int) $delivered->sum('transaction_fee'),
+                'system_profit' => $systemProfit,
+            ],
+            'monthly_trend' => $this->monthlyTrend($orders),
+            'top_packages' => $this->topSpendBreakdown(
+                $orders,
+                'package_id',
+                fn (Order $o) => $o->package?->name ?? 'Unknown Package',
+            ),
+            'top_resellers' => $this->topSpendBreakdown(
+                $orders,
+                'reseller_id',
+                fn (Order $o) => $o->reseller?->business_name ?? 'Unknown Reseller',
+            ),
+            'order_history' => $orders->map(function (Order $order) use ($profitByOrder) {
+                // Order.delivery_status is cast to the DeliveryStatus enum
+                // (App\Models\Order's own $casts) — comparing it to a raw
+                // ->value string with === always fails silently (an enum
+                // instance is never === its own backing scalar); compare
+                // enum-to-enum instead.
+                $isDelivered = $order->delivery_status === DeliveryStatus::Delivered;
+                $entries = $profitByOrder->get($order->id);
+
+                return [
+                    'order_number' => $order->order_number,
+                    'paid_at' => $order->paid_at->setTimezone(self::TIMEZONE)->toIso8601String(),
+                    'package_name' => $order->package?->name ?? 'Unknown Package',
+                    'reseller_name' => $order->reseller?->business_name ?? 'Unknown Reseller',
+                    'final_amount' => $order->final_amount,
+                    'reseller_profit' => $isDelivered ? (int) $entries?->where('owner_type', 'reseller')->sum('amount') : null,
+                    'system_profit' => $isDelivered ? (int) $entries?->where('owner_type', 'platform')->sum('amount') : null,
+                    'delivery_status' => $order->delivery_status,
+                ];
+            })->values()->all(),
+        ];
+    }
+
+    /**
+     * Monthly spend, last 12 months (Asia/Kuala_Lumpur), Paid-scoped —
+     * only emits months that actually had a paid order (same
+     * only-non-empty-buckets convention ReportService::dailyBreakdown()
+     * uses), oldest first.
+     *
+     * @return list<array{month: string, label: string, total_spent: int}>
+     */
+    private function monthlyTrend(Collection $orders): array
+    {
+        $windowStart = CarbonImmutable::now(self::TIMEZONE)->subMonths(11)->startOfMonth();
+
+        $byMonth = [];
+
+        foreach ($orders as $order) {
+            $paidAtKl = CarbonImmutable::parse($order->paid_at)->setTimezone(self::TIMEZONE);
+
+            if ($paidAtKl->lt($windowStart)) {
+                continue;
+            }
+
+            $key = $paidAtKl->format('Y-m');
+            $byMonth[$key] = ($byMonth[$key] ?? 0) + $order->final_amount;
+        }
+
+        ksort($byMonth);
+
+        $rows = [];
+
+        foreach ($byMonth as $month => $total) {
+            $rows[] = [
+                'month' => $month,
+                'label' => CarbonImmutable::createFromFormat('Y-m-d', $month.'-01', self::TIMEZONE)->format('M'),
+                'total_spent' => $total,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * ADR-050 decision 4 — top 5 by spend, Paid-scoped, grouped by an
+     * arbitrary FK column (package_id/reseller_id) already eager-loaded
+     * onto $orders.
+     *
+     * @return list<array{id: ?int, name: string, orders_count: int, total_spent: int, pct_of_spend: float}>
+     */
+    private function topSpendBreakdown(Collection $orders, string $groupKey, callable $nameResolver): array
+    {
+        $totalSpent = (int) $orders->sum('final_amount');
+
+        $rows = $orders->groupBy($groupKey)->map(function (Collection $group) use ($groupKey, $nameResolver, $totalSpent) {
+            $spent = (int) $group->sum('final_amount');
+            $first = $group->first();
+
+            return [
+                'id' => $first->{$groupKey},
+                'name' => $nameResolver($first),
+                'orders_count' => $group->count(),
+                'total_spent' => $spent,
+                'pct_of_spend' => $totalSpent > 0 ? round($spent / $totalSpent * 100, 2) : 0.0,
+            ];
+        })->values()->all();
+
+        usort($rows, fn (array $a, array $b) => $b['total_spent'] <=> $a['total_spent']);
+
+        return array_slice($rows, 0, 5);
     }
 
     /**

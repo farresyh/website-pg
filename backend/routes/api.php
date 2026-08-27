@@ -233,6 +233,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin,admin')->prefix('customer-analytics')->group(function () {
         Route::get('/summary', [CustomerAnalyticsController::class, 'summary']);
         Route::get('/customers', [CustomerAnalyticsController::class, 'customers']);
+        Route::get('/customers/{email}', [CustomerAnalyticsController::class, 'show']);
         Route::get('/export', [CustomerAnalyticsController::class, 'export']);
     });
 

@@ -215,6 +215,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **ANL-2** | System provides customer segmentation: VIP (≥ threshold), Frequent (10+ orders), New (< 30 days), Dormant (> 90 days), One-time | **MVP** |
 | **ANL-3** | System displays customer table: email, name, segment, orders count, total spent, last order date | **MVP** |
 | **ANL-4** | Admin can filter by segment and date range, export CSV | **MVP** |
+| **ANL-5** | Admin can drill into one customer's full detail: stats, profit-reconciliation breakdown, monthly spend trend, top packages/resellers, and full order history (added post-launch, ADR-050) | **MVP** |
 
 ## 6.13 Admin — Review Management
 
