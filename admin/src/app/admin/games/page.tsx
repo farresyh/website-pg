@@ -17,9 +17,19 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -80,7 +90,7 @@ function MarkupCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (markupPerc
         />
         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
       </div>
-      <Button size="sm" disabled={saving} onClick={handleUpdate}>
+      <Button size="small" disabled={saving} onClick={handleUpdate}>
         {saving ? "…" : "Update"}
       </Button>
     </div>
@@ -119,7 +129,7 @@ function DenominationCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (deno
         placeholder="—"
         className="h-9 w-16 rounded-lg border border-gray-300 px-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
       />
-      <Button size="sm" disabled={saving} onClick={handleUpdate}>
+      <Button size="small" disabled={saving} onClick={handleUpdate}>
         {saving ? "…" : "Update"}
       </Button>
     </div>
@@ -278,7 +288,7 @@ export default function GamesPage() {
               {selected.category ?? "Uncategorized"} — {selected.is_active ? "Active" : "Inactive"}
             </p>
           </div>
-          <Button size="sm" onClick={() => setEditingGame(selected)}>Edit Game</Button>
+          <Button size="small" onClick={() => setEditingGame(selected)}>Edit Game</Button>
         </div>
 
         {error && (
@@ -289,66 +299,74 @@ export default function GamesPage() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
           <div className="max-w-full overflow-x-auto">
-            <Table>
-              <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-                <TableRow>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Denomination</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Markup %</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {packages?.map((pkg) => (
-                  <TableRow key={pkg.id}>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <button
-                        role="switch"
-                        aria-checked={pkg.is_active}
-                        onClick={() => handleToggleStatus(pkg)}
-                        className={`h-6 w-11 rounded-full transition ${pkg.is_active ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"}`}
-                      >
-                        <span
-                          className={`block h-5 w-5 translate-x-0.5 rounded-full bg-white transition ${pkg.is_active ? "translate-x-[22px]" : ""}`}
-                        />
-                      </button>
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>
-                      {!pkg.supplier_active && (
-                        <Badge size="sm" color="warning">Non-Active</Badge>
-                      )}
-                      <br />
-                      <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <DenominationCell
-                        key={`${pkg.id}-${pkg.denomination}`}
-                        pkg={pkg}
-                        onUpdate={(denomination) => handleUpdateDenomination(pkg, denomination)}
-                      />
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <MarkupCell
-                        key={`${pkg.id}-${pkg.markup_percent}`}
-                        pkg={pkg}
-                        onUpdate={(markupPercent) => handleUpdateMarkup(pkg, markupPercent)}
-                      />
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                      {formatRm(pkg.reseller_cost_price)}
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <Button size="sm" variant="outline" onClick={() => setEditingPackage(pkg)}>Edit</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable data={packages ?? []} dataKey="id">
+              <DataTableTableContainer>
+                <DataTableTable>
+                  <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                    <DataTableTHeadRow>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Denomination</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Markup %</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    </DataTableTHeadRow>
+                  </DataTableTHead>
+                  <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {({ item }) => {
+                      const pkg = item as unknown as GamePackage;
+
+                      return (
+                        <DataTableRow key={pkg.id}>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <button
+                              role="switch"
+                              aria-checked={pkg.is_active}
+                              onClick={() => handleToggleStatus(pkg)}
+                              className={`h-6 w-11 rounded-full transition ${pkg.is_active ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"}`}
+                            >
+                              <span
+                                className={`block h-5 w-5 translate-x-0.5 rounded-full bg-white transition ${pkg.is_active ? "translate-x-[22px]" : ""}`}
+                              />
+                            </button>
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>
+                            {!pkg.supplier_active && (
+                              <Tag severity="warn">Non-Active</Tag>
+                            )}
+                            <br />
+                            <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <DenominationCell
+                              key={`${pkg.id}-${pkg.denomination}`}
+                              pkg={pkg}
+                              onUpdate={(denomination) => handleUpdateDenomination(pkg, denomination)}
+                            />
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <MarkupCell
+                              key={`${pkg.id}-${pkg.markup_percent}`}
+                              pkg={pkg}
+                              onUpdate={(markupPercent) => handleUpdateMarkup(pkg, markupPercent)}
+                            />
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                            {formatRm(pkg.reseller_cost_price)}
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <Button size="small" variant="outlined" onClick={() => setEditingPackage(pkg)}>Edit</Button>
+                          </DataTableCell>
+                        </DataTableRow>
+                      );
+                    }}
+                  </DataTableTBody>
+                </DataTableTable>
+              </DataTableTableContainer>
+            </DataTable>
             {packages?.length === 0 && (
               <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
                 No packages yet — add some via Product Manager (/middleware/product-manager).
@@ -415,36 +433,44 @@ export default function GamesPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Name</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Category</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Packages</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {games?.map((game) => (
-                <TableRow key={game.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{game.name}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.category ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.packages_count ?? 0}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={game.is_active ? "success" : "light"}>
-                      {game.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Button size="sm" variant="outline" onClick={() => session && openGame(session.token, game)}>
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={games ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Name</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Category</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Packages</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const game = item as unknown as Game;
+
+                    return (
+                      <DataTableRow key={game.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{game.name}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.category ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.packages_count ?? 0}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={game.is_active ? "success" : "secondary"}>
+                            {game.is_active ? "Active" : "Inactive"}
+                          </Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Button size="small" variant="outlined" onClick={() => session && openGame(session.token, game)}>
+                            View
+                          </Button>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
           {games?.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No games found.</p>
           )}

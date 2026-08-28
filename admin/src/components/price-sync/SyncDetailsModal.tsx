@@ -2,9 +2,19 @@
 
 import React, { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
 import { ApiError } from "@/lib/api-client";
-import { getPriceSyncRunDetails, type SyncDetails } from "@/lib/price-sync";
+import { getPriceSyncRunDetails, type SyncDetails, type SyncDetailsGame } from "@/lib/price-sync";
 
 interface SyncDetailsModalProps {
   isOpen: boolean;
@@ -72,30 +82,38 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
 
               {entry.price_changes.length > 0 && (
                 <div className="max-w-full overflow-x-auto">
-                  <Table>
-                    <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-                      <TableRow>
-                        <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</TableCell>
-                        <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</TableCell>
-                        <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</TableCell>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      {entry.price_changes.map((change) => (
-                        <TableRow key={change.package.id}>
-                          <TableCell className="px-4 py-2 text-theme-sm text-gray-800 dark:text-white/90">
-                            {change.package.name}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-theme-sm">
-                            {formatRm(change.old_cost_price)} → {formatRm(change.new_cost_price)}
-                          </TableCell>
-                          <TableCell className="px-4 py-2 text-theme-sm">
-                            {formatRm(change.old_reseller_cost_price)} → {formatRm(change.new_reseller_cost_price)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <DataTable data={entry.price_changes} dataKey="package.id">
+                    <DataTableTableContainer>
+                      <DataTableTable>
+                        <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                          <DataTableTHeadRow>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</DataTableTHeadCell>
+                          </DataTableTHeadRow>
+                        </DataTableTHead>
+                        <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {({ item }) => {
+                            const change = item as unknown as SyncDetailsGame["price_changes"][number];
+
+                            return (
+                              <DataTableRow key={change.package.id}>
+                                <DataTableCell className="px-4 py-2 text-theme-sm text-gray-800 dark:text-white/90">
+                                  {change.package.name}
+                                </DataTableCell>
+                                <DataTableCell className="px-4 py-2 text-theme-sm">
+                                  {formatRm(change.old_cost_price)} → {formatRm(change.new_cost_price)}
+                                </DataTableCell>
+                                <DataTableCell className="px-4 py-2 text-theme-sm">
+                                  {formatRm(change.old_reseller_cost_price)} → {formatRm(change.new_reseller_cost_price)}
+                                </DataTableCell>
+                              </DataTableRow>
+                            );
+                          }}
+                        </DataTableTBody>
+                      </DataTableTable>
+                    </DataTableTableContainer>
+                  </DataTable>
                 </div>
               )}
 

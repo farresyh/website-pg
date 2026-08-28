@@ -5,8 +5,18 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
 import { getClientSession } from "@/lib/session";
@@ -21,10 +31,10 @@ const FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "missing", label: "Missing" },
 ];
 
-const STATUS_BADGE: Record<GameSeoStatus, { color: "success" | "warning" | "error"; label: string }> = {
-  complete: { color: "success", label: "Complete" },
-  incomplete: { color: "warning", label: "Incomplete" },
-  missing: { color: "error", label: "Missing" },
+const STATUS_TAG: Record<GameSeoStatus, { severity: "success" | "warn" | "danger"; label: string }> = {
+  complete: { severity: "success", label: "Complete" },
+  incomplete: { severity: "warn", label: "Incomplete" },
+  missing: { severity: "danger", label: "Missing" },
 };
 
 export default function GameSeoListPage() {
@@ -91,36 +101,44 @@ function GameSeoListPageInner() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">SEO Title</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Noindex</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {games?.map((game) => (
-                <TableRow key={game.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{game.name}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.seo_title ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={STATUS_BADGE[game.seo_status].color}>{STATUS_BADGE[game.seo_status].label}</Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    {game.no_index ? <Badge size="sm" color="light">Noindex</Badge> : <span className="text-gray-400">—</span>}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Link href={`/admin/seo/games/${game.id}`} className="text-brand-500 hover:underline">
-                      Edit
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={games ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">SEO Title</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Noindex</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const game = item as unknown as GameSeoListItem;
+
+                    return (
+                      <DataTableRow key={game.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{game.name}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.seo_title ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={STATUS_TAG[game.seo_status].severity}>{STATUS_TAG[game.seo_status].label}</Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          {game.no_index ? <Tag severity="secondary">Noindex</Tag> : <span className="text-gray-400">—</span>}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Link href={`/admin/seo/games/${game.id}`} className="text-brand-500 hover:underline">
+                            Edit
+                          </Link>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {games?.length === 0 && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No games match.</p>}
           {games === null && !error && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>}

@@ -13,9 +13,19 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getEcho } from "@/lib/echo";
@@ -62,11 +72,11 @@ function formatDateTime(value: string | null): string {
 
 const RUN_IN_FLIGHT = new Set<PriceSyncRun["status"]>(["queued", "running"]);
 
-const runStatusColor: Record<PriceSyncRun["status"], "light" | "warning" | "success" | "error"> = {
-  queued: "light",
-  running: "warning",
+const runStatusSeverity: Record<PriceSyncRun["status"], "secondary" | "warn" | "success" | "danger"> = {
+  queued: "secondary",
+  running: "warn",
   success: "success",
-  failed: "error",
+  failed: "danger",
 };
 
 export default function PriceSyncPage() {
@@ -371,7 +381,7 @@ export default function PriceSyncPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleRefresh}>
+          <Button variant="outlined" onClick={handleRefresh}>
             Refresh
           </Button>
           <Button disabled={isRunInFlight} onClick={handleTrigger}>
@@ -408,7 +418,7 @@ export default function PriceSyncPage() {
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">Last Sync Status</p>
           <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
             {stats?.last_sync_status ? (
-              <Badge size="sm" color={runStatusColor[stats.last_sync_status]}>{stats.last_sync_status}</Badge>
+              <Tag severity={runStatusSeverity[stats.last_sync_status]}>{stats.last_sync_status}</Tag>
             ) : (
               "—"
             )}
@@ -429,7 +439,7 @@ export default function PriceSyncPage() {
             return (
               <>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  Run #{shown.id} — <Badge size="sm" color={runStatusColor[shown.status]}>{shown.status}</Badge>
+                  Run #{shown.id} — <Tag severity={runStatusSeverity[shown.status]}>{shown.status}</Tag>
                   {shown.triggered_by && (
                     <span className="ml-2 text-theme-xs text-gray-400">triggered by {shown.triggered_by}</span>
                   )}
@@ -467,10 +477,10 @@ export default function PriceSyncPage() {
         <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Pending Reactivation</h2>
         {selected.size > 0 && (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => handleBulk("approve")}>
+            <Button size="small" variant="outlined" disabled={bulkBusy} onClick={() => handleBulk("approve")}>
               Approve All ({selected.size})
             </Button>
-            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => handleBulk("dismiss")}>
+            <Button size="small" variant="outlined" disabled={bulkBusy} onClick={() => handleBulk("dismiss")}>
               Dismiss All ({selected.size})
             </Button>
           </div>
@@ -479,47 +489,55 @@ export default function PriceSyncPage() {
 
       <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="w-10 px-5 py-3">{null}</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Days Inactive</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {pending?.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="px-5 py-4">
-                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelected(p.id)} />
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
-                    <br />
-                    <span className="text-theme-xs text-gray-400">{p.supplier_package_ref} · {p.supplier?.name}</span>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">{formatRm(p.reseller_cost_price)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <div className="flex gap-2">
-                      <Button size="sm" disabled={rowBusyId === p.id} onClick={() => handleApprove(p.id)}>
-                        Approve
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={rowBusyId === p.id} onClick={() => handleDismiss(p.id)}>
-                        Dismiss
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={pending ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="w-10 px-5 py-3">{null}</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Days Inactive</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const p = item as unknown as PendingReactivation;
+
+                    return (
+                      <DataTableRow key={p.id}>
+                        <DataTableCell className="px-5 py-4">
+                          <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelected(p.id)} />
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
+                          <br />
+                          <span className="text-theme-xs text-gray-400">{p.supplier_package_ref} · {p.supplier?.name}</span>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.reseller_cost_price)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <div className="flex gap-2">
+                            <Button size="small" disabled={rowBusyId === p.id} onClick={() => handleApprove(p.id)}>
+                              Approve
+                            </Button>
+                            <Button size="small" variant="outlined" disabled={rowBusyId === p.id} onClick={() => handleDismiss(p.id)}>
+                              Dismiss
+                            </Button>
+                          </div>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
           {pending?.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
               Nothing pending — no deactivated package&apos;s supplier item has come back active.
@@ -543,38 +561,46 @@ export default function PriceSyncPage() {
       <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white/90">Manually Dismissed Packages</h2>
       <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Days Inactive</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {dismissedPage?.data.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
-                    <br />
-                    <span className="text-theme-xs text-gray-400">{p.supplier_package_ref} · {p.supplier?.name}</span>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">{formatRm(p.reseller_cost_price)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Button size="sm" variant="outline" disabled={restoringId === p.id} onClick={() => handleRestore(p)}>
-                      Restore
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={dismissedPage?.data ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Days Inactive</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const p = item as unknown as DismissedPackage;
+
+                    return (
+                      <DataTableRow key={p.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
+                          <br />
+                          <span className="text-theme-xs text-gray-400">{p.supplier_package_ref} · {p.supplier?.name}</span>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.reseller_cost_price)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Button size="small" variant="outlined" disabled={restoringId === p.id} onClick={() => handleRestore(p)}>
+                            Restore
+                          </Button>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
           {dismissedPage?.data.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
               No packages have been manually dismissed.
@@ -589,10 +615,10 @@ export default function PriceSyncPage() {
         <div className="mb-8 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
           <span>Page {dismissedPage.current_page} of {dismissedPage.last_page} ({dismissedPage.total} total)</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={dismissedPage.current_page <= 1} onClick={() => setDismissedPageNumber((p) => p - 1)}>
+            <Button size="small" variant="outlined" disabled={dismissedPage.current_page <= 1} onClick={() => setDismissedPageNumber((p) => p - 1)}>
               Previous
             </Button>
-            <Button size="sm" variant="outline" disabled={dismissedPage.current_page >= dismissedPage.last_page} onClick={() => setDismissedPageNumber((p) => p + 1)}>
+            <Button size="small" variant="outlined" disabled={dismissedPage.current_page >= dismissedPage.last_page} onClick={() => setDismissedPageNumber((p) => p + 1)}>
               Next
             </Button>
           </div>
@@ -603,38 +629,46 @@ export default function PriceSyncPage() {
       <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white/90">Sync History</h2>
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Run</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Triggered By</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Finished</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Price Changed</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Deactivated</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {historyPage?.data.map((h) => (
-                <TableRow key={h.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">#{h.id}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={runStatusColor[h.status]}>{h.status}</Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.triggered_by ?? "system"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatDateTime(h.finished_at)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.stats?.price_changed ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.stats?.deactivated ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Button size="sm" variant="outline" onClick={() => setDetailsRunId(h.id)}>
-                      View Details
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={historyPage?.data ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Run</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Triggered By</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Finished</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Price Changed</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Deactivated</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const h = item as unknown as PriceSyncRun;
+
+                    return (
+                      <DataTableRow key={h.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">#{h.id}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={runStatusSeverity[h.status]}>{h.status}</Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.triggered_by ?? "system"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatDateTime(h.finished_at)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.stats?.price_changed ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.stats?.deactivated ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Button size="small" variant="outlined" onClick={() => setDetailsRunId(h.id)}>
+                            View Details
+                          </Button>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
           {historyPage?.data.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No sync runs yet.</p>
           )}
@@ -647,10 +681,10 @@ export default function PriceSyncPage() {
         <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
           <span>Page {historyPage.current_page} of {historyPage.last_page} ({historyPage.total} total)</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={historyPage.current_page <= 1} onClick={() => setHistoryPageNumber((p) => p - 1)}>
+            <Button size="small" variant="outlined" disabled={historyPage.current_page <= 1} onClick={() => setHistoryPageNumber((p) => p - 1)}>
               Previous
             </Button>
-            <Button size="sm" variant="outline" disabled={historyPage.current_page >= historyPage.last_page} onClick={() => setHistoryPageNumber((p) => p + 1)}>
+            <Button size="small" variant="outlined" disabled={historyPage.current_page >= historyPage.last_page} onClick={() => setHistoryPageNumber((p) => p + 1)}>
               Next
             </Button>
           </div>

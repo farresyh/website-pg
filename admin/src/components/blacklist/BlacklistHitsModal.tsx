@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
 import { ApiError } from "@/lib/api-client";
 import { getBlacklistEntry, type BlacklistEntryDetail } from "@/lib/blacklist";
 
@@ -55,28 +65,36 @@ function BlacklistHitsContent({ entryId, token }: { entryId: number; token: stri
       {detail && detail.hits.length > 0 && (
         <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
           <div className="max-w-full overflow-x-auto">
-            <Table>
-              <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-                <TableRow>
-                  <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Player ID</TableCell>
-                  <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Email</TableCell>
-                  <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Phone</TableCell>
-                  <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">IP</TableCell>
-                  <TableCell isHeader className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">When</TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {detail.hits.map((hit) => (
-                  <TableRow key={hit.id}>
-                    <TableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.player_id ?? "—"}</TableCell>
-                    <TableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.customer_email ?? "—"}</TableCell>
-                    <TableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.customer_phone ?? "—"}</TableCell>
-                    <TableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.ip ?? "—"}</TableCell>
-                    <TableCell className="px-4 py-3 text-theme-sm text-gray-500 dark:text-gray-400">{new Date(hit.created_at).toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable data={detail.hits} dataKey="id">
+              <DataTableTableContainer>
+                <DataTableTable>
+                  <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                    <DataTableTHeadRow>
+                      <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Player ID</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Email</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Phone</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">IP</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">When</DataTableTHeadCell>
+                    </DataTableTHeadRow>
+                  </DataTableTHead>
+                  <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {({ item }) => {
+                      const hit = item as unknown as (typeof detail.hits)[number];
+
+                      return (
+                        <DataTableRow key={hit.id}>
+                          <DataTableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.player_id ?? "—"}</DataTableCell>
+                          <DataTableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.customer_email ?? "—"}</DataTableCell>
+                          <DataTableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.customer_phone ?? "—"}</DataTableCell>
+                          <DataTableCell className="px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">{hit.ip ?? "—"}</DataTableCell>
+                          <DataTableCell className="px-4 py-3 text-theme-sm text-gray-500 dark:text-gray-400">{new Date(hit.created_at).toLocaleString()}</DataTableCell>
+                        </DataTableRow>
+                      );
+                    }}
+                  </DataTableTBody>
+                </DataTableTable>
+              </DataTableTableContainer>
+            </DataTable>
           </div>
         </div>
       )}
