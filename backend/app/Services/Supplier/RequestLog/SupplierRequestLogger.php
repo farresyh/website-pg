@@ -33,6 +33,8 @@ final class SupplierRequestLogger
 
     private static function log(TransferStats $stats, string $slug, string $callType, ?int $orderId): void
     {
+        $callType = DeveloperTestContext::active() ? "dev_test_{$callType}" : $callType;
+
         $request = new ClientRequest($stats->getRequest());
         $durationMs = $stats->getTransferTime() !== null ? (int) round($stats->getTransferTime() * 1000) : null;
 

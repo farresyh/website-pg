@@ -135,6 +135,27 @@ class GamevionAdapterTest extends TestCase
     }
 
     /**
+     * ADR-054 decision 7 — the Developer API Tester's ambient context
+     * flag is read at the exact point every real adapter call already
+     * funnels through (SupplierRequestLogger::log()), so a call fired
+     * from that screen is distinguishable in the Request Logs viewer
+     * without the adapter itself knowing anything about it.
+     */
+    public function test_check_balance_logs_with_a_dev_test_prefix_inside_developer_test_context(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => false, 'code' => 200, 'message' => 'Success',
+                'data' => ['user_balance' => '150000.00'],
+            ], 200),
+        ]);
+
+        \App\Services\Supplier\RequestLog\DeveloperTestContext::runIn(fn () => $this->adapter()->checkBalance());
+
+        Queue::assertPushed(\App\Jobs\LogSupplierRequestJob::class, fn ($job) => $job->entry()['call_type'] === 'dev_test_checkBalance');
+    }
+
+    /**
      * Live mode returns product_code/product_price shaped items.
      */
     public function test_list_products_normalizes_live_mode_shape(): void
