@@ -17,6 +17,10 @@ final class SupplierOrderRequest
         public readonly ?string $serverId = null,
         public readonly ?string $customerPhone = null,
         public readonly ?string $callbackUrl = null,
+        // ADR-051 decision 6 — attributes this call's request-log row
+        // to the order it belongs to; purely a logging convenience,
+        // no adapter branches on it.
+        public readonly ?int $orderId = null,
     ) {
     }
 }

@@ -100,6 +100,7 @@ return [
         'redis:orders' => 60,
         'redis:price-sync' => 300,
         'redis:backups' => 300,
+        'redis:supplier-request-logs' => 300,
     ],
 
     /*
@@ -248,6 +249,23 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        // ADR-051 — its own supervisor, same isolation reasoning as
+        // every queue above: a burst of supplier calls logging
+        // themselves must never sit in front of (or behind) an order
+        // job. tries=1 matches LogSupplierRequestJob's own $tries —
+        // losing an occasional debug-log row isn't worth a retry.
+        'supervisor-supplier-request-logs' => [
+            'connection' => 'redis',
+            'queue' => ['supplier-request-logs'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 30,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -255,12 +273,14 @@ return [
             'supervisor-orders' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
+            'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
         ],
 
         'local' => [
             'supervisor-orders' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
+            'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
         ],
     ],
 

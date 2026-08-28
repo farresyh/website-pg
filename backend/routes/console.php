@@ -53,6 +53,14 @@ Schedule::call(fn () => Artisan::call('app:prune-player-validations'))
     ->name('player-validation-pruning')
     ->withoutOverlapping();
 
+// ADR-051 — same inert-until-real-cron pattern as above. Prunes
+// supplier_request_logs past its (split) retention window — see
+// PruneSupplierRequestLogsCommand's own docblock.
+Schedule::call(fn () => Artisan::call('app:prune-supplier-request-logs'))
+    ->daily()
+    ->name('supplier-request-log-pruning')
+    ->withoutOverlapping();
+
 // ADR-039 decision 2 — same inert-until-real-cron pattern as above.
 // `--triggered-by=system` distinguishes this from the manual "Backup
 // Now" admin action, both of which go through the same

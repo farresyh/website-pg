@@ -93,6 +93,8 @@ class SupplierControllerTest extends TestCase
         $body = $response->json()[0];
         $this->assertArrayNotHasKey('api_config', $body);
         $this->assertTrue($body['has_credentials']);
+        $this->assertTrue($body['is_fully_configured']);
+        $this->assertSame(['bearer_token', 'api_key'], $body['configured_secret_keys']);
         $this->assertSame('closed', $body['circuit_state']);
         $this->assertSame(['packages' => 0, 'supplier_products' => 0, 'orders' => 0], $body['reference_counts']);
         $this->assertStringNotContainsString('secret-value', $response->getContent());
@@ -103,6 +105,26 @@ class SupplierControllerTest extends TestCase
 
         // ADR-046 addendum: the card's Sandbox/Production badge.
         $this->assertTrue($body['is_sandbox']);
+    }
+
+    /**
+     * Regression test, same 2026-08-28 finding as the refresh-balance
+     * guard fix: has_credentials alone used to be what the "Configured"
+     * badge read, which meant a supplier with only base_url saved
+     * looked finished. is_fully_configured is the field that should
+     * actually gate that badge, and configured_secret_keys must report
+     * only the secret that's genuinely set, not every secret field.
+     */
+    public function test_index_reports_partial_configuration_accurately(): void
+    {
+        $this->actingAsAdmin();
+        $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'secret-value']]);
+
+        $body = $this->getJson('/api/middleware/suppliers')->assertOk()->json()[0];
+
+        $this->assertTrue($body['has_credentials']);
+        $this->assertFalse($body['is_fully_configured']);
+        $this->assertSame(['bearer_token'], $body['configured_secret_keys']);
     }
 
     public function test_available_slugs_lists_registered_adapters(): void
@@ -219,6 +241,27 @@ class SupplierControllerTest extends TestCase
         $response = $this->postJson("/api/middleware/suppliers/{$supplier->id}/refresh-balance")->assertOk();
 
         $this->assertStringContainsString('failed', $response->json('last_test_result'));
+    }
+
+    /**
+     * Regression test for the real 2026-08-28 crash: a supplier row
+     * with *some* api_config keys saved (e.g. base_url from a partial
+     * Edit save) but not all of them used to bypass the old
+     * empty()-only guard in AppServiceProvider::supplierApiConfig()
+     * and crash with an uncaught "Undefined array key" deep inside the
+     * adapter binding closure, instead of the clean 422 this asserts.
+     * Deliberately does not rebind 'supplier-adapter.gamevion' — this
+     * needs to exercise the real container binding, not a test fake.
+     */
+    public function test_refresh_balance_with_partially_configured_credentials_returns_a_clean_error(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com']]);
+
+        $response = $this->postJson("/api/middleware/suppliers/{$supplier->id}/refresh-balance");
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('bearer_token', $response->json('errors.supplier.0'));
     }
 
     public function test_deactivate_all_turns_off_every_package_and_writes_audit_rows(): void

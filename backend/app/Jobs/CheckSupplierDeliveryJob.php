@@ -63,6 +63,7 @@ final class CheckSupplierDeliveryJob implements ShouldQueue
             productRef: $this->order->supplier_product_ref,
             playerId: $this->order->player_id,
             serverId: $this->order->server_id,
+            orderId: $this->order->id,
         ));
 
         try {

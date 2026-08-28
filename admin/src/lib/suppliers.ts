@@ -17,7 +17,12 @@ export interface Supplier {
   last_tested_at: string | null;
   last_test_result: string | null;
   circuit_state: "closed" | "open";
+  /** True the moment ANY api_config key is saved — not the same as ready-to-use, see is_fully_configured. */
   has_credentials: boolean;
+  /** Every SupplierConfigSchema key for this slug is present — what the "Configured" badge should actually gate on. */
+  is_fully_configured: boolean;
+  /** Secret-type keys (per slug) that actually have a value set — never the value itself. Drives each secret field's own badge. */
+  configured_secret_keys: string[];
   /** ADR-046 decision 3 — only the non-secret api_config keys (base_url/sandbox/testing/etc.), pre-fills the Edit form. */
   visible_config: Record<string, string | boolean | null>;
   /** ADR-046 addendum — null when this supplier has no sandbox/testing-mode field at all. */
@@ -44,21 +49,23 @@ export interface SupplierField {
   key: string;
   label: string;
   type: SupplierFieldType;
+  /** Format hint shown as the input's placeholder — text/boolean fields only; secrets are opaque tokens with no format to hint at. */
+  placeholder?: string;
 }
 
 export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
   gamevion: [
-    { key: "base_url", label: "Base URL", type: "text" },
+    { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.gamevion.com (no trailing slash)" },
     { key: "bearer_token", label: "Bearer Token", type: "secret" },
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "sandbox", label: "Sandbox Mode", type: "boolean" },
   ],
   digiflazz: [
-    { key: "base_url", label: "Base URL", type: "text" },
+    { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
     { key: "username", label: "Username", type: "secret" },
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "testing", label: "Testing Mode", type: "boolean" },
-    { key: "customer_no_separator", label: "Customer No. Separator", type: "text" },
+    { key: "customer_no_separator", label: "Customer No. Separator", type: "text", placeholder: "| (default — joins player ID and server ID)" },
   ],
 };
 

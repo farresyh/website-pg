@@ -12,6 +12,7 @@ use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Services\Supplier\UnsupportedSupplierException;
 use Illuminate\Http\JsonResponse;
@@ -27,19 +28,6 @@ use Illuminate\Validation\ValidationException;
  */
 class SupplierController extends Controller
 {
-    /**
-     * ADR-046 decision 3 — the authoritative secret-vs-visible
-     * classification of each supplier's api_config keys. Mirrored (not
-     * shared) by the frontend's SUPPLIER_FIELD_DEFINITIONS
-     * (admin/src/lib/suppliers.ts) — this copy is the security
-     * boundary (decides what visibleConfig() below ever serializes),
-     * the frontend copy decides how to render each field; keep both in
-     * sync by hand when a supplier's real field shape changes.
-     */
-    private const FIELD_DEFINITIONS = [
-        'gamevion' => ['base_url' => 'text', 'bearer_token' => 'secret', 'api_key' => 'secret', 'sandbox' => 'boolean'],
-        'digiflazz' => ['base_url' => 'text', 'username' => 'secret', 'api_key' => 'secret', 'testing' => 'boolean', 'customer_no_separator' => 'text'],
-    ];
 
     /**
      * SUPP-1 — cards with connection status (CircuitBreaker::state(),
@@ -66,6 +54,22 @@ class SupplierController extends Controller
             return array_merge($supplier->toArray(), [
                 'circuit_state' => $breaker->state()->value,
                 'has_credentials' => ! empty($supplier->api_config),
+                // Found live, 2026-08-28: has_credentials alone reads
+                // "Configured" the moment ANY key is saved (e.g. just
+                // base_url), which is exactly what let a supplier one
+                // Refresh Balance click away from crashing look
+                // finished. This is the field the "Configured" badge
+                // should actually gate on — every key
+                // SupplierConfigSchema defines for this slug present,
+                // not merely "not empty".
+                'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->slug, $supplier->api_config ?? []) === [],
+                // Per-secret-field presence (never the value itself,
+                // same SUPP-5 boundary visibleConfig() already
+                // enforces) — lets the Edit form's per-field badge
+                // show which secret is actually set instead of every
+                // secret field reusing has_credentials' one supplier-
+                // wide flag.
+                'configured_secret_keys' => $this->configuredSecretKeys($supplier),
                 'visible_config' => $this->visibleConfig($supplier),
                 'is_sandbox' => $this->isSandbox($supplier),
                 'reference_counts' => $this->referenceCounts($supplier),
@@ -248,7 +252,7 @@ class SupplierController extends Controller
      */
     private function visibleConfig(Supplier $supplier): array
     {
-        $definition = self::FIELD_DEFINITIONS[$supplier->slug] ?? [];
+        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
         $apiConfig = $supplier->api_config ?? [];
 
         $visible = [];
@@ -264,18 +268,37 @@ class SupplierController extends Controller
     }
 
     /**
+     * @return list<string> secret-type keys (per SupplierConfigSchema)
+     *                       that actually have a non-empty value —
+     *                       never the value itself, same $hidden
+     *                       boundary visibleConfig() already respects.
+     */
+    private function configuredSecretKeys(Supplier $supplier): array
+    {
+        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
+        $apiConfig = $supplier->api_config ?? [];
+
+        return collect($definition)
+            ->filter(fn (string $type) => $type === 'secret')
+            ->keys()
+            ->filter(fn (string $key) => ! empty($apiConfig[$key] ?? null))
+            ->values()
+            ->all();
+    }
+
+    /**
      * ADR-046 addendum — the card's "Sandbox"/"Production" badge reads
      * this rather than the frontend hardcoding a per-supplier field
      * name ('sandbox' for Gamevion, 'testing' for Digiflazz): whichever
-     * key FIELD_DEFINITIONS marks 'boolean' for this supplier *is* its
-     * sandbox/testing-mode flag, by this codebase's own convention (see
-     * SUPPLIER_FIELD_DEFINITIONS' mirrored comment). Null when a
+     * key SupplierConfigSchema marks 'boolean' for this supplier *is*
+     * its sandbox/testing-mode flag, by this codebase's own convention
+     * (see SUPPLIER_FIELD_DEFINITIONS' mirrored comment). Null when a
      * supplier has no such field at all, not false — "unknown" and
      * "definitely production" are different things.
      */
     private function isSandbox(Supplier $supplier): ?bool
     {
-        $definition = self::FIELD_DEFINITIONS[$supplier->slug] ?? [];
+        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
         $booleanKey = array_search('boolean', $definition, true);
 
         if ($booleanKey === false) {

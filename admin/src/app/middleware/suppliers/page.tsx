@@ -231,8 +231,8 @@ export default function SuppliersPage() {
                 <div className="flex justify-between">
                   <dt className="text-gray-500 dark:text-gray-400">Credentials</dt>
                   <dd>
-                    <Tag severity={supplier.has_credentials ? "success" : "warn"}>
-                      {supplier.has_credentials ? "Configured" : "Not configured"}
+                    <Tag severity={supplier.is_fully_configured ? "success" : supplier.has_credentials ? "warn" : "secondary"}>
+                      {supplier.is_fully_configured ? "Configured" : supplier.has_credentials ? "Partial" : "Not configured"}
                     </Tag>
                   </dd>
                 </div>
