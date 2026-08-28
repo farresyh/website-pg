@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { listGamePackages, type GamePackage } from "@/lib/games";
 import { resendOrderDelivery, validatePlayerForResend, type OrderDetail } from "@/lib/orders";
@@ -135,8 +147,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   }
 
   return (
-    <div className="max-w-lg p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Resend Delivery</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         Defaults to resending the same package this order already has — change the selection below only if you want to
         deliver a different package from the same game (<span className="font-medium">{order.game?.name ?? "—"}</span>).
@@ -207,7 +218,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
               {order.server_id ? ` / Server ${order.server_id}` : ""}.
             </p>
             <div className="flex items-center gap-3">
-              <Button type="button" size="sm" variant="outline" onClick={handleVerify} disabled={verifying}>
+              <Button type="button" size="small" variant="outlined" onClick={handleVerify} disabled={verifying}>
                 {verifying ? "Verifying…" : "Verify Player ID"}
               </Button>
               {verifyResult === "valid" && <span className="text-sm text-success-600 dark:text-success-400">Verified</span>}
@@ -257,7 +268,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={!canSubmit}>
@@ -265,14 +276,33 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function ResendDeliveryModal({ isOpen, onClose, onResent, order, token, sandbox }: ResendDeliveryModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
-      {isOpen && <ResendDeliveryFields onClose={onClose} onResent={onResent} order={order} token={token} sandbox={sandbox} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Resend Delivery</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && (
+                <ResendDeliveryFields onClose={onClose} onResent={onResent} order={order} token={token} sandbox={sandbox} />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

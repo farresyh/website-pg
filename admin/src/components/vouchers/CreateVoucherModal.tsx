@@ -1,10 +1,22 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import type { CreateVoucherValues } from "@/lib/vouchers";
 
 interface CreateVoucherModalProps {
@@ -61,8 +73,7 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Create Voucher</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         Standalone voucher — debited from the platform balance. Vouchers above the maker-checker
         threshold require a Super Admin.
@@ -93,7 +104,7 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -101,14 +112,31 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function CreateVoucherModal({ isOpen, onClose, onSubmit }: CreateVoucherModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && <CreateVoucherFields onClose={onClose} onSubmit={onSubmit} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Voucher</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && <CreateVoucherFields onClose={onClose} onSubmit={onSubmit} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

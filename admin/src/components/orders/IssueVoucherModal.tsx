@@ -1,10 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { issueVoucherFromOrder, type OrderDetail } from "@/lib/orders";
 import type { Voucher } from "@/lib/vouchers";
@@ -27,9 +39,9 @@ function formatRm(sen: number): string {
  * Amount is never entered here: it's computed server-side from what
  * the customer actually paid (final_amount - transaction_fee), same
  * ORD-9 "never trust a client-submitted money value" principle as
- * everywhere else in checkout/resend. Renders as a child of <Modal>,
- * which unmounts while closed — fresh state every open, same
- * convention as ResendDeliveryModal/CreateValidatorModal.
+ * everywhere else in checkout/resend. Rendered only while the dialog
+ * is open — fresh state every open, same convention as
+ * ResendDeliveryModal/CreateValidatorModal.
  */
 function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVoucherModalProps, "isOpen">) {
   const [reason, setReason] = useState("");
@@ -54,8 +66,7 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
   }
 
   return (
-    <div className="max-w-lg p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Issue Voucher</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         Issues a <span className="font-medium">{formatRm(amount)}</span> store-credit voucher to{" "}
         <span className="font-medium">{order.customer_email}</span> — this platform never issues cash refunds
@@ -80,7 +91,7 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -88,14 +99,31 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function IssueVoucherModal({ isOpen, onClose, onIssued, order, token }: IssueVoucherModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
-      {isOpen && <IssueVoucherFields onClose={onClose} onIssued={onIssued} order={order} token={token} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Issue Voucher</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && <IssueVoucherFields onClose={onClose} onIssued={onIssued} order={order} token={token} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

@@ -1,7 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import {
   DataTable,
   DataTableTableContainer,
@@ -40,12 +52,10 @@ function BlacklistHitsContent({ entryId, token }: { entryId: number; token: stri
   }, [entryId, token]);
 
   return (
-    <div className="max-h-[80vh] overflow-y-auto p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">
-        Blocked Attempts{detail ? ` — ${detail.value}` : ""}
-      </h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-        Every checkout attempt this entry blocked before payment or supplier submission.
+        Every checkout attempt{detail ? ` blocked by ${detail.value}` : " this entry blocked"} before payment or
+        supplier submission.
       </p>
 
       {error && (
@@ -98,14 +108,31 @@ function BlacklistHitsContent({ entryId, token }: { entryId: number; token: stri
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
 export default function BlacklistHitsModal({ entryId, token, onClose }: BlacklistHitsModalProps) {
   return (
-    <Modal isOpen={entryId !== null} onClose={onClose} className="max-w-2xl">
-      {entryId !== null && <BlacklistHitsContent key={entryId} entryId={entryId} token={token} />}
-    </Modal>
+    <Dialog open={entryId !== null} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Blocked Attempts</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {entryId !== null && <BlacklistHitsContent key={entryId} entryId={entryId} token={token} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }
