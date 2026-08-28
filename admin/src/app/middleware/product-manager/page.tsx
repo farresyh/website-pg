@@ -37,7 +37,7 @@ import {
   promoteSupplierProduct,
 } from "@/lib/supplier-products";
 import { EXTRA_FIELD_OPTIONS, type Game, type GamePackage, type GameValidationRules, listGames, listGamePackages } from "@/lib/games";
-import Select from "@/components/form/Select";
+import { SimpleSelect } from "@/components/ui/select";
 import LinkCategoryModal from "@/components/middleware/LinkCategoryModal";
 import PromoteProductModal from "@/components/middleware/PromoteProductModal";
 
@@ -74,7 +74,7 @@ function CheckoutInputEditor({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Select value={value} onChange={setValue} options={EXTRA_FIELD_OPTIONS} className="w-56" />
+      <SimpleSelect value={value} onChange={setValue} options={EXTRA_FIELD_OPTIONS} className="w-56" />
       <Button size="small" disabled={saving} onClick={handleUpdate}>
         {saving ? "Saving…" : "Update"}
       </Button>

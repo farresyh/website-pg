@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import type { Redirect, SaveRedirectValues } from "@/lib/seo";
 
@@ -72,7 +72,7 @@ function Fields({ redirect, onClose, onSubmit }: Omit<Props, "isOpen">) {
         </div>
         <div>
           <Label htmlFor="status_code">Status code</Label>
-          <Select id="status_code" value={statusCode} onChange={setStatusCode} options={STATUS_OPTIONS} />
+          <SimpleSelect id="status_code" value={statusCode} onChange={setStatusCode} options={STATUS_OPTIONS} />
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">

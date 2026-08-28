@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import type { SeoScript, SaveSeoScriptValues } from "@/lib/seo";
 
@@ -71,7 +71,7 @@ function Fields({ script, onClose, onSubmit }: Omit<Props, "isOpen">) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="location">Location</Label>
-            <Select id="location" value={location} onChange={(v) => setLocation(v as "head" | "body_end")} options={LOCATION_OPTIONS} />
+            <SimpleSelect id="location" value={location} onChange={(v) => setLocation(v as "head" | "body_end")} options={LOCATION_OPTIONS} />
           </div>
           <div>
             <Label htmlFor="priority">Priority</Label>

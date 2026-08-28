@@ -17,8 +17,8 @@ import {
   DataTableCell,
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -95,7 +95,7 @@ function GameSeoListPageInner() {
           <Input placeholder="Search games…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="w-48">
-          <Select value={filter} onChange={setFilter} options={FILTER_OPTIONS} />
+          <SimpleSelect value={filter} onChange={setFilter} options={FILTER_OPTIONS} />
         </div>
       </div>
 

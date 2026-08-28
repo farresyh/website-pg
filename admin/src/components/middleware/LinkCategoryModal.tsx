@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import type { LinkCategoryValues } from "@/lib/supplier-products";
 import { EXTRA_FIELD_OPTIONS, type Game } from "@/lib/games";
@@ -119,7 +119,7 @@ function LinkCategoryFields({
         </div>
 
         {gameMode === "existing" ? (
-          <Select
+          <SimpleSelect
             value={gameId}
             onChange={handleGameIdChange}
             options={games.map((g) => ({ value: String(g.id), label: g.name }))}
@@ -144,7 +144,7 @@ function LinkCategoryFields({
 
         <div>
           <Label htmlFor="extra_field">Checkout input needed</Label>
-          <Select id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
+          <SimpleSelect id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
           <p className="mt-1 text-theme-xs text-gray-400">
             What Gamevion needs beyond Player ID for orders in this category — e.g. Mobile Legends needs a Zone ID.
           </p>

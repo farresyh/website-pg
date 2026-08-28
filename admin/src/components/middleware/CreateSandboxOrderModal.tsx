@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { listGames, listGamePackages, type Game, type GamePackage } from "@/lib/games";
 import type { CreateSandboxOrderValues } from "@/lib/sandboxOrders";
@@ -125,7 +125,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
           {games === null ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading games…</p>
           ) : (
-            <Select
+            <SimpleSelect
               id="sandbox_game"
               value={gameId !== null ? String(gameId) : ""}
               onChange={(value) => setGameId(value ? Number(value) : null)}
@@ -141,7 +141,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
           ) : packages === null ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading packages…</p>
           ) : (
-            <Select
+            <SimpleSelect
               id="sandbox_package"
               value={packageId !== null ? String(packageId) : ""}
               onChange={(value) => setPackageId(value ? Number(value) : null)}

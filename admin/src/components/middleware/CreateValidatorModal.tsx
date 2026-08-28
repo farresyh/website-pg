@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import type { AvailableValidatorKey } from "@/lib/player-validators";
 
@@ -103,7 +103,7 @@ function CreateValidatorFields({
           </div>
           <div>
             <Label htmlFor="validator_key">Key</Label>
-            <Select
+            <SimpleSelect
               id="validator_key"
               value={key}
               onChange={setKey}

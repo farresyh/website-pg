@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import type { AdminUser } from "@/lib/admin-users";
 
@@ -105,7 +105,7 @@ function AdminUserFormFields({
         </div>
         <div>
           <Label htmlFor="role">Role</Label>
-          <Select options={ROLE_OPTIONS} value={role} onChange={(v) => setRole(v as "super_admin" | "admin")} />
+          <SimpleSelect options={ROLE_OPTIONS} value={role} onChange={(v) => setRole(v as "super_admin" | "admin")} />
         </div>
         <div>
           <Label htmlFor="phone">Phone (optional)</Label>

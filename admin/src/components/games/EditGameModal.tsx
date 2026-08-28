@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import type { Game, UpdateGameValues } from "@/lib/games";
 import type { PlayerValidatorProfile } from "@/lib/player-validators";
@@ -143,7 +143,7 @@ function EditGameFields({
 
           <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
             <Label htmlFor="game_validator_profile">Player ID Validator (optional)</Label>
-            <Select
+            <SimpleSelect
               id="game_validator_profile"
               value={validatorProfileId}
               onChange={(value) => {
