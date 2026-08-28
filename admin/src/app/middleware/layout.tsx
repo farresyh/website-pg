@@ -36,7 +36,7 @@ const NAV_ITEMS: { label: string; href: string | null }[] = [
   { label: "Sandbox", href: "/middleware/sandbox" },
   { label: "Backups", href: "/middleware/backups" },
   { label: "Request Logs", href: "/middleware/request-logs" },
-  { label: "Developer / API Tester", href: null },
+  { label: "Developer / API Tester", href: "/middleware/developer-tools" },
 ];
 
 // ADR-048 addendum — not Next.js pages: each opens a new tab against a

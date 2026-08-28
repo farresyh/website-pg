@@ -298,16 +298,7 @@ class SupplierController extends Controller
      */
     private function isSandbox(Supplier $supplier): ?bool
     {
-        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
-        $booleanKey = array_search('boolean', $definition, true);
-
-        if ($booleanKey === false) {
-            return null;
-        }
-
-        $apiConfig = $supplier->api_config ?? [];
-
-        return isset($apiConfig[$booleanKey]) ? (bool) $apiConfig[$booleanKey] : null;
+        return SupplierConfigSchema::isSandbox($supplier->slug, $supplier->api_config ?? []);
     }
 
     /**

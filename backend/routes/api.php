@@ -33,6 +33,7 @@ use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
+use App\Http\Controllers\Middleware\DeveloperToolController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\PriceSyncController;
 use App\Http\Controllers\Middleware\RequestLogController;
@@ -304,6 +305,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin')->prefix('middleware/request-logs')->group(function () {
         Route::get('/', [RequestLogController::class, 'index']);
         Route::get('/{request_log}', [RequestLogController::class, 'show']);
+    });
+
+    // ADR-054 (DEV-1/2, MUI-11) — Developer raw API tester. Super
+    // Admin only, same boundary as every other supplier-facing screen
+    // here; also the one screen in this area whose real (non-dry-run)
+    // calls can reach a live supplier API on demand.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/developer-tools')->group(function () {
+        Route::post('/test', [DeveloperToolController::class, 'test']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion

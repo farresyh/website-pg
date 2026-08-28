@@ -40,4 +40,26 @@ final class SupplierConfigSchema
     {
         return array_values(array_diff(array_keys(self::fieldsFor($slug)), array_keys($config)));
     }
+
+    /**
+     * ADR-046 addendum — whichever key is marked 'boolean' for this
+     * slug *is* its sandbox/testing-mode flag, by this codebase's own
+     * convention (mirrored by the frontend's SUPPLIER_FIELD_DEFINITIONS).
+     * Extracted here (previously private to SupplierController) so
+     * ADR-054's Developer API Tester can gate `createOrder` on the same
+     * value without duplicating the lookup. Null when a supplier has no
+     * such field at all, not false — "unknown" and "definitely
+     * production" are different things, and callers gating a real
+     * side-effect on this should treat null as "not confirmed sandbox."
+     */
+    public static function isSandbox(string $slug, array $apiConfig): ?bool
+    {
+        $booleanKey = array_search('boolean', self::fieldsFor($slug), true);
+
+        if ($booleanKey === false) {
+            return null;
+        }
+
+        return isset($apiConfig[$booleanKey]) ? (bool) $apiConfig[$booleanKey] : null;
+    }
 }
