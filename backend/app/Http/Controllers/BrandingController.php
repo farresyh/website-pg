@@ -68,7 +68,7 @@ class BrandingController extends Controller
                     'support_email' => $branding?->support_email,
                     'support_phone' => $branding?->support_phone,
                     'telegram_contact_link' => $branding?->telegram_contact_link,
-                    'social_links' => $branding?->social_links ?? [],
+                    'social_links' => $branding?->social_links ?: null,
                     'footer_text' => self::substitute($footer?->footer_text, $storeName),
                     'footer_games' => $orderedFooterGames,
                 ];
