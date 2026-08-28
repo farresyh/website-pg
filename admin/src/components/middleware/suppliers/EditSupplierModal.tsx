@@ -126,18 +126,19 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
 
               {fields.map((field) => {
                 if (field.type === "secret") {
+                  const isConfigured = supplier.configured_secret_keys.includes(field.key);
                   return (
                     <div key={field.key}>
                       <label className="mb-1.5 flex items-center gap-2 text-theme-sm font-medium text-gray-700 dark:text-gray-300">
                         {field.label}
                         <span
                           className={`rounded-full px-2 py-0.5 text-theme-xs ${
-                            supplier.has_credentials
+                            isConfigured
                               ? "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400"
                               : "bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400"
                           }`}
                         >
-                          {supplier.has_credentials ? "Configured" : "Not configured"}
+                          {isConfigured ? "Configured" : "Not configured"}
                         </span>
                       </label>
                       <input

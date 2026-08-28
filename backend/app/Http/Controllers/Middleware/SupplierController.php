@@ -54,6 +54,22 @@ class SupplierController extends Controller
             return array_merge($supplier->toArray(), [
                 'circuit_state' => $breaker->state()->value,
                 'has_credentials' => ! empty($supplier->api_config),
+                // Found live, 2026-08-28: has_credentials alone reads
+                // "Configured" the moment ANY key is saved (e.g. just
+                // base_url), which is exactly what let a supplier one
+                // Refresh Balance click away from crashing look
+                // finished. This is the field the "Configured" badge
+                // should actually gate on — every key
+                // SupplierConfigSchema defines for this slug present,
+                // not merely "not empty".
+                'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->slug, $supplier->api_config ?? []) === [],
+                // Per-secret-field presence (never the value itself,
+                // same SUPP-5 boundary visibleConfig() already
+                // enforces) — lets the Edit form's per-field badge
+                // show which secret is actually set instead of every
+                // secret field reusing has_credentials' one supplier-
+                // wide flag.
+                'configured_secret_keys' => $this->configuredSecretKeys($supplier),
                 'visible_config' => $this->visibleConfig($supplier),
                 'is_sandbox' => $this->isSandbox($supplier),
                 'reference_counts' => $this->referenceCounts($supplier),
@@ -249,6 +265,25 @@ class SupplierController extends Controller
         }
 
         return $visible;
+    }
+
+    /**
+     * @return list<string> secret-type keys (per SupplierConfigSchema)
+     *                       that actually have a non-empty value —
+     *                       never the value itself, same $hidden
+     *                       boundary visibleConfig() already respects.
+     */
+    private function configuredSecretKeys(Supplier $supplier): array
+    {
+        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
+        $apiConfig = $supplier->api_config ?? [];
+
+        return collect($definition)
+            ->filter(fn (string $type) => $type === 'secret')
+            ->keys()
+            ->filter(fn (string $key) => ! empty($apiConfig[$key] ?? null))
+            ->values()
+            ->all();
     }
 
     /**

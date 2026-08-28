@@ -17,7 +17,12 @@ export interface Supplier {
   last_tested_at: string | null;
   last_test_result: string | null;
   circuit_state: "closed" | "open";
+  /** True the moment ANY api_config key is saved — not the same as ready-to-use, see is_fully_configured. */
   has_credentials: boolean;
+  /** Every SupplierConfigSchema key for this slug is present — what the "Configured" badge should actually gate on. */
+  is_fully_configured: boolean;
+  /** Secret-type keys (per slug) that actually have a value set — never the value itself. Drives each secret field's own badge. */
+  configured_secret_keys: string[];
   /** ADR-046 decision 3 — only the non-secret api_config keys (base_url/sandbox/testing/etc.), pre-fills the Edit form. */
   visible_config: Record<string, string | boolean | null>;
   /** ADR-046 addendum — null when this supplier has no sandbox/testing-mode field at all. */

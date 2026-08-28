@@ -93,6 +93,8 @@ class SupplierControllerTest extends TestCase
         $body = $response->json()[0];
         $this->assertArrayNotHasKey('api_config', $body);
         $this->assertTrue($body['has_credentials']);
+        $this->assertTrue($body['is_fully_configured']);
+        $this->assertSame(['bearer_token', 'api_key'], $body['configured_secret_keys']);
         $this->assertSame('closed', $body['circuit_state']);
         $this->assertSame(['packages' => 0, 'supplier_products' => 0, 'orders' => 0], $body['reference_counts']);
         $this->assertStringNotContainsString('secret-value', $response->getContent());
@@ -103,6 +105,26 @@ class SupplierControllerTest extends TestCase
 
         // ADR-046 addendum: the card's Sandbox/Production badge.
         $this->assertTrue($body['is_sandbox']);
+    }
+
+    /**
+     * Regression test, same 2026-08-28 finding as the refresh-balance
+     * guard fix: has_credentials alone used to be what the "Configured"
+     * badge read, which meant a supplier with only base_url saved
+     * looked finished. is_fully_configured is the field that should
+     * actually gate that badge, and configured_secret_keys must report
+     * only the secret that's genuinely set, not every secret field.
+     */
+    public function test_index_reports_partial_configuration_accurately(): void
+    {
+        $this->actingAsAdmin();
+        $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'secret-value']]);
+
+        $body = $this->getJson('/api/middleware/suppliers')->assertOk()->json()[0];
+
+        $this->assertTrue($body['has_credentials']);
+        $this->assertFalse($body['is_fully_configured']);
+        $this->assertSame(['bearer_token'], $body['configured_secret_keys']);
     }
 
     public function test_available_slugs_lists_registered_adapters(): void
