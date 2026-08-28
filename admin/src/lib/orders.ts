@@ -125,6 +125,8 @@ export function resendOrderDelivery(token: string, id: number, values: { package
 export interface ValidatePlayerForResendResult {
   status: "invalid" | "region_unknown" | "wrong_region" | "valid";
   nickname: string | null;
+  country_code?: string | null;
+  redirect_game?: { slug: string; name: string } | null;
 }
 
 export function validatePlayerForResend(gameId: number, playerId: string, serverId?: string | null) {

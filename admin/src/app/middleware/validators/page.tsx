@@ -8,6 +8,9 @@
  * action proves a validator is genuinely plugged in on the backend —
  * not just that this row exists. See
  * backend/app/Http/Controllers/Middleware/PlayerValidatorProfileController.php.
+ *
+ * MUI-7 (grilled 2026-08-28, ADR-052) lives on this same page as the
+ * "Validate Player (by Game)" panel below — see ValidateByGamePanel.
  */
 
 import React, { useEffect, useState } from "react";
@@ -15,6 +18,7 @@ import { useRouter } from "next/navigation";
 import Button from "@/components/ui/button/Button";
 import CreateValidatorModal from "@/components/middleware/CreateValidatorModal";
 import ValidatorCard from "@/components/middleware/ValidatorCard";
+import ValidateByGamePanel from "@/components/middleware/ValidateByGamePanel";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -233,6 +237,10 @@ export default function ValidatorsPage() {
       {validators === null && !error && (
         <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       )}
+
+      <div className="mt-8">
+        <ValidateByGamePanel games={games} />
+      </div>
     </div>
   );
 }

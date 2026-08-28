@@ -41,6 +41,7 @@ export interface RequestLogFilters {
   from?: string;
   to?: string;
   page?: number;
+  per_page?: number;
 }
 
 export function listRequestLogs(token: string, filters: RequestLogFilters = {}) {
