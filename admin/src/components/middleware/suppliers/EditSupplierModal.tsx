@@ -172,6 +172,7 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
                     </label>
                     <input
                       className={inputClass}
+                      placeholder={field.placeholder}
                       value={String(visibleValue(field.key, ""))}
                       onChange={(e) => setVisibleValues((v) => ({ ...v, [field.key]: e.target.value }))}
                     />

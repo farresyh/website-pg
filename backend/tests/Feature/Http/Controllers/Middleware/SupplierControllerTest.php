@@ -221,6 +221,27 @@ class SupplierControllerTest extends TestCase
         $this->assertStringContainsString('failed', $response->json('last_test_result'));
     }
 
+    /**
+     * Regression test for the real 2026-08-28 crash: a supplier row
+     * with *some* api_config keys saved (e.g. base_url from a partial
+     * Edit save) but not all of them used to bypass the old
+     * empty()-only guard in AppServiceProvider::supplierApiConfig()
+     * and crash with an uncaught "Undefined array key" deep inside the
+     * adapter binding closure, instead of the clean 422 this asserts.
+     * Deliberately does not rebind 'supplier-adapter.gamevion' — this
+     * needs to exercise the real container binding, not a test fake.
+     */
+    public function test_refresh_balance_with_partially_configured_credentials_returns_a_clean_error(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com']]);
+
+        $response = $this->postJson("/api/middleware/suppliers/{$supplier->id}/refresh-balance");
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('bearer_token', $response->json('errors.supplier.0'));
+    }
+
     public function test_deactivate_all_turns_off_every_package_and_writes_audit_rows(): void
     {
         $admin = $this->actingAsAdmin();

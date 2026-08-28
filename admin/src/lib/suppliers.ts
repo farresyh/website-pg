@@ -44,21 +44,23 @@ export interface SupplierField {
   key: string;
   label: string;
   type: SupplierFieldType;
+  /** Format hint shown as the input's placeholder — text/boolean fields only; secrets are opaque tokens with no format to hint at. */
+  placeholder?: string;
 }
 
 export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
   gamevion: [
-    { key: "base_url", label: "Base URL", type: "text" },
+    { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.gamevion.com (no trailing slash)" },
     { key: "bearer_token", label: "Bearer Token", type: "secret" },
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "sandbox", label: "Sandbox Mode", type: "boolean" },
   ],
   digiflazz: [
-    { key: "base_url", label: "Base URL", type: "text" },
+    { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
     { key: "username", label: "Username", type: "secret" },
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "testing", label: "Testing Mode", type: "boolean" },
-    { key: "customer_no_separator", label: "Customer No. Separator", type: "text" },
+    { key: "customer_no_separator", label: "Customer No. Separator", type: "text", placeholder: "| (default — joins player ID and server ID)" },
   ],
 };
 

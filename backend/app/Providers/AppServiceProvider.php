@@ -27,6 +27,7 @@ use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -232,9 +233,13 @@ class AppServiceProvider extends ServiceProvider
      * bindings above read their credentials/mode from — the
      * `Supplier` row's encrypted api_config, replacing the old
      * config('services.<slug>') stopgap. Throws rather than
-     * constructing an adapter with null credentials, since that would
-     * fail confusingly deep inside a real API call instead of at
-     * resolve-time.
+     * constructing an adapter with null/missing credentials, since
+     * that would otherwise fail as an uncaught "Undefined array key"
+     * deep inside a real API call (found live, 2026-08-28 — a
+     * partially-filled api_config, e.g. only `base_url` saved before
+     * `bearer_token`, passed this guard's old empty()-only check and
+     * crashed raw instead of surfacing this exception) instead of a
+     * clean, catchable failure at resolve-time.
      */
     private function supplierApiConfig(string $slug): array
     {
@@ -243,6 +248,14 @@ class AppServiceProvider extends ServiceProvider
         if ($supplier === null || empty($supplier->api_config)) {
             throw new SupplierNotConfiguredException(
                 "Supplier '{$slug}' has no api_config configured — set it via the Supplier Management screen.",
+            );
+        }
+
+        $missing = SupplierConfigSchema::missingKeys($slug, $supplier->api_config);
+
+        if ($missing !== []) {
+            throw new SupplierNotConfiguredException(
+                "Supplier '{$slug}' is missing required config field(s): ".implode(', ', $missing).' — set them via the Supplier Management screen.',
             );
         }
 

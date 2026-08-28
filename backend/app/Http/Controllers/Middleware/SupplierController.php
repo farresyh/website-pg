@@ -12,6 +12,7 @@ use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Services\Supplier\UnsupportedSupplierException;
 use Illuminate\Http\JsonResponse;
@@ -27,19 +28,6 @@ use Illuminate\Validation\ValidationException;
  */
 class SupplierController extends Controller
 {
-    /**
-     * ADR-046 decision 3 — the authoritative secret-vs-visible
-     * classification of each supplier's api_config keys. Mirrored (not
-     * shared) by the frontend's SUPPLIER_FIELD_DEFINITIONS
-     * (admin/src/lib/suppliers.ts) — this copy is the security
-     * boundary (decides what visibleConfig() below ever serializes),
-     * the frontend copy decides how to render each field; keep both in
-     * sync by hand when a supplier's real field shape changes.
-     */
-    private const FIELD_DEFINITIONS = [
-        'gamevion' => ['base_url' => 'text', 'bearer_token' => 'secret', 'api_key' => 'secret', 'sandbox' => 'boolean'],
-        'digiflazz' => ['base_url' => 'text', 'username' => 'secret', 'api_key' => 'secret', 'testing' => 'boolean', 'customer_no_separator' => 'text'],
-    ];
 
     /**
      * SUPP-1 — cards with connection status (CircuitBreaker::state(),
@@ -248,7 +236,7 @@ class SupplierController extends Controller
      */
     private function visibleConfig(Supplier $supplier): array
     {
-        $definition = self::FIELD_DEFINITIONS[$supplier->slug] ?? [];
+        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
         $apiConfig = $supplier->api_config ?? [];
 
         $visible = [];
@@ -267,15 +255,15 @@ class SupplierController extends Controller
      * ADR-046 addendum — the card's "Sandbox"/"Production" badge reads
      * this rather than the frontend hardcoding a per-supplier field
      * name ('sandbox' for Gamevion, 'testing' for Digiflazz): whichever
-     * key FIELD_DEFINITIONS marks 'boolean' for this supplier *is* its
-     * sandbox/testing-mode flag, by this codebase's own convention (see
-     * SUPPLIER_FIELD_DEFINITIONS' mirrored comment). Null when a
+     * key SupplierConfigSchema marks 'boolean' for this supplier *is*
+     * its sandbox/testing-mode flag, by this codebase's own convention
+     * (see SUPPLIER_FIELD_DEFINITIONS' mirrored comment). Null when a
      * supplier has no such field at all, not false — "unknown" and
      * "definitely production" are different things.
      */
     private function isSandbox(Supplier $supplier): ?bool
     {
-        $definition = self::FIELD_DEFINITIONS[$supplier->slug] ?? [];
+        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
         $booleanKey = array_search('boolean', $definition, true);
 
         if ($booleanKey === false) {
