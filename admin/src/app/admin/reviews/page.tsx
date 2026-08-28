@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
+import { Modal } from "@/components/ui/modal";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { useClientSession } from "@/hooks/useClientSession";
@@ -43,6 +44,7 @@ export default function ReviewsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<number | null>(null);
   const [bulkApproving, setBulkApproving] = useState(false);
+  const [confirmingBulkApprove, setConfirmingBulkApprove] = useState(false);
 
   const [status, setStatus] = useState("");
   const [rating, setRating] = useState("");
@@ -110,7 +112,7 @@ export default function ReviewsPage() {
 
   async function handleBulkApprove() {
     if (!session) return;
-    if (!window.confirm(`Approve all ${data?.stats.pending ?? 0} pending reviews?`)) return;
+    setConfirmingBulkApprove(false);
     setError(null);
     setBulkApproving(true);
     try {
@@ -132,7 +134,7 @@ export default function ReviewsPage() {
             Guest-submitted, order-linked reviews (ADR-053) — moderation only, no public display exists.
           </p>
         </div>
-        <Button disabled={bulkApproving || !data?.stats.pending} onClick={handleBulkApprove}>
+        <Button disabled={bulkApproving || !data?.stats.pending} onClick={() => setConfirmingBulkApprove(true)}>
           {bulkApproving ? "Approving…" : "Approve All Pending"}
         </Button>
       </div>
@@ -285,6 +287,21 @@ export default function ReviewsPage() {
           </div>
         </div>
       )}
+
+      <Modal isOpen={confirmingBulkApprove} onClose={() => setConfirmingBulkApprove(false)} className="max-w-md">
+        <div className="p-6">
+          <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white/90">Approve All Pending</h3>
+          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
+            Approve all {data?.stats.pending ?? 0} pending review{data?.stats.pending === 1 ? "" : "s"}?
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setConfirmingBulkApprove(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleBulkApprove}>Approve All</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
