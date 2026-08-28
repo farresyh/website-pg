@@ -24,6 +24,9 @@ final class SupplierStatusCheckRequest
         public readonly ?string $productRef = null,
         public readonly ?string $playerId = null,
         public readonly ?string $serverId = null,
+        // ADR-051 decision 6 — same request-log attribution as
+        // SupplierOrderRequest::$orderId.
+        public readonly ?int $orderId = null,
     ) {
     }
 }

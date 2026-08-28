@@ -35,7 +35,7 @@ const NAV_ITEMS: { label: string; href: string | null }[] = [
   { label: "Validate Player", href: null },
   { label: "Sandbox", href: "/middleware/sandbox" },
   { label: "Backups", href: "/middleware/backups" },
-  { label: "Request Logs", href: null },
+  { label: "Request Logs", href: "/middleware/request-logs" },
   { label: "Developer / API Tester", href: null },
 ];
 

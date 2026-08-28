@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services\Supplier;
 
+use App\Jobs\LogSupplierRequestJob;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\SupplierAdapter;
@@ -9,10 +10,22 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class CircuitBreakingSupplierAdapterTest extends TestCase
 {
+    /**
+     * ADR-051: an open breaker now dispatches LogSupplierRequestJob
+     * (ShouldQueue) directly — see GamevionAdapterTest's own copy of
+     * this note for why Queue::fake() is needed here.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Queue::fake();
+    }
+
     /**
      * Real in-test fake, not a mock - same convention as
      * OrderFulfillmentServiceTest/CheckoutControllerTest: queues up
@@ -120,6 +133,12 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         $this->assertFalse($response->success);
         $this->assertSame('CIRCUIT_OPEN', $response->errorCode);
         $this->assertSame(1, $inner->calls);
+
+        // ADR-051 decision 3 — the skipped call still gets a synthetic
+        // request-log row, distinct from a real HTTP failure.
+        Queue::assertPushed(LogSupplierRequestJob::class, fn ($job) => $job->entry()['slug'] === $breaker->name()
+            && $job->entry()['call_type'] === 'checkBalance'
+            && $job->entry()['outcome'] === 'skipped_breaker_open');
     }
 
     public function test_recovers_after_the_cooldown_elapses(): void

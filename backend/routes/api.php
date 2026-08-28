@@ -34,6 +34,7 @@ use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\PriceSyncController;
+use App\Http\Controllers\Middleware\RequestLogController;
 use App\Http\Controllers\Middleware\SandboxOrderController;
 use App\Http\Controllers\Middleware\SupplierController;
 use App\Http\Controllers\Middleware\SupplierProductController;
@@ -277,6 +278,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{supplier}', [SupplierController::class, 'destroy']);
         Route::post('/{supplier}/refresh-balance', [SupplierController::class, 'refreshBalance']);
         Route::patch('/{supplier}/packages/status', [SupplierController::class, 'updatePackagesStatus']);
+    });
+
+    // ADR-051 (MUI-9) — read-only Request Logs viewer. Super Admin
+    // only, same boundary as every other supplier-facing screen here.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/request-logs')->group(function () {
+        Route::get('/', [RequestLogController::class, 'index']);
+        Route::get('/{request_log}', [RequestLogController::class, 'show']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion

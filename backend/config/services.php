@@ -177,6 +177,16 @@ return [
         'retention_days' => (int) env('PLAYER_VALIDATION_RETENTION_DAYS', 7),
     ],
 
+    // ADR-051 decision 7: `validate_player` rows carry the same
+    // player-account nickname/ID category player_validation.retention_days
+    // above already governs, so they follow that same 7-day window
+    // rather than the blanket default — see
+    // PruneSupplierRequestLogsCommand.
+    'supplier_request_log' => [
+        'retention_days' => (int) env('SUPPLIER_REQUEST_LOG_RETENTION_DAYS', 30),
+        'validate_player_retention_days' => (int) env('SUPPLIER_REQUEST_LOG_VALIDATE_PLAYER_RETENTION_DAYS', 7),
+    ],
+
     // Same STOREFRONT_URL env var cors.php already reads (may be
     // comma-separated when multiple origins are allowed) — first entry
     // is the canonical origin used to build the per-order redirect URL

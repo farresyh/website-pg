@@ -8,6 +8,7 @@ use App\Services\Supplier\SupplierOutcome;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -20,6 +21,16 @@ use Tests\TestCase;
  */
 class DigiflazzAdapterTest extends TestCase
 {
+    /**
+     * ADR-051: keeps this suite's deliberate DB-free scope intact —
+     * see GamevionAdapterTest's own copy of this note.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Queue::fake();
+    }
+
     private function adapter(bool $testing = false): DigiflazzAdapter
     {
         return new DigiflazzAdapter(
@@ -48,6 +59,31 @@ class DigiflazzAdapterTest extends TestCase
         Http::assertSent(fn ($request) => $request->url() === 'https://api.digiflazz.com/v1/cek-saldo'
             && $request['username'] === 'test-username'
             && $request['sign'] === $expectedSign);
+    }
+
+    /**
+     * ADR-051 — Digiflazz's auth lives in the body (username/sign),
+     * not a header, so this is the one adapter that actually exercises
+     * SupplierRequestPayloadRedactor's body-key redaction path
+     * end-to-end.
+     */
+    public function test_check_balance_logs_a_request_with_username_and_sign_redacted(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response(['data' => ['deposit' => 150000]], 200),
+        ]);
+
+        $this->adapter()->checkBalance();
+
+        Queue::assertPushed(\App\Jobs\LogSupplierRequestJob::class, function ($job) {
+            $body = $job->entry()['request_payload']['body'];
+
+            return $job->entry()['slug'] === 'digiflazz'
+                && $job->entry()['call_type'] === 'checkBalance'
+                && $body['cmd'] === 'deposit'
+                && $body['username'] === '[REDACTED]'
+                && $body['sign'] === '[REDACTED]';
+        });
     }
 
     public function test_check_balance_normalizes_the_response(): void

@@ -111,6 +111,7 @@ final class OrderFulfillmentService
                 playerId: $locked->player_id,
                 serverId: $locked->server_id,
                 customerPhone: $locked->customer_phone,
+                orderId: $locked->id,
             ));
 
             // ADR-032: branches on the adapter's normalized outcome,

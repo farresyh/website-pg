@@ -31,6 +31,18 @@ final class CircuitBreaker
     ) {
     }
 
+    /**
+     * ADR-051 — the breaker's own name already *is* the supplier slug
+     * every 'supplier-adapter.<slug>' binding constructs it with, so
+     * this is the one place CircuitBreakingSupplierAdapter can get
+     * that slug for a skipped-call log row without threading it
+     * through separately.
+     */
+    public function name(): string
+    {
+        return $this->name;
+    }
+
     public function isOpen(): bool
     {
         $openedAt = Cache::get($this->openedAtKey());
