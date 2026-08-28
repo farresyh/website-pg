@@ -14,8 +14,8 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { issueVoucherFromOrder, type OrderDetail } from "@/lib/orders";

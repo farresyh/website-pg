@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { listGamePackages, type GamePackage } from "@/lib/games";
@@ -176,7 +176,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           {packages === null ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading packages…</p>
           ) : (
-            <Select
+            <SimpleSelect
               id="resend_package"
               value={packageId !== null ? String(packageId) : ""}
               onChange={(value) => setPackageId(value ? Number(value) : null)}
