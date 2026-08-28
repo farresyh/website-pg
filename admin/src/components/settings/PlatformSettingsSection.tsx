@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { applyBulkMarkup, updatePlatformSettings, type PlatformSettings } from "@/lib/settings";
 
@@ -129,7 +129,7 @@ export default function PlatformSettingsSection({
             <Label htmlFor="markup_percent">Markup %</Label>
             <Input id="markup_percent" value={markupPercent} onChange={(e) => setMarkupPercent(e.target.value)} placeholder="15" />
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={handleApplyMarkup} disabled={applyingMarkup || !markupPercent}>
+          <Button type="button" variant="outlined" size="small" onClick={handleApplyMarkup} disabled={applyingMarkup || !markupPercent}>
             {applyingMarkup ? "Applying…" : "Apply to All Packages"}
           </Button>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import type { Game } from "@/lib/games";
 import type { PlayerRegionMapping, PlayerValidatorProfile, TestValidatorResult } from "@/lib/player-validators";
 
@@ -75,13 +75,13 @@ function MappingChip({
           </option>
         ))}
       </select>
-      <Button size="sm" disabled={saving} onClick={handleSave}>
+      <Button size="small" disabled={saving} onClick={handleSave}>
         {saving ? "…" : "Save"}
       </Button>
-      <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+      <Button size="small" variant="outlined" onClick={() => setEditing(false)}>
         Cancel
       </Button>
-      <Button size="sm" variant="danger" disabled={deleting} onClick={handleDelete}>
+      <Button size="small" severity="danger" disabled={deleting} onClick={handleDelete}>
         {deleting ? "…" : "Delete"}
       </Button>
     </div>
@@ -158,10 +158,10 @@ function AddMappingRow({
           </option>
         ))}
       </select>
-      <Button type="submit" size="sm" disabled={saving}>
+      <Button type="submit" size="small" disabled={saving}>
         {saving ? "Adding…" : "Add"}
       </Button>
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>
+      <Button type="button" size="small" variant="outlined" onClick={() => setOpen(false)}>
         Cancel
       </Button>
     </form>
@@ -217,7 +217,7 @@ function TestPanel({
               onChange={(e) => setServerId(e.target.value)}
               className={`${inputClasses} max-w-[10rem]`}
             />
-            <Button size="sm" disabled={running || !playerId.trim()} onClick={handleRun}>
+            <Button size="small" disabled={running || !playerId.trim()} onClick={handleRun}>
               {running ? "Running…" : "Run Test"}
             </Button>
           </div>
@@ -288,10 +288,10 @@ export default function ValidatorCard({
           {renaming ? (
             <>
               <input value={name} onChange={(e) => setName(e.target.value)} className={`${inputClasses} max-w-[16rem]`} />
-              <Button size="sm" disabled={savingName} onClick={handleSaveName}>
+              <Button size="small" disabled={savingName} onClick={handleSaveName}>
                 {savingName ? "…" : "Save"}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setRenaming(false)}>
+              <Button size="small" variant="outlined" onClick={() => setRenaming(false)}>
                 Cancel
               </Button>
             </>

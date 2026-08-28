@@ -13,8 +13,8 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Button from "@/components/ui/button/Button";
-import Badge from "@/components/ui/badge/Badge";
+import { Button } from "@/components/ui/button";
+import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -80,7 +80,7 @@ export default function MiddlewareDashboardPage() {
             (`CircuitBreaker::state()`), never a live ping.
           </p>
         </div>
-        <Button variant="outline" disabled={refreshing || !session} onClick={handleRefresh}>
+        <Button variant="outlined" disabled={refreshing || !session} onClick={handleRefresh}>
           {refreshing ? "Refreshing…" : "Refresh"}
         </Button>
       </div>
@@ -94,7 +94,7 @@ export default function MiddlewareDashboardPage() {
       <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Suppliers</h2>
-          <Button size="sm" variant="outline" onClick={() => router.push("/middleware/suppliers")}>
+          <Button size="small" variant="outlined" onClick={() => router.push("/middleware/suppliers")}>
             Manage Suppliers →
           </Button>
         </div>
@@ -109,9 +109,9 @@ export default function MiddlewareDashboardPage() {
             <div key={s.id} className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-gray-800 dark:text-white/90">{s.name}</span>
-                <Badge color={s.circuit_state === "closed" ? "success" : "error"} size="sm">
+                <Tag severity={s.circuit_state === "closed" ? "success" : "danger"}>
                   {s.circuit_state === "closed" ? "Healthy" : "Circuit Open"}
-                </Badge>
+                </Tag>
               </div>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Balance: {formatRm(s.balance)}</p>
             </div>
@@ -122,7 +122,7 @@ export default function MiddlewareDashboardPage() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Recent API Calls</h2>
-          <Button size="sm" variant="outline" onClick={() => router.push("/middleware/request-logs")}>
+          <Button size="small" variant="outlined" onClick={() => router.push("/middleware/request-logs")}>
             View all →
           </Button>
         </div>
@@ -141,9 +141,9 @@ export default function MiddlewareDashboardPage() {
               <span className="font-medium text-gray-800 dark:text-white/90">
                 {log.supplier?.name ?? "—"} · {log.call_type}
               </span>
-              <Badge color={log.outcome === "success" ? "success" : "error"} size="sm">
+              <Tag severity={log.outcome === "success" ? "success" : "danger"}>
                 {log.outcome}
-              </Badge>
+              </Tag>
               <span className="text-gray-500 dark:text-gray-400">{new Date(log.created_at).toLocaleString()}</span>
             </div>
           ))}
