@@ -10,7 +10,7 @@ export interface Branding {
   support_email: string | null;
   support_phone: string | null;
   telegram_contact_link: string | null;
-  social_links: { facebook?: string; instagram?: string } | null;
+  social_links: { facebook?: string; instagram?: string; tiktok?: string; youtube?: string; whatsapp?: string } | null;
 }
 
 export interface FooterSettings {

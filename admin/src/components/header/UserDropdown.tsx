@@ -2,14 +2,26 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dropdown } from "@/components/ui/dropdown/Dropdown";
-import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
+import {
+  Popover,
+  PopoverPortal,
+  PopoverPositioner,
+  PopoverPopup,
+  PopoverHeader,
+  PopoverContent,
+  PopoverClose,
+} from "@/components/ui/popover";
 import { clearClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 
 export default function UserDropdown() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  // A ref callback into state, not useRef().current — reading a ref's
+  // .current during render violates react-hooks/refs (the value can be
+  // stale/inconsistent there); Popover's `anchor` prop needs the actual
+  // element up front, not just a ref object.
+  const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
   // sessionStorage doesn't exist during SSR, so a render-body read would
   // render "?"/"Account" on the server and the real name on the client's
   // first (hydration) render — React sees that as a text mismatch. This
@@ -24,10 +36,6 @@ export default function UserDropdown() {
     setIsOpen((prev) => !prev);
   }
 
-  function closeDropdown() {
-    setIsOpen(false);
-  }
-
   async function handleLogout() {
     await fetch("/api/logout", {
       method: "POST",
@@ -40,10 +48,7 @@ export default function UserDropdown() {
 
   return (
     <div className="relative">
-      <button
-        onClick={toggleDropdown}
-        className="flex items-center text-gray-700 dark:text-gray-400 dropdown-toggle"
-      >
+      <button ref={setTriggerEl} onClick={toggleDropdown} className="flex items-center text-gray-700 dark:text-gray-400">
         <span className="mr-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
           {session?.name ? session.name.charAt(0).toUpperCase() : "?"}
         </span>
@@ -60,33 +65,30 @@ export default function UserDropdown() {
         </svg>
       </button>
 
-      <Dropdown
-        isOpen={isOpen}
-        onClose={closeDropdown}
-        className="absolute right-0 mt-[17px] flex w-[260px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
-      >
-        <div className="px-1 pb-3 border-b border-gray-200 dark:border-gray-800">
-          <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            {session?.name}
-          </span>
-          <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            {session?.email}
-          </span>
-        </div>
-        <ul className="flex flex-col gap-1 pt-3">
-          <li>
-            <DropdownItem
-              onClick={() => {
-                closeDropdown();
-                void handleLogout();
-              }}
-              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-            >
-              Sign out
-            </DropdownItem>
-          </li>
-        </ul>
-      </Dropdown>
+      <Popover open={isOpen} onOpenChange={(e) => setIsOpen(e.value ?? false)} anchor={triggerEl}>
+        <PopoverPortal>
+          <PopoverPositioner side="bottom" align="end" sideOffset={17}>
+            <PopoverPopup className="w-[260px] p-3">
+              <PopoverHeader className="border-b border-gray-200 dark:border-gray-800">
+                <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">{session?.name}</span>
+                <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">{session?.email}</span>
+              </PopoverHeader>
+              <PopoverContent>
+                <ul className="flex flex-col gap-1">
+                  <li>
+                    <PopoverClose
+                      onClick={() => void handleLogout()}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+                    >
+                      Sign out
+                    </PopoverClose>
+                  </li>
+                </ul>
+              </PopoverContent>
+            </PopoverPopup>
+          </PopoverPositioner>
+        </PopoverPortal>
+      </Popover>
     </div>
   );
 }

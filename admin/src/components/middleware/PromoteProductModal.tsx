@@ -1,10 +1,22 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import type { SupplierProduct, PromoteValues } from "@/lib/supplier-products";
 
 type ItemValues = Omit<PromoteValues, "game_id">;
@@ -58,8 +70,7 @@ function PromoteProductFields({
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Add to Catalog</h3>
+    <>
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
         {product.name} → <span className="font-medium">{gameName}</span>
       </p>
@@ -101,7 +112,7 @@ function PromoteProductFields({
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -109,21 +120,38 @@ function PromoteProductFields({
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function PromoteProductModal({ isOpen, onClose, onSubmit, product, gameId, gameName }: PromoteProductModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && product && (
-        <PromoteProductFields
-          onClose={onClose}
-          onSubmit={(values) => onSubmit({ ...values, game_id: gameId })}
-          product={product}
-          gameName={gameName}
-        />
-      )}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add to Catalog</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && product && (
+                <PromoteProductFields
+                  onClose={onClose}
+                  onSubmit={(values) => onSubmit({ ...values, game_id: gameId })}
+                  product={product}
+                  gameName={gameName}
+                />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

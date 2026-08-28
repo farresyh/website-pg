@@ -1,11 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import type { Redirect, SaveRedirectValues } from "@/lib/seo";
 
 interface Props {
@@ -42,8 +54,7 @@ function Fields({ redirect, onClose, onSubmit }: Omit<Props, "isOpen">) {
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">{redirect ? "Edit Redirect" : "Add Redirect"}</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">Exact-path matching only — no regex.</p>
 
       {error && (
@@ -61,22 +72,39 @@ function Fields({ redirect, onClose, onSubmit }: Omit<Props, "isOpen">) {
         </div>
         <div>
           <Label htmlFor="status_code">Status code</Label>
-          <Select id="status_code" value={statusCode} onChange={setStatusCode} options={STATUS_OPTIONS} />
+          <SimpleSelect id="status_code" value={statusCode} onChange={setStatusCode} options={STATUS_OPTIONS} />
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>Cancel</Button>
           <Button type="submit" disabled={submitting}>{submitting ? "Saving…" : redirect ? "Save" : "Add Redirect"}</Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function SaveRedirectModal({ isOpen, redirect, onClose, onSubmit }: Props) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && <Fields redirect={redirect} onClose={onClose} onSubmit={onSubmit} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>{redirect ? "Edit Redirect" : "Add Redirect"}</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && <Fields redirect={redirect} onClose={onClose} onSubmit={onSubmit} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

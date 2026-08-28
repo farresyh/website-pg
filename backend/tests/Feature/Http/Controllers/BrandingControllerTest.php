@@ -102,6 +102,24 @@ class BrandingControllerTest extends TestCase
         $this->assertSame([], $response->json('footer_games'));
     }
 
+    /**
+     * Regression test, 2026-08-28: `show()` used to default a missing
+     * `social_links` to `[]`, which `json_encode`s as a JSON *array*.
+     * The storefront's zod schema expects an object (or `null`) — an
+     * empty array failed validation on every request with no branding
+     * saved yet, logged repeatedly via `/client-errors`. See
+     * `docs/prd.md` §14's 2026-08-27 addendum for how this was found.
+     */
+    public function test_show_returns_null_social_links_when_not_set(): void
+    {
+        $this->seedBrandingAndFooter();
+
+        $response = $this->getJson('/api/catalog/branding');
+
+        $response->assertOk();
+        $this->assertNull($response->json('social_links'));
+    }
+
     public function test_legal_returns_sanitized_content_with_store_name_substituted(): void
     {
         $this->seedBrandingAndFooter([], ['terms_content' => '<p>Welcome to {store_name}</p><script>alert(1)</script>']);

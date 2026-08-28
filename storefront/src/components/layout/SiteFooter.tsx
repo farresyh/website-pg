@@ -1,8 +1,16 @@
 import Link from "next/link";
-import { FacebookLogo, InstagramLogo } from "@phosphor-icons/react/dist/ssr";
+import { FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, WhatsAppIcon } from "@/components/icons/SocialIcons";
 import Logo from "@/components/ui/Logo";
 import { PAYMENT_METHODS } from "@/lib/placeholder-data";
 import { getBranding } from "@/lib/branding";
+
+const SOCIAL_ICONS = [
+  { key: "facebook", label: "Facebook", Icon: FacebookIcon },
+  { key: "instagram", label: "Instagram", Icon: InstagramIcon },
+  { key: "tiktok", label: "TikTok", Icon: TikTokIcon },
+  { key: "youtube", label: "YouTube", Icon: YouTubeIcon },
+  { key: "whatsapp", label: "WhatsApp", Icon: WhatsAppIcon },
+] as const;
 
 /**
  * ADR-028 + its 2026-08-22 addendum — real branding/footer-games/legal
@@ -28,23 +36,18 @@ export default async function SiteFooter() {
               <p className="mt-2.5 max-w-[320px] text-sm leading-relaxed text-text-muted">{branding.description}</p>
             )}
             <div className="mt-4 flex gap-2.5">
-              {branding.socialLinks.facebook && (
-                <a
-                  href={branding.socialLinks.facebook}
-                  aria-label="Facebook"
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-muted hover:text-brand-light"
-                >
-                  <FacebookLogo size={16} />
-                </a>
-              )}
-              {branding.socialLinks.instagram && (
-                <a
-                  href={branding.socialLinks.instagram}
-                  aria-label="Instagram"
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-muted hover:text-brand-light"
-                >
-                  <InstagramLogo size={16} />
-                </a>
+              {SOCIAL_ICONS.map(
+                ({ key, label, Icon }) =>
+                  branding.socialLinks[key] && (
+                    <a
+                      key={key}
+                      href={branding.socialLinks[key]}
+                      aria-label={label}
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-muted hover:text-brand-light"
+                    >
+                      <Icon size={16} />
+                    </a>
+                  ),
               )}
             </div>
           </div>

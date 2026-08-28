@@ -81,6 +81,61 @@ function SelectOption({ className, ...props }: SelectOptionProps) {
     );
 }
 
+interface SimpleSelectOption {
+    value: string;
+    label: string;
+}
+
+interface SimpleSelectProps {
+    options: SimpleSelectOption[];
+    value: string;
+    onChange: (value: string) => void;
+    className?: string;
+    id?: string;
+    disabled?: boolean;
+}
+
+/**
+ * The flat options/value/onChange API the old `components/form/Select`
+ * (ADR-038) had, composed from the granular parts above — the same
+ * shape `admin/reports/page.tsx`'s own local `FilterSelect` already
+ * proved out before this was promoted to a shared component. Reaches
+ * for this instead of composing the 9 parts by hand at every call
+ * site; reach for the parts directly only when a screen genuinely
+ * needs a shape `SimpleSelect` doesn't offer (e.g. Report's `FilterSelect`
+ * itself, which pairs the trigger with an inline label).
+ */
+function SimpleSelect({ options, value, onChange, className, id, disabled }: SimpleSelectProps) {
+    return (
+        <Select
+            value={value}
+            options={options}
+            optionLabel="label"
+            optionValue="value"
+            disabled={disabled}
+            onValueChange={(e) => onChange(e.value as string)}
+        >
+            <SelectTrigger id={id} className={className}>
+                <SelectValue />
+                <SelectIndicator />
+            </SelectTrigger>
+            <SelectPortal>
+                <SelectPositioner>
+                    <SelectPopup>
+                        <SelectList>
+                            {options.map((option, index) => (
+                                <SelectOption key={option.value} index={index}>
+                                    {option.label}
+                                </SelectOption>
+                            ))}
+                        </SelectList>
+                    </SelectPopup>
+                </SelectPositioner>
+            </SelectPortal>
+        </Select>
+    );
+}
+
 export {
     Select,
     SelectIndicator,
@@ -90,5 +145,6 @@ export {
     SelectPortal,
     SelectPositioner,
     SelectTrigger,
-    SelectValue
+    SelectValue,
+    SimpleSelect
 };

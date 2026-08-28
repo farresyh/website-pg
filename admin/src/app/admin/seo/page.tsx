@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Badge from "@/components/ui/badge/Badge";
+import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -70,9 +70,9 @@ export default function SeoOverviewPage() {
             {data.recommendations.map((rec, i) => (
               <li key={i} className="flex items-center justify-between gap-4 rounded-lg border border-gray-100 px-4 py-3 dark:border-gray-800">
                 <div className="flex items-center gap-3">
-                  <Badge size="sm" color={rec.severity === "warning" ? "warning" : "info"}>
+                  <Tag severity={rec.severity === "warning" ? "warn" : "info"}>
                     {rec.severity === "warning" ? "Warning" : "Info"}
-                  </Badge>
+                  </Tag>
                   <span className="text-sm text-gray-700 dark:text-gray-300">{rec.message}</span>
                 </div>
                 <Link href={rec.link} className="text-sm font-medium text-brand-500 hover:underline">

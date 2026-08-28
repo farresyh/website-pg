@@ -1,10 +1,22 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import type { WithdrawalRequestValues } from "@/lib/withdrawals";
 
 interface WithdrawalRequestModalProps {
@@ -15,9 +27,8 @@ interface WithdrawalRequestModalProps {
 }
 
 /**
- * Renders as a child of <Modal>, which unmounts while closed — fresh
- * useState initializers each open, same reasoning as
- * AdminUserFormModal's AdminUserFormFields.
+ * Rendered only while the dialog is open — fresh useState initializers
+ * each open, same reasoning as AdminUserFormModal's AdminUserFormFields.
  */
 function WithdrawalRequestFields({
   onClose,
@@ -57,10 +68,7 @@ function WithdrawalRequestFields({
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">
-        Request Withdrawal
-      </h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         Available balance: RM {(availableBalance / 100).toFixed(2)}
       </p>
@@ -97,7 +105,7 @@ function WithdrawalRequestFields({
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -105,7 +113,7 @@ function WithdrawalRequestFields({
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
@@ -116,10 +124,27 @@ export default function WithdrawalRequestModal({
   availableBalance,
 }: WithdrawalRequestModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && (
-        <WithdrawalRequestFields onClose={onClose} onSubmit={onSubmit} availableBalance={availableBalance} />
-      )}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Request Withdrawal</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && (
+                <WithdrawalRequestFields onClose={onClose} onSubmit={onSubmit} availableBalance={availableBalance} />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

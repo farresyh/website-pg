@@ -5,9 +5,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -156,7 +156,7 @@ export default function GameSeoEditPage() {
             </div>
             <Button
               type="button"
-              variant="outline"
+              variant="outlined"
               disabled={!game.image_url}
               onClick={() => game.image_url && setGame({ ...game, seo_og_image: game.image_url })}
             >

@@ -6,23 +6,27 @@
 /*
  * ADR-038: PrimeReact-Tailwind design tokens — the Backups screen
  * (BAK-1..5, ADR-039) is the first screen built with these components,
- * per ADR-038 decision 3. Default grayscale scale from
- * primereact.dev/docs/tailwind/guides/theming, not yet brand-matched —
- * revisit if/when PrimeReact adoption reaches a screen that needs to
- * sit next to this admin's existing brand-colored TailAdmin UI.
+ * per ADR-038 decision 3. `--p-primary-*` is wired to this app's own
+ * `--color-brand-*` scale (below, in @theme) rather than PrimeReact's
+ * default grayscale — brand-matched 2026-08-28 once the Table
+ * migration put PrimeReact components on 21 screens sitting directly
+ * next to this admin's existing brand-colored TailAdmin UI (sidebar,
+ * headers), the exact trigger this comment used to say to wait for.
+ * Before that, every default-severity Button/Tag rendered pure gray
+ * (oklch chroma 0) instead of the brand blue.
  */
 :root {
-  --p-primary-50: oklch(98.5% 0 0);
-  --p-primary-100: oklch(97% 0 0);
-  --p-primary-200: oklch(92.2% 0 0);
-  --p-primary-300: oklch(87% 0 0);
-  --p-primary-400: oklch(70.8% 0 0);
-  --p-primary-500: oklch(55.6% 0 0);
-  --p-primary-600: oklch(43.9% 0 0);
-  --p-primary-700: oklch(37.1% 0 0);
-  --p-primary-800: oklch(26.9% 0 0);
-  --p-primary-900: oklch(20.5% 0 0);
-  --p-primary-950: oklch(14.5% 0 0);
+  --p-primary-50: var(--color-brand-50);
+  --p-primary-100: var(--color-brand-100);
+  --p-primary-200: var(--color-brand-200);
+  --p-primary-300: var(--color-brand-300);
+  --p-primary-400: var(--color-brand-400);
+  --p-primary-500: var(--color-brand-500);
+  --p-primary-600: var(--color-brand-600);
+  --p-primary-700: var(--color-brand-700);
+  --p-primary-800: var(--color-brand-800);
+  --p-primary-900: var(--color-brand-900);
+  --p-primary-950: var(--color-brand-950);
   --p-surface-0: oklch(100% 0 0);
   --p-surface-50: oklch(98.5% 0 0);
   --p-surface-100: oklch(97% 0 0);

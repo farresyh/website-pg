@@ -24,7 +24,15 @@ const BrandingWireSchema = z.object({
   support_email: z.string().nullable(),
   support_phone: z.string().nullable(),
   telegram_contact_link: z.string().nullable(),
-  social_links: z.object({ facebook: z.string().optional(), instagram: z.string().optional() }).nullable(),
+  social_links: z
+    .object({
+      facebook: z.string().optional(),
+      instagram: z.string().optional(),
+      tiktok: z.string().optional(),
+      youtube: z.string().optional(),
+      whatsapp: z.string().optional(),
+    })
+    .nullable(),
   footer_text: z.string().nullable(),
   footer_games: z.array(BrandingFooterGameWireSchema),
 });
@@ -34,7 +42,7 @@ export interface Branding {
   description: string | null;
   supportEmail: string | null;
   supportPhone: string | null;
-  socialLinks: { facebook?: string; instagram?: string };
+  socialLinks: { facebook?: string; instagram?: string; tiktok?: string; youtube?: string; whatsapp?: string };
   footerText: string | null;
   footerGames: { id: number; name: string; slug: string }[];
 }

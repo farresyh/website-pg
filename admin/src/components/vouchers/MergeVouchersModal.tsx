@@ -1,10 +1,22 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import type { MergeVouchersValues, Voucher } from "@/lib/vouchers";
 
 interface MergeVouchersModalProps {
@@ -49,8 +61,7 @@ function MergeVouchersFields({ vouchers, onClose, onSubmit }: Omit<MergeVouchers
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Merge Vouchers</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         Mints one new code worth the combined remaining balance; the {vouchers.length} selected vouchers
         are voided, not deleted. No new ledger liability is created.
@@ -88,7 +99,7 @@ function MergeVouchersFields({ vouchers, onClose, onSubmit }: Omit<MergeVouchers
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -96,14 +107,31 @@ function MergeVouchersFields({ vouchers, onClose, onSubmit }: Omit<MergeVouchers
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function MergeVouchersModal({ isOpen, vouchers, onClose, onSubmit }: MergeVouchersModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && <MergeVouchersFields vouchers={vouchers} onClose={onClose} onSubmit={onSubmit} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Merge Vouchers</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && <MergeVouchersFields vouchers={vouchers} onClose={onClose} onSubmit={onSubmit} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

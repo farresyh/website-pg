@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Label from "@/components/form/Label";
-import Button from "@/components/ui/button/Button";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import { ApiError } from "@/lib/api-client";
 import { updateFooterSettings, type FooterSettings } from "@/lib/settings";

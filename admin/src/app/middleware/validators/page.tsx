@@ -15,7 +15,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import CreateValidatorModal from "@/components/middleware/CreateValidatorModal";
 import ValidatorCard from "@/components/middleware/ValidatorCard";
 import ValidateByGamePanel from "@/components/middleware/ValidateByGamePanel";
@@ -192,7 +192,7 @@ export default function ValidatorsPage() {
 
       <div className="mb-6 flex gap-2">
         <Button onClick={() => setCreateOpen(true)}>+ Create Validator</Button>
-        <Button variant="outline" onClick={handleRefresh}>
+        <Button variant="outlined" onClick={handleRefresh}>
           Refresh
         </Button>
       </div>

@@ -10,9 +10,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -27,7 +37,7 @@ import {
   promoteSupplierProduct,
 } from "@/lib/supplier-products";
 import { EXTRA_FIELD_OPTIONS, type Game, type GamePackage, type GameValidationRules, listGames, listGamePackages } from "@/lib/games";
-import Select from "@/components/form/Select";
+import { SimpleSelect } from "@/components/ui/select";
 import LinkCategoryModal from "@/components/middleware/LinkCategoryModal";
 import PromoteProductModal from "@/components/middleware/PromoteProductModal";
 
@@ -64,8 +74,8 @@ function CheckoutInputEditor({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Select value={value} onChange={setValue} options={EXTRA_FIELD_OPTIONS} className="w-56" />
-      <Button size="sm" disabled={saving} onClick={handleUpdate}>
+      <SimpleSelect value={value} onChange={setValue} options={EXTRA_FIELD_OPTIONS} className="w-56" />
+      <Button size="small" disabled={saving} onClick={handleUpdate}>
         {saving ? "Saving…" : "Update"}
       </Button>
       <code className="rounded bg-gray-100 px-1.5 py-0.5 text-theme-xs text-gray-500 dark:bg-white/5 dark:text-gray-400">
@@ -206,7 +216,7 @@ export default function ProductManagerPage() {
             </p>
           </div>
           {!selected.game && (
-            <Button size="sm" onClick={() => setLinkingCategory(selected)}>
+            <Button size="small" onClick={() => setLinkingCategory(selected)}>
               Link to Game
             </Button>
           )}
@@ -250,48 +260,56 @@ export default function ProductManagerPage() {
             {tab === "available" && (
               <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
                 <div className="max-w-full overflow-x-auto">
-                  <Table>
-                    <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-                      <TableRow>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Name</TableCell>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier Cost</TableCell>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Catalog</TableCell>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      {items?.map((product) => (
-                        <TableRow key={product.id}>
-                          <TableCell className="px-5 py-4 text-theme-sm">
-                            <span className="font-medium text-gray-800 dark:text-white/90">{product.name}</span>
-                            <br />
-                            <span className="text-theme-xs text-gray-400">ID: {product.external_ref}</span>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                            {formatRm(product.price_sen)}
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-theme-sm">
-                            <Badge size="sm" color={product.is_promoted ? "success" : "light"}>
-                              {product.is_promoted ? "In catalog" : "Not added"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-theme-sm">
-                            {product.is_promoted ? (
-                              <span className="text-gray-400">—</span>
-                            ) : (
-                              <Button
-                                size="sm"
-                                disabled={product.price_sen === null}
-                                onClick={() => setPromoting(product)}
-                              >
-                                Add to Catalog
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <DataTable data={items ?? []} dataKey="id">
+                    <DataTableTableContainer>
+                      <DataTableTable>
+                        <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                          <DataTableTHeadRow>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Name</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier Cost</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Catalog</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                          </DataTableTHeadRow>
+                        </DataTableTHead>
+                        <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {({ item }) => {
+                            const product = item as unknown as SupplierProduct;
+
+                            return (
+                              <DataTableRow key={product.id}>
+                                <DataTableCell className="px-5 py-4 text-theme-sm">
+                                  <span className="font-medium text-gray-800 dark:text-white/90">{product.name}</span>
+                                  <br />
+                                  <span className="text-theme-xs text-gray-400">ID: {product.external_ref}</span>
+                                </DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                                  {formatRm(product.price_sen)}
+                                </DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm">
+                                  <Tag severity={product.is_promoted ? "success" : "secondary"}>
+                                    {product.is_promoted ? "In catalog" : "Not added"}
+                                  </Tag>
+                                </DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm">
+                                  {product.is_promoted ? (
+                                    <span className="text-gray-400">—</span>
+                                  ) : (
+                                    <Button
+                                      size="small"
+                                      disabled={product.price_sen === null}
+                                      onClick={() => setPromoting(product)}
+                                    >
+                                      Add to Catalog
+                                    </Button>
+                                  )}
+                                </DataTableCell>
+                              </DataTableRow>
+                            );
+                          }}
+                        </DataTableTBody>
+                      </DataTableTable>
+                    </DataTableTableContainer>
+                  </DataTable>
                   {items === null && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
                 </div>
               </div>
@@ -300,34 +318,42 @@ export default function ProductManagerPage() {
             {tab === "catalog" && (
               <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
                 <div className="max-w-full overflow-x-auto">
-                  <Table>
-                    <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-                      <TableRow>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Name</TableCell>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</TableCell>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Cost Price</TableCell>
-                        <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      {catalogPackages?.map((pkg) => (
-                        <TableRow key={pkg.id}>
-                          <TableCell className="px-5 py-4 text-theme-sm">
-                            <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>
-                            <br />
-                            <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
-                          </TableCell>
-                          <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</TableCell>
-                          <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.reseller_cost_price)}</TableCell>
-                          <TableCell className="px-5 py-4 text-theme-sm">
-                            <Badge size="sm" color={pkg.is_active ? "success" : "light"}>
-                              {pkg.is_active ? "Active" : "Inactive"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <DataTable data={catalogPackages ?? []} dataKey="id">
+                    <DataTableTableContainer>
+                      <DataTableTable>
+                        <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                          <DataTableTHeadRow>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Name</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Cost Price</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                          </DataTableTHeadRow>
+                        </DataTableTHead>
+                        <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {({ item }) => {
+                            const pkg = item as unknown as GamePackage;
+
+                            return (
+                              <DataTableRow key={pkg.id}>
+                                <DataTableCell className="px-5 py-4 text-theme-sm">
+                                  <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>
+                                  <br />
+                                  <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
+                                </DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.reseller_cost_price)}</DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm">
+                                  <Tag severity={pkg.is_active ? "success" : "secondary"}>
+                                    {pkg.is_active ? "Active" : "Inactive"}
+                                  </Tag>
+                                </DataTableCell>
+                              </DataTableRow>
+                            );
+                          }}
+                        </DataTableTBody>
+                      </DataTableTable>
+                    </DataTableTableContainer>
+                  </DataTable>
                   {catalogPackages?.length === 0 && (
                     <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
                       No packages in catalog yet. Go to &quot;Available Packages&quot; and add some.
@@ -398,47 +424,55 @@ export default function ProductManagerPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Category</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Items</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">In Catalog</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Linked Game</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {categories?.map((category) => (
-                <TableRow key={category.category_raw ?? "uncategorized"}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                    {category.category_raw ?? "Uncategorized"}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.total}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.promoted_count}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    {category.game ? (
-                      <Badge size="sm" color="success">{category.game.name}</Badge>
-                    ) : (
-                      <Badge size="sm" color="light">Not linked</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => session && openCategory(session.token, category)}>
-                        View
-                      </Button>
-                      {!category.game && (
-                        <Button size="sm" onClick={() => setLinkingCategory(category)}>
-                          Link
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={categories ?? []} dataKey="category_raw">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Category</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Items</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">In Catalog</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Linked Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const category = item as unknown as SupplierProductCategory;
+
+                    return (
+                      <DataTableRow key={category.category_raw ?? "uncategorized"}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                          {category.category_raw ?? "Uncategorized"}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.total}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.promoted_count}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          {category.game ? (
+                            <Tag severity="success">{category.game.name}</Tag>
+                          ) : (
+                            <Tag severity="secondary">Not linked</Tag>
+                          )}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <div className="flex gap-2">
+                            <Button size="small" variant="outlined" onClick={() => session && openCategory(session.token, category)}>
+                              View
+                            </Button>
+                            {!category.game && (
+                              <Button size="small" onClick={() => setLinkingCategory(category)}>
+                                Link
+                              </Button>
+                            )}
+                          </div>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {categories?.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No categories found.</p>

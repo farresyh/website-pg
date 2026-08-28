@@ -9,8 +9,18 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -112,54 +122,62 @@ export default function HeroSlidesPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Title</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Schedule</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {slides?.map((slide) => (
-                <TableRow key={slide.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{slide.sort_order}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <span className="font-medium text-gray-800 dark:text-white/90">{slide.title}</span>
-                    {slide.eyebrow && <p className="text-theme-xs text-gray-400">{slide.eyebrow}</p>}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                    {slide.starts_at || slide.ends_at ? (
-                      <>
-                        {slide.starts_at ? new Date(slide.starts_at).toLocaleDateString() : "—"}
-                        {" → "}
-                        {slide.ends_at ? new Date(slide.ends_at).toLocaleDateString() : "—"}
-                      </>
-                    ) : (
-                      "Always on"
-                    )}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <button
-                      role="switch"
-                      aria-checked={slide.is_active}
-                      onClick={() => handleToggleStatus(slide)}
-                      className={`h-6 w-11 rounded-full transition ${slide.is_active ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"}`}
-                    >
-                      <span
-                        className={`block h-5 w-5 translate-x-0.5 rounded-full bg-white transition ${slide.is_active ? "translate-x-[22px]" : ""}`}
-                      />
-                    </button>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Button size="sm" variant="outline" onClick={() => setEditingSlide(slide)}>Edit</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={slides ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Title</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Schedule</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const slide = item as unknown as HeroSlide;
+
+                    return (
+                      <DataTableRow key={slide.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{slide.sort_order}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <span className="font-medium text-gray-800 dark:text-white/90">{slide.title}</span>
+                          {slide.eyebrow && <p className="text-theme-xs text-gray-400">{slide.eyebrow}</p>}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {slide.starts_at || slide.ends_at ? (
+                            <>
+                              {slide.starts_at ? new Date(slide.starts_at).toLocaleDateString() : "—"}
+                              {" → "}
+                              {slide.ends_at ? new Date(slide.ends_at).toLocaleDateString() : "—"}
+                            </>
+                          ) : (
+                            "Always on"
+                          )}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <button
+                            role="switch"
+                            aria-checked={slide.is_active}
+                            onClick={() => handleToggleStatus(slide)}
+                            className={`h-6 w-11 rounded-full transition ${slide.is_active ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"}`}
+                          >
+                            <span
+                              className={`block h-5 w-5 translate-x-0.5 rounded-full bg-white transition ${slide.is_active ? "translate-x-[22px]" : ""}`}
+                            />
+                          </button>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Button size="small" variant="outlined" onClick={() => setEditingSlide(slide)}>Edit</Button>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
           {slides?.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
               No hero slides yet — add one to populate the homepage banner.

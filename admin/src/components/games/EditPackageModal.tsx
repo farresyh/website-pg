@@ -1,10 +1,22 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import type { GamePackage, UpdatePackageValues } from "@/lib/games";
 
 interface EditPackageModalProps {
@@ -59,9 +71,7 @@ function EditPackageFields({
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90">Edit Package</h3>
-
+    <>
       <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-white/5">
         <span className="text-gray-500 dark:text-gray-400">Supplier Cost (from Gamevion, not editable): </span>
         <span className="font-medium text-gray-800 dark:text-white/90">RM {(pkg.cost_price / 100).toFixed(2)}</span>
@@ -79,10 +89,10 @@ function EditPackageFields({
             Delete <span className="font-medium">{pkg.name}</span> from the catalog? This cannot be undone.
           </p>
           <div className="flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => setConfirmingDelete(false)} disabled={submitting}>
+            <Button type="button" variant="outlined" onClick={() => setConfirmingDelete(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={handleDelete} disabled={submitting}>
+            <Button type="button" severity="danger" onClick={handleDelete} disabled={submitting}>
               {submitting ? "Deleting…" : "Delete Package"}
             </Button>
           </div>
@@ -95,11 +105,11 @@ function EditPackageFields({
           </div>
 
           <div className="flex items-center justify-between pt-2">
-            <Button type="button" variant="danger" onClick={() => setConfirmingDelete(true)} disabled={submitting}>
+            <Button type="button" severity="danger" onClick={() => setConfirmingDelete(true)} disabled={submitting}>
               Delete
             </Button>
             <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+              <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
@@ -109,14 +119,31 @@ function EditPackageFields({
           </div>
         </form>
       )}
-    </div>
+    </>
   );
 }
 
 export default function EditPackageModal({ isOpen, onClose, onSubmit, onDelete, pkg }: EditPackageModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && pkg && <EditPackageFields onClose={onClose} onSubmit={onSubmit} onDelete={onDelete} pkg={pkg} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Package</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && pkg && <EditPackageFields onClose={onClose} onSubmit={onSubmit} onDelete={onDelete} pkg={pkg} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

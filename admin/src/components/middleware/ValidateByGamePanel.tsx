@@ -14,7 +14,7 @@
  */
 
 import React, { useState } from "react";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { validatePlayerForResend, type ValidatePlayerForResendResult } from "@/lib/orders";
 import type { Game } from "@/lib/games";
@@ -107,7 +107,7 @@ export default function ValidateByGamePanel({ games }: { games: Game[] }) {
           className={`${inputClasses} max-w-[10rem]`}
         />
         <Button
-          size="sm"
+          size="small"
           disabled={running || gameId === "" || !playerId.trim() || staticallyUnsupported}
           onClick={handleRun}
         >

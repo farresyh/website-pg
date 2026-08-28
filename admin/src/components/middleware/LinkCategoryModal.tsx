@@ -1,11 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import type { LinkCategoryValues } from "@/lib/supplier-products";
 import { EXTRA_FIELD_OPTIONS, type Game } from "@/lib/games";
 
@@ -77,8 +89,7 @@ function LinkCategoryFields({
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Link Category to a Game</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         &quot;{categoryRaw}&quot; — {itemCount} raw item{itemCount === 1 ? "" : "s"}. Every item in this category
         will use the game you pick here — you won&apos;t be asked again per item.
@@ -108,7 +119,7 @@ function LinkCategoryFields({
         </div>
 
         {gameMode === "existing" ? (
-          <Select
+          <SimpleSelect
             value={gameId}
             onChange={handleGameIdChange}
             options={games.map((g) => ({ value: String(g.id), label: g.name }))}
@@ -133,14 +144,14 @@ function LinkCategoryFields({
 
         <div>
           <Label htmlFor="extra_field">Checkout input needed</Label>
-          <Select id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
+          <SimpleSelect id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
           <p className="mt-1 text-theme-xs text-gray-400">
             What Gamevion needs beyond Player ID for orders in this category — e.g. Mobile Legends needs a Zone ID.
           </p>
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -148,22 +159,39 @@ function LinkCategoryFields({
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function LinkCategoryModal({ isOpen, onClose, onSubmit, categoryRaw, itemCount, games }: LinkCategoryModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && categoryRaw && (
-        <LinkCategoryFields
-          onClose={onClose}
-          onSubmit={onSubmit}
-          categoryRaw={categoryRaw}
-          itemCount={itemCount}
-          games={games}
-        />
-      )}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Link Category to a Game</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && categoryRaw && (
+                <LinkCategoryFields
+                  onClose={onClose}
+                  onSubmit={onSubmit}
+                  categoryRaw={categoryRaw}
+                  itemCount={itemCount}
+                  games={games}
+                />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

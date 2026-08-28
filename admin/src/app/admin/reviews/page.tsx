@@ -8,10 +8,33 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { Modal } from "@/components/ui/modal";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
@@ -29,10 +52,10 @@ import { type Game, listGames } from "@/lib/games";
 const inputClasses =
   "h-9 rounded-lg border border-gray-300 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
-const STATUS_COLOR: Record<ReviewStatus, "warning" | "success" | "error"> = {
-  pending: "warning",
+const STATUS_SEVERITY: Record<ReviewStatus, "warn" | "success" | "danger"> = {
+  pending: "warn",
   approved: "success",
-  rejected: "error",
+  rejected: "danger",
 };
 
 export default function ReviewsPage() {
@@ -212,58 +235,66 @@ export default function ReviewsPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Rating</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Comment</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {data?.reviews.data.map((review) => (
-                <TableRow key={review.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                    {"★".repeat(review.rating)}
-                    {"☆".repeat(5 - review.rating)}
-                  </TableCell>
-                  <TableCell className="max-w-[16rem] truncate px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                    {review.comment ?? "—"}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{review.order.customer_email}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{review.order.game?.name ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{review.order.package?.name ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={STATUS_COLOR[review.status]}>
-                      {review.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                    {new Date(review.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    {review.status === "pending" ? (
-                      <div className="flex gap-2">
-                        <Button size="sm" disabled={actingId === review.id} onClick={() => handleApprove(review)}>
-                          Approve
-                        </Button>
-                        <Button size="sm" variant="danger" disabled={actingId === review.id} onClick={() => handleReject(review)}>
-                          Reject
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={data?.reviews.data ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Rating</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Comment</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const review = item as unknown as Review;
+
+                    return (
+                      <DataTableRow key={review.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                          {"★".repeat(review.rating)}
+                          {"☆".repeat(5 - review.rating)}
+                        </DataTableCell>
+                        <DataTableCell className="max-w-[16rem] truncate px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {review.comment ?? "—"}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{review.order.customer_email}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{review.order.game?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{review.order.package?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={STATUS_SEVERITY[review.status]}>
+                            {review.status}
+                          </Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {new Date(review.created_at).toLocaleDateString()}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          {review.status === "pending" ? (
+                            <div className="flex gap-2">
+                              <Button size="small" disabled={actingId === review.id} onClick={() => handleApprove(review)}>
+                                Approve
+                              </Button>
+                              <Button size="small" severity="danger" disabled={actingId === review.id} onClick={() => handleReject(review)}>
+                                Reject
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {data?.reviews.data.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No reviews yet.</p>
@@ -278,30 +309,49 @@ export default function ReviewsPage() {
             Page {data.reviews.current_page} of {data.reviews.last_page} ({data.reviews.total} total)
           </span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            <Button size="small" variant="outlined" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
               Previous
             </Button>
-            <Button size="sm" variant="outline" disabled={page >= data.reviews.last_page} onClick={() => setPage((p) => p + 1)}>
+            <Button size="small" variant="outlined" disabled={page >= data.reviews.last_page} onClick={() => setPage((p) => p + 1)}>
               Next
             </Button>
           </div>
         </div>
       )}
 
-      <Modal isOpen={confirmingBulkApprove} onClose={() => setConfirmingBulkApprove(false)} className="max-w-md">
-        <div className="p-6">
-          <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white/90">Approve All Pending</h3>
-          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
-            Approve all {data?.stats.pending ?? 0} pending review{data?.stats.pending === 1 ? "" : "s"}?
-          </p>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setConfirmingBulkApprove(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleBulkApprove}>Approve All</Button>
-          </div>
-        </div>
-      </Modal>
+      <Dialog
+        open={confirmingBulkApprove}
+        onOpenChange={(e) => {
+          if (!e.value) setConfirmingBulkApprove(false);
+        }}
+      >
+        <DialogPortal>
+          <DialogBackdrop />
+          <DialogPositioner>
+            <DialogPopup className="w-full max-w-md">
+              <DialogHeader>
+                <DialogTitle>Approve All Pending</DialogTitle>
+                <DialogHeaderActions>
+                  <DialogClose aria-label="Close">
+                    <CloseIcon className="h-5 w-5" />
+                  </DialogClose>
+                </DialogHeaderActions>
+              </DialogHeader>
+              <DialogContent>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Approve all {data?.stats.pending ?? 0} pending review{data?.stats.pending === 1 ? "" : "s"}?
+                </p>
+              </DialogContent>
+              <DialogFooter>
+                <Button variant="outlined" onClick={() => setConfirmingBulkApprove(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleBulkApprove}>Approve All</Button>
+              </DialogFooter>
+            </DialogPopup>
+          </DialogPositioner>
+        </DialogPortal>
+      </Dialog>
     </div>
   );
 }

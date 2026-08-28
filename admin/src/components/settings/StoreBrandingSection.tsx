@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { updateBranding, type Branding } from "@/lib/settings";
 
@@ -22,6 +22,9 @@ export default function StoreBrandingSection({
   const [supportPhone, setSupportPhone] = useState(branding.support_phone ?? "");
   const [facebook, setFacebook] = useState(branding.social_links?.facebook ?? "");
   const [instagram, setInstagram] = useState(branding.social_links?.instagram ?? "");
+  const [tiktok, setTiktok] = useState(branding.social_links?.tiktok ?? "");
+  const [youtube, setYoutube] = useState(branding.social_links?.youtube ?? "");
+  const [whatsapp, setWhatsapp] = useState(branding.social_links?.whatsapp ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +38,13 @@ export default function StoreBrandingSection({
         support_email: supportEmail || null,
         support_phone: supportPhone || null,
         telegram_contact_link: branding.telegram_contact_link,
-        social_links: { facebook: facebook || undefined, instagram: instagram || undefined },
+        social_links: {
+          facebook: facebook || undefined,
+          instagram: instagram || undefined,
+          tiktok: tiktok || undefined,
+          youtube: youtube || undefined,
+          whatsapp: whatsapp || undefined,
+        },
       });
       onSaved();
     } catch (err) {
@@ -83,6 +92,19 @@ export default function StoreBrandingSection({
         <div>
           <Label htmlFor="instagram">Instagram URL</Label>
           <Input id="instagram" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/…" />
+        </div>
+        <div>
+          <Label htmlFor="tiktok">TikTok URL</Label>
+          <Input id="tiktok" value={tiktok} onChange={(e) => setTiktok(e.target.value)} placeholder="https://tiktok.com/@…" />
+        </div>
+        <div>
+          <Label htmlFor="youtube">YouTube URL</Label>
+          <Input id="youtube" value={youtube} onChange={(e) => setYoutube(e.target.value)} placeholder="https://youtube.com/@…" />
+        </div>
+        <div>
+          <Label htmlFor="whatsapp">WhatsApp URL</Label>
+          <Input id="whatsapp" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="https://wa.me/60…" />
+          <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">A shareable link (wa.me/community), not the support number above.</p>
         </div>
       </div>
 

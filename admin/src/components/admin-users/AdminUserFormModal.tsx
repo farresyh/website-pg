@@ -1,11 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import type { AdminUser } from "@/lib/admin-users";
 
 export interface AdminUserFormSubmitValues {
@@ -64,11 +76,7 @@ function AdminUserFormFields({
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90">
-        {isEditing ? "Edit Admin User" : "Add Admin User"}
-      </h3>
-
+    <>
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
           {error}
@@ -97,7 +105,7 @@ function AdminUserFormFields({
         </div>
         <div>
           <Label htmlFor="role">Role</Label>
-          <Select options={ROLE_OPTIONS} value={role} onChange={(v) => setRole(v as "super_admin" | "admin")} />
+          <SimpleSelect options={ROLE_OPTIONS} value={role} onChange={(v) => setRole(v as "super_admin" | "admin")} />
         </div>
         <div>
           <Label htmlFor="phone">Phone (optional)</Label>
@@ -105,7 +113,7 @@ function AdminUserFormFields({
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -113,7 +121,7 @@ function AdminUserFormFields({
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
@@ -124,15 +132,32 @@ export default function AdminUserFormModal({
   editingUser,
 }: AdminUserFormModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && (
-        <AdminUserFormFields
-          key={editingUser?.id ?? "new"}
-          onClose={onClose}
-          onSubmit={onSubmit}
-          editingUser={editingUser}
-        />
-      )}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>{editingUser !== null ? "Edit Admin User" : "Add Admin User"}</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && (
+                <AdminUserFormFields
+                  key={editingUser?.id ?? "new"}
+                  onClose={onClose}
+                  onSubmit={onSubmit}
+                  editingUser={editingUser}
+                />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }
