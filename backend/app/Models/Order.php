@@ -117,4 +117,13 @@ class Order extends Model
     {
         return $this->hasOne(VoucherRedemption::class);
     }
+
+    /**
+     * ADR-053 (REV-1..5): at most one, enforced by reviews.order_id's
+     * unique index — the primary spam control on submission.
+     */
+    public function review(): HasOne
+    {
+        return $this->hasOne(Review::class);
+    }
 }

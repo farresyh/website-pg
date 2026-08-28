@@ -24,7 +24,7 @@ class TrackOrderController extends Controller
     public function show(string $orderNumber): JsonResponse
     {
         $order = Order::query()
-            ->with(['game:id,name,slug', 'package:id,name'])
+            ->with(['game:id,name,slug', 'package:id,name', 'review:id,order_id'])
             ->where('order_number', $orderNumber)
             ->first();
 
@@ -42,6 +42,10 @@ class TrackOrderController extends Controller
             'payment_status' => $order->payment_status->value,
             'delivery_status' => $order->delivery_status->value,
             'created_at' => $order->created_at,
+            // ADR-053 decisions 3/4 — drives the storefront's review
+            // popup: shown once delivery_status=delivered and this is
+            // still false, never re-shown once a review exists.
+            'has_review' => $order->review !== null,
         ]);
     }
 }

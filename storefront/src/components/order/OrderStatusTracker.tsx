@@ -7,6 +7,7 @@ import { getEcho } from "@/lib/echo";
 import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
+import RateOrderModal from "@/components/order/RateOrderModal";
 
 // ADR-047 decision 1/4: Reverb push (subscribed below) is now the primary
 // path — a status change reaches this component the moment
@@ -80,6 +81,10 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const pollCount = useRef(0);
+  // ADR-053 decision 4 — closing without submitting only suppresses the
+  // popup for the rest of THIS page view; has_review (server-truth, not
+  // this flag) is what decides whether it shows again on a later visit.
+  const [rateModalDismissed, setRateModalDismissed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,9 +149,19 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
 
   const stages = deriveStages(order);
   const hasFailure = order.payment_status === "failed" || order.delivery_status === "failed";
+  const showRateModal = order.delivery_status === "delivered" && !order.has_review && !rateModalDismissed;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
+      {showRateModal && (
+        <RateOrderModal
+          orderNumber={order.order_number}
+          onClose={() => setRateModalDismissed(true)}
+          onSubmitted={() => {
+            setOrder((prev) => (prev ? { ...prev, has_review: true } : prev));
+          }}
+        />
+      )}
       <div className="flex flex-col gap-5 rounded-2xl border border-border bg-surface p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

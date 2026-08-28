@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\Review;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -85,5 +86,24 @@ class TrackOrderControllerTest extends TestCase
         $order = $this->order();
 
         $this->getJson("/api/track-order/{$order->order_number}")->assertOk();
+    }
+
+    public function test_has_review_is_false_when_no_review_exists(): void
+    {
+        $order = $this->order(['order_number' => 'KRS-NOREVIEW']);
+
+        $this->getJson("/api/track-order/{$order->order_number}")
+            ->assertOk()
+            ->assertJsonPath('has_review', false);
+    }
+
+    public function test_has_review_is_true_once_a_review_exists(): void
+    {
+        $order = $this->order(['order_number' => 'KRS-HASREVIEW']);
+        Review::query()->create(['order_id' => $order->id, 'rating' => 5]);
+
+        $this->getJson("/api/track-order/{$order->order_number}")
+            ->assertOk()
+            ->assertJsonPath('has_review', true);
     }
 }
