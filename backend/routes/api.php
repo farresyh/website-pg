@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -41,6 +42,7 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
@@ -109,6 +111,13 @@ Route::post('/games/{game}/validate-player', [PlayerValidationController::class,
 // hitting a third-party API, just blunting scraping/enumeration.
 Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1,track-order');
 
+// ADR-053 (REV-1..5) — public guest review submission, same
+// order_number-as-proof-of-ownership trust model as track-order above.
+// reviews.order_id's own unique index is the real one-per-order
+// guarantee; this throttle only blunts a flood, same convention as
+// checkout/validate-player.
+Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])->middleware('throttle:10,1,review');
+
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
 // §14/§15 NEXT SESSION pointer). A distinct `catalog/` prefix, not
@@ -171,6 +180,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{withdrawal}/approve', [WithdrawalController::class, 'approve']);
         Route::patch('/{withdrawal}/reject', [WithdrawalController::class, 'reject']);
         Route::patch('/{withdrawal}/complete', [WithdrawalController::class, 'complete']);
+    });
+
+    // REV-1..5 (ADR-053) — PRD §3: "Admin ... manages orders, reports,
+    // reviews, withdrawals (below threshold), vouchers (below
+    // threshold)", so both roles, same tier as Orders/Vouchers.
+    Route::middleware('admin.role:super_admin,admin')->prefix('reviews')->group(function () {
+        Route::get('/', [AdminReviewController::class, 'index']);
+        Route::post('/bulk-approve', [AdminReviewController::class, 'bulkApprove']);
+        Route::patch('/{review}/approve', [AdminReviewController::class, 'approve']);
+        Route::patch('/{review}/reject', [AdminReviewController::class, 'reject']);
     });
 
     // VCH-1..6 — Path A (store) is threshold-gated inside the

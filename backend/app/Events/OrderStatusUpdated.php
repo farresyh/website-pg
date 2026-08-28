@@ -66,6 +66,10 @@ final class OrderStatusUpdated implements ShouldBroadcast
             'payment_status' => $this->order->payment_status->value,
             'delivery_status' => $this->order->delivery_status->value,
             'created_at' => $this->order->created_at?->toISOString(),
+            // ADR-053 decision 3 — mirrors TrackOrderController's own
+            // has_review field, same reasoning as this class's own doc
+            // comment about matching that controller's shape exactly.
+            'has_review' => $this->order->review !== null,
         ];
     }
 }
