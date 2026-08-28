@@ -14,9 +14,9 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { CloseIcon } from "@/icons";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import type { CreateBlacklistEntryValues, BlacklistEntryType } from "@/lib/blacklist";
 
@@ -72,7 +72,7 @@ function CreateBlacklistEntryFields({ onClose, onSubmit }: Omit<CreateBlacklistE
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="type">Type</Label>
-          <Select
+          <SimpleSelect
             id="type"
             value={type}
             onChange={(v) => setType(v as BlacklistEntryType)}
