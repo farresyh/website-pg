@@ -19,7 +19,20 @@ import {
   DataTableRow,
   DataTableCell,
 } from "@/components/ui/datatable";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
 import { useClientSession } from "@/hooks/useClientSession";
@@ -306,20 +319,39 @@ export default function ReviewsPage() {
         </div>
       )}
 
-      <Modal isOpen={confirmingBulkApprove} onClose={() => setConfirmingBulkApprove(false)} className="max-w-md">
-        <div className="p-6">
-          <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white/90">Approve All Pending</h3>
-          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
-            Approve all {data?.stats.pending ?? 0} pending review{data?.stats.pending === 1 ? "" : "s"}?
-          </p>
-          <div className="flex justify-end gap-3">
-            <Button variant="outlined" onClick={() => setConfirmingBulkApprove(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleBulkApprove}>Approve All</Button>
-          </div>
-        </div>
-      </Modal>
+      <Dialog
+        open={confirmingBulkApprove}
+        onOpenChange={(e) => {
+          if (!e.value) setConfirmingBulkApprove(false);
+        }}
+      >
+        <DialogPortal>
+          <DialogBackdrop />
+          <DialogPositioner>
+            <DialogPopup className="w-full max-w-md">
+              <DialogHeader>
+                <DialogTitle>Approve All Pending</DialogTitle>
+                <DialogHeaderActions>
+                  <DialogClose aria-label="Close">
+                    <CloseIcon className="h-5 w-5" />
+                  </DialogClose>
+                </DialogHeaderActions>
+              </DialogHeader>
+              <DialogContent>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Approve all {data?.stats.pending ?? 0} pending review{data?.stats.pending === 1 ? "" : "s"}?
+                </p>
+              </DialogContent>
+              <DialogFooter>
+                <Button variant="outlined" onClick={() => setConfirmingBulkApprove(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleBulkApprove}>Approve All</Button>
+              </DialogFooter>
+            </DialogPopup>
+          </DialogPositioner>
+        </DialogPortal>
+      </Dialog>
     </div>
   );
 }

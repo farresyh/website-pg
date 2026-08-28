@@ -1,11 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import type { SeoScript, SaveSeoScriptValues } from "@/lib/seo";
 
 interface Props {
@@ -44,8 +56,7 @@ function Fields({ script, onClose, onSubmit }: Omit<Props, "isOpen">) {
   }
 
   return (
-    <div className="max-w-lg p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">{script ? "Edit Script" : "Add Script"}</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">Injected verbatim — trusted admin content only, not sanitized.</p>
 
       {error && (
@@ -90,18 +101,35 @@ function Fields({ script, onClose, onSubmit }: Omit<Props, "isOpen">) {
         </label>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>Cancel</Button>
           <Button type="submit" disabled={submitting}>{submitting ? "Saving…" : script ? "Save" : "Add Script"}</Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function SaveSeoScriptModal({ isOpen, script, onClose, onSubmit }: Props) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
-      {isOpen && <Fields script={script} onClose={onClose} onSubmit={onSubmit} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{script ? "Edit Script" : "Add Script"}</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && <Fields script={script} onClose={onClose} onSubmit={onSubmit} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

@@ -1,10 +1,22 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import type { HeroSlide, SaveHeroSlideValues } from "@/lib/hero-slides";
 
 interface HeroSlideModalProps {
@@ -104,11 +116,7 @@ function HeroSlideFields({
   }
 
   return (
-    <div className="max-h-[85vh] max-w-lg overflow-y-auto p-6">
-      <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90">
-        {slide ? "Edit Hero Slide" : "Add Hero Slide"}
-      </h3>
-
+    <>
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
           {error}
@@ -121,10 +129,10 @@ function HeroSlideFields({
             Delete <span className="font-medium">{slide?.title}</span>? This cannot be undone.
           </p>
           <div className="flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => setConfirmingDelete(false)} disabled={submitting}>
+            <Button type="button" variant="outlined" onClick={() => setConfirmingDelete(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={handleDelete} disabled={submitting}>
+            <Button type="button" severity="danger" onClick={handleDelete} disabled={submitting}>
               {submitting ? "Deleting…" : "Delete Slide"}
             </Button>
           </div>
@@ -233,14 +241,14 @@ function HeroSlideFields({
 
           <div className="flex items-center justify-between pt-2">
             {slide && onDelete ? (
-              <Button type="button" variant="danger" onClick={() => setConfirmingDelete(true)} disabled={submitting}>
+              <Button type="button" severity="danger" onClick={() => setConfirmingDelete(true)} disabled={submitting}>
                 Delete Slide
               </Button>
             ) : (
               <span />
             )}
             <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+              <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
@@ -250,16 +258,33 @@ function HeroSlideFields({
           </div>
         </form>
       )}
-    </div>
+    </>
   );
 }
 
 export default function HeroSlideModal({ isOpen, onClose, onSubmit, onDelete, slide, nextSortOrder }: HeroSlideModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
-      {isOpen && (
-        <HeroSlideFields onClose={onClose} onSubmit={onSubmit} onDelete={onDelete} slide={slide} nextSortOrder={nextSortOrder} />
-      )}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{slide ? "Edit Hero Slide" : "Add Hero Slide"}</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && (
+                <HeroSlideFields onClose={onClose} onSubmit={onSubmit} onDelete={onDelete} slide={slide} nextSortOrder={nextSortOrder} />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

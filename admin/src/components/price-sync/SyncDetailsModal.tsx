@@ -1,7 +1,19 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import {
   DataTable,
   DataTableTableContainer,
@@ -46,11 +58,7 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
   }, [runId, token]);
 
   return (
-    <div className="max-h-[80vh] overflow-y-auto p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">
-        Sync Details — Run #{runId}
-      </h3>
-
+    <>
       {error && (
         <p className="mt-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
           {error}
@@ -129,14 +137,31 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
           ))}
         </>
       )}
-    </div>
+    </>
   );
 }
 
 export default function SyncDetailsModal({ isOpen, onClose, runId, token }: SyncDetailsModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-3xl">
-      {isOpen && runId !== null && <SyncDetailsContent key={runId} runId={runId} token={token} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Sync Details{runId !== null ? ` — Run #${runId}` : ""}</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && runId !== null && <SyncDetailsContent key={runId} runId={runId} token={token} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

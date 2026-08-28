@@ -1,11 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import type { AvailableValidatorKey } from "@/lib/player-validators";
 
 interface CreateValidatorModalProps {
@@ -60,8 +72,7 @@ function CreateValidatorFields({
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Create Validator</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         The key you pick here must already have a real implementation on the backend
         (app/Services/PlayerValidation/) — this list only shows keys that do, so a validator can never be created
@@ -101,7 +112,7 @@ function CreateValidatorFields({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+            <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
               Cancel
             </Button>
             <Button type="submit" disabled={submitting}>
@@ -110,7 +121,7 @@ function CreateValidatorFields({
           </div>
         </form>
       )}
-    </div>
+    </>
   );
 }
 
@@ -122,8 +133,27 @@ export default function CreateValidatorModal({
   usedKeys,
 }: CreateValidatorModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && <CreateValidatorFields onClose={onClose} onSubmit={onSubmit} availableKeys={availableKeys} usedKeys={usedKeys} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Validator</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && (
+                <CreateValidatorFields onClose={onClose} onSubmit={onSubmit} availableKeys={availableKeys} usedKeys={usedKeys} />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

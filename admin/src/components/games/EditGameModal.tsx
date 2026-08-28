@@ -1,11 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import type { Game, UpdateGameValues } from "@/lib/games";
 import type { PlayerValidatorProfile } from "@/lib/player-validators";
 
@@ -81,9 +93,7 @@ function EditGameFields({
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90">Edit Game</h3>
-
+    <>
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
           {error}
@@ -97,10 +107,10 @@ function EditGameFields({
             packages? This cannot be undone.
           </p>
           <div className="flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => setConfirmingDelete(false)} disabled={submitting}>
+            <Button type="button" variant="outlined" onClick={() => setConfirmingDelete(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={handleDelete} disabled={submitting}>
+            <Button type="button" severity="danger" onClick={handleDelete} disabled={submitting}>
               {submitting ? "Deleting…" : "Delete Game"}
             </Button>
           </div>
@@ -161,11 +171,11 @@ function EditGameFields({
           </div>
 
           <div className="flex items-center justify-between pt-2">
-            <Button type="button" variant="danger" onClick={() => setConfirmingDelete(true)} disabled={submitting}>
+            <Button type="button" severity="danger" onClick={() => setConfirmingDelete(true)} disabled={submitting}>
               Delete Game
             </Button>
             <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+              <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
@@ -175,22 +185,39 @@ function EditGameFields({
           </div>
         </form>
       )}
-    </div>
+    </>
   );
 }
 
 export default function EditGameModal({ isOpen, onClose, onSubmit, onDelete, game, validatorProfiles }: EditGameModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && game && (
-        <EditGameFields
-          onClose={onClose}
-          onSubmit={onSubmit}
-          onDelete={onDelete}
-          game={game}
-          validatorProfiles={validatorProfiles}
-        />
-      )}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Game</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && game && (
+                <EditGameFields
+                  onClose={onClose}
+                  onSubmit={onSubmit}
+                  onDelete={onDelete}
+                  game={game}
+                  validatorProfiles={validatorProfiles}
+                />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }
