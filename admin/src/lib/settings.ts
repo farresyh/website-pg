@@ -32,6 +32,7 @@ export interface PlatformSettings {
   telegram_notifications_enabled: boolean;
   telegram_bot_token: string | null;
   telegram_chat_id: string | null;
+  membership_enabled: boolean;
 }
 
 export interface SettingsIndexResponse {

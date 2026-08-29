@@ -208,4 +208,25 @@ class SettingsControllerTest extends TestCase
         $this->assertSame(0, $response->json('packages_updated'));
         $this->assertDatabaseCount('price_change_logs', 0);
     }
+
+    /**
+     * ADR-027's 2026-08-29 addendum: member_price_sen is computed live
+     * from Package.markup_percent, not a snapshot — a Platform Settings
+     * bulk markup change must propagate to it too, same as a single
+     * package's own markup edit. Proven via the real public catalog
+     * endpoint, not by asserting the DB column alone.
+     */
+    public function test_bulk_markup_change_is_reflected_in_public_catalog_member_price(): void
+    {
+        $this->actingAsSuperAdmin();
+        $game = $this->game();
+        $this->package($game);
+
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20])->assertOk();
+
+        // Effective markup 20% * (1-0.8) = 4% -> round(1000 * 1.04) = 1040.
+        $this->getJson("/api/catalog/games/{$game->slug}/packages")->assertJsonPath('0.member_price_sen', 1040);
+    }
 }

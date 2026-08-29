@@ -12,6 +12,7 @@ use App\Observers\OrderObserver;
 use App\Observers\PriceSyncRunObserver;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Membership\PlunkMailer;
 use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -29,8 +30,11 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Backup\Events\BackupHasFailed;
 use Spatie\Backup\Events\CleanupHasFailed;
@@ -192,6 +196,22 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.xendit'));
 
+        // ADR-027's 2026-08-29 addendum, decision 27/29 — the only
+        // email-sending vendor bound here, so a direct class binding
+        // (not a string-keyed factory slot like the multi-gateway
+        // pattern above, which exists because Payment/Supplier
+        // genuinely have several swappable implementations).
+        $this->app->bind(PlunkMailer::class, function () {
+            $config = config('services.plunk');
+
+            return new PlunkMailer(
+                baseUrl: $config['base_url'],
+                apiKey: (string) $config['api_key'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
+
         // MLBB's validator chain — AcidGameShop -> Nexone -> MooGold,
         // priority order per the founder's own reliability ranking.
         // Bound under 'player-validator.mlbb' so PlayerValidatorRegistry
@@ -289,6 +309,15 @@ class AppServiceProvider extends ServiceProvider
         // Middleware\Authorize's `viewPulse` gate can be defined.
         Gate::define('viewPulse', function ($user = null) {
             return $user !== null && $user->is_active && $user->role === 'super_admin';
+        });
+
+        // ADR-027's 2026-08-29 addendum, decision 26: OTP requests are
+        // rate-limited per email address (not just per IP, unlike every
+        // other `throttle:` route in this app — the abuse case here is
+        // spamming one target inbox, which an IP-only bucket wouldn't
+        // catch from multiple source IPs).
+        RateLimiter::for('otp-request', function (Request $request) {
+            return Limit::perHour(3)->by((string) $request->input('email'));
         });
     }
 }

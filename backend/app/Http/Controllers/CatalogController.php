@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Game;
+use App\Models\MembershipPlan;
 use App\Models\Package;
+use App\Models\PlatformSettings;
 use App\Models\Reseller;
+use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -35,8 +38,10 @@ class CatalogController extends Controller
     /** ADR-014: same 60s TTL/invalidate-on-write discipline as GameController. */
     private const CACHE_TTL_SECONDS = 60;
 
-    public function __construct(private readonly PricingService $pricing)
-    {
+    public function __construct(
+        private readonly PricingService $pricing,
+        private readonly MembershipPricingService $membershipPricing,
+    ) {
     }
 
     public function index(): JsonResponse
@@ -75,17 +80,25 @@ class CatalogController extends Controller
             return response()->json(['message' => 'Game not found.'], 404);
         }
 
-        $packages = Cache::remember(
-            self::packagesCacheKey($game->id),
-            self::CACHE_TTL_SECONDS,
-            fn () => $this->dedupByDenomination(
-                $game->packages()
-                    ->where('is_active', true)
-                    ->get(),
-            )
-                ->map(fn (Package $package) => $this->publicPackage($package))
-                ->all(),
-        );
+        $packages = Cache::store(config('cache.catalog_packages_store'))
+            ->tags(['catalog.packages'])
+            ->remember(
+                self::packagesCacheKey($game->id),
+                self::CACHE_TTL_SECONDS,
+                function () use ($game) {
+                    $bestMembershipPlan = PlatformSettings::current()->membership_enabled
+                        ? MembershipPlan::query()->orderByDesc('discount_percent')->first()
+                        : null;
+
+                    return $this->dedupByDenomination(
+                        $game->packages()
+                            ->where('is_active', true)
+                            ->get(),
+                    )
+                        ->map(fn (Package $package) => $this->publicPackage($package, $bestMembershipPlan))
+                        ->all();
+                },
+            );
 
         return response()->json($packages);
     }
@@ -152,15 +165,31 @@ class CatalogController extends Controller
     }
 
     /**
+     * ADR-027's 2026-08-29 addendum, decisions 20/21: `member_price_sen`
+     * reflects only the best-value tier (highest discount_percent), and
+     * is omitted entirely — never `null` — when the kill switch is off
+     * or no membership tier is configured, matching this codebase's
+     * narrow-public-response-shape discipline (backend/AGENTS.md).
+     *
      * @return array<string, mixed>
      */
-    private function publicPackage(Package $package): array
+    private function publicPackage(Package $package, ?MembershipPlan $bestMembershipPlan): array
     {
-        return [
+        $data = [
             'id' => $package->id,
             'name' => $package->name,
             'selling_price_sen' => $this->sellingPriceSen($package),
         ];
+
+        if ($bestMembershipPlan !== null) {
+            $data['member_price_sen'] = $this->membershipPricing->calculateMemberPrice(
+                $package->cost_price,
+                (float) $package->markup_percent,
+                (float) $bestMembershipPlan->discount_percent,
+            );
+        }
+
+        return $data;
     }
 
     /**
@@ -233,10 +262,28 @@ class CatalogController extends Controller
 
     public static function forgetPackagesCache(int $gameId): void
     {
-        Cache::forget(self::packagesCacheKey($gameId));
+        // ADR-027's 2026-08-29 addendum, decision 18: this cache moved to
+        // its own scoped, tagged store (config('cache.catalog_packages_store'))
+        // — a plain Cache::forget() on the default store (or even the
+        // right store without the same ->tags() call) would silently
+        // miss it, since a tagged entry's real storage key is namespaced
+        // by the tag, not the same key Cache::forget() would look up bare.
+        Cache::store(config('cache.catalog_packages_store'))
+            ->tags(['catalog.packages'])
+            ->forget(self::packagesCacheKey($gameId));
         // A package price/status change also changes the index's
         // per-game price_from_sen — the index cache must go too.
         Cache::forget('catalog.public.games.index');
+    }
+
+    /**
+     * Decision 18: a membership_plans edit (or the kill switch) changes
+     * every game's packages at once, unlike a single package/markup
+     * edit — one tagged flush instead of looping every Game ID.
+     */
+    public static function forgetPackagesCacheForMembership(): void
+    {
+        Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->flush();
     }
 
     private static function packagesCacheKey(int $gameId): string

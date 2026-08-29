@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Models\Game;
+use App\Models\MembershipPlan;
 use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\Supplier;
@@ -288,6 +289,135 @@ class CatalogControllerTest extends TestCase
         Game::query()->create(['name' => 'Discontinued', 'slug' => 'discontinued', 'is_active' => false]);
 
         $this->getJson('/api/catalog/games/discontinued/packages')->assertNotFound();
+    }
+
+    /**
+     * ADR-027's 2026-08-29 addendum, decision 21: omitted entirely
+     * (never null) while the kill switch is off — its seeded default.
+     */
+    public function test_packages_omits_member_price_when_membership_feature_is_disabled(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
+
+        $response->assertOk();
+        $this->assertArrayNotHasKey('member_price_sen', $response->json()[0]);
+    }
+
+    /**
+     * Decisions 16/20/21: once enabled, member_price_sen reflects only
+     * the best-value tier (highest discount_percent — the seeded Tier 2
+     * at 80%), computed via MembershipPricingService against the
+     * package's own markup_percent, not a flat member-wide price.
+     */
+    public function test_packages_includes_best_tier_member_price_when_enabled(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
+
+        $response->assertOk();
+        // Tier 2 (seeded 80% discount): effective markup 15% * (1-0.8) = 3% -> round(1000 * 1.03) = 1030.
+        $this->assertSame(1030, $response->json()[0]['member_price_sen']);
+    }
+
+    /**
+     * Decision 18: a tier edit (or the kill switch, tested separately
+     * below) must invalidate every game's packages cache at once, not
+     * just the one the admin happened to load most recently — proven
+     * end-to-end via the real admin endpoint, same discipline as this
+     * file's other cache-invalidation tests.
+     */
+    public function test_public_packages_cache_is_invalidated_when_a_membership_tier_discount_changes(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+
+        $tier2 = MembershipPlan::query()->orderByDesc('discount_percent')->first();
+        $this->putJson("/api/membership-plans/{$tier2->id}", [
+            'fee_sen' => $tier2->fee_sen,
+            'quota_sen' => $tier2->quota_sen,
+            'discount_percent' => 90,
+        ])->assertOk();
+
+        // Effective markup 15% * (1-0.9) = 1.5% -> round(1000 * 1.015) = 1015.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1015);
+    }
+
+    /**
+     * Decision 20: toggling the kill switch off must hide member_price_sen
+     * again immediately, not just wait out the TTL.
+     */
+    public function test_public_packages_cache_is_invalidated_when_the_kill_switch_is_toggled_off(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => false])->assertOk();
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
+        $this->assertArrayNotHasKey('member_price_sen', $response->json()[0]);
+    }
+
+    /**
+     * member_price_sen is computed live from Package.markup_percent, not
+     * a snapshot — a real admin edit to a package's own markup (not the
+     * membership tier's discount) must change it too. Proven via the
+     * real PackageController::updateMarkup endpoint, which invalidates
+     * this cache through GameController::forgetPackagesCache() ->
+     * CatalogController::forgetPackagesCache() — the same tagged-store
+     * fix this ADR's own cache migration needed (see that method's
+     * comment) applies here as much as to a direct membership_plans edit.
+     */
+    public function test_member_price_follows_a_real_package_markup_edit(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+
+        // Real admin edit: package markup 15% -> 10% (through the real endpoint, not the model directly).
+        $this->patchJson("/api/packages/{$package->id}/markup", ['markup_percent' => 10])->assertOk();
+
+        // Effective markup 10% * (1-0.8) = 2% -> round(1000 * 1.02) = 1020.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1020);
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
@@ -25,6 +26,8 @@ use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
+use App\Http\Controllers\MembershipController;
+use App\Http\Controllers\MembershipOtpController;
 use App\Http\Controllers\Middleware\BackupController;
 use App\Http\Controllers\Middleware\CurrencyRateController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
@@ -118,6 +121,22 @@ Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])-
 // guarantee; this throttle only blunts a flood, same convention as
 // checkout/validate-player.
 Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])->middleware('throttle:10,1,review');
+
+// ADR-027's 2026-08-29 addendum, decisions 23/26/27 — membership
+// identity verification (email + OTP, no login/account). `send` uses
+// the named `otp-request` limiter (registered in AppServiceProvider,
+// 3/hour keyed by email — not IP, unlike every other throttle: route
+// in this file, since the abuse case is flooding one target inbox).
+// `verify` gets a plain IP throttle same shape as checkout/validate
+// -player; OtpService's own 5-attempt lockout is the real brute-force
+// defense for a submitted code.
+Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
+Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
+
+// Decisions 13/24/25 — the /membership dashboard's data. Auth is the
+// session token (Authorization: Bearer), not auth:sanctum — resolved
+// inside the controller itself, same reasoning as the OTP routes above.
+Route::get('/membership/me', [MembershipController::class, 'me']);
 
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
@@ -366,6 +385,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/footer', [SettingsController::class, 'updateFooter']);
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
+    });
+
+    // ADR-027's 2026-08-29 addendum, decisions 14/15: /admin/membership's
+    // backend — edit-only against the two fixed membership_plans rows,
+    // same super_admin tier as Settings/Price Sync (deliberately not
+    // under /middleware — no supplier-integration dependency).
+    Route::middleware('admin.role:super_admin')->prefix('membership-plans')->group(function () {
+        Route::get('/', [MembershipPlanController::class, 'index']);
+        Route::get('/preview', [MembershipPlanController::class, 'preview']);
+        Route::put('/{membershipPlan}', [MembershipPlanController::class, 'update']);
+        Route::patch('/enabled', [MembershipPlanController::class, 'updateEnabled']);
     });
 
     // ADR-029 — SEO Management: Overview, Global Settings/Meta
