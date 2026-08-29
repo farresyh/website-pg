@@ -106,6 +106,15 @@ class ReportController extends Controller
         );
     }
 
+    public function membershipBreakdown(Request $request): JsonResponse
+    {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+
+        return response()->json(
+            $this->reports->membershipBreakdown($from, $toExclusive, $this->resellerId($request)),
+        );
+    }
+
     public function export(Request $request): JsonResponse|StreamedResponse|Response
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);

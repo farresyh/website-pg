@@ -17,6 +17,14 @@ use Illuminate\Support\Facades\Log;
  * (see routes/console.php), same inert-until-real-cron pattern as
  * SyncSupplierPricesJob/ReconcilePendingPaymentsCommand.
  *
+ * ADR-027 continued addendum decision 15 / Phase 6.5 (grilled
+ * 2026-08-29, Q7): this command also performs the active -> expired
+ * flip the membership state machine had always intended but never
+ * actually wrote — a member past `expires_at` is flipped to `expired`
+ * BEFORE the quota-refill sweep runs, so a lapsed member's quota is
+ * never pointlessly refilled (their checkout is already blocked on
+ * `expires_at`, and now their registry status reads `expired` too).
+ *
  * Each eligible row is locked individually (`lockForUpdate()` inside its
  * own `DB::transaction()`), same discipline as
  * MembershipQuotaService::decrement() — a reset writing an absolute
@@ -24,13 +32,18 @@ use Illuminate\Support\Facades\Log;
  * in-flight checkout decrement racing the exact same row.
  */
 #[Signature('app:reset-membership-cycles')]
-#[Description('Refill quota_remaining_sen and advance cycle_started_at for every membership whose 30-day cycle has elapsed.')]
+#[Description('Flip expired memberships to Expired, then refill quota_remaining_sen and advance cycle_started_at for every active membership whose 30-day cycle has elapsed.')]
 class ResetMembershipCyclesCommand extends Command
 {
     private const CYCLE_DAYS = 30;
 
     public function handle(): int
     {
+        $expired = Membership::query()
+            ->where('status', MembershipStatus::Active)
+            ->where('expires_at', '<', now())
+            ->update(['status' => MembershipStatus::Expired]);
+
         $eligibleIds = Membership::query()
             ->where('status', MembershipStatus::Active)
             ->where('cycle_started_at', '<=', now()->subDays(self::CYCLE_DAYS))
@@ -55,8 +68,8 @@ class ResetMembershipCyclesCommand extends Command
             });
         }
 
-        $this->info("Reset {$reset} membership cycle(s).");
-        Log::info('Reset membership cycles', ['count' => $reset]);
+        $this->info("Expired {$expired} membership(s); reset {$reset} membership cycle(s).");
+        Log::info('Reset membership cycles', ['expired' => $expired, 'count' => $reset]);
 
         return self::SUCCESS;
     }

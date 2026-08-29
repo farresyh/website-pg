@@ -59,3 +59,65 @@ export function previewMembershipPricing(token: string, discountPercent: number)
   const query = new URLSearchParams({ discount_percent: String(discountPercent) });
   return apiFetch<MembershipPricingPreview>(`/api/membership-plans/preview?${query}`, { token });
 }
+
+/**
+ * ADR-027 continued addendum decision 15 / Phase 6.5 (grilled
+ * 2026-08-29) — the member registry + record-payment half of
+ * /admin/membership. Effective status is computed server-side (a lapsed
+ * member whose `expired` flip hasn't been swept yet still reads expired).
+ */
+
+export type MembershipStatus = "active" | "expired";
+
+export interface MembershipListItem {
+  id: number;
+  email: string;
+  plan_id: number;
+  plan_name: string | null;
+  status: MembershipStatus;
+  cycle_started_at: string | null;
+  expires_at: string | null;
+  quota_remaining_sen: number;
+  quota_used_sen: number;
+  quota_total_sen: number;
+  orders_count: number;
+}
+
+export interface MembershipPage {
+  data: MembershipListItem[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+export type MembershipStatusFilter = "all" | "active" | "expired";
+
+export function listMemberships(
+  token: string,
+  params: { status?: MembershipStatusFilter; planId?: number; search?: string; page?: number } = {},
+) {
+  const query = new URLSearchParams();
+  if (params.status && params.status !== "all") query.set("status", params.status);
+  if (params.planId) query.set("plan_id", String(params.planId));
+  if (params.search) query.set("search", params.search);
+  if (params.page) query.set("page", String(params.page));
+  const qs = query.toString();
+
+  return apiFetch<MembershipPage>(`/api/memberships${qs ? `?${qs}` : ""}`, { token });
+}
+
+export interface RecordMembershipPaymentValues {
+  email: string;
+  membership_plan_id: number;
+  amount_sen: number;
+  reason?: string | null;
+  idempotency_key: string;
+}
+
+export function recordMembershipPayment(token: string, values: RecordMembershipPaymentValues) {
+  return apiFetch<MembershipListItem>("/api/memberships/record-payment", {
+    method: "POST",
+    token,
+    body: values,
+  });
+}

@@ -61,4 +61,29 @@ class ResetMembershipCyclesCommandTest extends TestCase
 
         $this->assertSame(500, $membership->fresh()->quota_remaining_sen);
     }
+
+    public function test_flips_an_active_membership_past_its_expiry_to_expired(): void
+    {
+        $membership = $this->membership();
+        $membership->forceFill(['expires_at' => now()->subDay()])->save();
+
+        $this->artisan('app:reset-membership-cycles')->assertExitCode(0);
+
+        $this->assertSame('expired', $membership->fresh()->status->value);
+    }
+
+    public function test_does_not_refill_quota_for_a_membership_that_just_flipped_to_expired(): void
+    {
+        // Lapsed AND cycle elapsed — the expiry flip runs before the
+        // quota refill (Q7), so an expired membership must never get a
+        // pointless refill.
+        $membership = $this->membership();
+        $membership->forceFill(['expires_at' => now()->subDay(), 'cycle_started_at' => now()->subDays(31)])->save();
+
+        $this->artisan('app:reset-membership-cycles')->assertExitCode(0);
+
+        $fresh = $membership->fresh();
+        $this->assertSame('expired', $fresh->status->value);
+        $this->assertSame(500, $fresh->quota_remaining_sen);
+    }
 }

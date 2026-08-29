@@ -40,6 +40,7 @@ import { OrdersTab } from "@/components/reports/tabs/OrdersTab";
 import { GamesTab } from "@/components/reports/tabs/GamesTab";
 import { PaymentMethodsTab } from "@/components/reports/tabs/PaymentMethodsTab";
 import { ResellersTab } from "@/components/reports/tabs/ResellersTab";
+import { MembershipTab } from "@/components/reports/tabs/MembershipTab";
 
 const RESELLER_ALL = "all";
 const YEAR_ALL = "all";
@@ -62,6 +63,7 @@ const TABS = [
   { value: "games", label: "Games" },
   { value: "payment-methods", label: "Payment Methods" },
   { value: "resellers", label: "Resellers" },
+  { value: "membership", label: "Membership" },
 ] as const;
 
 export default function ReportsPage() {
@@ -198,6 +200,9 @@ export default function ReportsPage() {
               </TabsPanel>
               <TabsPanel value="resellers">
                 {activeTab === "resellers" && <ResellersTab token={session.token} filters={filters} />}
+              </TabsPanel>
+              <TabsPanel value="membership">
+                {activeTab === "membership" && <MembershipTab token={session.token} filters={filters} />}
               </TabsPanel>
             </>
           )}
