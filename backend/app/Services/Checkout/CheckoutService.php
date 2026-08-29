@@ -3,7 +3,9 @@
 namespace App\Services\Checkout;
 
 use App\Jobs\FulfillOrderJob;
+use App\Models\Membership;
 use App\Models\Order;
+use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\PaymentStatus;
@@ -11,6 +13,8 @@ use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Pricing\CheckoutTotalService;
+use App\Services\Pricing\MembershipPricingService;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
@@ -33,6 +37,8 @@ final class CheckoutService
         private readonly CheckoutTotalService $checkoutTotal,
         private readonly OrderNumberService $orderNumbers,
         private readonly VoucherService $vouchers,
+        private readonly MembershipPricingService $membershipPricing,
+        private readonly MembershipQuotaService $membershipQuota,
     ) {
     }
 
@@ -62,6 +68,12 @@ final class CheckoutService
             $request->resellerMarkupPct,
         );
 
+        $member = $this->resolveMemberPricing($request);
+
+        $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
+        $platformProfit = $member !== null ? $member->memberPriceSen - $request->costPriceSen : $pricing->platformProfit;
+        $resellerProfit = $member !== null ? 0 : $pricing->resellerProfit;
+
         // ADR-024 decision #3: resolved server-side from the voucher's
         // own stored code/remaining/ownership — never a client-
         // submitted discount amount (ORD-9). preview() only reads, it
@@ -69,11 +81,11 @@ final class CheckoutService
         // later, in requestPayment()/settleWithVoucher() below,
         // matching decision #1's exact timing.
         $voucherPreview = $request->voucherCode !== null
-            ? $this->vouchers->preview($request->voucherCode, $request->customerEmail, $request->customerPhone, $pricing->sellingPrice)
+            ? $this->vouchers->preview($request->voucherCode, $request->customerEmail, $request->customerPhone, $sellingPriceForOrder)
             : null;
 
         $total = $this->checkoutTotal->calculate(
-            $pricing->sellingPrice,
+            $sellingPriceForOrder,
             $voucherPreview?->discountSen ?? 0,
             $request->paymentFeeConfig,
         );
@@ -119,15 +131,19 @@ final class CheckoutService
                 'supplier_product_ref' => $request->supplierProductRef,
                 'reseller_id' => $request->resellerId,
                 'voucher_id' => $voucherPreview?->voucherId,
+                'pricing_basis' => $member !== null ? PricingBasis::Member->value : PricingBasis::Standard->value,
+                'membership_id' => $member?->membershipId,
+                'member_discount_percent' => $member?->discountPercent,
+                'normal_selling_price' => $member !== null ? $pricing->sellingPrice : null,
                 'cost_price' => $pricing->costPrice,
                 'standard_selling_price' => $pricing->standardSellingPrice,
                 'reseller_markup_pct' => $request->resellerMarkupPct,
-                'selling_price' => $pricing->sellingPrice,
+                'selling_price' => $sellingPriceForOrder,
                 'voucher_discount' => $total->voucherDiscount,
                 'transaction_fee' => $fullyCoveredByVoucher ? 0 : $total->transactionFee,
                 'final_amount' => $fullyCoveredByVoucher ? 0 : $total->finalAmount,
-                'platform_profit' => $pricing->platformProfit,
-                'reseller_profit' => $pricing->resellerProfit,
+                'platform_profit' => $platformProfit,
+                'reseller_profit' => $resellerProfit,
                 'payment_status' => $fullyCoveredByVoucher ? PaymentStatus::Paid->value : PaymentStatus::Pending->value,
                 'paid_at' => $fullyCoveredByVoucher ? now() : null,
                 'delivery_status' => DeliveryStatus::NotStarted->value,
@@ -197,6 +213,8 @@ final class CheckoutService
         } catch (InvalidVoucherException $e) {
             $this->logAcceptedVoucherRedemptionRace($order, $e);
         }
+
+        $this->decrementMembershipQuotaIfApplicable($order);
 
         FulfillOrderJob::dispatch($order->fresh());
 
@@ -272,6 +290,8 @@ final class CheckoutService
             }
         }
 
+        $this->decrementMembershipQuotaIfApplicable($order);
+
         return $order->fresh();
     }
 
@@ -306,5 +326,71 @@ final class CheckoutService
     private function isUniqueConstraintViolation(QueryException $e): bool
     {
         return $e->getCode() === '23000';
+    }
+
+    /**
+     * ADR-027 Phase 6 (its 2026-08-29 continued addendum, decisions
+     * 4/5/11): an unlocked read, deciding which price to charge — never
+     * the locked commit (that's decrementMembershipQuotaIfApplicable()
+     * below, at the same trust point VoucherService::redeem() already
+     * uses). Returns null (standard pricing applies) for three reasons
+     * treated identically, matching this codebase's "one generic
+     * outcome, don't let the caller distinguish why" discipline
+     * (VoucherService::assertUsable()'s own precedent): no membership
+     * resolved at all, the membership's plan somehow missing (defensive
+     * only — restrictOnDelete makes this unreachable in practice), or
+     * quota insufficient for this order (the confirmed 2026-08-29
+     * fallback — checkout is never blocked over it).
+     */
+    private function resolveMemberPricing(CheckoutRequest $request): ?MemberPricingResolution
+    {
+        if ($request->membershipId === null) {
+            return null;
+        }
+
+        $membership = Membership::query()->with('membershipPlan')->find($request->membershipId);
+
+        if ($membership === null || $membership->membershipPlan === null) {
+            return null;
+        }
+
+        $discountPercent = (float) $membership->membershipPlan->discount_percent;
+        $memberPriceSen = $this->membershipPricing->calculateMemberPrice(
+            $request->costPriceSen,
+            $request->packageMarkupPercent,
+            $discountPercent,
+        );
+
+        if ($memberPriceSen > $membership->quota_remaining_sen) {
+            return null;
+        }
+
+        return new MemberPricingResolution($membership->id, $memberPriceSen, $discountPercent);
+    }
+
+    /**
+     * The locked commit — same trust point VoucherService::redeem()
+     * already uses (after the gateway confirms success, or immediately
+     * for a full-cover order), reached from both settleWithVoucher()
+     * and requestPayment(). A `false` result (lost the race against a
+     * concurrent order from the same member, quota already spent
+     * elsewhere) is logged, never clawed back — the charge already
+     * happened (ADR-004).
+     */
+    private function decrementMembershipQuotaIfApplicable(Order $order): void
+    {
+        if ($order->membership_id === null) {
+            return;
+        }
+
+        $succeeded = $this->membershipQuota->decrement($order->membership_id, $order->id, $order->selling_price);
+
+        if (! $succeeded) {
+            Log::error('Membership quota decrement failed after the order was already committed at the member price', [
+                'order_number' => $order->order_number,
+                'membership_id' => $order->membership_id,
+                'amount_sen' => $order->selling_price,
+            ]);
+        }
     }
 }

@@ -16,6 +16,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
+use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -56,6 +57,7 @@ class OrderResendServiceTest extends TestCase
                 new VoucherService(new LedgerService()),
             ),
             new PricingService(),
+            new MembershipPricingService(),
         );
     }
 
@@ -307,6 +309,65 @@ class OrderResendServiceTest extends TestCase
         // PricingService: platformProfit = standardSellingPrice - costPrice = 1300 - 1300 = 0 (markup 0%, reseller=platform owner).
         $this->assertSame(0, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame(0, $order->fresh()->platform_profit);
+    }
+
+    /**
+     * ADR-027 Phase 6: a member-priced order's resend must recompute
+     * via the member formula, not the standard chain — live cost_price
+     * from the swap package, but the order's own frozen
+     * member_discount_percent (never a live tier lookup).
+     */
+    public function test_resend_of_a_member_priced_order_recomputes_via_the_member_formula(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
+        $swap = $this->package($game, $supplier, [
+            'name' => '210 Diamonds', 'supplier_package_ref' => 'D',
+            'cost_price' => 1200, 'markup_percent' => 20, 'standard_selling_price' => 1440,
+        ]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'member',
+            'member_discount_percent' => 80.00,
+            'reseller_profit' => 0,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, null, 'Admin');
+
+        // effectiveMarkup = 20 * (1 - 0.8) = 4%; memberPrice = 1200 * 1.04 = 1248; platformProfit = 1248 - 1200 = 48.
+        $this->assertSame(48, $order->fresh()->platform_profit);
+        $this->assertSame(0, $order->fresh()->reseller_profit);
+    }
+
+    /**
+     * ADR-027's 2026-08-29 continued addendum, decision 4 — same rule
+     * as checkout time, proven again at resend: a member order's
+     * reseller_profit stays 0 regardless of the order's own frozen
+     * reseller_markup_pct (a genuinely nonzero 10% here). Resend never
+     * reads reseller_markup_pct for a member-priced order at all.
+     */
+    public function test_resend_of_a_member_priced_order_keeps_reseller_profit_zero_even_with_a_nonzero_reseller_markup(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
+        $swap = $this->package($game, $supplier, [
+            'name' => '210 Diamonds', 'supplier_package_ref' => 'D',
+            'cost_price' => 1200, 'markup_percent' => 20, 'standard_selling_price' => 1440,
+        ]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'member',
+            'member_discount_percent' => 80.00,
+            'reseller_markup_pct' => 10.00,
+            'reseller_profit' => 0,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, null, 'Admin');
+
+        $this->assertSame(48, $order->fresh()->platform_profit);
+        $this->assertSame(0, $order->fresh()->reseller_profit);
     }
 
     public function test_does_not_credit_the_ledger_when_the_resend_fails(): void

@@ -11,6 +11,7 @@ import {
   type ValidatePlayerResult,
 } from "@/lib/checkout";
 import type { Game, GamePackage } from "@/lib/catalog";
+import { getMembershipToken } from "@/lib/membership-session";
 import type { PaymentChannel } from "@/lib/payment-methods";
 import Stepper, { type StepInfo } from "@/components/order/Stepper";
 import StepCard from "@/components/order/StepCard";
@@ -173,7 +174,7 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
           success_return_url: `${window.location.origin}/track-order`,
           failure_return_url: `${window.location.origin}/track-order`,
         },
-      });
+      }, getMembershipToken() ?? undefined);
 
       const redirectUrl = extractCheckoutRedirectUrl(result.payment_actions);
       if (redirectUrl) {

@@ -18,6 +18,7 @@ use App\Services\Order\OrderNumberService;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
+use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -166,7 +167,7 @@ class SandboxOrderController extends Controller
             app(VoucherService::class),
         );
 
-        $resend = new OrderResendService($fulfillment, app(PricingService::class));
+        $resend = new OrderResendService($fulfillment, app(PricingService::class), app(MembershipPricingService::class));
 
         $result = $resend->resend(
             $order,

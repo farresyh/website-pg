@@ -98,6 +98,13 @@ class OrderController extends Controller
 
         return response()->json($order->load([
             'game', 'package', 'supplier', 'reseller', 'voucher',
+            // ADR-027 Phase 6: the member (if any) this order priced
+            // against — email + tier name, so admin can see who and
+            // which plan without a separate lookup. Note this
+            // membership's own email can genuinely differ from the
+            // order's own customer_email (identity comes from the
+            // session token, not the checkout contact form).
+            'membership.membershipPlan',
             // ADR-017 decision #4: "Delivery Logs" — every resend
             // attempt, most recent first, alongside the package it
             // actually used (may differ from the order's own).
@@ -242,6 +249,7 @@ class OrderController extends Controller
         // DeliveryLogsTable on the now-undefined resend_attempts.
         return response()->json($result->load([
             'game', 'package', 'supplier', 'reseller', 'voucher',
+            'membership.membershipPlan',
             'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
         ]));
     }

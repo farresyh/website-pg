@@ -80,3 +80,11 @@ Schedule::command('backup:clean')
     ->dailyAt('03:00')
     ->name('database-backup-cleanup')
     ->withoutOverlapping();
+
+// ADR-027 Phase 6 — same inert-until-real-cron pattern as above.
+// Refills quota_remaining_sen for any membership whose rolling 30-day
+// cycle has elapsed — see ResetMembershipCyclesCommand's own docblock.
+Schedule::command('app:reset-membership-cycles')
+    ->daily()
+    ->name('membership-cycle-reset')
+    ->withoutOverlapping();

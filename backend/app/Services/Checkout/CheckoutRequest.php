@@ -21,6 +21,7 @@ final class CheckoutRequest
         public readonly ?string $serverId,
         public readonly int $costPriceSen,
         public readonly int $standardSellingPriceSen,
+        public readonly float $packageMarkupPercent,
         public readonly float $resellerMarkupPct,
         public readonly PaymentMethodFeeConfig $paymentFeeConfig,
         public readonly string $paymentMethod,
@@ -34,6 +35,7 @@ final class CheckoutRequest
         public readonly ?int $packageId = null,
         public readonly ?int $supplierId = null,
         public readonly ?int $resellerId = null,
+        public readonly ?int $membershipId = null,
     ) {
     }
 }

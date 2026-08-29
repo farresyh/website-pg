@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Pricing\PricingBasis;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -27,6 +28,10 @@ class Order extends Model
         'supplier_product_ref',
         'reseller_id',
         'voucher_id',
+        'pricing_basis',
+        'membership_id',
+        'member_discount_percent',
+        'normal_selling_price',
         'cost_price',
         'standard_selling_price',
         'reseller_markup_pct',
@@ -50,6 +55,9 @@ class Order extends Model
 
     protected $casts = [
         'is_test' => 'boolean',
+        'pricing_basis' => PricingBasis::class,
+        'member_discount_percent' => 'decimal:2',
+        'normal_selling_price' => 'integer',
         'cost_price' => 'integer',
         'standard_selling_price' => 'integer',
         'reseller_markup_pct' => 'decimal:2',
@@ -84,6 +92,18 @@ class Order extends Model
     public function reseller(): BelongsTo
     {
         return $this->belongsTo(Reseller::class);
+    }
+
+    /**
+     * ADR-027 Phase 6: which membership (if any) funded this order at
+     * the member price — null for every guest/standard order. Snapshot
+     * for audit/traceability, not a live pricing dependency (ORD-9's
+     * discipline: `member_discount_percent`/`normal_selling_price` are
+     * already frozen onto the order itself).
+     */
+    public function membership(): BelongsTo
+    {
+        return $this->belongsTo(Membership::class);
     }
 
     /**
