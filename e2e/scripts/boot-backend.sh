@@ -54,6 +54,19 @@ export DB_CONNECTION=sqlite
 export DB_DATABASE="$ROOT_DIR/backend/database/e2e.sqlite"
 export QUEUE_CONNECTION=database
 export CACHE_STORE=database
+# ADR-027's 2026-08-29 addendum, decision 18: CatalogController's
+# packages cache is scoped to its own store (config('cache.
+# catalog_packages_store')), defaulting to 'redis' — no Redis service
+# exists in this E2E suite (same reasoning FakeSupplierAdapter/APP_ENV=e2e
+# already avoids needing one for the supplier layer), so left unset here
+# it would 500 on the storefront checkout spec's first catalog fetch.
+# 'array' (not 'database', unlike CACHE_STORE above) since Laravel's
+# database cache driver doesn't implement Cache::tags() at all — the
+# exact gap this store was moved off of in the first place — while
+# 'array' does, and needs no extra service; it persists correctly across
+# requests here since this whole suite runs as one continuous `php
+# artisan serve` process, not per-request-forked PHP-FPM workers.
+export CATALOG_PACKAGES_CACHE_STORE=array
 export SESSION_DRIVER=array
 export XENDIT_WEBHOOK_TOKEN="${XENDIT_WEBHOOK_TOKEN:-e2e-local-webhook-token}"
 
