@@ -21,12 +21,14 @@ class PlatformSettings extends Model
         'telegram_notifications_enabled',
         'telegram_bot_token',
         'telegram_chat_id',
+        'membership_enabled',
     ];
 
     protected $casts = [
         'vip_spend_threshold_sen' => 'integer',
         'maintenance_mode' => 'boolean',
         'telegram_notifications_enabled' => 'boolean',
+        'membership_enabled' => 'boolean',
     ];
 
     public static function current(): self
