@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
@@ -366,6 +367,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/footer', [SettingsController::class, 'updateFooter']);
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
+    });
+
+    // ADR-027's 2026-08-29 addendum, decisions 14/15: /admin/membership's
+    // backend — edit-only against the two fixed membership_plans rows,
+    // same super_admin tier as Settings/Price Sync (deliberately not
+    // under /middleware — no supplier-integration dependency).
+    Route::middleware('admin.role:super_admin')->prefix('membership-plans')->group(function () {
+        Route::get('/', [MembershipPlanController::class, 'index']);
+        Route::put('/{membershipPlan}', [MembershipPlanController::class, 'update']);
+        Route::patch('/enabled', [MembershipPlanController::class, 'updateEnabled']);
     });
 
     // ADR-029 — SEO Management: Overview, Global Settings/Meta

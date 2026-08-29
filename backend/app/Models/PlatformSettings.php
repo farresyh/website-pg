@@ -33,10 +33,16 @@ class PlatformSettings extends Model
 
     public static function current(): self
     {
-        // Both defaults are given explicitly, not left to the column's DB
-        // DEFAULT — Eloquent never re-fetches a server-applied default
+        // All three defaults are given explicitly, not left to the column's
+        // DB DEFAULT — Eloquent never re-fetches a server-applied default
         // after INSERT, so a freshly-created row would read back null in
-        // memory (ADR-049's VIP threshold needs an int, not null).
-        return static::query()->firstOrCreate([], ['currency' => 'MYR', 'vip_spend_threshold_sen' => 500000]);
+        // memory (ADR-049's VIP threshold needs an int, not null; ADR-027's
+        // membership_enabled needs a real false, not null, per its own
+        // 2026-08-29 addendum decision 20).
+        return static::query()->firstOrCreate([], [
+            'currency' => 'MYR',
+            'vip_spend_threshold_sen' => 500000,
+            'membership_enabled' => false,
+        ]);
     }
 }

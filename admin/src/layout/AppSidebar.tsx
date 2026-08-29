@@ -30,6 +30,7 @@ const navItems: NavItem[] = [
   { icon: <BoxLineIcon />, name: "Vouchers", path: "/admin/vouchers" },
   { icon: <TagIcon />, name: "Reviews", path: "/admin/reviews" },
   { icon: <BlockIcon />, name: "Blacklist", path: "/admin/blacklist" },
+  { icon: <BoxLineIcon />, name: "Membership", path: "/admin/membership" },
 ];
 
 /** ADR-029 decision 10 — a collapsible nav group, unlike every other flat single-link item above. */
