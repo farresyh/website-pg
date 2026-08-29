@@ -391,6 +391,36 @@ class CatalogControllerTest extends TestCase
     }
 
     /**
+     * member_price_sen is computed live from Package.markup_percent, not
+     * a snapshot — a real admin edit to a package's own markup (not the
+     * membership tier's discount) must change it too. Proven via the
+     * real PackageController::updateMarkup endpoint, which invalidates
+     * this cache through GameController::forgetPackagesCache() ->
+     * CatalogController::forgetPackagesCache() — the same tagged-store
+     * fix this ADR's own cache migration needed (see that method's
+     * comment) applies here as much as to a direct membership_plans edit.
+     */
+    public function test_member_price_follows_a_real_package_markup_edit(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+
+        // Real admin edit: package markup 15% -> 10% (through the real endpoint, not the model directly).
+        $this->patchJson("/api/packages/{$package->id}/markup", ['markup_percent' => 10])->assertOk();
+
+        // Effective markup 10% * (1-0.8) = 2% -> round(1000 * 1.02) = 1020.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1020);
+    }
+
+    /**
      * ADR-014 discipline extended to the public catalog: reuses the
      * exact same GameController::forgetIndexCache()/forgetPackagesCache()
      * choke points every admin write already calls through — proven
