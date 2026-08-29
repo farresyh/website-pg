@@ -40,7 +40,7 @@ class FinalizePendingDeliveryConcurrencyTest extends TestCase
             'supplier_id' => $supplier->id,
             'supplier_product_ref' => 'xld10',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,

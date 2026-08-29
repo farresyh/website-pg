@@ -20,16 +20,16 @@ class PendingPriceChange extends Model
         'package_id',
         'old_cost_price',
         'proposed_cost_price',
-        'old_reseller_cost_price',
-        'proposed_reseller_cost_price',
+        'old_standard_selling_price',
+        'proposed_standard_selling_price',
         'status',
     ];
 
     protected $casts = [
         'old_cost_price' => 'integer',
         'proposed_cost_price' => 'integer',
-        'old_reseller_cost_price' => 'integer',
-        'proposed_reseller_cost_price' => 'integer',
+        'old_standard_selling_price' => 'integer',
+        'proposed_standard_selling_price' => 'integer',
     ];
 
     public function package(): BelongsTo

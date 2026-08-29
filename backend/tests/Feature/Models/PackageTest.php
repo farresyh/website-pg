@@ -35,7 +35,7 @@ class PackageTest extends TestCase
             'game_id' => $this->game()->id,
             'name' => '100 Diamonds',
             'cost_price' => '421',
-            'reseller_cost_price' => '421',
+            'standard_selling_price' => '421',
             'supplier_id' => $this->supplier()->id,
             'supplier_package_ref' => '31478',
         ]);
@@ -43,7 +43,7 @@ class PackageTest extends TestCase
         $reloaded = Package::query()->findOrFail($package->id);
 
         $this->assertSame(421, $reloaded->cost_price);
-        $this->assertIsInt($reloaded->reseller_cost_price);
+        $this->assertIsInt($reloaded->standard_selling_price);
     }
 
     public function test_is_active_defaults_to_true(): void
@@ -52,7 +52,7 @@ class PackageTest extends TestCase
             'game_id' => $this->game()->id,
             'name' => '100 Diamonds',
             'cost_price' => 421,
-            'reseller_cost_price' => 421,
+            'standard_selling_price' => 421,
             'supplier_id' => $this->supplier()->id,
             'supplier_package_ref' => '31478',
         ]);
@@ -71,7 +71,7 @@ class PackageTest extends TestCase
             'game_id' => $game->id,
             'name' => '100 Diamonds',
             'cost_price' => 421,
-            'reseller_cost_price' => 421,
+            'standard_selling_price' => 421,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => '31478',
         ]);
@@ -88,7 +88,7 @@ class PackageTest extends TestCase
             'game_id' => $this->game()->id,
             'name' => '100 Diamonds',
             'cost_price' => 421,
-            'reseller_cost_price' => 421,
+            'standard_selling_price' => 421,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => '31478',
         ]);

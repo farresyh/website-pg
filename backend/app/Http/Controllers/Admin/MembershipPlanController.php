@@ -69,7 +69,7 @@ class MembershipPlanController extends Controller
         $packageMarkupPercent = (float) $package->markup_percent;
         $normalPriceSen = $this->pricing->calculate(
             $package->cost_price,
-            $package->reseller_cost_price,
+            $package->standard_selling_price,
             (float) $reseller->markup_pct,
         )->sellingPrice;
         $effectiveMarkupPercent = $this->membershipPricing->effectiveMarkupPercent($packageMarkupPercent, $discountPercent);

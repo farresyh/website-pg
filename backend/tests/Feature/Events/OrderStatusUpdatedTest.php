@@ -39,7 +39,7 @@ class OrderStatusUpdatedTest extends TestCase
             'supplier_id' => $supplierId,
             'supplier_product_ref' => 'FFP5',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
@@ -108,7 +108,7 @@ class OrderStatusUpdatedTest extends TestCase
 
         $payload = (new OrderStatusUpdated($order))->broadcastWith();
 
-        foreach (['cost_price', 'reseller_cost_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref'] as $internalField) {
+        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref'] as $internalField) {
             $this->assertArrayNotHasKey($internalField, $payload, "broadcastWith() must never leak '{$internalField}'");
         }
 

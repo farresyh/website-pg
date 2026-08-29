@@ -20,7 +20,7 @@ final class CheckoutRequest
         public readonly string $playerId,
         public readonly ?string $serverId,
         public readonly int $costPriceSen,
-        public readonly int $resellerCostPriceSen,
+        public readonly int $standardSellingPriceSen,
         public readonly float $resellerMarkupPct,
         public readonly PaymentMethodFeeConfig $paymentFeeConfig,
         public readonly string $paymentMethod,

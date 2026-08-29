@@ -33,7 +33,7 @@ class PendingPriceChangeController extends Controller
     }
 
     /**
-     * Decision #6: reseller_cost_price is recomputed from the
+     * Decision #6: standard_selling_price is recomputed from the
      * package's *live* markup_percent at approval time, not whatever
      * was frozen when the anomaly was first flagged — an admin may
      * have edited the markup in between.
@@ -43,7 +43,7 @@ class PendingPriceChangeController extends Controller
         $this->assertPending($pendingPriceChange);
 
         $package = $pendingPriceChange->package;
-        $newResellerCostPrice = $this->markup->calculateResellerCostPrice(
+        $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice(
             $pendingPriceChange->proposed_cost_price,
             (float) $package->markup_percent,
         );
@@ -53,13 +53,13 @@ class PendingPriceChangeController extends Controller
             'package_id' => $package->id,
             'old_cost_price' => $package->cost_price,
             'new_cost_price' => $pendingPriceChange->proposed_cost_price,
-            'old_reseller_cost_price' => $package->reseller_cost_price,
-            'new_reseller_cost_price' => $newResellerCostPrice,
+            'old_standard_selling_price' => $package->standard_selling_price,
+            'new_standard_selling_price' => $newStandardSellingPrice,
         ]);
 
         $package->update([
             'cost_price' => $pendingPriceChange->proposed_cost_price,
-            'reseller_cost_price' => $newResellerCostPrice,
+            'standard_selling_price' => $newStandardSellingPrice,
             'is_active' => true,
             'deactivated_reason' => null,
             'deactivated_at' => null,

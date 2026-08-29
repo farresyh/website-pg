@@ -201,7 +201,7 @@ class SupplierControllerTest extends TestCase
             'supplier_id' => $supplier->id,
             'name' => '100 Diamonds',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1200,
+            'standard_selling_price' => 1200,
             'markup_percent' => 20,
             'supplier_package_ref' => 'ref-'.uniqid(),
         ]);
@@ -274,7 +274,7 @@ class SupplierControllerTest extends TestCase
             'supplier_id' => $supplier->id,
             'name' => '100 Diamonds',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1200,
+            'standard_selling_price' => 1200,
             'markup_percent' => 20,
             'is_active' => true,
             'supplier_package_ref' => 'ref-'.uniqid(),
@@ -306,11 +306,11 @@ class SupplierControllerTest extends TestCase
 
         $affected = Package::query()->create([
             'game_id' => $affectedGame->id, 'supplier_id' => $supplier->id, 'name' => 'A',
-            'cost_price' => 1000, 'reseller_cost_price' => 1200, 'markup_percent' => 20, 'is_active' => true, 'supplier_package_ref' => 'ref-'.uniqid(),
+            'cost_price' => 1000, 'standard_selling_price' => 1200, 'markup_percent' => 20, 'is_active' => true, 'supplier_package_ref' => 'ref-'.uniqid(),
         ]);
         $unaffected = Package::query()->create([
             'game_id' => $otherGame->id, 'supplier_id' => $supplier->id, 'name' => 'B',
-            'cost_price' => 1000, 'reseller_cost_price' => 1200, 'markup_percent' => 20, 'is_active' => true, 'supplier_package_ref' => 'ref-'.uniqid(),
+            'cost_price' => 1000, 'standard_selling_price' => 1200, 'markup_percent' => 20, 'is_active' => true, 'supplier_package_ref' => 'ref-'.uniqid(),
         ]);
 
         $this->patchJson("/api/middleware/suppliers/{$supplier->id}/packages/status", [
@@ -330,12 +330,12 @@ class SupplierControllerTest extends TestCase
 
         $bySupplierIssue = Package::query()->create([
             'game_id' => $game->id, 'supplier_id' => $supplier->id, 'name' => 'A',
-            'cost_price' => 1000, 'reseller_cost_price' => 1200, 'markup_percent' => 20, 'supplier_package_ref' => 'ref-'.uniqid(),
+            'cost_price' => 1000, 'standard_selling_price' => 1200, 'markup_percent' => 20, 'supplier_package_ref' => 'ref-'.uniqid(),
             'is_active' => false, 'deactivated_reason' => 'supplier_issue', 'deactivated_at' => now(),
         ]);
         $byPriceAnomaly = Package::query()->create([
             'game_id' => $game->id, 'supplier_id' => $supplier->id, 'name' => 'B',
-            'cost_price' => 1000, 'reseller_cost_price' => 1200, 'markup_percent' => 20, 'supplier_package_ref' => 'ref-'.uniqid(),
+            'cost_price' => 1000, 'standard_selling_price' => 1200, 'markup_percent' => 20, 'supplier_package_ref' => 'ref-'.uniqid(),
             'is_active' => false, 'deactivated_reason' => 'price_anomaly', 'deactivated_at' => now(),
         ]);
 

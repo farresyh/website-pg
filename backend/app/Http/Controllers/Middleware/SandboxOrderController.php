@@ -98,7 +98,7 @@ class SandboxOrderController extends Controller
         $reseller = Reseller::platformOwner();
         $pricing = app(PricingService::class)->calculate(
             $package->cost_price,
-            $package->reseller_cost_price,
+            $package->standard_selling_price,
             (float) $reseller->markup_pct,
         );
 
@@ -116,7 +116,7 @@ class SandboxOrderController extends Controller
             'supplier_product_ref' => $package->supplier_package_ref,
             'reseller_id' => $reseller->id,
             'cost_price' => $pricing->costPrice,
-            'reseller_cost_price' => $pricing->resellerCostPrice,
+            'standard_selling_price' => $pricing->standardSellingPrice,
             'reseller_markup_pct' => $reseller->markup_pct,
             'selling_price' => $pricing->sellingPrice,
             'transaction_fee' => 0,

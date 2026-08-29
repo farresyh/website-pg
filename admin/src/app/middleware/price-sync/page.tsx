@@ -519,7 +519,7 @@ export default function PriceSyncPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.reseller_cost_price)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.standard_selling_price)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex gap-2">
@@ -587,7 +587,7 @@ export default function PriceSyncPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.reseller_cost_price)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.standard_selling_price)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Button size="small" variant="outlined" disabled={restoringId === p.id} onClick={() => handleRestore(p)}>

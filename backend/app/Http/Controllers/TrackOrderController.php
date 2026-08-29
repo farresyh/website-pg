@@ -13,7 +13,7 @@ use Illuminate\Http\JsonResponse;
  * Stripe payment link, no email/second factor required.
  *
  * Deliberately returns a narrow, customer-safe subset of Order —
- * never `cost_price`/`reseller_cost_price`/`platform_profit`/
+ * never `cost_price`/`standard_selling_price`/`platform_profit`/
  * `reseller_profit` (internal financial data) or
  * `supplier_response`/`payment_ref`/`supplier_ref` (internal
  * operational fields) — only what the paying customer needs to see

@@ -6,7 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * GAME-7: admin renames a Package's customer-facing name. Markup
- * (`markup_percent`/`reseller_cost_price`) and active/inactive status
+ * (`markup_percent`/`standard_selling_price`) and active/inactive status
  * are separate, dedicated endpoints (PackageController::updateMarkup/
  * updateStatus) — inline, per-row actions, matching the legacy
  * reference system's own layout (legacy-reference-notes.md), not

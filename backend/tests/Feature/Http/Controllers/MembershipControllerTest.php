@@ -72,21 +72,21 @@ class MembershipControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'reseller_cost_price' => 300,
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         Order::query()->create([
             'order_number' => 'KRS-TEST1', 'reference_number' => 'REF-TEST1',
             'game_id' => $game->id, 'package_id' => $package->id,
             'customer_name' => 'Member', 'customer_email' => 'member@example.com', 'customer_phone' => '+60123456789',
-            'player_id' => '12345', 'cost_price' => 250, 'reseller_cost_price' => 300, 'selling_price' => 300,
+            'player_id' => '12345', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
             'transaction_fee' => 0, 'platform_profit' => 50, 'reseller_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
         ]);
         Order::query()->create([
             'order_number' => 'KRS-OTHER', 'reference_number' => 'REF-OTHER',
             'game_id' => $game->id, 'package_id' => $package->id,
             'customer_name' => 'Someone Else', 'customer_email' => 'someone-else@example.com', 'customer_phone' => '+60111111111',
-            'player_id' => '99999', 'cost_price' => 250, 'reseller_cost_price' => 300, 'selling_price' => 300,
+            'player_id' => '99999', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
             'transaction_fee' => 0, 'platform_profit' => 50, 'reseller_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
         ]);
         $token = $this->tokenFor('member@example.com');
@@ -96,7 +96,7 @@ class MembershipControllerTest extends TestCase
         $orders = $response->json('order_history');
         $this->assertCount(1, $orders);
         $this->assertSame('KRS-TEST1', $orders[0]['order_number']);
-        foreach (['cost_price', 'reseller_cost_price', 'supplier_response', 'payment_ref'] as $secretField) {
+        foreach (['cost_price', 'standard_selling_price', 'supplier_response', 'payment_ref'] as $secretField) {
             $this->assertArrayNotHasKey($secretField, $orders[0]);
         }
     }

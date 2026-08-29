@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Cache;
  * Deliberately a separate controller from GameController (admin-only,
  * `admin.role`-gated): mixing a public read path into an admin
  * controller risks a routing mistake exposing admin-only data. Never
- * returns cost_price/reseller_cost_price/markup_percent/supplier_id/
+ * returns cost_price/standard_selling_price/markup_percent/supplier_id/
  * supplier_package_ref (GameController::packages()'s own fields, the
  * platform's wholesale cost and margin) — only a computed
  * `selling_price_sen`, the same customer-facing price
@@ -242,7 +242,7 @@ class CatalogController extends Controller
 
         return $this->pricing->calculate(
             $package->cost_price,
-            $package->reseller_cost_price,
+            $package->standard_selling_price,
             (float) $reseller->markup_pct,
         )->sellingPrice;
     }

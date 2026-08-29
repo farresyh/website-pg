@@ -51,7 +51,7 @@ export interface GamePackage {
   /** ADR-034: the package's inherent value (e.g. diamond/UC amount) — storefront best-price dedup key is (game_id, denomination). Null for non-integer-amount products (bundles/passes). */
   denomination: number | null;
   cost_price: number;
-  reseller_cost_price: number;
+  standard_selling_price: number;
   markup_percent: string; // decimal cast serializes as a string
   is_active: boolean;
   supplier_package_ref: string;

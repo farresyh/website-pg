@@ -18,15 +18,15 @@ class PriceChangeLog extends Model
         'package_id',
         'old_cost_price',
         'new_cost_price',
-        'old_reseller_cost_price',
-        'new_reseller_cost_price',
+        'old_standard_selling_price',
+        'new_standard_selling_price',
     ];
 
     protected $casts = [
         'old_cost_price' => 'integer',
         'new_cost_price' => 'integer',
-        'old_reseller_cost_price' => 'integer',
-        'new_reseller_cost_price' => 'integer',
+        'old_standard_selling_price' => 'integer',
+        'new_standard_selling_price' => 'integer',
     ];
 
     public function package(): BelongsTo

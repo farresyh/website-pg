@@ -38,7 +38,7 @@ class PackagePriceSyncServiceTest extends TestCase
             'game_id' => $game->id,
             'name' => '14 Diamond',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1150,
+            'standard_selling_price' => 1150,
             'markup_percent' => 15,
             'is_active' => true,
             'supplier_id' => $supplier->id,
@@ -63,11 +63,11 @@ class PackagePriceSyncServiceTest extends TestCase
         return new PackagePriceSyncService(new PackageMarkupService());
     }
 
-    public function test_propagates_a_price_increase_and_recomputes_reseller_cost_price(): void
+    public function test_propagates_a_price_increase_and_recomputes_standard_selling_price(): void
     {
         $supplier = $this->supplier();
         $game = $this->game();
-        $package = $this->package($supplier, $game, ['cost_price' => 1000, 'reseller_cost_price' => 1150, 'markup_percent' => 15]);
+        $package = $this->package($supplier, $game, ['cost_price' => 1000, 'standard_selling_price' => 1150, 'markup_percent' => 15]);
         $syncedAt = now();
         $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1200]);
 
@@ -79,14 +79,14 @@ class PackagePriceSyncServiceTest extends TestCase
 
         $package->refresh();
         $this->assertSame(1200, $package->cost_price);
-        $this->assertSame(1380, $package->reseller_cost_price); // round(1200 * 1.15)
+        $this->assertSame(1380, $package->standard_selling_price); // round(1200 * 1.15)
 
         $log = PriceChangeLog::query()->firstOrFail();
         $this->assertSame($package->id, $log->package_id);
         $this->assertSame(1000, $log->old_cost_price);
         $this->assertSame(1200, $log->new_cost_price);
-        $this->assertSame(1150, $log->old_reseller_cost_price);
-        $this->assertSame(1380, $log->new_reseller_cost_price);
+        $this->assertSame(1150, $log->old_standard_selling_price);
+        $this->assertSame(1380, $log->new_standard_selling_price);
     }
 
     /**
@@ -98,7 +98,7 @@ class PackagePriceSyncServiceTest extends TestCase
     {
         $supplier = $this->supplier();
         $game = $this->game();
-        $package = $this->package($supplier, $game, ['cost_price' => 1000, 'reseller_cost_price' => 1150]);
+        $package = $this->package($supplier, $game, ['cost_price' => 1000, 'standard_selling_price' => 1150]);
         $syncedAt = now();
         $this->rawProduct($supplier, $syncedAt, ['price_sen' => 800]);
 
@@ -107,7 +107,7 @@ class PackagePriceSyncServiceTest extends TestCase
         $this->assertSame(1, $result->priceChanged);
         $package->refresh();
         $this->assertSame(800, $package->cost_price);
-        $this->assertSame(920, $package->reseller_cost_price); // round(800 * 1.15)
+        $this->assertSame(920, $package->standard_selling_price); // round(800 * 1.15)
     }
 
     public function test_propagates_price_even_when_the_package_is_already_inactive(): void
@@ -298,7 +298,7 @@ class PackagePriceSyncServiceTest extends TestCase
     public function test_floor_rejects_a_zero_price_and_leaves_the_package_untouched(): void
     {
         $supplier = $this->supplier();
-        $package = $this->package($supplier, $this->game(), ['cost_price' => 1000, 'reseller_cost_price' => 1150]);
+        $package = $this->package($supplier, $this->game(), ['cost_price' => 1000, 'standard_selling_price' => 1150]);
         $syncedAt = now();
         $this->rawProduct($supplier, $syncedAt, ['price_sen' => 0]);
 
@@ -326,7 +326,7 @@ class PackagePriceSyncServiceTest extends TestCase
         config(['packages.price_swing_threshold_percent' => 50]);
         $supplier = $this->supplier();
         $game = $this->game();
-        $package = $this->package($supplier, $game, ['cost_price' => 1000, 'reseller_cost_price' => 1150, 'markup_percent' => 15, 'is_active' => true]);
+        $package = $this->package($supplier, $game, ['cost_price' => 1000, 'standard_selling_price' => 1150, 'markup_percent' => 15, 'is_active' => true]);
         $run = PriceSyncRun::query()->create(['status' => 'running']);
         $syncedAt = now();
         $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1600]); // +60%, over threshold
@@ -349,8 +349,8 @@ class PackagePriceSyncServiceTest extends TestCase
         $this->assertSame($run->id, $pending->price_sync_run_id);
         $this->assertSame(1000, $pending->old_cost_price);
         $this->assertSame(1600, $pending->proposed_cost_price);
-        $this->assertSame(1150, $pending->old_reseller_cost_price);
-        $this->assertSame(1840, $pending->proposed_reseller_cost_price); // round(1600 * 1.15)
+        $this->assertSame(1150, $pending->old_standard_selling_price);
+        $this->assertSame(1840, $pending->proposed_standard_selling_price); // round(1600 * 1.15)
         $this->assertSame('pending', $pending->status);
     }
 
@@ -405,8 +405,8 @@ class PackagePriceSyncServiceTest extends TestCase
             'package_id' => $package->id,
             'old_cost_price' => 1000,
             'proposed_cost_price' => 1600,
-            'old_reseller_cost_price' => 1150,
-            'proposed_reseller_cost_price' => 1840,
+            'old_standard_selling_price' => 1150,
+            'proposed_standard_selling_price' => 1840,
             'status' => 'pending',
         ]);
         $syncedAt = now();
@@ -428,7 +428,7 @@ class PackagePriceSyncServiceTest extends TestCase
     {
         config(['packages.price_swing_threshold_percent' => 50]);
         $supplier = $this->supplier();
-        $package = $this->package($supplier, $this->game(), ['cost_price' => 0, 'reseller_cost_price' => 0]);
+        $package = $this->package($supplier, $this->game(), ['cost_price' => 0, 'standard_selling_price' => 0]);
         $syncedAt = now();
         $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1000]);
 

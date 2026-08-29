@@ -121,7 +121,7 @@ class CheckoutControllerTest extends TestCase
             'name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true,
         ], $gameOverrides));
         $package = Package::query()->create(array_merge([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ], $packageOverrides));
 
@@ -187,7 +187,7 @@ class CheckoutControllerTest extends TestCase
         $order = Order::query()->firstOrFail();
         $this->assertSame($game->id, $order->game_id);
         $this->assertSame($package->id, $order->package_id);
-        $this->assertSame(500, $order->selling_price); // reseller_cost_price + 0% reseller markup
+        $this->assertSame(500, $order->selling_price); // standard_selling_price + 0% reseller markup
         $this->assertSame('pr-checkout-test', $order->payment_ref);
     }
 

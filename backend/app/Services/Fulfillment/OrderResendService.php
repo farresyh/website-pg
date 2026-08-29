@@ -47,9 +47,9 @@ final class OrderResendService
 
         // Decision #3: the live reconciliation figures, captured at
         // the moment of this attempt — never the order's own frozen
-        // cost_price/reseller_cost_price (decision #2, untouched).
+        // cost_price/standard_selling_price (decision #2, untouched).
         $liveCostPrice = $targetPackage->cost_price;
-        $liveResellerCostPrice = $targetPackage->reseller_cost_price;
+        $liveStandardSellingPrice = $targetPackage->standard_selling_price;
         $priceDiff = $liveCostPrice - $order->cost_price;
 
         // Decision #5: platform_profit/reseller_profit are recomputed
@@ -61,7 +61,7 @@ final class OrderResendService
         // fulfill() credits the ledger with these exact figures.
         // final_amount/selling_price/transaction_fee are never part
         // of this update — decision #2/#5's immutability line.
-        $breakdown = $this->pricing->calculate($liveCostPrice, $liveResellerCostPrice, (float) $order->reseller_markup_pct);
+        $breakdown = $this->pricing->calculate($liveCostPrice, $liveStandardSellingPrice, (float) $order->reseller_markup_pct);
 
         $order->update([
             'package_id' => $targetPackage->id,
@@ -77,7 +77,7 @@ final class OrderResendService
             'order_id' => $result->id,
             'package_id' => $targetPackage->id,
             'cost_price_sen' => $liveCostPrice,
-            'reseller_cost_price_sen' => $liveResellerCostPrice,
+            'standard_selling_price_sen' => $liveStandardSellingPrice,
             'price_diff_sen' => $priceDiff,
             'outcome' => $result->delivery_status === DeliveryStatus::Delivered ? 'success' : 'failed',
             'supplier_response' => $result->supplier_response,

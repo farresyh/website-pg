@@ -37,7 +37,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Pricing (ORD-9, server-computed)</h2>
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Cost Price</dt><dd>{formatRm(order.cost_price)}</dd></div>
-          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Reseller Cost Price</dt><dd>{formatRm(order.reseller_cost_price)}</dd></div>
+          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Standard Selling Price</dt><dd>{formatRm(order.standard_selling_price)}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Selling Price</dt><dd>{formatRm(order.selling_price)}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Voucher Discount</dt><dd>{order.voucher_discount ? formatRm(order.voucher_discount) : "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Transaction Fee</dt><dd>{formatRm(order.transaction_fee)}</dd></div>
