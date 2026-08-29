@@ -325,7 +325,7 @@ export default function ProductManagerPage() {
                           <DataTableTHeadRow>
                             <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Name</DataTableTHeadCell>
                             <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Cost Price</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Standard Selling Price</DataTableTHeadCell>
                             <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
                           </DataTableTHeadRow>
                         </DataTableTHead>
@@ -341,7 +341,7 @@ export default function ProductManagerPage() {
                                   <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>
-                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.reseller_cost_price)}</DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.standard_selling_price)}</DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
                                   <Tag severity={pkg.is_active ? "success" : "secondary"}>
                                     {pkg.is_active ? "Active" : "Inactive"}

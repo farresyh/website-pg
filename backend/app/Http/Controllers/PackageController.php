@@ -29,7 +29,7 @@ class PackageController extends Controller
 
     /**
      * Founder revision, 2026-07-25: recomputes and stores
-     * `reseller_cost_price` from the new markup — matches the legacy
+     * `standard_selling_price` from the new markup — matches the legacy
      * reference system's inline "Markup % + Update" row pattern
      * (legacy-reference-notes.md), not a full edit form.
      */
@@ -39,7 +39,7 @@ class PackageController extends Controller
 
         $package->update([
             'markup_percent' => $markupPercent,
-            'reseller_cost_price' => $markup->calculateResellerCostPrice($package->cost_price, $markupPercent),
+            'standard_selling_price' => $markup->calculateStandardSellingPrice($package->cost_price, $markupPercent),
         ]);
         GameController::forgetPackagesCache($package->game_id);
 

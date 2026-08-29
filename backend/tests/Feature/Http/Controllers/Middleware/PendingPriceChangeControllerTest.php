@@ -14,7 +14,7 @@ use Tests\TestCase;
 
 /**
  * ADR-025 decision #8: the sixth Price Sync Center section — Approve
- * recomputes reseller_cost_price from the package's live markup_percent
+ * recomputes standard_selling_price from the package's live markup_percent
  * at approval time (decision #6, not whatever was frozen when the
  * anomaly was first flagged); Dismiss just reactivates at the old,
  * already-proven-safe price (decision #7).
@@ -53,7 +53,7 @@ class PendingPriceChangeControllerTest extends TestCase
             'game_id' => $game->id,
             'name' => '14 Diamond',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1150,
+            'standard_selling_price' => 1150,
             'markup_percent' => 15,
             'is_active' => false,
             'deactivated_reason' => 'price_anomaly',
@@ -69,8 +69,8 @@ class PendingPriceChangeControllerTest extends TestCase
             'package_id' => $package->id,
             'old_cost_price' => 1000,
             'proposed_cost_price' => 1600,
-            'old_reseller_cost_price' => 1150,
-            'proposed_reseller_cost_price' => 1840,
+            'old_standard_selling_price' => 1150,
+            'proposed_standard_selling_price' => 1840,
             'status' => 'pending',
         ], $overrides));
     }
@@ -103,7 +103,7 @@ class PendingPriceChangeControllerTest extends TestCase
     {
         $supplier = $this->supplier();
         $package = $this->flaggedPackage($supplier, $this->game(), ['markup_percent' => 20]); // admin edited markup since flagging
-        $pending = $this->pendingChange($package, ['proposed_cost_price' => 1600, 'proposed_reseller_cost_price' => 1840]);
+        $pending = $this->pendingChange($package, ['proposed_cost_price' => 1600, 'proposed_standard_selling_price' => 1840]);
         $this->actingAsAdmin();
 
         $response = $this->patchJson("/api/middleware/price-sync/pending-price-changes/{$pending->id}/approve");
@@ -111,7 +111,7 @@ class PendingPriceChangeControllerTest extends TestCase
         $response->assertOk();
         $package->refresh();
         $this->assertSame(1600, $package->cost_price);
-        $this->assertSame(1920, $package->reseller_cost_price); // round(1600 * 1.20), not the frozen 1840
+        $this->assertSame(1920, $package->standard_selling_price); // round(1600 * 1.20), not the frozen 1840
         $this->assertTrue($package->is_active);
         $this->assertNull($package->deactivated_reason);
         $this->assertNull($package->deactivated_at);

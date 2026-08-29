@@ -41,7 +41,7 @@ class CustomerAnalyticsServiceTest extends TestCase
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
@@ -337,8 +337,8 @@ class CustomerAnalyticsServiceTest extends TestCase
         $resellerB = Reseller::query()->create(['business_name' => 'Reseller B', 'markup_pct' => 5]);
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
-        $packageA = Package::query()->create(['game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 400, 'reseller_cost_price' => 450, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
-        $packageB = Package::query()->create(['game_id' => $game->id, 'name' => '172 Diamonds', 'cost_price' => 800, 'reseller_cost_price' => 850, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
+        $packageA = Package::query()->create(['game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 400, 'standard_selling_price' => 450, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $packageB = Package::query()->create(['game_id' => $game->id, 'name' => '172 Diamonds', 'cost_price' => 800, 'standard_selling_price' => 850, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
 
         $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-a', 'package_id' => $packageA->id, 'reseller_id' => $resellerA->id, 'final_amount' => 500]);
         $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-b', 'package_id' => $packageB->id, 'reseller_id' => $resellerB->id, 'final_amount' => 2000]);

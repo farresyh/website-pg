@@ -63,7 +63,7 @@ class GameTest extends TestCase
             'game_id' => $game->id,
             'name' => '100 Diamonds',
             'cost_price' => 421,
-            'reseller_cost_price' => 421,
+            'standard_selling_price' => 421,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => '31478',
         ]);
@@ -88,7 +88,7 @@ class GameTest extends TestCase
             'game_id' => $game->id,
             'name' => '100 Diamonds',
             'cost_price' => 421,
-            'reseller_cost_price' => 421,
+            'standard_selling_price' => 421,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => '31478',
         ]);

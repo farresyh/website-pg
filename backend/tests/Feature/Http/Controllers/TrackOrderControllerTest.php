@@ -24,7 +24,7 @@ class TrackOrderControllerTest extends TestCase
             'player_id' => '123456',
             'server_id' => '2005',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
@@ -40,7 +40,7 @@ class TrackOrderControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         $order = $this->order(['order_number' => 'KRS-TEST123', 'game_id' => $game->id, 'package_id' => $package->id]);
@@ -68,7 +68,7 @@ class TrackOrderControllerTest extends TestCase
 
         $response->assertOk();
         $keys = array_keys($response->json());
-        foreach (['cost_price', 'reseller_cost_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref', 'customer_email', 'customer_phone'] as $forbidden) {
+        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref', 'customer_email', 'customer_phone'] as $forbidden) {
             $this->assertNotContains($forbidden, $keys);
         }
     }

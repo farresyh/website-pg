@@ -47,7 +47,7 @@ class GameControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         $this->actingAsAdmin();
@@ -77,11 +77,11 @@ class GameControllerTest extends TestCase
         $otherGame = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
 
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         Package::query()->create([
-            'game_id' => $otherGame->id, 'name' => '14 Diamond', 'cost_price' => 100, 'reseller_cost_price' => 150,
+            'game_id' => $otherGame->id, 'name' => '14 Diamond', 'cost_price' => 100, 'standard_selling_price' => 150,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B',
         ]);
 
@@ -110,19 +110,19 @@ class GameControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
 
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '10209 Diamonds', 'denomination' => 10209, 'cost_price' => 61805, 'reseller_cost_price' => 71076,
+            'game_id' => $game->id, 'name' => '10209 Diamonds', 'denomination' => 10209, 'cost_price' => 61805, 'standard_selling_price' => 71076,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '13 + 1 Diamonds', 'denomination' => 14, 'cost_price' => 94, 'reseller_cost_price' => 103,
+            'game_id' => $game->id, 'name' => '13 + 1 Diamonds', 'denomination' => 14, 'cost_price' => 94, 'standard_selling_price' => 103,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '1252 + 194 Diamonds', 'denomination' => null, 'cost_price' => 9345, 'reseller_cost_price' => 10747,
+            'game_id' => $game->id, 'name' => '1252 + 194 Diamonds', 'denomination' => null, 'cost_price' => 9345, 'standard_selling_price' => 10747,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'C',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '1192 Diamonds', 'denomination' => 1192, 'cost_price' => 7281, 'reseller_cost_price' => 8373,
+            'game_id' => $game->id, 'name' => '1192 Diamonds', 'denomination' => 1192, 'cost_price' => 7281, 'standard_selling_price' => 8373,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'D',
         ]);
 
@@ -149,11 +149,11 @@ class GameControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
 
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 840, 'reseller_cost_price' => 966,
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 840, 'standard_selling_price' => 966,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B',
         ]);
 
@@ -187,7 +187,7 @@ class GameControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         $this->actingAsAdmin();
@@ -278,7 +278,7 @@ class GameControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         $this->actingAsAdmin();
@@ -377,7 +377,7 @@ class GameControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         $this->actingAsAdmin();

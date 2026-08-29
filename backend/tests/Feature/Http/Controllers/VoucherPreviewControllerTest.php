@@ -24,7 +24,7 @@ class VoucherPreviewControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
 

@@ -42,7 +42,7 @@ class SettingsControllerTest extends TestCase
             'supplier_package_ref' => 'GV' . random_int(100000, 999999),
             'name' => '100 Diamonds',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1100,
+            'standard_selling_price' => 1100,
             'markup_percent' => 10,
             'is_active' => true,
         ], $overrides));
@@ -186,13 +186,13 @@ class SettingsControllerTest extends TestCase
         $this->assertSame(1, $response->json('packages_updated'));
         $active->refresh();
         $this->assertEquals(20, $active->markup_percent);
-        $this->assertSame(1200, $active->reseller_cost_price);
+        $this->assertSame(1200, $active->standard_selling_price);
         $inactive->refresh();
         $this->assertEquals(10, $inactive->markup_percent);
         $this->assertDatabaseHas('price_change_logs', [
             'package_id' => $active->id,
-            'old_reseller_cost_price' => 1100,
-            'new_reseller_cost_price' => 1200,
+            'old_standard_selling_price' => 1100,
+            'new_standard_selling_price' => 1200,
         ]);
     }
 
@@ -200,7 +200,7 @@ class SettingsControllerTest extends TestCase
     {
         $this->actingAsSuperAdmin();
         $game = $this->game();
-        $this->package($game, ['markup_percent' => 20, 'reseller_cost_price' => 1200]);
+        $this->package($game, ['markup_percent' => 20, 'standard_selling_price' => 1200]);
 
         $response = $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20]);
 

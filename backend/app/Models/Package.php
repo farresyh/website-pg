@@ -12,7 +12,7 @@ class Package extends Model
         'name',
         'denomination',
         'cost_price',
-        'reseller_cost_price',
+        'standard_selling_price',
         'markup_percent',
         'is_active',
         'deactivated_reason',
@@ -25,7 +25,7 @@ class Package extends Model
     protected $casts = [
         'denomination' => 'integer',
         'cost_price' => 'integer',
-        'reseller_cost_price' => 'integer',
+        'standard_selling_price' => 'integer',
         'markup_percent' => 'decimal:2',
         'is_active' => 'boolean',
         'deactivated_at' => 'datetime',

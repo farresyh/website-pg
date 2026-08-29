@@ -6,23 +6,23 @@ final class PricingService
 {
     public function calculate(
         int $costPrice,
-        int $resellerCostPrice,
+        int $standardSellingPrice,
         float $resellerMarkupPct,
     ): PricingBreakdown {
-        if ($resellerCostPrice < $costPrice) {
+        if ($standardSellingPrice < $costPrice) {
             throw new InvalidPricingConfigException(
-                "reseller_cost_price ({$resellerCostPrice}) is below cost_price ({$costPrice})",
+                "standard_selling_price ({$standardSellingPrice}) is below cost_price ({$costPrice})",
             );
         }
 
-        $resellerMarkupAmount = (int) round($resellerCostPrice * $resellerMarkupPct / 100);
-        $sellingPrice = $resellerCostPrice + $resellerMarkupAmount;
+        $resellerMarkupAmount = (int) round($standardSellingPrice * $resellerMarkupPct / 100);
+        $sellingPrice = $standardSellingPrice + $resellerMarkupAmount;
 
         return new PricingBreakdown(
             costPrice: $costPrice,
-            resellerCostPrice: $resellerCostPrice,
+            standardSellingPrice: $standardSellingPrice,
             sellingPrice: $sellingPrice,
-            platformProfit: $resellerCostPrice - $costPrice,
+            platformProfit: $standardSellingPrice - $costPrice,
             resellerProfit: $resellerMarkupAmount,
         );
     }

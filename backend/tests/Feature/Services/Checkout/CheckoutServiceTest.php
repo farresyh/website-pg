@@ -48,7 +48,7 @@ class CheckoutServiceTest extends TestCase
             'playerId' => '123456',
             'serverId' => '1234',
             'costPriceSen' => 900,
-            'resellerCostPriceSen' => 900,
+            'standardSellingPriceSen' => 900,
             'resellerMarkupPct' => 0.0,
             'paymentFeeConfig' => new PaymentMethodFeeConfig(0.0, 100),
             'paymentMethod' => 'duitnow',

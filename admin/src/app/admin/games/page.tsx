@@ -355,7 +355,7 @@ export default function GamesPage() {
                             />
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                            {formatRm(pkg.reseller_cost_price)}
+                            {formatRm(pkg.standard_selling_price)}
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
                             <Button size="small" variant="outlined" onClick={() => setEditingPackage(pkg)}>Edit</Button>

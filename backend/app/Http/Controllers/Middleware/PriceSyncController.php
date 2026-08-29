@@ -92,8 +92,8 @@ class PriceSyncController extends Controller
                     'package' => ['id' => $log->package->id, 'name' => $log->package->name],
                     'old_cost_price' => $log->old_cost_price,
                     'new_cost_price' => $log->new_cost_price,
-                    'old_reseller_cost_price' => $log->old_reseller_cost_price,
-                    'new_reseller_cost_price' => $log->new_reseller_cost_price,
+                    'old_standard_selling_price' => $log->old_standard_selling_price,
+                    'new_standard_selling_price' => $log->new_standard_selling_price,
                 ]),
                 'deactivated_packages' => $gameDeactivations->values()->map(fn ($log) => [
                     'id' => $log->package->id,

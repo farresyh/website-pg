@@ -177,15 +177,15 @@ final class PackagePriceSyncService
 
     private function flagPriceAnomaly(Package $package, int $proposedCostPrice, ?int $priceSyncRunId): void
     {
-        $proposedResellerCostPrice = $this->markup->calculateResellerCostPrice($proposedCostPrice, (float) $package->markup_percent);
+        $proposedStandardSellingPrice = $this->markup->calculateStandardSellingPrice($proposedCostPrice, (float) $package->markup_percent);
 
         PendingPriceChange::query()->create([
             'price_sync_run_id' => $priceSyncRunId,
             'package_id' => $package->id,
             'old_cost_price' => $package->cost_price,
             'proposed_cost_price' => $proposedCostPrice,
-            'old_reseller_cost_price' => $package->reseller_cost_price,
-            'proposed_reseller_cost_price' => $proposedResellerCostPrice,
+            'old_standard_selling_price' => $package->standard_selling_price,
+            'proposed_standard_selling_price' => $proposedStandardSellingPrice,
         ]);
 
         Log::warning('Price Sync: flagged a price swing anomaly', [
@@ -210,20 +210,20 @@ final class PackagePriceSyncService
 
     private function propagatePrice(Package $package, int $newCostPrice, ?int $priceSyncRunId): void
     {
-        $newResellerCostPrice = $this->markup->calculateResellerCostPrice($newCostPrice, (float) $package->markup_percent);
+        $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice($newCostPrice, (float) $package->markup_percent);
 
         PriceChangeLog::query()->create([
             'price_sync_run_id' => $priceSyncRunId,
             'package_id' => $package->id,
             'old_cost_price' => $package->cost_price,
             'new_cost_price' => $newCostPrice,
-            'old_reseller_cost_price' => $package->reseller_cost_price,
-            'new_reseller_cost_price' => $newResellerCostPrice,
+            'old_standard_selling_price' => $package->standard_selling_price,
+            'new_standard_selling_price' => $newStandardSellingPrice,
         ]);
 
         $package->update([
             'cost_price' => $newCostPrice,
-            'reseller_cost_price' => $newResellerCostPrice,
+            'standard_selling_price' => $newStandardSellingPrice,
         ]);
     }
 

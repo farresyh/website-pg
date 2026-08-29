@@ -58,7 +58,7 @@ final class CheckoutService
     {
         $pricing = $this->pricing->calculate(
             $request->costPriceSen,
-            $request->resellerCostPriceSen,
+            $request->standardSellingPriceSen,
             $request->resellerMarkupPct,
         );
 
@@ -120,7 +120,7 @@ final class CheckoutService
                 'reseller_id' => $request->resellerId,
                 'voucher_id' => $voucherPreview?->voucherId,
                 'cost_price' => $pricing->costPrice,
-                'reseller_cost_price' => $pricing->resellerCostPrice,
+                'standard_selling_price' => $pricing->standardSellingPrice,
                 'reseller_markup_pct' => $request->resellerMarkupPct,
                 'selling_price' => $pricing->sellingPrice,
                 'voucher_discount' => $total->voucherDiscount,

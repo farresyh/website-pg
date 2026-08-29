@@ -66,7 +66,7 @@ class SupplierProductControllerTest extends TestCase
             'game_id' => $game->id,
             'name' => 'Already Promoted (Final Name)',
             'cost_price' => 1164,
-            'reseller_cost_price' => 1300,
+            'standard_selling_price' => 1300,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => 'GV733',
         ]);
@@ -144,7 +144,7 @@ class SupplierProductControllerTest extends TestCase
             'game_id' => $game->id,
             'name' => 'Promoted One',
             'cost_price' => 1164,
-            'reseller_cost_price' => 1300,
+            'standard_selling_price' => 1300,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => $linked->external_ref,
         ]);
@@ -314,7 +314,7 @@ class SupplierProductControllerTest extends TestCase
     }
 
     /**
-     * No `reseller_cost_price`/markup field is sent (founder revision) —
+     * No `standard_selling_price`/markup field is sent (founder revision) —
      * every promoted Package gets `config('packages.default_markup_percent')`
      * applied automatically; admin adjusts it afterward in /admin/games.
      */
@@ -338,7 +338,7 @@ class SupplierProductControllerTest extends TestCase
         $this->assertSame($game->id, $package->game_id);
         $this->assertSame(1164, $package->cost_price); // snapshotted from the raw price_sen
         $this->assertSame('15.00', (string) $package->markup_percent);
-        $this->assertSame(1339, $package->reseller_cost_price); // round(1164 * 1.15)
+        $this->assertSame(1339, $package->standard_selling_price); // round(1164 * 1.15)
         $this->assertSame($supplier->id, $package->supplier_id);
         $this->assertTrue($package->is_active);
     }

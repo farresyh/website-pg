@@ -28,7 +28,7 @@ class PackageControllerTest extends TestCase
             'game_id' => $game->id,
             'name' => '100 Diamonds',
             'cost_price' => 421,
-            'reseller_cost_price' => 500,
+            'standard_selling_price' => 500,
             'markup_percent' => 18.76,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => 'A',
@@ -56,24 +56,24 @@ class PackageControllerTest extends TestCase
     }
 
     /**
-     * `update` never touches markup/reseller_cost_price/is_active —
+     * `update` never touches markup/standard_selling_price/is_active —
      * those are dedicated endpoints (updateMarkup/updateStatus),
      * matching the legacy reference system's per-row inline actions.
      */
     public function test_update_does_not_change_markup_or_status_even_if_sent(): void
     {
-        $package = $this->package(['reseller_cost_price' => 500, 'markup_percent' => 18.76, 'is_active' => true]);
+        $package = $this->package(['standard_selling_price' => 500, 'markup_percent' => 18.76, 'is_active' => true]);
         $this->actingAsAdmin();
 
         $this->putJson("/api/packages/{$package->id}", [
             'name' => '100 Diamonds',
-            'reseller_cost_price' => 999,
+            'standard_selling_price' => 999,
             'markup_percent' => 99,
             'is_active' => false,
         ])->assertOk();
 
         $package->refresh();
-        $this->assertSame(500, $package->reseller_cost_price);
+        $this->assertSame(500, $package->standard_selling_price);
         $this->assertSame('18.76', (string) $package->markup_percent);
         $this->assertTrue($package->is_active);
     }
@@ -98,10 +98,10 @@ class PackageControllerTest extends TestCase
 
     /**
      * Founder revision, 2026-07-25: markup is set per-package as a %,
-     * and `reseller_cost_price` is recomputed and stored from it —
+     * and `standard_selling_price` is recomputed and stored from it —
      * never typed directly.
      */
-    public function test_update_markup_recomputes_and_stores_reseller_cost_price(): void
+    public function test_update_markup_recomputes_and_stores_standard_selling_price(): void
     {
         $package = $this->package(['cost_price' => 421]);
         $this->actingAsAdmin();
@@ -113,7 +113,7 @@ class PackageControllerTest extends TestCase
         $response->assertOk();
         $package->refresh();
         $this->assertSame('15.00', (string) $package->markup_percent);
-        $this->assertSame(484, $package->reseller_cost_price); // round(421 * 1.15)
+        $this->assertSame(484, $package->standard_selling_price); // round(421 * 1.15)
     }
 
     public function test_update_markup_rejects_a_negative_value(): void
