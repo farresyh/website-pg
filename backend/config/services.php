@@ -140,6 +140,23 @@ return [
         'webhook_public_key_ttl' => (int) env('CHIP_WEBHOOK_PUBLIC_KEY_TTL_SECONDS', 86400),
     ],
 
+    /**
+     * ADR-027's 2026-08-29 addendum, decisions 27/29 — email OTP
+     * delivery for membership verification (Meta/WhatsApp evaluated and
+     * rejected on cost per Decision 27). Base URL confirmed live against
+     * Plunk's own API reference (docs.useplunk.com/api-reference/overview,
+     * 2026-08-29) — a secret key (sk_*), Bearer auth. Genuinely new
+     * external dependency: no key exists yet, same "config placeholder
+     * until provisioned" pattern as Xendit/Gamevion when they were first
+     * wired.
+     */
+    'plunk' => [
+        'base_url' => env('PLUNK_BASE_URL', 'https://next-api.useplunk.com'),
+        'api_key' => env('PLUNK_API_KEY'),
+        'timeout' => (int) env('PLUNK_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('PLUNK_CONNECT_TIMEOUT_SECONDS', 5),
+    ],
+
     // Unofficial third-party MLBB validators (docs/prd.md research,
     // confirmed live 2026-07-25) — no API keys, since all three are
     // public unauthenticated form/JSON endpoints. Short timeouts since

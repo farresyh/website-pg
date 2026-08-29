@@ -26,6 +26,7 @@ use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
+use App\Http\Controllers\MembershipOtpController;
 use App\Http\Controllers\Middleware\BackupController;
 use App\Http\Controllers\Middleware\CurrencyRateController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
@@ -119,6 +120,17 @@ Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])-
 // guarantee; this throttle only blunts a flood, same convention as
 // checkout/validate-player.
 Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])->middleware('throttle:10,1,review');
+
+// ADR-027's 2026-08-29 addendum, decisions 23/26/27 — membership
+// identity verification (email + OTP, no login/account). `send` uses
+// the named `otp-request` limiter (registered in AppServiceProvider,
+// 3/hour keyed by email — not IP, unlike every other throttle: route
+// in this file, since the abuse case is flooding one target inbox).
+// `verify` gets a plain IP throttle same shape as checkout/validate
+// -player; OtpService's own 5-attempt lockout is the real brute-force
+// defense for a submitted code.
+Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
+Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
 
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
