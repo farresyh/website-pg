@@ -161,38 +161,49 @@ class MembershipPlanControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_preview_returns_empty_array_when_no_active_packages_exist(): void
+    public function test_preview_returns_null_package_name_when_no_active_packages_exist(): void
     {
         $this->actingAsSuperAdmin();
 
         $this->getJson('/api/membership-plans/preview?discount_percent=50')
             ->assertOk()
-            ->assertJson([]);
+            ->assertJson(['package_name' => null]);
     }
 
     /**
      * Reuses the exact worked example already proven at the unit level
      * (MembershipPricingServiceTest) — this test's real job is proving
      * the preview endpoint wires real package data through that same
-     * formula correctly, not re-deriving the math.
+     * formula correctly, not re-deriving the math. Founder ask,
+     * 2026-08-29: the markup% breakdown (package markup -> discount ->
+     * effective markup) must be visible too, not just the final RM
+     * numbers.
      */
-    public function test_preview_computes_member_price_and_margin_forgone_for_sample_packages(): void
+    public function test_preview_computes_markup_breakdown_and_margin_forgone_for_one_sample_package(): void
     {
         $this->actingAsSuperAdmin();
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
         $this->package($game, ['cost_price' => 1000, 'reseller_cost_price' => 1150, 'markup_percent' => 15]);
 
-        $response = $this->getJson('/api/membership-plans/preview?discount_percent=80')->assertOk();
+        $row = $this->getJson('/api/membership-plans/preview?discount_percent=80')->assertOk()->json();
 
-        $row = $response->json()[0];
+        $this->assertEquals(15.0, $row['package_markup_percent']);
+        $this->assertEquals(80.0, $row['discount_percent']);
+        // 15% * (1 - 0.8) = 3% effective markup.
+        $this->assertEquals(3.0, $row['effective_markup_percent']);
         // Normal: Platform Owner markup_pct=0 (ADR-013) -> selling_price = reseller_cost_price = 1150.
         $this->assertSame(1150, $row['normal_price_sen']);
-        // Member: effective markup 15% * (1-0.8) = 3% -> round(1000 * 1.03) = 1030.
+        // Member: round(1000 * 1.03) = 1030.
         $this->assertSame(1030, $row['member_price_sen']);
         $this->assertSame(120, $row['margin_forgone_sen']);
     }
 
-    public function test_preview_samples_cheapest_median_and_priciest_active_packages_only(): void
+    /**
+     * Founder follow-up, 2026-08-29: one worked example is enough, not a
+     * list of packages — the median-priced active package specifically
+     * (not the cheapest/priciest edge case), so "typical" is what's shown.
+     */
+    public function test_preview_samples_the_median_priced_active_package_only(): void
     {
         $this->actingAsSuperAdmin();
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
@@ -201,9 +212,9 @@ class MembershipPlanControllerTest extends TestCase
         $this->package($game, ['name' => 'Priciest', 'cost_price' => 5000, 'reseller_cost_price' => 5750]);
         $this->package($game, ['name' => 'Inactive', 'cost_price' => 1, 'reseller_cost_price' => 1, 'is_active' => false]);
 
-        $response = $this->getJson('/api/membership-plans/preview?discount_percent=50')->assertOk();
+        $row = $this->getJson('/api/membership-plans/preview?discount_percent=50')->assertOk()->json();
 
-        $this->assertSame(['Cheapest', 'Middle', 'Priciest'], collect($response->json())->pluck('package_name')->all());
+        $this->assertSame('Middle', $row['package_name']);
     }
 
     public function test_preview_rejects_a_regular_admin(): void

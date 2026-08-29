@@ -76,4 +76,25 @@ class MembershipPricingServiceTest extends TestCase
 
         $this->assertSame(1000, $memberPriceSen);
     }
+
+    /**
+     * Exposed as its own method (founder ask, 2026-08-29): the admin
+     * preview shows this breakdown explicitly (package markup -> tier
+     * discount -> effective markup), not just the final RM prices —
+     * calculateMemberPrice() must compute from the exact same number,
+     * never a second derivation of the formula.
+     */
+    public function test_effective_markup_percent_matches_the_worked_example(): void
+    {
+        $service = new MembershipPricingService();
+
+        $this->assertSame(3.0, $service->effectiveMarkupPercent(15.0, 80.0));
+    }
+
+    public function test_effective_markup_percent_floors_at_zero(): void
+    {
+        $service = new MembershipPricingService();
+
+        $this->assertSame(0.0, $service->effectiveMarkupPercent(15.0, 150.0));
+    }
 }

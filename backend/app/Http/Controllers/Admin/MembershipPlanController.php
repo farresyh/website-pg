@@ -15,7 +15,6 @@ use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 
 /**
  * ADR-027's 2026-08-29 addendum, decisions 14/15: /admin/membership's
@@ -38,13 +37,17 @@ class MembershipPlanController extends Controller
 
     /**
      * Founder ask, 2026-08-29: before saving a discount_percent, show
-     * exactly what it does to real packages — the margin an admin gives
-     * up per unit sold ("kos yang ditanggung") isn't visible from a
-     * bare percentage alone. Reuses PricingService/MembershipPricingService
-     * directly rather than re-deriving the formula for a preview — the
-     * one thing this must never do is drift from what CatalogController
-     * actually charges. Read-only, not tied to a saved tier row, so the
-     * in-progress (unsaved) form value can be previewed before "Save Tier".
+     * exactly what it does — both the markup% breakdown (package markup
+     * -> tier discount -> effective markup, since the discount reduces
+     * markup%, not price directly) and the real margin given up per sale
+     * ("kos yang ditanggung"), not just a bare percentage or a final RM
+     * number alone. One representative package (the founder's own
+     * follow-up: a single worked example is enough, not a package list),
+     * not tied to a saved tier row — the in-progress (unsaved) form
+     * value can be previewed before "Save Tier". Reuses
+     * PricingService/MembershipPricingService directly, never a second
+     * derivation of the formula — must never drift from what
+     * CatalogController actually charges.
      */
     public function preview(Request $request): JsonResponse
     {
@@ -52,54 +55,58 @@ class MembershipPlanController extends Controller
             'discount_percent' => ['required', 'numeric', 'min:0'],
         ]);
         $discountPercent = (float) $validated['discount_percent'];
+
+        $package = $this->samplePackage();
+        if ($package === null) {
+            // A consistent top-level shape (package_name: null), not a
+            // bare JSON null — Laravel's response()->json(null) actually
+            // serializes to `{}`, an ambiguous signal a consumer would
+            // have to special-case; this keeps the contract one shape.
+            return response()->json(['package_name' => null]);
+        }
+
         $reseller = Reseller::platformOwner();
+        $packageMarkupPercent = (float) $package->markup_percent;
+        $normalPriceSen = $this->pricing->calculate(
+            $package->cost_price,
+            $package->reseller_cost_price,
+            (float) $reseller->markup_pct,
+        )->sellingPrice;
+        $effectiveMarkupPercent = $this->membershipPricing->effectiveMarkupPercent($packageMarkupPercent, $discountPercent);
+        $memberPriceSen = $this->membershipPricing->calculateMemberPrice(
+            $package->cost_price,
+            $packageMarkupPercent,
+            $discountPercent,
+        );
 
-        $rows = $this->samplePackages()->map(function (Package $package) use ($discountPercent, $reseller) {
-            $normalPriceSen = $this->pricing->calculate(
-                $package->cost_price,
-                $package->reseller_cost_price,
-                (float) $reseller->markup_pct,
-            )->sellingPrice;
-            $memberPriceSen = $this->membershipPricing->calculateMemberPrice(
-                $package->cost_price,
-                (float) $package->markup_percent,
-                $discountPercent,
-            );
-
-            return [
-                'package_name' => $package->name,
-                'normal_price_sen' => $normalPriceSen,
-                'member_price_sen' => $memberPriceSen,
-                'margin_forgone_sen' => $normalPriceSen - $memberPriceSen,
-                'savings_percent' => $normalPriceSen > 0
-                    ? round((1 - $memberPriceSen / $normalPriceSen) * 100, 1)
-                    : 0.0,
-            ];
-        });
-
-        return response()->json($rows->values());
+        return response()->json([
+            'package_name' => $package->name,
+            'package_markup_percent' => round($packageMarkupPercent, 2),
+            'discount_percent' => round($discountPercent, 2),
+            'effective_markup_percent' => $effectiveMarkupPercent,
+            'normal_price_sen' => $normalPriceSen,
+            'member_price_sen' => $memberPriceSen,
+            'margin_forgone_sen' => $normalPriceSen - $memberPriceSen,
+            'savings_percent' => $normalPriceSen > 0
+                ? round((1 - $memberPriceSen / $normalPriceSen) * 100, 1)
+                : 0.0,
+        ]);
     }
 
     /**
-     * A small, representative spread (cheapest/median/priciest active
-     * package) rather than every package or an admin-driven picker —
-     * enough for a sanity check on the formula, not a full pricing audit.
-     * `unique('id')` collapses duplicates when fewer than 3 distinct
-     * packages exist, down to as few as one row (or zero).
+     * The median-priced active package — "typical," not the cheapest or
+     * most expensive edge case, per the founder's own "just show me one
+     * example" ask.
      */
-    private function samplePackages(): Collection
+    private function samplePackage(): ?Package
     {
         $active = Package::query()->where('is_active', true)->orderBy('cost_price')->get();
 
         if ($active->isEmpty()) {
-            return collect();
+            return null;
         }
 
-        return collect([
-            $active->first(),
-            $active[intdiv($active->count(), 2)],
-            $active->last(),
-        ])->unique('id')->values();
+        return $active[intdiv($active->count(), 2)];
     }
 
     /**
