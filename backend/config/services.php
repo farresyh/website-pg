@@ -153,6 +153,8 @@ return [
     'plunk' => [
         'base_url' => env('PLUNK_BASE_URL', 'https://next-api.useplunk.com'),
         'api_key' => env('PLUNK_API_KEY'),
+        'from_email' => env('PLUNK_FROM_EMAIL', 'no-reply@send.fixfastapp.com'),
+        'from_name' => env('PLUNK_FROM_NAME', 'FixFastApp'),
         'timeout' => (int) env('PLUNK_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('PLUNK_CONNECT_TIMEOUT_SECONDS', 5),
     ],

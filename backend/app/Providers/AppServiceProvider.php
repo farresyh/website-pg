@@ -207,6 +207,8 @@ class AppServiceProvider extends ServiceProvider
             return new PlunkMailer(
                 baseUrl: $config['base_url'],
                 apiKey: (string) $config['api_key'],
+                fromEmail: $config['from_email'],
+                fromName: $config['from_name'],
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
             );

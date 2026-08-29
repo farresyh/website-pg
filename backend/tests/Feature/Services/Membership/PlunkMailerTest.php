@@ -11,10 +11,10 @@ use Tests\TestCase;
  * ADR-027's 2026-08-29 addendum, decision 27/29: built against Plunk's
  * real API reference (docs.useplunk.com/api-reference/overview,
  * confirmed live 2026-08-29) — POST {base_url}/v1/send, Bearer auth,
- * `to`/`subject`/`body` fields. No real PLUNK_API_KEY exists yet
- * (founder's own external provisioning step, same as Xendit/Gamevion
- * originally) — this test never hits the real API, only proves the
- * request shape/error handling via Http::fake().
+ * `to`/`subject`/`body`/`from` fields (`from` required, sender domain
+ * must be verified; send.fixfastapp.com provisioned 2026-08-29). The
+ * test never hits the real API — it only proves the request
+ * shape/error handling via Http::fake().
  */
 class PlunkMailerTest extends TestCase
 {
@@ -23,6 +23,8 @@ class PlunkMailerTest extends TestCase
         return new PlunkMailer(
             baseUrl: 'https://next-api.useplunk.com',
             apiKey: 'sk_test_fake_key',
+            fromEmail: 'no-reply@send.fixfastapp.com',
+            fromName: 'FixFastApp',
             timeoutSeconds: 5,
             connectTimeoutSeconds: 2,
         );
@@ -37,6 +39,7 @@ class PlunkMailerTest extends TestCase
         Http::assertSent(function ($request) {
             return $request->url() === 'https://next-api.useplunk.com/v1/send'
                 && $request->hasHeader('Authorization', 'Bearer sk_test_fake_key')
+                && $request['from'] === ['name' => 'FixFastApp', 'email' => 'no-reply@send.fixfastapp.com']
                 && $request['to'] === 'member@example.com'
                 && str_contains($request['body'], '123456');
         });
