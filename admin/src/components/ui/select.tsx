@@ -19,9 +19,10 @@ function Select({ ...props }: SelectRootProps) {
     return <PRSelect.Root {...props} />;
 }
 
-function SelectTrigger({ className, ...props }: SelectTriggerProps) {
+function SelectTrigger({ className, type, ...props }: SelectTriggerProps) {
     return (
         <PRSelect.Trigger
+            type={type ?? 'button'}
             className={cn(
                 'flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-theme-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90',
                 className

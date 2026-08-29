@@ -102,6 +102,16 @@ Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('thro
 // revealing anything either way.
 Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware('throttle:10,1,voucher-preview');
 
+// Bug fix, 2026-08-30: read-only Package Price/Transaction Fee/Voucher
+// Discount/Total breakdown, fetched by the storefront's Order Summary
+// sidebar and Review Modal on every package/channel/voucher change —
+// see CheckoutController::previewTotal()'s own doc comment. Looser
+// than checkout/voucher-preview's 10/min: this is normal browsing
+// telemetry (no gateway call, no guessable secret, unlike a voucher
+// code), debounced client-side, but still worth a limit since it's a
+// public unauthenticated endpoint doing real DB work.
+Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware('throttle:30,1,checkout-preview-totals');
+
 // Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
 // as checkout above) — backend half of the Player-ID Validation
 // follow-up, docs/prd.md §14. Same throttle as checkout: this hits

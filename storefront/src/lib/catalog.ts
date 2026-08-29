@@ -49,6 +49,15 @@ const CatalogPackageWireSchema = z.object({
    * rather than `.nullable()`.
    */
   member_price_sen: z.number().optional(),
+  /**
+   * True only when `member_price_sen` reflects the caller's own
+   * resolved membership tier (a valid session token was sent) — absent
+   * for the anonymous "best tier" anchor. Bug fix, 2026-08-30: without
+   * this, a logged-in Tier 1 member's storefront always showed Tier 2's
+   * anchor price pre-payment even though checkout charged them
+   * correctly at Tier 1 — see CatalogController::publicPackage().
+   */
+  member_price_personalized: z.boolean().optional(),
 });
 
 type CatalogPackageWire = z.infer<typeof CatalogPackageWireSchema>;
@@ -84,6 +93,8 @@ export interface GamePackage {
   priceRm: number;
   /** ADR-027's 2026-08-29 addendum, decision 21 — absent when the membership feature is off. */
   memberPriceRm?: number;
+  /** True only when `memberPriceRm` is this specific customer's real tier price, safe to use as a payable total. */
+  memberPricePersonalized?: boolean;
 }
 
 function toGame(wire: CatalogGameWire): Game {
@@ -118,6 +129,7 @@ function toPackage(wire: CatalogPackageWire): GamePackage {
     name: wire.name,
     priceRm: wire.selling_price_sen / 100,
     memberPriceRm: wire.member_price_sen != null ? wire.member_price_sen / 100 : undefined,
+    memberPricePersonalized: wire.member_price_personalized === true,
   };
 }
 
@@ -140,9 +152,16 @@ export async function getGame(slug: string): Promise<GameDetail | null> {
   }
 }
 
-export async function getGamePackages(slug: string): Promise<GamePackage[]> {
+/**
+ * `membershipToken` (ADR-027, optional) personalizes `member_price_sen`
+ * to the caller's own tier instead of the anonymous "best tier"
+ * anchor — see CatalogController::resolveMemberPlan(). Omit it for the
+ * initial SSR fetch (no localStorage access server-side); OrderForm
+ * re-fetches client-side once a membership token is available.
+ */
+export async function getGamePackages(slug: string, membershipToken?: string): Promise<GamePackage[]> {
   const path = `/api/catalog/games/${encodeURIComponent(slug)}/packages`;
-  const raw = await apiFetch<unknown>(path);
+  const raw = await apiFetch<unknown>(path, membershipToken ? { token: membershipToken } : undefined);
   const wire = parseResponse(z.array(CatalogPackageWireSchema), raw, "CatalogPackageWire[]", path);
   return wire.map(toPackage);
 }

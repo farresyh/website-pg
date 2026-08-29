@@ -1,17 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import {
   validatePlayer,
   submitCheckout,
   extractCheckoutRedirectUrl,
+  previewCheckoutTotal,
   CheckoutContactSchema,
   type ValidatePlayerResult,
+  type CheckoutTotalPreview,
 } from "@/lib/checkout";
-import type { Game, GamePackage } from "@/lib/catalog";
+import { getGamePackages, type Game, type GamePackage } from "@/lib/catalog";
 import { getMembershipToken } from "@/lib/membership-session";
+import { useMembershipToken } from "@/hooks/useMembershipToken";
 import type { PaymentChannel } from "@/lib/payment-methods";
 import Stepper, { type StepInfo } from "@/components/order/Stepper";
 import StepCard from "@/components/order/StepCard";
@@ -28,6 +31,7 @@ const CHANNEL_GROUPS: { key: "fpx" | "ewallet" | "card"; label: string }[] = [
 
 interface OrderFormProps {
   game: Game;
+  /** SSR-fetched, anonymous "best tier" anchor pricing — swapped for the member's real tier pricing client-side once a membership token is known. */
   packages: GamePackage[];
   paymentChannels: PaymentChannel[];
 }
@@ -42,8 +46,45 @@ interface OrderFormProps {
  * real last checkpoint (T&C + contact details) before submitCheckout()
  * ever fires.
  */
-export default function OrderForm({ game, packages, paymentChannels }: OrderFormProps) {
+export default function OrderForm({ game, packages: initialPackages, paymentChannels }: OrderFormProps) {
   const router = useRouter();
+  const membershipToken = useMembershipToken();
+
+  // Bug fix, 2026-08-30: the SSR-fetched `packages` prop is always the
+  // anonymous "best tier" anchor (no localStorage access at render
+  // time on the server) — a logged-in member otherwise saw Tier 2's
+  // price throughout Step 2/Review even when their own tier is Tier 1.
+  // Re-fetch once a membership token is available, personalized to the
+  // caller's own tier (CatalogController::resolveMemberPlan()). Keyed
+  // by which token/slug it was fetched for (rather than resetting
+  // state synchronously in the effect) so a stale fetch never lingers
+  // if the token or game changes, and falls back to the anonymous
+  // `initialPackages` for every other case, including no token.
+  const [personalized, setPersonalized] = useState<{ token: string; slug: string; packages: GamePackage[] } | null>(
+    null,
+  );
+  const packages =
+    personalized && personalized.token === membershipToken && personalized.slug === game.slug
+      ? personalized.packages
+      : initialPackages;
+
+  useEffect(() => {
+    if (!membershipToken) return;
+
+    let cancelled = false;
+    getGamePackages(game.slug, membershipToken)
+      .then((fetched) => {
+        if (!cancelled) setPersonalized({ token: membershipToken, slug: game.slug, packages: fetched });
+      })
+      .catch(() => {
+        // Personalization is a display nicety, not the checkout path
+        // (ORD-9) — a failed re-fetch just leaves the anonymous anchor
+        // pricing on screen rather than breaking the order flow.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [membershipToken, game.slug]);
 
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
   const [playerId, setPlayerIdRaw] = useState("");
@@ -83,6 +124,52 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
 
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
   const selectedChannel = paymentChannels.find((c) => c.channelCode === channelCode) ?? null;
+
+  // Bug fix, 2026-08-30: Order Summary/Review Modal used to compute
+  // "Total" as just `package price - voucher discount`, silently
+  // omitting the transaction fee the real charge always includes.
+  // Fetches the real breakdown (CheckoutTotalService, via
+  // previewCheckoutTotal()) once a package AND channel are both chosen
+  // — a channel's fee config is per-channel, so there's nothing to
+  // preview before then. Keyed by every input that affects the result
+  // (rather than resetting state synchronously in the effect) so a
+  // stale preview is never shown mid-refetch or after a selection
+  // changes back.
+  const totalPreviewKey =
+    selectedPackage && channelCode
+      ? JSON.stringify([selectedPackage.id, channelCode, voucherCode, membershipToken, customerEmail, customerPhone])
+      : null;
+  const [totalPreview, setTotalPreview] = useState<{ key: string; result: CheckoutTotalPreview } | null>(null);
+  const preview = totalPreview && totalPreview.key === totalPreviewKey ? totalPreview.result : null;
+
+  useEffect(() => {
+    if (!totalPreviewKey || !selectedPackage || !channelCode) return;
+
+    let cancelled = false;
+    previewCheckoutTotal(
+      {
+        game_id: game.id,
+        package_id: selectedPackage.id,
+        channel_code: channelCode,
+        voucher_code: voucherCode ?? undefined,
+        customer_email: voucherCode ? customerEmail : undefined,
+        customer_phone: voucherCode ? customerPhone : undefined,
+      },
+      membershipToken ?? undefined,
+    )
+      .then((result) => {
+        if (!cancelled) setTotalPreview({ key: totalPreviewKey, result });
+      })
+      .catch(() => {
+        // A failed preview just leaves the sidebar/modal without a fee
+        // breakdown (falls back to package-price-only display) rather
+        // than blocking the order flow — the real charge is still
+        // computed correctly server-side at checkout regardless (ORD-9).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [totalPreviewKey, game.id, selectedPackage, channelCode, voucherCode, membershipToken, customerEmail, customerPhone]);
 
   // Editing the ID after Step 1 was completed invalidates that
   // completion — re-lock downstream steps rather than trust stale state.
@@ -248,6 +335,7 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
       <OrderSummarySidebar
         game={game}
         selectedPackage={selectedPackage}
+        preview={preview}
         playerId={playerId}
         serverId={game.extraField ? serverId : ""}
         ready={readyForReview}
@@ -260,6 +348,7 @@ export default function OrderForm({ game, packages, paymentChannels }: OrderForm
           onClose={() => setReviewOpen(false)}
           game={game}
           pkg={selectedPackage}
+          preview={preview}
           playerId={playerId}
           serverId={game.extraField ? serverId : ""}
           channelLabel={selectedChannel.label}

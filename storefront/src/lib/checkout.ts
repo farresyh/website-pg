@@ -118,6 +118,43 @@ export async function submitCheckout(payload: CheckoutPayload, membershipToken?:
 }
 
 /**
+ * Bug fix, 2026-08-30: the storefront's Order Summary/Review Modal
+ * "Total" never included the transaction fee — only the backend's real
+ * charge (CheckoutService, at the moment of payment) did, so the
+ * customer was always charged more than the number they saw before
+ * clicking "Confirm & Pay" whenever the chosen channel had a nonzero
+ * fee. This mirrors `previewVoucher()`'s read-only pattern (no Order,
+ * no gateway call, no voucher lock) but covers the full breakdown —
+ * package price (member-aware), transaction fee, voucher discount, and
+ * the real total — computed by `CheckoutTotalService`, the exact same
+ * formula the real charge uses (`CheckoutController::previewTotal()`).
+ */
+const CheckoutTotalPreviewSchema = z.object({
+  selling_price_sen: z.number(),
+  member_discount_percent: z.number().nullable(),
+  voucher_discount_sen: z.number(),
+  transaction_fee_sen: z.number(),
+  final_amount_sen: z.number(),
+});
+
+export type CheckoutTotalPreview = z.infer<typeof CheckoutTotalPreviewSchema>;
+
+export interface CheckoutTotalPreviewParams {
+  game_id: number;
+  package_id: number;
+  channel_code: string;
+  voucher_code?: string;
+  customer_email?: string;
+  customer_phone?: string;
+}
+
+export async function previewCheckoutTotal(params: CheckoutTotalPreviewParams, membershipToken?: string) {
+  const path = "/api/checkout/preview-totals";
+  const raw = await apiFetch<unknown>(path, { method: "POST", body: params, token: membershipToken });
+  return parseResponse(CheckoutTotalPreviewSchema, raw, "CheckoutTotalPreview", path);
+}
+
+/**
  * Extracts a redirect URL from Xendit's real `actions` shape (an array
  * of `{type, descriptor, value}` — confirmed live against a real
  * MAYB2U_FPX payment request, 2026-07-29) — `descriptor: "WEB_URL"` is
