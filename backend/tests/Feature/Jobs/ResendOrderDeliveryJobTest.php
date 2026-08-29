@@ -15,6 +15,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
+use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -49,6 +50,7 @@ class ResendOrderDeliveryJobTest extends TestCase
                 new VoucherService(new LedgerService()),
             ),
             new PricingService(),
+            new MembershipPricingService(),
         );
     }
 

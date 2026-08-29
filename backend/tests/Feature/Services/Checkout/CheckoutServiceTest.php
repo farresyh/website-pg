@@ -14,7 +14,9 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
+use App\Services\Membership\MembershipQuotaService;
 use App\Services\Pricing\CheckoutTotalService;
+use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingService;
 use App\Services\Ledger\LedgerService;
@@ -36,6 +38,8 @@ class CheckoutServiceTest extends TestCase
             new CheckoutTotalService(),
             new OrderNumberService(),
             new VoucherService(new LedgerService()),
+            new MembershipPricingService(),
+            new MembershipQuotaService(),
         );
     }
 
@@ -49,6 +53,7 @@ class CheckoutServiceTest extends TestCase
             'serverId' => '1234',
             'costPriceSen' => 900,
             'standardSellingPriceSen' => 900,
+            'packageMarkupPercent' => 0.0,
             'resellerMarkupPct' => 0.0,
             'paymentFeeConfig' => new PaymentMethodFeeConfig(0.0, 100),
             'paymentMethod' => 'duitnow',

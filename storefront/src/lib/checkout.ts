@@ -97,7 +97,15 @@ const CheckoutResultSchema = z.object({
 
 export type CheckoutResult = z.infer<typeof CheckoutResultSchema>;
 
-export async function submitCheckout(payload: CheckoutPayload) {
+/**
+ * `membershipToken` (ADR-027 Phase 6): forwarded as `Authorization:
+ * Bearer` (apiFetch's own `token` option) when the caller has one —
+ * CheckoutController silently applies member pricing if it resolves to
+ * a valid, quota-sufficient membership, and checks out at the standard
+ * price exactly as a guest otherwise. Optional and best-effort: an
+ * expired/garbage token never blocks checkout (base ADR decision 10).
+ */
+export async function submitCheckout(payload: CheckoutPayload, membershipToken?: string) {
   const path = "/api/checkout";
   // Re-validates the full payload right before it leaves the app — the
   // contact fields were already checked against CheckoutContactSchema
@@ -105,7 +113,7 @@ export async function submitCheckout(payload: CheckoutPayload) {
   // rest of the shape (e.g. a missing idempotency_key) loudly, in dev,
   // instead of round-tripping to the backend to find out.
   const body = CheckoutPayloadSchema.parse(payload);
-  const raw = await apiFetch<unknown>(path, { method: "POST", body });
+  const raw = await apiFetch<unknown>(path, { method: "POST", body, token: membershipToken });
   return parseResponse(CheckoutResultSchema, raw, "CheckoutResult", path);
 }
 

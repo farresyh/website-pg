@@ -4,9 +4,13 @@ namespace Tests\Feature\Http\Controllers;
 
 use App\Models\BlacklistEntry;
 use App\Models\Game;
+use App\Models\Membership;
+use App\Models\MembershipPlan;
+use App\Models\MembershipQuotaDebit;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
+use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
 use App\Models\PlayerValidatorProfile;
 use App\Models\Reseller;
@@ -15,6 +19,7 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Jobs\FulfillOrderJob;
 use App\Services\Fraud\BlacklistEntryType;
+use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
@@ -818,5 +823,221 @@ class CheckoutControllerTest extends TestCase
         $response->assertJsonValidationErrors('voucher_code');
         $this->assertSame(0, Order::query()->count());
         $this->assertSame(1000, $voucher->fresh()->remaining);
+    }
+
+    /**
+     * ADR-027 Phase 6. cost_price=1000, markup_percent=20 ->
+     * standard_selling_price=1200 (guest/standard price). Tier 2's
+     * seeded discount_percent=80 -> effectiveMarkupPercent = 20*(1-0.8)
+     * = 4% -> member price = 1000*1.04 = 1040.
+     */
+    private function memberPackage(): array
+    {
+        return $this->gameAndPackage([], [
+            'cost_price' => 1000,
+            'standard_selling_price' => 1200,
+            'markup_percent' => 20,
+        ]);
+    }
+
+    private function membershipToken(string $email): string
+    {
+        return app(MembershipSessionTokenService::class)->issue($email);
+    }
+
+    public function test_a_member_with_sufficient_quota_gets_the_member_price_and_decrements_quota(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        $membership = Membership::query()->create([
+            'email' => 'member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 2000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = $this->membershipToken('member@example.com');
+
+        $response = $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package, ['customer_email' => 'member@example.com']),
+            ['Authorization' => "Bearer {$token}"],
+        );
+
+        $response->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('member', $order->pricing_basis->value);
+        $this->assertSame($membership->id, $order->membership_id);
+        $this->assertSame('80.00', $order->member_discount_percent);
+        $this->assertSame(1200, $order->normal_selling_price);
+        $this->assertSame(1040, $order->selling_price);
+        $this->assertSame(40, $order->platform_profit); // 1040 - 1000
+        $this->assertSame(0, $order->reseller_profit);
+
+        $this->assertSame(960, $membership->fresh()->quota_remaining_sen); // 2000 - 1040
+        $debit = MembershipQuotaDebit::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame(1040, $debit->amount_sen);
+    }
+
+    /**
+     * ADR-027's 2026-08-29 continued addendum, decision 4: a member
+     * order's `reseller_profit` is always 0 — the platform absorbs the
+     * entire member discount itself, never the reseller's own margin —
+     * regardless of what `Reseller.markup_pct` is actually configured
+     * to. Proven here against a genuinely nonzero markup (10%), with a
+     * standard order under the identical markup as the contrasting
+     * control case: same reseller, same package, same 10% — member
+     * gets 0, standard gets a real cut.
+     */
+    public function test_reseller_profit_is_always_zero_for_a_member_order_even_when_reseller_markup_is_nonzero(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        Reseller::platformOwner()->update(['markup_pct' => 10]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        Membership::query()->create([
+            'email' => 'markup-member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 2000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = $this->membershipToken('markup-member@example.com');
+
+        $memberResponse = $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package, ['customer_email' => 'markup-member@example.com']),
+            ['Authorization' => "Bearer {$token}"],
+        );
+        $memberResponse->assertCreated();
+        $memberOrder = Order::query()->where('customer_email', 'markup-member@example.com')->firstOrFail();
+
+        $this->assertSame('member', $memberOrder->pricing_basis->value);
+        $this->assertSame('10.00', $memberOrder->reseller_markup_pct); // snapshotted, but unused for profit
+        $this->assertSame(1040, $memberOrder->selling_price); // unaffected by reseller markup
+        $this->assertSame(0, $memberOrder->reseller_profit);
+
+        // Control case: same reseller markup, no membership token — reseller must earn a real cut.
+        $standardResponse = $this->postJson('/api/checkout', $this->payload($game, $package, [
+            'customer_email' => 'no-member@example.com',
+            'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+        ]));
+        $standardResponse->assertCreated();
+        $standardOrder = Order::query()->where('customer_email', 'no-member@example.com')->firstOrFail();
+
+        $this->assertSame('standard', $standardOrder->pricing_basis->value);
+        $this->assertSame(1320, $standardOrder->selling_price); // 1200 + 10% reseller markup
+        $this->assertSame(120, $standardOrder->reseller_profit); // round(1200 * 10%)
+    }
+
+    /**
+     * ADR-027 Phase 6's confirmed fallback: insufficient quota never
+     * blocks checkout — this order simply charges the standard price,
+     * exactly as if no membership token had been sent, and the
+     * member's quota is left untouched for their other orders this
+     * cycle.
+     */
+    public function test_a_member_with_insufficient_quota_falls_back_to_the_standard_price(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        $membership = Membership::query()->create([
+            'email' => 'poor-member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 500, // < the 1040 member price
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = $this->membershipToken('poor-member@example.com');
+
+        $response = $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package, ['customer_email' => 'poor-member@example.com']),
+            ['Authorization' => "Bearer {$token}"],
+        );
+
+        $response->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('standard', $order->pricing_basis->value);
+        $this->assertNull($order->membership_id);
+        $this->assertNull($order->member_discount_percent);
+        $this->assertNull($order->normal_selling_price);
+        $this->assertSame(1200, $order->selling_price);
+        $this->assertSame(200, $order->platform_profit); // 1200 - 1000
+
+        $this->assertSame(500, $membership->fresh()->quota_remaining_sen); // untouched
+        $this->assertSame(0, MembershipQuotaDebit::query()->count());
+    }
+
+    /**
+     * No membership feature is a *gate* on checkout (base ADR decision
+     * 10) — a garbage/expired token must degrade to exactly the same
+     * standard-price behavior as sending no token at all, never a
+     * validation error.
+     */
+    /**
+     * ADR-027 decision 20: the kill switch (seeded off pre-launch)
+     * gates checkout-time member pricing exactly like it already gates
+     * CatalogController's member_price_sen — a still-valid session
+     * token from earlier testing must never silently apply member
+     * pricing while the feature is meant to be fully invisible.
+     */
+    public function test_a_member_checks_out_at_the_standard_price_when_the_membership_feature_is_disabled(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+        PlatformSettings::current()->update(['membership_enabled' => false]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        Membership::query()->create([
+            'email' => 'member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 2000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = $this->membershipToken('member@example.com');
+
+        $response = $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package, ['customer_email' => 'member@example.com']),
+            ['Authorization' => "Bearer {$token}"],
+        );
+
+        $response->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('standard', $order->pricing_basis->value);
+        $this->assertNull($order->membership_id);
+        $this->assertSame(1200, $order->selling_price);
+    }
+
+    public function test_an_invalid_membership_token_checks_out_at_the_standard_price_like_a_guest(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+
+        $response = $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package),
+            ['Authorization' => 'Bearer garbage'],
+        );
+
+        $response->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('standard', $order->pricing_basis->value);
+        $this->assertNull($order->membership_id);
+        $this->assertSame(1200, $order->selling_price);
     }
 }

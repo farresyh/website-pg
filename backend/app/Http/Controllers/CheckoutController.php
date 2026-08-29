@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Models\Game;
+use App\Models\Membership;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
@@ -16,6 +17,8 @@ use App\Services\Checkout\CheckoutService;
 use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Fraud\BlacklistService;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Membership\MembershipSessionTokenService;
+use App\Services\Membership\MembershipStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -53,6 +56,7 @@ class CheckoutController extends Controller
         private readonly PaymentMethodFeeResolver $fees,
         private readonly BlacklistService $blacklist,
         private readonly CheckoutVelocityGuard $velocityGuard,
+        private readonly MembershipSessionTokenService $membershipSessionTokens,
     ) {
     }
 
@@ -132,6 +136,7 @@ class CheckoutController extends Controller
         // platform owner, markup_pct=0) — see Reseller::platformOwner()
         // for the firstOrCreate safety-net rationale.
         $reseller = Reseller::platformOwner();
+        $membershipId = $platformSettings->membership_enabled ? $this->resolveMembershipId($request) : null;
 
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
@@ -142,6 +147,7 @@ class CheckoutController extends Controller
                 serverId: $data['server_id'] ?? null,
                 costPriceSen: $package->cost_price,
                 standardSellingPriceSen: $package->standard_selling_price,
+                packageMarkupPercent: (float) $package->markup_percent,
                 resellerMarkupPct: (float) $reseller->markup_pct,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,
@@ -155,6 +161,7 @@ class CheckoutController extends Controller
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
                 resellerId: $reseller->id,
+                membershipId: $membershipId,
             ), $gateway);
         } catch (DuplicateCheckoutAttemptException) {
             // Lost a genuine race — a concurrent request with the same
@@ -268,6 +275,49 @@ class CheckoutController extends Controller
             'server_id' => 'Server ID',
             default => 'additional field',
         };
+    }
+
+    /**
+     * ADR-027 Phase 6, base ADR decision 10: personalization happens
+     * once, silently, at "Proceed to Pay" — a session-recognized member
+     * gets member pricing with no extra step; anyone without a token
+     * (or an invalid/expired one) checks out exactly as a guest always
+     * has. Gated on `PlatformSettings.membership_enabled` by the
+     * caller (decision 20's kill switch, seeded off) — the same gate
+     * `CatalogController` already applies to `member_price_sen`, so a
+     * pre-launch/disabled membership feature never silently applies
+     * member pricing at checkout even for an account with a still-valid
+     * session token from earlier testing. Same `Authorization: Bearer` convention
+     * `MembershipController::resolveEmail()` already uses — deliberately
+     * not a `CreateCheckoutRequest` field, since a header (not a body
+     * field the storefront must remember to set) matches how every
+     * other `/membership`-authenticated call already works.
+     *
+     * Checks `expires_at` explicitly rather than trusting `status`
+     * alone — no job anywhere yet flips a lapsed membership's `status`
+     * to Expired (MembershipStatus's own doc comment describes the
+     * intent, not a built mechanism), so `status` alone isn't reliable
+     * proof a membership is still genuinely current.
+     */
+    private function resolveMembershipId(CreateCheckoutRequest $request): ?int
+    {
+        $token = $request->bearerToken();
+
+        if ($token === null) {
+            return null;
+        }
+
+        $email = $this->membershipSessionTokens->resolve($token);
+
+        if ($email === null) {
+            return null;
+        }
+
+        return Membership::query()
+            ->where('email', $email)
+            ->where('status', MembershipStatus::Active)
+            ->where('expires_at', '>=', now())
+            ->value('id');
     }
 
     /**
