@@ -113,7 +113,7 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
                                   {formatRm(change.old_cost_price)} → {formatRm(change.new_cost_price)}
                                 </DataTableCell>
                                 <DataTableCell className="px-4 py-2 text-theme-sm">
-                                  {formatRm(change.old_reseller_cost_price)} → {formatRm(change.new_reseller_cost_price)}
+                                  {formatRm(change.old_standard_selling_price)} → {formatRm(change.new_standard_selling_price)}
                                 </DataTableCell>
                               </DataTableRow>
                             );

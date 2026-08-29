@@ -16,15 +16,15 @@ class PackageMarkupServiceTest extends TestCase
     {
         $service = new PackageMarkupService();
 
-        $this->assertSame(94, $service->calculateResellerCostPrice(82, 15.0)); // RM 0.82 -> RM 0.94
-        $this->assertSame(108, $service->calculateResellerCostPrice(94, 15.0)); // RM 0.94 -> RM 1.08
-        $this->assertSame(109, $service->calculateResellerCostPrice(95, 15.0)); // RM 0.95 -> RM 1.09
+        $this->assertSame(94, $service->calculateStandardSellingPrice(82, 15.0)); // RM 0.82 -> RM 0.94
+        $this->assertSame(108, $service->calculateStandardSellingPrice(94, 15.0)); // RM 0.94 -> RM 1.08
+        $this->assertSame(109, $service->calculateStandardSellingPrice(95, 15.0)); // RM 0.95 -> RM 1.09
     }
 
     public function test_calculate_with_zero_markup_returns_the_cost_price_unchanged(): void
     {
         $service = new PackageMarkupService();
 
-        $this->assertSame(421, $service->calculateResellerCostPrice(421, 0.0));
+        $this->assertSame(421, $service->calculateStandardSellingPrice(421, 0.0));
     }
 }

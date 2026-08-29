@@ -92,7 +92,7 @@ class ResendOrderDeliveryJobTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         $order = Order::query()->create([
@@ -104,7 +104,7 @@ class ResendOrderDeliveryJobTest extends TestCase
             'supplier_id' => $supplier->id,
             'supplier_product_ref' => $package->supplier_package_ref,
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'reseller_markup_pct' => 0,
             'selling_price' => 1000,
             'transaction_fee' => 100,

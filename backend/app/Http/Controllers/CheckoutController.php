@@ -36,7 +36,7 @@ use Illuminate\Validation\ValidationException;
  * hands off to the already-tested
  * CheckoutService for pricing/Order-creation/payment-request logic —
  * this controller does not compute or trust any money value itself
- * (ORD-9's principle: cost/reseller-cost come from the stored
+ * (ORD-9's principle: cost/standard-selling-price come from the stored
  * Package, never from client input).
  *
  * Voucher-at-checkout (ADR-024): only `voucher_code` is ever accepted
@@ -141,7 +141,7 @@ class CheckoutController extends Controller
                 playerId: $data['player_id'],
                 serverId: $data['server_id'] ?? null,
                 costPriceSen: $package->cost_price,
-                resellerCostPriceSen: $package->reseller_cost_price,
+                standardSellingPriceSen: $package->standard_selling_price,
                 resellerMarkupPct: (float) $reseller->markup_pct,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,

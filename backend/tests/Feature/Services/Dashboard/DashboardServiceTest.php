@@ -40,7 +40,7 @@ class DashboardServiceTest extends TestCase
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,

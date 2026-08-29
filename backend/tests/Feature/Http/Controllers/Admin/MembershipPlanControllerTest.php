@@ -155,7 +155,7 @@ class MembershipPlanControllerTest extends TestCase
             'supplier_package_ref' => 'GV' . random_int(100000, 999999),
             'name' => '100 Diamonds',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1150,
+            'standard_selling_price' => 1150,
             'markup_percent' => 15,
             'is_active' => true,
         ], $overrides));
@@ -183,7 +183,7 @@ class MembershipPlanControllerTest extends TestCase
     {
         $this->actingAsSuperAdmin();
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
-        $this->package($game, ['cost_price' => 1000, 'reseller_cost_price' => 1150, 'markup_percent' => 15]);
+        $this->package($game, ['cost_price' => 1000, 'standard_selling_price' => 1150, 'markup_percent' => 15]);
 
         $row = $this->getJson('/api/membership-plans/preview?discount_percent=80')->assertOk()->json();
 
@@ -191,7 +191,7 @@ class MembershipPlanControllerTest extends TestCase
         $this->assertEquals(80.0, $row['discount_percent']);
         // 15% * (1 - 0.8) = 3% effective markup.
         $this->assertEquals(3.0, $row['effective_markup_percent']);
-        // Normal: Platform Owner markup_pct=0 (ADR-013) -> selling_price = reseller_cost_price = 1150.
+        // Normal: Platform Owner markup_pct=0 (ADR-013) -> selling_price = standard_selling_price = 1150.
         $this->assertSame(1150, $row['normal_price_sen']);
         // Member: round(1000 * 1.03) = 1030.
         $this->assertSame(1030, $row['member_price_sen']);
@@ -207,10 +207,10 @@ class MembershipPlanControllerTest extends TestCase
     {
         $this->actingAsSuperAdmin();
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
-        $this->package($game, ['name' => 'Cheapest', 'cost_price' => 100, 'reseller_cost_price' => 115]);
-        $this->package($game, ['name' => 'Middle', 'cost_price' => 500, 'reseller_cost_price' => 575]);
-        $this->package($game, ['name' => 'Priciest', 'cost_price' => 5000, 'reseller_cost_price' => 5750]);
-        $this->package($game, ['name' => 'Inactive', 'cost_price' => 1, 'reseller_cost_price' => 1, 'is_active' => false]);
+        $this->package($game, ['name' => 'Cheapest', 'cost_price' => 100, 'standard_selling_price' => 115]);
+        $this->package($game, ['name' => 'Middle', 'cost_price' => 500, 'standard_selling_price' => 575]);
+        $this->package($game, ['name' => 'Priciest', 'cost_price' => 5000, 'standard_selling_price' => 5750]);
+        $this->package($game, ['name' => 'Inactive', 'cost_price' => 1, 'standard_selling_price' => 1, 'is_active' => false]);
 
         $row = $this->getJson('/api/membership-plans/preview?discount_percent=50')->assertOk()->json();
 

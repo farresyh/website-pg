@@ -28,7 +28,7 @@ class Order extends Model
         'reseller_id',
         'voucher_id',
         'cost_price',
-        'reseller_cost_price',
+        'standard_selling_price',
         'reseller_markup_pct',
         'selling_price',
         'voucher_discount',
@@ -51,7 +51,7 @@ class Order extends Model
     protected $casts = [
         'is_test' => 'boolean',
         'cost_price' => 'integer',
-        'reseller_cost_price' => 'integer',
+        'standard_selling_price' => 'integer',
         'reseller_markup_pct' => 'decimal:2',
         'selling_price' => 'integer',
         'voucher_discount' => 'integer',

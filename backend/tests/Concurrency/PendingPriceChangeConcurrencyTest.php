@@ -41,7 +41,7 @@ class PendingPriceChangeConcurrencyTest extends TestCase
             'game_id' => $game->id,
             'name' => '14 Diamond',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1150,
+            'standard_selling_price' => 1150,
             'markup_percent' => 15,
             'is_active' => true,
             'supplier_id' => $supplier->id,

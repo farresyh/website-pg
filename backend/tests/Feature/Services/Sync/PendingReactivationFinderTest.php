@@ -32,7 +32,7 @@ class PendingReactivationFinderTest extends TestCase
         ]);
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'TESTREF',
         ]);
 
@@ -83,7 +83,7 @@ class PendingReactivationFinderTest extends TestCase
         ]);
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now()->subMinutes(20),
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'TESTREF',
         ]);

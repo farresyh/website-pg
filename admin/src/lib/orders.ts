@@ -34,7 +34,7 @@ export interface OrderResendAttempt {
   id: number;
   package: { id: number; name: string } | null;
   cost_price_sen: number;
-  reseller_cost_price_sen: number;
+  standard_selling_price_sen: number;
   price_diff_sen: number;
   outcome: "success" | "failed";
   note: string | null;
@@ -46,7 +46,7 @@ export interface OrderDetail extends OrderListItem {
   reference_number: string | null;
   customer_phone: string | null;
   cost_price: number;
-  reseller_cost_price: number;
+  standard_selling_price: number;
   reseller_markup_pct: string;
   voucher_discount: number | null;
   reseller_profit: number;

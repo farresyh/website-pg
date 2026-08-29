@@ -8,7 +8,7 @@ namespace App\Services\Pricing;
  * membership tier's discount_percent, floored at 0% — never a flat
  * member-wide markup override, and never sold below cost_price.
  * Deliberately a separate seam from PricingService (the cost ->
- * reseller-cost -> selling-price chain, ADR-013) — membership discount
+ * standard-selling-price -> selling-price chain, ADR-013) — membership discount
  * is a distinct concern layered on top of a package's own markup, not
  * a reseller-tier concept. Reuses PackageMarkupService's calculation
  * shape (cost x (1 + markup%)) rather than sharing its instance.

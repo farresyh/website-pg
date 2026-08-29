@@ -124,11 +124,11 @@ class PriceSyncControllerTest extends TestCase
         $supplier = $this->supplier();
         $game = $this->game();
         Package::query()->create([
-            'game_id' => $game->id, 'name' => 'Active', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => 'Active', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV1',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => 'Pending', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => 'Pending', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now()->subMinutes(20),
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV2',
         ]);
@@ -159,13 +159,13 @@ class PriceSyncControllerTest extends TestCase
     {
         $supplier = $this->supplier();
         $package = Package::query()->create([
-            'game_id' => $this->game()->id, 'name' => 'Flagged', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $this->game()->id, 'name' => 'Flagged', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => false, 'deactivated_reason' => 'price_anomaly', 'deactivated_at' => now(),
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV1',
         ]);
         PendingPriceChange::query()->create([
             'package_id' => $package->id, 'old_cost_price' => 1000, 'proposed_cost_price' => 1600,
-            'old_reseller_cost_price' => 1150, 'proposed_reseller_cost_price' => 1840, 'status' => 'pending',
+            'old_standard_selling_price' => 1150, 'proposed_standard_selling_price' => 1840, 'status' => 'pending',
         ]);
 
         $this->actingAsAdmin();
@@ -184,11 +184,11 @@ class PriceSyncControllerTest extends TestCase
         $supplier = $this->supplier();
         $game = $this->game();
         $repriced = Package::query()->create([
-            'game_id' => $game->id, 'name' => 'Repriced', 'cost_price' => 1200, 'reseller_cost_price' => 1380,
+            'game_id' => $game->id, 'name' => 'Repriced', 'cost_price' => 1200, 'standard_selling_price' => 1380,
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV1',
         ]);
         $deactivated = Package::query()->create([
-            'game_id' => $game->id, 'name' => 'Deactivated', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => 'Deactivated', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now(),
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV2',
         ]);
@@ -196,7 +196,7 @@ class PriceSyncControllerTest extends TestCase
         PriceChangeLog::query()->create([
             'price_sync_run_id' => $run->id, 'package_id' => $repriced->id,
             'old_cost_price' => 1000, 'new_cost_price' => 1200,
-            'old_reseller_cost_price' => 1150, 'new_reseller_cost_price' => 1380,
+            'old_standard_selling_price' => 1150, 'new_standard_selling_price' => 1380,
         ]);
         DeactivationLog::query()->create(['price_sync_run_id' => $run->id, 'package_id' => $deactivated->id]);
         $this->actingAsAdmin();

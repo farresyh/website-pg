@@ -6,7 +6,7 @@ Laravel-specific, loaded only when working inside `backend/`.
 ## Conventions specific to this app
 
 - **All money is an integer in sen** (RM 1.00 = `100`), never a float —
-  `cost_price`, `reseller_cost_price`, `final_amount`, everything. Pricing is
+  `cost_price`, `standard_selling_price`, `final_amount`, everything. Pricing is
   computed via `App\Services\Pricing\PricingService` /
   `CheckoutTotalService`, never hand-rolled inline.
 - **Balances are ledger-only, never a mutable column** (ADR-002) —
@@ -34,7 +34,7 @@ Laravel-specific, loaded only when working inside `backend/`.
   payment gateway synchronously on the customer-facing path is very likely
   wrong; dispatch a job instead.
 - **Public API responses never leak internal financial fields** —
-  `cost_price`, `reseller_cost_price`, `platform_profit`, `reseller_profit`,
+  `cost_price`, `standard_selling_price`, `platform_profit`, `reseller_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing
   endpoint (`CatalogController`, `TrackOrderController`). Mirror their
   existing narrow-response-shape pattern for new public endpoints.
