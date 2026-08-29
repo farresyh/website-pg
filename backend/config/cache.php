@@ -22,6 +22,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Catalog Packages Store
+    |--------------------------------------------------------------------------
+    |
+    | ADR-027's 2026-08-29 addendum, decision 18: CatalogController's
+    | per-game packages cache is scoped to its own store (the `redis`
+    | store, using ADR-020 decision 3's already-provisioned `cache`
+    | connection) so it can be tag-flushed in one call when a membership
+    | tier changes — the app-wide default stays `database` (ADR-014/019),
+    | unaffected. Overridden to `array` in phpunit.xml so the fast sqlite
+    | test suite never needs a real Redis connection; `array` also
+    | supports Cache::tags(), so the invalidation behavior is still
+    | exercised in tests, just against an in-memory store.
+    |
+    */
+
+    'catalog_packages_store' => env('CATALOG_PACKAGES_CACHE_STORE', 'redis'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Cache Stores
     |--------------------------------------------------------------------------
     |

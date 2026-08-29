@@ -41,6 +41,14 @@ const CatalogPackageWireSchema = z.object({
   id: z.number(),
   name: z.string(),
   selling_price_sen: z.number(),
+  /**
+   * ADR-027's 2026-08-29 addendum, decisions 20/21: present only when
+   * the membership feature is enabled — genuinely absent from the wire
+   * response otherwise, never `null` (CatalogController's own
+   * narrow-response-shape discipline), so this must stay `.optional()`
+   * rather than `.nullable()`.
+   */
+  member_price_sen: z.number().optional(),
 });
 
 type CatalogPackageWire = z.infer<typeof CatalogPackageWireSchema>;
@@ -74,6 +82,8 @@ export interface GamePackage {
   id: number;
   name: string;
   priceRm: number;
+  /** ADR-027's 2026-08-29 addendum, decision 21 — absent when the membership feature is off. */
+  memberPriceRm?: number;
 }
 
 function toGame(wire: CatalogGameWire): Game {
@@ -103,7 +113,12 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
 }
 
 function toPackage(wire: CatalogPackageWire): GamePackage {
-  return { id: wire.id, name: wire.name, priceRm: wire.selling_price_sen / 100 };
+  return {
+    id: wire.id,
+    name: wire.name,
+    priceRm: wire.selling_price_sen / 100,
+    memberPriceRm: wire.member_price_sen != null ? wire.member_price_sen / 100 : undefined,
+  };
 }
 
 export async function listGames(): Promise<Game[]> {

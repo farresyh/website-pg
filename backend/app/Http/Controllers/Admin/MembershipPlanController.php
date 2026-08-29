@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Membership\UpdateMembershipEnabledRequest;
 use App\Http\Requests\Membership\UpdateMembershipPlanRequest;
@@ -49,6 +50,11 @@ class MembershipPlanController extends Controller
             }
         }
 
+        // Decision 18: any field write here can change every game's
+        // publicly-shown member_price_sen at once — one tagged flush,
+        // not scoped to which field actually changed (cheap either way).
+        CatalogController::forgetPackagesCacheForMembership();
+
         return response()->json($membershipPlan);
     }
 
@@ -61,6 +67,11 @@ class MembershipPlanController extends Controller
     {
         $settings = PlatformSettings::current();
         $settings->update($request->validated());
+
+        // Flipping this changes whether member_price_sen appears in the
+        // public catalog response at all (decision 21) — must invalidate
+        // the same as an actual tier edit.
+        CatalogController::forgetPackagesCacheForMembership();
 
         return response()->json($settings->only('membership_enabled'));
     }
