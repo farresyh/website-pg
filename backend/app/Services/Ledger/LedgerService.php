@@ -36,6 +36,7 @@ final class LedgerService
         ?string $referenceType = null,
         ?int $referenceId = null,
         ?int $createdBy = null,
+        ?string $reason = null,
     ): LedgerEntry {
         return LedgerEntry::query()->create([
             'owner_type' => $ownerType,
@@ -45,6 +46,7 @@ final class LedgerService
             'reference_type' => $referenceType,
             'reference_id' => $referenceId,
             'created_by' => $createdBy,
+            'reason' => $reason,
         ]);
     }
 

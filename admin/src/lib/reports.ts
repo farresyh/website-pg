@@ -86,6 +86,15 @@ export interface ReportOrderStatusFunnel {
   success_rate_pct: number;
 }
 
+export interface ReportMembershipBreakdown {
+  member_sales: number;
+  member_orders_count: number;
+  standard_sales: number;
+  standard_orders_count: number;
+  margin_forgone: number;
+  membership_fee_revenue: number;
+}
+
 export interface ReportReseller {
   id: number;
   business_name: string;
@@ -142,6 +151,11 @@ export function getResellerBreakdown(token: string, filters: ReportFilters) {
 export function getOrderStatusFunnel(token: string, filters: ReportFilters) {
   const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
   return apiFetch<ReportOrderStatusFunnel>(`/api/reports/order-status-funnel${query}`, { token });
+}
+
+export function getMembershipBreakdown(token: string, filters: ReportFilters) {
+  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
+  return apiFetch<ReportMembershipBreakdown>(`/api/reports/membership-breakdown${query}`, { token });
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";

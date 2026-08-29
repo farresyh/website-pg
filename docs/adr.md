@@ -828,9 +828,9 @@ This "safe to retry `createOrder()` by reusing `reference_number`, and `409` spe
 
 ---
 
-## ADR-027: VIP Membership — Costco-style spend-quota subscription, phone+OTP lightweight identity, member pricing (Phases 1-5 built 2026-08-29 — see the 2026-08-29 addenda; Phase 6/7 still unbuilt)
+## ADR-027: VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, member pricing (Phases 1-6.5 built 2026-08-29 — see the 2026-08-29 addenda; Phase 7 still unbuilt)
 
-**Status:** Accepted (design) — 2026-08-21, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched. **Founder's own explicit condition on recording this as "Accepted": every decision below stays open to being re-challenged in full at actual build time, not just refined** — he doesn't yet know when that will be, and by then real numbers (see Context) may exist that don't today. See Consequence to track. **2026-08-29: build started, narrowing several of the decisions below — see the addendum's own status note and `docs/prd.md`'s §14/§15 session summary for what actually shipped.** **Second 2026-08-29 addendum (membership × reseller pricing reconciliation + money views) grilled to settled decisions the same day via `/mattpocock-skills:grilling` — see the addendum's own continuation below. Still design-only, no code landed.**
+**Status:** Accepted (design) — 2026-08-21, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched. **Founder's own explicit condition on recording this as "Accepted": every decision below stays open to being re-challenged in full at actual build time, not just refined** — he doesn't yet know when that will be, and by then real numbers (see Context) may exist that don't today. See Consequence to track. **2026-08-29: build started, narrowing several of the decisions below — see the addendum's own status note and `docs/prd.md`'s §14/§15 session summary for what actually shipped (Phases 1-6.5).** **Second 2026-08-29 addendum (membership × reseller pricing reconciliation + money views) grilled to settled decisions the same day via `/mattpocock-skills:grilling` — see the addendum's own continuation below.**
 
 **Context:** The founder brought a reference document from a separate discussion (with Gemini) proposing a subscription-based VIP membership tier for the topup store, modeled on Costco's wholesale-membership business (most operating profit from membership fees, not markup on goods sold — members buy near cost price, non-members pay full retail). Explicitly treated as external inspiration only, not ground truth for this project, per the founder's own framing at the start of the session.
 
@@ -983,6 +983,42 @@ This ADR also narrows `ADR-011` (storefront stays guest-checkout, no Customer ac
 - The referral/volume-tier proposal (reseller tier unlocked by referred-customer membership count) was raised, worked through, and explicitly rejected before landing on Decisions 9-12's direct-payment shape — recorded here so a future session doesn't re-propose the same idea without knowing why it didn't work (margin-stacking on one side, zero customer incentive on the other, per this addendum's own opening paragraph).
 - Decision 8's rename touches every call site referencing `reseller_cost_price` (`Package`, `Order`, `PackageMarkupService`, `PricingService`, report queries) — needs the same enumeration discipline `ADR-028` decision 9 established, done as part of the rename itself.
 - The PRD deltas listed above need applying when this ships — §14/§15, §6.7's RES-1..6, §8's `Reseller` row, and §13's Glossary, not just this ADR file.
+
+**Addendum, 2026-08-29 (same day, grilled live via `/mattpocock-skills:grilling`, then built) — Phase 6.5: member registry + fee collection + membership money views.** Triggered by the founder asking to continue the membership work immediately after Phase 6 shipped. Grilling surfaced that the "membership fee collection + money views" gap (the OPEN addendum's own item 7) was bigger than it read on paper: **there was no code path anywhere that actually creates a `memberships` row** — Phase 6 only *reads* one at checkout. No subscribe endpoint, no admin entry — so the whole feature was inert until a member could come into existence. The grilling pinned the member lifecycle, then the build delivered it. Decisions Q1-Q15 (below) are settled, not open.
+
+*Member lifecycle (grilled, settled):*
+
+- **Q1 — renewal while still active extends, not resets:** a mid-cycle payment sets `expires_at += 30 days` (cumulative), never a fresh now+30d window.
+- **Q2 — quota resets only at the cycle boundary, never on payment:** the rolling 30-day cycle anchored to `cycle_started_at` is the sole refill trigger (already implemented by `ResetMembershipCyclesCommand`); a mid-cycle renewal extends the paid-through date only, leaving `quota_remaining_sen` and `cycle_started_at` untouched. A member who paid twice within one cycle keeps using their remaining quota until the boundary, then gets a fresh full quota. This is the stricter anti-abuse reading of decision 7/12 — renewal cannot mint extra quota mid-cycle.
+- **Q3 — `super_admin` only:** matches the tier-config screen's own gate.
+- **Q4 — fee pre-filled from `plan.fee_sen`, editable, reason required on deviation:** manual collection realistically produces lump-sum/promo/waived amounts that don't exactly equal the plan fee; a non-plan amount needs a `reason` (audit trail), mirroring the VCH Path A admin-typed-amount precedent.
+- **Q5 — plan change on renewal allowed:** the record-payment action carries a tier picker; `membership_plan_id` is always set to the submitted plan (upgrade/downgrade is a natural renewal-time action).
+- **Q6 — no maker-checker:** this is income into the platform, not a payout; a plain `super_admin` action with the ledger `created_by`/`reason` audit is sufficient.
+- **Q7 — the `active → expired` flip is now real:** `ResetMembershipCyclesCommand` flips `status=expired` for any active membership past `expires_at` BEFORE the quota refill sweep runs (and the sweep skips expired rows). This makes `status` a trustworthy field (the enum + doc intent existed since Phase 5 but nothing ever wrote `expired`), fixes the registry filter, and stops a lapsed member's quota being pointlessly refilled.
+- **Q8 — reactivation updates the same row:** a lapsed/expired email's record-payment reactivates the existing row (`active`, fresh cycle, full quota, `expires_at = now+30d`) — order-history linkage by email (decision 3) survives, no new row.
+- **Q9 — registry is a flat table, no drill-down:** email/tier/status/cycle/expiry/quota used/order count, search + status filter + pagination. Per-member order drill-down stays in Customer Analytics (ADR-049).
+- **Q10 — membership money view:** a new Membership tab in Reports splits Paid-order sales by `pricing_basis` (member vs standard), shows margin forgone = Σ(`normal_selling_price − selling_price`) over member orders (the discount the platform gave, in cash terms), and membership fee revenue = Σ `ledger_entries.type=membership_fee` scoped by the entry's `created_at`.
+- **Q11 — idempotency key, not just a confirm modal:** `membership_fee_records.idempotency_key` (nullable unique) + a fast-path pre-check, mirroring ADR-035 — a double-submit can't double-book.
+- **Q12 — single seam for the future auto path:** `MembershipFeeService::recordFeePaid()` is the only entry point; a future payment flow's webhook calls the same method.
+- **Q13 — zero-amount waiver allowed:** `amount_sen` may be 0 with a reason (founder waives / free period), still activating the membership.
+- **Q14 — not gated on the kill switch:** admin registry/record-payment stay usable pre-launch (admin needs to manage members regardless of the customer-facing `membership_enabled` flag).
+- **Q15 — effective status computed at query time:** until the scheduled flip runs (still inert-until-real-cron locally), the registry computes `(status==expired || expires_at < now) ? expired : active`, so a lapsed-but-not-yet-flipped member still reads `expired`.
+
+*Shipped (all on `feature/membership-fee-registry-money-views`):*
+
+- `membership_fee_records` table + `MembershipFeeRecord` model (insert-only audit, unique `idempotency_key`).
+- `MembershipFeeService::recordFeePaid()` — create/extend/reactivate/plan-change in one transaction, `lockForUpdate` on the membership row (after it's guaranteed to exist — locking a missing email would gap-lock/deadlock), ledger `membership_fee` credit, fee-record insert as the idempotency serialization point. Two distinct unique-constraint recoveries: `memberships.email` (caught *inside*, re-read via a CURRENT `lockForUpdate()` read — a REPEATABLE-READ snapshot read cannot see the winner's committed row) vs the fee record's `idempotency_key` (propagates *out*, rolls back, returns the winner's membership).
+- `LedgerService::credit()` gained an optional `$reason` param (additive).
+- `Admin\MembershipController` (`GET /api/memberships` registry, `POST /api/memberships/record-payment`) behind `admin.role:super_admin`; `RecordMembershipPaymentRequest` (reason-required-on-deviation cross-field rule).
+- `ResetMembershipCyclesCommand` — the Q7 flip + skip.
+- `ReportService::membershipBreakdown()` + `ReportController` endpoint + `GET /api/reports/membership-breakdown`.
+- Admin `/admin/membership` "Members" section (DataTable + Record Payment modal) and a new "Membership" Reports tab.
+
+**Consequence to track (this addendum):**
+- `membership_fee` is now a real ledger type; `reseller_tier_fee` (decision 15 of the prior addendum) remains unbuilt — only the consumer membership fee is booked today.
+- The full cycle (Q7 flip, quota refill) still runs on the inert-until-real-cron schedule — locally `app:reset-membership-cycles` must be run by hand (Q15's derived status covers the display gap in the meantime).
+- The membership fee amount is admin-typed with a reason-on-deviation rule (Q4), NOT server-computed — a deliberate, founder-accepted divergence from the ORD-9 "never trust a typed money value" norm, justified by manual collection reality and matched to VCH Path A's precedent. A future automated payment path (Q12) should compute the amount server-side instead.
+- `OrderResendService`'s member-formula recompute (shipped in Phase 6) is unaffected by this addendum — no change needed.
 
 ---
 

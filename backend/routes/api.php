@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
 use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
@@ -267,6 +268,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
         Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
+        Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
         Route::get('/export', [ReportController::class, 'export']);
     });
 
@@ -396,6 +398,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/preview', [MembershipPlanController::class, 'preview']);
         Route::put('/{membershipPlan}', [MembershipPlanController::class, 'update']);
         Route::patch('/enabled', [MembershipPlanController::class, 'updateEnabled']);
+    });
+
+    // ADR-027 continued addendum decision 15 / Phase 6.5 (grilled
+    // 2026-08-29): the member registry + fee collection half of
+    // /admin/membership. Same super_admin tier as membership-plans.
+    Route::middleware('admin.role:super_admin')->prefix('memberships')->group(function () {
+        Route::get('/', [AdminMembershipController::class, 'index']);
+        Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
     });
 
     // ADR-029 — SEO Management: Overview, Global Settings/Meta

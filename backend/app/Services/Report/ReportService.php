@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Reseller;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Pricing\PricingBasis;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -299,6 +300,63 @@ final class ReportService
         usort($rows, fn (array $a, array $b) => $b['sales'] <=> $a['sales']);
 
         return $rows;
+    }
+
+    /**
+     * Membership tab (ADR-027 continued addendum decision 15 / Phase
+     * 6.5, grilled 2026-08-29, Q10) — splits Paid-order sales by
+     * `pricing_basis` (member vs standard), plus the two figures that
+     * make the Costco model legible in the money views:
+     *
+     * - Margin forgone = Σ(normal_selling_price − selling_price) over
+     *   member orders — the discount the platform gave members in cash
+     *   terms (member orders always stamp normal_selling_price as the
+     *   counterfactual retail; standard orders have it null).
+     * - Membership fee revenue = Σ ledger type=membership_fee, the
+     *   subscription income the member registry books — scoped by the
+     *   ledger entry's own created_at against the same report range,
+     *   since a fee is not an order and has no paid_at.
+     */
+    public function membershipBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    {
+        $orders = $this->scopedOrders($from, $toExclusive, $resellerId)
+            ->get(['pricing_basis', 'final_amount', 'selling_price', 'normal_selling_price']);
+
+        $memberSales = 0;
+        $standardSales = 0;
+        $memberCount = 0;
+        $standardCount = 0;
+        $marginForgone = 0;
+
+        foreach ($orders as $order) {
+            if ($order->pricing_basis === PricingBasis::Member) {
+                $memberSales += $order->final_amount;
+                $memberCount++;
+                $marginForgone += max(0, ($order->normal_selling_price ?? 0) - ($order->selling_price ?? 0));
+            } else {
+                $standardSales += $order->final_amount;
+                $standardCount++;
+            }
+        }
+
+        $feeRevenueQuery = LedgerEntry::query()->where('type', 'membership_fee');
+
+        if ($from !== null) {
+            $feeRevenueQuery->where('created_at', '>=', $from);
+        }
+
+        if ($toExclusive !== null) {
+            $feeRevenueQuery->where('created_at', '<', $toExclusive);
+        }
+
+        return [
+            'member_sales' => $memberSales,
+            'member_orders_count' => $memberCount,
+            'standard_sales' => $standardSales,
+            'standard_orders_count' => $standardCount,
+            'margin_forgone' => $marginForgone,
+            'membership_fee_revenue' => (int) $feeRevenueQuery->sum('amount'),
+        ];
     }
 
     /**

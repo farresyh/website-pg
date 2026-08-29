@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\Membership\MembershipStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * ADR-027 decision 2/3, narrowed by its 2026-08-29 addendum decision
@@ -36,5 +37,20 @@ class Membership extends Model
     public function membershipPlan(): BelongsTo
     {
         return $this->belongsTo(MembershipPlan::class);
+    }
+
+    /**
+     * Orders priced as this membership (orders.membership_id, stamped at
+     * checkout in ADR-027 Phase 6). Registry "orders count" only — full
+     * order history by email remains decision 3's customer_email match.
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class, 'membership_id');
+    }
+
+    public function feeRecords(): HasMany
+    {
+        return $this->hasMany(MembershipFeeRecord::class);
     }
 }
