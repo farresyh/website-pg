@@ -27,3 +27,22 @@ export function updateMembershipEnabled(token: string, enabled: boolean) {
     body: { membership_enabled: enabled },
   });
 }
+
+export interface MembershipPricingPreviewRow {
+  package_name: string;
+  normal_price_sen: number;
+  member_price_sen: number;
+  margin_forgone_sen: number;
+  savings_percent: number;
+}
+
+/**
+ * Founder ask, 2026-08-29: preview an in-progress (unsaved) discount_percent
+ * against real sample packages before "Save Tier" — backend computes this
+ * via the same PricingService/MembershipPricingService CatalogController
+ * itself uses, never re-derived here.
+ */
+export function previewMembershipPricing(token: string, discountPercent: number) {
+  const query = new URLSearchParams({ discount_percent: String(discountPercent) });
+  return apiFetch<MembershipPricingPreviewRow[]>(`/api/membership-plans/preview?${query}`, { token });
+}

@@ -375,6 +375,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // under /middleware — no supplier-integration dependency).
     Route::middleware('admin.role:super_admin')->prefix('membership-plans')->group(function () {
         Route::get('/', [MembershipPlanController::class, 'index']);
+        Route::get('/preview', [MembershipPlanController::class, 'preview']);
         Route::put('/{membershipPlan}', [MembershipPlanController::class, 'update']);
         Route::patch('/enabled', [MembershipPlanController::class, 'updateEnabled']);
     });
