@@ -26,6 +26,7 @@ use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
+use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\MembershipOtpController;
 use App\Http\Controllers\Middleware\BackupController;
 use App\Http\Controllers\Middleware\CurrencyRateController;
@@ -131,6 +132,11 @@ Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])-
 // defense for a submitted code.
 Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
 Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
+
+// Decisions 13/24/25 — the /membership dashboard's data. Auth is the
+// session token (Authorization: Bearer), not auth:sanctum — resolved
+// inside the controller itself, same reasoning as the OTP routes above.
+Route::get('/membership/me', [MembershipController::class, 'me']);
 
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
