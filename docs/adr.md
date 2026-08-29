@@ -828,9 +828,9 @@ This "safe to retry `createOrder()` by reusing `reference_number`, and `409` spe
 
 ---
 
-## ADR-027: VIP Membership — Costco-style spend-quota subscription, phone+OTP lightweight identity, member pricing (Phases 1-5 built 2026-08-29 — see the 2026-08-29 addendum; Phase 6/7 still unbuilt)
+## ADR-027: VIP Membership — Costco-style spend-quota subscription, phone+OTP lightweight identity, member pricing (Phases 1-5 built 2026-08-29 — see the 2026-08-29 addenda; Phase 6/7 still unbuilt)
 
-**Status:** Accepted (design) — 2026-08-21, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched. **Founder's own explicit condition on recording this as "Accepted": every decision below stays open to being re-challenged in full at actual build time, not just refined** — he doesn't yet know when that will be, and by then real numbers (see Context) may exist that don't today. See Consequence to track. **2026-08-29: build started, narrowing several of the decisions below — see the addendum's own status note and `docs/prd.md`'s §14/§15 session summary for what actually shipped.**
+**Status:** Accepted (design) — 2026-08-21, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched. **Founder's own explicit condition on recording this as "Accepted": every decision below stays open to being re-challenged in full at actual build time, not just refined** — he doesn't yet know when that will be, and by then real numbers (see Context) may exist that don't today. See Consequence to track. **2026-08-29: build started, narrowing several of the decisions below — see the addendum's own status note and `docs/prd.md`'s §14/§15 session summary for what actually shipped.** **Second 2026-08-29 addendum (membership × reseller pricing reconciliation + money views) recorded OPEN for re-challenge — no code landed with it.**
 
 **Context:** The founder brought a reference document from a separate discussion (with Gemini) proposing a subscription-based VIP membership tier for the topup store, modeled on Costco's wholesale-membership business (most operating profit from membership fees, not markup on goods sold — members buy near cost price, non-members pay full retail). Explicitly treated as external inspiration only, not ground truth for this project, per the founder's own framing at the start of the session.
 
@@ -914,6 +914,40 @@ This ADR also narrows `ADR-011` (storefront stays guest-checkout, no Customer ac
 - Redis-store adoption (item 18) is scoped to exactly one cache call site; if a future change is tempted to flip `CACHE_STORE`'s global default instead, re-verify every existing `Cache::remember()` site against `ADR-014`'s serialization-corruption gotcha first — that bug was real, not theoretical, and only patched for the `database` driver's specific failure mode.
 - Plunk (item 29) needs real provisioning (API key, sender domain/DNS records) before build starts, same "new external dependency" caveat the superseded WhatsApp-vendor bullet used to carry.
 - Item 26's OTP throttle bucket needs its own dedicated route prefix from day one — don't let it silently share a bucket with an unrelated throttled route, the exact bug class already found and fixed once in this codebase (2026-08-27, `/login`).
+
+**Addendum, 2026-08-29 (recorded after the build session, status OPEN) — membership × reseller pricing reconciliation, member-order accounting, and the money-view rework.** Recorded explicitly OPEN for re-challenge at the founder's request, so a fresh session can re-argue every point below from first principles. Nothing here is final; the codebase still prices every order on the standard chain and no member-priced order can exist yet (Phase 6 unbuilt). No code landed with this addendum — this is a record of the founder's own framing, the problem it exposed, and the proposed solution, for the next session to challenge.
+
+*The founder's own framing (the situation he described):*
+
+1. The platform was originally designed **reseller-only**: `cost × markup = reseller_cost_price`, per-package `markup_percent`, two admin markup surfaces — Platform Settings' bulk action (`SettingsController::bulkMarkup`) and Admin Games' per-package inline edit (`PackageController::updateMarkup`) — both write `package.markup_percent` and recompute the stored `reseller_cost_price` via `PackageMarkupService`.
+2. After learning the **Costco wholesale-membership model**, membership became the PRIMARY feature and reseller became secondary. Member price is computed off **supplier cost** (`cost_price`), not reseller cost: `member_price = cost × (1 + package.markup_percent × (1 − tier.discount_percent))`, floored at 0% markup (ADR-027 decision 5, unchanged).
+3. The founder realised the two pricing systems were **never reconciled**, and that the money-critical views — admin order details and the report pages — only show the standard chain: cost price, reseller cost, selling price, voucher discount, transaction fee, final amount, platform & reseller profit. Nothing reflects membership, so an admin cannot read the business's real cashflow once memberships are live.
+4. The founder proposed **unifying the two**: member AND reseller both buy near-cost (effective markup ≈ 3%); members are quota-capped (RM300/month, ADR-027 decision 7), resellers are unlimited but add their own margin on top. The membership quota is the **deliberate anti-reseller mechanism** — a customer may resell, but only within the monthly cap; the founder accepts this consciously.
+5. The founder clarified the reseller's own margin (`Reseller.markup_pct`) is a per-reseller field whose home is the **Reseller management page** (PRD RES-1..6, Phase 2) — already planned — not a new config surface.
+
+*The problem the founder's framing exposed (verified against the code, not assumed):*
+
+- **Accounting mismatch on member orders.** Every order books `platform_profit = reseller_cost_price − cost_price` (the margin model, `PricingService`), regardless of what the customer actually paid. On a member order this overstates real cash margin — e.g. member pays RM103, supplier cost RM100, but the system books RM15 (reseller_cost − cost) as profit when the real cash margin is RM3. Reports therefore show profit that is not cash.
+- **No way to distinguish a member order from a standard order.** `orders` has no member/non-member column and no snapshot of the applied membership discount, so reports silently mix full-margin (standard) and thin-margin (member) revenue with no way for an admin to tell them apart.
+- **Two pricing chains exist but were never reconciled.** Member price is derived from supplier `cost_price` + reduced `package.markup_percent`; the standard price from `reseller_cost_price` + `reseller.markup_pct`. Because the discount only ever reduces markup (never negative), member price is always ≤ `reseller_cost_price`, so the membership discount is entirely borne by the platform's own margin and the reseller's margin is never touched.
+- **Membership fee revenue is invisible.** `membership_plans.fee_sen` is draft config, collection is off-platform/manual, there is no `ledger_entries` type for it, and no report line — the Costco model's main profit driver has no home in the money views.
+- **Known doc drift found alongside:** `SettingsController::bulkMarkup()`'s doc comment claims `PackageController::updateMarkup()` writes a `PriceChangeLog`; it does not. Cosmetic, fix opportunistically.
+
+*The proposed solution (all OPEN for challenge):*
+
+1. **No new markup config anywhere.** Membership is priced off supplier cost, riding the existing two markup surfaces; `package.markup_percent` remains the single source for both the stored `reseller_cost_price` (standard chain) and the live-computed member price. Editing markup via either existing admin surface changes the member price immediately (already proven by tests).
+2. **Unified pricing model, one anchor.** Three buyer prices derive from `cost_price`: guest (standard) = `cost × (1 + package.markup_percent)`; member = `cost × (1 + package.markup_percent × (1 − tier.discount_percent))`, quota-capped; reseller = near-cost wholesale base + the reseller's own `markup_pct` (configured on the Reseller page, Phase 2).
+3. **Reseller wholesale rate and the member×reseller interaction at a reseller storefront are deferred design intent (Phase 2)** — per this project's own convention, do not build a setting for a mechanism that does not exist yet. No `reseller_base_markup` config is built now; `reseller_cost_price` keeps its current meaning, no data migration.
+4. **Member-order accounting must book real cash margin, not the standard margin model:** `platform_profit = member_price − cost_price`, `reseller_profit = 0`. Guest/reseller orders keep the existing formulas.
+5. **Order schema snapshots the pricing basis (ORD-9):** `pricing_basis` (`standard`|`member`, default `standard`), `member_discount_percent` (applied tier discount), `normal_selling_price` (the counterfactual retail the order would have paid as a non-member).
+6. **Money views reworked for cashflow clarity:** admin order detail shows a "Member" badge + normal-vs-member price breakdown + margin given up when `pricing_basis = member`; reports split member vs standard sales and show margin forgone to members.
+7. **Membership fee revenue stays a named absence, not an accident:** when fee collection is built, book a `membership_fee` ledger type and add a report line; until then it is recorded as a known gap.
+
+*Consequence to track (addendum-specific):*
+
+- ALL decisions here are OPEN for challenge — the founder's explicit instruction, mirroring ADR-027's own standing "re-argue at build time" condition. A fresh session should read this before assuming the pricing model is settled.
+- Phase 6 (checkout-time member detection, applying the member price, booking the corrected profit, race-safe quota decrement) remains unbuilt. The schema and views can land before it (additive, standard-default); the accounting fix only activates once Phase 6 produces member-priced orders.
+- `OrderResendService` recomputes profit from live package values on resend — it must use the member formula for member-priced orders, not just the standard chain, once Phase 6 ships.
 
 ---
 
