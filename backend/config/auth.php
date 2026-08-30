@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\AdminUser;
+use App\Models\ResellerUser;
 
 return [
 
@@ -42,6 +43,19 @@ return [
             'driver' => 'session',
             'provider' => 'admin_users',
         ],
+
+        // ADR-058 (58a): the reseller portal's own guard, fully separate
+        // from the admin surface — its own user table, its own token
+        // namespace. `auth:reseller` resolves a Sanctum bearer token and
+        // (Sanctum v4 `Guard::hasValidProvider`) rejects any token whose
+        // tokenable is not a `reseller_users` model, so an admin token
+        // can never authenticate a reseller route and vice versa. The
+        // SetResellerContext middleware then activates ADR-057's tenant
+        // scope from the authenticated user's `reseller_id`.
+        'reseller' => [
+            'driver' => 'sanctum',
+            'provider' => 'reseller_users',
+        ],
     ],
 
     /*
@@ -65,6 +79,12 @@ return [
         'admin_users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', AdminUser::class),
+        ],
+
+        // ADR-058 (58a).
+        'reseller_users' => [
+            'driver' => 'eloquent',
+            'model' => ResellerUser::class,
         ],
     ],
 
@@ -92,6 +112,19 @@ return [
             'provider' => 'admin_users',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
             'expire' => 60,
+            'throttle' => 60,
+        ],
+
+        // ADR-058 (58a): its own token table so a shared email address
+        // between an admin_user and a reseller_user can never collide on
+        // the `password_reset_tokens` email-primary-key. `expire` is 24h
+        // rather than 60min — this broker also backs the first-time
+        // set-password invite (ResellerInviteService), which is an
+        // onboarding link, not a just-requested reset.
+        'reseller_users' => [
+            'provider' => 'reseller_users',
+            'table' => 'reseller_password_reset_tokens',
+            'expire' => 60 * 24,
             'throttle' => 60,
         ],
     ],

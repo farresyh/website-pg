@@ -215,6 +215,13 @@ return [
         'url' => explode(',', env('STOREFRONT_URL', 'http://localhost:3001'))[0],
     ],
 
+    // ADR-058 (58a) — canonical origin of the reseller portal (ADR-059),
+    // used to build the absolute set-password invite link
+    // (ResellerInviteService). Distinct deploy target from the storefront.
+    'reseller_portal' => [
+        'url' => explode(',', env('RESELLER_PORTAL_URL', 'http://localhost:3002'))[0],
+    ],
+
     // ADR-021 (PAY-3) — ReconcilePendingPaymentsCommand's own thresholds.
     // pending_after_minutes: how stale a payment_status=pending order must
     // be before it's even worth asking Xendit about (a checkout from 30
