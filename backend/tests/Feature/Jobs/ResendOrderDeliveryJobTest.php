@@ -98,6 +98,7 @@ class ResendOrderDeliveryJobTest extends TestCase
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         $order = Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-RESEND-JOB-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',

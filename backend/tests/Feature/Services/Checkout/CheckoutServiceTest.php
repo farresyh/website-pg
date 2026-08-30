@@ -61,6 +61,7 @@ class CheckoutServiceTest extends TestCase
             'channelCode' => 'DUITNOW_PAY',
             'idempotencyKey' => (string) Str::uuid(),
             'supplierProductRef' => 'FFP5',
+            'resellerId' => $this->primaryReseller()->id,
         ], $overrides));
     }
 

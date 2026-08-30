@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Membership;
 
 use App\Models\MembershipPlan;
+use App\Models\Reseller;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -30,6 +31,10 @@ class RecordMembershipPaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // ADR-061 decision 5: a membership belongs to one brand. The
+            // admin picks which; the storefront selector only lists brands
+            // that can actually run Membership (checked below).
+            'reseller_id' => ['required', 'integer', 'exists:resellers,id'],
             'email' => ['required', 'email', 'max:255'],
             'membership_plan_id' => ['required', 'integer', 'exists:membership_plans,id'],
             'amount_sen' => ['required', 'integer', 'min:0'],
@@ -41,6 +46,20 @@ class RecordMembershipPaymentRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            if (! $validator->errors()->has('reseller_id')) {
+                $reseller = Reseller::query()->find($this->integer('reseller_id'));
+
+                // Mirrors the RES-2/RES-3 rule (ADR-061 build addendum):
+                // consumer Membership is internal-brand-only, and only
+                // when the brand's own toggle is on.
+                if ($reseller !== null && ! ($reseller->is_owned && $reseller->membership_enabled)) {
+                    $validator->errors()->add(
+                        'reseller_id',
+                        'This brand does not have consumer Membership enabled.',
+                    );
+                }
+            }
+
             if ($validator->errors()->hasAny(['amount_sen', 'membership_plan_id'])) {
                 return;
             }

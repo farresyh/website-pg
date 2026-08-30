@@ -43,6 +43,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
             )->id;
 
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-CHECK-TEST-1',
             'reference_number' => 'REF-CHECK-TEST-1',
             'customer_email' => 'buyer@example.com',

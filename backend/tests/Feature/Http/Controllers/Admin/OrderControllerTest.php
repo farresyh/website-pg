@@ -29,6 +29,7 @@ class OrderControllerTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',

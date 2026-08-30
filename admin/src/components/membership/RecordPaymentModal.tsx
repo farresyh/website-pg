@@ -18,12 +18,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import type { MembershipPlan, RecordMembershipPaymentValues } from "@/lib/membership";
+import type { MembershipBrand, MembershipPlan, RecordMembershipPaymentValues } from "@/lib/membership";
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   plans: MembershipPlan[];
+  /** ADR-061 decision 5: internal, membership-enabled brands a membership can belong to. */
+  brands: MembershipBrand[];
+  presetResellerId?: number;
   presetEmail?: string;
   onSubmit: (values: RecordMembershipPaymentValues) => Promise<void>;
 }
@@ -39,7 +42,10 @@ function toRm(sen: number): string {
  * server-side. One idempotency key per open (ADR-035 pattern), fresh on
  * every mount since this unmounts while closed.
  */
-function RecordPaymentFields({ onClose, plans, presetEmail, onSubmit }: Omit<RecordPaymentModalProps, "isOpen">) {
+function RecordPaymentFields({ onClose, plans, brands, presetResellerId, presetEmail, onSubmit }: Omit<RecordPaymentModalProps, "isOpen">) {
+  const [resellerId, setResellerId] = useState(
+    presetResellerId ? String(presetResellerId) : brands[0]?.id ? String(brands[0].id) : "",
+  );
   const [email, setEmail] = useState(presetEmail ?? "");
   const [planId, setPlanId] = useState(plans[0]?.id ? String(plans[0].id) : "");
   const [amountRm, setAmountRm] = useState(plans[0] ? toRm(plans[0].fee_sen) : "");
@@ -69,6 +75,11 @@ function RecordPaymentFields({ onClose, plans, presetEmail, onSubmit }: Omit<Rec
       return;
     }
 
+    if (!resellerId) {
+      setError("Pick a brand first.");
+      return;
+    }
+
     const amountSen = Math.round(parseFloat(amountRm) * 100);
     if (!Number.isFinite(amountSen) || amountSen < 0) {
       setError("Enter a valid amount.");
@@ -78,6 +89,7 @@ function RecordPaymentFields({ onClose, plans, presetEmail, onSubmit }: Omit<Rec
     setSubmitting(true);
     try {
       await onSubmit({
+        reseller_id: Number(resellerId),
         email,
         membership_plan_id: selectedPlan.id,
         amount_sen: amountSen,
@@ -104,6 +116,17 @@ function RecordPaymentFields({ onClose, plans, presetEmail, onSubmit }: Omit<Rec
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {brands.length > 1 && (
+          <div>
+            <Label htmlFor="membership_brand">Brand</Label>
+            <SimpleSelect
+              id="membership_brand"
+              options={brands.map((b) => ({ value: String(b.id), label: b.business_name }))}
+              value={resellerId}
+              onChange={setResellerId}
+            />
+          </div>
+        )}
         <div>
           <Label htmlFor="membership_email">Member Email</Label>
           <Input id="membership_email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -144,7 +167,7 @@ function RecordPaymentFields({ onClose, plans, presetEmail, onSubmit }: Omit<Rec
   );
 }
 
-export default function RecordPaymentModal({ isOpen, onClose, plans, presetEmail, onSubmit }: RecordPaymentModalProps) {
+export default function RecordPaymentModal({ isOpen, onClose, plans, brands, presetResellerId, presetEmail, onSubmit }: RecordPaymentModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -161,7 +184,14 @@ export default function RecordPaymentModal({ isOpen, onClose, plans, presetEmail
             </DialogHeader>
             <DialogContent>
               {isOpen && (
-                <RecordPaymentFields onClose={onClose} plans={plans} presetEmail={presetEmail} onSubmit={onSubmit} />
+                <RecordPaymentFields
+                  onClose={onClose}
+                  plans={plans}
+                  brands={brands}
+                  presetResellerId={presetResellerId}
+                  presetEmail={presetEmail}
+                  onSubmit={onSubmit}
+                />
               )}
             </DialogContent>
           </DialogPopup>

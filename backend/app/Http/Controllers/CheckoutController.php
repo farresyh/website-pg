@@ -139,7 +139,7 @@ class CheckoutController extends Controller
         // this brand's own toggle (ADR-061 decision 4).
         $reseller = Reseller::primary();
         $membershipId = $reseller->membershipEnabledEffective($platformSettings)
-            ? $this->resolveMembershipId($request)
+            ? $this->resolveMembershipId($request, $reseller->id)
             : null;
 
         try {
@@ -235,7 +235,7 @@ class CheckoutController extends Controller
         $reseller = Reseller::primary();
         $platformSettings = PlatformSettings::current();
         $membershipId = $reseller->membershipEnabledEffective($platformSettings)
-            ? $this->resolveMembershipId($request)
+            ? $this->resolveMembershipId($request, $reseller->id)
             : null;
 
         try {
@@ -370,7 +370,7 @@ class CheckoutController extends Controller
      * intent, not a built mechanism), so `status` alone isn't reliable
      * proof a membership is still genuinely current.
      */
-    private function resolveMembershipId(Request $request): ?int
+    private function resolveMembershipId(Request $request, int $resellerId): ?int
     {
         $token = $request->bearerToken();
 
@@ -378,14 +378,18 @@ class CheckoutController extends Controller
             return null;
         }
 
-        $email = $this->membershipSessionTokens->resolve($token);
+        $session = $this->membershipSessionTokens->resolve($token);
 
-        if ($email === null) {
+        // ADR-061 decision 5: a session token minted on another brand's
+        // storefront never applies member pricing here — treated exactly
+        // like a missing/expired token (silent guest fallback).
+        if ($session === null || $session['reseller_id'] !== $resellerId) {
             return null;
         }
 
         return Membership::query()
-            ->where('email', $email)
+            ->where('reseller_id', $resellerId)
+            ->where('email', $session['email'])
             ->where('status', MembershipStatus::Active)
             ->where('expires_at', '>=', now())
             ->value('id');

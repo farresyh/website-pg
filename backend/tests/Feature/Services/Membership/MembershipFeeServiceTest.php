@@ -21,6 +21,14 @@ class MembershipFeeServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $rid;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->rid = $this->primaryReseller()->id;
+    }
+
     private function plan(string $name = 'Tier 1'): MembershipPlan
     {
         return MembershipPlan::query()->where('name', $name)->firstOrFail();
@@ -42,6 +50,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = $this->service()->recordFeePaid(
+            $this->rid,
             'new@example.com',
             $plan->id,
             $plan->fee_sen,
@@ -79,6 +88,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = Membership::query()->create([
+            'reseller_id' => $this->rid,
             'email' => 'active@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -89,6 +99,7 @@ class MembershipFeeServiceTest extends TestCase
         $originalCycle = $membership->cycle_started_at;
 
         $result = $this->service()->recordFeePaid(
+            $this->rid,
             'active@example.com',
             $plan->id,
             $plan->fee_sen,
@@ -109,6 +120,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = Membership::query()->create([
+            'reseller_id' => $this->rid,
             'email' => 'lapsed@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -118,6 +130,7 @@ class MembershipFeeServiceTest extends TestCase
         ]);
 
         $result = $this->service()->recordFeePaid(
+            $this->rid,
             'lapsed@example.com',
             $plan->id,
             $plan->fee_sen,
@@ -139,6 +152,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = Membership::query()->create([
+            'reseller_id' => $this->rid,
             'email' => 'upgrade@example.com',
             'membership_plan_id' => $tier1->id,
             'status' => 'active',
@@ -148,6 +162,7 @@ class MembershipFeeServiceTest extends TestCase
         ]);
 
         $result = $this->service()->recordFeePaid(
+            $this->rid,
             'upgrade@example.com',
             $tier2->id,
             $tier2->fee_sen,
@@ -164,8 +179,8 @@ class MembershipFeeServiceTest extends TestCase
         $plan = $this->plan('Tier 1');
         $admin = $this->admin();
 
-        $first = $this->service()->recordFeePaid('dup@example.com', $plan->id, $plan->fee_sen, $admin->id, null, 'fee-key-5');
-        $second = $this->service()->recordFeePaid('dup@example.com', $plan->id, $plan->fee_sen, $admin->id, null, 'fee-key-5');
+        $first = $this->service()->recordFeePaid($this->rid, 'dup@example.com', $plan->id, $plan->fee_sen, $admin->id, null, 'fee-key-5');
+        $second = $this->service()->recordFeePaid($this->rid, 'dup@example.com', $plan->id, $plan->fee_sen, $admin->id, null, 'fee-key-5');
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, MembershipFeeRecord::query()->where('idempotency_key', 'fee-key-5')->count());
@@ -178,6 +193,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = $this->service()->recordFeePaid(
+            $this->rid,
             'waiver@example.com',
             $plan->id,
             0,

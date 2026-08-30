@@ -21,6 +21,7 @@ class VoucherControllerTest extends TestCase
     private function makeOrder(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-TEST-1',
             'reference_number' => 'REF-TEST-1',
             'customer_email' => 'buyer@example.com',

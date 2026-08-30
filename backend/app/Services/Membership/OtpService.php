@@ -21,11 +21,12 @@ final class OtpService
 
     private const MAX_ATTEMPTS = 5;
 
-    public function generate(string $email): string
+    public function generate(int $resellerId, string $email): string
     {
         $code = (string) random_int(10 ** (self::CODE_LENGTH_DIGITS - 1), (10 ** self::CODE_LENGTH_DIGITS) - 1);
 
         MembershipOtpCode::query()->create([
+            'reseller_id' => $resellerId,
             'email' => $email,
             'code_hash' => Hash::make($code),
             'expires_at' => now()->addMinutes(self::EXPIRY_MINUTES),
@@ -34,9 +35,16 @@ final class OtpService
         return $code;
     }
 
-    public function verify(string $email, string $code): bool
+    /**
+     * ADR-061 decision 5: a code is only valid on the brand that issued
+     * it — `reseller_id` is part of the match, never trusted from the
+     * client (the caller resolves it from the storefront `Host`, the
+     * primary brand for now).
+     */
+    public function verify(int $resellerId, string $email, string $code): bool
     {
         $otp = MembershipOtpCode::query()
+            ->where('reseller_id', $resellerId)
             ->where('email', $email)
             ->whereNull('consumed_at')
             ->where('expires_at', '>', now())

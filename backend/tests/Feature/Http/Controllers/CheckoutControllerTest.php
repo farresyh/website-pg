@@ -853,7 +853,40 @@ class CheckoutControllerTest extends TestCase
 
     private function membershipToken(string $email): string
     {
-        return app(MembershipSessionTokenService::class)->issue($email);
+        return app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, $email);
+    }
+
+    /**
+     * ADR-061 decision 5: a session token minted on another brand's
+     * storefront never applies member pricing on this one — the checkout
+     * proceeds as a plain guest.
+     */
+    public function test_a_session_token_from_another_brand_does_not_apply_member_pricing(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
+            'email' => 'member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 2000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $foreignToken = app(MembershipSessionTokenService::class)->issue(999, 'member@example.com');
+
+        $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package, ['customer_email' => 'member@example.com']),
+            ['Authorization' => "Bearer {$foreignToken}"],
+        )->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('standard', $order->pricing_basis->value);
+        $this->assertNull($order->membership_id);
     }
 
     public function test_a_member_with_sufficient_quota_gets_the_member_price_and_decrements_quota(): void
@@ -863,6 +896,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -912,6 +946,7 @@ class CheckoutControllerTest extends TestCase
         $this->primaryReseller()->update(['markup_pct' => 10]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'markup-member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -961,6 +996,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'poor-member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -1010,6 +1046,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => false]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -1143,6 +1180,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',

@@ -3,6 +3,7 @@
 namespace Tests\Concurrency;
 
 use App\Models\AdminUser;
+use App\Models\LedgerEntry;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -28,6 +29,7 @@ class MembershipFeeRecordConcurrencyTest extends TestCase
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
         $admin = AdminUser::factory()->create(['role' => 'super_admin']);
+        $reseller = $this->primaryReseller();
 
         $resultFileA = tempnam(sys_get_temp_dir(), 'membership_fee_test_');
         $resultFileB = tempnam(sys_get_temp_dir(), 'membership_fee_test_');
@@ -44,7 +46,7 @@ class MembershipFeeRecordConcurrencyTest extends TestCase
 
         $command = fn (string $resultFile) => [
             PHP_BINARY, 'artisan', 'app:membership-test-record-fee',
-            'race-fee@example.com', (string) $plan->id, (string) $plan->fee_sen, (string) $admin->id, 'race-key', $resultFile,
+            (string) $reseller->id, 'race-fee@example.com', (string) $plan->id, (string) $plan->fee_sen, (string) $admin->id, 'race-key', $resultFile,
         ];
 
         $processA = Process::path(base_path())->env($env)->start($command($resultFileA));
@@ -69,7 +71,7 @@ class MembershipFeeRecordConcurrencyTest extends TestCase
 
         $this->assertSame(
             1,
-            \App\Models\LedgerEntry::query()->where('type', 'membership_fee')->count(),
+            LedgerEntry::query()->where('type', 'membership_fee')->count(),
             'Exactly one membership_fee ledger entry must exist despite the race.',
         );
     }

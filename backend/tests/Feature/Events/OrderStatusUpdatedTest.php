@@ -32,6 +32,7 @@ class OrderStatusUpdatedTest extends TestCase
         )->id;
 
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-TEST-BROADCAST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Membership\RecordMembershipPaymentRequest;
 use App\Models\Membership;
+use App\Models\Reseller;
 use App\Services\Membership\MembershipFeeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,7 +35,13 @@ class MembershipController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Membership::query()->with(['membershipPlan:id,name,quota_sen'])->withCount('orders');
+        $query = Membership::query()
+            ->with(['membershipPlan:id,name,quota_sen', 'reseller:id,business_name'])
+            ->withCount('orders');
+
+        if ($resellerId = $request->integer('reseller_id')) {
+            $query->where('reseller_id', $resellerId);
+        }
 
         match ($request->query('status')) {
             'active' => $query
@@ -64,9 +71,30 @@ class MembershipController extends Controller
         );
     }
 
+    /**
+     * ADR-061 decision 5: the Record Payment modal's brand picker. Only
+     * internal brands with their own Membership toggle on can hold a
+     * consumer membership.
+     */
+    public function brands(): JsonResponse
+    {
+        return response()->json(
+            Reseller::query()
+                ->where('is_owned', true)
+                ->where('membership_enabled', true)
+                ->orderBy('business_name')
+                ->get(['id', 'business_name'])
+                ->map(fn (Reseller $reseller) => [
+                    'id' => $reseller->id,
+                    'business_name' => $reseller->business_name,
+                ]),
+        );
+    }
+
     public function recordPayment(RecordMembershipPaymentRequest $request): JsonResponse
     {
         $membership = $this->fees->recordFeePaid(
+            (int) $request->validated('reseller_id'),
             $request->validated('email'),
             (int) $request->validated('membership_plan_id'),
             (int) $request->validated('amount_sen'),
@@ -75,7 +103,9 @@ class MembershipController extends Controller
             $request->validated('idempotency_key'),
         );
 
-        return response()->json($this->present($membership->load('membershipPlan:id,name,quota_sen')));
+        return response()->json($this->present(
+            $membership->load(['membershipPlan:id,name,quota_sen', 'reseller:id,business_name']),
+        ));
     }
 
     /**
@@ -91,6 +121,8 @@ class MembershipController extends Controller
 
         return [
             'id' => $membership->id,
+            'reseller_id' => $membership->reseller_id,
+            'brand_name' => $membership->reseller?->business_name,
             'email' => $membership->email,
             'plan_id' => $membership->membership_plan_id,
             'plan_name' => $membership->membershipPlan->name ?? null,
