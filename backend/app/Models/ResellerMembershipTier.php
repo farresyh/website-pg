@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * ADR-056 (grilled 2026-08-30) decision 1: a paid, admin-CRUD wholesale
@@ -14,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class ResellerMembershipTier extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'name',
         'monthly_fee_sen',

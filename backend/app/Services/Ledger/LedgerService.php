@@ -25,6 +25,37 @@ final class LedgerService
     }
 
     /**
+     * Batched balance lookup for a list of same-type owners — one grouped
+     * query instead of one `balance()` call per owner (ADR-058 58b's
+     * reseller table renders an earnings balance per row). Owners with no
+     * ledger entries are returned as `0`, so the result always has a key
+     * for every id passed in.
+     *
+     * @param  list<int>  $ownerIds
+     * @return array<int, int>
+     */
+    public function balances(string $ownerType, array $ownerIds): array
+    {
+        if ($ownerIds === []) {
+            return [];
+        }
+
+        $sums = LedgerEntry::query()
+            ->where('owner_type', $ownerType)
+            ->whereIn('owner_id', $ownerIds)
+            ->groupBy('owner_id')
+            ->selectRaw('owner_id, SUM(amount) as total')
+            ->pluck('total', 'owner_id');
+
+        $out = [];
+        foreach ($ownerIds as $id) {
+            $out[$id] = (int) ($sums[$id] ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
      * Additions are always safe — no "insufficient" failure mode, so no
      * locking is needed here (unlike withdraw()).
      */
