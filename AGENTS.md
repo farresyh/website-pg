@@ -159,10 +159,14 @@ not proof the local dev DB has the new tables/columns. A `SQLSTATE[HY000]:
 ... no such table` (or "unknown column") error in the browser/Postman against
 a locally-running backend almost always means this — run `php artisan
 migrate:status` to confirm, then `php artisan migrate` — not a code bug. Any
-session that adds a migration should run `php artisan migrate` against the
-local dev DB before calling the feature done, not just the test suites — see
-`docs/prd.md` §14's 2026-07-29 Blacklist/Fraud entry for a live instance of
-this exact gotcha.
+session that adds a migration should run **plain `php artisan migrate`**
+(never `migrate:fresh`) against the local dev DB before calling the feature
+done, not just the test suites. `migrate:fresh` **drops every table** — the
+local sqlite dev DB is gitignored with no backup, so a `migrate:fresh` there
+permanently wipes any locally-set-up games/packages/test data. See
+`docs/prd.md` §14's 2026-07-29 Blacklist/Fraud entry for the additive-migrate
+gotcha and its 2026-08-31 ADR-061 PR-B entry for a `migrate:fresh` data-loss
+incident.
 
 **Third known gotcha:** `php artisan serve` re-reads `backend/.env` for the
 process it actually spawns and only passes through a small Laravel-hardcoded

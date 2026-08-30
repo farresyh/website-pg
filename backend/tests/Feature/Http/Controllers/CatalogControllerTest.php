@@ -372,6 +372,7 @@ class CatalogControllerTest extends TestCase
 
         $tier1 = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
         Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'tier1-member@example.com',
             'membership_plan_id' => $tier1->id,
             'status' => 'active',
@@ -379,7 +380,7 @@ class CatalogControllerTest extends TestCase
             'quota_remaining_sen' => 30000,
             'expires_at' => now()->addDays(20),
         ]);
-        $token = app(MembershipSessionTokenService::class)->issue('tier1-member@example.com');
+        $token = app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, 'tier1-member@example.com');
 
         // Anonymous request still gets Tier 2's anchor, unaffected.
         $anonymous = $this->getJson('/api/catalog/games/free-fire-global/packages');

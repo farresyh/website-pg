@@ -36,8 +36,9 @@ use Illuminate\Support\Facades\DB;
  *   double-book a fee.
  *
  * Concurrency note: two unique constraints can fire here, and each has
- * its own recovery. `memberships.email` (a brand-new email created by a
- * concurrent record) is caught *inside* the transaction — the blocked
+ * its own recovery. `memberships.(reseller_id, email)` (a brand-new
+ * member created by a concurrent record — ADR-061 decision 5 made this
+ * per-brand) is caught *inside* the transaction — the blocked
  * INSERT surfaces the violation only after the winner committed, so a
  * re-read sees the row and falls through to extend/reactivate. The fee
  * records' own `idempotency_key` (the true double-submit serialization
@@ -56,6 +57,7 @@ final class MembershipFeeService
     }
 
     public function recordFeePaid(
+        int $resellerId,
         string $email,
         int $planId,
         int $amountSen,
@@ -78,13 +80,17 @@ final class MembershipFeeService
         $plan = MembershipPlan::query()->findOrFail($planId);
 
         try {
-            return DB::transaction(function () use ($email, $plan, $amountSen, $adminUserId, $reason, $idempotencyKey) {
-                $membership = Membership::query()->where('email', $email)->first();
+            return DB::transaction(function () use ($resellerId, $email, $plan, $amountSen, $adminUserId, $reason, $idempotencyKey) {
+                $membership = Membership::query()
+                    ->where('reseller_id', $resellerId)
+                    ->where('email', $email)
+                    ->first();
                 $isNew = false;
 
                 if ($membership === null) {
                     try {
                         $membership = Membership::query()->create([
+                            'reseller_id' => $resellerId,
                             'email' => $email,
                             'membership_plan_id' => $plan->id,
                             'status' => MembershipStatus::Active,
@@ -94,14 +100,19 @@ final class MembershipFeeService
                         ]);
                         $isNew = true;
                     } catch (UniqueConstraintViolationException) {
-                        // Email race: a concurrent record created this
-                        // email. The blocked INSERT surfaced the violation
-                        // only after that transaction committed — but the
-                        // plain snapshot read above can't see it under
-                        // REPEATABLE READ, so re-read with a CURRENT read
-                        // (`lockForUpdate()`) which always sees committed
-                        // data, and hold that lock through the transition.
-                        $membership = Membership::query()->where('email', $email)->lockForUpdate()->first();
+                        // (reseller_id, email) race: a concurrent record
+                        // created this pair. The blocked INSERT surfaced
+                        // the violation only after that transaction
+                        // committed — but the plain snapshot read above
+                        // can't see it under REPEATABLE READ, so re-read
+                        // with a CURRENT read (`lockForUpdate()`) which
+                        // always sees committed data, and hold that lock
+                        // through the transition.
+                        $membership = Membership::query()
+                            ->where('reseller_id', $resellerId)
+                            ->where('email', $email)
+                            ->lockForUpdate()
+                            ->first();
                     }
                 } else {
                     $membership = Membership::query()->where('id', $membership->id)->lockForUpdate()->first();

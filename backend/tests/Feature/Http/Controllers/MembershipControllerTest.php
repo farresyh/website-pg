@@ -38,13 +38,22 @@ class MembershipControllerTest extends TestCase
 
     private function tokenFor(string $email): string
     {
-        return app(MembershipSessionTokenService::class)->issue($email);
+        return app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, $email);
     }
 
     public function test_me_requires_a_valid_session_token(): void
     {
         $this->getJson('/api/membership/me')->assertUnauthorized();
         $this->getJson('/api/membership/me', ['Authorization' => 'Bearer garbage'])->assertUnauthorized();
+    }
+
+    /** ADR-061 decision 5: a token minted on another brand's storefront is not honoured here. */
+    public function test_me_rejects_a_session_token_issued_for_another_brand(): void
+    {
+        $otherBrandToken = app(MembershipSessionTokenService::class)->issue(999, 'member@example.com');
+
+        $this->getJson('/api/membership/me', ['Authorization' => "Bearer {$otherBrandToken}"])
+            ->assertUnauthorized();
     }
 
     public function test_me_returns_null_membership_when_the_email_has_no_active_membership(): void
@@ -60,6 +69,7 @@ class MembershipControllerTest extends TestCase
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -87,6 +97,7 @@ class MembershipControllerTest extends TestCase
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-TEST1', 'reference_number' => 'REF-TEST1',
             'game_id' => $game->id, 'package_id' => $package->id,
             'customer_name' => 'Member', 'customer_email' => 'member@example.com', 'customer_phone' => '+60123456789',
@@ -94,6 +105,7 @@ class MembershipControllerTest extends TestCase
             'transaction_fee' => 0, 'platform_profit' => 50, 'reseller_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
         ]);
         Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-OTHER', 'reference_number' => 'REF-OTHER',
             'game_id' => $game->id, 'package_id' => $package->id,
             'customer_name' => 'Someone Else', 'customer_email' => 'someone-else@example.com', 'customer_phone' => '+60111111111',

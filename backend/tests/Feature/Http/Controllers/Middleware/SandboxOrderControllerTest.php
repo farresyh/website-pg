@@ -119,6 +119,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-REAL-1',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -142,6 +143,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $order = Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-REAL-2',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -299,6 +301,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $order = Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-REAL-MARK-DELIVERED',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -369,6 +372,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $order = Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-REAL-3',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -390,6 +394,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $realOrder = Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-REAL-4',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',

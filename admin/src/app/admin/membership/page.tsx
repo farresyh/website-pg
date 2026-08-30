@@ -34,10 +34,12 @@ import {
   updateMembershipEnabled,
   previewMembershipPricing,
   listMemberships,
+  listMembershipBrands,
   recordMembershipPayment,
   type MembershipPlan,
   type MembershipPricingPreview,
   type MembershipListItem,
+  type MembershipBrand,
   type MembershipStatusFilter,
 } from "@/lib/membership";
 import { Label } from "@/components/ui/label";
@@ -238,6 +240,9 @@ const statusSeverity: Record<MembershipListItem["status"], "success" | "secondar
 function MembersSection({ token, plans, onChanged }: { token: string; plans: MembershipPlan[]; onChanged: () => void }) {
   const [data, setData] = useState<MembershipListItem[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<MembershipStatusFilter>("all");
+  // ADR-061 decision 5: memberships are per-brand — "all" or one brand id.
+  const [brands, setBrands] = useState<MembershipBrand[]>([]);
+  const [brandFilter, setBrandFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
@@ -245,12 +250,14 @@ function MembersSection({ token, plans, onChanged }: { token: string; plans: Mem
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [presetEmail, setPresetEmail] = useState<string | undefined>(undefined);
+  const [presetResellerId, setPresetResellerId] = useState<number | undefined>(undefined);
 
   function refresh(nextPage = 1) {
     listMemberships(token, {
       status: statusFilter,
       search: search || undefined,
       page: nextPage,
+      resellerId: brandFilter === "all" ? undefined : Number(brandFilter),
     })
       .then((res) => {
         setData(res.data);
@@ -264,14 +271,21 @@ function MembersSection({ token, plans, onChanged }: { token: string; plans: Mem
   }
 
   useEffect(() => {
+    listMembershipBrands(token)
+      .then(setBrands)
+      .catch(() => setBrands([]));
+  }, [token]);
+
+  useEffect(() => {
     refresh(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, brandFilter]);
 
   async function handleRecorded(values: Parameters<typeof recordMembershipPayment>[1]) {
     await recordMembershipPayment(token, values);
     setIsModalOpen(false);
     setPresetEmail(undefined);
+    setPresetResellerId(undefined);
     await refresh(page);
     onChanged();
   }
@@ -305,7 +319,15 @@ function MembersSection({ token, plans, onChanged }: { token: string; plans: Mem
             onChange={(v) => setStatusFilter(v as MembershipStatusFilter)}
             className="w-36"
           />
-          <Button size="small" onClick={() => { setPresetEmail(undefined); setIsModalOpen(true); }}>
+          {brands.length > 1 && (
+            <SimpleSelect
+              options={[{ value: "all", label: "All brands" }, ...brands.map((b) => ({ value: String(b.id), label: b.business_name }))]}
+              value={brandFilter}
+              onChange={setBrandFilter}
+              className="w-44"
+            />
+          )}
+          <Button size="small" onClick={() => { setPresetEmail(undefined); setPresetResellerId(undefined); setIsModalOpen(true); }}>
             <PlusIcon />
             Record Payment
           </Button>
@@ -326,6 +348,7 @@ function MembersSection({ token, plans, onChanged }: { token: string; plans: Mem
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Email</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Brand</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Tier</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Expires</DataTableTHeadCell>
@@ -344,6 +367,9 @@ function MembersSection({ token, plans, onChanged }: { token: string; plans: Mem
                           {m.email}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {m.brand_name ?? `brand #${m.reseller_id}`}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {m.plan_name ?? `plan #${m.plan_id}`}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -359,7 +385,7 @@ function MembersSection({ token, plans, onChanged }: { token: string; plans: Mem
                           {m.orders_count}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Button size="small" variant="outlined" onClick={() => { setPresetEmail(m.email); setIsModalOpen(true); }}>
+                          <Button size="small" variant="outlined" onClick={() => { setPresetEmail(m.email); setPresetResellerId(m.reseller_id); setIsModalOpen(true); }}>
                             Record Payment
                           </Button>
                         </DataTableCell>
@@ -397,6 +423,8 @@ function MembersSection({ token, plans, onChanged }: { token: string; plans: Mem
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         plans={plans}
+        brands={brands}
+        presetResellerId={presetResellerId}
         presetEmail={presetEmail}
         onSubmit={handleRecorded}
       />

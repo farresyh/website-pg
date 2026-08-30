@@ -73,29 +73,45 @@ class MembershipController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        $email = $this->resolveEmail($request);
+        $session = $this->resolveSession($request);
 
-        if ($email === null) {
+        if ($session === null) {
             return response()->json(['message' => 'Invalid or expired session.'], 401);
         }
 
+        [$resellerId, $email] = [$session['reseller_id'], $session['email']];
+
         $membership = Membership::query()
             ->with('membershipPlan')
+            ->where('reseller_id', $resellerId)
             ->where('email', $email)
             ->where('status', MembershipStatus::Active)
             ->first();
 
         return response()->json([
             'membership' => $membership !== null ? $this->publicMembership($membership) : null,
-            'order_history' => $this->orderHistory($email),
+            'order_history' => $this->orderHistory($resellerId, $email),
         ]);
     }
 
-    private function resolveEmail(Request $request): ?string
+    /**
+     * ADR-061 decision 5: a session token is only honoured on the brand
+     * it was issued for. The storefront brand is `Reseller::primary()`
+     * today (`Host`-resolved in ADR-060); a token from another brand
+     * resolves to `null` here, exactly like an expired one.
+     *
+     * @return array{reseller_id: int, email: string}|null
+     */
+    private function resolveSession(Request $request): ?array
     {
         $token = $request->bearerToken();
+        $session = $token !== null ? $this->sessionTokens->resolve($token) : null;
 
-        return $token !== null ? $this->sessionTokens->resolve($token) : null;
+        if ($session === null || $session['reseller_id'] !== Reseller::primary()->id) {
+            return null;
+        }
+
+        return $session;
     }
 
     /**
@@ -119,10 +135,11 @@ class MembershipController extends Controller
      *
      * @return array<int, array<string, mixed>>
      */
-    private function orderHistory(string $email): array
+    private function orderHistory(int $resellerId, string $email): array
     {
         return Order::query()
             ->with(['game:id,name,slug', 'package:id,name'])
+            ->where('reseller_id', $resellerId)
             ->where('customer_email', $email)
             ->orderByDesc('created_at')
             ->limit(50)

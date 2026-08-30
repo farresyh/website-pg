@@ -123,6 +123,7 @@ class OrderResendServiceTest extends TestCase
     private function failedOrder(Game $game, Package $package, Supplier $supplier, array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-RESEND-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',

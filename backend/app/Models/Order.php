@@ -6,6 +6,8 @@ use App\Models\Concerns\BelongsToReseller;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
+use Database\Factories\OrderFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,6 +17,9 @@ class Order extends Model
 {
     /** ADR-057: tenant-scoped to the current reseller under the reseller guard. */
     use BelongsToReseller;
+
+    /** @use HasFactory<OrderFactory> */
+    use HasFactory;
 
     protected $fillable = [
         'order_number',

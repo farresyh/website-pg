@@ -69,8 +69,20 @@ export function previewMembershipPricing(token: string, discountPercent: number)
 
 export type MembershipStatus = "active" | "expired";
 
+/** ADR-061 decision 5: an internal, membership-enabled brand a membership can belong to. */
+export interface MembershipBrand {
+  id: number;
+  business_name: string;
+}
+
+export function listMembershipBrands(token: string) {
+  return apiFetch<MembershipBrand[]>("/api/memberships/brands", { token });
+}
+
 export interface MembershipListItem {
   id: number;
+  reseller_id: number;
+  brand_name: string | null;
   email: string;
   plan_id: number;
   plan_name: string | null;
@@ -94,19 +106,21 @@ export type MembershipStatusFilter = "all" | "active" | "expired";
 
 export function listMemberships(
   token: string,
-  params: { status?: MembershipStatusFilter; planId?: number; search?: string; page?: number } = {},
+  params: { status?: MembershipStatusFilter; planId?: number; search?: string; page?: number; resellerId?: number } = {},
 ) {
   const query = new URLSearchParams();
   if (params.status && params.status !== "all") query.set("status", params.status);
   if (params.planId) query.set("plan_id", String(params.planId));
   if (params.search) query.set("search", params.search);
   if (params.page) query.set("page", String(params.page));
+  if (params.resellerId) query.set("reseller_id", String(params.resellerId));
   const qs = query.toString();
 
   return apiFetch<MembershipPage>(`/api/memberships${qs ? `?${qs}` : ""}`, { token });
 }
 
 export interface RecordMembershipPaymentValues {
+  reseller_id: number;
   email: string;
   membership_plan_id: number;
   amount_sen: number;

@@ -14,12 +14,13 @@ use Illuminate\Console\Command;
  * / Phase 6.5 (Q11) — the double-submit serialization point is the
  * fee-records unique index, proven here rather than assumed.
  */
-#[Signature('app:membership-test-record-fee {email} {planId} {amount} {adminId} {idempotencyKey} {resultFile}')]
+#[Signature('app:membership-test-record-fee {resellerId} {email} {planId} {amount} {adminId} {idempotencyKey} {resultFile}')]
 #[Description('Test-only: record a membership fee and write the outcome to a result file.')]
 class MembershipTestRecordFee extends Command
 {
     public function handle(MembershipFeeService $fees): int
     {
+        $resellerId = (int) $this->argument('resellerId');
         $email = $this->argument('email');
         $planId = (int) $this->argument('planId');
         $amount = (int) $this->argument('amount');
@@ -28,7 +29,7 @@ class MembershipTestRecordFee extends Command
         $resultFile = $this->argument('resultFile');
 
         try {
-            $membership = $fees->recordFeePaid($email, $planId, $amount, $adminId, null, $idempotencyKey);
+            $membership = $fees->recordFeePaid($resellerId, $email, $planId, $amount, $adminId, null, $idempotencyKey);
 
             file_put_contents($resultFile, (string) $membership->id);
         } catch (\Throwable $e) {

@@ -441,6 +441,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // /admin/membership. Same super_admin tier as membership-plans.
     Route::middleware('admin.role:super_admin')->prefix('memberships')->group(function () {
         Route::get('/', [AdminMembershipController::class, 'index']);
+        // ADR-061 decision 5: the brands a membership can be recorded
+        // against — internal, membership-enabled resellers only.
+        Route::get('/brands', [AdminMembershipController::class, 'brands']);
         Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
     });
 

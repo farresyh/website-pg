@@ -19,15 +19,25 @@ final class MembershipSessionTokenService
 {
     private const TTL_DAYS = 30;
 
-    public function issue(string $email): string
+    public function issue(int $resellerId, string $email): string
     {
         return Crypt::encryptString(json_encode([
+            'reseller_id' => $resellerId,
             'email' => $email,
             'expires_at' => now()->addDays(self::TTL_DAYS)->timestamp,
         ], JSON_THROW_ON_ERROR));
     }
 
-    public function resolve(string $token): ?string
+    /**
+     * ADR-061 decision 5: the token now carries the brand it was issued
+     * on. Returns `['reseller_id' => int, 'email' => string]` on a valid,
+     * unexpired token; `null` otherwise (including a legacy token with no
+     * `reseller_id` — membership shipped seeded-off, so no such token is
+     * live in production).
+     *
+     * @return array{reseller_id: int, email: string}|null
+     */
+    public function resolve(string $token): ?array
     {
         try {
             $payload = json_decode(Crypt::decryptString($token), true, flags: JSON_THROW_ON_ERROR);
@@ -35,7 +45,7 @@ final class MembershipSessionTokenService
             return null;
         }
 
-        if (! is_array($payload) || ! isset($payload['email'], $payload['expires_at'])) {
+        if (! is_array($payload) || ! isset($payload['reseller_id'], $payload['email'], $payload['expires_at'])) {
             return null;
         }
 
@@ -43,6 +53,9 @@ final class MembershipSessionTokenService
             return null;
         }
 
-        return $payload['email'];
+        return [
+            'reseller_id' => (int) $payload['reseller_id'],
+            'email' => (string) $payload['email'],
+        ];
     }
 }

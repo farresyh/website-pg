@@ -33,6 +33,7 @@ class MembershipQuotaDecrementConcurrencyTest extends TestCase
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'email' => 'race@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -78,8 +79,8 @@ class MembershipQuotaDecrementConcurrencyTest extends TestCase
         $successes = array_filter($outcomes, fn ($r) => $r === 'success');
         $failures = array_filter($outcomes, fn ($r) => $r === 'failed');
 
-        $this->assertCount(1, $successes, 'Expected exactly one success, got: ' . json_encode($outcomes));
-        $this->assertCount(1, $failures, 'Expected exactly one failure, got: ' . json_encode($outcomes));
+        $this->assertCount(1, $successes, 'Expected exactly one success, got: '.json_encode($outcomes));
+        $this->assertCount(1, $failures, 'Expected exactly one failure, got: '.json_encode($outcomes));
 
         $this->assertSame(300, $membership->fresh()->quota_remaining_sen);
     }
@@ -87,6 +88,7 @@ class MembershipQuotaDecrementConcurrencyTest extends TestCase
     private function order(string $orderNumber): Order
     {
         return Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => $orderNumber,
             'customer_email' => 'race@example.com',
             'player_id' => '123456',

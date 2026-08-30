@@ -34,6 +34,7 @@ class FinalizePendingDeliveryConcurrencyTest extends TestCase
         ]);
 
         $order = Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-PENDING-RACE-1',
             'customer_email' => 'race@example.com',
             'player_id' => '123456',

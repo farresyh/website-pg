@@ -87,7 +87,8 @@ class CatalogController extends Controller
         // ADR-061 decision 4: Membership is live only when the global
         // kill-switch AND this storefront's own toggle are both on.
         // ADR-060 resolves the brand per `Host`; today it is the primary.
-        $membershipEnabled = Reseller::primary()->membershipEnabledEffective();
+        $reseller = Reseller::primary();
+        $membershipEnabled = $reseller->membershipEnabledEffective();
 
         // Resolved once per request, outside the cache closure below —
         // a decrypt + one indexed Membership lookup, not worth caching
@@ -96,7 +97,7 @@ class CatalogController extends Controller
         // computes. A missing/unresolvable/lapsed token falls back to
         // null, same silent fallback CheckoutController::
         // resolveMembershipId() already uses — not an error.
-        $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request) : null;
+        $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request, $reseller->id) : null;
 
         $packages = Cache::store(config('cache.catalog_packages_store'))
             ->tags(['catalog.packages', "catalog.packages.game.{$game->id}"])
@@ -136,7 +137,7 @@ class CatalogController extends Controller
      * price pre-payment, even though CheckoutService already charged
      * them correctly at Tier 1 (docs/adr.md ADR-027).
      */
-    private function resolveMemberPlan(Request $request): ?MembershipPlan
+    private function resolveMemberPlan(Request $request, int $resellerId): ?MembershipPlan
     {
         $token = $request->bearerToken();
 
@@ -144,14 +145,18 @@ class CatalogController extends Controller
             return null;
         }
 
-        $email = $this->membershipSessionTokens->resolve($token);
+        $session = $this->membershipSessionTokens->resolve($token);
 
-        if ($email === null) {
+        // ADR-061 decision 5: a token from another brand's storefront is
+        // ignored here — the caller falls back to the anonymous anchor
+        // price, same as an unauthenticated request.
+        if ($session === null || $session['reseller_id'] !== $resellerId) {
             return null;
         }
 
         return Membership::query()
-            ->where('email', $email)
+            ->where('reseller_id', $resellerId)
+            ->where('email', $session['email'])
             ->where('status', MembershipStatus::Active)
             ->where('expires_at', '>=', now())
             ->with('membershipPlan')
