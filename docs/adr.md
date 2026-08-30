@@ -200,7 +200,7 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 
 ## ADR-013: Platform owner is the first Reseller row, not a parallel single-tenant concept
 
-**Status:** Accepted — 2026-07-25 (formalizes a decision discussed but not previously written down; surfaced as a documentation gap during the CheckoutController planning pass)
+**Status:** Accepted — 2026-07-25 (formalizes a decision discussed but not previously written down; surfaced as a documentation gap during the CheckoutController planning pass). **Superseded by [ADR-061](#adr-061-every-storefront-is-a-reseller--abolish-the-platform-owner-special-case) — 2026-08-30.** ADR-013's core idea (the platform owner is a `Reseller` row, not a parallel code path) is *kept and hardened*; what ADR-061 changes is the discriminator — the `business_name = 'Platform Owner'` magic string is replaced by explicit `is_owned` / `is_primary` flags, and "there is exactly one internal reseller" stops being true (the founder is onboarding a second internal brand).
 
 **Decision:** There is no separate "platform owner" concept modeled alongside `Reseller`. The platform owner *is* the first `Reseller` row (`business_name = 'Platform Owner'`, `markup_pct = 0`), created once (seeded in `DatabaseSeeder`, with a `firstOrCreate` safety net in `CheckoutController` for any environment that skipped seeding). Every Order's `reseller_id`, and both `LedgerEntry` rows a delivered order writes (platform + reseller profit), reference this same row in MVP.
 
@@ -2353,8 +2353,59 @@ One grilled design, split into five sequenced ADRs so each ships as its own PR t
 | 4 | **ADR-059** Reseller portal (`reseller/` app) | ADR-057, ADR-058 | none |
 | 5 | **ADR-060** Multi-tenant branded storefront + Cloudflare for SaaS | ADR-056..059 | **`ADR-020` + `ADR-037`** |
 
-Build order: 056 → 057 → 058 → 059 → (production deployment) → 060.
+Build order: 056 → 057 → 058 → **061** → 059 → (production deployment) → 060.
 
-**PRD deltas to apply as each ships** (not yet applied — design-only): §6.7 RES-1..6 (tier column, tier-assignment step, `reseller_membership_tiers` CRUD home), §8 `Reseller` and `Package` data-model rows, §13 Glossary (`Reseller Wholesale Tier`, `xenPlatform` now dropped not deferred, a new `Reseller Earnings` term), §14/§15, and the two new ledger types.
+**ADR-061** (abolish the platform-owner special-case, grilled 2026-08-30) was added to this sequence after ADR-058 shipped — it lands between 058 and 059 because 059's reseller portal and 060's `Host` resolution both assume "every storefront is a `Reseller`, `platformOwner` is just a tenant," which is only true once 061's refactor is done.
+
+**PRD deltas to apply as each ships** (not yet applied — design-only): §6.7 RES-1..6 (tier column, tier-assignment step, `reseller_membership_tiers` CRUD home, an "Our own brand?" flag + per-brand membership toggle from ADR-061), §8 `Reseller` and `Package` data-model rows, §13 Glossary (`Reseller Wholesale Tier`, `xenPlatform` now dropped not deferred, a new `Reseller Earnings` term, `is_owned`/`is_primary` reseller from ADR-061), §14/§15, and the two new ledger types.
 
 **Superseded by this batch:** `ADR-001`'s "reseller sub-accounts will be OWNED" addendum and `ADR-022` decision 2's "CHIP Send payout API" path (both → manual bank transfer, ADR-059 decision 6); `ADR-003`'s "tenant scoping enforced via ORM global scopes" as an already-true statement (→ actually built in ADR-057).
+
+---
+
+## ADR-061: Every storefront is a Reseller — abolish the platform-owner special-case
+
+**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, immediately after ADR-058 58b shipped). **Supersedes ADR-013.** Lands as its own PR(s) between ADR-058 and ADR-059 in the reseller batch — see the phasing note above.
+
+**Context:**
+- ADR-013 established "the platform owner is the first `Reseller` row, not a parallel code path." That decision is sound and is kept. What is not sound is the **discriminator**: `Reseller::platformOwner()` is `firstOrCreate(['business_name' => 'Platform Owner'], …)` — a magic string on a column with **no unique constraint**. Rename the business → a second "Platform Owner" row is silently created and pricing/ledger split against the wrong row. A real reseller named "Platform Owner" collides. ADR-013's own consequence note said this lookup "gets replaced, not extended" once Phase 2 onboards real resellers — that time is now.
+- ~28 non-test call sites resolve `Reseller::platformOwner()` (branding/SEO/footer/redirects reads, checkout/catalog pricing, admin settings writes, seeders/migrations). 33 more in tests.
+- The founder is **buying a second business** — a second brand that should behave exactly like the current platform storefront: same supplier catalog, same `Package` rows, **same company wallet/books**, its own domain + branding + consumer membership. Third-party resellers (ADR-056/058/059/060) stay feature-limited — in particular **no consumer membership**, which is the founder's chosen differentiator between "our" storefronts and a reseller's.
+- Consumer membership (`ADR-027`) is currently welded to the platform storefront path: gated by one global `PlatformSettings.membership_enabled`, and `memberships` / `membership_otp_codes` are purely email-keyed with **no `reseller_id`**. `membership_plans` seeds exactly 2 rows (anchor/decoy, `ADR-027` decision 4).
+- `OrderFulfillmentService::creditProfit()` already writes two ledger entries per delivered order — `platform_profit` → `ledger owner ('platform', null)`, `reseller_profit` → `('reseller', reseller_id)`. For the platform owner (`markup_pct = 0`) `reseller_profit` is 0, so its `('reseller', id)` account sits at 0 and all margin lands in `('platform', null)`.
+- `WithdrawalController::store()` hardcodes `owner_type = 'platform'`; `approve()` already reads `owner_type` from the row (generic).
+- Blocked follow-ups this ADR is the natural home for: `ADR-057`'s deferred `orders.reseller_id` NOT NULL flip (needs an `OrderFactory` first — no model factories exist except `AdminUserFactory`), and `ADR-059`'s recommended `LedgerOwnerType` enum.
+
+**Decision:**
+
+1. **No "platform owner" concept.** Every storefront — ours and third-party — is a `Reseller` row, treated uniformly: each gets a portal login (`reseller_users`), per-reseller branding/SEO/footer/redirects (these tables already carry `reseller_id`), an earnings ledger account `('reseller', id)`, and withdrawal through the reseller portal (ADR-059).
+
+2. **`resellers.is_owned`** (boolean, default `false`) — "this is our own brand." Reporting treats an `is_owned` reseller's contribution as internal (our money, not a payable). It is a precondition for `is_primary`. It does **not** constrain `markup_pct`: an `is_owned` brand defaults `markup_pct = 0` (all its margin books as `platform_profit`), but the founder may raise it in the portal — that brand's margin then accrues in its `('reseller', id)` account, still the founder's money, now tracked per-brand. A new third-party reseller is `is_owned = false` (safe default).
+
+3. **`resellers.is_primary`** (boolean, **exactly one row**, enforced by a partial/portable-nullable unique index; must be `is_owned = true`) — the fallback tenant for any context with no `Host` to resolve from: console commands, queue jobs, migrations, and admin screens not yet made brand-aware. Backfilled `true` onto the current `business_name = 'Platform Owner'` row. **Can never be deleted** (deactivate only). `Reseller::platformOwner()` → `Reseller::primary()` (`where('is_primary', true)->sole()` — fails loud on 0 or >1, never `firstOrCreate`). All ~28 non-test call sites swap to `primary()`.
+
+4. **`resellers.membership_enabled`** (boolean, default `false`) — the sole per-reseller capability toggle for now. Consumer membership (`ADR-027`) is enabled for a storefront only when **both** `PlatformSettings.membership_enabled` (retained as a global master kill-switch — turn membership off everywhere during an incident) **and** the resolved reseller's `membership_enabled` are true. Migration copies the current global value onto the primary reseller's column; `PlatformSettings.membership_enabled` then defaults `true` going forward. No other `PlatformSettings` field moves per-reseller in this ADR (`vip_spend_threshold_sen`, `maintenance_mode`, telegram/ops config all stay global — per-brand `maintenance_mode` is noted as a future want, not scoped here).
+
+5. **Consumer-membership identity becomes per-brand.** `memberships` gains a `reseller_id` FK; its `unique(email)` becomes `unique(reseller_id, email)`. `membership_otp_codes` gains `reseller_id` (a verification code issued from brand A's storefront must not verify at brand B). `membership_quota_debits` and `membership_fee_records` inherit the scoping through their existing `membership_id` FK — no column change. Existing `memberships` / `membership_otp_codes` rows backfill to the primary reseller. **`membership_plans` stays global/shared** — still edited at `/admin/membership`, all `membership_enabled` brands show the same tiers/fees; a future nullable `membership_plans.reseller_id` (null = global) is a separate decision if per-brand membership pricing is ever wanted.
+
+6. **`OrderFulfillmentService::creditProfit()` is unchanged.** It keeps writing the two-entry split. An `is_owned` brand at `markup_pct = 0` produces `reseller_profit = 0` — identical to the platform owner today, no new branch in the money path, no new concurrency proof required. This is load-bearing: routing an internal brand's profit differently later is a *new* decision, not a tweak.
+
+7. **Two withdrawal sources, both unchanged.** `('platform', null)` aggregates `platform_profit` across every order of every brand (internal and third-party) — withdrawn from `/admin` via the existing WTH-1..5 flow. Each `('reseller', id)` account is withdrawn from that reseller's own portal (ADR-059); for an `is_owned` brand at `markup_pct = 0` this is ~0.
+
+8. **RES-6 delete guard** (ADR-058 58b): `business_name === 'Platform Owner'` → `$reseller->is_primary`. An `is_owned` reseller that is not `is_primary` (a future third internal brand, or a brand being sold off) follows the normal reseller delete rules (earnings balance zero, no pending/approved withdrawal). **RES-2 create** gains an "Our own brand?" input (`is_owned`); when set, `markup_pct` defaults 0 and the `membership_enabled` toggle is shown. `user_name` / `user_email` stay required for every reseller (decision 1 — everyone gets a portal login).
+
+9. **Two PRs, both before ADR-059:**
+   - **PR-A** (pure refactor, no behaviour change): the `is_owned` / `is_primary` / `membership_enabled` columns + backfill; `Reseller::primary()` and the ~28 call-site swap; the dual kill-switch wiring; the ADR-058 58b guard/UI updates. `primary()` resolves the exact row `platformOwner()` did, so nothing observable changes.
+   - **PR-B** (schema change): `memberships.reseller_id` + `unique(reseller_id, email)`; `membership_otp_codes.reseller_id`; membership OTP / catalog / checkout code made reseller-aware; the backfill; an **`OrderFactory`**; and `ADR-057`'s deferred **`orders.reseller_id` NOT NULL** flip. Introduce `LedgerOwnerType` here (or in ADR-059 if that PR lands first).
+
+**Rationale:** The founder's own reframe during grilling — "treat the internal brand exactly like a reseller, just set its markup to 0" — is what makes this cheap. It collapses what looked like a money-path change (decision 6) into a no-op, because the platform owner is *already* modelled as a zero-margin reseller. The only genuinely new machinery is two flags (`is_owned`, `is_primary`) that carry the ownership/fallback semantics the magic string was standing in for, and one capability flag (`membership_enabled`). Per-brand membership identity (decision 5) is the real work, but it is unavoidable: two separate businesses cannot share a VIP roster, and `memberships` was the one part of the reseller-era schema that `ADR-027` built before reseller storefronts were taken seriously.
+
+**Consequence to track:**
+- Design-only. Depends on ADR-058 (shipped). Blocks ADR-059/060, which both already assume this model in their own text (ADR-060 decision 1: "`platformOwner` is just another tenant").
+- `creditProfit` staying untouched is the load-bearing call — flag any future pressure to change it as re-opening this ADR.
+- `membership_plans` shared-global means every `membership_enabled` brand shows the same two tiers and the same fee. Revisit with a nullable `reseller_id` if a brand needs its own membership pricing.
+- Per-brand `maintenance_mode` deferred.
+- `('platform', null)` now aggregates margin across an arbitrary number of internal brands. `ReportService` / `DashboardService` / `CustomerAnalyticsService` all split on `owner_type` today; a per-brand breakdown must come from `orders.reseller_id` (ADR-060 already promises `/admin/orders` labels every order per reseller).
+- The ~28 call-site swap touches pricing and storefront-config paths; the NOT NULL flip touches every `Order`-creating test. PR-A and PR-B each need the full fast + concurrency suite green, and PR-B's `OrderFactory` must reproduce the current bare-`Order::create` fixture behaviour exactly (default `reseller_id` = primary) so ~240 fixtures don't silently shift.
+- **To ADR-059:** the reseller portal serves `is_owned` brands identically (branding, SEO, catalog toggles, markup, withdrawal). `ResellerEarningsService` reads `('reseller', id)` — ~0 for an internal brand at markup 0; that brand's "real" balance lives in `('platform', null)`. Whether a `membership_enabled` brand's portal gets member-list / record-payment screens is ADR-059's call (plan editing stays at `/admin/membership`).
+- **To ADR-060:** `Host` resolution replaces `Reseller::primary()` in the storefront-config and pricing call sites; an unrecognized `Host` returns 404 (never falls back to `primary`). `is_primary` is only for non-`Host` contexts. The primary reseller's own domain(s) live in its `domains` JSON like any reseller's.
