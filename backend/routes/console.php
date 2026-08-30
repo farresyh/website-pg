@@ -88,3 +88,12 @@ Schedule::command('app:reset-membership-cycles')
     ->daily()
     ->name('membership-cycle-reset')
     ->withoutOverlapping();
+
+// ADR-056 — same inert-until-real-cron pattern as above. Collects the
+// monthly reseller wholesale-tier subscription fee from each reseller's
+// earnings balance and drives active -> grace (3 days) -> lapsed on an
+// unpaid cycle — see ChargeResellerTierFeesCommand's own docblock.
+Schedule::command('app:charge-reseller-tier-fees')
+    ->daily()
+    ->name('reseller-tier-fee-charge')
+    ->withoutOverlapping();

@@ -52,20 +52,28 @@ final class LedgerService
 
     /**
      * The one operation that needs real atomicity: check-then-insert must
-     * be serialized per owner, or two concurrent withdrawals can both read
-     * a sufficient balance before either commits (see docs/adr.md ADR-002
-     * addendum). The `ledger_accounts` row is locked as a pure mutex —
-     * it holds no balance data itself.
+     * be serialized per owner, or two concurrent debits can both read a
+     * sufficient balance before either commits (see docs/adr.md ADR-002
+     * addendum). The `ledger_accounts` row is locked as a pure mutex — it
+     * holds no balance data itself. Throws InsufficientBalanceException
+     * (the caller decides whether that is fatal — a withdrawal rejects it,
+     * a reseller tier-fee charge starts a grace period instead, ADR-056).
+     *
+     * `$type` is the ledger entry type recorded for the debit
+     * ('withdrawal', 'reseller_tier_fee', …). The stored `amount` is
+     * negative.
      */
-    public function withdraw(
+    public function debit(
         string $ownerType,
         ?int $ownerId,
         int $amount,
+        string $type,
         ?string $referenceType = null,
         ?int $referenceId = null,
         ?int $createdBy = null,
+        ?string $reason = null,
     ): LedgerEntry {
-        return DB::transaction(function () use ($ownerType, $ownerId, $amount, $referenceType, $referenceId, $createdBy) {
+        return DB::transaction(function () use ($ownerType, $ownerId, $amount, $type, $referenceType, $referenceId, $createdBy, $reason) {
             LedgerAccount::query()
                 ->where('owner_type', $ownerType)
                 ->where('owner_id', $ownerId)
@@ -80,7 +88,23 @@ final class LedgerService
                 );
             }
 
-            return $this->credit($ownerType, $ownerId, -$amount, 'withdrawal', $referenceType, $referenceId, $createdBy);
+            return $this->credit($ownerType, $ownerId, -$amount, $type, $referenceType, $referenceId, $createdBy, $reason);
         });
+    }
+
+    /**
+     * A payout debit — `type = 'withdrawal'`. Thin wrapper over debit()
+     * kept as the named entry point every existing caller (WithdrawalController,
+     * the reseller/platform-owner payout flow) already uses.
+     */
+    public function withdraw(
+        string $ownerType,
+        ?int $ownerId,
+        int $amount,
+        ?string $referenceType = null,
+        ?int $referenceId = null,
+        ?int $createdBy = null,
+    ): LedgerEntry {
+        return $this->debit($ownerType, $ownerId, $amount, 'withdrawal', $referenceType, $referenceId, $createdBy);
     }
 }
