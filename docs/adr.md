@@ -2105,3 +2105,224 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 *Tests:* 3 new `MembershipControllerTest` cases (empty-when-disabled, narrow-tier-shape-when-enabled, and cache-invalidation-via-`forgetPackagesCacheForMembership`). Full backend suite **1063/1063 green**. `npx tsc --noEmit`/`eslint`/`next build` clean on `storefront/`.
 
 **Consequence to track (this addendum):** the original "not yet built" consequence bullet above is superseded — the card is live on the feature branch; only decision 1's Phase-7 revisit and decision 3's unused-surplus note remain, unchanged in kind.
+
+---
+
+## ADR-056: Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored wholesale rate, tier fee from earnings
+
+**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, six rounds, before any code touched — the design tree covered premise, scope boundary, transaction channel, money model, auth, domain routing, and phasing)
+
+**Context:**
+- `ADR-027`'s 2026-08-29 continued addendum (decisions 8–16) settled the *shape* of reseller wholesale pricing — a paid `reseller_membership_tiers` subscription, cost-anchored, fully decoupled from consumer VIP Membership — but recorded it design-only and "fully re-arguable at build time." This ADR is that re-argument plus the build spec, split across ADR-056..060 (see the phasing note at the end).
+- **A real third-party reseller is confirmed to be onboarding** (founder, this session) — this is no longer speculative Phase 2 groundwork, which is why the scope is "full Phase 2" (staged), not the minimal accounting-only cut.
+- Facts confirmed against code this session: `reseller_membership_tiers` is fully greenfield (no migration, no model, no UI). `PricingService::calculate()` already takes a `$resellerMarkupPct` parameter but the platform owner passes `0` — no reseller-tier branch exists. `Reseller` carries `markup_pct` / `max_markup_pct` / `xendit_subaccount_id` columns unused in pricing today. `package.markup_percent` is set via `/admin/games` (`PackageController::updateMarkup()`) and Platform Settings bulk (`SettingsController::bulkMarkup()`), both recompute the **stored** `standard_selling_price` via `PackageMarkupService`; `cost_price` is supplier-sync-only. `ledger_entries` / `ledger_accounts` (ADR-002) key on polymorphic `owner_type` / `owner_id` — a reseller as a ledger owner needs no schema change. `LedgerService::credit()` is lock-free (additions can't fail); `withdraw()` locks the `ledger_accounts` mutex row.
+- The founder's mental model, stated this session: **platform : reseller ∷ Gamevion : platform** — the platform is a "supplier" to its resellers the same way Gamevion is a supplier to the platform. The one difference the founder named: the platform *provides the reseller a storefront*, whereas Gamevion only provides API docs plus its own dashboard.
+
+**Decision:**
+
+1. **New table `reseller_membership_tiers`** — `id`, `name`, `monthly_fee_sen` (integer sen), `markup_percent` (decimal, applied over `cost_price`), `is_active`, `sort_order`, timestamps. **Admin CRUD, add/edit/remove freely** — not locked at a fixed row count. (`membership_plans`' exactly-2-row lock exists only for the consumer anchor/decoy psychology of `ADR-027` decision 4; no equivalent constraint applies to a B2B rate ladder, and the founder wants to add tiers as the reseller base grows.)
+
+2. **A reseller's effective wholesale base price = `cost_price × (1 + tier.markup_percent / 100)`** for their currently-active paid tier. Computed live per order (ORD-9), never stored. Anchored on **supplier `cost_price`**, never on `standard_selling_price` and never on `package.markup_percent` — the two markup systems stay fully independent. `tier.markup_percent` and `package.markup_percent` are different numbers set on different screens for different buyer relationships.
+
+3. **No active tier ⇒ the base falls back to `standard_selling_price`** (`cost_price × (1 + package.markup_percent / 100)` — the same price a guest pays at the platform's own storefront). "No active tier" = never subscribed, or lapsed past the grace period (decision 6). This is **not a shutdown or a penalty**: the reseller's storefront stays live, their own `markup_pct` still applies, they simply get the walk-in wholesale rate, and it self-corrects the moment they pay the fee. The founder reasoned the economics through explicitly this session and they are recorded here on purpose: when a tier lapses, the platform captures the **full** retail margin (`standard_selling_price − cost_price`) instead of the thin tier margin, and the reseller's customer-facing prices rise (less competitive) while the reseller still earns their own markup on the higher base.
+
+4. **`Reseller.markup_pct` / `max_markup_pct` keep their existing meaning, unchanged** (`ADR-027` decision 16) — the reseller's own downstream margin, applied on top of the effective wholesale base: **`customer_price = effective_base × (1 + reseller.markup_pct / 100)`**, multiplicative, consistent with `PricingService`. Constrained `0 ≤ markup_pct ≤ max_markup_pct`; `max_markup_pct` is admin-set per reseller.
+
+5. **Best-tier floor ≈ 3% `markup_percent`, admin-editable, not a hardcoded constant.** Unlike the consumer floor (`ADR-027` decision 5, 0%, justified by the hard monthly quota capping platform exposure per member), reseller volume is unlimited — a 0% floor would leave the flat monthly fee as the only per-unit profit at any scale. Both floors (consumer 0%, reseller ~3%) live in admin-editable config, in one place, so neither is a magic constant and they're not managed in two screens.
+
+6. **The monthly tier fee is charged against the reseller's earnings ledger balance** — there is no prepaid deposit wallet in this ADR's scope (decision 7). `ChargeResellerTierFeesCommand` (scheduled, mirrors `ResetMembershipCyclesCommand`; inert until a real cron runs, so locally it's a manual `artisan` call) debits `monthly_fee_sen` from the reseller's earnings account on the tier cycle date and writes a `reseller_tier_fee` ledger entry (`ADR-027` decision 15's named type, now real). If earnings are insufficient, a **~3-day grace period** starts (matching `ADR-027` decision 13 — a manual-collection stopgap can lag for reasons unrelated to intent to pay); past grace with the fee still unpaid, the tier lapses to decision 3's fallback. An admin can also record or trigger the charge manually.
+
+7. **No prepaid deposit wallet, no top-up flow, in this ADR (or this staged build at all).** In the storefront channel (ADR-060) the platform collects retail directly, so a reseller never needs to pre-fund anything to transact — earnings simply accrue. A prepaid wallet plus top-up (manual first, CHIP-backed later) belongs to the future **API / H2H channel** (a reseller pulling supply for their own off-platform site — the true Gamevion-mirror), and will be designed in that channel's own ADR, where it is mandatory rather than infrastructure for a mechanism that doesn't exist yet. This keeps the near-term build to a **single reseller ledger account (earnings only)**.
+
+8. **Manual fee-collection stopgap, same as consumer membership** — no payment-gateway automation for the tier fee now; the fee is booked as a ledger entry when earnings are debited (decision 6). Upgrade to an invoiced/automated flow later if reseller volume justifies it; `MembershipFeeService`'s single-seam pattern is the reference.
+
+9. **`reseller_tier_fee` and `membership_fee` stay two distinct ledger types** (`ADR-027` decision 15, unchanged) — a recurring small-value consumer subscription and a small number of larger B2B monthly payments have different reporting dynamics; one discriminated type just pushes the split into every report query.
+
+10. **This ADR is backend-only.** Admin CRUD for tiers lands with ADR-058 (admin Reseller Management); the pricing branch is exercised by ADR-060 (branded storefront). But the tier schema/model, the `PricingService` reseller branch, the `reseller_tier_fee` type, `ChargeResellerTierFeesCommand`, and the grace/lapse state machine all ship here, testable in isolation (unit tests on the pricing math; a concurrency test on the earnings debit reusing the `LedgerWithdrawConcurrencyTest` two-process pattern). **No dependency on production deployment.**
+
+**Rationale:** Decision 2 (anchor on `cost_price`, not `standard_selling_price`) is load-bearing — it is exactly the reconciliation `ADR-027`'s addendum spent a full grill reaching, and getting it wrong reintroduces the margin-stacking failure that killed the referral-tier proposal. Decision 7 (no wallet yet) is the other load-bearing call: the founder's first instinct was "prepaid wallet, like our own Gamevion deposit," but the storefront channel *inverts* the money flow (the platform collects retail), so the wallet has no job until the API channel exists — building it now would be the "setting for a mechanism that doesn't exist yet" anti-pattern this codebase has deliberately avoided in `ADR-015` / `ADR-016` / `ADR-020` / `ADR-028` / `ADR-029`. Decision 6 (fee from earnings) follows directly from 7 — with no deposit balance, earnings is the only reseller-held balance to charge against.
+
+**Consequence to track:**
+- Design-only, no code. Same "fully re-arguable at build time" condition `ADR-027` set carries here.
+- Decision 5's floors need a real home in admin config — pick `platform_settings` vs a dedicated row at build time, and surface consumer + reseller floors together.
+- When the API / H2H channel is scoped, revisit decision 7: the prepaid wallet arrives then, which means a reseller will have **two** balances (deposit + earnings) and `LedgerService` will need an account discriminator beyond `owner_type` / `owner_id` (both accounts belong to the same `Reseller`). Design that discriminator then, not now.
+- Decision 3's lapse economics assume `package.markup_percent` > `tier.markup_percent` for every package (so the fallback is genuinely a worse rate for the reseller). If an admin ever sets a package markup below a reseller tier rate, that framing breaks — worth a validation warning at build time.
+- `reseller_tier_fee` becomes a real ledger type here; the consumer `membership_fee` report line (`ADR-027` Phase 6.5) is the template for its report line, added on ADR-058's or ADR-059's admin surface.
+- PRD deltas to apply when this ships: §13 Glossary (`Reseller Wholesale Tier` — point it at this ADR, drop "not yet built" once built), §8 `Reseller` row, §14/§15.
+
+---
+
+## ADR-057: Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted before any reseller-scoped endpoint
+
+**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+
+**Context:**
+- `ADR-003` (2026-07-23) decided "tenant scoping enforced via ORM global scopes, not per-query convention" and "`reseller_id` as a first-class column, tenant scoping enforced via ORM global scopes." Confirmed against code this session: **neither was actually built.** `orders.reseller_id` is a plain nullable, unconstrained column; only `orders`, `reseller_branding`, `reseller_footer_settings`, `reseller_seo_settings`, `redirects`, `seo_scripts` carry `reseller_id` at all; there is no global scope, no trait, no tenant middleware anywhere in `app/`.
+- Every reseller-scoped read in the coming portal (ADR-059) — "my orders", "my earnings", "my customers" — is a cross-tenant data-leak vector if scoping is left to per-query discipline, which is exactly the risk `ADR-003`'s own rationale named ("a single missed `WHERE` clause becomes a cross-tenant data leak").
+- This must land **before** any reseller-guard endpoint that returns tenant data — it is the hard prerequisite for ADR-059.
+
+**Decision:**
+
+1. **`BelongsToReseller` trait** — adds a `reseller()` `BelongsTo` and boots an Eloquent **global scope** that constrains queries to the current tenant when a reseller-guard session is active (`auth('reseller')->check()`), and applies **no constraint** for the platform/admin guards, the console, and queue jobs (which legitimately operate across all tenants). The "current reseller" is resolved from the authenticated `reseller_user`'s `reseller_id` (ADR-058) held in a request-scoped resolver — **never from a request parameter**.
+
+2. **Add a real `reseller_id` FK + standalone index to `orders`** (currently unconstrained per that migration's own note — `foreignId()->constrained()` has been found once in this codebase to not reliably leave a standalone index, so verify via `SHOW INDEX`), backfilled to the `Reseller::platformOwner()` row for every existing row (`ADR-013` — every existing order genuinely is the platform owner's). `ledger_entries` / `withdrawals` already key on polymorphic `owner_type` / `owner_id`, so an earnings account is already reseller-owned with no column change (see the consequence note). Any new reseller-owned table (ADR-058/059/060) uses the trait from creation.
+
+3. **The scope is deny-by-default for the reseller guard** — a model using the trait with no resolvable current reseller under the reseller guard returns **zero rows, never all rows**. A missing tenant context is a bug that fails closed.
+
+4. **Admin / platform code paths are explicitly unscoped** — `/admin/orders` showing every reseller's orders labelled per-reseller (founder, this session) works because the admin guard applies no constraint. Where an admin needs to act *as* one reseller (impersonation, ADR-058 RES-4), that runs under a real reseller-guard token, so the same scope applies automatically.
+
+5. **A `withoutResellerScope()` escape hatch** exists for the rare legitimate cross-tenant query under a reseller context (there are none planned; it exists so a future need doesn't tempt a raw query that bypasses the trait entirely).
+
+6. **The retrofit is its own PR, with a test per newly-scoped model** proving: (a) a reseller session sees only its own rows, (b) the admin session sees all, (c) a queue job sees all, (d) no tenant context under the reseller guard sees none.
+
+**Rationale:** A global scope keyed off the *guard* (not a parameter, not a per-query `where`) is the only approach that makes the safe path the default and the unsafe path something you have to write on purpose — which is what `ADR-003` was aiming at and didn't reach. Deny-by-default (decision 3) matters because the failure mode of "fail open" here is a silent cross-tenant financial-data leak, the worst outcome this system can produce short of losing money.
+
+**Consequence to track:**
+- Design-only. Hard prerequisite for ADR-059 — sequence it before, not alongside. No dependency on production deployment.
+- `ADR-003` is now formally partially-superseded: its "schema tenant-aware from day 1" claim was aspirational. Update `ADR-003`'s status note when this ships.
+- Global scopes are trivially bypassed with `DB::table()` / raw queries — a grep for `DB::table(` in reseller-context code belongs on the ADR-059 review checklist.
+- The polymorphic `owner_type` / `owner_id` ledger design means `ledger_entries` itself does **not** use the trait (it has no `reseller_id`). Reseller-scoped ledger reads must go through a service that filters `owner_type = Reseller::class, owner_id = <current>` explicitly (`ResellerEarningsService`, ADR-059). Document that seam so it's not mistaken for an unscoped gap.
+
+---
+
+## ADR-058: Reseller authentication + admin Reseller Management (RES-1..6)
+
+**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+
+**Context:**
+- No non-admin authentication exists anywhere. `config/auth.php` has one guard (`web`, session, `admin_users` provider); `admin_users.role` is `super_admin | admin`; `admin/` uses Sanctum bearer tokens against that.
+- RES-1..6 (PRD §6.7) specify admin reseller CRUD + impersonation, all Phase 2, all unbuilt.
+- The reseller portal (ADR-059) needs its own login. Founder decision this session: a **separate reseller portal with its own auth**, and **`/admin` also gets a Reseller Management tab** to register resellers, view their details, and route their domain.
+- `PlunkMailer` (`ADR-027`) exists and is wired for transactional email (sender-domain verification still `Pending`).
+
+**Decision:**
+
+1. **New guard `reseller` + provider `reseller_users`** in `config/auth.php`, Sanctum bearer tokens (same mechanism as admin, separate guard). New table `reseller_users` — `id`, `reseller_id` (FK), `name`, `email` (unique), `password`, `is_active`, `last_login_at`, timestamps. One reseller can have multiple staff users from day one — the schema supports it even if the first onboarding creates exactly one.
+
+2. **Resellers never self-register.** An admin creates the `Reseller` row and its first `reseller_user` in `/admin`, and the system emails a **set-password invitation** (Plunk, signed expiring link, mirroring a standard password-reset token flow). Matches PRD's standing "no reseller self-service onboarding" Phase 2 deferral — onboarding is admin-driven; only the password step is the reseller's.
+
+3. **Admin Reseller Management screen (`/admin`, `super_admin` only** — same tier as Settings / Price Sync / Membership config). Covers:
+   - **RES-1**: reseller table — business name, contact, active tier + subscription status, earnings balance, orders count, domain status, status, actions.
+   - **RES-2**: add reseller — business info, `markup_pct` + `max_markup_pct`, assign initial `reseller_membership_tier`, create first `reseller_user` (triggers decision 2's invite).
+   - **RES-3**: edit reseller details, change `max_markup_pct`, change tier (writes a tier-change audit row).
+   - **RES-5**: activate / deactivate — deactivate ⇒ the ADR-060 storefront returns 503 and the Cloudflare custom hostname is suspended; existing earnings stay withdrawable; no new orders.
+   - **RES-6**: delete — **soft-delete only** (FK on `orders`; history must survive), allowed only when earnings balance = 0 and there is no pending withdrawal; the Cloudflare custom hostname is removed.
+   - **`reseller_membership_tiers` CRUD** (ADR-056's admin surface) — its own section on this screen, same `super_admin` gate.
+   - Record a manual tier-fee payment / trigger a tier charge (ADR-056 decisions 6/8).
+4. **Impersonation (RES-4)** — an admin action that mints a short-lived `reseller`-guard Sanctum token scoped to the target reseller and opens the reseller portal (ADR-059) in an impersonation session. Every request in that session is tagged with the real admin identity + session start/end; the portal shows a persistent "Impersonating {reseller} — acting as {admin}" banner; an audit row is written on start and end. Because the session runs under the real `reseller` guard, `ADR-057`'s tenant scope applies automatically — an impersonating admin sees exactly what the reseller sees, nothing cross-tenant.
+
+5. **No maker-checker on reseller CRUD** — solo-founder workflow (`AGENTS.md`); the `super_admin` gate + audit rows are sufficient. Withdrawals (ADR-059) keep the existing WTH maker-checker because that moves money out.
+
+6. **Reseller-guard routes get their own throttle prefix from day one** (`throttle:*,*,reseller-login`, etc.) — `ADR-021`'s addendum documents the shared-throttle-bucket bug class this codebase has already hit twice.
+
+7. **PrimeReact-Tailwind for every new admin screen** (`ADR-038`) — no hand-rolled TailAdmin primitives in Reseller Management.
+
+**Rationale:** A fully separate guard + user table (decision 1) rather than a third `admin_users.role` keeps the money-critical admin surface and the reseller surface from sharing a session, a token namespace, or a component set where a role check could be missed — the security boundary is worth the extra table. Decision 2 (admin-created, invite to set password) keeps onboarding controlled without the admin ever handling a plaintext password.
+
+**Consequence to track:**
+- Design-only. Depends on ADR-057 (the reseller guard is what activates the tenant scope). No dependency on production deployment.
+- Sanctum's guard/ability model needs checking at build time — token abilities may be a cleaner way to scope an impersonation token than guard config alone; resolve against the installed Sanctum version's docs, not assumption.
+- `foundation-security.md` §1's MFA-before-money-actions mandate is already unmet for admins (`ADR-020` notes it); a reseller portal that can request withdrawals raises the same question for `reseller_users`. Flag it — founder call, not silently skipped.
+- The set-password invite reuses Plunk, still pending sender-domain verification (`ADR-027`). Reseller onboarding email is blocked on the same external step as consumer OTP.
+
+---
+
+## ADR-059: Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config
+
+**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+
+**Context:**
+- The founder wants a dedicated reseller dashboard, separate from both `admin/` and `storefront/`.
+- `ADR-028` / `ADR-029` already built `reseller_branding`, `reseller_footer_settings`, `reseller_seo_settings` as 1:1-with-`Reseller` tables with a `reseller_id` FK, **explicitly** so "a future real portal reuses the same tables/endpoints scoped to the reseller's own id, no schema change needed then" — that future is this ADR.
+- `ledger_entries` / `withdrawals` polymorphic owner supports a `Reseller` owner with no schema change. `LedgerService::withdraw()` already serializes per-owner via the `ledger_accounts` mutex row (`ADR-002`).
+
+**Decision:**
+
+1. **New Next.js app `reseller/`** — a third app alongside `admin/` and `storefront/`, its own deploy target in `docker-compose.prod.yml` (a `reseller` service + a host-Nginx vhost). Auth via the `reseller` Sanctum guard (ADR-058). Its client-session hook mirrors `admin/`'s `useClientSession()` (including the `react-hooks/set-state-in-effect` trap this codebase has hit — `ADR-038` decision 8, `ADR-027` Phase 5).
+
+2. **Seven screens for the first build:**
+   - **Dashboard** — earnings balance, today's / this-month's sales count and value, current tier + next charge date.
+   - **Orders** — the reseller's own storefront orders (`ADR-057` scope), list + detail + delivery status. Read-only. No internal financial fields beyond the reseller's own margin (mirrors `backend/AGENTS.md`'s public-response discipline).
+   - **Earnings / Ledger** — every `ledger_entries` row for `owner = this Reseller`: margin credits, withdrawal debits, `reseller_tier_fee` debits. Withdrawable balance = the current earnings balance (a single account — ADR-056 decision 7).
+   - **Withdrawal** — request a payout against earnings; reuses the existing `Withdrawal` model + admin approve / reject / complete flow (WTH-1..5) with `owner_type = Reseller`. Maker-checker retained. Payout is manual bank transfer (decision 6).
+   - **Storefront settings** — edit `reseller_branding` / `reseller_footer_settings` / `reseller_seo_settings` (expose the `ADR-028` / `ADR-029` tables under the reseller guard), set `markup_pct` within `[0, max_markup_pct]`, and toggle individual games on/off for the catalog (decision 3).
+   - **Subscription** — current tier, fee, next charge date, payment/charge history, grace / lapse status.
+   - **Domain** — custom-domain status and the exact DNS records to set (ADR-060).
+   - The impersonation banner (ADR-058 decision 4) renders above every screen when active.
+
+3. **Per-reseller catalog visibility** — a new table `reseller_game` (or a `reseller_disabled_games` list). Default: every active platform game is visible on every reseller storefront. A reseller can turn a game **fully off** for their storefront — no per-package granularity, no admin approval; the reseller controls their own shelf. ADR-060's storefront resolution respects it.
+
+4. **`markup_pct` edits take effect on the next order only** — pricing is computed at order time (ORD-9); existing orders are untouched. The portal shows a **live preview** of a sample package's customer price at the entered markup before saving, reusing ADR-056's pricing service — the same "preview can't drift from what checkout actually charges" discipline as the membership Preview Pricing Impact button (`ADR-027` Phase 2).
+
+5. **All reseller-portal money reads go through a tenant-scoped service layer**, never raw Eloquent on `ledger_entries` (which has no `reseller_id` — `ADR-057`'s consequence note). One `ResellerEarningsService` is the single seam.
+
+6. **Withdrawal payout is manual bank transfer, permanently — this supersedes `ADR-001`'s xenPlatform-OWNED-sub-account addendum and `ADR-022` decision 2's "CHIP Send payout API" path for reseller payouts.** Founder decision this session: the platform will not use xenPlatform at all. All customer money — the platform owner's and every reseller storefront's — is collected into the **one company CHIP account**, and a reseller withdrawal is the admin transferring manually and marking the `Withdrawal` complete, exactly the WTH-1..5 flow that exists today for the platform owner. `Withdrawal.bank_name` / `bank_account_no` / `bank_account_holder` are already the right shape (`ADR-001`'s own consequence note anticipated this).
+
+7. **No prepaid wallet / top-up screen** — ADR-056 decision 7. Added when the API / H2H channel is built.
+
+**Rationale:** A separate app (decision 1) is the natural conclusion of ADR-058's separate-guard decision — the security boundary is cleaner if the reseller surface is also a separate deployable that physically cannot render an admin screen. Decision 6 is the big simplification this session bought: dropping xenPlatform removes sub-merchant KYC, the Disbursement API integration, the `for-user-id` plumbing, and the unresolved "is OWNED available in Malaysia" question — all replaced by "the admin does a bank transfer," which the platform already does for its own withdrawals and which `ADR-022` decision 2 already established is sufficient (the ledger, not the gateway, is the source of truth for who is owed what).
+
+**Consequence to track:**
+- Design-only. Depends on ADR-057 (tenant scope) and ADR-058 (reseller guard). Testable locally; the branded storefront it reports on is ADR-060, but the portal itself has no production dependency.
+- `ADR-001`'s xenPlatform addendum and `ADR-022` decision 2's CHIP-Send path are **superseded for reseller payouts** by decision 6. xenPlatform is now out of the platform's plans entirely, not "deferred" — update the `xenPlatform` glossary entry and the `ADR-001` / `ADR-022` status notes when this ships.
+- A third Next.js app adds CI time, a third `NEXT_PUBLIC_*` env surface, and a third app to keep on the same Next.js version — add `reseller/CLAUDE.md` with the same version warning `admin/` and `storefront/` carry.
+- Reseller-facing withdrawal raises the MFA question for `reseller_users` (ADR-058 consequence) — resolve before this screen goes live.
+- Decision 3's `reseller_game` toggle is the first per-tenant catalog-scoping table — it uses `BelongsToReseller` (`ADR-057`) from creation.
+
+---
+
+## ADR-060: Multi-tenant branded storefront + custom-domain infrastructure (Cloudflare for SaaS)
+
+**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056). **Blocked on `ADR-020` production deployment + `ADR-037` staging infra — build after those exist, not before.**
+
+**Context:**
+- `ADR-020`: production is a DigitalOcean droplet + Docker Compose + host-level Nginx, Cloudflare-fronted (Cloudflare Origin CA on the droplet). Droplet purchase + SSH deploy still outstanding. `ADR-037` staging infra also not built.
+- Founder decision this session: **custom domains only, no subdomains.** A reseller buys their own domain and points it at the platform; the platform serves them a branded storefront on that domain. No `reseller.ourplatform.com` option.
+- Money flow, settled this session: the end customer on a reseller's branded storefront pays the **full retail price into the one company CHIP account**. On payment + delivery, the ledger splits — platform revenue = the reseller's wholesale cost (`cost_price × (1 + tier.markup_percent)`, ADR-056); the reseller's earnings account is credited the margin (`customer_price − wholesale_cost`). The reseller never collects retail directly in this channel. `/admin/orders` shows every reseller order in full, labelled per reseller (founder).
+- `storefront/` is one Next.js app (`output: "standalone"`, Dockerized). `ADR-011`: guest checkout only, no cookies.
+
+**Decision:**
+
+1. **One `storefront/` app serves every reseller domain** — multi-tenant by `Host` header, resolved server-side (SSR / route handler) to a `Reseller` row via its `domains` JSON (existing column) or a dedicated `reseller_domains` table (decision 4). Not a deploy per reseller. The platform's own storefront is the `Reseller::platformOwner()` row on the platform's own domain — the same code path; `platformOwner` is just another tenant.
+
+2. **Per-`Host` resolution scopes** branding (`reseller_branding` / `reseller_footer_settings` / `reseller_seo_settings`, `ADR-028` / `ADR-029`), catalog visibility (ADR-059 decision 3 game toggles), and pricing (ADR-056 — `customer_price = effective_base × (1 + reseller.markup_pct / 100)`). An unrecognized `Host` returns a generic 404 / landing — never the platform storefront's content under the wrong brand.
+
+3. **Custom-domain TLS via Cloudflare for SaaS (SSL for SaaS).** The reseller creates a CNAME (`shop.` or `www.` of their domain — an apex needs CNAME flattening, documented in the portal) pointing at a platform fallback-origin hostname; the platform registers their hostname via the Cloudflare Custom Hostnames API; Cloudflare issues and auto-renews the edge certificate. Chosen over host-Nginx Let's Encrypt automation because Cloudflare is already the platform's edge (`ADR-020` decision 8) and per-customer-domain cert lifecycle is precisely what this Cloudflare product does. Cost (~USD 0.10 / active hostname / month + plan) is accepted.
+
+4. **Domain lifecycle** — the admin adds the reseller's domain in Reseller Management (ADR-058); the system calls the Cloudflare API to create the custom hostname, stores its status, and the portal's Domain screen (ADR-059) shows the reseller the CNAME + any DCV TXT record to set. Status polls Cloudflare (or consumes a Cloudflare webhook): `pending` → `active`. Reuses the `last_checked_at` / `last_status` shape from `PlayerValidatorProfile`. Deactivating (RES-5) or deleting (RES-6) a reseller removes the Cloudflare custom hostname.
+
+5. **The ledger split is written at the same point the platform storefront writes its order ledger entries today** — on payment confirmed + delivery, inside the existing fulfillment path, extended to: (a) credit the reseller earnings account the margin, (b) book platform revenue at the wholesale amount rather than the full retail. `pricing_basis` (already on `orders`, `ADR-027`) gains a `reseller` value alongside `standard` / `member`; `reseller_id`, `reseller_markup_pct`, `reseller_profit` (columns already on `orders`) are snapshotted per ORD-9.
+
+6. **No membership and no vouchers on a reseller storefront** — membership per `ADR-027` decision 9; vouchers deferred because "which ledger absorbs a voucher on a reseller sale" is an unanswered question and not needed for launch. The CHIP transaction fee is charged on top of the customer price, customer-borne, same as the platform storefront today (`transaction_fee`, ORD-9). Order delivery failure ⇒ retry (`ADR-004`); no voucher path on this channel for now.
+
+7. **Reverb / realtime** (`ADR-047`) — the branded storefront's order-status tracker needs the same realtime channel wiring as the platform storefront; the per-`Host` origin must still reach `/app/` on the same backend. Confirm the Cloudflare custom-hostname config proxies WebSocket for reseller domains too.
+
+**Rationale:** One app, `Host`-resolved (decision 1), is the only tenant model that doesn't multiply deploy / ops cost per reseller and keeps the platform storefront on the exact same code path (it's just `platformOwner`'s tenant). Cloudflare for SaaS (decision 3) is chosen not on cost but on fit — the alternative (Let's Encrypt on the host Nginx, on-demand issuance + renewal + LE rate-limit management for arbitrary customer domains) is a real ops burden for a solo founder, and Cloudflare is already the edge. Decision 5 (collect retail centrally, split in the ledger) is the founder's explicit money model and is what makes xenPlatform unnecessary (ADR-059 decision 6) — the ledger does the split.
+
+**Consequence to track:**
+- **Hard-blocked on `ADR-020` (droplet + SSH deploy) and `ADR-037` (staging infra).** A branded custom-domain storefront cannot exist before the platform itself is deployed to production. Code and local multi-tenant resolution can be built and tested against a mocked Cloudflare API first; "done" requires production.
+- Cloudflare for SaaS may require a specific Cloudflare plan tier — verify the platform's plan and the per-hostname pricing directly before committing, not from this ADR's estimate.
+- Decision 6 defers vouchers-on-reseller-storefronts — if a reseller asks for it, it needs its own decision on ledger treatment (platform vs reseller absorbs the discount), not a quick add.
+- Apex-domain resellers (no `www` / `shop`) hit CNAME-flattening limits — the portal's DNS instructions must cover this explicitly; some registrars don't support it, and those resellers must use a subdomain of their own domain.
+- The `orders.reseller_id` FK + backfill (`ADR-057` decision 2) must be done before this channel writes real reseller orders.
+- `ADR-013`'s "every Order's `reseller_id` references the platform-owner row in MVP" stops being true here — the first non-platform-owner `reseller_id` orders appear. Update `ADR-013`'s status note.
+
+---
+
+### Phasing note (ADR-056..060)
+
+One grilled design, split into five sequenced ADRs so each ships as its own PR to `staging`:
+
+| # | ADR | Depends on | Prod-deploy dependency |
+| --- | --- | --- | --- |
+| 1 | **ADR-056** Reseller pricing & wholesale tiers (backend core) | — | none |
+| 2 | **ADR-057** Tenant isolation mechanism | — | none |
+| 3 | **ADR-058** Reseller auth + admin Reseller Management | ADR-057 | none |
+| 4 | **ADR-059** Reseller portal (`reseller/` app) | ADR-057, ADR-058 | none |
+| 5 | **ADR-060** Multi-tenant branded storefront + Cloudflare for SaaS | ADR-056..059 | **`ADR-020` + `ADR-037`** |
+
+Build order: 056 → 057 → 058 → 059 → (production deployment) → 060.
+
+**PRD deltas to apply as each ships** (not yet applied — design-only): §6.7 RES-1..6 (tier column, tier-assignment step, `reseller_membership_tiers` CRUD home), §8 `Reseller` and `Package` data-model rows, §13 Glossary (`Reseller Wholesale Tier`, `xenPlatform` now dropped not deferred, a new `Reseller Earnings` term), §14/§15, and the two new ledger types.
+
+**Superseded by this batch:** `ADR-001`'s "reseller sub-accounts will be OWNED" addendum and `ADR-022` decision 2's "CHIP Send payout API" path (both → manual bank transfer, ADR-059 decision 6); `ADR-003`'s "tenant scoping enforced via ORM global scopes" as an already-true statement (→ actually built in ADR-057).
