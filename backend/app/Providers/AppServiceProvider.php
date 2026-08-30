@@ -30,6 +30,7 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
+use App\Support\CurrentReseller;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -61,6 +62,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // ADR-057: the reseller-tenant resolver ResellerScope reads.
+        // `scoped`, not `singleton` — reset between HTTP requests and
+        // between queue jobs so one request's tenant never leaks into
+        // the next. Populated by the reseller-guard middleware (ADR-058);
+        // inert (no tenant context) everywhere else.
+        $this->app->scoped(CurrentReseller::class);
+
         // ADR-023 decision #6: the real checkout->fulfillment pipeline
         // runs against a real, separately-booted server process during
         // Playwright E2E (not an in-process PHPUnit `Http::fake()`,

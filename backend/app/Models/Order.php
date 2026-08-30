@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToReseller;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
@@ -12,6 +13,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    /** ADR-057: tenant-scoped to the current reseller under the reseller guard. */
+    use BelongsToReseller;
+
     protected $fillable = [
         'order_number',
         'checkout_idempotency_key',
@@ -87,11 +91,6 @@ class Order extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
-    }
-
-    public function reseller(): BelongsTo
-    {
-        return $this->belongsTo(Reseller::class);
     }
 
     /**
