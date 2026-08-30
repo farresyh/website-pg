@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToReseller;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * ADR-028 decision 2 (narrowed by the 2026-08-22 addendum decision
@@ -12,6 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class ResellerBranding extends Model
 {
+    /** ADR-057: tenant-scoped to the current reseller under the reseller guard. */
+    use BelongsToReseller;
+
     /** ADR-028 pins the table name `reseller_branding` — not Eloquent's default pluralization. */
     protected $table = 'reseller_branding';
 
@@ -28,9 +31,4 @@ class ResellerBranding extends Model
     protected $casts = [
         'social_links' => 'array',
     ];
-
-    public function reseller(): BelongsTo
-    {
-        return $this->belongsTo(Reseller::class);
-    }
 }
