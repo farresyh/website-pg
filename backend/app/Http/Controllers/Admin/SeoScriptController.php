@@ -20,7 +20,7 @@ class SeoScriptController extends Controller
     public function store(SaveSeoScriptRequest $request): JsonResponse
     {
         $script = SeoScript::query()->create($request->validated());
-        PublicSeoController::forgetCache(Reseller::platformOwner()->id);
+        PublicSeoController::forgetCache(Reseller::primary()->id);
 
         return response()->json($script, 201);
     }
@@ -28,7 +28,7 @@ class SeoScriptController extends Controller
     public function update(SaveSeoScriptRequest $request, SeoScript $seoScript): JsonResponse
     {
         $seoScript->update($request->validated());
-        PublicSeoController::forgetCache(Reseller::platformOwner()->id);
+        PublicSeoController::forgetCache(Reseller::primary()->id);
 
         return response()->json($seoScript);
     }
@@ -36,7 +36,7 @@ class SeoScriptController extends Controller
     public function destroy(SeoScript $seoScript): JsonResponse
     {
         $seoScript->delete();
-        PublicSeoController::forgetCache(Reseller::platformOwner()->id);
+        PublicSeoController::forgetCache(Reseller::primary()->id);
 
         return response()->json(null, 204);
     }

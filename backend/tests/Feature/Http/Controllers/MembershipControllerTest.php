@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Http\Controllers\CatalogController;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
@@ -10,8 +11,8 @@ use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\Supplier;
 use App\Services\Membership\MembershipSessionTokenService;
-use App\Services\Order\PaymentStatus;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -25,6 +26,15 @@ use Tests\TestCase;
 class MembershipControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
 
     private function tokenFor(string $email): string
     {
@@ -68,7 +78,8 @@ class MembershipControllerTest extends TestCase
         $this->assertSame($membership->id, $membership->id);
     }
 
-    public function test_me_includes_order_history_matched_by_email(): void    {
+    public function test_me_includes_order_history_matched_by_email(): void
+    {
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $package = Package::query()->create([
@@ -141,7 +152,7 @@ class MembershipControllerTest extends TestCase
 
         // The same single flush point a membership_plans edit triggers —
         // plans() tags itself `catalog.packages`, so this must clear it.
-        \App\Http\Controllers\CatalogController::forgetPackagesCacheForMembership();
+        CatalogController::forgetPackagesCacheForMembership();
 
         $this->getJson('/api/membership/plans')
             ->assertOk()

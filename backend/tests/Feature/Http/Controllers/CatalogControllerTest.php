@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
@@ -11,6 +12,7 @@ use App\Models\Supplier;
 use App\Services\Membership\MembershipSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -24,6 +26,15 @@ use Tests\TestCase;
 class CatalogControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
 
     private function makeSupplier(): Supplier
     {
@@ -145,7 +156,7 @@ class CatalogControllerTest extends TestCase
 
     public function test_packages_applies_reseller_markup_to_the_selling_price(): void
     {
-        Reseller::query()->create(['business_name' => 'Platform Owner', 'markup_pct' => 10, 'status' => 'active']);
+        $this->primaryReseller()->update(['markup_pct' => 10]);
         $supplier = $this->makeSupplier();
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         Package::query()->create([
@@ -327,7 +338,7 @@ class CatalogControllerTest extends TestCase
             'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
         $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
 
         $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
@@ -356,7 +367,7 @@ class CatalogControllerTest extends TestCase
             'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
         $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
 
         $tier1 = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
@@ -403,7 +414,7 @@ class CatalogControllerTest extends TestCase
             'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
         $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
 
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
@@ -432,7 +443,7 @@ class CatalogControllerTest extends TestCase
             'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
         $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
 
@@ -461,7 +472,7 @@ class CatalogControllerTest extends TestCase
             'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
         $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
 
@@ -485,7 +496,7 @@ class CatalogControllerTest extends TestCase
 
         $this->getJson('/api/catalog/games')->assertJsonPath('0.name', 'Free Fire Global');
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
         $this->putJson("/api/games/{$game->id}", [
             'name' => $game->name, 'slug' => $game->slug, 'is_active' => false,
         ])->assertOk();
@@ -504,7 +515,7 @@ class CatalogControllerTest extends TestCase
 
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonCount(1);
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
         $this->patchJson("/api/packages/{$package->id}/status", ['is_active' => false])->assertOk();
 
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonCount(0);

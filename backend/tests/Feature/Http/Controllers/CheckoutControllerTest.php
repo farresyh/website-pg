@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Jobs\FulfillOrderJob;
 use App\Models\BlacklistEntry;
 use App\Models\Game;
 use App\Models\Membership;
@@ -17,7 +18,6 @@ use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
-use App\Jobs\FulfillOrderJob;
 use App\Services\Fraud\BlacklistEntryType;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Payment\PaymentGateway;
@@ -36,6 +36,16 @@ class CheckoutControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: checkout resolves the platform's own storefront via
+        // Reseller::primary(), which fails loud when it is missing (no
+        // more firstOrCreate). Every checkout path needs it present.
+        $this->primaryReseller();
+    }
+
     /**
      * Real in-test fake, not Http::fake() — same convention as
      * CheckoutServiceTest/OrderFulfillmentServiceTest: the point is
@@ -46,9 +56,7 @@ class CheckoutControllerTest extends TestCase
     {
         return new class($createSucceeds) implements PaymentGateway
         {
-            public function __construct(private readonly bool $createSucceeds)
-            {
-            }
+            public function __construct(private readonly bool $createSucceeds) {}
 
             public function createPayment(PaymentRequest $request): PaymentResponse
             {
@@ -215,31 +223,34 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame('FPX_ABMB', $order->channel_code);
     }
 
-    public function test_seeds_the_single_platform_reseller_if_missing_and_uses_zero_markup(): void
+    public function test_attaches_the_primary_reseller_to_the_order_at_zero_markup(): void
     {
         $this->bindGateway();
         ['game' => $game, 'package' => $package] = $this->gameAndPackage();
-        $this->assertSame(0, Reseller::query()->count());
 
         $response = $this->postJson('/api/checkout', $this->payload($game, $package));
 
         $response->assertCreated();
-        $this->assertSame(1, Reseller::query()->count());
-        $reseller = Reseller::query()->firstOrFail();
+        $reseller = Reseller::query()->where('is_primary', true)->sole();
         $this->assertSame('0.00', (string) $reseller->markup_pct);
         $this->assertSame($reseller->id, Order::query()->firstOrFail()->reseller_id);
     }
 
-    public function test_reuses_the_existing_platform_reseller_instead_of_creating_a_duplicate(): void
+    public function test_checkout_does_not_silently_create_a_storefront_when_the_primary_is_missing(): void
     {
         $this->bindGateway();
-        Reseller::query()->create(['business_name' => 'Platform Owner', 'markup_pct' => 0, 'status' => 'active']);
+        Reseller::query()->forceDelete();
         ['game' => $game, 'package' => $package] = $this->gameAndPackage();
 
-        $response = $this->postJson('/api/checkout', $this->payload($game, $package));
+        // ADR-061: Reseller::primary() throws (ModelNotFoundException via
+        // sole()) rather than the old firstOrCreate silently conjuring a
+        // storefront — a misconfigured environment is a loud, actionable
+        // failure, never a half-working checkout with a phantom reseller.
+        $this->postJson('/api/checkout', $this->payload($game, $package))
+            ->assertNotFound();
 
-        $response->assertCreated();
-        $this->assertSame(1, Reseller::query()->count());
+        $this->assertSame(0, Reseller::query()->count());
+        $this->assertSame(0, Order::query()->count());
     }
 
     public function test_rejects_checkout_for_a_game_requiring_an_extra_field_without_it(): void
@@ -582,7 +593,7 @@ class CheckoutControllerTest extends TestCase
     public function test_rejects_checkout_when_maintenance_mode_is_on(): void
     {
         $this->bindGateway();
-        \App\Models\PlatformSettings::query()->create([
+        PlatformSettings::query()->create([
             'maintenance_mode' => true,
             'maintenance_message' => 'Back in 10 minutes.',
         ]);
@@ -898,7 +909,7 @@ class CheckoutControllerTest extends TestCase
         $this->bindGateway();
         ['game' => $game, 'package' => $package] = $this->memberPackage();
         PlatformSettings::current()->update(['membership_enabled' => true]);
-        Reseller::platformOwner()->update(['markup_pct' => 10]);
+        $this->primaryReseller()->update(['markup_pct' => 10]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
             'email' => 'markup-member@example.com',
@@ -926,7 +937,7 @@ class CheckoutControllerTest extends TestCase
         // Control case: same reseller markup, no membership token — reseller must earn a real cut.
         $standardResponse = $this->postJson('/api/checkout', $this->payload($game, $package, [
             'customer_email' => 'no-member@example.com',
-            'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+            'idempotency_key' => (string) Str::uuid(),
         ]));
         $standardResponse->assertCreated();
         $standardOrder = Order::query()->where('customer_email', 'no-member@example.com')->firstOrFail();

@@ -11,6 +11,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Reseller\ResellerSubscriptionService;
 use App\Services\Reseller\ResellerSubscriptionStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -254,12 +255,94 @@ class ResellerControllerTest extends TestCase
         $this->deleteJson("/api/resellers/{$r->id}")->assertUnprocessable();
     }
 
-    public function test_platform_owner_cannot_be_deleted(): void
+    public function test_primary_reseller_cannot_be_deleted(): void
     {
         $this->actAsSuperAdmin();
-        $owner = Reseller::platformOwner();
+        $owner = $this->primaryReseller();
 
         $this->deleteJson("/api/resellers/{$owner->id}")->assertUnprocessable();
+        $this->assertDatabaseHas('resellers', ['id' => $owner->id, 'deleted_at' => null]);
+    }
+
+    public function test_a_non_primary_owned_brand_follows_the_normal_delete_rules(): void
+    {
+        $this->primaryReseller();
+        $this->actAsSuperAdmin();
+        $brand = $this->reseller(['is_owned' => true, 'business_name' => 'Our second brand']);
+
+        // is_owned but not is_primary — nothing owed, so it deletes.
+        $this->deleteJson("/api/resellers/{$brand->id}")->assertOk();
+        $this->assertSoftDeleted('resellers', ['id' => $brand->id]);
+    }
+
+    public function test_store_marks_an_owned_brand_and_enables_membership(): void
+    {
+        Http::fake();
+        $this->actAsSuperAdmin();
+
+        $this->postJson('/api/resellers', [
+            'business_name' => 'Our New Brand',
+            'markup_pct' => 0,
+            'user_name' => 'Owner',
+            'user_email' => 'owner@example.com',
+            'is_owned' => true,
+            'membership_enabled' => true,
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('resellers', [
+            'business_name' => 'Our New Brand',
+            'is_owned' => true,
+            'membership_enabled' => true,
+        ]);
+        // Never assigned is_primary — that stays on the one backfilled row.
+        $this->assertDatabaseMissing('resellers', ['business_name' => 'Our New Brand', 'is_primary' => true]);
+    }
+
+    public function test_store_ignores_the_membership_toggle_for_a_third_party_reseller(): void
+    {
+        Http::fake();
+        $this->actAsSuperAdmin();
+
+        $this->postJson('/api/resellers', [
+            'business_name' => 'Third Party',
+            'markup_pct' => 12,
+            'user_name' => 'Rep',
+            'user_email' => 'rep@example.com',
+            'is_owned' => false,
+            'membership_enabled' => true,
+        ])->assertCreated();
+
+        // Consumer Membership is an internal-brand-only capability (ADR-061
+        // decision 8) — the toggle is forced off regardless of the input.
+        $this->assertDatabaseHas('resellers', [
+            'business_name' => 'Third Party',
+            'is_owned' => false,
+            'membership_enabled' => false,
+        ]);
+    }
+
+    public function test_update_toggles_the_primary_brand_membership_and_flushes_the_catalog_cache(): void
+    {
+        $this->actAsSuperAdmin();
+        $owner = $this->primaryReseller(['membership_enabled' => false]);
+
+        Cache::store(config('cache.catalog_packages_store'))
+            ->tags(['catalog.packages'])
+            ->put('sentinel', 'x', 300);
+
+        $this->putJson("/api/resellers/{$owner->id}", [
+            'business_name' => $owner->business_name,
+            'markup_pct' => 0,
+            'is_owned' => true,
+            'membership_enabled' => true,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('resellers', ['id' => $owner->id, 'membership_enabled' => true]);
+        $this->assertNull(
+            Cache::store(config('cache.catalog_packages_store'))
+                ->tags(['catalog.packages'])
+                ->get('sentinel'),
+        );
     }
 
     public function test_add_user_and_resend_invite(): void

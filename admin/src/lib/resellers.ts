@@ -31,7 +31,9 @@ export interface ResellerRow {
   domains: string[];
   status: ResellerStatus;
   notes: string | null;
-  is_platform_owner: boolean;
+  is_owned: boolean;
+  is_primary: boolean;
+  membership_enabled: boolean;
   deleted_at: string | null;
   orders_count: number;
   earnings_balance_sen: number;
@@ -81,6 +83,8 @@ export interface CreateResellerValues {
   max_markup_pct: number | null;
   domains: string[];
   notes: string | null;
+  is_owned: boolean;
+  membership_enabled: boolean;
   tier_id: number | null;
   user_name: string;
   user_email: string;

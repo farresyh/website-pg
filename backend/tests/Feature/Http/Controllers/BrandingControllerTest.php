@@ -3,7 +3,6 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Models\Game;
-use App\Models\Reseller;
 use App\Models\ResellerBranding;
 use App\Models\ResellerFooterSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,7 +19,7 @@ class BrandingControllerTest extends TestCase
 
     private function seedBrandingAndFooter(array $brandingOverrides = [], array $footerOverrides = []): void
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
 
         ResellerBranding::query()->create(array_merge([
             'reseller_id' => $reseller->id,
@@ -45,7 +44,7 @@ class BrandingControllerTest extends TestCase
 
     public function test_show_resolves_footer_games_in_the_stored_order(): void
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         $ml = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         $ff = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
 
@@ -74,7 +73,7 @@ class BrandingControllerTest extends TestCase
      */
     public function test_show_returns_the_same_footer_games_on_a_cached_second_request(): void
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         $ml = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         $ff = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
 
@@ -93,7 +92,7 @@ class BrandingControllerTest extends TestCase
 
     public function test_show_falls_back_to_reseller_business_name_when_branding_is_not_set(): void
     {
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $response = $this->getJson('/api/catalog/branding');
 
@@ -138,7 +137,7 @@ class BrandingControllerTest extends TestCase
 
     public function test_legal_returns_null_content_when_nothing_saved_yet(): void
     {
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $response = $this->getJson('/api/catalog/legal/privacy');
 

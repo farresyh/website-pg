@@ -18,6 +18,15 @@ class VoucherPreviewControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
+
     /** @return array{game: Game, package: Package} */
     private function gameAndPackage(): array
     {

@@ -143,6 +143,8 @@ export default function ResellersPage() {
       max_markup_pct: values.max_markup_pct,
       domains: values.domains,
       notes: values.notes,
+      is_owned: values.is_owned,
+      membership_enabled: values.membership_enabled,
     });
     setFormOpen(false);
     setEditing(null);
@@ -172,7 +174,7 @@ export default function ResellersPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Resellers</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Branded-storefront owners. The platform owner is the first row and can&apos;t be deleted.
+            Branded-storefront owners. The primary storefront is the first row and can&apos;t be deleted.
           </p>
         </div>
         <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
@@ -208,7 +210,9 @@ export default function ResellersPage() {
                       <DataTableRow key={r.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {r.business_name}
-                          {r.is_platform_owner && <span className="ml-2 text-theme-xs text-gray-400">(platform)</span>}
+                          {r.is_primary && <span className="ml-2 text-theme-xs text-gray-400">(primary)</span>}
+                          {r.is_owned && !r.is_primary && <span className="ml-2 text-theme-xs text-gray-400">(our brand)</span>}
+                          {r.membership_enabled && <span className="ml-2 text-theme-xs text-brand-500">membership</span>}
                           {r.contact_name && <p className="text-theme-xs font-normal text-gray-500 dark:text-gray-400">{r.contact_name}</p>}
                         </DataTableCell>
                         <DataTableCell className={TD}>
@@ -235,7 +239,7 @@ export default function ResellersPage() {
                             <Button size="small" variant="outlined" onClick={() => { setEditing(r); setFormOpen(true); }}>
                               Edit
                             </Button>
-                            {!r.is_platform_owner && (
+                            {!r.is_primary && (
                               <>
                                 <Button
                                   size="small"

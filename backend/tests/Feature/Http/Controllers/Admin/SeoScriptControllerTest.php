@@ -15,6 +15,15 @@ class SeoScriptControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
+
     private function actingAsSuperAdmin(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
@@ -79,7 +88,7 @@ class SeoScriptControllerTest extends TestCase
     public function test_store_invalidates_the_public_seo_cache(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         Cache::put("catalog.public.seo_scripts.{$reseller->id}", ['stale' => true], 60);
 
         $this->postJson('/api/seo/scripts', ['name' => 'GA', 'location' => 'head', 'code' => '<script>x()</script>'])->assertCreated();

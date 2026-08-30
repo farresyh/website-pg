@@ -6,7 +6,6 @@ use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
-use App\Models\PlatformSettings;
 use App\Models\Reseller;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
@@ -14,6 +13,7 @@ use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -46,8 +46,7 @@ class CatalogController extends Controller
         private readonly PricingService $pricing,
         private readonly MembershipPricingService $membershipPricing,
         private readonly MembershipSessionTokenService $membershipSessionTokens,
-    ) {
-    }
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -85,7 +84,10 @@ class CatalogController extends Controller
             return response()->json(['message' => 'Game not found.'], 404);
         }
 
-        $membershipEnabled = PlatformSettings::current()->membership_enabled;
+        // ADR-061 decision 4: Membership is live only when the global
+        // kill-switch AND this storefront's own toggle are both on.
+        // ADR-060 resolves the brand per `Host`; today it is the primary.
+        $membershipEnabled = Reseller::primary()->membershipEnabledEffective();
 
         // Resolved once per request, outside the cache closure below —
         // a decrypt + one indexed Membership lookup, not worth caching
@@ -266,8 +268,8 @@ class CatalogController extends Controller
      * together — each stays its own row, matching the ADR's own
      * "leaves existing packages empty" / "never dedup null" intent.
      *
-     * @param \Illuminate\Support\Collection<int, Package> $packages
-     * @return \Illuminate\Support\Collection<int, Package>
+     * @param  Collection<int, Package>  $packages
+     * @return Collection<int, Package>
      */
     private function dedupByDenomination($packages)
     {
@@ -303,7 +305,7 @@ class CatalogController extends Controller
 
     private function sellingPriceSen(Package $package): int
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         return $this->pricing->calculate(
             $package->cost_price,

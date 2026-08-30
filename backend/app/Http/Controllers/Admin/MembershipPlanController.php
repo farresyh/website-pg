@@ -27,8 +27,7 @@ class MembershipPlanController extends Controller
     public function __construct(
         private readonly PricingService $pricing,
         private readonly MembershipPricingService $membershipPricing,
-    ) {
-    }
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -65,7 +64,7 @@ class MembershipPlanController extends Controller
             return response()->json(['package_name' => null]);
         }
 
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $packageMarkupPercent = (float) $package->markup_percent;
         $normalPriceSen = $this->pricing->calculate(
             $package->cost_price,

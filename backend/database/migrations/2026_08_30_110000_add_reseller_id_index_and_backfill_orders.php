@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Reseller;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -46,9 +45,22 @@ return new class extends Migration
         }
 
         if (DB::table('orders')->whereNull('reseller_id')->exists()) {
+            // Resolved inline, not via a model helper: this migration
+            // predates ADR-061's `is_primary` flag, so `Reseller::primary()`
+            // cannot run here on a `migrate:fresh`. Every historical order
+            // is the platform owner's (ADR-013) — the one pre-Phase-2 row.
+            $ownerId = DB::table('resellers')->where('business_name', 'Platform Owner')->value('id')
+                ?? DB::table('resellers')->insertGetId([
+                    'business_name' => 'Platform Owner',
+                    'markup_pct' => 0,
+                    'status' => 'active',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
             DB::table('orders')
                 ->whereNull('reseller_id')
-                ->update(['reseller_id' => Reseller::platformOwner()->id]);
+                ->update(['reseller_id' => $ownerId]);
         }
     }
 

@@ -36,6 +36,13 @@ class StoreResellerRequest extends FormRequest
             'domains' => ['nullable', 'array'],
             'domains.*' => ['string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            // ADR-061 decision 8: "our own brand?" — internal brands may
+            // enable consumer Membership; third-party resellers never can
+            // (the controller forces membership_enabled off unless is_owned).
+            // `is_primary` is not settable here — it is backfilled onto the
+            // one pre-Phase-2 row and never reassigned via CRUD.
+            'is_owned' => ['sometimes', 'boolean'],
+            'membership_enabled' => ['sometimes', 'boolean'],
             'tier_id' => ['nullable', 'integer', Rule::exists('reseller_membership_tiers', 'id')->whereNull('deleted_at')],
             'user_name' => ['required', 'string', 'max:255'],
             'user_email' => ['required', 'email', 'max:255', Rule::unique('reseller_users', 'email')],

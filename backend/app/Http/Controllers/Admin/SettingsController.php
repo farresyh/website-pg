@@ -28,13 +28,11 @@ use Mews\Purifier\Facades\Purifier;
  */
 class SettingsController extends Controller
 {
-    public function __construct(private readonly PackageMarkupService $markup)
-    {
-    }
+    public function __construct(private readonly PackageMarkupService $markup) {}
 
     public function index(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         return response()->json([
             'branding' => $this->brandingFor($reseller),
@@ -45,7 +43,7 @@ class SettingsController extends Controller
 
     public function updateBranding(UpdateBrandingRequest $request): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $branding = $this->brandingFor($reseller);
         $branding->update($request->validated());
         BrandingController::forgetCache($reseller->id);
@@ -63,7 +61,7 @@ class SettingsController extends Controller
      */
     public function updateFooter(UpdateFooterSettingsRequest $request): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $footer = $this->footerFor($reseller);
 
         $data = $request->validated();
