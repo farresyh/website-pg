@@ -31,13 +31,13 @@ use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\MembershipOtpController;
 use App\Http\Controllers\Middleware\BackupController;
 use App\Http\Controllers\Middleware\CurrencyRateController;
+use App\Http\Controllers\Middleware\DeveloperToolController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
 use App\Http\Controllers\Middleware\OpsAccessController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
-use App\Http\Controllers\Middleware\DeveloperToolController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\PriceSyncController;
 use App\Http\Controllers\Middleware\RequestLogController;
@@ -47,6 +47,7 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\Reseller\ResellerAuthController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
@@ -192,6 +193,23 @@ Route::prefix('catalog')->group(function () {
     Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1,redirect-hit');
     Route::get('/seo/scripts', [SeoController::class, 'scripts']);
     Route::get('/seo/robots', [SeoController::class, 'robots']);
+});
+
+// ADR-058 (58a) — reseller portal auth, on the separate `reseller`
+// Sanctum guard (config/auth.php). Own throttle buckets from day one:
+// per the lesson above every throttle:N route needs its own prefix or
+// it silently shares one per-IP bucket with every other prefixless one.
+Route::prefix('reseller')->group(function () {
+    Route::post('/login', [ResellerAuthController::class, 'login'])->middleware('throttle:5,1,reseller-login');
+    Route::post('/set-password', [ResellerAuthController::class, 'setPassword'])->middleware('throttle:6,1,reseller-set-password');
+
+    // `auth:reseller` rejects any token whose tokenable is not a
+    // reseller_users model; `reseller.context` then activates ADR-057's
+    // tenant scope from the authenticated user's reseller_id.
+    Route::middleware(['auth:reseller', 'reseller.context'])->group(function () {
+        Route::post('/logout', [ResellerAuthController::class, 'logout']);
+        Route::get('/me', [ResellerAuthController::class, 'me']);
+    });
 });
 
 Route::middleware('auth:sanctum')->group(function () {
