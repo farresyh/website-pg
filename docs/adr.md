@@ -48,7 +48,7 @@ What changed: `payment_methods` (the SET-7/SET-11 admin tool) gained a `gateway`
 
 ## ADR-003 (D3): Tenant-aware schema, platform-owner-only MVP features
 
-**Status:** Accepted — 2026-07-23
+**Status:** Accepted — 2026-07-23. **Partially superseded by ADR-057 (2026-08-30):** the "tenant scoping enforced via ORM global scopes" clause was aspirational, never built during MVP — `orders.reseller_id` shipped as a plain nullable, unconstrained column with no scope, trait, or middleware. ADR-057 is the actual retrofit (`BelongsToReseller` trait + `ResellerScope` global scope + `orders.reseller_id` FK index + platform-owner backfill).
 
 **Decision:** Schema and query layer are built multi-tenant-aware from day 1 (`reseller_id` as a first-class column, tenant scoping enforced via ORM global scopes, not per-query convention). MVP *feature* scope, however, is platform-owner-only — no reseller self-service dashboard, no custom domains, no reseller onboarding flow.
 
@@ -2154,7 +2154,11 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 
 ## ADR-057: Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted before any reseller-scoped endpoint
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+**Status:** Accepted — built + merged 2026-08-30 (design grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056).
+
+**Built:** `App\Support\CurrentReseller` (`scoped` binding — reset per request/job, populated by the ADR-058 middleware, inert everywhere else); `App\Models\Scopes\ResellerScope` (not-active → unconstrained; active + id → `where reseller_id`; active + no id → `where 1=0` fail-closed; `runWithout()` bypass); `App\Models\Concerns\BelongsToReseller` trait (boots the scope, provides `reseller()` + `withoutResellerScope()`). Trait applied to `Order`, `ResellerBranding`, `ResellerFooterSettings`, `ResellerSeoSettings`, `Redirect` (their duplicate `reseller()` methods removed). `SeoScript` excluded — its `null reseller_id` means "global", which a `= <id>` scope would wrongly hide, and it is admin-only. Migration `2026_08_30_110000_add_reseller_id_index_and_backfill_orders`: standalone `orders.reseller_id` index (guarded — SQLite never auto-indexes the FK; MySQL's `orders_reseller_id_foreign` already covers it) + NULL→`platformOwner` backfill (only resolved when rows actually need it). `tests/Feature/Database/ResellerScopeTest.php` proves (a)/(b)/(c)/(d) across all five models + both escape hatches. 1085/1085 fast + 10/10 concurrency.
+
+**Deviation from decision 2:** `orders.reseller_id` stays **nullable** — NOT NULL is deferred to a follow-up. ~240 test fixtures build a bare `Order` with no `reseller_id`; flipping the column here turns a focused isolation PR into a suite-wide fixture refactor on the money path. The scope already fails closed on reads, so a tenant-less row is invisible under the reseller guard regardless. Follow-up: add an `OrderFactory`, then flip to NOT NULL.
 
 **Context:**
 - `ADR-003` (2026-07-23) decided "tenant scoping enforced via ORM global scopes, not per-query convention" and "`reseller_id` as a first-class column, tenant scoping enforced via ORM global scopes." Confirmed against code this session: **neither was actually built.** `orders.reseller_id` is a plain nullable, unconstrained column; only `orders`, `reseller_branding`, `reseller_footer_settings`, `reseller_seo_settings`, `redirects`, `seo_scripts` carry `reseller_id` at all; there is no global scope, no trait, no tenant middleware anywhere in `app/`.
@@ -2178,8 +2182,10 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 **Rationale:** A global scope keyed off the *guard* (not a parameter, not a per-query `where`) is the only approach that makes the safe path the default and the unsafe path something you have to write on purpose — which is what `ADR-003` was aiming at and didn't reach. Deny-by-default (decision 3) matters because the failure mode of "fail open" here is a silent cross-tenant financial-data leak, the worst outcome this system can produce short of losing money.
 
 **Consequence to track:**
-- Design-only. Hard prerequisite for ADR-059 — sequence it before, not alongside. No dependency on production deployment.
-- `ADR-003` is now formally partially-superseded: its "schema tenant-aware from day 1" claim was aspirational. Update `ADR-003`'s status note when this ships.
+- Hard prerequisite for ADR-059 — done, sequenced before it. No dependency on production deployment.
+- `ADR-003`'s status note updated (2026-08-30) — its "schema tenant-aware from day 1" claim is now marked partially superseded.
+- `orders.reseller_id` NOT NULL still owed (see the deviation note above) — needs an `OrderFactory` first.
+- `CurrentReseller` lifecycle is owned by the ADR-058 reseller-guard middleware: it must `activate()` on the way in and the `scoped` binding handles teardown. Until ADR-058 ships, the resolver is only ever exercised by tests.
 - Global scopes are trivially bypassed with `DB::table()` / raw queries — a grep for `DB::table(` in reseller-context code belongs on the ADR-059 review checklist.
 - The polymorphic `owner_type` / `owner_id` ledger design means `ledger_entries` itself does **not** use the trait (it has no `reseller_id`). Reseller-scoped ledger reads must go through a service that filters `owner_type = Reseller::class, owner_id = <current>` explicitly (`ResellerEarningsService`, ADR-059). Document that seam so it's not mistaken for an unscoped gap.
 
@@ -2315,8 +2321,8 @@ One grilled design, split into five sequenced ADRs so each ships as its own PR t
 
 | # | ADR | Depends on | Prod-deploy dependency |
 | --- | --- | --- | --- |
-| 1 | **ADR-056** Reseller pricing & wholesale tiers (backend core) | — | none |
-| 2 | **ADR-057** Tenant isolation mechanism | — | none |
+| 1 | **ADR-056** Reseller pricing & wholesale tiers (backend core) — ✅ built, PR #28 | — | none |
+| 2 | **ADR-057** Tenant isolation mechanism — ✅ built 2026-08-30 | — | none |
 | 3 | **ADR-058** Reseller auth + admin Reseller Management | ADR-057 | none |
 | 4 | **ADR-059** Reseller portal (`reseller/` app) | ADR-057, ADR-058 | none |
 | 5 | **ADR-060** Multi-tenant branded storefront + Cloudflare for SaaS | ADR-056..059 | **`ADR-020` + `ADR-037`** |
