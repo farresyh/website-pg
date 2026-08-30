@@ -10,6 +10,7 @@ import ProductHeaderCard from "@/components/order/ProductHeaderCard";
 import TrustStrip from "@/components/order/TrustStrip";
 import { getGame, getGamePackages } from "@/lib/catalog";
 import { listPaymentChannels } from "@/lib/payment-methods";
+import { listPlans } from "@/lib/membership";
 import { getBranding } from "@/lib/branding";
 import { getSeoSettings, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
@@ -52,6 +53,11 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
   const packages = await getGamePackages(slug);
   const paymentChannels = await listPaymentChannels();
+  // ADR-055 decision 7: plans fetched server-side alongside the other
+  // order-page data (not a client round trip), same 60s-TTL/tagged-store
+  // discipline as the catalog endpoints — `[]` when the membership kill
+  // switch is off, so the promo card simply renders nothing.
+  const membershipPlans = await listPlans();
 
   // ADR-029 addendum decision 12: Product + Breadcrumb JSON-LD, each toggled per reseller_seo_settings.
   const productJsonLd = settings.schema_product_enabled
@@ -103,7 +109,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
         <div className="mx-auto max-w-[1200px] px-4 pb-10">
           <ProductHeaderCard game={game} />
-          <OrderForm game={game} packages={packages} paymentChannels={paymentChannels} />
+          <OrderForm game={game} packages={packages} paymentChannels={paymentChannels} membershipPlans={membershipPlans} />
         </div>
 
         <TrustStrip />

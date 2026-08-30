@@ -143,6 +143,11 @@ Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])-
 // defense for a submitted code.
 Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
 Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
+// ADR-055 decision 3: the upsell card's tier data — public (no session
+// token), returns [] when the kill switch is off. Deliberately separate
+// from the admin-only membership-plans prefix (same controller family,
+// different gate — this route is on the public MembershipController).
+Route::get('/membership/plans', [MembershipController::class, 'plans']);
 
 // Decisions 13/24/25 — the /membership dashboard's data. Auth is the
 // session token (Authorization: Bearer), not auth:sanctum — resolved

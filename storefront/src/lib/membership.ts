@@ -15,6 +15,33 @@ export function sendOtp(email: string) {
   return apiFetch<{ message: string }>("/api/membership/otp/send", { method: "POST", body: { email } });
 }
 
+/**
+ * ADR-055 decision 3: the upsell card's tier data — `name`/`fee_sen`/
+ * `discount_percent` per tier, no `quota_sen`/`id`/timestamps, `[]`
+ * when the membership kill switch is off.
+ */
+const MembershipPlanWireSchema = z.object({
+  name: z.string(),
+  fee_sen: z.number(),
+  discount_percent: z.number(),
+});
+
+export interface MembershipPlan {
+  name: string;
+  feeSen: number;
+  discountPercent: number;
+}
+
+export async function listPlans(): Promise<MembershipPlan[]> {
+  const raw = await apiFetch<unknown>("/api/membership/plans");
+  const wire = parseResponse(z.array(MembershipPlanWireSchema), raw, "MembershipPlanWire[]", "/api/membership/plans");
+  return wire.map((plan) => ({
+    name: plan.name,
+    feeSen: plan.fee_sen,
+    discountPercent: plan.discount_percent,
+  }));
+}
+
 export async function verifyOtp(email: string, code: string): Promise<string> {
   const raw = await apiFetch<unknown>("/api/membership/otp/verify", { method: "POST", body: { email, code } });
   const wire = parseResponse(VerifyOtpWireSchema, raw, "VerifyOtpWire", "/api/membership/otp/verify");

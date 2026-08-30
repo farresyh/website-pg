@@ -7,6 +7,7 @@ use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\PlatformSettings;
 use App\Models\Supplier;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Order\PaymentStatus;
@@ -67,8 +68,7 @@ class MembershipControllerTest extends TestCase
         $this->assertSame($membership->id, $membership->id);
     }
 
-    public function test_me_includes_order_history_matched_by_email(): void
-    {
+    public function test_me_includes_order_history_matched_by_email(): void    {
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $package = Package::query()->create([
@@ -99,5 +99,52 @@ class MembershipControllerTest extends TestCase
         foreach (['cost_price', 'standard_selling_price', 'supplier_response', 'payment_ref'] as $secretField) {
             $this->assertArrayNotHasKey($secretField, $orders[0]);
         }
+    }
+
+    public function test_plans_returns_empty_array_when_membership_disabled(): void
+    {
+        PlatformSettings::current()->update(['membership_enabled' => false]);
+
+        $this->getJson('/api/membership/plans')
+            ->assertOk()
+            ->assertExactJson([]);
+    }
+
+    public function test_plans_returns_narrow_tier_shape_when_enabled(): void
+    {
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+
+        $response = $this->getJson('/api/membership/plans')->assertOk();
+
+        $plans = $response->json();
+        $this->assertCount(2, $plans);
+        $this->assertSame(['Tier 1', 'Tier 2'], array_column($plans, 'name'));
+        foreach ($plans as $plan) {
+            $this->assertArrayHasKey('name', $plan);
+            $this->assertArrayHasKey('fee_sen', $plan);
+            $this->assertArrayHasKey('discount_percent', $plan);
+            $this->assertArrayNotHasKey('quota_sen', $plan);
+            $this->assertArrayNotHasKey('id', $plan);
+            $this->assertArrayNotHasKey('created_at', $plan);
+            $this->assertArrayNotHasKey('updated_at', $plan);
+        }
+        $this->assertGreaterThan($plans[0]['discount_percent'], $plans[1]['discount_percent']);
+    }
+
+    public function test_plans_cache_is_invalidated_by_forget_packages_cache_for_membership(): void
+    {
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+
+        $this->getJson('/api/membership/plans')->assertOk();
+        $tier2 = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        $tier2->update(['discount_percent' => 99]);
+
+        // The same single flush point a membership_plans edit triggers —
+        // plans() tags itself `catalog.packages`, so this must clear it.
+        \App\Http\Controllers\CatalogController::forgetPackagesCacheForMembership();
+
+        $this->getJson('/api/membership/plans')
+            ->assertOk()
+            ->assertJsonPath('1.discount_percent', 99);
     }
 }

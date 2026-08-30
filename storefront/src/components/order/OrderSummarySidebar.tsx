@@ -32,7 +32,7 @@ export default function OrderSummarySidebar({
   const totalRm = preview ? preview.final_amount_sen / 100 : (selectedPackage?.priceRm ?? 0);
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 lg:sticky lg:top-20">
+    <div className="rounded-2xl border border-border bg-surface p-5">
       <h3 className="mb-4 text-base font-bold">Order Summary</h3>
       <div className="mb-4 flex flex-col gap-2.5 text-[13.5px]">
         <Row k="Product" v={game.name} />
