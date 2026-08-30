@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Order;
-use App\Models\PlatformSettings;
+use App\Models\Reseller;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use Illuminate\Http\JsonResponse;
@@ -27,9 +27,7 @@ use Illuminate\Support\Facades\Cache;
  */
 class MembershipController extends Controller
 {
-    public function __construct(private readonly MembershipSessionTokenService $sessionTokens)
-    {
-    }
+    public function __construct(private readonly MembershipSessionTokenService $sessionTokens) {}
 
     /**
      * ADR-055 decision 3: the public tier listing for the storefront
@@ -38,7 +36,9 @@ class MembershipController extends Controller
      * has a ready-made source), deliberately no `quota_sen`/`id`/
      * timestamps. Empty array when the kill switch is off — a single
      * contract shape the storefront can render as "no card" without a
-     * 404 special case. Cached in the same scoped, tagged store as the
+     * 404 special case. "Kill switch" here is ADR-061 decision 4's dual
+     * gate — the global master AND the storefront brand's own toggle
+     * (the primary brand today; `Host`-resolved in ADR-060). Cached in the same scoped, tagged store as the
      * catalog packages (60s TTL), tagged `catalog.packages` so
      * CatalogController::forgetPackagesCacheForMembership() — already
      * flushed on every membership_plans edit and kill-switch toggle —
@@ -46,7 +46,7 @@ class MembershipController extends Controller
      */
     public function plans(): JsonResponse
     {
-        $enabled = PlatformSettings::current()->membership_enabled;
+        $enabled = Reseller::primary()->membershipEnabledEffective();
 
         if (! $enabled) {
             return response()->json([]);

@@ -96,7 +96,7 @@ class SandboxOrderController extends Controller
             ]);
         }
 
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $pricing = app(PricingService::class)->calculate(
             $package->cost_price,
             $package->standard_selling_price,
@@ -160,8 +160,8 @@ class SandboxOrderController extends Controller
         app()->bind("supplier-adapter.{$targetPackage->supplier->slug}", fn () => $adapter);
 
         $fulfillment = new OrderFulfillmentService(
-            new OrderStatusService(),
-            new ReferenceNumberService(),
+            new OrderStatusService,
+            new ReferenceNumberService,
             app(SupplierAdapterFactory::class),
             app(LedgerService::class),
             app(VoucherService::class),

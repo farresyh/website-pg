@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\Admin;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PlatformSettings;
 use App\Models\ResellerFooterSettings;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,6 +19,15 @@ use Tests\TestCase;
 class SettingsControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
 
     private function actingAsSuperAdmin(): void
     {
@@ -39,7 +49,7 @@ class SettingsControllerTest extends TestCase
         return Package::query()->create(array_merge([
             'game_id' => $game->id,
             'supplier_id' => $supplier->id,
-            'supplier_package_ref' => 'GV' . random_int(100000, 999999),
+            'supplier_package_ref' => 'GV'.random_int(100000, 999999),
             'name' => '100 Diamonds',
             'cost_price' => 1000,
             'standard_selling_price' => 1100,
@@ -170,7 +180,7 @@ class SettingsControllerTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertSame(750000, \App\Models\PlatformSettings::current()->vip_spend_threshold_sen);
+        $this->assertSame(750000, PlatformSettings::current()->vip_spend_threshold_sen);
     }
 
     public function test_bulk_markup_updates_every_active_package_and_logs_a_price_change(): void

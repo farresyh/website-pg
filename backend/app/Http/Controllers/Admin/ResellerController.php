@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
 use App\Http\Requests\Admin\StoreResellerRequest;
@@ -78,7 +79,13 @@ class ResellerController extends Controller
     {
         $data = $request->validated();
 
-        $reseller = DB::transaction(function () use ($data, $request) {
+        // ADR-061 decision 8: consumer Membership is an internal-brand-only
+        // capability — a third-party reseller can never turn it on, so the
+        // toggle is ignored unless "our own brand" is set.
+        $isOwned = (bool) ($data['is_owned'] ?? false);
+        $membershipEnabled = $isOwned && (bool) ($data['membership_enabled'] ?? false);
+
+        $reseller = DB::transaction(function () use ($data, $request, $isOwned, $membershipEnabled) {
             $reseller = Reseller::query()->create([
                 'business_name' => $data['business_name'],
                 'contact_name' => $data['contact_name'] ?? null,
@@ -88,6 +95,8 @@ class ResellerController extends Controller
                 'max_markup_pct' => $data['max_markup_pct'] ?? null,
                 'domains' => $data['domains'] ?? null,
                 'status' => 'active',
+                'is_owned' => $isOwned,
+                'membership_enabled' => $membershipEnabled,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -117,10 +126,22 @@ class ResellerController extends Controller
         return response()->json($this->detailShape($reseller->fresh()), 201);
     }
 
-    /** RES-3: edit business details + markup ceiling. */
+    /** RES-3: edit business details + markup ceiling + brand/membership flags. */
     public function update(UpdateResellerRequest $request, Reseller $reseller): JsonResponse
     {
         $data = $request->validated();
+
+        // ADR-061 decision 8: only an internal brand may carry consumer
+        // Membership. Resolve `is_owned` first (may be unchanged), then
+        // force the toggle off for a third-party reseller. The primary
+        // reseller is `is_owned` by definition (decision 3) — it cannot
+        // be un-owned while it is the fallback tenant.
+        $isOwned = $reseller->is_primary
+            || (array_key_exists('is_owned', $data) ? (bool) $data['is_owned'] : (bool) $reseller->is_owned);
+        $membershipEnabled = $isOwned
+            && (array_key_exists('membership_enabled', $data)
+                ? (bool) $data['membership_enabled']
+                : (bool) $reseller->membership_enabled);
 
         $reseller->update([
             'business_name' => $data['business_name'],
@@ -130,8 +151,19 @@ class ResellerController extends Controller
             'markup_pct' => $data['markup_pct'],
             'max_markup_pct' => $data['max_markup_pct'] ?? null,
             'domains' => $data['domains'] ?? null,
+            'is_owned' => $isOwned,
+            'membership_enabled' => $membershipEnabled,
             'notes' => $data['notes'] ?? null,
         ]);
+
+        // The public catalog caches the primary brand's markup into every
+        // game's `price_from_sen` / package price (CatalogController::
+        // sellingPriceSen) and gates member pricing on the effective
+        // Membership flag — both must be re-derived when either changes.
+        if ($reseller->wasChanged(['markup_pct', 'membership_enabled'])) {
+            CatalogController::forgetPackagesCacheForMembership();
+            CatalogController::forgetIndexCache();
+        }
 
         return response()->json($this->detailShape($reseller->fresh()));
     }
@@ -251,12 +283,17 @@ class ResellerController extends Controller
      * earnings balance is exactly zero and no withdrawal is pending or
      * approved-but-uncompleted. The Cloudflare custom-hostname teardown
      * is ADR-060, not wired here.
+     *
+     * ADR-061 decision 8: the primary reseller is the console/job/migration
+     * fallback tenant and can never be deleted. A non-primary `is_owned`
+     * brand (a future internal brand, or one being sold off) follows the
+     * normal rules below.
      */
     public function destroy(Reseller $reseller): JsonResponse
     {
-        if ($reseller->business_name === 'Platform Owner') {
+        if ($reseller->is_primary) {
             throw ValidationException::withMessages([
-                'reseller' => ['The platform owner reseller cannot be deleted.'],
+                'reseller' => ['The primary reseller cannot be deleted.'],
             ]);
         }
 
@@ -357,7 +394,9 @@ class ResellerController extends Controller
             'domains' => $reseller->domains ?? [],
             'status' => $reseller->status,
             'notes' => $reseller->notes,
-            'is_platform_owner' => $reseller->business_name === 'Platform Owner',
+            'is_owned' => (bool) $reseller->is_owned,
+            'is_primary' => (bool) $reseller->is_primary,
+            'membership_enabled' => (bool) $reseller->membership_enabled,
             'deleted_at' => $reseller->deleted_at,
             'orders_count' => $reseller->orders_count ?? 0,
             'earnings_balance_sen' => $earningsBalanceSen,

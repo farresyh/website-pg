@@ -30,7 +30,7 @@ class RedirectControllerTest extends TestCase
     public function test_index_orders_by_hit_count_descending(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         Redirect::query()->create(['reseller_id' => $reseller->id, 'from_path' => '/low', 'to_path' => '/a', 'status_code' => 301, 'hit_count' => 2]);
         Redirect::query()->create(['reseller_id' => $reseller->id, 'from_path' => '/high', 'to_path' => '/b', 'status_code' => 301, 'hit_count' => 9]);
 
@@ -43,7 +43,7 @@ class RedirectControllerTest extends TestCase
     public function test_store_creates_a_redirect_scoped_to_the_platform_owner(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
 
         $response = $this->postJson('/api/seo/redirects', [
             'from_path' => '/old-page',
@@ -63,7 +63,7 @@ class RedirectControllerTest extends TestCase
     public function test_store_rejects_a_from_path_not_starting_with_a_slash(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $this->postJson('/api/seo/redirects', ['from_path' => 'old-page', 'to_path' => '/new', 'status_code' => 301])
             ->assertUnprocessable()
@@ -73,7 +73,7 @@ class RedirectControllerTest extends TestCase
     public function test_store_rejects_a_status_code_outside_301_or_302(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $this->postJson('/api/seo/redirects', ['from_path' => '/old', 'to_path' => '/new', 'status_code' => 404])
             ->assertUnprocessable()
@@ -83,7 +83,7 @@ class RedirectControllerTest extends TestCase
     public function test_store_rejects_a_duplicate_from_path_for_the_same_reseller(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         Redirect::query()->create(['reseller_id' => $reseller->id, 'from_path' => '/old', 'to_path' => '/new', 'status_code' => 301]);
 
         $this->postJson('/api/seo/redirects', ['from_path' => '/old', 'to_path' => '/elsewhere', 'status_code' => 302])
@@ -94,7 +94,7 @@ class RedirectControllerTest extends TestCase
     public function test_store_invalidates_the_public_seo_cache(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         Cache::put("catalog.public.redirects.{$reseller->id}", ['stale' => true], 60);
 
         $this->postJson('/api/seo/redirects', ['from_path' => '/old', 'to_path' => '/new', 'status_code' => 301])->assertCreated();
@@ -105,7 +105,7 @@ class RedirectControllerTest extends TestCase
     public function test_update_allows_keeping_the_same_from_path(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         $redirect = Redirect::query()->create(['reseller_id' => $reseller->id, 'from_path' => '/old', 'to_path' => '/new', 'status_code' => 301]);
 
         $response = $this->putJson("/api/seo/redirects/{$redirect->id}", [
@@ -122,7 +122,7 @@ class RedirectControllerTest extends TestCase
     public function test_destroy_removes_the_row_and_invalidates_cache(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         $redirect = Redirect::query()->create(['reseller_id' => $reseller->id, 'from_path' => '/old', 'to_path' => '/new', 'status_code' => 301]);
         Cache::put("catalog.public.redirects.{$reseller->id}", ['stale' => true], 60);
 

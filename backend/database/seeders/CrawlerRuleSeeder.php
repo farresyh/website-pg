@@ -89,7 +89,7 @@ class CrawlerRuleSeeder extends Seeder
      */
     private function seedDefaultDisallowPaths(): void
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $settings = ResellerSeoSettings::query()->firstOrCreate(['reseller_id' => $reseller->id]);
 

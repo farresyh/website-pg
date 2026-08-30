@@ -59,8 +59,7 @@ class CheckoutController extends Controller
         private readonly BlacklistService $blacklist,
         private readonly CheckoutVelocityGuard $velocityGuard,
         private readonly MembershipSessionTokenService $membershipSessionTokens,
-    ) {
-    }
+    ) {}
 
     public function store(CreateCheckoutRequest $request): JsonResponse
     {
@@ -134,11 +133,14 @@ class CheckoutController extends Controller
 
         $this->assertNotBlacklisted($data['player_id'], $data['customer_email'], $data['customer_phone'] ?? null, $request->ip());
 
-        // PRD §8 / ADR-013: exactly one Reseller row for MVP (the
-        // platform owner, markup_pct=0) — see Reseller::platformOwner()
-        // for the firstOrCreate safety-net rationale.
-        $reseller = Reseller::platformOwner();
-        $membershipId = $platformSettings->membership_enabled ? $this->resolveMembershipId($request) : null;
+        // ADR-061: the platform's own storefront is the primary Reseller
+        // (ADR-060 will resolve this per `Host` once storefronts are
+        // multi-tenant). Membership needs BOTH the global kill-switch and
+        // this brand's own toggle (ADR-061 decision 4).
+        $reseller = Reseller::primary();
+        $membershipId = $reseller->membershipEnabledEffective($platformSettings)
+            ? $this->resolveMembershipId($request)
+            : null;
 
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
@@ -230,9 +232,11 @@ class CheckoutController extends Controller
             ]);
         }
 
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $platformSettings = PlatformSettings::current();
-        $membershipId = $platformSettings->membership_enabled ? $this->resolveMembershipId($request) : null;
+        $membershipId = $reseller->membershipEnabledEffective($platformSettings)
+            ? $this->resolveMembershipId($request)
+            : null;
 
         try {
             $preview = $this->checkout->previewTotal(
@@ -348,8 +352,9 @@ class CheckoutController extends Controller
      * once, silently, at "Proceed to Pay" — a session-recognized member
      * gets member pricing with no extra step; anyone without a token
      * (or an invalid/expired one) checks out exactly as a guest always
-     * has. Gated on `PlatformSettings.membership_enabled` by the
-     * caller (decision 20's kill switch, seeded off) — the same gate
+     * has. Gated by the caller on `Reseller::membershipEnabledEffective()`
+     * (ADR-061 decision 4 — the global kill switch AND the brand's own
+     * toggle, seeded off) — the same gate
      * `CatalogController` already applies to `member_price_sen`, so a
      * pre-launch/disabled membership feature never silently applies
      * member pricing at checkout even for an account with a still-valid

@@ -29,6 +29,8 @@ export interface ResellerFormSubmitValues {
   max_markup_pct: number | null;
   domains: string[];
   notes: string | null;
+  is_owned: boolean;
+  membership_enabled: boolean;
   tier_id: number | null;
   user_name: string;
   user_email: string;
@@ -64,6 +66,8 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
   const [maxMarkupPct, setMaxMarkupPct] = useState(editing?.max_markup_pct ?? "");
   const [domainsText, setDomainsText] = useState(toLines(editing?.domains ?? []));
   const [notes, setNotes] = useState(editing?.notes ?? "");
+  const [isOwned, setIsOwned] = useState(editing?.is_owned ?? false);
+  const [membershipEnabled, setMembershipEnabled] = useState(editing?.membership_enabled ?? false);
   const [tierId, setTierId] = useState<string>("");
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -97,6 +101,11 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
         max_markup_pct: maxMarkup,
         domains: fromLines(domainsText),
         notes: notes || null,
+        is_owned: isOwned,
+        // A third-party reseller can never carry consumer Membership
+        // (ADR-061) — the backend forces this off too, this just keeps
+        // the payload honest.
+        membership_enabled: isOwned && membershipEnabled,
         tier_id: tierId === "" ? null : Number(tierId),
         user_name: userName,
         user_email: userEmail,
@@ -175,6 +184,34 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
             rows={2}
             className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700"
           />
+        </div>
+
+        <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+          <label className="flex items-center gap-2 text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={isOwned}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setIsOwned(next);
+                if (next && (markupPct.trim() === "" || parseFloat(markupPct) === 0)) {
+                  setMarkupPct("0");
+                }
+                if (!next) setMembershipEnabled(false);
+              }}
+            />
+            Our own brand
+          </label>
+          <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+            An internal storefront — its margin books as our own money, and it may run consumer Membership. Leave off for a third-party reseller.
+          </p>
+          {isOwned && (
+            <label className="mt-3 flex items-center gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
+              <input type="checkbox" checked={membershipEnabled} onChange={(e) => setMembershipEnabled(e.target.checked)} />
+              Enable consumer Membership on this storefront
+              <span className="text-theme-xs text-gray-400">(also needs the global membership switch on)</span>
+            </label>
+          )}
         </div>
 
         {!isEditing && (

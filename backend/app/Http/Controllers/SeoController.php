@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Cache;
  * middleware.ts's in-memory cache (decision 9), scripts for layout
  * injection (addendum 2 decision 13), crawler rules for app/robots.ts
  * (addendum 2 decision 14). Same no-auth reasoning as BrandingController
- * (ADR-011) — another public call site for Reseller::platformOwner().
+ * (ADR-011) — another public call site for Reseller::primary().
  */
 class SeoController extends Controller
 {
@@ -25,7 +25,7 @@ class SeoController extends Controller
 
     public function settings(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $payload = Cache::remember(
             "catalog.public.seo.{$reseller->id}",
@@ -59,7 +59,7 @@ class SeoController extends Controller
      */
     public function redirects(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $payload = Cache::remember(
             "catalog.public.redirects.{$reseller->id}",
@@ -81,7 +81,7 @@ class SeoController extends Controller
      */
     public function recordRedirectHit(Request $request): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $fromPath = (string) $request->input('from_path');
 
         Redirect::query()
@@ -94,7 +94,7 @@ class SeoController extends Controller
 
     public function scripts(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $payload = Cache::remember(
             "catalog.public.seo_scripts.{$reseller->id}",
@@ -123,7 +123,7 @@ class SeoController extends Controller
      */
     public function robots(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $payload = Cache::remember(
             'catalog.public.crawler_rules',

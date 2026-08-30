@@ -31,8 +31,7 @@ class VoucherPreviewController extends Controller
     public function __construct(
         private readonly PricingService $pricing,
         private readonly VoucherService $vouchers,
-    ) {
-    }
+    ) {}
 
     public function store(PreviewVoucherRequest $request): JsonResponse
     {
@@ -47,7 +46,7 @@ class VoucherPreviewController extends Controller
             ]);
         }
 
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $pricingBreakdown = $this->pricing->calculate(
             $package->cost_price,

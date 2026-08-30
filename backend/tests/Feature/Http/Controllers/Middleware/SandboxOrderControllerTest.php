@@ -25,6 +25,15 @@ class SandboxOrderControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
+
     private function actingAsAdmin(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin', 'name' => 'Test Admin']));

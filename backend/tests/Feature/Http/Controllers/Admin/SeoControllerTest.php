@@ -48,7 +48,7 @@ class SeoControllerTest extends TestCase
     public function test_overview_counts_missing_seo_fields_across_active_games_only(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
         $this->game('complete-game', ['seo_title' => 'Title', 'seo_description' => 'Desc']);
         $this->game('missing-title', ['seo_title' => null, 'seo_description' => 'Desc']);
         $this->game('missing-everything', ['seo_title' => null, 'seo_description' => null]);
@@ -65,7 +65,7 @@ class SeoControllerTest extends TestCase
     public function test_overview_recommends_nothing_when_every_active_game_is_complete(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
         $this->game('complete-game', ['seo_title' => 'Title', 'seo_description' => 'Desc', 'seo_og_image' => 'https://example.com/img.png']);
 
         $response = $this->getJson('/api/seo/overview');
@@ -77,7 +77,7 @@ class SeoControllerTest extends TestCase
     public function test_overview_sitemap_url_count_is_five_static_pages_plus_active_games(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
         $this->game('game-one');
         $this->game('game-two');
 
@@ -90,7 +90,7 @@ class SeoControllerTest extends TestCase
     public function test_settings_creates_a_default_row_on_first_access(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $response = $this->getJson('/api/seo/settings');
 
@@ -101,7 +101,7 @@ class SeoControllerTest extends TestCase
     public function test_update_settings_persists_and_returns_the_new_values(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $response = $this->putJson('/api/seo/settings', [
             'default_meta_title' => 'New Title',
@@ -116,7 +116,7 @@ class SeoControllerTest extends TestCase
     public function test_update_settings_rejects_a_meta_title_over_seventy_characters(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $this->putJson('/api/seo/settings', ['default_meta_title' => str_repeat('a', 71)])
             ->assertUnprocessable()
@@ -126,7 +126,7 @@ class SeoControllerTest extends TestCase
     public function test_update_settings_invalidates_both_the_public_seo_cache_and_the_robots_cache(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         Cache::put("catalog.public.seo.{$reseller->id}", ['stale' => true], 60);
         Cache::put('catalog.public.crawler_rules', ['stale' => true], 60);
 
@@ -139,8 +139,8 @@ class SeoControllerTest extends TestCase
     public function test_overview_redirect_total_counts_only_the_current_resellers_rows(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = Reseller::platformOwner();
-        $other = Reseller::query()->create(['business_name' => 'Other', 'is_platform_owner' => false]);
+        $reseller = $this->primaryReseller();
+        $other = Reseller::query()->create(['business_name' => 'Other']);
         Redirect::query()->create(['reseller_id' => $reseller->id, 'from_path' => '/a', 'to_path' => '/b', 'status_code' => 301]);
         Redirect::query()->create(['reseller_id' => $other->id, 'from_path' => '/c', 'to_path' => '/d', 'status_code' => 301]);
 

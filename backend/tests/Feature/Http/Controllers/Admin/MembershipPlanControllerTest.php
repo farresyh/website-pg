@@ -22,6 +22,15 @@ class MembershipPlanControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
+
     private function actingAsSuperAdmin(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
@@ -152,7 +161,7 @@ class MembershipPlanControllerTest extends TestCase
         return Package::query()->create(array_merge([
             'game_id' => $game->id,
             'supplier_id' => $supplier->id,
-            'supplier_package_ref' => 'GV' . random_int(100000, 999999),
+            'supplier_package_ref' => 'GV'.random_int(100000, 999999),
             'name' => '100 Diamonds',
             'cost_price' => 1000,
             'standard_selling_price' => 1150,
