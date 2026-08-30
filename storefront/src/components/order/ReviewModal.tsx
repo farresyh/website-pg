@@ -6,6 +6,7 @@ import { X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-client";
 import { previewVoucher, type VoucherPreviewResult } from "@/lib/vouchers";
+import type { CheckoutTotalPreview } from "@/lib/checkout";
 import type { Game, GamePackage } from "@/lib/catalog";
 
 interface ReviewModalProps {
@@ -13,6 +14,8 @@ interface ReviewModalProps {
   onClose: () => void;
   game: Game;
   pkg: GamePackage;
+  /** Real breakdown from CheckoutTotalService (bug fix, 2026-08-30) — null while a fresh preview is in flight. */
+  preview: CheckoutTotalPreview | null;
   playerId: string;
   serverId: string;
   channelLabel: string;
@@ -53,6 +56,7 @@ export default function ReviewModal({
   onClose,
   game,
   pkg,
+  preview,
   playerId,
   serverId,
   channelLabel,
@@ -112,8 +116,30 @@ export default function ReviewModal({
     onVoucherChange(null);
   }
 
-  const discountRm = (appliedVoucher?.result.discount ?? 0) / 100;
-  const payableRm = Math.max(0, pkg.priceRm - discountRm);
+  // Bug fix, 2026-08-30: only trust `memberPriceRm` as the real payable
+  // total when the backend flagged it as personalized to this logged-in
+  // member's own tier (CatalogController::publicPackage()) — otherwise
+  // it's the anonymous "best tier" anchor and would misstate what a
+  // guest (or an unresolved/lapsed member session) actually gets charged.
+  // Only used as a fallback below while `preview` (the real
+  // CheckoutTotalService breakdown, including the transaction fee) is
+  // still loading — `preview.selling_price_sen` is already correctly
+  // member-aware once it lands, no need to re-derive it here.
+  const isMemberPrice = pkg.memberPricePersonalized === true && pkg.memberPriceRm != null;
+  const fallbackBaseRm = isMemberPrice ? pkg.memberPriceRm! : pkg.priceRm;
+  const fallbackDiscountRm = (appliedVoucher?.result.discount ?? 0) / 100;
+  const fallbackPayableRm = Math.max(0, fallbackBaseRm - fallbackDiscountRm);
+
+  // Bug fix, 2026-08-30: the old "Total" here was `package price -
+  // voucher discount`, silently missing the transaction fee the real
+  // charge always adds — see CheckoutService::previewTotal()'s doc
+  // comment. `preview` carries the real, fee-inclusive breakdown;
+  // falls back to the old package-only math only while a fresh preview
+  // hasn't landed yet (e.g. right after applying a voucher).
+  const packagePriceRm = preview ? preview.selling_price_sen / 100 : fallbackBaseRm;
+  const transactionFeeRm = preview ? preview.transaction_fee_sen / 100 : null;
+  const voucherDiscountRm = preview ? preview.voucher_discount_sen / 100 : fallbackDiscountRm;
+  const payableRm = preview ? preview.final_amount_sen / 100 : fallbackPayableRm;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 lg:items-center" onClick={onClose}>
@@ -214,24 +240,24 @@ export default function ReviewModal({
         <hr className="mb-5 border-border" />
 
         <div className="mb-5 flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className={appliedVoucher ? "text-sm text-text-muted" : "text-base font-extrabold"}>Total</span>
-            <span className={appliedVoucher ? "text-sm text-text-muted line-through" : "text-xl font-extrabold text-brand-light"}>
-              RM{pkg.priceRm.toFixed(2)}
-            </span>
-          </div>
-          {appliedVoucher && (
-            <>
-              <div className="flex items-center justify-between text-sm text-brand-light">
-                <span>Voucher discount</span>
-                <span>-RM{discountRm.toFixed(2)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-base font-extrabold">You Pay</span>
-                <span className="text-xl font-extrabold text-brand-light">RM{payableRm.toFixed(2)}</span>
-              </div>
-            </>
+          {isMemberPrice && (
+            <div className="flex items-center justify-between text-sm text-text-muted">
+              <span>Standard price</span>
+              <span className="line-through">RM{pkg.priceRm.toFixed(2)}</span>
+            </div>
           )}
+          <Row k={isMemberPrice ? "Member Price" : "Package Price"} v={`RM${packagePriceRm.toFixed(2)}`} />
+          {transactionFeeRm != null && <Row k="Transaction Fee" v={`RM${transactionFeeRm.toFixed(2)}`} />}
+          {appliedVoucher && (
+            <div className="flex items-center justify-between text-sm text-brand-light">
+              <span>Voucher Discount</span>
+              <span>-RM{voucherDiscountRm.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-base font-extrabold">Total</span>
+            <span className="text-xl font-extrabold text-brand-light">RM{payableRm.toFixed(2)}</span>
+          </div>
         </div>
 
         <label className="mb-4 flex cursor-pointer items-start gap-2.5">

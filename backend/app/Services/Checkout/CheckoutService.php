@@ -12,8 +12,10 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
+use App\Services\Pricing\CheckoutTotal;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\MembershipPricingService;
+use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
@@ -74,30 +76,13 @@ final class CheckoutService
         $platformProfit = $member !== null ? $member->memberPriceSen - $request->costPriceSen : $pricing->platformProfit;
         $resellerProfit = $member !== null ? 0 : $pricing->resellerProfit;
 
-        // ADR-024 decision #3: resolved server-side from the voucher's
-        // own stored code/remaining/ownership — never a client-
-        // submitted discount amount (ORD-9). preview() only reads, it
-        // never locks or mutates — the real, locked spend happens
-        // later, in requestPayment()/settleWithVoucher() below,
-        // matching decision #1's exact timing.
-        $voucherPreview = $request->voucherCode !== null
-            ? $this->vouchers->preview($request->voucherCode, $request->customerEmail, $request->customerPhone, $sellingPriceForOrder)
-            : null;
-
-        $total = $this->checkoutTotal->calculate(
+        [$voucherPreview, $total, $fullyCoveredByVoucher] = $this->computeTotal(
             $sellingPriceForOrder,
-            $voucherPreview?->discountSen ?? 0,
+            $request->voucherCode,
+            $request->customerEmail,
+            $request->customerPhone,
             $request->paymentFeeConfig,
         );
-
-        // ADR-024 decision #5: a voucher covering the full price means
-        // feeBase is 0 — CheckoutTotalService's own transactionFee
-        // formula would still apply a payment method's flat-fee
-        // component even at feeBase=0 (only the percentage component
-        // scales with the base), which makes no sense for an order
-        // that never touches a payment gateway at all. Forced to 0
-        // here rather than trusting that formula for this branch.
-        $fullyCoveredByVoucher = $total->feeBase === 0 && $voucherPreview !== null;
 
         // ADR-019 idempotency finding, verified directly against
         // docs.xendit.co (not assumed): Payment Request v3 has no
@@ -344,11 +329,24 @@ final class CheckoutService
      */
     private function resolveMemberPricing(CheckoutRequest $request): ?MemberPricingResolution
     {
-        if ($request->membershipId === null) {
+        return $this->resolveMemberPricingFor($request->membershipId, $request->costPriceSen, $request->packageMarkupPercent);
+    }
+
+    /**
+     * The actual lookup behind resolveMemberPricing() above, pulled out
+     * so previewTotal() (bug fix, 2026-08-30 — the storefront's
+     * pre-payment totals never included the real member discount or
+     * transaction fee) can resolve the identical pricing without going
+     * through a full CheckoutRequest, which carries order-creation-only
+     * fields (player_id, idempotency_key, ...) a preview has no use for.
+     */
+    private function resolveMemberPricingFor(?int $membershipId, int $costPriceSen, float $packageMarkupPercent): ?MemberPricingResolution
+    {
+        if ($membershipId === null) {
             return null;
         }
 
-        $membership = Membership::query()->with('membershipPlan')->find($request->membershipId);
+        $membership = Membership::query()->with('membershipPlan')->find($membershipId);
 
         if ($membership === null || $membership->membershipPlan === null) {
             return null;
@@ -356,8 +354,8 @@ final class CheckoutService
 
         $discountPercent = (float) $membership->membershipPlan->discount_percent;
         $memberPriceSen = $this->membershipPricing->calculateMemberPrice(
-            $request->costPriceSen,
-            $request->packageMarkupPercent,
+            $costPriceSen,
+            $packageMarkupPercent,
             $discountPercent,
         );
 
@@ -366,6 +364,91 @@ final class CheckoutService
         }
 
         return new MemberPricingResolution($membership->id, $memberPriceSen, $discountPercent);
+    }
+
+    /**
+     * The voucher-preview + fee/total computation shared by initiate()
+     * and previewTotal() — a single seam so the two can never drift
+     * apart on the actual formula. Returns [VoucherPreview|null,
+     * CheckoutTotal, bool $fullyCoveredByVoucher].
+     *
+     * @return array{0: ?VoucherPreview, 1: CheckoutTotal, 2: bool}
+     */
+    private function computeTotal(
+        int $sellingPriceForOrder,
+        ?string $voucherCode,
+        string $customerEmail,
+        ?string $customerPhone,
+        PaymentMethodFeeConfig $paymentFeeConfig,
+    ): array {
+        // ADR-024 decision #3: resolved server-side from the voucher's
+        // own stored code/remaining/ownership — never a client-
+        // submitted discount amount (ORD-9). preview() only reads, it
+        // never locks or mutates — the real, locked spend happens
+        // later, in requestPayment()/settleWithVoucher() below,
+        // matching decision #1's exact timing.
+        $voucherPreview = $voucherCode !== null
+            ? $this->vouchers->preview($voucherCode, $customerEmail, $customerPhone, $sellingPriceForOrder)
+            : null;
+
+        $total = $this->checkoutTotal->calculate(
+            $sellingPriceForOrder,
+            $voucherPreview?->discountSen ?? 0,
+            $paymentFeeConfig,
+        );
+
+        // ADR-024 decision #5: a voucher covering the full price means
+        // feeBase is 0 — CheckoutTotalService's own transactionFee
+        // formula would still apply a payment method's flat-fee
+        // component even at feeBase=0 (only the percentage component
+        // scales with the base), which makes no sense for an order
+        // that never touches a payment gateway at all. Forced to 0
+        // here rather than trusting that formula for this branch.
+        $fullyCoveredByVoucher = $total->feeBase === 0 && $voucherPreview !== null;
+
+        return [$voucherPreview, $total, $fullyCoveredByVoucher];
+    }
+
+    /**
+     * Bug fix, 2026-08-30: the storefront's pre-payment Order Summary/
+     * Review Modal only ever showed `package price - voucher discount`,
+     * never the transaction fee — so the real charge (this exact
+     * formula, via initiate() above) was always higher than what the
+     * customer saw before clicking "Confirm & Pay" whenever the chosen
+     * channel had a nonzero fee. Read-only: no Order, no gateway call,
+     * no voucher lock (VoucherService::preview() itself never mutates).
+     */
+    public function previewTotal(
+        int $costPriceSen,
+        int $standardSellingPriceSen,
+        float $packageMarkupPercent,
+        float $resellerMarkupPct,
+        PaymentMethodFeeConfig $paymentFeeConfig,
+        ?int $membershipId,
+        ?string $voucherCode,
+        string $customerEmail,
+        ?string $customerPhone,
+    ): CheckoutTotalPreview {
+        $pricing = $this->pricing->calculate($costPriceSen, $standardSellingPriceSen, $resellerMarkupPct);
+
+        $member = $this->resolveMemberPricingFor($membershipId, $costPriceSen, $packageMarkupPercent);
+        $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
+
+        [, $total, $fullyCoveredByVoucher] = $this->computeTotal(
+            $sellingPriceForOrder,
+            $voucherCode,
+            $customerEmail,
+            $customerPhone,
+            $paymentFeeConfig,
+        );
+
+        return new CheckoutTotalPreview(
+            sellingPriceSen: $sellingPriceForOrder,
+            memberDiscountPercent: $member?->discountPercent,
+            voucherDiscountSen: $total->voucherDiscount,
+            transactionFeeSen: $fullyCoveredByVoucher ? 0 : $total->transactionFee,
+            finalAmountSen: $fullyCoveredByVoucher ? 0 : $total->finalAmount,
+        );
     }
 
     /**

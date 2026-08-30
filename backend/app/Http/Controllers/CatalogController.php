@@ -3,13 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Game;
+use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\Reseller;
+use App\Services\Membership\MembershipSessionTokenService;
+use App\Services\Membership\MembershipStatus;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -41,6 +45,7 @@ class CatalogController extends Controller
     public function __construct(
         private readonly PricingService $pricing,
         private readonly MembershipPricingService $membershipPricing,
+        private readonly MembershipSessionTokenService $membershipSessionTokens,
     ) {
     }
 
@@ -72,7 +77,7 @@ class CatalogController extends Controller
         return response()->json($this->publicGameDetail($game));
     }
 
-    public function packages(string $slug): JsonResponse
+    public function packages(string $slug, Request $request): JsonResponse
     {
         $game = $this->findActiveGame($slug);
 
@@ -80,27 +85,76 @@ class CatalogController extends Controller
             return response()->json(['message' => 'Game not found.'], 404);
         }
 
+        $membershipEnabled = PlatformSettings::current()->membership_enabled;
+
+        // Resolved once per request, outside the cache closure below —
+        // a decrypt + one indexed Membership lookup, not worth caching
+        // itself, and it must run on every request since it identifies
+        // *this* caller, unlike the shared anchor price the closure
+        // computes. A missing/unresolvable/lapsed token falls back to
+        // null, same silent fallback CheckoutController::
+        // resolveMembershipId() already uses — not an error.
+        $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request) : null;
+
         $packages = Cache::store(config('cache.catalog_packages_store'))
-            ->tags(['catalog.packages'])
+            ->tags(['catalog.packages', "catalog.packages.game.{$game->id}"])
             ->remember(
-                self::packagesCacheKey($game->id),
+                self::packagesCacheKey($game->id, $memberPlan?->id),
                 self::CACHE_TTL_SECONDS,
-                function () use ($game) {
-                    $bestMembershipPlan = PlatformSettings::current()->membership_enabled
+                function () use ($game, $membershipEnabled, $memberPlan) {
+                    // The caller's own tier when this request carried a
+                    // valid membership session token; otherwise the
+                    // same anonymous "best tier" anchor as before
+                    // (ADR-027's 2026-08-29 addendum, decision 21) —
+                    // never a mix of the two within one cached entry.
+                    $anchorPlan = $memberPlan ?? ($membershipEnabled
                         ? MembershipPlan::query()->orderByDesc('discount_percent')->first()
-                        : null;
+                        : null);
 
                     return $this->dedupByDenomination(
                         $game->packages()
                             ->where('is_active', true)
                             ->get(),
                     )
-                        ->map(fn (Package $package) => $this->publicPackage($package, $bestMembershipPlan))
+                        ->map(fn (Package $package) => $this->publicPackage($package, $anchorPlan, $memberPlan !== null))
                         ->all();
                 },
             );
 
         return response()->json($packages);
+    }
+
+    /**
+     * Mirrors CheckoutController::resolveMembershipId's own token
+     * resolution (same MembershipSessionTokenService, same
+     * Active+unexpired check) but returns the member's own
+     * MembershipPlan so publicPackage() can price against their real
+     * tier instead of the anonymous "best tier" anchor — the bug this
+     * method fixes: a Tier 1 member was always shown Tier 2's anchor
+     * price pre-payment, even though CheckoutService already charged
+     * them correctly at Tier 1 (docs/adr.md ADR-027).
+     */
+    private function resolveMemberPlan(Request $request): ?MembershipPlan
+    {
+        $token = $request->bearerToken();
+
+        if ($token === null) {
+            return null;
+        }
+
+        $email = $this->membershipSessionTokens->resolve($token);
+
+        if ($email === null) {
+            return null;
+        }
+
+        return Membership::query()
+            ->where('email', $email)
+            ->where('status', MembershipStatus::Active)
+            ->where('expires_at', '>=', now())
+            ->with('membershipPlan')
+            ->first()
+            ?->membershipPlan;
     }
 
     private function findActiveGame(string $slug): ?Game
@@ -166,14 +220,15 @@ class CatalogController extends Controller
 
     /**
      * ADR-027's 2026-08-29 addendum, decisions 20/21: `member_price_sen`
-     * reflects only the best-value tier (highest discount_percent), and
-     * is omitted entirely — never `null` — when the kill switch is off
-     * or no membership tier is configured, matching this codebase's
-     * narrow-public-response-shape discipline (backend/AGENTS.md).
+     * reflects the caller's own tier when `$isPersonalized`, otherwise
+     * the best-value tier (highest discount_percent) as an anonymous
+     * anchor — and is omitted entirely, never `null`, when the kill
+     * switch is off or no membership tier is configured, matching this
+     * codebase's narrow-public-response-shape discipline (backend/AGENTS.md).
      *
      * @return array<string, mixed>
      */
-    private function publicPackage(Package $package, ?MembershipPlan $bestMembershipPlan): array
+    private function publicPackage(Package $package, ?MembershipPlan $anchorPlan, bool $isPersonalized = false): array
     {
         $data = [
             'id' => $package->id,
@@ -181,12 +236,22 @@ class CatalogController extends Controller
             'selling_price_sen' => $this->sellingPriceSen($package),
         ];
 
-        if ($bestMembershipPlan !== null) {
+        if ($anchorPlan !== null) {
             $data['member_price_sen'] = $this->membershipPricing->calculateMemberPrice(
                 $package->cost_price,
                 (float) $package->markup_percent,
-                (float) $bestMembershipPlan->discount_percent,
+                (float) $anchorPlan->discount_percent,
             );
+
+            // Only true when `anchorPlan` is this specific caller's own
+            // resolved tier (a valid session token) — never for the
+            // anonymous "best tier" anchor. The storefront uses this to
+            // decide whether member_price_sen is safe to treat as the
+            // customer's real payable total before payment, or only a
+            // display-only savings hint (PackageGrid's own comment).
+            if ($isPersonalized) {
+                $data['member_price_personalized'] = true;
+            }
         }
 
         return $data;
@@ -268,9 +333,16 @@ class CatalogController extends Controller
         // right store without the same ->tags() call) would silently
         // miss it, since a tagged entry's real storage key is namespaced
         // by the tag, not the same key Cache::forget() would look up bare.
+        //
+        // A single package/price edit can change the anonymous anchor
+        // key AND every per-tier personalized key for this game at once
+        // (member pricing is derived from the same package row) — flush
+        // the whole per-game tag rather than a single forget(key) call,
+        // so every cached variant for this game is covered, not just
+        // the anonymous one.
         Cache::store(config('cache.catalog_packages_store'))
-            ->tags(['catalog.packages'])
-            ->forget(self::packagesCacheKey($gameId));
+            ->tags(["catalog.packages.game.{$gameId}"])
+            ->flush();
         // A package price/status change also changes the index's
         // per-game price_from_sen — the index cache must go too.
         Cache::forget('catalog.public.games.index');
@@ -286,8 +358,10 @@ class CatalogController extends Controller
         Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->flush();
     }
 
-    private static function packagesCacheKey(int $gameId): string
+    private static function packagesCacheKey(int $gameId, ?int $membershipPlanId = null): string
     {
-        return "catalog.public.games.{$gameId}.packages";
+        return $membershipPlanId !== null
+            ? "catalog.public.games.{$gameId}.packages.tier.{$membershipPlanId}"
+            : "catalog.public.games.{$gameId}.packages";
     }
 }

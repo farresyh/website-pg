@@ -3,10 +3,12 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Models\Game;
+use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\Supplier;
+use App\Services\Membership\MembershipSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -333,6 +335,56 @@ class CatalogControllerTest extends TestCase
         $response->assertOk();
         // Tier 2 (seeded 80% discount): effective markup 15% * (1-0.8) = 3% -> round(1000 * 1.03) = 1030.
         $this->assertSame(1030, $response->json()[0]['member_price_sen']);
+    }
+
+    /**
+     * Bug fix, 2026-08-30: a real Tier 1 member's browsing session must
+     * see their own tier's price (1075, effective markup 15%*(1-0.5))
+     * pre-payment, not Tier 2's anonymous "best tier" anchor (1030) —
+     * previously CatalogController::packages() always used the
+     * highest-discount plan regardless of who was asking, even though
+     * CheckoutService already charged the member correctly at their own
+     * tier. `member_price_personalized` distinguishes the two so the
+     * storefront never shows a price it won't actually honor at checkout.
+     */
+    public function test_packages_uses_the_authenticated_members_own_tier_price_not_the_anonymous_anchor(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $tier1 = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
+        Membership::query()->create([
+            'email' => 'tier1-member@example.com',
+            'membership_plan_id' => $tier1->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 30000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = app(MembershipSessionTokenService::class)->issue('tier1-member@example.com');
+
+        // Anonymous request still gets Tier 2's anchor, unaffected.
+        $anonymous = $this->getJson('/api/catalog/games/free-fire-global/packages');
+        $anonymous->assertJsonPath('0.member_price_sen', 1030);
+        $this->assertArrayNotHasKey('member_price_personalized', $anonymous->json()[0]);
+
+        // The Tier 1 member's own request gets their real tier's price, flagged as personalized.
+        $memberResponse = $this->getJson(
+            '/api/catalog/games/free-fire-global/packages',
+            ['Authorization' => "Bearer {$token}"],
+        );
+        $memberResponse->assertJsonPath('0.member_price_sen', 1075);
+        $memberResponse->assertJsonPath('0.member_price_personalized', true);
+
+        // Re-querying anonymously afterward must still be Tier 2's anchor — no cache bleed between the two.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
     }
 
     /**

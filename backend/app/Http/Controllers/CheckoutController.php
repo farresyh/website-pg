@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
+use App\Http\Requests\Checkout\PreviewCheckoutTotalRequest;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\Order;
@@ -25,6 +26,7 @@ use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use App\Services\Voucher\InvalidVoucherException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -199,6 +201,70 @@ class CheckoutController extends Controller
     }
 
     /**
+     * Bug fix, 2026-08-30: read-only Package Price/Transaction Fee/
+     * Voucher Discount/Total breakdown for the storefront's Order
+     * Summary sidebar and Review Modal — see
+     * CheckoutService::previewTotal()'s own doc comment for why this
+     * exists (the displayed total never included the transaction fee
+     * before this). No Order is created, no payment gateway is called,
+     * no voucher is locked — matches store()'s own Game/Package
+     * active-status gate, but skips player-ID validation, blacklist,
+     * and velocity checks, none of which apply to a price display.
+     */
+    public function previewTotal(PreviewCheckoutTotalRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        $game = Game::query()->findOrFail($data['game_id']);
+        $package = Package::query()->findOrFail($data['package_id']);
+
+        if ($package->game_id !== $game->id) {
+            throw ValidationException::withMessages([
+                'package_id' => ['This package does not belong to the selected game.'],
+            ]);
+        }
+
+        if (! $game->is_active || ! $package->is_active) {
+            throw ValidationException::withMessages([
+                'package_id' => ['This package is not currently available.'],
+            ]);
+        }
+
+        $reseller = Reseller::platformOwner();
+        $platformSettings = PlatformSettings::current();
+        $membershipId = $platformSettings->membership_enabled ? $this->resolveMembershipId($request) : null;
+
+        try {
+            $preview = $this->checkout->previewTotal(
+                costPriceSen: $package->cost_price,
+                standardSellingPriceSen: $package->standard_selling_price,
+                packageMarkupPercent: (float) $package->markup_percent,
+                resellerMarkupPct: (float) $reseller->markup_pct,
+                paymentFeeConfig: $this->fees->resolve($data['channel_code']),
+                membershipId: $membershipId,
+                voucherCode: $data['voucher_code'] ?? null,
+                customerEmail: $data['customer_email'] ?? '',
+                customerPhone: $data['customer_phone'] ?? null,
+            );
+        } catch (InvalidVoucherException) {
+            // Same generic message as store()'s own catch — a voucher
+            // that expired/was redeemed elsewhere between the storefront's
+            // own vouchers/preview call and this totals re-fetch.
+            throw ValidationException::withMessages([
+                'voucher_code' => ['This voucher code is not valid for this order.'],
+            ]);
+        }
+
+        return response()->json([
+            'selling_price_sen' => $preview->sellingPriceSen,
+            'member_discount_percent' => $preview->memberDiscountPercent,
+            'voucher_discount_sen' => $preview->voucherDiscountSen,
+            'transaction_fee_sen' => $preview->transactionFeeSen,
+            'final_amount_sen' => $preview->finalAmountSen,
+        ]);
+    }
+
+    /**
      * Idempotent-replay path for an Order already tagged with the
      * incoming request's idempotency_key (ADR-019). If it already has a
      * payment_ref, this is a pure replay of an attempt that already
@@ -299,7 +365,7 @@ class CheckoutController extends Controller
      * intent, not a built mechanism), so `status` alone isn't reliable
      * proof a membership is still genuinely current.
      */
-    private function resolveMembershipId(CreateCheckoutRequest $request): ?int
+    private function resolveMembershipId(Request $request): ?int
     {
         $token = $request->bearerToken();
 
