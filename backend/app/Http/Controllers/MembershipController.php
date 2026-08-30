@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Membership;
+use App\Models\MembershipPlan;
 use App\Models\Order;
+use App\Models\PlatformSettings;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * ADR-027 decision 13 / its 2026-08-29 addendum decisions 24/25: the
@@ -17,11 +20,55 @@ use Illuminate\Http\Request;
  * MembershipOtpController::verify()) instead of a request body field
  * — there's no admin.role gate to reuse, and this identity isn't
  * Sanctum-backed (decision 2's own "lighter than a full account").
+ *
+ * ADR-055 decision 3: `plans()` is the one deliberately anonymous
+ * exception on this controller — the upsell card's data source, no
+ * session token needed.
  */
 class MembershipController extends Controller
 {
     public function __construct(private readonly MembershipSessionTokenService $sessionTokens)
     {
+    }
+
+    /**
+     * ADR-055 decision 3: the public tier listing for the storefront
+     * upsell card — `name`/`fee_sen`/`discount_percent` per tier, both
+     * tiers (not just the top one, so /membership's own comparison UI
+     * has a ready-made source), deliberately no `quota_sen`/`id`/
+     * timestamps. Empty array when the kill switch is off — a single
+     * contract shape the storefront can render as "no card" without a
+     * 404 special case. Cached in the same scoped, tagged store as the
+     * catalog packages (60s TTL), tagged `catalog.packages` so
+     * CatalogController::forgetPackagesCacheForMembership() — already
+     * flushed on every membership_plans edit and kill-switch toggle —
+     * invalidates this endpoint for free.
+     */
+    public function plans(): JsonResponse
+    {
+        $enabled = PlatformSettings::current()->membership_enabled;
+
+        if (! $enabled) {
+            return response()->json([]);
+        }
+
+        $plans = Cache::store(config('cache.catalog_packages_store'))
+            ->tags(['catalog.packages', 'catalog.public.membership.plans'])
+            ->remember(
+                'catalog.public.membership.plans',
+                60,
+                fn () => MembershipPlan::query()
+                    ->orderBy('id')
+                    ->get()
+                    ->map(fn (MembershipPlan $plan) => [
+                        'name' => $plan->name,
+                        'fee_sen' => $plan->fee_sen,
+                        'discount_percent' => (float) $plan->discount_percent,
+                    ])
+                    ->all(),
+            );
+
+        return response()->json($plans);
     }
 
     public function me(Request $request): JsonResponse

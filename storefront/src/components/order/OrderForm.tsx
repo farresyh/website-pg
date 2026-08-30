@@ -15,12 +15,14 @@ import {
 import { getGamePackages, type Game, type GamePackage } from "@/lib/catalog";
 import { getMembershipToken } from "@/lib/membership-session";
 import { useMembershipToken } from "@/hooks/useMembershipToken";
+import { getMe, type MembershipPlan } from "@/lib/membership";
 import type { PaymentChannel } from "@/lib/payment-methods";
 import Stepper, { type StepInfo } from "@/components/order/Stepper";
 import StepCard from "@/components/order/StepCard";
 import Step1AccountInfo from "@/components/order/Step1AccountInfo";
 import PackageGrid from "@/components/order/PackageGrid";
 import OrderSummarySidebar from "@/components/order/OrderSummarySidebar";
+import MembershipPromoCard from "@/components/order/MembershipPromoCard";
 import ReviewModal from "@/components/order/ReviewModal";
 
 const CHANNEL_GROUPS: { key: "fpx" | "ewallet" | "card"; label: string }[] = [
@@ -34,6 +36,8 @@ interface OrderFormProps {
   /** SSR-fetched, anonymous "best tier" anchor pricing — swapped for the member's real tier pricing client-side once a membership token is known. */
   packages: GamePackage[];
   paymentChannels: PaymentChannel[];
+  /** ADR-055 decision 3: both tiers (`name`/`fee_sen`/`discount_percent`), `[]` when the membership kill switch is off. */
+  membershipPlans: MembershipPlan[];
 }
 
 /**
@@ -46,7 +50,7 @@ interface OrderFormProps {
  * real last checkpoint (T&C + contact details) before submitCheckout()
  * ever fires.
  */
-export default function OrderForm({ game, packages: initialPackages, paymentChannels }: OrderFormProps) {
+export default function OrderForm({ game, packages: initialPackages, paymentChannels, membershipPlans }: OrderFormProps) {
   const router = useRouter();
   const membershipToken = useMembershipToken();
 
@@ -68,6 +72,14 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
       ? personalized.packages
       : initialPackages;
 
+  // ADR-055 decision 2/6: the visitor's own tier, resolved from getMe()
+  // once a membership token appears — keyed by token so a lapsed/signed-
+  // out session (or an SSR render, token === null) reads back null (guest)
+  // without a synchronous setState-in-effect, mirroring the `personalized`
+  // pattern above.
+  const [memberTier, setMemberTier] = useState<{ token: string; tierName: string | null } | null>(null);
+  const activeTierName = memberTier && memberTier.token === membershipToken ? memberTier.tierName : null;
+
   useEffect(() => {
     if (!membershipToken) return;
 
@@ -80,6 +92,18 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
         // Personalization is a display nicety, not the checkout path
         // (ORD-9) — a failed re-fetch just leaves the anonymous anchor
         // pricing on screen rather than breaking the order flow.
+      });
+    // ADR-055 decision 2/6: the upsell card needs the visitor's own
+    // tier to know which audience it's addressing (guest vs Tier 1
+    // member) and when to hide entirely (already on Tier 2). The
+    // /membership page's own dashboard call, reused here — a failed or
+    // lapsed-token fetch resolves to null (guest), never an error.
+    getMe(membershipToken)
+      .then((me) => {
+        if (!cancelled) setMemberTier({ token: membershipToken, tierName: me.membership?.tierName ?? null });
+      })
+      .catch(() => {
+        if (!cancelled) setMemberTier({ token: membershipToken, tierName: null });
       });
     return () => {
       cancelled = true;
@@ -124,6 +148,27 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
 
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
   const selectedChannel = paymentChannels.find((c) => c.channelCode === channelCode) ?? null;
+
+  // ADR-055: the upsell card always promotes Tier 2 (the top tier). For
+  // a member, `packages` above is personalized to their own tier, so the
+  // card's Tier 2 number must come from the anonymous SSR anchor instead —
+  // `initialPackages` carries the "best tier" (highest discount) member
+  // price on every package. null when membership is off / no anchor.
+  const selectedTier2MemberPriceRm = selectedPackage
+    ? initialPackages.find((p) => p.id === selectedPackage.id)?.memberPriceRm ?? null
+    : null;
+
+  // ADR-055 decision 2/5: the promo card lives as its own card below the
+  // Order Summary card (separate rounded card, not a section inside it).
+  // It promotes the top tier specifically (highest discount — robust
+  // against admin renaming a tier's `name`), appears only once a package
+  // is selected, and hides entirely when the visitor is already on that
+  // top tier (nothing left to upsell) or when membership is off (no
+  // plans, no Tier 2 anchor price).
+  const topTier =
+    membershipPlans.length > 0 ? membershipPlans.reduce((a, b) => (b.discountPercent > a.discountPercent ? b : a)) : null;
+  const showPromo =
+    selectedPackage !== null && topTier !== null && selectedTier2MemberPriceRm !== null && activeTierName !== topTier.name;
 
   // Bug fix, 2026-08-30: Order Summary/Review Modal used to compute
   // "Total" as just `package price - voucher discount`, silently
@@ -332,15 +377,26 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
         </StepCard>
       </div>
 
-      <OrderSummarySidebar
-        game={game}
-        selectedPackage={selectedPackage}
-        preview={preview}
-        playerId={playerId}
-        serverId={game.extraField ? serverId : ""}
-        ready={readyForReview}
-        onReview={openReview}
-      />
+      <div className="flex flex-col gap-5 lg:sticky lg:top-20">
+        <OrderSummarySidebar
+          game={game}
+          selectedPackage={selectedPackage}
+          preview={preview}
+          playerId={playerId}
+          serverId={game.extraField ? serverId : ""}
+          ready={readyForReview}
+          onReview={openReview}
+        />
+        {showPromo && topTier && selectedPackage && selectedTier2MemberPriceRm !== null && (
+          <MembershipPromoCard
+            plan={topTier}
+            packageName={selectedPackage.name}
+            sellingPriceRm={selectedPackage.priceRm}
+            memberPriceRm={selectedTier2MemberPriceRm}
+            activeTierName={activeTierName}
+          />
+        )}
+      </div>
 
       {selectedPackage && selectedChannel && (
         <ReviewModal

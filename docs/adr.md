@@ -2059,9 +2059,9 @@ Investigation before grilling found the supporting infrastructure already exists
 
 ---
 
-## ADR-055: Membership upsell promo card — storefront Order Summary, Tier 2 teaser (design only, grilled 2026-08-30)
+## ADR-055: Membership upsell promo card — storefront Order Summary, Tier 2 teaser (design only, grilled 2026-08-30; built 2026-08-30)
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, one question at a time, before any code touched). Not yet built — implementation deferred to a future session.
+**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, one question at a time, before any code touched). **Built 2026-08-30** — see the build addendum below; `docs/prd.md` §14/§15 updated same session.
 
 **Context:** While live-testing this session's membership pricing fixes (this file's `ADR-027` 2026-08-30 addendum), the founder asked for a simple promo card below the storefront's Order Summary sidebar: "unlock {package} at {Tier 2 price}, save {%/RM}, subscribe for only {monthly fee}" — placeholders following whichever package the customer currently has selected. Investigation before grilling surfaced two real gaps this ADR had to resolve, not just a UI placement question:
 
@@ -2087,3 +2087,21 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 - This ADR is design-only — no code exists yet. Implementation (backend endpoint, storefront card component, `docs/prd.md` §14/§15 update) is deferred to a future session, per the founder's own instruction this session.
 - If Phase 7 (self-serve subscribe+pay) is ever scoped, decision 1's teaser-only framing for this card should be revisited then — the CTA may be worth pointing at a real subscribe flow instead of `/membership`'s "coming soon" state once one exists.
 - Decision 3's new endpoint returning both tiers (not just Tier 2) is unused surplus until `/membership`'s own comparison UI is actually built — acceptable since it's the same data shape either consumer needs, not speculative scope beyond what's already decided to expose.
+
+**Addendum, 2026-08-30 — built, all eight decisions implemented as designed.** Shipped on `feature/adr-055-membership-upsell-card` (decision 8's own branch, off `staging`).
+
+*Backend:*
+- `MembershipController::plans()` + `GET /api/membership/plans` (public, no session token). Returns both tiers' `{name, fee_sen, discount_percent}` only (decision 3 — no `quota_sen`/`id`/timestamps), `[]` when `membership_enabled` is off — resolved the ADR's open "Empty/404" in favor of **Empty** (`[]`, 200): a single contract shape the storefront renders as "no card" without a 404 special case, matching the codebase's narrow-response-shape discipline.
+- Cached in the existing `catalog_packages_store` (redis, 60s TTL), tagged `catalog.packages` — so `CatalogController::forgetPackagesCacheForMembership()`, already flushed on every `membership_plans` edit and kill-switch toggle, invalidates this endpoint for free (decision 7).
+
+*Storefront:*
+- `lib/membership.ts`: `listPlans()` + `MembershipPlan` type (zod, ADR-044).
+- `order/[slug]/page.tsx`: `listPlans()` fetched server-side alongside `getGamePackages`/`listPaymentChannels`, passed down (decision 7 — no client round trip).
+- `OrderForm.tsx`: audience detection — the existing membership-token effect now also calls `getMe(token)` to learn the visitor's own tier (keyed by token like the personalized-packages state, so a guest/SSR render reads back null without setState-in-effect). 
+- `OrderSummarySidebar.tsx`: unchanged back to its pre-card state — the promo is its own card, not a section inside it. `OrderForm.tsx` resolves the visibility and renders `MembershipPromoCard` as a **separate rounded card in the same right-hand column, below the Order Summary card** (founder's own placement call after seeing it inside the card) — visible only once a package is selected, hidden when plans are empty (kill switch off) or the visitor is already on the top tier (decision 2). Top tier resolved by max `discount_percent`, robust against admin renaming a tier's `name`. One copy template, CTA phrase swaps by audience — "Become a Member" (guest) vs "Upgrade to Tier 2" (Tier 1), decision 6. CTA links to `/membership` (decision 1 — teaser only, no Phase 7 scope).
+
+*Implementation nuance worth recording (not in the original decisions):* the card always promotes Tier 2, but a Tier 1 member's `packages` prop is personalized to their own tier — so the card's Tier 2 member price is sourced from the **anonymous SSR anchor** (`initialPackages`, always the best-tier price) rather than the personalized package list. Both displayed numbers remain backend-computed (ORD-9); the savings row is a pure render of two server-provided values.
+
+*Tests:* 3 new `MembershipControllerTest` cases (empty-when-disabled, narrow-tier-shape-when-enabled, and cache-invalidation-via-`forgetPackagesCacheForMembership`). Full backend suite **1063/1063 green**. `npx tsc --noEmit`/`eslint`/`next build` clean on `storefront/`.
+
+**Consequence to track (this addendum):** the original "not yet built" consequence bullet above is superseded — the card is live on the feature branch; only decision 1's Phase-7 revisit and decision 3's unused-surplus note remain, unchanged in kind.
