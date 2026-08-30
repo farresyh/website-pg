@@ -27,10 +27,25 @@ final class PlunkMailer
         private readonly string $fromName,
         private readonly int $timeoutSeconds = 10,
         private readonly int $connectTimeoutSeconds = 5,
-    ) {
-    }
+    ) {}
 
     public function sendOtpEmail(string $to, string $code): void
+    {
+        $this->send(
+            $to,
+            'Your verification code',
+            "Your verification code is: {$code}. It expires in 10 minutes. If you didn't request this, ignore this email.",
+        );
+    }
+
+    /**
+     * The transactional-send primitive — `POST {base_url}/v1/send` with
+     * the verified sender. Every feature-specific email (membership OTP,
+     * the ADR-058 reseller set-password invite) formats its own
+     * subject/body and calls this. Same short-timeout discipline as
+     * XenditGateway/GamevionAdapter.
+     */
+    public function send(string $to, string $subject, string $body): void
     {
         try {
             $response = Http::baseUrl($this->baseUrl)
@@ -43,8 +58,8 @@ final class PlunkMailer
                         'email' => $this->fromEmail,
                     ],
                     'to' => $to,
-                    'subject' => 'Your verification code',
-                    'body' => "Your verification code is: {$code}. It expires in 10 minutes. If you didn't request this, ignore this email.",
+                    'subject' => $subject,
+                    'body' => $body,
                 ]);
         } catch (ConnectionException $e) {
             throw new PlunkSendException("Plunk send failed: {$e->getMessage()}", previous: $e);

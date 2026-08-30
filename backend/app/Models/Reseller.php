@@ -4,15 +4,22 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * PRD §8: a branded storefront owner. The platform owner IS the first
  * row here (markup_pct=0), not a separate concept — see the
  * create_resellers_table migration's doc comment. No `balance` column:
  * balance is always derived from LedgerEntry (ADR-002).
+ *
+ * Soft-deletes since ADR-058 58b (RES-6): an `orders.reseller_id` FK
+ * points here and that history must outlive a "deleted" reseller.
  */
 class Reseller extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'business_name',
         'contact_name',
@@ -35,6 +42,23 @@ class Reseller extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(ResellerUser::class);
+    }
+
+    /** ADR-056: one subscription row per reseller (its `reseller_id` is unique). */
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(ResellerSubscription::class);
+    }
+
+    /** ADR-058 58b (RES-3): append-only wholesale-tier assignment history. */
+    public function tierChanges(): HasMany
+    {
+        return $this->hasMany(ResellerTierChange::class);
     }
 
     /**

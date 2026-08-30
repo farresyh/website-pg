@@ -13,6 +13,9 @@ use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ResellerController;
+use App\Http\Controllers\Admin\ResellerImpersonationController;
+use App\Http\Controllers\Admin\ResellerMembershipTierController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
@@ -439,6 +442,45 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin')->prefix('memberships')->group(function () {
         Route::get('/', [AdminMembershipController::class, 'index']);
         Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
+    });
+
+    // ADR-058 58b (RES-1..6) — admin Reseller Management. Same
+    // super_admin tier as Settings / Membership (platform-wide business
+    // config, no supplier-integration dependency so deliberately not
+    // under /middleware). The reseller PORTAL auth (58a) is a separate
+    // guard entirely, see the /reseller prefix above.
+    Route::middleware('admin.role:super_admin')->group(function () {
+        Route::prefix('resellers')->group(function () {
+            Route::get('/', [ResellerController::class, 'index']);
+            Route::post('/', [ResellerController::class, 'store']);
+            Route::get('/{reseller}', [ResellerController::class, 'show']);
+            Route::put('/{reseller}', [ResellerController::class, 'update']);
+            Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
+            Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+
+            // ADR-056 decision 8 — wholesale-tier assignment + fee actions.
+            Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
+            Route::post('/{reseller}/tier/charge', [ResellerController::class, 'chargeTierFee']);
+            Route::post('/{reseller}/tier/reactivate', [ResellerController::class, 'reactivateSubscription']);
+
+            // Staff logins + the set-password invite (58a's ResellerInviteService).
+            Route::post('/{reseller}/users', [ResellerController::class, 'storeUser']);
+            Route::post('/{reseller}/users/{resellerUser}/resend-invite', [ResellerController::class, 'resendInvite']);
+
+            // RES-4 impersonation.
+            Route::post('/{reseller}/impersonate', [ResellerImpersonationController::class, 'store']);
+        });
+
+        Route::get('/reseller-impersonation-sessions', [ResellerImpersonationController::class, 'index']);
+        Route::post('/reseller-impersonation-sessions/{impersonation_session}/end', [ResellerImpersonationController::class, 'end']);
+
+        // ADR-056 decision 1 — the reseller_membership_tiers CRUD ladder.
+        Route::prefix('reseller-tiers')->group(function () {
+            Route::get('/', [ResellerMembershipTierController::class, 'index']);
+            Route::post('/', [ResellerMembershipTierController::class, 'store']);
+            Route::put('/{reseller_tier}', [ResellerMembershipTierController::class, 'update']);
+            Route::delete('/{reseller_tier}', [ResellerMembershipTierController::class, 'destroy']);
+        });
     });
 
     // ADR-029 — SEO Management: Overview, Global Settings/Meta
