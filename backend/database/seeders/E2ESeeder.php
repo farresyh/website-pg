@@ -6,6 +6,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -38,6 +39,11 @@ class E2ESeeder extends Seeder
     public function run(): void
     {
         $this->call(DatabaseSeeder::class);
+
+        // ADR-061 PR-B: `orders.reseller_id` is NOT NULL — every fixture
+        // order below is the primary brand's (the one `DatabaseSeeder`
+        // just seeded).
+        $reseller = Reseller::primary();
 
         // AMBANK_FPX — confirmed live-tested successfully against the
         // real Xendit sandbox (ADR-001's 2026-07-25 addendum). Every
@@ -84,6 +90,7 @@ class E2ESeeder extends Seeder
         Order::query()->firstOrCreate(
             ['order_number' => 'KRS-E2E-VOUCHER-FIXTURE'],
             [
+                'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-VOUCHER-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-voucher-fixture@example.com',
@@ -112,6 +119,7 @@ class E2ESeeder extends Seeder
         Order::query()->firstOrCreate(
             ['order_number' => 'KRS-E2E-RESEND-FIXTURE'],
             [
+                'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-RESEND-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-resend-fixture@example.com',
@@ -141,6 +149,7 @@ class E2ESeeder extends Seeder
         Order::query()->firstOrCreate(
             ['order_number' => 'KRS-E2E-NEEDSREVIEW-FIXTURE'],
             [
+                'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-NEEDSREVIEW-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-needsreview-fixture@example.com',
