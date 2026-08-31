@@ -6,6 +6,7 @@ use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Reseller;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
@@ -418,8 +419,8 @@ final class ReportService
                 'customer_email' => $order->customer_email,
                 'reseller_name' => $order->reseller?->business_name,
                 'final_amount' => $order->final_amount,
-                'platform_profit' => (int) $entries->where('owner_type', 'platform')->sum('amount'),
-                'reseller_profit' => (int) $entries->where('owner_type', 'reseller')->sum('amount'),
+                'platform_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount'),
+                'reseller_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Reseller->value)->sum('amount'),
             ];
         });
     }
@@ -513,9 +514,9 @@ final class ReportService
                 continue;
             }
 
-            if ($entry->owner_type === 'platform') {
+            if ($entry->owner_type === LedgerOwnerType::Platform->value) {
                 $platformByKey[$key] = ($platformByKey[$key] ?? 0) + $entry->amount;
-            } elseif ($entry->owner_type === 'reseller') {
+            } elseif ($entry->owner_type === LedgerOwnerType::Reseller->value) {
                 $resellerByKey[$key] = ($resellerByKey[$key] ?? 0) + $entry->amount;
             }
         }

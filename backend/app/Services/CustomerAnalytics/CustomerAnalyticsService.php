@@ -5,6 +5,7 @@ namespace App\Services\CustomerAnalytics;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PlatformSettings;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Carbon\CarbonImmutable;
@@ -209,8 +210,8 @@ final class CustomerAnalyticsService
         $resellerCommission = 0;
         $systemProfit = 0;
         foreach ($profitByOrder as $entries) {
-            $resellerCommission += (int) $entries->where('owner_type', 'reseller')->sum('amount');
-            $systemProfit += (int) $entries->where('owner_type', 'platform')->sum('amount');
+            $resellerCommission += (int) $entries->where('owner_type', LedgerOwnerType::Reseller->value)->sum('amount');
+            $systemProfit += (int) $entries->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount');
         }
 
         $firstNamedOrder = $orders->first(fn (Order $o) => $o->customer_name !== null);
@@ -262,8 +263,8 @@ final class CustomerAnalyticsService
                     'package_name' => $order->package?->name ?? 'Unknown Package',
                     'reseller_name' => $order->reseller?->business_name ?? 'Unknown Reseller',
                     'final_amount' => $order->final_amount,
-                    'reseller_profit' => $isDelivered ? (int) $entries?->where('owner_type', 'reseller')->sum('amount') : null,
-                    'system_profit' => $isDelivered ? (int) $entries?->where('owner_type', 'platform')->sum('amount') : null,
+                    'reseller_profit' => $isDelivered ? (int) $entries?->where('owner_type', LedgerOwnerType::Reseller->value)->sum('amount') : null,
+                    'system_profit' => $isDelivered ? (int) $entries?->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount') : null,
                     'delivery_status' => $order->delivery_status,
                 ];
             })->values()->all(),
