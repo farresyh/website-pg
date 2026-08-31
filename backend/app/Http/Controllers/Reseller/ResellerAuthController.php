@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Reseller;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Reseller\ResellerLoginRequest;
 use App\Http\Requests\Reseller\ResellerSetPasswordRequest;
+use App\Models\ResellerImpersonationSession;
 use App\Models\ResellerUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -109,6 +110,41 @@ class ResellerAuthController extends Controller
         return response()->json([
             'reseller_user' => $user->only(['id', 'reseller_id', 'name', 'email', 'last_login_at']),
             'reseller' => $user->reseller?->only(['id', 'business_name', 'status']),
+            // ADR-058 RES-4 / ADR-059 59c: non-null only when this token
+            // was minted for an admin impersonation session (ability
+            // `impersonate`) and that session is still open. Drives the
+            // portal's persistent "Impersonating … — acting as …" banner.
+            'impersonation' => $this->impersonationContext($request),
         ]);
+    }
+
+    /**
+     * @return array{session_id: int, admin_name: string|null, started_at: string|null}|null
+     */
+    private function impersonationContext(Request $request): ?array
+    {
+        $token = $request->user()->currentAccessToken();
+
+        if ($token === null) {
+            return null;
+        }
+
+        // Keyed on the session row, not the token's ability list — see
+        // ImpersonationController::end() for why.
+        $session = ResellerImpersonationSession::query()
+            ->with('admin:id,name')
+            ->where('personal_access_token_id', $token->getKey())
+            ->whereNull('ended_at')
+            ->first();
+
+        if ($session === null) {
+            return null;
+        }
+
+        return [
+            'session_id' => $session->id,
+            'admin_name' => $session->admin?->name,
+            'started_at' => $session->started_at?->toIso8601String(),
+        ];
     }
 }

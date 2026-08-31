@@ -52,9 +52,12 @@ use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
 use App\Http\Controllers\Reseller\DashboardController as ResellerDashboardController;
 use App\Http\Controllers\Reseller\EarningsController as ResellerEarningsController;
+use App\Http\Controllers\Reseller\ImpersonationController as ResellerImpersonationEndController;
 use App\Http\Controllers\Reseller\OrderController as ResellerOrderController;
+use App\Http\Controllers\Reseller\ProfileController as ResellerProfileController;
 use App\Http\Controllers\Reseller\ResellerAuthController;
 use App\Http\Controllers\Reseller\SubscriptionController as ResellerSubscriptionController;
+use App\Http\Controllers\Reseller\WithdrawalController as ResellerWithdrawalController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
@@ -226,6 +229,15 @@ Route::prefix('reseller')->group(function () {
         Route::get('/orders/{orderNumber}', [ResellerOrderController::class, 'show']);
         Route::get('/earnings', [ResellerEarningsController::class, 'index']);
         Route::get('/subscription', [ResellerSubscriptionController::class, 'show']);
+
+        // ADR-059 (59c) — write surface: profile bank details + WTH-1..5
+        // request side (approval stays admin) + the portal "Exit
+        // impersonation" close.
+        Route::get('/profile', [ResellerProfileController::class, 'show']);
+        Route::put('/profile', [ResellerProfileController::class, 'update']);
+        Route::get('/withdrawals', [ResellerWithdrawalController::class, 'index']);
+        Route::post('/withdrawals', [ResellerWithdrawalController::class, 'store']);
+        Route::post('/impersonation/end', [ResellerImpersonationEndController::class, 'end']);
     });
 });
 

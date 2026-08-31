@@ -15,4 +15,10 @@ export interface ResellerSessionPayload {
   name: string;
   email: string;
   business_name: string;
+  // Set only when this session was started by an admin impersonating
+  // the reseller (ADR-058 RES-4 / ADR-059 59c). Drives the persistent
+  // "Impersonating …" banner and the Exit action.
+  impersonating?: boolean;
+  admin_name?: string | null;
+  impersonation_session_id?: number;
 }

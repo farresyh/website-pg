@@ -129,3 +129,111 @@ export function getEarnings(token: string, page = 1) {
 export function getSubscription(token: string) {
   return apiFetch<SubscriptionResponse>("/api/reseller/subscription", { token });
 }
+
+// --- 59c: Profile + Withdrawal + Impersonation ---
+
+export interface ResellerProfile {
+  business_name: string;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  bank_name: string | null;
+  bank_account_no: string | null;
+  bank_account_holder: string | null;
+}
+
+export type WithdrawalStatus = "pending" | "approved" | "rejected" | "completed";
+
+export interface WithdrawalRow {
+  id: number;
+  amount: number;
+  bank_name: string;
+  bank_account_no: string;
+  bank_account_holder: string;
+  status: WithdrawalStatus;
+  admin_note: string | null;
+  created_at: string | null;
+  processed_at: string | null;
+}
+
+export interface WithdrawalsResponse {
+  balance: number;
+  prefill: {
+    bank_name: string | null;
+    bank_account_no: string | null;
+    bank_account_holder: string | null;
+  };
+  withdrawals: WithdrawalRow[];
+}
+
+export interface ImpersonationContext {
+  session_id: number;
+  admin_name: string | null;
+  started_at: string | null;
+}
+
+export interface MeResponse {
+  reseller_user: {
+    id: number;
+    reseller_id: number;
+    name: string;
+    email: string;
+    last_login_at: string | null;
+  };
+  reseller: { id: number; business_name: string; status: string } | null;
+  impersonation: ImpersonationContext | null;
+}
+
+export function getMe(token: string) {
+  return apiFetch<MeResponse>("/api/reseller/me", { token });
+}
+
+export function getProfile(token: string) {
+  return apiFetch<ResellerProfile>("/api/reseller/profile", { token });
+}
+
+export function updateProfile(
+  token: string,
+  body: Partial<
+    Pick<
+      ResellerProfile,
+      | "contact_name"
+      | "phone"
+      | "bank_name"
+      | "bank_account_no"
+      | "bank_account_holder"
+    >
+  >,
+) {
+  return apiFetch<ResellerProfile>("/api/reseller/profile", {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
+export function getWithdrawals(token: string) {
+  return apiFetch<WithdrawalsResponse>("/api/reseller/withdrawals", { token });
+}
+
+export function createWithdrawal(
+  token: string,
+  body: {
+    amount: number;
+    bank_name?: string;
+    bank_account_no?: string;
+    bank_account_holder?: string;
+  },
+) {
+  return apiFetch<{ id: number; amount: number; status: WithdrawalStatus }>(
+    "/api/reseller/withdrawals",
+    { method: "POST", token, body },
+  );
+}
+
+export function endImpersonation(token: string) {
+  return apiFetch<{ message: string }>("/api/reseller/impersonation/end", {
+    method: "POST",
+    token,
+  });
+}
