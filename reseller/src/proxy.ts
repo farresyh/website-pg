@@ -13,7 +13,12 @@ export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has(SESSION_COOKIE_NAME);
   const { pathname } = request.nextUrl;
 
-  if (!hasSession && pathname !== "/login") {
+  // `/impersonate` is an entry point like `/login` — it arrives with no
+  // gate cookie yet (the admin opens it with a token in the URL hash)
+  // and sets its own session.
+  const isEntryPoint = pathname === "/login" || pathname === "/impersonate";
+
+  if (!hasSession && !isEntryPoint) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

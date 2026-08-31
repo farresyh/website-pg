@@ -6,12 +6,15 @@ import { useState } from "react";
 import { useClientSession } from "@/hooks/useClientSession";
 import { clearClientSession, getClientSession } from "@/lib/session";
 import { useTheme } from "@/context/ThemeContext";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/orders", label: "Orders" },
   { href: "/earnings", label: "Earnings" },
+  { href: "/withdrawal", label: "Withdrawal" },
   { href: "/subscription", label: "Subscription" },
+  { href: "/profile", label: "Profile" },
 ];
 
 export default function PortalShell({ children }: { children: React.ReactNode }) {
@@ -87,6 +90,8 @@ export default function PortalShell({ children }: { children: React.ReactNode })
             </button>
           </div>
         </header>
+
+        <ImpersonationBanner />
 
         <main className="mx-auto max-w-(--breakpoint-xl) p-4 md:p-6">{children}</main>
       </div>

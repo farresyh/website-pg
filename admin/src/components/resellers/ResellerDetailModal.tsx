@@ -271,9 +271,9 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
       <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
         <h3 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white/90">Impersonate (RES-4)</h3>
         <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-          Opens the reseller portal as one of their users under a short-lived token. Audited with your identity;
-          the portal shows an &ldquo;impersonating&rdquo; banner. The portal app (ADR-059) is not deployed yet — the
-          token + link are shown here for now.
+          Opens the reseller portal in a new tab as one of their users, under a short-lived (60&nbsp;min) token.
+          Audited with your identity; the portal shows a persistent &ldquo;impersonating&rdquo; banner. End the
+          session from that banner, or from the list below.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-56 flex-1">
@@ -288,8 +288,17 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
               run("impersonate", async () => {
                 const res = await impersonateReseller(token, r.id, impersonateReason || null);
                 setImpersonateReason("");
+                // ADR-059 59c: open the portal directly, carrying the
+                // minted token in the URL *hash* (never a query string —
+                // it stays out of server logs and the Referer header).
+                // The portal's /impersonate page consumes it.
+                window.open(
+                  `${res.portal_url}/impersonate#token=${encodeURIComponent(res.token)}`,
+                  "_blank",
+                  "noopener",
+                );
                 setNotice(
-                  `Session #${res.session_id} started as ${res.acting_as.email}. Portal: ${res.portal_url} — token expires ${formatDate(res.expires_at)}.`,
+                  `Session #${res.session_id} started as ${res.acting_as.email} — opened in a new tab (token expires ${formatDate(res.expires_at)}).`,
                 );
                 onRefresh();
               })

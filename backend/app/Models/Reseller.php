@@ -36,6 +36,9 @@ class Reseller extends Model
         'membership_enabled',
         'xendit_subaccount_id',
         'notes',
+        'bank_name',
+        'bank_account_no',
+        'bank_account_holder',
     ];
 
     protected $casts = [
