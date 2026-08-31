@@ -8,18 +8,25 @@ use Illuminate\Support\Facades\DB;
 
 final class LedgerService
 {
-    public function openAccount(string $ownerType, ?int $ownerId): LedgerAccount
+    /**
+     * Every public method accepts the LedgerOwnerType enum OR the raw
+     * string it wraps — new code (ADR-059) passes the enum, every caller
+     * that predates it keeps working unchanged. Normalized to the string
+     * literal at the persistence boundary, which is what the columns have
+     * always stored (ADR-002).
+     */
+    public function openAccount(LedgerOwnerType|string $ownerType, ?int $ownerId): LedgerAccount
     {
         return LedgerAccount::query()->firstOrCreate([
-            'owner_type' => $ownerType,
+            'owner_type' => LedgerOwnerType::coerce($ownerType)->value,
             'owner_id' => $ownerId,
         ]);
     }
 
-    public function balance(string $ownerType, ?int $ownerId): int
+    public function balance(LedgerOwnerType|string $ownerType, ?int $ownerId): int
     {
         return (int) LedgerEntry::query()
-            ->where('owner_type', $ownerType)
+            ->where('owner_type', LedgerOwnerType::coerce($ownerType)->value)
             ->where('owner_id', $ownerId)
             ->sum('amount');
     }
@@ -34,14 +41,14 @@ final class LedgerService
      * @param  list<int>  $ownerIds
      * @return array<int, int>
      */
-    public function balances(string $ownerType, array $ownerIds): array
+    public function balances(LedgerOwnerType|string $ownerType, array $ownerIds): array
     {
         if ($ownerIds === []) {
             return [];
         }
 
         $sums = LedgerEntry::query()
-            ->where('owner_type', $ownerType)
+            ->where('owner_type', LedgerOwnerType::coerce($ownerType)->value)
             ->whereIn('owner_id', $ownerIds)
             ->groupBy('owner_id')
             ->selectRaw('owner_id, SUM(amount) as total')
@@ -60,7 +67,7 @@ final class LedgerService
      * locking is needed here (unlike withdraw()).
      */
     public function credit(
-        string $ownerType,
+        LedgerOwnerType|string $ownerType,
         ?int $ownerId,
         int $amount,
         string $type,
@@ -70,7 +77,7 @@ final class LedgerService
         ?string $reason = null,
     ): LedgerEntry {
         return LedgerEntry::query()->create([
-            'owner_type' => $ownerType,
+            'owner_type' => LedgerOwnerType::coerce($ownerType)->value,
             'owner_id' => $ownerId,
             'type' => $type,
             'amount' => $amount,
@@ -95,7 +102,7 @@ final class LedgerService
      * negative.
      */
     public function debit(
-        string $ownerType,
+        LedgerOwnerType|string $ownerType,
         ?int $ownerId,
         int $amount,
         string $type,
@@ -104,6 +111,8 @@ final class LedgerService
         ?int $createdBy = null,
         ?string $reason = null,
     ): LedgerEntry {
+        $ownerType = LedgerOwnerType::coerce($ownerType)->value;
+
         return DB::transaction(function () use ($ownerType, $ownerId, $amount, $type, $referenceType, $referenceId, $createdBy, $reason) {
             LedgerAccount::query()
                 ->where('owner_type', $ownerType)
@@ -129,7 +138,7 @@ final class LedgerService
      * the reseller/platform-owner payout flow) already uses.
      */
     public function withdraw(
-        string $ownerType,
+        LedgerOwnerType|string $ownerType,
         ?int $ownerId,
         int $amount,
         ?string $referenceType = null,

@@ -4,6 +4,7 @@ namespace App\Services\Reseller;
 
 use App\Models\ResellerSubscription;
 use App\Services\Ledger\InsufficientBalanceException;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Support\Facades\DB;
 
@@ -43,7 +44,7 @@ final class ResellerTierFeeService
         // yet (no orders credited earnings so far). Ensure it exists so
         // debit()'s lock target is present — the insufficient-balance path
         // is what we want for an empty account, not a missing-row error.
-        $this->ledger->openAccount('reseller', $subscription->reseller_id);
+        $this->ledger->openAccount(LedgerOwnerType::Reseller, $subscription->reseller_id);
 
         return DB::transaction(function () use ($subscription) {
             /** @var ResellerSubscription $subscription */
@@ -68,7 +69,7 @@ final class ResellerTierFeeService
 
             try {
                 $this->ledger->debit(
-                    'reseller',
+                    LedgerOwnerType::Reseller,
                     $subscription->reseller_id,
                     $feeSen,
                     'reseller_tier_fee',

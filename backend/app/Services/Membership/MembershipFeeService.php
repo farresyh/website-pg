@@ -5,6 +5,7 @@ namespace App\Services\Membership;
 use App\Models\Membership;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -52,9 +53,7 @@ final class MembershipFeeService
 {
     public const CYCLE_DAYS = 30;
 
-    public function __construct(private readonly LedgerService $ledger)
-    {
-    }
+    public function __construct(private readonly LedgerService $ledger) {}
 
     public function recordFeePaid(
         int $resellerId,
@@ -174,7 +173,7 @@ final class MembershipFeeService
         string $idempotencyKey,
     ): void {
         $this->ledger->credit(
-            'platform',
+            LedgerOwnerType::Platform,
             null,
             $amountSen,
             'membership_fee',

@@ -5,6 +5,7 @@ namespace App\Services\Voucher;
 use App\Models\Voucher;
 use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -20,9 +21,7 @@ use Illuminate\Support\Str;
  */
 final class VoucherService
 {
-    public function __construct(private readonly LedgerService $ledger)
-    {
-    }
+    public function __construct(private readonly LedgerService $ledger) {}
 
     /**
      * The Voucher row and its ledger debit are two separate writes —
@@ -61,7 +60,7 @@ final class VoucherService
                 'approved_by' => $approvedBy,
             ]);
 
-            $this->ledger->credit('platform', null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
+            $this->ledger->credit(LedgerOwnerType::Platform, null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
 
             return $voucher;
         });

@@ -7,6 +7,7 @@ use App\Http\Requests\Withdrawal\CreateWithdrawalRequest;
 use App\Http\Requests\Withdrawal\RejectWithdrawalRequest;
 use App\Models\Withdrawal;
 use App\Services\Ledger\InsufficientBalanceException;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\JsonResponse;
@@ -21,9 +22,7 @@ use Illuminate\Validation\ValidationException;
  */
 class WithdrawalController extends Controller
 {
-    public function __construct(private readonly LedgerService $ledger)
-    {
-    }
+    public function __construct(private readonly LedgerService $ledger) {}
 
     public function index(): JsonResponse
     {
@@ -40,7 +39,7 @@ class WithdrawalController extends Controller
 
         return response()->json([
             'stats' => $stats,
-            'available_balance' => $this->ledger->balance('platform', null),
+            'available_balance' => $this->ledger->balance(LedgerOwnerType::Platform, null),
             'withdrawals' => $withdrawals,
         ]);
     }
@@ -48,7 +47,7 @@ class WithdrawalController extends Controller
     public function store(CreateWithdrawalRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $availableBalance = $this->ledger->balance('platform', null);
+        $availableBalance = $this->ledger->balance(LedgerOwnerType::Platform, null);
 
         if ($data['amount'] > $availableBalance) {
             throw ValidationException::withMessages([
@@ -57,7 +56,7 @@ class WithdrawalController extends Controller
         }
 
         $withdrawal = Withdrawal::query()->create([
-            'owner_type' => 'platform',
+            'owner_type' => LedgerOwnerType::Platform->value,
             'owner_id' => null,
             'amount' => $data['amount'],
             'bank_name' => $data['bank_name'],

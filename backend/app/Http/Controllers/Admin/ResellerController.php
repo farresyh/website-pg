@@ -13,6 +13,7 @@ use App\Models\Reseller;
 use App\Models\ResellerImpersonationSession;
 use App\Models\ResellerMembershipTier;
 use App\Models\ResellerUser;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Reseller\ResellerInviteService;
 use App\Services\Reseller\ResellerSubscriptionService;
@@ -55,7 +56,7 @@ class ResellerController extends Controller
             ->orderBy('business_name')
             ->get();
 
-        $balances = $this->ledger->balances('reseller', $resellers->pluck('id')->all());
+        $balances = $this->ledger->balances(LedgerOwnerType::Reseller, $resellers->pluck('id')->all());
 
         return response()->json([
             'resellers' => $resellers->map(fn (Reseller $r) => $this->rowShape($r, $balances[$r->id] ?? 0))->all(),
@@ -297,7 +298,7 @@ class ResellerController extends Controller
             ]);
         }
 
-        $balance = $this->ledger->balance('reseller', $reseller->id);
+        $balance = $this->ledger->balance(LedgerOwnerType::Reseller, $reseller->id);
         if ($balance !== 0) {
             throw ValidationException::withMessages([
                 'reseller' => ["This reseller has a non-zero earnings balance ({$balance} sen). Settle it before deleting."],
@@ -305,7 +306,7 @@ class ResellerController extends Controller
         }
 
         $hasOpenWithdrawal = DB::table('withdrawals')
-            ->where('owner_type', 'reseller')
+            ->where('owner_type', LedgerOwnerType::Reseller->value)
             ->where('owner_id', $reseller->id)
             ->whereIn('status', [WithdrawalStatus::Pending->value, WithdrawalStatus::Approved->value])
             ->exists();
@@ -356,7 +357,7 @@ class ResellerController extends Controller
         $reseller->loadCount('orders');
 
         return [
-            'reseller' => $this->rowShape($reseller, $this->ledger->balance('reseller', $reseller->id)),
+            'reseller' => $this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::Reseller, $reseller->id)),
             'users' => $reseller->users->map(fn (ResellerUser $u) => [
                 'id' => $u->id,
                 'name' => $u->name,

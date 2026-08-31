@@ -3,6 +3,7 @@
 namespace App\Services\Fulfillment;
 
 use App\Models\Order;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
@@ -40,8 +41,7 @@ final class OrderFulfillmentService
         private readonly SupplierAdapterFactory $supplierAdapters,
         private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
-    ) {
-    }
+    ) {}
 
     /**
      * A webhook sender (Xendit's own docs call this out as expected
@@ -317,7 +317,7 @@ final class OrderFulfillmentService
             return;
         }
 
-        $this->ledger->credit('platform', null, $order->platform_profit, 'order_profit', 'order', $order->id);
-        $this->ledger->credit('reseller', $order->reseller_id, $order->reseller_profit, 'order_profit', 'order', $order->id);
+        $this->ledger->credit(LedgerOwnerType::Platform, null, $order->platform_profit, 'order_profit', 'order', $order->id);
+        $this->ledger->credit(LedgerOwnerType::Reseller, $order->reseller_id, $order->reseller_profit, 'order_profit', 'order', $order->id);
     }
 }

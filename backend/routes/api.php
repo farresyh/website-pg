@@ -50,7 +50,11 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\Reseller\DashboardController as ResellerDashboardController;
+use App\Http\Controllers\Reseller\EarningsController as ResellerEarningsController;
+use App\Http\Controllers\Reseller\OrderController as ResellerOrderController;
 use App\Http\Controllers\Reseller\ResellerAuthController;
+use App\Http\Controllers\Reseller\SubscriptionController as ResellerSubscriptionController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
@@ -212,6 +216,16 @@ Route::prefix('reseller')->group(function () {
     Route::middleware(['auth:reseller', 'reseller.context'])->group(function () {
         Route::post('/logout', [ResellerAuthController::class, 'logout']);
         Route::get('/me', [ResellerAuthController::class, 'me']);
+
+        // ADR-059 (59a) — reseller portal read layer. Every route here
+        // is scoped to the authenticated reseller_user's own tenant by
+        // `reseller.context`; money reads go through
+        // ResellerEarningsService (decision 5).
+        Route::get('/dashboard', [ResellerDashboardController::class, 'show']);
+        Route::get('/orders', [ResellerOrderController::class, 'index']);
+        Route::get('/orders/{orderNumber}', [ResellerOrderController::class, 'show']);
+        Route::get('/earnings', [ResellerEarningsController::class, 'index']);
+        Route::get('/subscription', [ResellerSubscriptionController::class, 'show']);
     });
 });
 
