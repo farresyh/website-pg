@@ -25,12 +25,13 @@ if ! (cd "$ROOT_DIR/backend" && docker compose up -d redis); then
 fi
 echo
 
-echo "Starting backend (composer run dev), admin (npm run dev), storefront (npm run dev)..."
+echo "Starting backend (composer run dev), admin, storefront, reseller (npm run dev)..."
 echo "Press Ctrl+C to stop all."
 echo
 
 run backend    backend    composer run dev
 run admin      admin      npm run dev
 run storefront storefront npm run dev
+run reseller   reseller   npm run dev
 
 wait

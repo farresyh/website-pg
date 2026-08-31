@@ -1,0 +1,28 @@
+{
+  "name": "reseller",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "NODE_OPTIONS=--use-system-ca next dev -p 3002",
+    "build": "next build",
+    "start": "next start -p 3002",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "next": "^16.3.1",
+    "primereact": "^11.1.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tailwindcss-primeui": "^0.6.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.11",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

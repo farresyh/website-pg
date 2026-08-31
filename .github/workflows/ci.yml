@@ -94,6 +94,25 @@ jobs:
       - run: npm run build
       - run: npx eslint .
 
+  # ADR-059 — the reseller portal (third Next.js app). Same tsc/build/lint
+  # gate as admin and storefront.
+  reseller:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: reseller
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: reseller/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: npx eslint .
+
   # ADR-023 — the 3 golden-path tests only (guest checkout->payment->
   # order status; admin login->Resend Delivery; admin login->Issue
   # Voucher), Chromium only. Gamevion is faked unconditionally
