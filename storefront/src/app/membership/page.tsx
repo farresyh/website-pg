@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import AnnouncementBar from "@/components/layout/AnnouncementBar";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import BottomNav from "@/components/layout/BottomNav";
@@ -17,7 +16,6 @@ export const dynamic = "force-dynamic";
 export default function MembershipPage() {
   return (
     <>
-      <AnnouncementBar />
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
         <MembershipClient />

@@ -72,13 +72,6 @@ export default function QuickCounterCard({ games }: { games: Game[] }) {
               );
             })}
           </div>
-
-          <a
-            href="#popular-picks"
-            className="mt-3 font-display text-[11px] font-bold uppercase tracking-wide text-primary hover:underline"
-          >
-            Browse all games ↓
-          </a>
         </>
       )}
 

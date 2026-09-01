@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import AnnouncementBar from "@/components/layout/AnnouncementBar";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import BottomNav from "@/components/layout/BottomNav";
@@ -25,7 +24,6 @@ export default async function OrderStatusPage({ params }: OrderStatusPageProps) 
 
   return (
     <>
-      <AnnouncementBar />
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 py-8">

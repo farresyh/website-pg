@@ -1,18 +1,33 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import Logo from "@/components/ui/Logo";
 import Button from "@/components/ui/Button";
 import { useSearch } from "@/context/SearchContext";
+import { listPlans } from "@/lib/membership";
 
 /**
  * No "Log In" and no "Account" anywhere — storefront is guest-checkout
  * only (ADR-011). The search input is always directly reachable: inline
  * in the header row on desktop, full-width row below it on mobile.
+ *
+ * The "Membership" nav item only appears when membership is actually
+ * enabled for this storefront (ADR-061's dual kill-switch — `listPlans`
+ * returns `[]` when off). This keeps the recorded "no customer-facing
+ * membership link until launch" decision (PRD §15) self-enforcing:
+ * flip the switch and the link appears, no code change.
  */
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
+  const [membershipEnabled, setMembershipEnabled] = useState(false);
+
+  useEffect(() => {
+    listPlans()
+      .then((plans) => setMembershipEnabled(plans.length > 0))
+      .catch(() => setMembershipEnabled(false));
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">
@@ -34,12 +49,14 @@ export default function SiteHeader() {
         </div>
 
         <nav className="hidden items-center gap-6 font-display text-[13px] font-bold uppercase tracking-wide text-on-surface-variant lg:flex">
-          <a href="#popular-picks" className="border-b-2 border-primary pb-0.5 text-primary">
+          <Link href="/#popular-picks" className="border-b-2 border-primary pb-0.5 text-primary">
             All Products
-          </a>
-          <a href="#promotions" className="pb-0.5 hover:text-primary">
-            Promotions
-          </a>
+          </Link>
+          {membershipEnabled && (
+            <Link href="/membership" className="pb-0.5 hover:text-primary">
+              Membership
+            </Link>
+          )}
           <Link href="/track-order" className="pb-0.5 hover:text-primary">
             Track Order
           </Link>
