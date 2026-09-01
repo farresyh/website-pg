@@ -26,7 +26,7 @@ class WithdrawalControllerTest extends TestCase
             'amount' => 10_000,
             'bank_name' => 'Maybank',
             'bank_account_no' => '1234567890',
-            'bank_account_holder' => 'Kedai Runcit Soloz',
+            'bank_account_holder' => 'PekanGame',
         ], $overrides);
     }
 

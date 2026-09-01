@@ -59,7 +59,7 @@ class BackupRestoreTester
     private function testMysql(string $dumpPath): array
     {
         $base = config('database.connections.mysql');
-        $tempDatabase = ($base['database'] ?? 'kedairuncitsoloz').'_restore_test_'.time();
+        $tempDatabase = ($base['database'] ?? 'pekangame').'_restore_test_'.time();
         $clientArgs = $this->mysqlClientArgs($base);
 
         $create = Process::fromShellCommandline(

@@ -27,7 +27,7 @@ class SeoControllerTest extends TestCase
         $reseller = $this->primaryReseller();
         ResellerSeoSettings::query()->create([
             'reseller_id' => $reseller->id,
-            'default_meta_title' => 'KedaiRuncitSoloz',
+            'default_meta_title' => 'PekanGame',
             'ga_measurement_id' => 'G-ABC123',
             'schema_organization_enabled' => false,
         ]);
@@ -35,7 +35,7 @@ class SeoControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/seo/settings');
 
         $response->assertOk();
-        $this->assertSame('KedaiRuncitSoloz', $response->json('default_meta_title'));
+        $this->assertSame('PekanGame', $response->json('default_meta_title'));
         $this->assertSame('G-ABC123', $response->json('ga_measurement_id'));
         $this->assertFalse($response->json('schema_organization_enabled'));
     }

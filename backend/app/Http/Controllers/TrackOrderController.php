@@ -8,10 +8,10 @@ use Illuminate\Http\JsonResponse;
 
 /**
  * Public "Track Order" lookup (ADR-011 — no Customer auth exists).
- * `order_number` is a ULID (OrderNumberService — 128 bits, ~80 of them
- * random), high enough entropy that knowing it is treated as proof of
- * ownership — the same trust model as a courier tracking number or a
- * Stripe payment link, no email/second factor required.
+ * `order_number` is `PG-` + 12 random base36 chars (OrderNumberService —
+ * ~62 bits from a CSPRNG), high enough entropy that knowing it is treated
+ * as proof of ownership — the same trust model as a courier tracking
+ * number or a Stripe payment link, no email/second factor required.
  *
  * Deliberately returns a narrow, customer-safe subset of Order —
  * never `cost_price`/`standard_selling_price`/`platform_profit`/

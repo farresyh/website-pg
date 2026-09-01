@@ -90,7 +90,7 @@ class E2ESeeder extends Seeder
         // golden path — a pre-existing failed delivery so that test
         // doesn't also have to drive a checkout to failure first.
         Order::query()->firstOrCreate(
-            ['order_number' => 'KRS-E2E-VOUCHER-FIXTURE'],
+            ['order_number' => 'PG-E2E-VOUCHER-FIXTURE'],
             [
                 'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-VOUCHER-FIXTURE',
@@ -119,7 +119,7 @@ class E2ESeeder extends Seeder
         // golden path — kept fully separate from the voucher fixture
         // above so the two tests never contend over the same row.
         Order::query()->firstOrCreate(
-            ['order_number' => 'KRS-E2E-RESEND-FIXTURE'],
+            ['order_number' => 'PG-E2E-RESEND-FIXTURE'],
             [
                 'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-RESEND-FIXTURE',
@@ -149,7 +149,7 @@ class E2ESeeder extends Seeder
         // order-resolution mechanism beyond retry-delivery/voucher).
         // Kept fully separate from the two fixtures above.
         Order::query()->firstOrCreate(
-            ['order_number' => 'KRS-E2E-NEEDSREVIEW-FIXTURE'],
+            ['order_number' => 'PG-E2E-NEEDSREVIEW-FIXTURE'],
             [
                 'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-NEEDSREVIEW-FIXTURE',

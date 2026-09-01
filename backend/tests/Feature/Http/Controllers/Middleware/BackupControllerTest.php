@@ -112,14 +112,14 @@ class BackupControllerTest extends TestCase
     public function test_download_streams_the_archive_from_its_disk(): void
     {
         Storage::fake('local');
-        Storage::disk('local')->put('kedairuncitsoloz/backup.zip', 'fake-zip-contents');
+        Storage::disk('local')->put('pekangame/backup.zip', 'fake-zip-contents');
         $this->actingAsAdmin();
 
         $run = BackupRun::query()->create([
             'status' => 'success',
             'triggered_by' => 'system',
             'disk' => 'local',
-            'path' => 'kedairuncitsoloz/backup.zip',
+            'path' => 'pekangame/backup.zip',
         ]);
 
         $this->get("/api/middleware/backups/{$run->id}/download")->assertOk();
@@ -128,19 +128,19 @@ class BackupControllerTest extends TestCase
     public function test_destroy_deletes_the_archive_and_the_run(): void
     {
         Storage::fake('local');
-        Storage::disk('local')->put('kedairuncitsoloz/backup.zip', 'fake-zip-contents');
+        Storage::disk('local')->put('pekangame/backup.zip', 'fake-zip-contents');
         $this->actingAsAdmin();
 
         $run = BackupRun::query()->create([
             'status' => 'success',
             'triggered_by' => 'system',
             'disk' => 'local',
-            'path' => 'kedairuncitsoloz/backup.zip',
+            'path' => 'pekangame/backup.zip',
         ]);
 
         $this->deleteJson("/api/middleware/backups/{$run->id}")->assertNoContent();
 
-        Storage::disk('local')->assertMissing('kedairuncitsoloz/backup.zip');
+        Storage::disk('local')->assertMissing('pekangame/backup.zip');
         $this->assertSame(0, BackupRun::query()->count());
     }
 

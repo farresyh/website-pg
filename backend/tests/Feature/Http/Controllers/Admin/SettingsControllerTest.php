@@ -84,17 +84,17 @@ class SettingsControllerTest extends TestCase
         $this->actingAsSuperAdmin();
 
         $response = $this->putJson('/api/settings/branding', [
-            'store_name' => 'KedaiRuncitSoloz',
+            'store_name' => 'PekanGame',
             'description' => 'Fast top-ups',
-            'support_email' => 'support@kedairuncitsoloz.my',
+            'support_email' => 'support@pekangame.space',
             'support_phone' => '+60123456789',
             'social_links' => ['facebook' => 'https://facebook.com/krs'],
         ]);
 
         $response->assertOk();
         $this->assertDatabaseHas('reseller_branding', [
-            'store_name' => 'KedaiRuncitSoloz',
-            'support_email' => 'support@kedairuncitsoloz.my',
+            'store_name' => 'PekanGame',
+            'support_email' => 'support@pekangame.space',
         ]);
     }
 

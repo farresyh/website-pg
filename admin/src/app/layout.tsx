@@ -8,7 +8,7 @@ import { PrimeProvider } from "@/components/prime-provider";
 const outfit = Outfit({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Kedai Runcit Soloz — Admin",
+  title: "PekanGame — Admin",
   description: "Admin & Middleware panel for the game top-up platform.",
 };
 

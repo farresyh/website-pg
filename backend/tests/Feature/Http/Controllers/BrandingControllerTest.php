@@ -23,7 +23,7 @@ class BrandingControllerTest extends TestCase
 
         ResellerBranding::query()->create(array_merge([
             'reseller_id' => $reseller->id,
-            'store_name' => 'KedaiRuncitSoloz',
+            'store_name' => 'PekanGame',
         ], $brandingOverrides));
 
         ResellerFooterSettings::query()->create(array_merge([
@@ -38,8 +38,8 @@ class BrandingControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/branding');
 
         $response->assertOk();
-        $this->assertSame('KedaiRuncitSoloz', $response->json('store_name'));
-        $this->assertSame('© 2026 KedaiRuncitSoloz. All rights reserved.', $response->json('footer_text'));
+        $this->assertSame('PekanGame', $response->json('store_name'));
+        $this->assertSame('© 2026 PekanGame. All rights reserved.', $response->json('footer_text'));
     }
 
     public function test_show_resolves_footer_games_in_the_stored_order(): void
@@ -126,7 +126,7 @@ class BrandingControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/legal/terms');
 
         $response->assertOk();
-        $this->assertStringContainsString('Welcome to KedaiRuncitSoloz', $response->json('content'));
+        $this->assertStringContainsString('Welcome to PekanGame', $response->json('content'));
         $this->assertStringNotContainsString('<script>', $response->json('content'));
     }
 
