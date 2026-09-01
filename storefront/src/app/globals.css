@@ -1,46 +1,183 @@
 @import "tailwindcss";
 
 /*
- * Design tokens for Kedai Runcit Soloz's storefront — palette
- * extracted from the real brand assets (logo emblem + banner),
- * founder-confirmed hex values, not a generic AI-dark-SaaS palette.
- * Bebas Neue (display/headings) + Source Sans 3 (body/price/forms)
- * loaded via next/font/google in layout.tsx, exposed here as
- * --font-bebas/--font-source-sans CSS variables.
+ * PekanGame storefront — visual system (ADR-063).
+ *
+ * Light neo-brutalist "Digital Architect" world: a warm-paper ground,
+ * an M3 purple/cyan/magenta accent system, ink-navy strokes, and hard
+ * offset shadows. Adapted from the founder's Stitch design set (a
+ * deliberately softened take on the neo-brutalist reference poster).
+ *
+ * Tokens are semantic *roles*, defined light now with the structure
+ * ready for a dark palette to be added by the future per-tenant theme
+ * ADR (PRD §6.15) — a root token-set swap, not per-element `dark:`.
+ *
+ * Fonts: Space Grotesk (display/headings/CTA) + Inter (body) +
+ * JetBrains Mono (prices/IDs), loaded via next/font/google in
+ * layout.tsx and exposed here as CSS variables.
+ *
+ * The legacy `--color-bg / --color-brand / …` names below are kept
+ * (re-pointed to the new palette) so every not-yet-migrated component
+ * still renders correctly; ADR-064 moves component classes onto the
+ * semantic vocabulary and this legacy block is then removed.
  */
 @theme {
-  --font-display: var(--font-bebas), sans-serif;
-  --font-sans: var(--font-source-sans), sans-serif;
+  --font-display: var(--font-space-grotesk), "Space Grotesk", sans-serif;
+  --font-sans: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
 
-  --color-brand: #007400;
-  --color-brand-light: #6cd15d;
-  --color-brand-dark: #03392c;
+  /* ---- Semantic palette (the going-forward vocabulary) ---- */
+  --color-ink: #19192f;
+
+  --color-primary: #6b38d4;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #8455ef;
+  --color-on-primary-container: #fffbff;
+  --color-primary-fixed: #e9ddff;
+  --color-on-primary-fixed: #23005c;
+
+  --color-secondary: #00687a;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #57dffe;
+  --color-on-secondary-container: #00363f;
+  --color-secondary-fixed-dim: #4cd7f6;
+
+  --color-tertiary: #b10e6b;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #d23284;
+
+  --color-warning: #ffd700;
+  --color-on-warning: #19192f;
+  --color-warning-text: #7a5200;
+
+  --color-success: #2e7d32;
+  --color-on-success: #ffffff;
+  --color-success-text: #1b5e20;
+
+  --color-danger: #ba1a1a;
+  --color-on-danger: #ffffff;
+  --color-danger-container: #ffdad6;
+  --color-on-danger-container: #410002;
+
+  --color-surface: #f7f4ec;
+  --color-on-surface: #19192f;
+  --color-on-surface-variant: #4b4550;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #fbf7ee;
+  --color-surface-container: #f2ede1;
+  --color-surface-container-high: #ece5d7;
+  --color-surface-container-highest: #e5ded0;
+  --color-surface-variant: #e7e2d6;
+
+  --color-outline: #7b7486;
+  --color-outline-variant: #cbc3b7;
+
+  /* ---- Legacy names (ADR-064 migrates component classes off these) ---- */
+  --color-bg: #f7f4ec;
+  --color-bg-deep: #efe9db;
+  --color-surface-2: #f2ede1;
+  --color-border: #19192f;
+  --color-text: #19192f;
+  --color-text-muted: #4b4550;
+  --color-brand: #6b38d4;
+  --color-brand-light: #8455ef;
+  --color-brand-dark: #3d1f8f;
   --color-on-brand: #ffffff;
+  --color-amber: #7a5200;
+  --color-error: #ba1a1a;
 
-  --color-bg: #04140e;
-  --color-bg-deep: #020b07;
-  --color-surface: #0b2e22;
-  --color-surface-2: #123b2c;
-  --color-border: #1c5240;
+  /* ---- Radius: limited, squared-leaning ---- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem; /* 6px — buttons, inputs */
+  --radius-lg: 0.5rem; /* 8px — cards, containers */
+  --radius-xl: 0.5rem;
 
-  --color-text: #f3f7f4;
-  --color-text-muted: #9fb8ac;
-
-  --color-amber: #f59e0b;
-  --color-error: #ef4444;
+  /* ---- Type scale (Stitch "Digital Architect") ---- */
+  --text-display: 4rem;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 700;
+  --text-headline-lg: 2.5rem;
+  --text-headline-lg--line-height: 1.15;
+  --text-headline-lg--letter-spacing: -0.01em;
+  --text-headline-lg--font-weight: 700;
+  --text-headline-md: 1.75rem;
+  --text-headline-md--line-height: 1.2;
+  --text-headline-md--font-weight: 600;
+  --text-headline-sm: 1.25rem;
+  --text-headline-sm--line-height: 1.4;
+  --text-headline-sm--font-weight: 600;
+  --text-price: 1.5rem;
+  --text-price--line-height: 1.33;
+  --text-price--font-weight: 700;
 }
 
 @layer base {
   body {
-    @apply relative bg-bg text-text antialiased;
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    position: relative;
   }
+
   h1,
   h2,
   h3,
   .font-display {
     font-family: var(--font-display);
-    letter-spacing: 0.01em;
+    letter-spacing: -0.01em;
+  }
+
+  /* Neo-brutalist rule: focus is always visible. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-secondary-container);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Browser surfaces themed from the palette (craft floor). */
+  ::selection {
+    background: var(--color-secondary-container);
+    color: var(--color-ink);
+  }
+
+  input,
+  textarea {
+    caret-color: var(--color-primary);
+  }
+
+  .font-mono,
+  [class*="tabular"] {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Hard offset shadows — the elevation system for this world.
+ * neo    → display tier (cards, product hero, marketing)
+ * neo-sm → utility tier (form fields, summary rows)
+ * neo-lg → sticky summary, modal
+ */
+@utility neo {
+  box-shadow: 4px 4px 0 0 rgb(25 25 47 / 0.9);
+}
+@utility neo-sm {
+  box-shadow: 2px 2px 0 0 rgb(25 25 47 / 0.9);
+}
+@utility neo-lg {
+  box-shadow: 8px 8px 0 0 rgb(25 25 47 / 0.9);
+}
+/* Hover lift — pair with `transition-all` on the element. */
+@utility neo-hover {
+  &:hover {
+    box-shadow: 6px 6px 0 0 var(--color-primary);
+    transform: translate(-2px, -2px);
+  }
+}
+@utility neo-hover-cyan {
+  &:hover {
+    box-shadow: 6px 6px 0 0 var(--color-secondary-container);
+    transform: translate(-2px, -2px);
   }
 }
 

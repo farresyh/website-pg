@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Bebas_Neue, Source_Sans_3 } from "next/font/google";
+import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
@@ -17,16 +17,24 @@ import { SITE_URL } from "@/lib/site";
 // real production backend is even up).
 export const dynamic = "force-dynamic";
 
-const bebasNeue = Bebas_Neue({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-bebas",
-});
-
-const sourceSans = Source_Sans_3({
+// ADR-063: Space Grotesk (display/headings/CTA) + Inter (body) +
+// JetBrains Mono (prices/order numbers/player IDs).
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-source-sans",
+  variable: "--font-space-grotesk",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["500", "700"],
+  variable: "--font-jetbrains-mono",
 });
 
 /**
@@ -71,7 +79,7 @@ export default async function RootLayout({
     : null;
 
   return (
-    <html lang="en" className={`${bebasNeue.variable} ${sourceSans.variable}`}>
+    <html lang="en" className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
         {organizationJsonLd && (
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }} />
