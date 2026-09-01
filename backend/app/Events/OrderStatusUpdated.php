@@ -15,7 +15,8 @@ use Illuminate\Queue\SerializesModels;
  * Broadcasts on a PUBLIC channel keyed by the order's own `order_number`
  * — no private-channel auth exists for guest checkout (ADR-011), the same
  * trust boundary `GET /api/track-order/{orderNumber}` already relies on
- * (`order_number` is a `Str::ulid()`, OrderNumberService). Payload is
+ * (`order_number` is `PG-` + 12 random base36 chars, OrderNumberService).
+ * Payload is
  * `TrackOrderController::customerSafePayload()` verbatim — one shape for
  * the poll and the push (`TrackedOrderSchema` parses both). Carries the
  * buyer's own contact **masked** and the payment breakdown they saw at

@@ -2570,6 +2570,18 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 - If ADR-060 later makes `store_name` fully `Host`-resolved, these hardcoded fallbacks stay as the "no brand resolved / API down" default. An unresolved `Host` returns 404 (ADR-060 decision 2), so the fallback is only ever seen on the primary storefront — "PekanGame" is the right default there. Acceptable.
 - PRD §14 build-log entry + §15 tracker note owed when this ships.
 
+**Addendum, 2026-09-01 (deploy-prep, `feature/rename-pekangame`) — rename extended to admin + reseller + the order-number prefix, before production go-live.** The founder's reason: shipping to production with two names still live anywhere a human looks ("PekanGame" storefront, "KedaiRuncitSoloz" admin, `KRS-` on bank statements) is a standing source of confusion, and the deploy pipeline itself is already uniformly `pekangame` (`registry.digitalocean.com/pekangame`, DB `pekangame`, `api.pekangame.space`, `/opt/pekangame`). Changes made:
+
+1. **`admin/` chrome** — `layout.tsx` meta title, `AppHeader`, `AppSidebar` ("KedaiRuncitSoloz Admin" / "KRS" → "PekanGame Admin" / "PG"), and two Settings placeholders (`FooterSettingsSection`, `StoreBrandingSection` support-email). Display-only; no admin logic keys on these.
+2. **`reseller/` chrome** — `layout.tsx` meta title.
+3. **`README.md` / root `AGENTS.md`** H1 → "PekanGame".
+4. **Order-number prefix** — `OrderNumberService::PREFIX` `KRS-` → `PG-`, and the format shortened from `PREFIX + Str::ulid()` (29 chars) to `PREFIX + 12 uppercase base36 chars` (15 chars) at the founder's request — it lands on the customer's bank/e-wallet statement and the ULID was needlessly long. `reference_number` (`REF-`, supplier idempotency key) is brand-neutral and unchanged. Entropy drops from ULID's ~80 random bits to ~62 (12 × log₂36) from a CSPRNG (`Str::random`) — still far beyond brute-force for the "knowing the number = proof of ownership" trust model on `GET /api/track-order/{n}` (ADR-011), and `orders.order_number`'s `UNIQUE` constraint is the hard backstop against the (negligible, ~1-in-4.7e18) collision. Updated with it: `OrderFactory`, `E2ESeeder` + `e2e/tests/constants.ts` fixtures (`KRS-E2E-*` → `PG-E2E-*`), the `OrderNumberServiceTest` / `CheckoutServiceTest` prefix assertions, the `TrackOrderController` / `OrderStatusUpdated` docblocks, and the storefront `TrackOrderClient` placeholder. Safe window: production is not live, **zero real orders exist**.
+5. **Internal-identifier cleanup (cosmetic only):** `BackupRestoreTester`'s dead MySQL-DB-name fallback `'kedairuncitsoloz'` → `'pekangame'` (only reached if `config('database.connections.mysql.database')` is null, which prod never is); test-fixture storage paths `kedairuncitsoloz/backup.zip` → `pekangame/backup.zip`.
+
+**Still deliberately not renamed** (decision 5 stands): local repo directory, git remote (`topup-website`), the actual database name, cookie/session key prefixes (`kerox_*`), the Herd dev hostname `kedairuncit-backend.test` (local-only; prod uses `api.pekangame.space`), and `backend/.env.example`'s `REVERB_APP_ID` (an arbitrary local identifier; tooling blocks `.env*` edits and prod sets its own). Historical ADR/PRD text and the ADR-020 "kedairuncitsoloz" references (that is the prospective *partner company*, a different entity — see `legacy-reference-notes.md`) are left as written.
+
+This addendum is open to challenge at review like any decision — the prefix token and length especially.
+
 ---
 
 ## ADR-063: Storefront visual system replacement — light neo-brutalist "Digital Architect" world

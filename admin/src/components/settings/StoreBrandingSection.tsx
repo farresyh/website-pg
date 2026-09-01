@@ -83,7 +83,7 @@ export default function StoreBrandingSection({
         </div>
         <div>
           <Label htmlFor="support_email">Support email</Label>
-          <Input id="support_email" type="email" value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} placeholder="support@kedairuncitsoloz.my" />
+          <Input id="support_email" type="email" value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} placeholder="support@pekangame.space" />
         </div>
         <div>
           <Label htmlFor="facebook">Facebook URL</Label>

@@ -1,4 +1,9 @@
-# Kedairuncitsoloz — Game Top-Up Reseller Platform
+# PekanGame — Game Top-Up Reseller Platform
+
+> Repo directory, git remote, database name, and internal key prefixes
+> still read `kedairuncitsoloz` / `topup-website` by deliberate choice
+> (ADR-062 §5 + its addendum) — those are churn with no user-visible
+> benefit. The brand everywhere a human looks is **PekanGame**.
 
 Guest-checkout storefront for reloading game credits (MLBB and others), backed
 by an admin panel and a supplier/payment middleware layer. Money-critical:

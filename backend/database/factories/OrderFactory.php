@@ -35,7 +35,7 @@ class OrderFactory extends Factory
         $transactionFee = 100;
 
         return [
-            'order_number' => 'KRS-'.strtoupper(Str::random(10)),
+            'order_number' => 'PG-'.strtoupper(Str::random(12)),
             'reseller_id' => fn () => Reseller::query()->firstOrCreate(
                 ['is_primary' => true],
                 [

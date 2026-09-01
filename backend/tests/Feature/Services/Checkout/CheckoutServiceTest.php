@@ -114,7 +114,7 @@ class CheckoutServiceTest extends TestCase
 
         $order = $this->service()->initiate($this->request(), $gateway);
 
-        $this->assertStringStartsWith('KRS-', $order->order_number);
+        $this->assertStringStartsWith('PG-', $order->order_number);
         $this->assertSame(PaymentStatus::Pending, $order->payment_status);
         $this->assertSame(DeliveryStatus::NotStarted, $order->delivery_status);
         $this->assertNull($order->reference_number); // ORD-8: not assigned until delivery starts

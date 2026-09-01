@@ -76,7 +76,7 @@ export default function TrackOrderClient() {
             type="text"
             value={orderNumber}
             onChange={(e) => setOrderNumber(e.target.value)}
-            placeholder="e.g. KRS-01J..."
+            placeholder="e.g. PG-A1B2C3D4E5F6"
             className="w-full bg-transparent font-mono text-sm text-on-surface placeholder:text-outline focus:outline-none"
           />
         </div>

@@ -69,7 +69,7 @@ const AppSidebar: React.FC = () => {
     >
       <div className={`py-8 flex ${!showLabels ? "lg:justify-center" : "justify-start"}`}>
         <Link href="/admin" className="text-lg font-semibold text-gray-900 dark:text-white">
-          {showLabels ? "KedaiRuncitSoloz Admin" : "KRS"}
+          {showLabels ? "PekanGame Admin" : "PG"}
         </Link>
       </div>
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">

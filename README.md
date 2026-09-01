@@ -1,4 +1,4 @@
-# Kedairuncitsoloz
+# PekanGame
 
 A guest-checkout storefront for topping up game credits (MLBB and others),
 with an admin panel for catalog/order/withdrawal management and a middleware

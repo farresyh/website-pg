@@ -53,7 +53,7 @@ class ChipGatewayTest extends TestCase
                 'success_return_url' => 'https://storefront.test/order/status/KRS-1',
                 'failure_return_url' => 'https://storefront.test/order/status/KRS-1',
             ],
-            description: 'KedaiRuncitSoloz order KRS-1',
+            description: 'PekanGame order KRS-1',
             customer: new PaymentCustomer(
                 referenceId: 'KRS-1',
                 givenNames: 'Buyer One',
