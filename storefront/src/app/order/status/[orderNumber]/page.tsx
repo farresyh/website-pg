@@ -12,7 +12,7 @@ interface OrderStatusPageProps {
 
 export async function generateMetadata({ params }: OrderStatusPageProps): Promise<Metadata> {
   const { orderNumber } = await params;
-  return { title: `Order ${orderNumber} — Kedai Runcit Soloz` };
+  return { title: `Order ${orderNumber} — PekanGame` };
 }
 
 /**

@@ -38,7 +38,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSeoSettings();
 
   return {
-    title: settings.default_meta_title || "Kedai Runcit Soloz — Top Up Games in Malaysia",
+    title: settings.default_meta_title || "PekanGame — Top Up Games in Malaysia",
     description: settings.default_meta_description || "Fast, secure game top-ups. Delivered in 3 minutes.",
     openGraph: settings.default_og_image ? { images: [{ url: settings.default_og_image }] } : undefined,
   };

@@ -7,7 +7,7 @@ import LegalPageContent from "@/components/legal/LegalPageContent";
 import { getLegalContent } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions — Kedai Runcit Soloz",
+  title: "Terms & Conditions — PekanGame",
 };
 
 // Admin-editable (ADR-028 addendum) — never bake into a static build.

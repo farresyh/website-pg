@@ -233,7 +233,7 @@ final class CheckoutService
             country: 'MY',
             channelCode: $channelCode,
             channelProperties: $channelProperties,
-            description: "KedaiRuncitSoloz order {$order->order_number}",
+            description: "PekanGame order {$order->order_number}",
             customer: new PaymentCustomer(
                 referenceId: $order->order_number,
                 givenNames: $order->customer_name,

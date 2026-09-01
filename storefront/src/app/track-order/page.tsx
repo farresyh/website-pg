@@ -7,7 +7,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import TrackOrderClient from "@/components/order/TrackOrderClient";
 
 export const metadata: Metadata = {
-  title: "Track Order — Kedai Runcit Soloz",
+  title: "Track Order — PekanGame",
 };
 
 // SiteFooter now fetches live branding data (ADR-028 addendum) —

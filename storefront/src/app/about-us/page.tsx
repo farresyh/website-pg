@@ -7,7 +7,7 @@ import LegalPageContent from "@/components/legal/LegalPageContent";
 import { getLegalContent } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: "About Us — Kedai Runcit Soloz",
+  title: "About Us — PekanGame",
 };
 
 // Admin-editable (ADR-028 addendum) — never bake into a static build.

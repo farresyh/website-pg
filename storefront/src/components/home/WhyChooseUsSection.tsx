@@ -11,7 +11,7 @@ export default function WhyChooseUsSection() {
   return (
     <section className="border-y border-border bg-surface py-10">
       <div className="mx-auto max-w-[1200px] px-4">
-        <h2 className="font-display mb-7 text-center text-[22px] tracking-wide">Why Choose Kedai Runcit Soloz?</h2>
+        <h2 className="font-display mb-7 text-center text-[22px] tracking-wide">Why Choose PekanGame?</h2>
         <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
           {REASONS.map(({ icon: Icon, title, description }) => (
             <div key={title} className="flex flex-col items-center gap-2.5 text-center">

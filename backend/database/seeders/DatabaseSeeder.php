@@ -29,7 +29,7 @@ class DatabaseSeeder extends Seeder
         Reseller::query()->updateOrCreate(
             ['is_primary' => true],
             [
-                'business_name' => 'Platform Owner',
+                'business_name' => 'PekanGame', // ADR-062
                 'markup_pct' => 0,
                 'status' => 'active',
                 'is_owned' => true,

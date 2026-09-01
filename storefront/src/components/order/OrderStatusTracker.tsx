@@ -207,7 +207,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           Contact our Customer Support team directly via WhatsApp for a manual check{hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
         </p>
         <Button href="https://wa.me/60000000000" className="justify-center">
-          <WhatsappLogo size={16} weight="fill" /> Contact Soloz Support
+          <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
         </Button>
         {order.game && (
           <Button href={`/order/${order.game.slug}`} variant="outline" className="justify-center">

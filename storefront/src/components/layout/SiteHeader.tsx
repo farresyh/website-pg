@@ -22,7 +22,7 @@ export default function SiteHeader() {
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-4 py-3.5">
         <Link href="/" className="flex shrink-0 items-center gap-2">
           <Logo size={32} />
-          <span className="font-display text-lg leading-none tracking-wide">KEDAI RUNCIT SOLOZ</span>
+          <span className="font-display text-lg leading-none tracking-wide">PEKANGAME</span>
         </Link>
 
         <div className="hidden max-w-[420px] flex-1 items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 lg:flex">

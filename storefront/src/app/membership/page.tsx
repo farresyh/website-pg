@@ -6,7 +6,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import MembershipClient from "@/components/order/MembershipClient";
 
 export const metadata: Metadata = {
-  title: "Membership — Kedai Runcit Soloz",
+  title: "Membership — PekanGame",
 };
 
 // Same reasoning as track-order/page.tsx's own export — this page's
