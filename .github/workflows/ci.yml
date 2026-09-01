@@ -1,17 +1,16 @@
-# ADR-020 decision #9 + its 2026-09-01 addendum + ADR-037's addendum
-# (single-env, deploy from `main`). Pipeline on `push:main`:
-#   backend/concurrency/frontend tests  →  build-and-push (backend image
-#   only — the 3 Next.js apps deploy on Vercel now)  →  deploy (SSH to the
-#   droplet: pull the tagged image, `up -d`, `migrate --force`, health
-#   check, roll the containers back on failure).
+# ADR-066 (reverses ADR-020 decision #9's image-pipeline half) + ADR-037's
+# addendum (single-env, deploy from `main`). Pipeline on `push:main`:
+#   backend / concurrency / frontend tests  →  deploy (POST to Forge's
+#   deploy webhook — Forge pulls `main`, runs composer install + migrate
+#   --force + cache + horizon:terminate, then health-checks `/up` and
+#   fails the deployment on a bad check).
 #
-# build-and-push + deploy need repo secrets/vars that must be provisioned
-# first — DIGITALOCEAN_ACCESS_TOKEN, DEPLOY_SSH_KEY, DEPLOY_HOST,
-# DEPLOY_USER, vars.NEXT_PUBLIC_* — and a DO Container Registry named
-# `pekangame`. Until those exist these two jobs fail at their first auth
-# step; the test jobs above them are unaffected. Same "structurally
-# complete, blocked on an unprovisioned secret" posture build-and-push
-# already carried.
+# The backend runs on a Laravel Forge-managed droplet now — no Docker
+# image, no DO Container Registry, no SSH key in CI. The 3 Next.js apps
+# deploy on Vercel off the same `main` push. `deploy` needs one repo
+# secret, FORGE_DEPLOY_HOOK; until it exists that job fails at the curl
+# step and the test jobs above it are unaffected. Forge "Quick Deploy" is
+# OFF so a push only deploys after this CI gate is green.
 
 name: CI
 
@@ -163,68 +162,19 @@ jobs:
           path: e2e/test-results/
           retention-days: 7
 
-  # Builds + pushes ONLY the backend image (php-fpm / horizon / reverb all
-  # share it — see docker-compose.prod.yml). The 3 Next.js apps deploy on
-  # Vercel, which runs its own build off the same `main` push. Two tags
-  # per build: the commit SHA (what `deploy` pins) and `latest`.
-  build-and-push:
+  # ADR-066 — automatic, no manual approval gate (the test jobs are the
+  # gate). POSTs to Forge's per-site deploy webhook; Forge then runs the
+  # site's deploy script on the droplet (git pull → composer install →
+  # `migrate --force`, never migrate:fresh → config/route/event:cache →
+  # storage:link → horizon:terminate → nginx reload → curl `/up`). A bad
+  # deploy or migration fails the curl at the end of Forge's own script,
+  # which marks the Forge deployment failed and fires Forge's
+  # deployment-failed notification; recovery is a manual
+  # `php artisan migrate:rollback` + redeploy. `--fail-with-body` so a
+  # non-2xx from Forge fails this job.
+  deploy:
     if: github.ref == 'refs/heads/main'
     needs: [backend-tests, backend-concurrency, admin, storefront, reseller]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      - run: doctl registry login --expiry-seconds 1200
-      - run: |
-          docker build \
-            -t registry.digitalocean.com/pekangame/backend:${{ github.sha }} \
-            -t registry.digitalocean.com/pekangame/backend:latest \
-            ./backend
-      - run: docker push registry.digitalocean.com/pekangame/backend:${{ github.sha }}
-      - run: docker push registry.digitalocean.com/pekangame/backend:latest
-
-  # ADR-020 decision #9 — automatic, no manual approval gate (the test
-  # jobs are the gate). SSHes to the one droplet, pulls the SHA-tagged
-  # backend image, `up -d`, runs `migrate --force` (never migrate:fresh),
-  # health-checks `/api/health`, and on failure rolls the CONTAINERS back
-  # to the previously-running image tag. A bad *migration* is not
-  # auto-reverted — the health check failing + the container rollback buys
-  # time for a manual `php artisan migrate:rollback`; the alert is the
-  # signal. The deploy dir on the droplet is a plain `git` checkout of
-  # this repo on `main` (so it always has the current compose file +
-  # backend/public assets nginx mounts); `deploy.sh` there does the work.
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: [build-and-push]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 15m
-          script: |
-            set -euo pipefail
-            cd "${DEPLOY_DIR:-/opt/pekangame}"
-            COMPOSE="docker compose -f docker-compose.prod.yml"
-            PREV_TAG="$(cat .last_deployed_sha 2>/dev/null || echo latest)"
-            git fetch --quiet origin main && git reset --hard origin/main
-            export IMAGE_TAG="${{ github.sha }}"
-            $COMPOSE pull php-fpm
-            $COMPOSE up -d --no-build
-            $COMPOSE exec -T php-fpm php artisan migrate --force --no-interaction
-            $COMPOSE exec -T php-fpm php artisan config:cache
-            sleep 5
-            # Laravel's framework health route (bootstrap/app.php `health: '/up'`).
-            # `/api/dashboard/health` is auth-gated (admin.role) — not a liveness probe.
-            if curl -fsS --max-time 10 "http://localhost:${NGINX_PORT:-8080}/up"; then
-              echo "${{ github.sha }}" > .last_deployed_sha
-            else
-              echo "::error::health check failed — rolling containers back to ${PREV_TAG}"
-              export IMAGE_TAG="${PREV_TAG}"
-              $COMPOSE up -d --no-build
-              exit 1
-            fi
+      - run: curl -fsS --fail-with-body -X POST "${{ secrets.FORGE_DEPLOY_HOOK }}"
