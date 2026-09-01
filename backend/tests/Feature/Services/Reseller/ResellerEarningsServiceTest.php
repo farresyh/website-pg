@@ -100,6 +100,13 @@ class ResellerEarningsServiceTest extends TestCase
 
     public function test_dashboard_stats_today_bucket_excludes_older_paid_orders(): void
     {
+        // Anchor to mid-month so the `subDays(3)` order below is reliably
+        // "earlier today's bucket" AND still "this month" — the bare test
+        // clock breaks this assertion on the 1st–3rd of any month
+        // (`now()->subDays(3)` crosses into the previous month). Laravel
+        // reverts the travel after the test.
+        $this->travelTo(now()->startOfMonth()->addDays(14)->setHour(12));
+
         $mine = $this->reseller('Mine');
 
         Order::factory()->forReseller($mine)->create(['final_amount' => 1000, 'paid_at' => now()]);

@@ -37,7 +37,14 @@ Laravel-specific, loaded only when working inside `backend/`.
   `cost_price`, `standard_selling_price`, `platform_profit`, `reseller_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing
   endpoint (`CatalogController`, `TrackOrderController`). Mirror their
-  existing narrow-response-shape pattern for new public endpoints.
+  existing narrow-response-shape pattern for new public endpoints. Raw
+  customer contact (`customer_name`/`customer_email`/`customer_phone`)
+  stays out too — the one exception is `TrackOrderController` /
+  `OrderStatusUpdated`, which carry the buyer's own contact **masked**
+  via `App\Support\ContactMask` plus the customer-facing money they saw
+  at checkout (`payment_method`/`selling_price`/`voucher_discount`/
+  `transaction_fee`), per ADR-065. `standard_selling_price` / profit /
+  `payment_ref` are still never exposed there.
 - **`Cache::remember()` values must be plain arrays, never a raw
   Eloquent Model/Collection or an un-cast `Carbon` instance** — the
   `database` cache driver silently corrupts nested objects on the next read.

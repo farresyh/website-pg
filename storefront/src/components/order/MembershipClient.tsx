@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Envelope, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
+import { Envelope, ShieldCheck, SignOut } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
 import { sendOtp, verifyOtp, getMe, type MembershipMe } from "@/lib/membership";
 import { setMembershipToken, clearMembershipToken } from "@/lib/membership-session";
@@ -89,30 +89,30 @@ export default function MembershipClient() {
   }
 
   if (token !== null && dashboard === null) {
-    return <p className="mx-auto max-w-[560px] px-4 py-10 text-sm text-text-muted">Loading…</p>;
+    return <p className="mx-auto max-w-[560px] px-4 py-10 text-sm text-on-surface-variant">Loading…</p>;
   }
 
   if (token === null && emailStep === "email") {
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
-        <h1 className="font-display mb-2 text-2xl tracking-wide">Membership</h1>
-        <p className="mb-6 text-sm text-text-muted">Enter your email — we&apos;ll send a code to verify it&apos;s you.</p>
+        <h1 className="font-display mb-2 text-headline-lg font-bold uppercase tracking-tight">Membership</h1>
+        <p className="mb-6 text-sm text-on-surface-variant">Enter your email — we&apos;ll send a code to verify it&apos;s you.</p>
         <form onSubmit={handleSendCode} className="flex flex-col gap-3">
-          <div className="flex min-h-11 items-center gap-2 rounded-lg border border-border bg-surface px-3.5">
-            <Envelope size={16} className="shrink-0 text-text-muted" />
+          <div className="flex min-h-11 items-center gap-2 rounded-md border-2 border-ink bg-surface-container-lowest px-3.5">
+            <Envelope size={16} className="shrink-0 text-on-surface-variant" />
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full bg-transparent text-sm text-text placeholder:text-text-muted focus:outline-none"
+              className="w-full bg-transparent text-sm  text-on-surface placeholder:text-on-surface-variant focus:outline-none"
             />
           </div>
           <Button type="submit" disabled={sending || !email.trim()} className="justify-center">
             {sending ? "Sending…" : "Send Code"}
           </Button>
         </form>
-        {error && <p className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm text-text-muted">{error}</p>}
+        {error && <p className="mt-4 rounded-md border-2 border-ink bg-surface-container p-4 text-sm text-on-surface-variant">{error}</p>}
       </div>
     );
   }
@@ -120,15 +120,15 @@ export default function MembershipClient() {
   if (token === null && emailStep === "otp") {
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
-        <h1 className="font-display mb-2 text-2xl tracking-wide">Enter Your Code</h1>
-        <p className="mb-6 text-sm text-text-muted">We sent a 6-digit code to {email}. It expires in 10 minutes.</p>
+        <h1 className="font-display mb-2 text-headline-lg font-bold uppercase tracking-tight">Enter Your Code</h1>
+        <p className="mb-6 text-sm text-on-surface-variant">We sent a 6-digit code to {email}. It expires in 10 minutes.</p>
         <form onSubmit={handleVerify} className="flex flex-col items-center gap-4">
           <OtpInput value={code} onChange={setCode} disabled={verifying} />
           <Button type="submit" disabled={verifying || code.length !== 6} className="w-full justify-center">
             {verifying ? "Verifying…" : "Verify"}
           </Button>
         </form>
-        {error && <p className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm text-text-muted">{error}</p>}
+        {error && <p className="mt-4 rounded-md border-2 border-ink bg-surface-container p-4 text-sm text-on-surface-variant">{error}</p>}
         <button
           type="button"
           onClick={() => {
@@ -136,7 +136,7 @@ export default function MembershipClient() {
             setCode("");
             setError(null);
           }}
-          className="mt-4 block w-full text-center text-sm text-text-muted hover:text-text"
+          className="mt-4 block w-full text-center text-sm text-on-surface-variant hover:text-on-surface"
         >
           Use a different email
         </button>
@@ -145,59 +145,87 @@ export default function MembershipClient() {
   }
 
   // token !== null && dashboard !== null
+  const orders = dashboard?.orderHistory ?? [];
+
   return (
-    <div className="mx-auto max-w-[640px] px-4 py-10 lg:py-16">
-      <h1 className="font-display mb-2 text-2xl tracking-wide">Membership</h1>
+    <div className="mx-auto flex max-w-[1000px] flex-col gap-gutter px-4 py-10 lg:py-16">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-display text-headline-lg font-bold uppercase tracking-tight">Membership &amp; Account</h1>
+        <Button variant="outline" size="sm" onClick={handleSignOut}>
+          <SignOut size={16} weight="bold" /> Sign Out
+        </Button>
+      </div>
 
+      {/* Membership status */}
       {dashboard?.membership ? (
-        <div className="mb-8 rounded-lg border border-border bg-surface p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <ShieldCheck size={20} className="text-brand-light" weight="fill" />
-            <span className="text-lg font-bold">{dashboard.membership.tierName}</span>
-            <span className="rounded-full border border-brand-light/40 bg-brand-dark/40 px-2.5 py-1 text-[12px] font-bold text-brand-light">
-              {dashboard.membership.status}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-text-muted">Quota remaining this cycle</p>
-              <p className="font-bold">RM{dashboard.membership.quotaRemainingRm.toFixed(2)}</p>
+        <section className="flex flex-col items-start justify-between gap-6 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo md:flex-row md:items-center md:p-8">
+          <div>
+            <div className="mb-2 flex items-center gap-3">
+              <ShieldCheck size={26} weight="fill" className="text-success" />
+              <span className="font-display text-headline-md">{dashboard.membership.tierName}</span>
+              <span className="rounded-sm border border-ink bg-success px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-on-success">
+                {dashboard.membership.status}
+              </span>
             </div>
-            <div>
-              <p className="text-text-muted">Renews / expires</p>
-              <p className="font-bold">{new Date(dashboard.membership.expiresAt).toLocaleDateString()}</p>
-            </div>
+            <p className="text-sm text-on-surface-variant">Your current membership level.</p>
           </div>
-        </div>
+          <div className="w-full border-t-2 border-ink pt-4 md:w-auto md:border-l-2 md:border-t-0 md:pl-6 md:pt-0 md:text-right">
+            <p className="font-display text-[11px] font-bold uppercase tracking-widest text-outline">Quota Remaining</p>
+            <p className="font-mono text-price font-bold">RM{dashboard.membership.quotaRemainingRm.toFixed(2)}</p>
+            <p className="mt-2 font-display text-[11px] font-bold uppercase tracking-widest text-outline">Renews / Expires</p>
+            <p className="text-sm font-semibold">{new Date(dashboard.membership.expiresAt).toLocaleDateString()}</p>
+          </div>
+        </section>
       ) : (
-        <div className="mb-8 rounded-lg border border-border bg-surface p-5 text-sm text-text-muted">
+        <section className="rounded-lg border-2 border-ink bg-surface-container p-6 text-sm text-on-surface-variant neo">
           You&apos;re verified — no active membership yet. Subscription plans are coming soon.
-        </div>
+        </section>
       )}
 
-      <h2 className="mb-3 text-lg font-bold">Order History</h2>
-      {dashboard?.orderHistory.length ? (
-        <div className="flex flex-col gap-2.5">
-          {dashboard.orderHistory.map((order) => (
-            <div key={order.orderNumber} className="flex items-center justify-between rounded-lg border border-border bg-surface p-3.5">
-              <div>
-                <p className="text-sm font-semibold">{order.gameName ?? "—"}</p>
-                <p className="text-xs text-text-muted">{order.packageName ?? "—"}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge type="delivery" status={order.deliveryStatus} />
-                <span className="text-sm font-bold">RM{order.finalAmountRm.toFixed(2)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-text-muted">No orders found under this email yet.</p>
-      )}
-
-      <button type="button" onClick={handleSignOut} className="mt-8 text-sm text-text-muted hover:text-text">
-        Sign out of this session
-      </button>
+      {/* Order history */}
+      <section className="flex flex-col gap-4">
+        <h2 className="border-b-2 border-ink pb-2 font-display text-headline-md uppercase tracking-tight">Order History</h2>
+        {orders.length ? (
+          <div className="overflow-x-auto rounded-lg border-2 border-ink bg-surface-container-lowest neo">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b-2 border-ink bg-surface-container-high">
+                  <th className="whitespace-nowrap p-4 font-display text-[11px] font-bold uppercase tracking-wide">Date</th>
+                  <th className="p-4 font-display text-[11px] font-bold uppercase tracking-wide">Game / Package</th>
+                  <th className="whitespace-nowrap p-4 font-display text-[11px] font-bold uppercase tracking-wide">Order #</th>
+                  <th className="p-4 text-right font-display text-[11px] font-bold uppercase tracking-wide">Price</th>
+                  <th className="p-4 text-center font-display text-[11px] font-bold uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink/15">
+                {orders.map((order) => (
+                  <tr key={order.orderNumber} className="hover:bg-surface-container-low">
+                    <td className="whitespace-nowrap p-4 font-mono text-[13px] text-on-surface-variant">
+                      {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="p-4 font-medium">
+                      {order.gameName ?? "—"}
+                      {order.packageName ? <span className="text-on-surface-variant"> · {order.packageName}</span> : null}
+                    </td>
+                    <td className="whitespace-nowrap p-4 font-mono text-[12px] text-on-surface-variant">{order.orderNumber}</td>
+                    <td className="p-4 text-right font-mono font-bold">RM{order.finalAmountRm.toFixed(2)}</td>
+                    <td className="p-4 text-center">
+                      <StatusBadge
+                        type={order.paymentStatus === "paid" ? "delivery" : "payment"}
+                        status={order.paymentStatus === "paid" ? order.deliveryStatus : order.paymentStatus}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="rounded-lg border-2 border-ink bg-surface-container p-6 text-sm text-on-surface-variant">
+            No orders found under this email yet.
+          </p>
+        )}
+      </section>
     </div>
   );
 }

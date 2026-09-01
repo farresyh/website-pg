@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import AnnouncementBar from "@/components/layout/AnnouncementBar";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import BottomNav from "@/components/layout/BottomNav";
@@ -28,7 +27,7 @@ interface OrderPageProps {
 export async function generateMetadata({ params }: OrderPageProps): Promise<Metadata> {
   const { slug } = await params;
   const [game, settings, branding] = await Promise.all([getGame(slug), getSeoSettings(), getBranding()]);
-  if (!game) return { title: "Top Up — Kedai Runcit Soloz" };
+  if (!game) return { title: "Top Up — PekanGame" };
 
   const tokens = { game_name: game.name, store_name: branding.storeName };
   const templatedTitle = settings.meta_title_template ? renderTemplate(settings.meta_title_template, tokens) : null;
@@ -37,7 +36,7 @@ export async function generateMetadata({ params }: OrderPageProps): Promise<Meta
     : null;
 
   return {
-    title: game.seoTitle || templatedTitle || settings.default_meta_title || `Top Up ${game.name} — Kedai Runcit Soloz`,
+    title: game.seoTitle || templatedTitle || settings.default_meta_title || `Top Up ${game.name} — PekanGame`,
     description: game.seoDescription || templatedDescription || settings.default_meta_description || undefined,
     openGraph: (game.seoOgImage || settings.default_og_image)
       ? { images: [{ url: (game.seoOgImage || settings.default_og_image) as string }] }
@@ -92,18 +91,17 @@ export default async function OrderPage({ params }: OrderPageProps) {
       {breadcrumbJsonLd && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       )}
-      <AnnouncementBar />
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 pt-5">
-          <nav className="mb-4 flex items-center gap-2 text-[13px] text-text-muted">
-            <Link href="/" className="hover:text-text">
+          <nav className="mb-4 flex items-center gap-2 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
+            <Link href="/" className="hover:text-primary">
               Home
             </Link>
-            <span className="text-border">›</span>
+            <span className="text-ink/40">›</span>
             <span>{game.category}</span>
-            <span className="text-border">›</span>
-            <span className="font-semibold text-brand-light">{game.name}</span>
+            <span className="text-ink/40">›</span>
+            <span className="text-primary">{game.name}</span>
           </nav>
         </div>
 

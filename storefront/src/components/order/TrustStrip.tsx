@@ -13,16 +13,16 @@ const ITEMS = [
 
 export default function TrustStrip() {
   return (
-    <section className="border-y border-border bg-surface py-8">
+    <section className="border-y-2 border-ink bg-surface-container py-9">
       <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-5 px-4 lg:grid-cols-3">
         {ITEMS.map(({ icon: Icon, title, sub }) => (
           <div key={title} className="flex items-center gap-3.5">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-bg text-brand-light">
-              <Icon size={20} />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-secondary-fixed-dim text-ink neo-sm">
+              <Icon size={20} weight="fill" />
             </div>
             <div>
-              <p className="text-sm font-bold">{title}</p>
-              <p className="text-xs text-text-muted">{sub}</p>
+              <p className="font-display text-sm font-bold">{title}</p>
+              <p className="text-xs text-on-surface-variant">{sub}</p>
             </div>
           </div>
         ))}

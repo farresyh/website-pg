@@ -35,18 +35,20 @@ export default function MembershipPromoCard({
   const ctaLabel = activeTierName ? "Upgrade to Tier 2" : "Become a Member";
 
   return (
-    <div className="rounded-2xl border border-brand-light/40 bg-surface p-5">
-      <p className="mb-2 text-sm font-bold text-brand-light">Membership</p>
-      <p className="text-[13.5px] leading-snug text-text">
-        Unlock <span className="font-semibold text-text">{packageName}</span> at{" "}
-        <span className="font-bold text-brand-light">RM{memberPriceRm.toFixed(2)}</span> — save{" "}
-        <span className="font-bold text-brand-light">
+    <div className="rounded-lg border-2 border-ink bg-secondary-container p-5 neo">
+      <p className="mb-2 font-display text-sm font-bold uppercase tracking-wide text-on-secondary-container">Membership</p>
+      <p className="text-[13.5px] leading-snug text-on-secondary-container">
+        Unlock <span className="font-bold">{packageName}</span> at{" "}
+        <span className="font-mono font-bold">RM{memberPriceRm.toFixed(2)}</span> — save{" "}
+        <span className="font-bold">
           RM{savingsRm.toFixed(2)} ({savingsPercent.toFixed(0)}%)
         </span>{" "}
         on every purchase.
       </p>
-      <p className="mt-2 text-[12.5px] text-text-muted">Subscribe for only RM{(plan.feeSen / 100).toFixed(2)}/month.</p>
-      <Button href="/membership" variant="outline" size="sm" className="mt-3 w-full justify-center">
+      <p className="mt-2 text-[12.5px] text-on-secondary-container/80">
+        Subscribe for only RM{(plan.feeSen / 100).toFixed(2)}/month.
+      </p>
+      <Button href="/membership" variant="outline" size="sm" className="mt-3 w-full">
         {ctaLabel}
       </Button>
     </div>

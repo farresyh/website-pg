@@ -1,4 +1,3 @@
-import AnnouncementBar from "@/components/layout/AnnouncementBar";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import BottomNav from "@/components/layout/BottomNav";
@@ -25,7 +24,6 @@ export default async function HomePage() {
 
   return (
     <>
-      <AnnouncementBar />
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
         <HeroSection games={games} slides={slides} />

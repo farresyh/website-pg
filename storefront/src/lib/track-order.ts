@@ -19,6 +19,16 @@ export const TrackedOrderSchema = z.object({
   package_name: z.string().nullable(),
   player_id: z.string(),
   server_id: z.string().nullable(),
+  // ADR-065 — masked server-side; the raw contact values never reach
+  // this endpoint (see TrackOrderController's doc comment).
+  customer_name_masked: z.string().nullable(),
+  customer_email_masked: z.string().nullable(),
+  customer_phone_masked: z.string().nullable(),
+  // ADR-065 — customer-facing payment breakdown, all integer sen.
+  payment_method: z.string().nullable(),
+  selling_price: z.number(),
+  voucher_discount: z.number(),
+  transaction_fee: z.number(),
   final_amount: z.number(), // sen
   payment_status: z.enum(["pending", "paid", "failed"]),
   // "needs_review" (ADR-026) was missing here — a real, pre-existing gap

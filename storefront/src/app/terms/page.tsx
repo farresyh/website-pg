@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import AnnouncementBar from "@/components/layout/AnnouncementBar";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import BottomNav from "@/components/layout/BottomNav";
@@ -7,7 +6,7 @@ import LegalPageContent from "@/components/legal/LegalPageContent";
 import { getLegalContent } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions — Kedai Runcit Soloz",
+  title: "Terms & Conditions — PekanGame",
 };
 
 // Admin-editable (ADR-028 addendum) — never bake into a static build.
@@ -18,7 +17,6 @@ export default async function TermsPage() {
 
   return (
     <>
-      <AnnouncementBar />
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
         <LegalPageContent title="Terms & Conditions" content={content} />

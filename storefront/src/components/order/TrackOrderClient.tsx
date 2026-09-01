@@ -65,30 +65,29 @@ export default function TrackOrderClient() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-[560px] px-4 py-10 lg:py-16">
-      <h1 className="font-display mb-2 text-2xl tracking-wide">Track Order</h1>
-      <p className="mb-6 text-sm text-text-muted">Enter your order number to check its payment and delivery status.</p>
+    <div className="mx-auto max-w-[560px] px-4 py-12 lg:py-16">
+      <h1 className="font-display mb-2 text-headline-lg font-bold uppercase tracking-tight">Track Order</h1>
+      <p className="mb-6 text-sm text-on-surface-variant">Enter your order number to check its payment and delivery status.</p>
 
-      <form
-        onSubmit={handleSubmit}
-        className="mb-6 flex flex-col gap-2.5 sm:flex-row"
-      >
-        <div className="flex min-h-11 flex-1 items-center gap-2 rounded-lg border border-border bg-surface px-3.5">
-          <MagnifyingGlass size={16} className="shrink-0 text-text-muted" />
+      <form onSubmit={handleSubmit} className="mb-6 flex flex-col gap-2.5 sm:flex-row">
+        <div className="flex min-h-11 flex-1 items-center gap-2 rounded-md border-2 border-ink bg-surface-container-lowest px-3.5 focus-within:border-secondary">
+          <MagnifyingGlass size={16} className="shrink-0 text-outline" />
           <input
             type="text"
             value={orderNumber}
             onChange={(e) => setOrderNumber(e.target.value)}
             placeholder="e.g. KRS-01J..."
-            className="w-full bg-transparent text-sm text-text placeholder:text-text-muted focus:outline-none"
+            className="w-full bg-transparent font-mono text-sm text-on-surface placeholder:text-outline focus:outline-none"
           />
         </div>
-        <Button type="submit" disabled={loading || !orderNumber.trim()} className="justify-center">
+        <Button type="submit" disabled={loading || !orderNumber.trim()}>
           {loading ? "Searching…" : "Track Order"}
         </Button>
       </form>
 
-      {error && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-text-muted">{error}</p>}
+      {error && (
+        <p className="rounded-md border-2 border-ink bg-surface-container p-4 text-sm text-on-surface-variant">{error}</p>
+      )}
     </div>
   );
 }

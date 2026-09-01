@@ -1,66 +1,80 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import Logo from "@/components/ui/Logo";
 import Button from "@/components/ui/Button";
 import { useSearch } from "@/context/SearchContext";
+import { listPlans } from "@/lib/membership";
 
 /**
- * No "Log In" here and no "Account" anywhere on the site — storefront
- * is guest-checkout only, no Customer accounts exist (ADR-011). The
- * standalone small search icon button from the original draft is
- * dropped entirely (was 38px, under the 44px touch-target minimum) —
- * the real search input is always directly reachable instead: inline
+ * No "Log In" and no "Account" anywhere — storefront is guest-checkout
+ * only (ADR-011). The search input is always directly reachable: inline
  * in the header row on desktop, full-width row below it on mobile.
+ *
+ * The "Membership" nav item only appears when membership is actually
+ * enabled for this storefront (ADR-061's dual kill-switch — `listPlans`
+ * returns `[]` when off). This keeps the recorded "no customer-facing
+ * membership link until launch" decision (PRD §15) self-enforcing:
+ * flip the switch and the link appears, no code change.
  */
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
+  const [membershipEnabled, setMembershipEnabled] = useState(false);
+
+  useEffect(() => {
+    listPlans()
+      .then((plans) => setMembershipEnabled(plans.length > 0))
+      .catch(() => setMembershipEnabled(false));
+  }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-bg">
-      <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-4 py-3.5">
+    <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">
+      <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-4 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
-          <Logo size={32} />
-          <span className="font-display text-lg leading-none tracking-wide">KEDAI RUNCIT SOLOZ</span>
+          <Logo size={34} />
+          <span className="font-display text-xl font-bold leading-none tracking-tight">PEKANGAME</span>
         </Link>
 
-        <div className="hidden max-w-[420px] flex-1 items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 lg:flex">
-          <MagnifyingGlass size={16} className="shrink-0 text-text-muted" />
+        <div className="hidden max-w-[420px] flex-1 items-center gap-2 rounded-full border-2 border-ink bg-surface-container-lowest px-4 py-2 focus-within:border-secondary lg:flex">
+          <MagnifyingGlass size={16} className="shrink-0 text-outline" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search for games or products..."
-            className="w-full bg-transparent text-sm text-text placeholder:text-text-muted focus:outline-none"
+            className="w-full bg-transparent text-sm text-on-surface placeholder:text-outline focus:outline-none"
           />
         </div>
 
-        <nav className="hidden items-center gap-6 text-sm font-semibold text-text-muted lg:flex">
-          <a href="#popular-picks" className="border-b-2 border-brand pb-1 text-text">
+        <nav className="hidden items-center gap-6 font-display text-[13px] font-bold uppercase tracking-wide text-on-surface-variant lg:flex">
+          <Link href="/#popular-picks" className="border-b-2 border-primary pb-0.5 text-primary">
             All Products
-          </a>
-          <a href="#promotions" className="pb-1 hover:text-text">
-            Promotions
-          </a>
-          <Link href="/track-order" className="pb-1 hover:text-text">
+          </Link>
+          {membershipEnabled && (
+            <Link href="/membership" className="pb-0.5 hover:text-primary">
+              Membership
+            </Link>
+          )}
+          <Link href="/track-order" className="pb-0.5 hover:text-primary">
             Track Order
           </Link>
         </nav>
 
-        <Button href="/track-order" size="sm" variant="outline" className="shrink-0">
+        <Button href="/track-order" size="sm" variant="primary" className="shrink-0">
           Track Order
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 rounded-none border-t border-border bg-surface px-4 py-2.5 lg:hidden">
-        <MagnifyingGlass size={16} className="shrink-0 text-text-muted" />
+      <div className="flex items-center gap-2 border-t-2 border-ink bg-surface-container-lowest px-4 py-2.5 lg:hidden">
+        <MagnifyingGlass size={16} className="shrink-0 text-outline" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search for games or products..."
-          className="w-full bg-transparent text-sm text-text placeholder:text-text-muted focus:outline-none"
+          className="w-full bg-transparent text-sm text-on-surface placeholder:text-outline focus:outline-none"
         />
       </div>
     </header>

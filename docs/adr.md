@@ -2480,3 +2480,197 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 - **`OrderFactory`** (`database/factories/OrderFactory.php` — the repo's second factory after `AdminUserFactory`). `Order` gains `HasFactory`. Defaults describe a plain paid, undelivered zero-markup guest order; `reseller_id` resolves the `is_primary` row (creating it if absent, same shape as `TestCase::primaryReseller()`). `pending()` / `delivered()` / `forReseller()` states. **Per the PR-B plan (option i), existing tests were not converted** — the ~32 files with a local `Order::query()->create` fixture helper each got one `'reseller_id' => $this->primaryReseller()->id` line (a missed one is a loud NOT NULL failure, never a silent fixture shift); a dedicated "consolidate onto `OrderFactory`" pass is a separate follow-up.
 - **Admin UI.** `RecordPaymentModal` gains a Brand `<SimpleSelect>` (shown only when >1 eligible brand; auto-selects otherwise) and sends `reseller_id`; the `/admin/membership` Members table gains a Brand column + an "All brands" filter (also shown only when >1 brand). `admin/` `tsc`/`eslint` clean.
 - **Tests.** New: `tests/Feature/Models/MembershipTest.php` (composite unique — same email on two brands OK, twice on one brand rejected), `OtpServiceTest` cross-brand rejection, `MembershipSessionTokenServiceTest` brand round-trip + legacy-token rejection, `CheckoutControllerTest` / storefront `MembershipControllerTest` foreign-brand-token cases, `Admin\MembershipControllerTest` brand picker / filter / non-membership-brand rejection. The ~32 order-fixture + membership-fixture files updated as above. **`memberships` local dev DB:** run `php artisan migrate` before using the feature locally (the standing §14 gotcha).
+
+---
+
+## ADR-062: Rebrand the primary storefront to "PekanGame"
+
+**Status:** Accepted (design) — 2026-09-01, grilled with the founder (`grilling` + `impeccable`, same session as ADR-063/064). Ships on `feature/pekangame-storefront-redesign`; may split to its own PR ahead of the visual work.
+
+**Context:**
+- The storefront's public brand is still "Kedai Runcit Soloz" — a name the founder is moving off. New canonical name: **PekanGame** (one word).
+- ADR-061 abolished the platform-owner special-case: the storefront's brand is the `is_primary` `Reseller` row (`business_name = 'Platform Owner'`), and every customer-facing brand string flows from `reseller_branding.store_name` (ADR-028) with `{store_name}` substitution — *except* a set of hardcoded fallbacks in `storefront/` that render when the branding API is unreachable or a field is empty: `layout.tsx` meta title, the per-route `<title>` strings in `order/[slug]`, `order/status/[orderNumber]`, `privacy`, `about-us`, `terms`, `track-order`, `membership`; `SeoBlurb`, `WhyChooseUsSection`, the `SiteHeader` wordmark, `OrderStatusTracker`'s "Contact Soloz Support", a `placeholder-data` testimonial quote, and the `globals.css` header comment.
+- One backend string is customer-visible outside the app: `CheckoutService` sends `"KedaiRuncitSoloz order {order_number}"` as the CHIP payment description — it appears on the customer's bank / e-wallet statement.
+- `Reseller::platformOwner()` → `Reseller::primary()` is already done (ADR-061 PR-A); no live code path keys on the literal `business_name` value any more. Three historical migrations (`2026_08_30_110000`, `2026_08_31_010000`, `2026_09_01_000200`) still resolve the primary row by `where('business_name', 'Platform Owner')` inline and run before `is_primary` exists on a `migrate:fresh` — they must keep working.
+
+**Decision:**
+
+1. **Canonical name is "PekanGame"** (one word, capital P + G). Rendered as an all-caps wordmark in the header/footer (Space Grotesk, per ADR-063); written "PekanGame" everywhere in copy, meta, and JSON-LD.
+
+2. **Storefront hardcoded fallbacks** — every "Kedai Runcit Soloz" / "Soloz" / "KEDAI RUNCIT SOLOZ" literal in `storefront/src` is replaced with "PekanGame" (or the natural possessive / short form). These are fallbacks only; the live path still reads `reseller_branding.store_name`.
+
+3. **Backend brand data** — one new migration renames the primary reseller row: `resellers.business_name` `'Platform Owner'` → `'PekanGame'`, and updates that reseller's `reseller_branding.store_name` (+ any seeded `description`) to "PekanGame". Guarded (`where('is_primary', true)`, skipped if absent — fresh test DBs untouched). `DatabaseSeeder` and `OrderFactory` swap their literal `'business_name' => 'Platform Owner'` to `'PekanGame'`. The three historical migrations keep their inline `'Platform Owner'` lookups (they run first on `migrate:fresh`, creating the row under the old name; the new migration then renames it).
+
+4. **CHIP payment description** — `CheckoutService` sends `"PekanGame order {order_number}"`.
+
+5. **Out of scope — deliberately not renamed:** the repo / directory name (`kedairuncitsoloz`), the database name, the git remote, session / cookie key prefixes (`kerox_*`), and any other purely-internal identifier. Renaming those is churn with no user-visible benefit and a large blast radius.
+
+6. **`Logo.tsx`** — the diamond "S" emblem is Kedai Runcit Soloz's mark. It is replaced with a PekanGame placeholder mark (ADR-063 decision 8); a real exported asset drops into `storefront/public/` and swaps in later.
+
+7. **Admin-editable content already in the DB** (footer text, legal page bodies, hero slides, SEO meta templates) is **not touched by code** — the founder updates those through `/admin` at rollout. This ADR only changes what ships as the default / fallback.
+
+**Rationale:** Post-ADR-061 the rename is almost entirely a string swap plus one guarded migration — no logic keys on the brand name. Keeping the internal identifiers (repo, DB, cookie keys) as-is avoids a multi-hundred-file rename that buys nothing. The payment-description change is the one backend edit worth making because it is the only brand string a customer sees on an external system.
+
+**Consequence to track:**
+- The E2E storefront-checkout golden path (ADR-023) does not assert on the brand name (checked — it asserts "Delivered" and payment-flow text only), so the rename does not break it. Re-run `cd e2e && npm test` after the change regardless.
+- Migration gotcha (§14): run plain `php artisan migrate` against the local dev DB — `php artisan test` passing is not proof the local DB is renamed. Never `migrate:fresh`.
+- If ADR-060 later makes `store_name` fully `Host`-resolved, these hardcoded fallbacks stay as the "no brand resolved / API down" default. An unresolved `Host` returns 404 (ADR-060 decision 2), so the fallback is only ever seen on the primary storefront — "PekanGame" is the right default there. Acceptable.
+- PRD §14 build-log entry + §15 tracker note owed when this ships.
+
+---
+
+## ADR-063: Storefront visual system replacement — light neo-brutalist "Digital Architect" world
+
+**Status:** Accepted (design) — 2026-09-01, grilled with the founder (`grilling` + `impeccable` skills). Replaces the storefront's original visual world (the palette / fonts / logo established in PRD §15's storefront scaffold row and the `globals.css` header comment — never an ADR of its own). ADR-028's branding *pipeline* is untouched. Ships on `feature/pekangame-storefront-redesign`.
+
+**Context:**
+- The storefront ships **one hardcoded visual world**: `storefront/src/app/globals.css` `@theme` tokens (dark forest-green — `--color-bg: #04140e`, `--color-brand: #007400`), Bebas Neue + Source Sans 3 fonts (`layout.tsx`, `next/font/google`), a CSS-approximated diamond logo. This palette was "extracted from the real Kedai Runcit Soloz brand assets" (ADR-028) — it is now anti-reference.
+- The founder produced a Stitch design set (`~/Downloads/stitch_fixfast_brand_evolution/`, 6 desktop screens + `DESIGN.md`) and a neo-brutalist design-system poster as the direction. Both are **reference, not spec** — the founder wants the card layouts, colours, and structure "as close as possible" to the Stitch screens, with craft latitude to improve.
+- The founder's stated intent (grilling Q13/Q14): the Stitch "Digital Architect" palette is the poster's hard neo-brutalism **deliberately softened** ("nampak terlalu sharp, jadikan lebih smooth"). Ship **light** for PekanGame v1 (the original brief; all 6 Stitch screens are light), but the founder also wants dark available later per-tenant.
+- Per-tenant theming (PRD §6.15 THM-1..4) is explicitly a **separate future ADR**, not this one. The reseller "theme system" stays out (ADR-059 / ADR-060 notes).
+- Stack: Next.js 16 / React 19 / Tailwind **v4** (CSS `@theme`, no `tailwind.config.js`). Icons: `@phosphor-icons/react` already a dependency. `next/image` already used (`ProductCard`, `HeroSlider`).
+
+**Decision:**
+
+1. **Full redesign, not a refinement.** `globals.css`'s token world is replaced wholesale. Product truth, copy meaning, routes, flows, the guest-checkout constraint (ADR-011), and realtime wiring (ADR-047) are all preserved. The dark-green world + Bebas Neue + diamond logo are treated as evidence of the old identity and discarded, not polished.
+
+2. **Light-first, dual-theme token structure.** v1 ships light only and exposes no dark toggle. But tokens are defined as **semantic roles** (`--color-surface`, `--color-on-surface`, `--color-primary`, …) with a light palette now and the structure ready for a dark palette to be added later without renaming anything. The future THM ADR builds on this; it does not retrofit it. `dark:` variant classes are **not** scattered through components in v1 — theme switching, when it comes, is a token-set swap at the root, not per-element overrides.
+
+3. **Palette — Stitch "Digital Architect" M3 base, two poster-driven adjustments.**
+   - Primary (brand / primary CTA / structural highlight): **`#6b38d4`** purple. `on-primary` `#ffffff`, `primary-container` `#8455ef`.
+   - Secondary (interactive states, focus, technical detail): **`#57dffe`** cyan (`secondary` `#00687a`, `secondary-container` `#57dffe`).
+   - Tertiary (promotions, discounts, urgency **only**): **`#b10e6b`** magenta.
+   - **Adjustment 1 — background:** shift off Stitch's lavender-white `#fcf8ff` to a **warm paper** `#F7F4EC` (the poster's paper-beige feel, less yellow than `#F5F5DC`). The surface-container ramp is re-derived warm to match.
+   - **Adjustment 2 — a fourth accent:** the poster's **yellow `#FFD700`** enters as a `warning` / high-attention accent only (stock warnings, "verify your ID" nudges). Never a CTA fill, never under body text.
+   - Ink (all type + structural borders): **`#19192f`** navy, never pure black. Functional: success emerald, error `#ba1a1a` crimson.
+   - The full M3 tonal set from `DESIGN.md` is adopted as the token values (containers, `on-*` pairs, `-fixed` variants) — a complete system, not hand-picked hues.
+
+4. **Typography — the Stitch trio, Stitch scale.**
+   - **Space Grotesk** (400/600/700) — display, all headings, CTA labels (CTAs uppercase, `+0.05em` tracking).
+   - **Inter** (400/500/600) — body, form fields, everything readable.
+   - **JetBrains Mono** (700) — prices, order numbers, player IDs, transaction IDs.
+   - Loaded via `next/font/google` in `layout.tsx`; Bebas Neue + Source Sans 3 removed.
+   - Scale: `display` 64 / 40 mobile, `headline-lg` 40, `headline-md` 28, `headline-sm` 20, `body-lg` 18, `body-md` 16, `caption` 12, `price` 24. **Hero display is the one showpiece exception** — it may run 72–96px on desktop, tuned to the banner, 40–48px mobile.
+
+5. **Neo-brutalism, two token tiers.** The poster's discipline — thick ink strokes, squared corners with limited radii, solid accent blocks for status, strict grid alignment, **focus always visible** — is adopted. Intensity is split by surface role:
+   - **Display tier** (home, catalog, product-hero card, product cards, marketing sections): 2px ink border; hard shadow, 4px offset, ink at `~0.9` alpha; radius 8px (containers / cards) / 6px (buttons); hover shifts the shadow to cyan or purple + `translate(-2px,-2px)`.
+   - **Utility tier** (checkout form fields, review modal, OTP input, track-order form, order-summary rows): 1.5px border; restrained shadow (2px offset) or none; radius 6px; **focus = a 2px cyan ring / hard-shadow that is always rendered**, never suppressed. Money screens stay legible and calm — loud framing does not touch payment inputs.
+   - Promo chips are the one pill-shaped (`rounded-full`) exception, magenta fill.
+   - Elevation tokens: `shadow-0` none, `shadow-1` 4px (display default), `shadow-2` 8–12px (sticky summary, modal).
+
+6. **Icons stay Phosphor.** Stitch's Material Symbols glyphs are mapped to `@phosphor-icons/react` equivalents (`bolt`→`Lightning`, `local_fire_department`→`Fire`, `timer`→`Timer`, `security`→`ShieldCheck`, `support_agent`→`Headset`, `verified`→`SealCheck`, `expand_more`→`CaretDown`, …). No new icon font is added.
+
+7. **Imagery.** Real artwork renders through `next/image` wherever the data has it (game thumbnails, hero `imageUrl`). The fallback for a missing image is a **branded neo-brutalist placeholder tile** (bordered, `surface-variant` fill, centred mark) — never a broken `<img>`, never a lone floating icon. The hero's no-image state is a designed split-card treatment (ADR-064), not a generic gradient.
+
+8. **Logo.** A PekanGame placeholder mark is authored as an inline SVG component (same pattern as the current `Logo.tsx`): a bolt inside a hard-bordered square, paired with the Space Grotesk wordmark. Explicitly a placeholder — a real exported asset replaces it in `storefront/public/` later.
+
+9. **Motion.** Purposeful and minimal: the hard-shadow hover shift, a purple→cyan gradient on progress indicators (the "speed / digital flow" cue from `DESIGN.md`), accordion / disclosure transitions. All motion respects `prefers-reduced-motion` (already the storefront's standard — `HeroSlider`).
+
+10. **Verification.** After the token world and ADR-064's surfaces are built, run `node .claude/skills/impeccable/scripts/detect.mjs --json` over the changed targets once, fix findings in one batch, and do one bounded browser pass (desktop + mobile together) — not an open-ended polish loop.
+
+**Rationale:** The founder's own framing settles the palette question — the Stitch "Digital Architect" set *is* their softened neo-brutalism, so adopting it verbatim (with a warmer ground and the poster's yellow as a warning accent) honours the brief rather than splitting the difference. A light neo-brutalist storefront is also a genuine differentiator: the SEA top-up category (Codashop, UniPin, SEAGM) is uniformly dark-neon. The two-tier intensity is not a compromise — the Stitch screens already modulate this way (1px inputs, 2px cards), and it is the right call for a money-critical surface: trust and legibility on the payment path outrank expressive framing. Keeping the dual-theme token *structure* while shipping light-only means the future THM ADR is an addition, not a rewrite.
+
+**Consequence to track:**
+- **Accepted debt:** this hardcodes exactly one visual world (PekanGame's). When ADR-060's `Host` multi-tenancy lands, a second `is_owned` brand renders in PekanGame's skin until the THM ADR ships a real per-tenant theme layer. The founder has accepted this explicitly (grilling Q11). THM stays its own ADR (PRD §6.15).
+- Replaces the "palette extracted from the real Kedai Runcit Soloz logo/banner assets" world described in PRD §15's storefront scaffold row and stated in the old `globals.css` header comment (that comment is rewritten). This was never captured in an ADR — ADR-028 is the *branding pipeline* (DB-driven `store_name`, footer, legal) and is unchanged.
+- Bebas Neue / Source Sans 3 removal touches every component that names `font-display` expecting Bebas metrics — Space Grotesk is wider; heading line-heights and `tracking` need a re-check in the browser pass, not just a find-replace.
+- Tailwind v4: all tokens live in `globals.css @theme`; there is no `tailwind.config.js` to edit. Custom utilities (`neo-shadow`, `neo-shadow-hover`) are defined with `@utility`.
+- The warm-paper ground (`#F7F4EC`) must be checked for AA contrast against `on-surface-variant` body text in the audit pass — adjust the ground or the text token, not the primary hue.
+- PRD §14 build-log + §15 note owed on ship.
+
+---
+
+## ADR-064: Storefront per-surface redesign + component rebuild
+
+**Status:** Accepted (design) — 2026-09-01, grilled with the founder. Consumes ADR-063's token world. Ships on `feature/pekangame-storefront-redesign` (one PR with ADR-062/063, or a follow-up PR).
+
+**Context:**
+- ADR-063 establishes the visual language. This ADR is the surface-by-surface application: which storefront screens change, what changes structurally vs. what is only reskinned, and the shared primitives that get rebuilt.
+- The Stitch set covers 6 screens (home, ML top-up, checkout review modal, order status, track-order, membership history). The storefront has more: `membership` page, `about-us` / `privacy` / `terms` legal pages, the not-found page, the mobile `BottomNav`, `AnnouncementBar`, `HeroSlider`. Grilling Q7: **all** surfaces are redesigned — the 6 Stitch screens set the language and it is extended consistently to the rest.
+- Hero content (eyebrow, title, description, image, CTA labels / hrefs, price) is **DB-driven and admin-editable** via `HeroSlideController` (`hero-slides.ts`). This ADR restyles the hero *container / treatment* only; copy stays admin-authored. No change to `HeroSlideController`, its model, or the admin screen.
+- All component props, behaviour, routes, the guest-checkout model, voucher / membership logic, and realtime order-status wiring are preserved — this is reskin + layout restructure, not a functional change.
+
+**Decision:**
+
+1. **Shared primitives, rebuilt in the ADR-063 language** (`storefront/src/components/ui/`): `Button` (variants primary / outline / text / destructive; display-tier framing), and new `Card`, `Badge`, `Chip` (promo pill), `StepIndicator`, `PlaceholderTile`. Existing components consume these rather than re-implementing borders / shadows inline.
+
+2. **Home (`page.tsx` + `components/home/*`)** — sections in Stitch order and treatment:
+   - **Hero** — `HeroSection` becomes a 12-col split: a large bordered content card (eyebrow chip, display headline, description, CTA row) beside the `QuickCounterCard` restyled as Stitch's "Quick Top-Up" widget (game-picker grid + primary CTA). With-image slides render the image in a bordered frame + hard shadow (scrim only where text overlaps); the no-image state is the designed split-card with a decorative offset block behind (`secondary-fixed-dim`), replacing the current diagonal-cut dark gradient.
+   - **Popular Picks / New Arrivals** — `ProductCard` grid: bordered card, image-or-`PlaceholderTile` header, title, subtitle, dashed-rule divider, "Starting from" + mono price, hard-shadow hover.
+   - **Why Choose Us** — 3 icon cards in a bordered container, `secondary-fixed-dim` icon chips.
+   - **Payment Methods / Testimonials / FAQ / SEO blurb / promotions** — reskinned to the card / border / shadow language; FAQ is a bordered accordion with a rotating `CaretDown`.
+   - Hardcoded `TRUST_ITEMS` / feature copy is unchanged (matches Stitch: "3-Minute Delivery", "Xendit-Secured", "24/7 WhatsApp").
+
+3. **Order flow (`order/[slug]/page.tsx` + `components/order/*`)** — Stitch's "Mobile Legends Top-Up" layout:
+   - Breadcrumbs; **product hero card** (bordered, game mark, title, "Instant Delivery" chip, avg-delivery caption).
+   - Two-column: left = the 3 steps with a `StepIndicator` (Enter ID → Package → Payment) and per-section numbered headers; right = **sticky `OrderSummarySidebar`** (bordered, `shadow-2`, uppercase "Order Summary", line items, mono totals, primary "Review & Pay" CTA, security caption) with the `MembershipPromoCard` below it (ADR-055 — kept, restyled).
+   - `Step1AccountInfo` — utility-tier inputs, "Verify Account" outline button, success / error banners with 1px functional-colour borders.
+   - `PackageGrid` — package cards showing the standard price and, when membership is active, a highlighted member-price row + "Save RMx" tag; selected card = primary border + check badge + coloured hard shadow.
+   - Payment-method picker — grouped (e-wallet / FPX / card), utility-tier selectable tiles.
+
+4. **`ReviewModal`** — utility-tier: 2px ink modal border, `shadow-2`, header + close, order-summary block, email / name / phone inputs, voucher input + Apply, total breakdown (package / fee / voucher deduction / total), T&C checkbox (custom neo checkbox), uppercase "Confirm & Pay" primary CTA. Backdrop blur + dim.
+
+5. **Order status (`order/status/[orderNumber]` + `OrderStatusTracker`)** — reference + status + stage-tracker card, then a Stitch **bento grid** (Game & Package / Customer Info / Payment Details) + a "Need help?" sidebar card (`primary-fixed` fill, Contact Support + Buy Again). The bento's Customer Info + payment breakdown are their own decision — **[ADR-065](#adr-065-guest-order-status-detail--masked-contact--payment-breakdown-on-a-track-by-number-view)** widens the guest response (masked contact + `payment_method`/`selling_price`/`voucher_discount`/`transaction_fee`) and the ADR-047 broadcast payload in step with it.
+
+6. **Track-order (`track-order/page.tsx` + `TrackOrderClient`)** — bordered lookup form (utility tier) + a refined results table: ink header row, uppercase mono column labels, hover-highlighted rows, status pills (`neo-border` + container colour by state).
+
+7. **Membership page (`membership/page.tsx` + `MembershipClient`)** — email → OTP → dashboard flow reskinned to the language; OTP input is utility-tier with always-visible focus. The verified-member dashboard becomes the Stitch `membership_history` layout — see the build addendum.
+
+8. **Legal pages** (`about-us`, `privacy`, `terms` via `LegalPageContent`) — reskinned to a reading surface: paper ground, bordered content frame, Space Grotesk headings, Inter body. Content is unchanged (DB-driven / sanitized server-side). (No custom `not-found` page exists — see the build addendum.)
+
+9. **Layout chrome** — `SiteHeader` (bordered, wordmark + search + nav + Track Order CTA, the mobile search row kept), `SiteFooter` (`surface-container-highest`, 2px top border, columns + payment chips), mobile `BottomNav` — all to the new language, all existing behaviour preserved. (`AnnouncementBar` was removed entirely — see the build addendum.)
+
+10. **Critique + polish** — after the surfaces exist, run `/impeccable critique` on the home + order flow, fold the findings in, then the single bounded verification pass from ADR-063 decision 10. Not an open loop.
+
+**Rationale:** Doing every surface in one pass is the right call (grilling Q7) — a half-redesigned storefront reads as broken, and the shared primitives (decision 1) make the long tail cheap once they exist. Restyling the hero container while leaving its copy in the admin-editable data path keeps the campaign-management feature (ADR-029 backlog) intact. The order flow and review modal follow Stitch's structure closely because that is what the founder asked for ("layout card… semua ikut mcm ni"); the craft latitude is spent on the two-tier intensity, motion, focus states, and the mobile layouts Stitch never drew.
+
+**Consequence to track:**
+- Stitch is desktop-only. Every surface needs a mobile layout designed here, not inferred — verify both widths in the browser pass.
+- `ProductCard` / `HeroSlider` already use `next/image` with real remote URLs — the `next.config.ts` `images.remotePatterns` allowlist is unchanged; `PlaceholderTile` is pure CSS / SVG, no new remote host.
+- `MembershipPromoCard` (ADR-055) and the member-pricing rows in `PackageGrid` depend on membership being enabled for the brand (ADR-061 `membershipEnabledEffective()`) — the redesign must keep the "hidden when kill-switch off" behaviour, not just restyle the visible state.
+- No automated FE tests exist for the storefront (ADR-023 E2E golden paths are the only coverage). The checkout golden path must stay green — re-run `cd e2e && npm test` (needs `XENDIT_SECRET_KEY`).
+- PRD §14 build-log + §15 storefront-status note owed on ship.
+
+**Build addendum — founder feedback, 2026-09-01:**
+- **`AnnouncementBar` deleted.** The purple top strip is removed from every page and the component file dropped (it was hardcoded marketing copy, not DB-driven — no feature lost).
+- **`QuickCounterCard` is an icon-tile grid, not a `<select>`** (matches the Stitch "Quick Top-Up" widget): the pinned `QUICK_COUNTER_SLUGS` games render as picker tiles (real thumbnail or a Phosphor icon + name), padded with the top catalog games to fill up to 6; no "browse all" link (the header search + Popular Picks cover the long tail).
+- **Nav "Promotions" → "Membership"** (`/membership`), in both `SiteHeader` and `BottomNav` (Crown icon), **rendered only when membership is enabled for the brand** — `listPlans()` returns `[]` under ADR-061's dual kill-switch, so the link is absent until the founder turns membership on, which keeps PRD §15's "no customer-facing membership link until launch" decision self-enforcing rather than a manual nav edit later. The homepage `PromotionsSection` + `#promotions` anchor stay.
+- **Membership dashboard → Stitch layout** (`fixfast_membership_history`): the verified-member view becomes a two-column status card (tier + Active pill | quota + renew date) plus the Stitch order-history **table** (Date / Game·Package / Order # / Price / Status), horizontally scrollable on narrow screens. Frontend-only — `created_at` and `order_number` were already in the `GET /api/membership/me` response, just not rendered. **Not built:** the Stitch "Account Links" sidebar (Profile Settings / Linked Wallets / Security) — those pages don't exist and won't (ADR-027's "lighter than an account" identity); Sign Out is the only real action.
+- **Order-status detail → Stitch bento layout** — its own decision, [ADR-065](#adr-065-guest-order-status-detail--masked-contact--payment-breakdown-on-a-track-by-number-view).
+- **`not-found` left as the Next.js default.** Decision 8 listed a custom not-found reskin, but `storefront/src/app/not-found.tsx` does not exist — Next renders its built-in page. No custom 404 was in scope; not created here.
+
+---
+
+## ADR-065: Guest order-status detail — masked contact + payment breakdown on a track-by-number view
+
+**Status:** Accepted — 2026-09-01, grilled with the founder. Extends (does not replace) `TrackOrderController`'s narrow-by-design shape. Ships on `feature/pekangame-storefront-redesign` alongside ADR-064.
+
+**Context:**
+- `GET /api/track-order/{orderNumber}` and its realtime twin `OrderStatusUpdated` (ADR-047) are guest-accessible: the `order_number` ULID (~80 bits random, `OrderNumberService`) is treated as proof of ownership — no email, no 2FA, the courier-tracking-number model (ADR-011: no customer accounts). The route is rate-limited `throttle:20,1,track-order`.
+- Both producers deliberately return a **narrow, customer-safe subset** of `Order` — never `cost_price` / `standard_selling_price` / `platform_profit` / `reseller_profit` / `supplier_response` / `payment_ref` / `supplier_ref`. `TrackedOrderSchema` (`storefront/src/lib/track-order.ts`) is the one shared shape for the poll and the push — ADR-047's own lesson: one schema, two producers, or they silently drift.
+- ADR-064 wants the Stitch "order status detail" layout — a bento grid of **Game & Package** / **Customer Info** / **Payment Details** cards. Customer contact and a payment breakdown are not in today's response.
+
+**Decision:**
+
+1. **Widen the guest order-status shape — masked contact + customer-facing payment breakdown, nothing internal.** Added to `TrackOrderController::show()`, `OrderStatusUpdated::broadcastWith()`, and `TrackedOrderSchema` together:
+   - `customer_name_masked`, `customer_email_masked`, `customer_phone_masked` (nullable) — decision 2.
+   - `payment_method` (the human channel label), `selling_price` (the price **actually charged** — member-aware, ORD-9-snapshotted; **never** `standard_selling_price`, the counterfactual), `voucher_discount`, `transaction_fee` (all integer sen). `final_amount` is already present.
+   - **Not added:** `payment_ref` or any gateway transaction id. Grilling Q2 — the Stitch "Transaction ID" row is dropped; a customer raising a bank dispute contacts support, who has the ref.
+
+2. **Masking is server-side and lives ONLY in these two producers.** Full `customer_*` values never leave the backend on this surface. The `Order` model is untouched — no accessor, no global mutation — so `$order->customer_email` stays full everywhere else (`/admin/orders`, `CheckoutService`, `OrderFulfillmentService`, notifications, `MembershipController`'s own-email order history, the ledger). A shared `App\Support\ContactMask` helper (`name()` / `email()` / `phone()`) backs both producers so the format can't drift between poll and push. Formats:
+   - **name** → first token + last-token initial (`John Doe` → `John D.`); a single-token name renders as-is.
+   - **email** → first char + `••••` + the full domain (`john@gmail.com` → `j••••@gmail.com`).
+   - **phone** → first 2 + `•-•••-•` + last 3 (`0123456789` → `01•-•••-•789`); `null` → `null`.
+
+3. **No new friction on the lookup.** The existing `throttle:20,1,track-order` stays unchanged — a polling customer uses ~3/min (20 s interval); an 80-bit ULID makes enumeration futile. Masked contact is a recognition aid for the buyer, not usable PII for a stranger, so email-gating every lookup (rejected in grilling Q4) would only tax the common case (a customer clicking their own status link).
+
+4. **Storefront (ADR-064) renders the bento grid** — **Game & Package** (Game / Package / Player ID / Server ID), **Customer Info** (the three masked fields), **Payment Details** (Method / Package Price / Transaction Fee / Voucher Deduction) + a highlighted **Amount Paid** box. The stage tracker, "Need help?" sidebar and FAQ below are unchanged.
+
+**Rationale:** The buyer typed their own contact details at checkout, so a masked echo is all they need to confirm "this is my order"; a stranger who obtains the order number — a forwarded screenshot is the realistic vector, not brute-forcing an 80-bit ULID — gets nothing actionable. Masking server-side keeps the full-PII blast radius exactly where it is today (the model, and every admin/ops path, is unchanged). The payment breakdown is money the customer already saw at checkout, shown back to them — not a new disclosure — while `standard_selling_price`, profit, and supplier fields stay out as always.
+
+**Consequence to track:**
+- `TrackedOrderSchema` grows: both producers (`TrackOrderController` + `OrderStatusUpdated`) must emit the new fields, or the shared-schema parse fails on whichever path is missed — the exact bug ADR-047 caught with `needs_review`. Handled by editing both in this change; a test on each locks it.
+- `App\Support\ContactMask` is now the single masking implementation — any later "masked contact" surface reuses it rather than re-rolling the format.
+- The decision is **not** to expose `payment_ref` here. If a future bank-dispute self-service want reopens that, it reopens decision 1's "nothing internal" line — record it, don't just add the field. The `standard_selling_price` / profit / supplier-field exclusions are untouched and load-bearing.
+- Tests: `TrackOrderControllerTest` gains masked-shape assertions + a leak guard (no raw `customer_*` / `standard_selling_price` / `payment_ref` in the JSON); an `OrderStatusUpdated` payload test asserts the same shape so poll and push stay identical.
+- PRD §14 build-log + §15 note owed on ship (folded into the ADR-064 storefront entry).
