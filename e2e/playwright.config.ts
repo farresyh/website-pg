@@ -24,6 +24,16 @@ export default defineConfig({
   // contention rather than working around it test-by-test.
   workers: 1,
   retries: 0,
+  // Per-test cap. The default 30s is too tight for the checkout golden
+  // path specifically: it's a ~10-step flow, and its last step is the
+  // first hit to the storefront's `/order/status/[orderNumber]` route,
+  // which `next dev` compiles on demand — 5-15s of cold-compile on a
+  // 2-core CI runner, on top of the queue worker picking up
+  // FulfillOrderJob and a 5s status-page poll cycle. 60s absorbs that
+  // without masking a real hang (a genuinely stuck fulfilment still
+  // fails, just later). The 3 admin specs finish in 4-9s — headroom is
+  // free for them.
+  timeout: 60_000,
   reporter: [["list"]],
   use: {
     trace: "retain-on-failure",
