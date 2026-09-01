@@ -26,6 +26,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Production runs behind the droplet's host nginx → the compose
+        // `nginx` service → php-fpm (docker-compose.prod.yml, ADR-020).
+        // Trust the forwarded headers so url()/$request->secure()/the
+        // session cookie `secure` flag reflect the real https edge —
+        // nothing else can reach php-fpm (DO Cloud Firewall + the
+        // compose-internal network).
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'admin.role' => EnsureAdminRole::class,
             // ADR-058 (58a): activates ADR-057's tenant scope from the
