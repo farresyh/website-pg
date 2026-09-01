@@ -21,10 +21,10 @@ use RuntimeException;
 use Tests\TestCase;
 
 /**
- * ADR-022's newest addendum, decision 5 — mirrors
- * XenditWebhookControllerTest's own coverage (order lifecycle,
- * PAY-2 duplicate guard, queued fulfillment), but drives the route
- * through a genuinely RSA-signed request the same way ChipGatewayTest
+ * ADR-022's 2026-08-03 addendum, decision 5 — covers the full order
+ * lifecycle (payment status transition, PAY-2 duplicate guard, queued
+ * fulfillment), and drives the route through a genuinely RSA-signed
+ * request the same way ChipGatewayTest
  * proves ChipGateway::verifyWebhookSignature() itself, rather than
  * faking the gateway — this test is the one place that proves the
  * real ChipGateway is wired into the real route end-to-end.
@@ -151,7 +151,7 @@ class ChipWebhookControllerTest extends TestCase
 
     /**
      * ADR-014: fulfillment must never run inline on the webhook
-     * request thread, same discipline as XenditWebhookController.
+     * request thread (ADR-014).
      */
     public function test_dispatches_fulfillment_as_a_queued_job_instead_of_running_it_inline(): void
     {
@@ -222,8 +222,9 @@ class ChipWebhookControllerTest extends TestCase
     }
 
     /**
-     * Defense-in-depth: mirrors XenditWebhookControllerTest's own
-     * amount-mismatch rejection.
+     * Defense-in-depth: a paid webhook whose amount does not match the
+     * order's final_amount is rejected, never fulfilled — the same
+     * cross-check ReconcilePendingPaymentsCommand applies.
      */
     public function test_rejects_a_paid_webhook_when_the_amount_does_not_match_the_order(): void
     {
