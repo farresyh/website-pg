@@ -106,22 +106,6 @@ return [
         'cooldown_seconds' => (int) env('SUPPLIER_CIRCUIT_BREAKER_COOLDOWN_SECONDS', 60),
     ],
 
-    // Temporary env-based config for local/manual testing of
-    // XenditGateway. Test vs. live mode is controlled by which key
-    // type is set (Xendit's own convention: xnd_development_... vs
-    // xnd_production_...), not a separate sandbox URL/flag.
-    'xendit' => [
-        'base_url' => env('XENDIT_BASE_URL', 'https://api.xendit.co'),
-        'secret_key' => env('XENDIT_SECRET_KEY'),
-        'webhook_token' => env('XENDIT_WEBHOOK_TOKEN'),
-        // ADR-019: keep short so a slow Xendit response can't hold a
-        // customer-facing checkout request thread open indefinitely,
-        // compounded across retry attempts. Same discipline as
-        // GamevionAdapter's own timeout config above.
-        'timeout' => (int) env('XENDIT_TIMEOUT_SECONDS', 10),
-        'connect_timeout' => (int) env('XENDIT_CONNECT_TIMEOUT_SECONDS', 5),
-    ],
-
     /**
      * ADR-022 — CHIP Collect (docs.chip-in.asia). No separate
      * sandbox base URL is documented; CHIP tests using the same
@@ -209,7 +193,7 @@ return [
     // Same STOREFRONT_URL env var cors.php already reads (may be
     // comma-separated when multiple origins are allowed) — first entry
     // is the canonical origin used to build the per-order redirect URL
-    // Xendit sends the customer back to after hosted-page payment. See
+    // CHIP sends the customer back to after hosted-page payment. See
     // CheckoutService::requestPayment().
     'storefront' => [
         'url' => explode(',', env('STOREFRONT_URL', 'http://localhost:3001'))[0],
@@ -224,13 +208,13 @@ return [
 
     // ADR-021 (PAY-3) — ReconcilePendingPaymentsCommand's own thresholds.
     // pending_after_minutes: how stale a payment_status=pending order must
-    // be before it's even worth asking Xendit about (a checkout from 30
-    // seconds ago just hasn't had its webhook arrive yet — not a real gap).
-    // flag_after_hours: the fallback safety-net cap — no terminal answer
-    // from Xendit after this long means "flag for admin review", never
-    // "assume failed", since the gateway state might still be genuinely
-    // open (grilled explicitly in ADR-021, not decided by elapsed time
-    // alone).
+    // be before it's even worth asking the gateway about (a checkout from
+    // 30 seconds ago just hasn't had its webhook arrive yet — not a real
+    // gap). flag_after_hours: the fallback safety-net cap — no terminal
+    // answer from the gateway after this long means "flag for admin
+    // review", never "assume failed", since the gateway state might still
+    // be genuinely open (grilled explicitly in ADR-021, not decided by
+    // elapsed time alone).
     'payment_reconciliation' => [
         'pending_after_minutes' => (int) env('PAYMENT_RECONCILIATION_PENDING_AFTER_MINUTES', 30),
         'flag_after_hours' => (int) env('PAYMENT_RECONCILIATION_FLAG_AFTER_HOURS', 24),

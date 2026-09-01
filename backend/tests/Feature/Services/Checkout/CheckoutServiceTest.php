@@ -7,6 +7,8 @@ use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Checkout\DuplicateCheckoutAttemptException;
+use App\Services\Ledger\LedgerService;
+use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\PaymentStatus;
@@ -14,12 +16,10 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
-use App\Services\Membership\MembershipQuotaService;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingService;
-use App\Services\Ledger\LedgerService;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -34,12 +34,12 @@ class CheckoutServiceTest extends TestCase
     private function service(): CheckoutService
     {
         return new CheckoutService(
-            new PricingService(),
-            new CheckoutTotalService(),
-            new OrderNumberService(),
-            new VoucherService(new LedgerService()),
-            new MembershipPricingService(),
-            new MembershipQuotaService(),
+            new PricingService,
+            new CheckoutTotalService,
+            new OrderNumberService,
+            new VoucherService(new LedgerService),
+            new MembershipPricingService,
+            new MembershipQuotaService,
         );
     }
 
@@ -57,7 +57,7 @@ class CheckoutServiceTest extends TestCase
             'resellerMarkupPct' => 0.0,
             'paymentFeeConfig' => new PaymentMethodFeeConfig(0.0, 100),
             'paymentMethod' => 'duitnow',
-            'paymentGateway' => 'xendit',
+            'paymentGateway' => 'chip',
             'channelCode' => 'DUITNOW_PAY',
             'idempotencyKey' => (string) Str::uuid(),
             'supplierProductRef' => 'FFP5',
@@ -80,8 +80,7 @@ class CheckoutServiceTest extends TestCase
                 private readonly ?array $data,
                 private readonly ?string $errorCode,
                 private readonly ?string $errorMessage,
-            ) {
-            }
+            ) {}
 
             public function createPayment(PaymentRequest $request): PaymentResponse
             {
@@ -128,8 +127,8 @@ class CheckoutServiceTest extends TestCase
      * payment_ref) rather than rolling it back — that's the safe
      * failure direction. Order creation and the gateway call are
      * deliberately not wrapped in one transaction: if they were, a
-     * commit failure after a successful Xendit call could instead
-     * orphan a real, payable Xendit payment link with no matching
+     * commit failure after a successful gateway call could instead
+     * orphan a real, payable CHIP purchase link with no matching
      * Order anywhere in the system, which is worse.
      */
     public function test_initiate_keeps_the_order_when_payment_request_creation_fails(): void
@@ -249,7 +248,7 @@ class CheckoutServiceTest extends TestCase
         ]), $gateway);
 
         $expectedUrl = rtrim((string) config('services.storefront.url'), '/')
-            . '/order/status/' . $order->order_number;
+            .'/order/status/'.$order->order_number;
 
         $this->assertSame($expectedUrl, $gateway->receivedRequest->channelProperties['success_return_url']);
         $this->assertSame($expectedUrl, $gateway->receivedRequest->channelProperties['failure_return_url']);

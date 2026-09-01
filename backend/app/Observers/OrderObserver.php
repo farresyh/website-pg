@@ -11,7 +11,7 @@ use Throwable;
 /**
  * ADR-047 decision 1 — the single seam every payment_status/delivery_status
  * writer broadcasts through (OrderFulfillmentService's three transition
- * methods, XenditWebhookController/ChipWebhookController,
+ * methods, ChipWebhookController,
  * ReconcilePendingPaymentsCommand, CheckoutService's fully-voucher-covered
  * path, OrderResendService). A new call site that changes either column
  * gets broadcasting for free — nothing to remember to wire up there.

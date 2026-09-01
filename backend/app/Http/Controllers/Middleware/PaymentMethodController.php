@@ -128,7 +128,7 @@ class PaymentMethodController extends Controller
      * moves no money) — the same manual curl-based check done during
      * the 2026-07-25 live e2e checkout session, now a proper admin
      * tool. Records the exact outcome so admin doesn't need direct
-     * Xendit Dashboard access to know why a channel is rejected.
+     * CHIP portal access to know why a channel is rejected.
      *
      * Sends a nominal `customer` (PaymentCustomer) and default
      * `success_return_url`/`failure_return_url` — this is a technical

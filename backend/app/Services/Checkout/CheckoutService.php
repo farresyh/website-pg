@@ -41,8 +41,7 @@ final class CheckoutService
         private readonly VoucherService $vouchers,
         private readonly MembershipPricingService $membershipPricing,
         private readonly MembershipQuotaService $membershipQuota,
-    ) {
-    }
+    ) {}
 
     /**
      * Deliberately NOT wrapped in one DB transaction spanning the
@@ -51,16 +50,17 @@ final class CheckoutService
      * after it succeeds, the failure mode is the safe direction — an
      * Order stuck at Pending with no payment_ref, recoverable by
      * retry — rather than the dangerous direction a wrapping
-     * transaction would risk: a real, payable Xendit payment link
+     * transaction would risk: a real, payable CHIP purchase link
      * existing with no matching Order anywhere in the system if the
-     * transaction rolled back after Xendit had already accepted it.
+     * transaction rolled back after CHIP had already accepted it.
      *
      * $gateway is caller-resolved (CheckoutController looks up the
      * matched PaymentMethod row's `gateway` column via
-     * PaymentGatewayFactory) rather than constructor-injected — a
-     * single fixed gateway can't serve a checkout that routes
-     * different channels to different gateways (multi-gateway seam,
-     * 2026-07-25, see the payment_methods migration's doc comment).
+     * PaymentGatewayFactory) rather than constructor-injected — kept
+     * this shape through ADR-022's 2026-09-01 addendum even though CHIP
+     * is the only gateway, so a future multi-region ADR that re-adds a
+     * second one needs no change here (see the payment_methods
+     * migration's doc comment).
      */
     public function initiate(CheckoutRequest $request, PaymentGateway $gateway): Order
     {
@@ -84,23 +84,21 @@ final class CheckoutService
             $request->paymentFeeConfig,
         );
 
-        // ADR-019 idempotency finding, verified directly against
-        // docs.xendit.co (not assumed): Payment Request v3 has no
-        // client-supplied idempotency-key header. Its real dedupe
-        // mechanism is server-side reference_id uniqueness — a second
-        // POST with the same reference_id (order_number, stable per
-        // Order) gets a clean 409 DATA_NOT_FOUND "Duplication is not
-        // allowed", never a second live payment request. So a
-        // TransientFailureRetryPolicy retry *within* this one call is
-        // already safe against double-charging. The gap that didn't
-        // close on its own — a retried POST /api/checkout HTTP request
-        // (customer double-click, client-side timeout retry) calling
-        // initiate() again from scratch with a brand-new order_number
-        // each time — is closed by $request->idempotencyKey below:
-        // stamped onto the Order at creation (not after payment
-        // succeeds), under a DB-level unique constraint, so a
-        // genuinely concurrent duplicate request fails fast at the
-        // INSERT rather than ever reaching the gateway a second time.
+        // ADR-019 idempotency finding: the checkout path never relies on
+        // a gateway-side idempotency-key header. A retried gateway call
+        // *within* this one initiate() reuses the same order_number as
+        // its reference, so a gateway that dedupes on reference (CHIP's
+        // `reference` field — verify the exact collision behaviour via
+        // app:chip-smoke-test before trusting it) won't create a second
+        // live purchase. The gap that didn't close on its own — a
+        // retried POST /api/checkout HTTP request (customer double-click,
+        // client-side timeout retry) calling initiate() again from
+        // scratch with a brand-new order_number each time — is closed by
+        // $request->idempotencyKey below: stamped onto the Order at
+        // creation (not after payment succeeds), under a DB-level unique
+        // constraint, so a genuinely concurrent duplicate request fails
+        // fast at the INSERT rather than ever reaching the gateway a
+        // second time.
         try {
             $order = Order::query()->create([
                 'order_number' => $this->orderNumbers->generate(),
@@ -165,10 +163,10 @@ final class CheckoutService
      * payment_ref — the previous attempt's gateway call failed or the
      * process died before recording it. Reuses the Order's own already-
      * snapshotted pricing (ORD-9 — never recomputed here) and its own
-     * order_number as the Xendit reference_id, same as a fresh
-     * initiate() would, so Xendit's own reference_id dedupe still
-     * applies if that earlier attempt actually reached Xendit despite
-     * failing to persist locally.
+     * order_number as the gateway `reference`, same as a fresh
+     * initiate() would, so the gateway's own reference dedupe still
+     * applies if that earlier attempt actually reached the gateway
+     * despite failing to persist locally.
      */
     public function resume(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties = []): Order
     {
@@ -217,7 +215,7 @@ final class CheckoutService
         // customer straight on their own order's status instead of the
         // general "look up an order" search page.
         $orderStatusUrl = rtrim((string) config('services.storefront.url'), '/')
-            . '/order/status/' . $order->order_number;
+            .'/order/status/'.$order->order_number;
 
         if (array_key_exists('success_return_url', $channelProperties)) {
             $channelProperties['success_return_url'] = $orderStatusUrl;

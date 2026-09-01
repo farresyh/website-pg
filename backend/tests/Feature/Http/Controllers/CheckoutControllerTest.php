@@ -69,7 +69,7 @@ class CheckoutControllerTest extends TestCase
             {
                 return PaymentResponse::success([
                     'payment_request_id' => $paymentRequestId,
-                    'actions' => ['desktop_web_checkout_url' => 'https://checkout.xendit.co/web/pr-checkout-test'],
+                    'actions' => ['desktop_web_checkout_url' => 'https://gate.chip-in.asia/p/pr-checkout-test'],
                 ]);
             }
 
@@ -105,9 +105,9 @@ class CheckoutControllerTest extends TestCase
     {
         $gateway = $this->fakeGateway($createSucceeds);
         // Rebinding this container key (not PaymentGateway::class
-        // directly) is what PaymentGatewayFactory::make('xendit')
+        // directly) is what PaymentGatewayFactory::make('chip')
         // resolves through — see AppServiceProvider.
-        $this->app->bind('payment-gateway.xendit', fn () => $gateway);
+        $this->app->bind('payment-gateway.chip', fn () => $gateway);
     }
 
     private function activeChannel(string $channelCode = 'FPX_ABMB', array $overrides = []): PaymentMethod
@@ -116,7 +116,7 @@ class CheckoutControllerTest extends TestCase
             'channel_code' => $channelCode,
             'label' => 'Test Channel',
             'category' => 'fpx',
-            'gateway' => 'xendit',
+            'gateway' => 'chip',
             'is_active' => true,
             'percentage_rate' => 0.0,
             'flat_fee_sen' => 210,
@@ -194,7 +194,7 @@ class CheckoutControllerTest extends TestCase
         $response->assertJsonPath('payment_status', 'pending');
         $response->assertJsonPath(
             'payment_actions.desktop_web_checkout_url',
-            'https://checkout.xendit.co/web/pr-checkout-test',
+            'https://gate.chip-in.asia/p/pr-checkout-test',
         );
 
         $order = Order::query()->firstOrFail();
@@ -219,7 +219,7 @@ class CheckoutControllerTest extends TestCase
         $this->postJson('/api/checkout', $this->payload($game, $package))->assertCreated();
 
         $order = Order::query()->firstOrFail();
-        $this->assertSame('xendit', $order->payment_gateway);
+        $this->assertSame('chip', $order->payment_gateway);
         $this->assertSame('FPX_ABMB', $order->channel_code);
     }
 
@@ -645,7 +645,7 @@ class CheckoutControllerTest extends TestCase
      * keys the storefront has ever sent (success/failure_return_url) are
      * overwritten server-side anyway (CheckoutService::requestPayment()),
      * so a direct API caller stuffing in extra keys has no legitimate use
-     * and previously flowed straight through to Xendit unfiltered.
+     * and previously flowed straight through to the gateway unfiltered.
      */
     public function test_rejects_channel_properties_with_an_unsupported_key(): void
     {

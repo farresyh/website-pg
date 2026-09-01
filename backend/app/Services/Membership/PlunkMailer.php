@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Http;
  * its domain must be verified), not an assumed shape. `from` was added
  * when the Plunk project + `send.fixfastapp.com` sender domain were
  * provisioned (2026-08-29) — `PLUNK_FROM_EMAIL`/`PLUNK_FROM_NAME`.
- * Same short-timeout discipline as XenditGateway/GamevionAdapter —
+ * Same short-timeout discipline as ChipGateway/GamevionAdapter —
  * this can be called on a customer-facing verify request, never left
  * to hang indefinitely.
  */
@@ -43,7 +43,7 @@ final class PlunkMailer
      * the verified sender. Every feature-specific email (membership OTP,
      * the ADR-058 reseller set-password invite) formats its own
      * subject/body and calls this. Same short-timeout discipline as
-     * XenditGateway/GamevionAdapter.
+     * ChipGateway/GamevionAdapter.
      */
     public function send(string $to, string $subject, string $body): void
     {

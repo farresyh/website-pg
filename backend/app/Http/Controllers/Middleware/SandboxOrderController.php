@@ -74,7 +74,7 @@ class SandboxOrderController extends Controller
     }
 
     /**
-     * Decision #3: skips Xendit entirely — payment_status is paid
+     * Decision #3: skips the payment gateway entirely — payment_status is paid
      * immediately. Decision #4: created directly at delivery_status =
      * failed, so the freshly created order is immediately usable with
      * the same Resend Delivery flow a real failed order would use.

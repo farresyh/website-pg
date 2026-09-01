@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 
 /**
  * Manual verification tool, not part of the automated suite — mirrors
- * app:xendit-smoke-test's own role: hitting the real CHIP API to
+ * the existing app:gamevion-smoke-test's own role: hitting the real CHIP API to
  * confirm assumptions ChipGatewayTest's Http::fake()-based coverage
  * can't (real request/response shapes, real error bodies, whether the
  * FPX channel actually accepts this account's brand_id). Per ADR-022

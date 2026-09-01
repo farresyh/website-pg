@@ -13,7 +13,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * ADR-014: moves OrderFulfillmentService::fulfill() off the Xendit
+ * ADR-014: moves OrderFulfillmentService::fulfill() off the CHIP
  * webhook request thread. The service's own interface and its
  * lockForUpdate() guard (2026-07-24 security review) are untouched —
  * only where it's called from changes, so a duplicate webhook
@@ -24,7 +24,7 @@ final class FulfillOrderJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * Coarser than GamevionAdapter/XenditGateway's own sub-second HTTP
+     * Coarser than GamevionAdapter/ChipGateway's own sub-second HTTP
      * retry (TransientFailureRetryPolicy — 200ms/500ms/1s, exhausted
      * before this job-level attempt even ends): this layer exists for
      * an outage that outlasts that short window (a real
@@ -58,7 +58,7 @@ final class FulfillOrderJob implements ShouldQueue
     {
         // ADR-014: this job runs in a separate worker process from
         // the webhook request that dispatched it — its own context,
-        // using the same order_number key XenditWebhookController
+        // using the same order_number key ChipWebhookController
         // sets, is what makes the two correlatable by grep.
         Log::withContext(['order_number' => $this->order->order_number]);
 

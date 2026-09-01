@@ -5,11 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * SET-7/SET-11: an admin-curated, per-channel record of which Xendit
+ * SET-7/SET-11: an admin-curated, per-channel record of which CHIP
  * payment channels are actually usable and what they cost — see the
- * create_payment_methods_table migration's doc comment for why this
- * is curated rather than synced (no Xendit API exists to discover
- * per-account channel activation).
+ * create_payment_methods_table migration's doc comment for why this is
+ * curated rather than synced. CHIP does expose
+ * `GET /payment_methods/?brand_id=…&currency=MYR` (ADR-022's 2026-09-01
+ * addendum), but auto-syncing from it is deliberately not built —
+ * activation stays a manual admin action gated on a real smoke test
+ * (ADR-022 decision 5).
  */
 class PaymentMethod extends Model
 {
