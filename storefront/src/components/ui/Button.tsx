@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 
 interface BaseProps {
   children: ReactNode;
-  size?: "sm" | "md";
-  variant?: "primary" | "outline";
+  size?: "sm" | "md" | "lg";
+  variant?: "primary" | "outline" | "text" | "destructive";
   startIcon?: ReactNode;
   className?: string;
 }
@@ -16,23 +16,38 @@ type ButtonProps = BaseProps &
   );
 
 const sizeClasses = {
-  sm: "px-3.5 py-2 text-sm",
+  sm: "px-4 py-2 text-[13px]",
   md: "px-5 py-2.75 text-[15px]",
-};
-
-const variantClasses = {
-  primary: "bg-brand text-on-brand hover:bg-brand-light hover:text-brand-dark",
-  outline: "bg-transparent text-text border border-border hover:border-brand",
+  lg: "px-6 py-3.5 text-base",
 };
 
 /**
- * Every screen keeps exactly one filled `primary` button — outline is
- * for every secondary action (ui-ux-pro-max `primary-action` rule) —
- * matches the discipline already present in the original HTML draft.
- * 44px min height enforced via padding to meet the touch-target rule.
+ * ADR-063/064 primitive. Neo-brutalist framing: 2px ink border + hard
+ * offset shadow that shifts on hover. Every screen keeps exactly one
+ * filled `primary` button (ui-ux-pro-max primary-action rule); `outline`
+ * / `text` carry secondary actions, `destructive` the dangerous one.
+ * CTAs are uppercase with wide tracking, per the design system.
+ * 44px min height via padding for the touch-target rule.
  */
-export default function Button({ children, size = "md", variant = "primary", startIcon, className = "", ...rest }: ButtonProps) {
-  const classes = `inline-flex min-h-11 items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-200 ${sizeClasses[size]} ${variantClasses[variant]} ${className}`;
+const variantClasses = {
+  primary:
+    "border-2 border-ink bg-primary text-on-primary neo neo-hover-cyan hover:bg-primary-container",
+  outline:
+    "border-2 border-ink bg-surface-container-lowest text-ink neo neo-hover hover:bg-surface-container-low",
+  text: "border-2 border-transparent bg-transparent text-primary hover:bg-primary-fixed",
+  destructive:
+    "border-2 border-ink bg-danger text-on-danger neo neo-hover hover:brightness-95",
+};
+
+export default function Button({
+  children,
+  size = "md",
+  variant = "primary",
+  startIcon,
+  className = "",
+  ...rest
+}: ButtonProps) {
+  const classes = `inline-flex min-h-11 items-center justify-center gap-2 rounded-md font-display font-bold uppercase tracking-[0.05em] transition-all duration-150 ${sizeClasses[size]} ${variantClasses[variant]} ${className}`;
 
   if ("href" in rest && rest.href) {
     return (
@@ -54,7 +69,7 @@ export default function Button({ children, size = "md", variant = "primary", sta
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`${classes} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+      className={`${classes} ${disabled ? "cursor-not-allowed opacity-50 hover:translate-x-0 hover:translate-y-0" : "cursor-pointer"}`}
     >
       {startIcon}
       {children}

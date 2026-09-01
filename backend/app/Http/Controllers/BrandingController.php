@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * ADR-028 + its 2026-08-22 addendum: public, guest-callable storefront
  * branding/footer/legal content — same no-auth reasoning as
  * CatalogController/HeroSlideController (ADR-011). Public call site #5
- * for Reseller::platformOwner() — see that method's doc comment.
+ * for Reseller::primary() — see that method's doc comment.
  */
 class BrandingController extends Controller
 {
@@ -29,7 +29,7 @@ class BrandingController extends Controller
 
     public function show(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $payload = Cache::remember(
             "catalog.public.branding.{$reseller->id}",
@@ -68,7 +68,7 @@ class BrandingController extends Controller
                     'support_email' => $branding?->support_email,
                     'support_phone' => $branding?->support_phone,
                     'telegram_contact_link' => $branding?->telegram_contact_link,
-                    'social_links' => $branding?->social_links ?? [],
+                    'social_links' => $branding?->social_links ?: null,
                     'footer_text' => self::substitute($footer?->footer_text, $storeName),
                     'footer_games' => $orderedFooterGames,
                 ];
@@ -88,10 +88,10 @@ class BrandingController extends Controller
     public function legal(string $page): JsonResponse
     {
         if (! array_key_exists($page, self::LEGAL_PAGES)) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $column = self::LEGAL_PAGES[$page];
 
         $payload = Cache::remember(

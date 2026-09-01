@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getSettings, type SettingsIndexResponse } from "@/lib/settings";
 import StoreBrandingSection from "@/components/settings/StoreBrandingSection";
@@ -28,17 +28,17 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [data, setData] = useState<SettingsIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("branding");
 
-  async function refresh(token: string) {
-    try {
-      setData(await getSettings(token));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load settings.");
-    }
+  function refresh(token: string) {
+    return getSettings(token)
+      .then(setData)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load settings.");
+      });
   }
 
   useEffect(() => {
@@ -47,7 +47,6 @@ export default function SettingsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     refresh(s.token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

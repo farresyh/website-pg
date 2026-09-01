@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
-import { GridIcon, UserCircleIcon, DollarLineIcon, BoxLineIcon, PencilIcon, ListIcon, ImageIcon, BlockIcon, SettingsIcon, ChevronDownIcon, HorizontaLDots } from "@/icons";
+import { GridIcon, UserCircleIcon, DollarLineIcon, BoxLineIcon, PencilIcon, ListIcon, ImageIcon, BlockIcon, SettingsIcon, ChevronDownIcon, HorizontaLDots, ChartLineIcon, TrendUpIcon, TagIcon } from "@/icons";
 
 /**
  * Nav items reflect only screens that actually exist — see
@@ -23,10 +23,15 @@ const navItems: NavItem[] = [
   { icon: <PencilIcon />, name: "Games & Packages", path: "/admin/games" },
   { icon: <ImageIcon />, name: "Hero Banner", path: "/admin/hero-slides" },
   { icon: <ImageIcon />, name: "Image Gallery", path: "/admin/gallery" },
+  { icon: <ChartLineIcon />, name: "Reports", path: "/admin/reports" },
+  { icon: <TrendUpIcon />, name: "Customer Analytics", path: "/admin/customer-analytics" },
   { icon: <ListIcon />, name: "Orders", path: "/admin/orders" },
   { icon: <DollarLineIcon />, name: "Withdrawals", path: "/admin/withdrawals" },
   { icon: <BoxLineIcon />, name: "Vouchers", path: "/admin/vouchers" },
+  { icon: <TagIcon />, name: "Reviews", path: "/admin/reviews" },
   { icon: <BlockIcon />, name: "Blacklist", path: "/admin/blacklist" },
+  { icon: <BoxLineIcon />, name: "Membership", path: "/admin/membership" },
+  { icon: <UserCircleIcon />, name: "Resellers", path: "/admin/resellers" },
 ];
 
 /** ADR-029 decision 10 — a collapsible nav group, unlike every other flat single-link item above. */
@@ -64,7 +69,7 @@ const AppSidebar: React.FC = () => {
     >
       <div className={`py-8 flex ${!showLabels ? "lg:justify-center" : "justify-start"}`}>
         <Link href="/admin" className="text-lg font-semibold text-gray-900 dark:text-white">
-          {showLabels ? "KedaiRuncitSoloz Admin" : "KRS"}
+          {showLabels ? "PekanGame Admin" : "PG"}
         </Link>
       </div>
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">

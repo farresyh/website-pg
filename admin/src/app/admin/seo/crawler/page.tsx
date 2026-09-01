@@ -4,19 +4,29 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { listCrawlerRules, createCrawlerRule, updateCrawlerRule, deleteCrawlerRule, getSeoSettings, updateSeoSettings, type CrawlerRule } from "@/lib/seo";
 import SaveCrawlerRuleModal from "@/components/seo/SaveCrawlerRuleModal";
 
 export default function CrawlerRulesPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [rules, setRules] = useState<CrawlerRule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,12 +37,12 @@ export default function CrawlerRulesPage() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
 
-  async function refresh(token: string) {
-    try {
-      setRules(await listCrawlerRules(token));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load crawler rules.");
-    }
+  function refresh(token: string) {
+    return listCrawlerRules(token)
+      .then(setRules)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load crawler rules.");
+      });
   }
 
   useEffect(() => {
@@ -41,7 +51,6 @@ export default function CrawlerRulesPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     refresh(s.token);
     getSeoSettings(s.token)
       .then((settings) => setDefaultDisallow((settings.crawler_default_disallow_paths ?? []).join("\n")))
@@ -96,7 +105,8 @@ export default function CrawlerRulesPage() {
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Crawler</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Per-bot robots.txt rules — search engines, social-preview bots, AI-training bots.</p>
         </div>
-        <Button size="sm" startIcon={<PlusIcon />} onClick={() => { setEditing(null); setModalOpen(true); }}>
+        <Button size="small" onClick={() => { setEditing(null); setModalOpen(true); }}>
+          <PlusIcon />
           Add Custom Rule
         </Button>
       </div>
@@ -119,7 +129,7 @@ export default function CrawlerRulesPage() {
           className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 font-mono text-sm text-gray-800 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
         <div className="mt-3 flex items-center gap-3">
-          <Button size="sm" onClick={handleSaveDefaults} disabled={savingDefaults}>
+          <Button size="small" onClick={handleSaveDefaults} disabled={savingDefaults}>
             {savingDefaults ? "Saving…" : "Save Defaults"}
           </Button>
           {defaultsSaved && <span className="text-sm text-success-600 dark:text-success-400">Saved.</span>}
@@ -128,35 +138,43 @@ export default function CrawlerRulesPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Bot</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">User-agent</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Crawl delay</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {rules?.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{r.bot_name}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{r.user_agent}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={r.is_allowed ? "success" : "error"}>{r.is_allowed ? "Allowed" : "Blocked"}</Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{r.crawl_delay ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <div className="flex gap-3">
-                      <button type="button" className="text-brand-500 hover:underline" onClick={() => { setEditing(r); setModalOpen(true); }}>Edit</button>
-                      <button type="button" className="text-error-500 hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>Delete</button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={rules ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Bot</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">User-agent</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Crawl delay</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const r = item as unknown as CrawlerRule;
+
+                    return (
+                      <DataTableRow key={r.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{r.bot_name}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{r.user_agent}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={r.is_allowed ? "success" : "danger"}>{r.is_allowed ? "Allowed" : "Blocked"}</Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{r.crawl_delay ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <div className="flex gap-3">
+                            <button type="button" className="text-brand-500 hover:underline" onClick={() => { setEditing(r); setModalOpen(true); }}>Edit</button>
+                            <button type="button" className="text-error-500 hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>Delete</button>
+                          </div>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {rules?.length === 0 && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No crawler rules yet.</p>}
           {rules === null && !error && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>}

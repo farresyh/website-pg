@@ -2,13 +2,16 @@ import { PAYMENT_METHODS } from "@/lib/placeholder-data";
 
 export default function PaymentMethodsSection() {
   return (
-    <section className="mx-auto max-w-[1200px] px-4 py-8">
-      <h2 className="mb-3.5 text-base font-bold">Available Payment Methods</h2>
-      <div className="flex flex-wrap gap-2.5">
+    <section className="mx-auto max-w-[1200px] px-4 py-10">
+      <h2 className="mb-5 text-center font-display text-headline-md tracking-tight">Trusted Payment Methods</h2>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {PAYMENT_METHODS.map((method) => (
-          <span key={method} className="rounded-md border border-border px-3.5 py-2 text-[12.5px] font-semibold text-text-muted">
+          <div
+            key={method}
+            className="flex h-20 items-center justify-center rounded-lg border-2 border-ink bg-surface-container-lowest px-3 text-center font-display text-sm font-bold neo"
+          >
             {method}
-          </span>
+          </div>
         ))}
       </div>
     </section>

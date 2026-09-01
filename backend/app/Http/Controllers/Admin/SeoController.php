@@ -23,7 +23,7 @@ class SeoController extends Controller
 {
     public function overview(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         $totalGames = Game::query()->where('is_active', true)->count();
         $missingTitle = Game::query()->where('is_active', true)->whereNull('seo_title')->count();
@@ -96,12 +96,12 @@ class SeoController extends Controller
 
     public function settings(): JsonResponse
     {
-        return response()->json($this->settingsFor(Reseller::platformOwner()));
+        return response()->json($this->settingsFor(Reseller::primary()));
     }
 
     public function updateSettings(UpdateSeoSettingsRequest $request): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $settings = $this->settingsFor($reseller);
         $settings->update($request->validated());
         PublicSeoController::forgetCache($reseller->id);

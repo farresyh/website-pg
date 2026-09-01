@@ -29,7 +29,7 @@ class PaymentMethodCatalogControllerTest extends TestCase
             'method_key' => 'ambank_fpx',
             'label' => 'AmBank',
             'category' => 'fpx',
-            'gateway' => 'xendit',
+            'gateway' => 'chip',
             'is_active' => true,
             'percentage_rate' => 0.0,
             'flat_fee_sen' => 210,

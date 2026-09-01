@@ -4,6 +4,7 @@
  * detail view instead of two independently-maintained copies drifting
  * apart over time.
  */
+import { Tag } from "@/components/ui/tag";
 import type { OrderDetail } from "@/lib/orders";
 
 function formatRm(sen: number): string {
@@ -11,6 +12,8 @@ function formatRm(sen: number): string {
 }
 
 export default function OrderDetailCards({ order }: { order: OrderDetail }) {
+  const isMemberOrder = order.pricing_basis === "member";
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -34,10 +37,26 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
-        <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Pricing (ORD-9, server-computed)</h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Pricing (ORD-9, server-computed)</h2>
+          {isMemberOrder && <Tag severity="info">Member</Tag>}
+        </div>
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Cost Price</dt><dd>{formatRm(order.cost_price)}</dd></div>
-          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Reseller Cost Price</dt><dd>{formatRm(order.reseller_cost_price)}</dd></div>
+          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Standard Selling Price</dt><dd>{formatRm(order.standard_selling_price)}</dd></div>
+          {isMemberOrder && order.normal_selling_price !== null && (
+            <>
+              {order.membership && (
+                <>
+                  <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Membership Tier</dt><dd>{order.membership.membership_plan.name}</dd></div>
+                  <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Member Email</dt><dd>{order.membership.email}</dd></div>
+                </>
+              )}
+              <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Normal Price (non-member)</dt><dd>{formatRm(order.normal_selling_price)}</dd></div>
+              <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Member Discount</dt><dd>{order.member_discount_percent}%</dd></div>
+              <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Margin Given Up to Member</dt><dd>{formatRm(order.normal_selling_price - order.selling_price)}</dd></div>
+            </>
+          )}
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Selling Price</dt><dd>{formatRm(order.selling_price)}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Voucher Discount</dt><dd>{order.voucher_discount ? formatRm(order.voucher_discount) : "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Transaction Fee</dt><dd>{formatRm(order.transaction_fee)}</dd></div>
@@ -51,7 +70,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Payment / Supplier</h2>
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Payment Method</dt><dd>{order.payment_method ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Payment Ref (Xendit)</dt><dd>{order.payment_ref ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Payment Ref (CHIP)</dt><dd>{order.payment_ref ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Reference # (ORD-8)</dt><dd>{order.reference_number ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Supplier Ref</dt><dd>{order.supplier_ref ?? "—"}</dd></div>
         </dl>

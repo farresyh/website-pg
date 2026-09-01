@@ -54,7 +54,7 @@ export interface Testimonial {
 export const TESTIMONIALS: Testimonial[] = [
   { name: "Ahmad R.", rating: 5, quote: "Fast process — diamonds arrived within 2 minutes of payment." },
   { name: "Nurul S.", rating: 5, quote: "Very easy and safe. Only the first-time setup takes a bit of time." },
-  { name: "Hafiz M.", rating: 5, quote: "Cheapest UC prices in Malaysia with instant delivery. Best, Soloz!" },
+  { name: "Hafiz M.", rating: 5, quote: "Cheapest UC prices in Malaysia with instant delivery. Best, PekanGame!" },
 ];
 
 export interface FaqItem {

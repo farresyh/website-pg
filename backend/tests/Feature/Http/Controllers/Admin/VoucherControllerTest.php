@@ -10,6 +10,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -20,12 +21,13 @@ class VoucherControllerTest extends TestCase
     private function makeOrder(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-TEST-1',
             'reference_number' => 'REF-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 90,
             'final_amount' => 1090,
@@ -44,6 +46,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 5_000,
             'reason' => 'Goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertCreated();
@@ -61,6 +64,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 50_000,
             'reason' => 'Large goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertUnprocessable();
@@ -75,6 +79,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 1_000_001,
             'reason' => 'Fat-fingered amount',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertUnprocessable();
@@ -90,6 +95,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 50_000,
             'reason' => 'Large goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
         ]);
 
         $response->assertCreated();
@@ -103,6 +109,7 @@ class VoucherControllerTest extends TestCase
             'customer_email' => 'customer@example.com',
             'amount' => 1_000,
             'reason' => 'Test',
+            'idempotency_key' => (string) Str::uuid(),
         ])->assertCreated();
 
         $response = $this->getJson('/api/vouchers');
@@ -261,5 +268,255 @@ class VoucherControllerTest extends TestCase
         $response = $this->getJson('/api/vouchers');
 
         $response->assertUnauthorized();
+    }
+
+    public function test_rejects_a_standalone_voucher_without_an_idempotency_key(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('idempotency_key');
+    }
+
+    /**
+     * ADR-035 — the actual scenario this guard exists for: a network
+     * timeout retry (or a double-click) resubmits the identical
+     * idempotency_key. Must return the same Voucher, not mint a second
+     * one and double-debit the platform ledger.
+     */
+    public function test_replays_the_same_voucher_for_a_repeated_idempotency_key(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $key = (string) Str::uuid();
+
+        $first = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => $key,
+        ]);
+        $first->assertCreated();
+
+        $second = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => $key,
+        ]);
+        $second->assertCreated();
+
+        $this->assertSame($first->json('id'), $second->json('id'));
+        $this->assertDatabaseCount('vouchers', 1);
+        $this->assertSame(-1_000, app(LedgerService::class)->balance('platform', null));
+    }
+
+    public function test_a_different_idempotency_key_creates_a_genuinely_separate_voucher(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $first = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+        $first->assertCreated();
+
+        $second = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit (unrelated, same customer)',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+        $second->assertCreated();
+
+        $this->assertNotSame($first->json('id'), $second->json('id'));
+        $this->assertDatabaseCount('vouchers', 2);
+        $this->assertSame(-2_000, app(LedgerService::class)->balance('platform', null));
+    }
+
+    public function test_a_preexisting_idempotency_key_replays_that_voucher_instead_of_erroring(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        Voucher::query()->create([
+            'code' => 'VC-EXISTING',
+            'idempotency_key' => 'shared-key',
+            'customer_email' => 'someone-else@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'Pre-existing voucher',
+        ]);
+
+        $response = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => 'shared-key',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('code', 'VC-EXISTING');
+        $this->assertDatabaseCount('vouchers', 1);
+    }
+
+    private function makeVoucher(array $overrides = []): Voucher
+    {
+        return Voucher::query()->create(array_merge([
+            'code' => 'VC-'.Str::upper(Str::random(8)),
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'remaining' => 1_000,
+            'status' => 'active',
+            'reason' => 'Test',
+        ], $overrides));
+    }
+
+    /**
+     * ADR-036 — the real scenario this exists for: a voucher-funded
+     * order that itself failed left the customer holding two separate
+     * codes (checkout can only ever apply one). Merging must sum
+     * `remaining` (not `amount`), void both sources without deleting
+     * them, and never write a second ledger debit — the liability is
+     * already booked via the sources' own original issuance.
+     */
+    public function test_admin_can_merge_two_active_vouchers_for_the_same_customer(): void
+    {
+        $ledgerBefore = app(LedgerService::class)->balance('platform', null);
+        $a = $this->makeVoucher(['amount' => 1_000, 'remaining' => 1_000]);
+        $b = $this->makeVoucher(['amount' => 500, 'remaining' => 300]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id],
+            'reason' => 'Consolidating two compensation vouchers',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('amount', 1_300);
+        $response->assertJsonPath('remaining', 1_300);
+        $response->assertJsonPath('status', 'active');
+        $this->assertNotSame($a->code, $response->json('code'));
+
+        $a->refresh();
+        $b->refresh();
+        $this->assertSame('merged', $a->status);
+        $this->assertSame(0, $a->remaining);
+        $this->assertSame('merged', $b->status);
+        $this->assertSame(0, $b->remaining);
+
+        $this->assertDatabaseHas('voucher_merges', [
+            'source_voucher_id' => $a->id,
+            'target_voucher_id' => $response->json('id'),
+        ]);
+        $this->assertDatabaseHas('voucher_merges', [
+            'source_voucher_id' => $b->id,
+            'target_voucher_id' => $response->json('id'),
+        ]);
+
+        // No second ledger debit — the liability was already booked
+        // by each source's own original issuance.
+        $this->assertSame($ledgerBefore, app(LedgerService::class)->balance('platform', null));
+    }
+
+    public function test_can_merge_more_than_two_vouchers_matched_by_phone_instead_of_email(): void
+    {
+        $a = $this->makeVoucher(['customer_email' => 'a@example.com', 'customer_phone' => '60123456789', 'remaining' => 100]);
+        $b = $this->makeVoucher(['customer_email' => 'b@example.com', 'customer_phone' => '60123456789', 'remaining' => 200]);
+        $c = $this->makeVoucher(['customer_email' => 'c@example.com', 'customer_phone' => '60123456789', 'remaining' => 300]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id, $c->id],
+            'reason' => 'Same phone, different emails',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('remaining', 600);
+    }
+
+    public function test_rejects_merging_vouchers_belonging_to_different_customers(): void
+    {
+        $a = $this->makeVoucher(['customer_email' => 'a@example.com']);
+        $b = $this->makeVoucher(['customer_email' => 'b@example.com']);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id],
+            'reason' => 'Attempted cross-customer merge',
+        ]);
+
+        $response->assertUnprocessable();
+        $a->refresh();
+        $this->assertSame('active', $a->status);
+    }
+
+    public function test_rejects_merging_a_non_active_voucher(): void
+    {
+        $a = $this->makeVoucher();
+        $b = $this->makeVoucher(['status' => 'revoked']);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id],
+            'reason' => 'Attempted merge with a revoked voucher',
+        ]);
+
+        $response->assertUnprocessable();
+    }
+
+    public function test_rejects_a_merge_with_fewer_than_two_vouchers(): void
+    {
+        $a = $this->makeVoucher();
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id],
+            'reason' => 'Only one voucher selected',
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('voucher_ids');
+    }
+
+    public function test_a_regular_admin_can_merge_vouchers_without_a_super_admin(): void
+    {
+        $a = $this->makeVoucher();
+        $b = $this->makeVoucher();
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id],
+            'reason' => 'No maker-checker gate for merges',
+        ]);
+
+        $response->assertCreated();
+    }
+
+    public function test_a_merged_voucher_shows_its_source_provenance_on_the_detail_view(): void
+    {
+        $a = $this->makeVoucher();
+        $b = $this->makeVoucher();
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $merged = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id],
+            'reason' => 'Provenance check',
+        ]);
+
+        $response = $this->getJson("/api/vouchers/{$merged->json('id')}");
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'voucher.merges_as_target');
+
+        $sourceDetail = $this->getJson("/api/vouchers/{$a->id}");
+        $sourceDetail->assertOk();
+        $sourceDetail->assertJsonPath('voucher.merge_as_source.target_voucher_id', $merged->json('id'));
     }
 }

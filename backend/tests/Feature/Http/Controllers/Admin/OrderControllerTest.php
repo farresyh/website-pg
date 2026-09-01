@@ -7,6 +7,7 @@ use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Order;
+use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\Voucher;
@@ -29,11 +30,12 @@ class OrderControllerTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
@@ -54,7 +56,7 @@ class OrderControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         $this->order(['game_id' => $game->id, 'package_id' => $package->id]);
@@ -139,7 +141,7 @@ class OrderControllerTest extends TestCase
     }
 
     /**
-     * ADR-021 (PAY-3) — surfaces an order whose Xendit webhook never
+     * ADR-021 (PAY-3) — surfaces an order whose payment webhook never
      * arrived. Matches the same 30-minute window
      * ReconcilePendingPaymentsCommand itself acts on.
      */
@@ -203,7 +205,7 @@ class OrderControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'reseller_cost_price' => 500,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
         $order = $this->order([
@@ -332,7 +334,7 @@ class OrderControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'reseller_cost_price' => 1900,
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         $order = $this->order([
@@ -360,7 +362,7 @@ class OrderControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'reseller_cost_price' => 1900,
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         $order = $this->order([
@@ -390,7 +392,7 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
-        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
         $order = $this->order([
             'game_id' => $game->id,
             'payment_status' => PaymentStatus::Paid->value,
@@ -414,7 +416,7 @@ class OrderControllerTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $otherGame = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb']);
-        $otherGamePackage = Package::query()->create(['game_id' => $otherGame->id, 'name' => '5 Diamonds', 'cost_price' => 500, 'reseller_cost_price' => 500, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
+        $otherGamePackage = Package::query()->create(['game_id' => $otherGame->id, 'name' => '5 Diamonds', 'cost_price' => 500, 'standard_selling_price' => 500, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
         $order = $this->order([
             'game_id' => $game->id,
             'payment_status' => PaymentStatus::Paid->value,
@@ -431,7 +433,7 @@ class OrderControllerTest extends TestCase
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
-        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
         $order = $this->order(['game_id' => $game->id, 'delivery_status' => DeliveryStatus::Failed->value]);
 
         $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id])->assertUnauthorized();
@@ -446,13 +448,13 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
-        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
         $order = $this->order(['game_id' => $game->id, 'package_id' => $package->id]);
-        \App\Models\OrderResendAttempt::query()->create([
+        OrderResendAttempt::query()->create([
             'order_id' => $order->id,
             'package_id' => $package->id,
             'cost_price_sen' => 950,
-            'reseller_cost_price_sen' => 950,
+            'standard_selling_price_sen' => 950,
             'price_diff_sen' => 50,
             'outcome' => 'success',
             'triggered_by' => 'Admin User',
@@ -475,7 +477,7 @@ class OrderControllerTest extends TestCase
     {
         $this->actingAsAdmin();
         $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'payment_status' => PaymentStatus::Paid->value]);
-        \App\Models\Voucher::query()->create([
+        Voucher::query()->create([
             'order_id' => $order->id,
             'code' => 'VC-TESTCODE',
             'customer_email' => $order->customer_email,
@@ -541,7 +543,7 @@ class OrderControllerTest extends TestCase
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
-        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
         $order = $this->order([
             'is_test' => true,
             'game_id' => $game->id,

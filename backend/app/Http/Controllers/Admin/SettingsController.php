@@ -28,13 +28,11 @@ use Mews\Purifier\Facades\Purifier;
  */
 class SettingsController extends Controller
 {
-    public function __construct(private readonly PackageMarkupService $markup)
-    {
-    }
+    public function __construct(private readonly PackageMarkupService $markup) {}
 
     public function index(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         return response()->json([
             'branding' => $this->brandingFor($reseller),
@@ -45,7 +43,7 @@ class SettingsController extends Controller
 
     public function updateBranding(UpdateBrandingRequest $request): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $branding = $this->brandingFor($reseller);
         $branding->update($request->validated());
         BrandingController::forgetCache($reseller->id);
@@ -63,7 +61,7 @@ class SettingsController extends Controller
      */
     public function updateFooter(UpdateFooterSettingsRequest $request): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $footer = $this->footerFor($reseller);
 
         $data = $request->validated();
@@ -104,9 +102,9 @@ class SettingsController extends Controller
         DB::transaction(function () use ($markupPercent, &$changed, &$gameIds) {
             Package::query()->where('is_active', true)->chunkById(100, function ($packages) use ($markupPercent, &$changed, &$gameIds) {
                 foreach ($packages as $package) {
-                    $newResellerCostPrice = $this->markup->calculateResellerCostPrice($package->cost_price, $markupPercent);
+                    $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice($package->cost_price, $markupPercent);
 
-                    if ($newResellerCostPrice === $package->reseller_cost_price && (float) $package->markup_percent === $markupPercent) {
+                    if ($newStandardSellingPrice === $package->standard_selling_price && (float) $package->markup_percent === $markupPercent) {
                         continue;
                     }
 
@@ -115,13 +113,13 @@ class SettingsController extends Controller
                         'package_id' => $package->id,
                         'old_cost_price' => $package->cost_price,
                         'new_cost_price' => $package->cost_price,
-                        'old_reseller_cost_price' => $package->reseller_cost_price,
-                        'new_reseller_cost_price' => $newResellerCostPrice,
+                        'old_standard_selling_price' => $package->standard_selling_price,
+                        'new_standard_selling_price' => $newStandardSellingPrice,
                     ]);
 
                     $package->update([
                         'markup_percent' => $markupPercent,
-                        'reseller_cost_price' => $newResellerCostPrice,
+                        'standard_selling_price' => $newStandardSellingPrice,
                     ]);
 
                     $changed++;

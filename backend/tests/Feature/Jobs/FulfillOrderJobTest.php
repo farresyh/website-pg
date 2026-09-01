@@ -24,7 +24,7 @@ use RuntimeException;
 use Tests\TestCase;
 
 /**
- * ADR-014: FulfillOrderJob is the thing the Xendit webhook (and ORD-7's
+ * ADR-014: FulfillOrderJob is the thing the payment webhook (and ORD-7's
  * manual retry action) dispatch instead of calling
  * OrderFulfillmentService::fulfill() inline.
  */
@@ -41,13 +41,14 @@ class FulfillOrderJobTest extends TestCase
             )->id;
 
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-JOB-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
             'supplier_id' => $supplierId,
             'supplier_product_ref' => 'FFP5',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
@@ -63,11 +64,11 @@ class FulfillOrderJobTest extends TestCase
         $this->app->bind('supplier-adapter.gamevion', fn () => $adapter);
 
         return new OrderFulfillmentService(
-            new OrderStatusService(),
-            new ReferenceNumberService(),
+            new OrderStatusService,
+            new ReferenceNumberService,
             $this->app->make(SupplierAdapterFactory::class),
-            new LedgerService(),
-            new VoucherService(new LedgerService()),
+            new LedgerService,
+            new VoucherService(new LedgerService),
         );
     }
 

@@ -10,12 +10,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { PlusIcon, PencilIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type AdminUser,
@@ -34,7 +44,7 @@ export default function AdminUsersPage() {
   // during SSR, and reading it directly during render caused the known
   // hydration mismatch on other screens (see UserDropdown.tsx). Fixed
   // here as part of standardizing on this pattern, 2026-07-25 audit.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +66,6 @@ export default function AdminUsersPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
 
     listAdminUsers(s.token)
       .then(setUsers)
@@ -113,7 +122,8 @@ export default function AdminUsersPage() {
             Create, edit, activate, or deactivate Super Admin and Admin accounts.
           </p>
         </div>
-        <Button size="sm" startIcon={<PlusIcon />} onClick={openCreateModal}>
+        <Button size="small" onClick={openCreateModal}>
+          <PlusIcon />
           Add Admin
         </Button>
       </div>
@@ -126,71 +136,77 @@ export default function AdminUsersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                  Name
-                </TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                  Email
-                </TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                  Role
-                </TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                  Status
-                </TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                  Actions
-                </TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {users?.map((user) => {
-                const isSelf = user.id === session?.id;
-                return (
-                  <TableRow key={user.id}>
-                    <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                      {user.name}
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                      {user.email}
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <Badge size="sm" color={user.role === "super_admin" ? "primary" : "light"}>
-                        {user.role === "super_admin" ? "Super Admin" : "Admin"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <Badge size="sm" color={user.is_active ? "success" : "error"}>
-                        {user.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => openEditModal(user)}
-                          aria-label={`Edit ${user.name}`}
-                          className="text-gray-500 hover:text-brand-500 dark:text-gray-400"
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </button>
-                        <Button
-                          size="sm"
-                          variant={user.is_active ? "danger" : "outline"}
-                          disabled={isSelf || statusUpdatingId === user.id}
-                          onClick={() => handleToggleStatus(user)}
-                        >
-                          {isSelf ? "You" : user.is_active ? "Deactivate" : "Activate"}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <DataTable data={users ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                      Name
+                    </DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                      Email
+                    </DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                      Role
+                    </DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                      Status
+                    </DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                      Actions
+                    </DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const user = item as unknown as AdminUser;
+                    const isSelf = user.id === session?.id;
+                    return (
+                      <DataTableRow key={user.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                          {user.name}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {user.email}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={user.role === "super_admin" ? undefined : "secondary"}>
+                            {user.role === "super_admin" ? "Super Admin" : "Admin"}
+                          </Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={user.is_active ? "success" : "danger"}>
+                            {user.is_active ? "Active" : "Inactive"}
+                          </Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => openEditModal(user)}
+                              aria-label={`Edit ${user.name}`}
+                              className="text-gray-500 hover:text-brand-500 dark:text-gray-400"
+                            >
+                              <PencilIcon className="h-5 w-5" />
+                            </button>
+                            <Button
+                              size="small"
+                              variant={user.is_active ? undefined : "outlined"}
+                              severity={user.is_active ? "danger" : undefined}
+                              disabled={isSelf || statusUpdatingId === user.id}
+                              onClick={() => handleToggleStatus(user)}
+                            >
+                              {isSelf ? "You" : user.is_active ? "Deactivate" : "Activate"}
+                            </Button>
+                          </div>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {users?.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">

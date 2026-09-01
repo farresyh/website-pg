@@ -2,12 +2,21 @@
 
 namespace App\Providers;
 
+use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Models\BackupRun;
+use App\Models\Order;
+use App\Models\PriceSyncRun;
+use App\Models\Supplier;
+use App\Observers\BackupRunObserver;
+use App\Observers\OrderObserver;
+use App\Observers\PriceSyncRunObserver;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Membership\PlunkMailer;
 use App\Services\Payment\Chip\ChipGateway;
+use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
-use App\Services\Payment\Xendit\XenditGateway;
 use App\Services\PlayerValidation\MlbbPlayerValidator;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
@@ -19,7 +28,17 @@ use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierConfigSchema;
+use App\Services\Supplier\SupplierNotConfiguredException;
+use App\Support\CurrentReseller;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Backup\Events\BackupHasFailed;
+use Spatie\Backup\Events\CleanupHasFailed;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,12 +56,21 @@ class AppServiceProvider extends ServiceProvider
      * rather than one hardcoded binding — CheckoutController looks up
      * the matched PaymentMethod row's `gateway` column and asks the
      * factory for the right implementation. PaymentGateway::class
-     * itself stays bound to Xendit as a default, since the webhook
-     * controller's route (/api/webhooks/xendit) is inherently
-     * gateway-specific by URL, not resolved per-request.
+     * itself is bound to CHIP as the default (ADR-022's 2026-09-01
+     * addendum — CHIP is the only gateway now); a webhook controller's
+     * route is gateway-specific by URL, not resolved per-request, so
+     * ChipWebhookController still asks the factory for 'chip' explicitly
+     * rather than leaning on this default.
      */
     public function register(): void
     {
+        // ADR-057: the reseller-tenant resolver ResellerScope reads.
+        // `scoped`, not `singleton` — reset between HTTP requests and
+        // between queue jobs so one request's tenant never leaks into
+        // the next. Populated by the reseller-guard middleware (ADR-058);
+        // inert (no tenant context) everywhere else.
+        $this->app->scoped(CurrentReseller::class);
+
         // ADR-023 decision #6: the real checkout->fulfillment pipeline
         // runs against a real, separately-booted server process during
         // Playwright E2E (not an in-process PHPUnit `Http::fake()`,
@@ -70,14 +98,20 @@ class AppServiceProvider extends ServiceProvider
             $this->app->bind('supplier-adapter.e2e-fake-supplier', fn () => new FakeSupplierAdapter(simulateSuccess: true));
         } else {
             $this->app->bind('supplier-adapter.gamevion', function () {
+                // ADR-046 decision 2: credentials/mode come from the
+                // `gamevion` Supplier row's api_config, not .env — the
+                // pre-ADR-046 stopgap this replaces. timeout/connect_timeout
+                // stay config-based (cross-cutting, not per-supplier
+                // secret/mode state — ADR-046 decision 3's own scoping).
+                $apiConfig = $this->supplierApiConfig('gamevion');
                 $config = config('services.gamevion');
                 $proxy = config('services.proxy');
 
                 $gamevion = new GamevionAdapter(
-                    baseUrl: $config['base_url'],
-                    bearerToken: (string) $config['bearer_token'],
-                    apiKey: (string) $config['api_key'],
-                    sandbox: (bool) $config['sandbox'],
+                    baseUrl: $apiConfig['base_url'],
+                    bearerToken: (string) $apiConfig['bearer_token'],
+                    apiKey: (string) $apiConfig['api_key'],
+                    sandbox: (bool) $apiConfig['sandbox'],
                     proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                     timeoutSeconds: $config['timeout'],
                     connectTimeoutSeconds: $config['connect_timeout'],
@@ -112,15 +146,17 @@ class AppServiceProvider extends ServiceProvider
             // (name 'digiflazz', per ADR-031's consequence note this
             // comment predicted).
             $this->app->bind('supplier-adapter.digiflazz', function () {
+                // ADR-046 decision 2 — same cutover as 'gamevion' above.
+                $apiConfig = $this->supplierApiConfig('digiflazz');
                 $config = config('services.digiflazz');
                 $proxy = config('services.proxy');
 
                 $digiflazz = new DigiflazzAdapter(
-                    baseUrl: $config['base_url'],
-                    username: (string) $config['username'],
-                    apiKey: (string) $config['api_key'],
-                    testing: (bool) $config['testing'],
-                    customerNoSeparator: (string) $config['customer_no_separator'],
+                    baseUrl: $apiConfig['base_url'],
+                    username: (string) $apiConfig['username'],
+                    apiKey: (string) $apiConfig['api_key'],
+                    testing: (bool) $apiConfig['testing'],
+                    customerNoSeparator: (string) $apiConfig['customer_no_separator'],
                     proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                     timeoutSeconds: $config['timeout'],
                     connectTimeoutSeconds: $config['connect_timeout'],
@@ -141,19 +177,17 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(SupplierAdapterFactory::class);
 
-        $this->app->bind('payment-gateway.xendit', function () {
-            $config = config('services.xendit');
+        $this->app->bind('payment-gateway.chip', function ($app) {
+            // ADR-023 decision #6 / ADR-022's 2026-09-01 addendum — the
+            // payment layer is faked for e2e the same way the supplier
+            // layer is above (CHIP verifies webhooks with an RSA
+            // signature the checkout spec cannot forge). Bound under the
+            // same key PaymentGatewayFactory and the default binding
+            // resolve, so the whole pipeline runs unchanged.
+            if ($app->environment('e2e')) {
+                return new FakePaymentGateway;
+            }
 
-            return new XenditGateway(
-                baseUrl: $config['base_url'],
-                secretKey: (string) $config['secret_key'],
-                webhookToken: (string) $config['webhook_token'],
-                timeoutSeconds: $config['timeout'],
-                connectTimeoutSeconds: $config['connect_timeout'],
-            );
-        });
-
-        $this->app->bind('payment-gateway.chip', function () {
             $config = config('services.chip');
 
             return new ChipGateway(
@@ -168,7 +202,25 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(PaymentGatewayFactory::class);
 
-        $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.xendit'));
+        $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.chip'));
+
+        // ADR-027's 2026-08-29 addendum, decision 27/29 — the only
+        // email-sending vendor bound here, so a direct class binding
+        // (not a string-keyed factory slot like the multi-gateway
+        // pattern above, which exists because Payment/Supplier
+        // genuinely have several swappable implementations).
+        $this->app->bind(PlunkMailer::class, function () {
+            $config = config('services.plunk');
+
+            return new PlunkMailer(
+                baseUrl: $config['base_url'],
+                apiKey: (string) $config['api_key'],
+                fromEmail: $config['from_email'],
+                fromName: $config['from_name'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
 
         // MLBB's validator chain — AcidGameShop -> Nexone -> MooGold,
         // priority order per the founder's own reliability ranking.
@@ -207,10 +259,75 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
+     * ADR-046 decision 2: the single place both supplier-adapter
+     * bindings above read their credentials/mode from — the
+     * `Supplier` row's encrypted api_config, replacing the old
+     * config('services.<slug>') stopgap. Throws rather than
+     * constructing an adapter with null/missing credentials, since
+     * that would otherwise fail as an uncaught "Undefined array key"
+     * deep inside a real API call (found live, 2026-08-28 — a
+     * partially-filled api_config, e.g. only `base_url` saved before
+     * `bearer_token`, passed this guard's old empty()-only check and
+     * crashed raw instead of surfacing this exception) instead of a
+     * clean, catchable failure at resolve-time.
+     */
+    private function supplierApiConfig(string $slug): array
+    {
+        $supplier = Supplier::query()->where('slug', $slug)->first();
+
+        if ($supplier === null || empty($supplier->api_config)) {
+            throw new SupplierNotConfiguredException(
+                "Supplier '{$slug}' has no api_config configured — set it via the Supplier Management screen.",
+            );
+        }
+
+        $missing = SupplierConfigSchema::missingKeys($slug, $supplier->api_config);
+
+        if ($missing !== []) {
+            throw new SupplierNotConfiguredException(
+                "Supplier '{$slug}' is missing required config field(s): ".implode(', ', $missing).' — set them via the Supplier Management screen.',
+            );
+        }
+
+        return $supplier->api_config;
+    }
+
+    /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
-        //
+        // ADR-039 decision 7: listens to spatie/laravel-backup's own raw
+        // domain events (config/backup.php disables its built-in
+        // notification channels) so alerting reaches every current
+        // `admin_users` row rather than one static config address.
+        Event::listen(BackupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleBackupHasFailed']);
+        Event::listen(CleanupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleCleanupHasFailed']);
+
+        // ADR-047 decision 1 — broadcasts OrderStatusUpdated whenever
+        // payment_status/delivery_status actually changes, replacing
+        // storefront's OrderStatusTracker poll. See OrderObserver's own
+        // doc comment for why this is a model observer, not a call added
+        // to every individual writer.
+        Order::observe(OrderObserver::class);
+        PriceSyncRun::observe(PriceSyncRunObserver::class);
+        BackupRun::observe(BackupRunObserver::class);
+
+        // ADR-048 addendum: same `web`-session/super_admin gate as
+        // HorizonServiceProvider::gate() — Pulse doesn't generate its own
+        // service provider, so this is the one place Laravel\Pulse\Http\
+        // Middleware\Authorize's `viewPulse` gate can be defined.
+        Gate::define('viewPulse', function ($user = null) {
+            return $user !== null && $user->is_active && $user->role === 'super_admin';
+        });
+
+        // ADR-027's 2026-08-29 addendum, decision 26: OTP requests are
+        // rate-limited per email address (not just per IP, unlike every
+        // other `throttle:` route in this app — the abuse case here is
+        // spamming one target inbox, which an IP-only bucket wouldn't
+        // catch from multiple source IPs).
+        RateLimiter::for('otp-request', function (Request $request) {
+            return Limit::perHour(3)->by((string) $request->input('email'));
+        });
     }
 }

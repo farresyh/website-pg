@@ -21,9 +21,9 @@ use Tests\TestCase;
 
 /**
  * ADR-021 (PAY-3) — ReconcilePendingPaymentsCommand catches orders whose
- * Xendit webhook never arrived. Reconciliation is terminal-status-driven
- * (SUCCEEDED/EXPIRED/FAILED/CANCELED), not time-driven — see the command's
- * own docblock.
+ * gateway webhook never arrived. Reconciliation is terminal-status-driven
+ * (the gateway's own answer of paid / failed), not time-driven — see the
+ * command's own docblock.
  */
 class ReconcilePendingPaymentsCommandTest extends TestCase
 {
@@ -32,11 +32,12 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
@@ -44,8 +45,8 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
             'reseller_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
-            'payment_gateway' => 'xendit',
-            'payment_ref' => 'xnd_payment_ref_'.uniqid(),
+            'payment_gateway' => 'chip',
+            'payment_ref' => 'chip_purchase_ref_'.uniqid(),
         ], $overrides));
     }
 
@@ -66,7 +67,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
      * (ADR-022's newest addendum, decision 1) rather than a single
      * fixed gateway for every order.
      */
-    private function bindFakeGateway(string $status, string $gateway = 'xendit'): void
+    private function bindFakeGateway(string $status, string $gateway = 'chip'): void
     {
         $this->app->bind("payment-gateway.{$gateway}", fn () => new class($status) implements PaymentGateway
         {
@@ -78,18 +79,19 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
             }
 
             /**
-             * Mirrors what a real PaymentGateway::getPayment() must now
-             * do (ADR-022's newest addendum, found while building
+             * Mirrors what a real PaymentGateway::getPayment() must do
+             * (ADR-022's 2026-08-03 addendum, found while building
              * ChipGateway): translate the gateway's own raw status
              * string into the typed PaymentStatus enum here, inside the
              * fake gateway itself — never leave that to the caller.
+             * Status strings match ChipGateway's real mapping.
              */
             public function getPayment(string $paymentRequestId): PaymentResponse
             {
                 $status = match ($this->status) {
-                    'SUCCEEDED' => \App\Services\Order\PaymentStatus::Paid,
-                    'EXPIRED', 'FAILED', 'CANCELED' => \App\Services\Order\PaymentStatus::Failed,
-                    default => \App\Services\Order\PaymentStatus::Pending,
+                    'paid' => PaymentStatus::Paid,
+                    'error', 'cancelled' => PaymentStatus::Failed,
+                    default => PaymentStatus::Pending,
                 };
 
                 // amount_sen fixed at 1100 to match order()'s own
@@ -115,7 +117,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_recovers_an_order_whose_payment_actually_succeeded(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('SUCCEEDED');
+        $this->bindFakeGateway('paid');
         $order = $this->stalePending(['order_number' => 'KRS-RECOVER']);
 
         $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
@@ -127,9 +129,9 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_does_not_redispatch_fulfillment_for_an_order_already_paid(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('SUCCEEDED');
+        $this->bindFakeGateway('paid');
         // Shouldn't happen given the query only selects Pending orders,
-        // but recover() itself guards it (mirrors XenditWebhookController's
+        // but recover() itself guards it (mirrors the webhook controller's
         // own PAY-2 duplicate-delivery guard) — worth proving directly.
         $order = $this->stalePending(['order_number' => 'KRS-ALREADY-PAID', 'payment_status' => PaymentStatus::Paid->value]);
 
@@ -138,11 +140,11 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
         Bus::assertNotDispatched(FulfillOrderJob::class);
     }
 
-    private function assertMarksOrderFailedOnTerminalFailure(string $xenditStatus): void
+    private function assertMarksOrderFailedOnTerminalFailure(string $chipStatus): void
     {
         Bus::fake();
-        $this->bindFakeGateway($xenditStatus);
-        $order = $this->stalePending(['order_number' => 'KRS-FAILED-'.$xenditStatus]);
+        $this->bindFakeGateway($chipStatus);
+        $order = $this->stalePending(['order_number' => 'KRS-FAILED-'.$chipStatus]);
 
         $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
 
@@ -150,19 +152,14 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
         Bus::assertNotDispatched(FulfillOrderJob::class);
     }
 
-    public function test_marks_an_order_failed_when_the_gateway_reports_expired(): void
+    public function test_marks_an_order_failed_when_the_gateway_reports_error(): void
     {
-        $this->assertMarksOrderFailedOnTerminalFailure('EXPIRED');
+        $this->assertMarksOrderFailedOnTerminalFailure('error');
     }
 
-    public function test_marks_an_order_failed_when_the_gateway_reports_failed(): void
+    public function test_marks_an_order_failed_when_the_gateway_reports_cancelled(): void
     {
-        $this->assertMarksOrderFailedOnTerminalFailure('FAILED');
-    }
-
-    public function test_marks_an_order_failed_when_the_gateway_reports_canceled(): void
-    {
-        $this->assertMarksOrderFailedOnTerminalFailure('CANCELED');
+        $this->assertMarksOrderFailedOnTerminalFailure('cancelled');
     }
 
     /**
@@ -174,7 +171,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_restores_a_reserved_voucher_redemption_when_reconciliation_finds_a_terminal_failure(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('EXPIRED');
+        $this->bindFakeGateway('error');
 
         $voucher = Voucher::query()->create([
             'code' => 'KRS-RECONCILE-VOUCHER',
@@ -211,7 +208,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     {
         Bus::fake();
         Log::spy();
-        $this->app->bind('payment-gateway.xendit', fn () => new class implements PaymentGateway
+        $this->app->bind('payment-gateway.chip', fn () => new class implements PaymentGateway
         {
             public function createPayment(PaymentRequest $request): PaymentResponse
             {
@@ -220,7 +217,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
 
             public function getPayment(string $paymentRequestId): PaymentResponse
             {
-                return PaymentResponse::success(['status' => 'SUCCEEDED', 'amount_sen' => 1], status: PaymentStatus::Paid);
+                return PaymentResponse::success(['status' => 'paid', 'amount_sen' => 1], status: PaymentStatus::Paid);
             }
 
             public function verifyWebhookSignature(Request $request): bool
@@ -245,7 +242,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_leaves_an_ambiguous_status_untouched_when_still_within_the_flag_window(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('AUTHORIZED');
+        $this->bindFakeGateway('hold');
         $order = $this->stalePending(['order_number' => 'KRS-AMBIGUOUS-YOUNG']);
 
         $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
@@ -257,7 +254,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_leaves_an_ambiguous_status_untouched_even_past_the_flag_window(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('REQUIRES_ACTION');
+        $this->bindFakeGateway('pending_execute');
         $order = $this->order(['order_number' => 'KRS-AMBIGUOUS-OLD']);
         $order->forceFill(['created_at' => now()->subHours(25)])->save();
 
@@ -274,7 +271,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_skips_an_order_with_no_payment_ref(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('SUCCEEDED');
+        $this->bindFakeGateway('paid');
         $order = $this->stalePending(['order_number' => 'KRS-NO-PAYMENT-REF', 'payment_ref' => null]);
 
         $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
@@ -286,7 +283,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     public function test_ignores_an_order_that_is_not_yet_stale(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('SUCCEEDED');
+        $this->bindFakeGateway('paid');
         $order = $this->order(['order_number' => 'KRS-FRESH']); // created just now, well within the 30-minute grace window
 
         $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
@@ -296,27 +293,29 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     }
 
     /**
-     * ADR-022's newest addendum, decision 1 — the whole point of this
-     * fix: two stale orders recorded against two different gateways
-     * must each be asked their OWN gateway, never cross-routed. Before
-     * this fix, every order was asked via one single container-default
-     * PaymentGateway binding regardless of which gateway it actually
-     * checked out with.
+     * ADR-022's 2026-08-03 addendum, decision 1 — an order is asked its
+     * OWN recorded gateway, resolved through PaymentGatewayFactory per
+     * row, never one single container-default binding. CHIP is the only
+     * real gateway today (2026-09-01 addendum), so a second name is
+     * bound ad-hoc here purely to prove the per-order routing mechanism
+     * the seam keeps alive for a future multi-gateway world — before
+     * this fix every order went through one fixed binding regardless of
+     * its `payment_gateway`.
      */
     public function test_resolves_each_orders_own_recorded_gateway_instead_of_one_fixed_gateway(): void
     {
         Bus::fake();
-        $this->bindFakeGateway('SUCCEEDED', 'xendit');
-        $this->bindFakeGateway('FAILED', 'chip');
+        $this->bindFakeGateway('paid', 'chip');
+        $this->bindFakeGateway('error', 'legacy-processor');
 
-        $xenditOrder = $this->stalePending(['order_number' => 'KRS-XENDIT', 'payment_gateway' => 'xendit']);
         $chipOrder = $this->stalePending(['order_number' => 'KRS-CHIP', 'payment_gateway' => 'chip']);
+        $legacyOrder = $this->stalePending(['order_number' => 'KRS-LEGACY', 'payment_gateway' => 'legacy-processor']);
 
         $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
 
-        $this->assertSame(PaymentStatus::Paid, $xenditOrder->fresh()->payment_status);
-        $this->assertSame(PaymentStatus::Failed, $chipOrder->fresh()->payment_status);
-        Bus::assertDispatched(FulfillOrderJob::class, fn ($job) => $job->order->id === $xenditOrder->id);
+        $this->assertSame(PaymentStatus::Paid, $chipOrder->fresh()->payment_status);
+        $this->assertSame(PaymentStatus::Failed, $legacyOrder->fresh()->payment_status);
+        Bus::assertDispatched(FulfillOrderJob::class, fn ($job) => $job->order->id === $chipOrder->id);
     }
 
     /**
@@ -331,9 +330,10 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     {
         Log::spy();
         Bus::fake();
-        // Proves the gateway is never even called for this order — a
-        // fallback guess would still resolve to 'xendit' and succeed.
-        $this->bindFakeGateway('SUCCEEDED', 'xendit');
+        // Proves the gateway is never even called for this order — even
+        // with a working 'chip' binding present, a NULL payment_gateway
+        // is skipped, not guessed.
+        $this->bindFakeGateway('paid', 'chip');
         $order = $this->stalePending(['order_number' => 'KRS-NO-GATEWAY', 'payment_gateway' => null]);
 
         $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);

@@ -52,3 +52,48 @@ Schedule::call(fn () => Artisan::call('app:prune-player-validations'))
     ->daily()
     ->name('player-validation-pruning')
     ->withoutOverlapping();
+
+// ADR-051 — same inert-until-real-cron pattern as above. Prunes
+// supplier_request_logs past its (split) retention window — see
+// PruneSupplierRequestLogsCommand's own docblock.
+Schedule::call(fn () => Artisan::call('app:prune-supplier-request-logs'))
+    ->daily()
+    ->name('supplier-request-log-pruning')
+    ->withoutOverlapping();
+
+// ADR-039 decision 2 — same inert-until-real-cron pattern as above.
+// `--triggered-by=system` distinguishes this from the manual "Backup
+// Now" admin action, both of which go through the same
+// RunBackupCommand (dump -> locate archive -> decision 8's restore
+// test -> one BackupRun row).
+Schedule::command('app:run-backup', ['--triggered-by' => 'system'])
+    ->dailyAt('02:00')
+    ->name('database-backup')
+    ->withoutOverlapping();
+
+// ADR-039 decision 6 — retention/auto-thinning (7 daily + 4 weekly + 6
+// monthly, config/backup.php's `cleanup.default_strategy`). Scheduled
+// an hour after the backup above (not chained — Laravel's scheduler has
+// no native "run after this other named task" dependency) so a fresh
+// run always exists on disk before old ones are thinned.
+Schedule::command('backup:clean')
+    ->dailyAt('03:00')
+    ->name('database-backup-cleanup')
+    ->withoutOverlapping();
+
+// ADR-027 Phase 6 — same inert-until-real-cron pattern as above.
+// Refills quota_remaining_sen for any membership whose rolling 30-day
+// cycle has elapsed — see ResetMembershipCyclesCommand's own docblock.
+Schedule::command('app:reset-membership-cycles')
+    ->daily()
+    ->name('membership-cycle-reset')
+    ->withoutOverlapping();
+
+// ADR-056 — same inert-until-real-cron pattern as above. Collects the
+// monthly reseller wholesale-tier subscription fee from each reseller's
+// earnings balance and drives active -> grace (3 days) -> lapsed on an
+// unpaid cycle — see ChargeResellerTierFeesCommand's own docblock.
+Schedule::command('app:charge-reseller-tier-fees')
+    ->daily()
+    ->name('reseller-tier-fee-charge')
+    ->withoutOverlapping();

@@ -18,6 +18,7 @@ use App\Services\Order\OrderNumberService;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
+use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -73,7 +74,7 @@ class SandboxOrderController extends Controller
     }
 
     /**
-     * Decision #3: skips Xendit entirely — payment_status is paid
+     * Decision #3: skips the payment gateway entirely — payment_status is paid
      * immediately. Decision #4: created directly at delivery_status =
      * failed, so the freshly created order is immediately usable with
      * the same Resend Delivery flow a real failed order would use.
@@ -95,10 +96,10 @@ class SandboxOrderController extends Controller
             ]);
         }
 
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $pricing = app(PricingService::class)->calculate(
             $package->cost_price,
-            $package->reseller_cost_price,
+            $package->standard_selling_price,
             (float) $reseller->markup_pct,
         );
 
@@ -116,7 +117,7 @@ class SandboxOrderController extends Controller
             'supplier_product_ref' => $package->supplier_package_ref,
             'reseller_id' => $reseller->id,
             'cost_price' => $pricing->costPrice,
-            'reseller_cost_price' => $pricing->resellerCostPrice,
+            'standard_selling_price' => $pricing->standardSellingPrice,
             'reseller_markup_pct' => $reseller->markup_pct,
             'selling_price' => $pricing->sellingPrice,
             'transaction_fee' => 0,
@@ -124,6 +125,7 @@ class SandboxOrderController extends Controller
             'platform_profit' => $pricing->platformProfit,
             'reseller_profit' => $pricing->resellerProfit,
             'payment_status' => PaymentStatus::Paid->value,
+            'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Failed->value,
             'payment_method' => 'sandbox',
         ]);
@@ -158,14 +160,14 @@ class SandboxOrderController extends Controller
         app()->bind("supplier-adapter.{$targetPackage->supplier->slug}", fn () => $adapter);
 
         $fulfillment = new OrderFulfillmentService(
-            new OrderStatusService(),
-            new ReferenceNumberService(),
+            new OrderStatusService,
+            new ReferenceNumberService,
             app(SupplierAdapterFactory::class),
             app(LedgerService::class),
             app(VoucherService::class),
         );
 
-        $resend = new OrderResendService($fulfillment, app(PricingService::class));
+        $resend = new OrderResendService($fulfillment, app(PricingService::class), app(MembershipPricingService::class));
 
         $result = $resend->resend(
             $order,

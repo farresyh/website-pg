@@ -10,7 +10,7 @@ final readonly class PricingBreakdown
 {
     public function __construct(
         public int $costPrice,
-        public int $resellerCostPrice,
+        public int $standardSellingPrice,
         public int $sellingPrice,
         public int $platformProfit,
         public int $resellerProfit,

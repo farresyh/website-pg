@@ -23,8 +23,8 @@ const EXTRA_FIELD_LABEL: Record<"server_id" | "zone_id", string> = {
 };
 
 const inputClass =
-  "min-h-11 rounded-lg border border-border bg-bg px-3.5 text-sm text-text placeholder:text-text-muted focus:border-brand focus:outline-none";
-const labelClass = "mb-1.5 block text-[13px] font-semibold";
+  "min-h-11 rounded-md border-2 border-ink bg-surface-container-lowest px-3.5 text-sm text-on-surface placeholder:text-outline focus:border-secondary focus:outline-none";
+const labelClass = "mb-1.5 block font-display text-[13px] font-bold";
 
 /**
  * Step 1 of the wizard — improvised vs the reference: the reference
@@ -95,37 +95,37 @@ export default function Step1AccountInfo({
       </div>
 
       {verifyError && (
-        <p className="mt-3 rounded-lg border border-border bg-surface p-3 text-[13px] text-text-muted">{verifyError}</p>
+        <p className="mt-3 rounded-md border-2 border-ink bg-surface-container p-3 text-[13px] text-on-surface-variant">{verifyError}</p>
       )}
 
       {game.playerValidatorEnabled && result?.status === "valid" && (
-        <p className="mt-3 flex items-center gap-2 rounded-lg border border-brand-light/40 bg-brand-dark/40 p-3 text-[13px] text-brand-light">
+        <p className="mt-3 flex items-center gap-2 rounded-md border-2 border-success bg-success p-3 text-[13px] text-on-success">
           <CheckCircle size={16} weight="fill" />
           Valid account found{result.nickname ? `: ${result.nickname}` : ""}.
         </p>
       )}
 
       {game.playerValidatorEnabled && result?.status === "invalid" && (
-        <p className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-surface p-3 text-[13px] text-text-muted">
+        <p className="mt-3 flex items-center gap-2 rounded-md border-2 border-ink bg-surface-container p-3 text-[13px] text-on-surface-variant">
           <XCircle size={16} weight="fill" className="shrink-0" />
           Account not found. Double-check your Player ID before continuing.
         </p>
       )}
 
       {game.playerValidatorEnabled && result?.status === "region_unknown" && (
-        <p className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-surface p-3 text-[13px] text-text-muted">
+        <p className="mt-3 flex items-center gap-2 rounded-md border-2 border-ink bg-surface-container p-3 text-[13px] text-on-surface-variant">
           <WarningCircle size={16} weight="fill" className="shrink-0" />
           We couldn&apos;t confirm this account&apos;s region — contact WhatsApp support before paying.
         </p>
       )}
 
       {game.playerValidatorEnabled && result?.status === "wrong_region" && result.redirect_game && (
-        <div className="mt-3 rounded-lg border border-amber/40 bg-amber/10 p-3 text-[13px]">
-          <p className="mb-2 flex items-center gap-2 text-amber">
+        <div className="mt-3 rounded-md border-2 border-ink bg-warning p-3 text-[13px] text-on-warning">
+          <p className="mb-2 flex items-center gap-2 font-bold">
             <WarningCircle size={16} weight="fill" />
             Wrong Region Detected — this account belongs to {result.redirect_game.name}.
           </p>
-          <Link href={`/order/${result.redirect_game.slug}`} className="inline-flex items-center gap-1 font-semibold text-brand-light">
+          <Link href={`/order/${result.redirect_game.slug}`} className="inline-flex items-center gap-1 font-bold text-primary underline">
             Go to {result.redirect_game.name} Store <ArrowSquareOut size={14} />
           </Link>
         </div>

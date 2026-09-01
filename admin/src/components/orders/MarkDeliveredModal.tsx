@@ -1,10 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { markOrderDelivered, type OrderDetail } from "@/lib/orders";
 import { markSandboxOrderDelivered } from "@/lib/sandboxOrders";
@@ -32,8 +44,8 @@ interface MarkDeliveredModalProps {
  * range + player ID + game, since there's no reference-number search
  * there, confirmed live). Entering it here closes the exact data gap
  * (a missing supplier_ref) that made this order ambiguous in the first
- * place. Renders as a child of <Modal>, same fresh-state-per-open
- * convention as IssueVoucherModal/ResendDeliveryModal.
+ * place. Rendered only while the dialog is open, same fresh-state-
+ * per-open convention as IssueVoucherModal/ResendDeliveryModal.
  */
 function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Omit<MarkDeliveredModalProps, "isOpen">) {
   const [supplierRef, setSupplierRef] = useState("");
@@ -60,8 +72,7 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Om
   }
 
   return (
-    <div className="max-w-lg p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Mark as Delivered</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         {sandbox ? (
           <>Sandbox mode — no real Gamevion order exists to look up. Enter any value to exercise this flow.</>
@@ -104,7 +115,7 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Om
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting || !supplierRef.trim()}>
@@ -112,14 +123,33 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Om
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function MarkDeliveredModal({ isOpen, onClose, onConfirmed, order, token, sandbox }: MarkDeliveredModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
-      {isOpen && <MarkDeliveredFields onClose={onClose} onConfirmed={onConfirmed} order={order} token={token} sandbox={sandbox} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Mark as Delivered</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && (
+                <MarkDeliveredFields onClose={onClose} onConfirmed={onConfirmed} order={order} token={token} sandbox={sandbox} />
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

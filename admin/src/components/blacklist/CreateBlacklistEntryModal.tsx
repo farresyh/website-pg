@@ -1,11 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import type { CreateBlacklistEntryValues, BlacklistEntryType } from "@/lib/blacklist";
 
 interface CreateBlacklistEntryModalProps {
@@ -21,8 +33,8 @@ const TYPE_OPTIONS: { value: BlacklistEntryType; label: string }[] = [
 ];
 
 /**
- * Renders as a child of <Modal>, which unmounts while closed — same
- * fresh-mount-per-open reasoning as CreateVoucherModal/CreateValidatorModal.
+ * Rendered only while the dialog is open — same fresh-mount-per-open
+ * reasoning as CreateVoucherModal/CreateValidatorModal.
  */
 function CreateBlacklistEntryFields({ onClose, onSubmit }: Omit<CreateBlacklistEntryModalProps, "isOpen">) {
   const [type, setType] = useState<BlacklistEntryType>("player_id");
@@ -46,8 +58,7 @@ function CreateBlacklistEntryFields({ onClose, onSubmit }: Omit<CreateBlacklistE
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Add Blacklist Entry</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
         Blocks any checkout matching this value, independent of any supplier-side blacklist.
       </p>
@@ -61,7 +72,7 @@ function CreateBlacklistEntryFields({ onClose, onSubmit }: Omit<CreateBlacklistE
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="type">Type</Label>
-          <Select
+          <SimpleSelect
             id="type"
             value={type}
             onChange={(v) => setType(v as BlacklistEntryType)}
@@ -78,7 +89,7 @@ function CreateBlacklistEntryFields({ onClose, onSubmit }: Omit<CreateBlacklistE
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
@@ -86,14 +97,31 @@ function CreateBlacklistEntryFields({ onClose, onSubmit }: Omit<CreateBlacklistE
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function CreateBlacklistEntryModal({ isOpen, onClose, onSubmit }: CreateBlacklistEntryModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && <CreateBlacklistEntryFields onClose={onClose} onSubmit={onSubmit} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add Blacklist Entry</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && <CreateBlacklistEntryFields onClose={onClose} onSubmit={onSubmit} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

@@ -1,8 +1,17 @@
-# ADR-020 Phase 1 (decision #9) — Phase 1 only. The SSH-deploy job
-# (docker compose pull && up -d, migrate, GET /api/health rollback check)
-# is deliberately NOT included here — it needs a real droplet IP/SSH key
-# that don't exist yet (ADR-020 decision #10). Add it once those exist,
-# rather than committing a stub job that can't run.
+# ADR-020 decision #9 + its 2026-09-01 addendum + ADR-037's addendum
+# (single-env, deploy from `main`). Pipeline on `push:main`:
+#   backend/concurrency/frontend tests  →  build-and-push (backend image
+#   only — the 3 Next.js apps deploy on Vercel now)  →  deploy (SSH to the
+#   droplet: pull the tagged image, `up -d`, `migrate --force`, health
+#   check, roll the containers back on failure).
+#
+# build-and-push + deploy need repo secrets/vars that must be provisioned
+# first — DIGITALOCEAN_ACCESS_TOKEN, DEPLOY_SSH_KEY, DEPLOY_HOST,
+# DEPLOY_USER, vars.NEXT_PUBLIC_* — and a DO Container Registry named
+# `pekangame`. Until those exist these two jobs fail at their first auth
+# step; the test jobs above them are unaffected. Same "structurally
+# complete, blocked on an unprovisioned secret" posture build-and-push
+# already carried.
 
 name: CI
 
@@ -94,26 +103,39 @@ jobs:
       - run: npm run build
       - run: npx eslint .
 
+  # ADR-059 — the reseller portal (third Next.js app). Same tsc/build/lint
+  # gate as admin and storefront.
+  reseller:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: reseller
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: reseller/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: npx eslint .
+
   # ADR-023 — the 3 golden-path tests only (guest checkout->payment->
   # order status; admin login->Resend Delivery; admin login->Issue
-  # Voucher), Chromium only. Gamevion is faked unconditionally
-  # (APP_ENV=e2e, AppServiceProvider::register()) — no secret needed
-  # for that. Xendit is hit for real against its own working sandbox
-  # (decision #6) and needs a real test-mode key: XENDIT_TEST_SECRET_KEY
-  # is NOT yet added as a repo secret — until it is, this job passes
-  # the 2 admin specs and fails only the checkout spec at the real
-  # Xendit API call, the same "structurally complete, blocked on an
-  # unprovisioned secret" gap this file's own build-and-push job below
-  # already carries for DIGITALOCEAN_ACCESS_TOKEN. Deliberately absent
-  # from build-and-push's own `needs:` list — ADR-020 decision #9
+  # Voucher), Chromium only. Both the supplier layer (Gamevion) and the
+  # payment layer (CHIP) are faked unconditionally when APP_ENV=e2e
+  # (AppServiceProvider::register() — ADR-022's 2026-09-01 addendum
+  # moved payment onto the same fake-for-e2e footing as the supplier
+  # layer), so this job needs no external secret at all. Deliberately
+  # absent from build-and-push's own `needs:` list — ADR-020 decision #9
   # explicitly does not require Playwright to gate a deploy, since
-  # Phase 1's existing test gate (396+ backend tests, concurrency
-  # proofs) is already strong; this job surfaces regressions without
-  # blocking shipping on it.
+  # Phase 1's existing test gate (backend tests, concurrency proofs) is
+  # already strong; this job surfaces regressions without blocking
+  # shipping on it.
   playwright:
     runs-on: ubuntu-latest
-    env:
-      XENDIT_SECRET_KEY: ${{ secrets.XENDIT_TEST_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -141,23 +163,66 @@ jobs:
           path: e2e/test-results/
           retention-days: 7
 
-  # Needs DIGITALOCEAN_ACCESS_TOKEN (repo secret) and a real DO Container
-  # Registry to already exist — neither is provisioned yet. This job is
-  # structurally complete but will fail at the doctl auth step until both
-  # exist; that's an explicit, separate action, not part of this pass.
+  # Builds + pushes ONLY the backend image (php-fpm / horizon / reverb all
+  # share it — see docker-compose.prod.yml). The 3 Next.js apps deploy on
+  # Vercel, which runs its own build off the same `main` push. Two tags
+  # per build: the commit SHA (what `deploy` pins) and `latest`.
   build-and-push:
     if: github.ref == 'refs/heads/main'
-    needs: [backend-tests, backend-concurrency, admin, storefront]
+    needs: [backend-tests, backend-concurrency, admin, storefront, reseller]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      - run: doctl registry login --expiry-seconds 600
-      - run: docker build -t registry.digitalocean.com/kedairuncitsoloz/backend:${{ github.sha }} ./backend
-      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} -t registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }} ./admin
-      - run: docker build --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }} -t registry.digitalocean.com/kedairuncitsoloz/storefront:${{ github.sha }} ./storefront
-      - run: docker push registry.digitalocean.com/kedairuncitsoloz/backend:${{ github.sha }}
-      - run: docker push registry.digitalocean.com/kedairuncitsoloz/admin:${{ github.sha }}
-      - run: docker push registry.digitalocean.com/kedairuncitsoloz/storefront:${{ github.sha }}
+      - run: doctl registry login --expiry-seconds 1200
+      - run: |
+          docker build \
+            -t registry.digitalocean.com/pekangame/backend:${{ github.sha }} \
+            -t registry.digitalocean.com/pekangame/backend:latest \
+            ./backend
+      - run: docker push registry.digitalocean.com/pekangame/backend:${{ github.sha }}
+      - run: docker push registry.digitalocean.com/pekangame/backend:latest
+
+  # ADR-020 decision #9 — automatic, no manual approval gate (the test
+  # jobs are the gate). SSHes to the one droplet, pulls the SHA-tagged
+  # backend image, `up -d`, runs `migrate --force` (never migrate:fresh),
+  # health-checks `/api/health`, and on failure rolls the CONTAINERS back
+  # to the previously-running image tag. A bad *migration* is not
+  # auto-reverted — the health check failing + the container rollback buys
+  # time for a manual `php artisan migrate:rollback`; the alert is the
+  # signal. The deploy dir on the droplet is a plain `git` checkout of
+  # this repo on `main` (so it always has the current compose file +
+  # backend/public assets nginx mounts); `deploy.sh` there does the work.
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_DIR:-/opt/pekangame}"
+            COMPOSE="docker compose -f docker-compose.prod.yml"
+            PREV_TAG="$(cat .last_deployed_sha 2>/dev/null || echo latest)"
+            git fetch --quiet origin main && git reset --hard origin/main
+            export IMAGE_TAG="${{ github.sha }}"
+            $COMPOSE pull php-fpm
+            $COMPOSE up -d --no-build
+            $COMPOSE exec -T php-fpm php artisan migrate --force --no-interaction
+            $COMPOSE exec -T php-fpm php artisan config:cache
+            sleep 5
+            if curl -fsS --max-time 10 "http://localhost:${NGINX_PORT:-8080}/api/health"; then
+              echo "${{ github.sha }}" > .last_deployed_sha
+            else
+              echo "::error::health check failed — rolling containers back to ${PREV_TAG}"
+              export IMAGE_TAG="${PREV_TAG}"
+              $COMPOSE up -d --no-build
+              exit 1
+            fi

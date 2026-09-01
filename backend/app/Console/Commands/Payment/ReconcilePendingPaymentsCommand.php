@@ -115,7 +115,7 @@ class ReconcilePendingPaymentsCommand extends Command
     }
 
     /**
-     * Mirrors XenditWebhookController's own success branch exactly —
+     * Mirrors ChipWebhookController's own success branch exactly —
      * same PAY-2 duplicate-processing guard (a late webhook could have
      * already flipped this order to Paid and dispatched fulfillment
      * before this run got to it).
@@ -142,7 +142,7 @@ class ReconcilePendingPaymentsCommand extends Command
             return;
         }
 
-        $order->update(['payment_status' => PaymentStatus::Paid->value]);
+        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
 
         FulfillOrderJob::dispatch($order->fresh());
 

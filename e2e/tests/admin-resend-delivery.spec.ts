@@ -16,9 +16,12 @@ test("admin login -> failed order -> Resend Delivery", async ({ page }) => {
 
   // The modal defaults to the order's own (still-active) package —
   // wait for that auto-selection before submitting, matching
-  // ResendDeliveryModal's real canSubmit gate.
+  // ResendDeliveryModal's real canSubmit gate. #resend_package is now
+  // PrimeReact's SimpleSelect (ADR-038) — a composed trigger button,
+  // not a native <select>, so there's no .value to assert on; check
+  // the trigger's displayed label text instead.
   const packageSelect = page.locator("#resend_package");
-  await expect(packageSelect).not.toHaveValue("");
+  await expect(packageSelect).not.toHaveText("");
 
   await page.getByRole("button", { name: "Retry Delivery" }).click();
 

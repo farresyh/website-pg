@@ -35,6 +35,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Backup Disk
+    |--------------------------------------------------------------------------
+    |
+    | ADR-039 decision 3: the disk `config/backup.php` and
+    | Middleware\BackupController write/read backup archives on/from —
+    | deliberately private (never "public", unlike gallery_disk above),
+    | since these archives hold real customer PII and money/order
+    | history. Local by default; swap to "s3" once a real bucket exists
+    | (ADR-020) via env only, no code change.
+    |
+    */
+
+    'backup_disk' => env('BACKUP_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

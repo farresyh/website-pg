@@ -5,11 +5,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getGameSeo, updateGameSeo, type GameSeoDetail } from "@/lib/seo";
 
@@ -32,7 +32,7 @@ export default function GameSeoEditPage() {
   const params = useParams<{ id: string }>();
   const gameId = Number(params.id);
 
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [game, setGame] = useState<GameSeoDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -44,7 +44,6 @@ export default function GameSeoEditPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     getGameSeo(s.token, gameId)
       .then(setGame)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load game."));
@@ -157,7 +156,7 @@ export default function GameSeoEditPage() {
             </div>
             <Button
               type="button"
-              variant="outline"
+              variant="outlined"
               disabled={!game.image_url}
               onClick={() => game.image_url && setGame({ ...game, seo_og_image: game.image_url })}
             >

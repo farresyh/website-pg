@@ -6,6 +6,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -21,7 +22,7 @@ use Illuminate\Database\Seeder;
  * against: one Game+Package with no player-ID validation (keeps the
  * storefront wizard's Step 1 to a plain "Continue" gate — validator
  * chains are a separate, unfaked third-party mechanism this ADR never
- * scoped to touch), one active Xendit channel (checkout requires at
+ * scoped to touch), one active CHIP channel (checkout requires at
  * least one), and pre-existing orders for each admin golden path —
  * one failed order for the Issue Voucher test, a separate failed order
  * for the Resend Delivery test, and a needs_review order for the Mark
@@ -39,11 +40,18 @@ class E2ESeeder extends Seeder
     {
         $this->call(DatabaseSeeder::class);
 
-        // AMBANK_FPX — confirmed live-tested successfully against the
-        // real Xendit sandbox (ADR-001's 2026-07-25 addendum). Every
-        // other seeded row stays is_active=false, matching production
-        // seeding convention (PaymentMethodSeeder's own doc comment).
-        PaymentMethod::query()->where('channel_code', 'AMBANK_FPX')->update(['is_active' => true]);
+        // ADR-061 PR-B: `orders.reseller_id` is NOT NULL — every fixture
+        // order below is the primary brand's (the one `DatabaseSeeder`
+        // just seeded).
+        $reseller = Reseller::primary();
+
+        // CHIP FPX (`fpx`) — the one channel the golden-path checkout
+        // spec drives through. Every other seeded row stays
+        // is_active=false, matching production seeding convention
+        // (PaymentMethodSeeder's own doc comment). The checkout spec's
+        // real payment leg needs a CHIP test-mode key (CHIP_SECRET_KEY /
+        // CHIP_BRAND_ID) exported before `npm test` — see e2e/AGENTS.md.
+        PaymentMethod::query()->where('channel_code', 'fpx')->update(['is_active' => true]);
 
         $supplier = Supplier::query()->firstOrCreate(
             ['slug' => 'e2e-fake-supplier'],
@@ -68,7 +76,7 @@ class E2ESeeder extends Seeder
             ['game_id' => $game->id, 'name' => 'E2E Test Package'],
             [
                 'cost_price' => 400,
-                'reseller_cost_price' => 500,
+                'standard_selling_price' => 500,
                 'markup_percent' => 20,
                 'is_active' => true,
                 'supplier_id' => $supplier->id,
@@ -82,8 +90,9 @@ class E2ESeeder extends Seeder
         // golden path — a pre-existing failed delivery so that test
         // doesn't also have to drive a checkout to failure first.
         Order::query()->firstOrCreate(
-            ['order_number' => 'KRS-E2E-VOUCHER-FIXTURE'],
+            ['order_number' => 'PG-E2E-VOUCHER-FIXTURE'],
             [
+                'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-VOUCHER-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-voucher-fixture@example.com',
@@ -94,7 +103,7 @@ class E2ESeeder extends Seeder
                 'package_id' => $package->id,
                 'supplier_id' => $supplier->id,
                 'cost_price' => $package->cost_price,
-                'reseller_cost_price' => $package->reseller_cost_price,
+                'standard_selling_price' => $package->standard_selling_price,
                 'selling_price' => 600,
                 'transaction_fee' => 21,
                 'final_amount' => 621,
@@ -102,7 +111,7 @@ class E2ESeeder extends Seeder
                 'reseller_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::Failed->value,
-                'payment_gateway' => 'xendit',
+                'payment_gateway' => 'chip',
             ],
         );
 
@@ -110,8 +119,9 @@ class E2ESeeder extends Seeder
         // golden path — kept fully separate from the voucher fixture
         // above so the two tests never contend over the same row.
         Order::query()->firstOrCreate(
-            ['order_number' => 'KRS-E2E-RESEND-FIXTURE'],
+            ['order_number' => 'PG-E2E-RESEND-FIXTURE'],
             [
+                'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-RESEND-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-resend-fixture@example.com',
@@ -122,7 +132,7 @@ class E2ESeeder extends Seeder
                 'package_id' => $package->id,
                 'supplier_id' => $supplier->id,
                 'cost_price' => $package->cost_price,
-                'reseller_cost_price' => $package->reseller_cost_price,
+                'standard_selling_price' => $package->standard_selling_price,
                 'selling_price' => 600,
                 'transaction_fee' => 21,
                 'final_amount' => 621,
@@ -130,7 +140,7 @@ class E2ESeeder extends Seeder
                 'reseller_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::Failed->value,
-                'payment_gateway' => 'xendit',
+                'payment_gateway' => 'chip',
             ],
         );
 
@@ -139,8 +149,9 @@ class E2ESeeder extends Seeder
         // order-resolution mechanism beyond retry-delivery/voucher).
         // Kept fully separate from the two fixtures above.
         Order::query()->firstOrCreate(
-            ['order_number' => 'KRS-E2E-NEEDSREVIEW-FIXTURE'],
+            ['order_number' => 'PG-E2E-NEEDSREVIEW-FIXTURE'],
             [
+                'reseller_id' => $reseller->id,
                 'reference_number' => 'REF-E2E-NEEDSREVIEW-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-needsreview-fixture@example.com',
@@ -151,7 +162,7 @@ class E2ESeeder extends Seeder
                 'package_id' => $package->id,
                 'supplier_id' => $supplier->id,
                 'cost_price' => $package->cost_price,
-                'reseller_cost_price' => $package->reseller_cost_price,
+                'standard_selling_price' => $package->standard_selling_price,
                 'selling_price' => 600,
                 'transaction_fee' => 21,
                 'final_amount' => 621,
@@ -159,7 +170,7 @@ class E2ESeeder extends Seeder
                 'reseller_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::NeedsReview->value,
-                'payment_gateway' => 'xendit',
+                'payment_gateway' => 'chip',
             ],
         );
     }

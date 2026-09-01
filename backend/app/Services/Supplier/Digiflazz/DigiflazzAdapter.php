@@ -3,6 +3,7 @@
 namespace App\Services\Supplier\Digiflazz;
 
 use App\Services\Http\TransientFailureRetryPolicy;
+use App\Services\Supplier\RequestLog\SupplierRequestLogger;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
@@ -55,7 +56,7 @@ final class DigiflazzAdapter implements SupplierAdapter
 
     public function checkBalance(): SupplierResponse
     {
-        $response = $this->client()->post('/v1/cek-saldo', [
+        $response = $this->client(callType: 'checkBalance')->post('/v1/cek-saldo', [
             'cmd' => 'deposit',
             'username' => $this->username,
             'sign' => $this->sign('depo'),
@@ -77,7 +78,7 @@ final class DigiflazzAdapter implements SupplierAdapter
 
     public function listProducts(): SupplierResponse
     {
-        $response = $this->client()->post('/v1/price-list', [
+        $response = $this->client(callType: 'listProducts')->post('/v1/price-list', [
             'cmd' => 'prepaid',
             'username' => $this->username,
             'sign' => $this->sign('pricelist'),
@@ -101,6 +102,8 @@ final class DigiflazzAdapter implements SupplierAdapter
             refId: $request->referenceNumber,
             buyerSkuCode: $request->productRef,
             customerNo: $this->normalizeCustomerNo($request->playerId, $request->serverId),
+            callType: 'createOrder',
+            orderId: $request->orderId,
         );
     }
 
@@ -115,6 +118,8 @@ final class DigiflazzAdapter implements SupplierAdapter
             refId: $request->supplierRef,
             buyerSkuCode: (string) $request->productRef,
             customerNo: $this->normalizeCustomerNo((string) $request->playerId, $request->serverId),
+            callType: 'checkStatus',
+            orderId: $request->orderId,
         );
     }
 
@@ -130,7 +135,7 @@ final class DigiflazzAdapter implements SupplierAdapter
      * DB row lock — same reasoning as GamevionAdapter::client() for
      * keeping the timeout short.
      */
-    private function client(): PendingRequest
+    private function client(string $callType = 'unknown', ?int $orderId = null): PendingRequest
     {
         $client = Http::baseUrl($this->baseUrl)
             ->timeout($this->timeoutSeconds)
@@ -146,7 +151,9 @@ final class DigiflazzAdapter implements SupplierAdapter
             $client = $client->withOptions(['proxy' => $this->proxyUrl]);
         }
 
-        return $client;
+        // ADR-051 — every real outbound call from this adapter gets a
+        // supplier_request_logs row.
+        return SupplierRequestLogger::attach($client, 'digiflazz', $callType, $orderId);
     }
 
     /**
@@ -155,9 +162,9 @@ final class DigiflazzAdapter implements SupplierAdapter
      * and checkStatus() share this since Digiflazz's own docs describe
      * checkStatus as a literal re-submit of the same request shape.
      */
-    private function submitTransaction(string $refId, string $buyerSkuCode, string $customerNo): SupplierResponse
+    private function submitTransaction(string $refId, string $buyerSkuCode, string $customerNo, string $callType, ?int $orderId): SupplierResponse
     {
-        $response = $this->client()->post('/v1/transaction', array_filter([
+        $response = $this->client(callType: $callType, orderId: $orderId)->post('/v1/transaction', array_filter([
             'username' => $this->username,
             'buyer_sku_code' => $buyerSkuCode,
             'customer_no' => $customerNo,

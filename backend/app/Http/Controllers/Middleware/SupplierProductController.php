@@ -206,7 +206,7 @@ class SupplierProductController extends Controller
             'denomination' => $data['denomination'] ?? null,
             'cost_price' => $supplierProduct->price_sen,
             'markup_percent' => $markupPercent,
-            'reseller_cost_price' => $markup->calculateResellerCostPrice($supplierProduct->price_sen, $markupPercent),
+            'standard_selling_price' => $markup->calculateStandardSellingPrice($supplierProduct->price_sen, $markupPercent),
             'supplier_id' => $supplierProduct->supplier_id,
             'supplier_package_ref' => $supplierProduct->external_ref,
         ]);

@@ -7,10 +7,25 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class GamevionAdapterTest extends TestCase
 {
+    /**
+     * ADR-051: every real adapter call now dispatches
+     * LogSupplierRequestJob (ShouldQueue) via SupplierRequestLogger's
+     * on_stats hook. Queue::fake() keeps this suite's deliberate
+     * DB-free scope intact — without it, the testing env's
+     * QUEUE_CONNECTION=sync would run that job inline and hit a
+     * `suppliers` table that was never migrated here.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Queue::fake();
+    }
+
     private function adapter(bool $sandbox = false): GamevionAdapter
     {
         return new GamevionAdapter(
@@ -45,6 +60,28 @@ class GamevionAdapterTest extends TestCase
         });
     }
 
+    /**
+     * ADR-046 addendum: check-balance always queries the real account
+     * — sandbox mode routes to a *different* account with its own fake
+     * balance, found live while testing the Supplier Management
+     * screen. A balance-monitoring tool showing that instead of the
+     * real number whenever sandbox happens to be on is a real
+     * money-visibility risk.
+     */
+    public function test_check_balance_never_sends_the_sandbox_header_even_when_sandbox_is_enabled(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => false, 'code' => 200, 'message' => 'Success',
+                'data' => ['user_name' => 'Melpa Digital', 'user_balance' => '150000.00'],
+            ], 200),
+        ]);
+
+        $this->adapter(sandbox: true)->checkBalance();
+
+        Http::assertSent(fn ($request) => ! $request->hasHeader('X-ENVIRONMENT'));
+    }
+
     public function test_check_balance_normalizes_the_response(): void
     {
         Http::fake([
@@ -66,6 +103,56 @@ class GamevionAdapterTest extends TestCase
         $this->assertTrue($result->success);
         $this->assertSame('Melpa Digital', $result->data['account_name']);
         $this->assertSame(150000.00, $result->data['balance']);
+    }
+
+    /**
+     * ADR-051 — the real end-to-end wiring: a real call through this
+     * adapter reaches SupplierRequestLogger's on_stats hook, gets
+     * redacted, and dispatches LogSupplierRequestJob with the right
+     * shape — not just that *a* job fired.
+     */
+    public function test_check_balance_logs_a_redacted_supplier_request(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => false, 'code' => 200, 'message' => 'Success',
+                'data' => ['user_balance' => '150000.00'],
+            ], 200),
+        ]);
+
+        $this->adapter()->checkBalance();
+
+        Queue::assertPushed(\App\Jobs\LogSupplierRequestJob::class, function ($job) {
+            $entry = $job->entry();
+
+            return $entry['slug'] === 'gamevion'
+                && $entry['call_type'] === 'checkBalance'
+                && $entry['status_code'] === 200
+                && $entry['outcome'] === 'success'
+                && $entry['request_payload']['headers']['Authorization'] === ['[REDACTED]']
+                && $entry['request_payload']['headers']['X-API-KEY'] === ['[REDACTED]'];
+        });
+    }
+
+    /**
+     * ADR-054 decision 7 — the Developer API Tester's ambient context
+     * flag is read at the exact point every real adapter call already
+     * funnels through (SupplierRequestLogger::log()), so a call fired
+     * from that screen is distinguishable in the Request Logs viewer
+     * without the adapter itself knowing anything about it.
+     */
+    public function test_check_balance_logs_with_a_dev_test_prefix_inside_developer_test_context(): void
+    {
+        Http::fake([
+            'api.gamevion.com/*' => Http::response([
+                'error' => false, 'code' => 200, 'message' => 'Success',
+                'data' => ['user_balance' => '150000.00'],
+            ], 200),
+        ]);
+
+        \App\Services\Supplier\RequestLog\DeveloperTestContext::runIn(fn () => $this->adapter()->checkBalance());
+
+        Queue::assertPushed(\App\Jobs\LogSupplierRequestJob::class, fn ($job) => $job->entry()['call_type'] === 'dev_test_checkBalance');
     }
 
     /**

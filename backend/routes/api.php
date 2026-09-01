@@ -3,11 +3,20 @@
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
+use App\Http\Controllers\Admin\CustomerAnalyticsController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
+use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
+use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ResellerController;
+use App\Http\Controllers\Admin\ResellerImpersonationController;
+use App\Http\Controllers\Admin\ResellerMembershipTierController;
+use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -16,39 +25,75 @@ use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
-use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
-use App\Http\Controllers\SeoController;
-use App\Http\Controllers\Middleware\DismissedPackageController;
-use App\Http\Controllers\Middleware\PaymentMethodController;
+use App\Http\Controllers\MembershipController;
+use App\Http\Controllers\MembershipOtpController;
+use App\Http\Controllers\Middleware\BackupController;
 use App\Http\Controllers\Middleware\CurrencyRateController;
+use App\Http\Controllers\Middleware\DeveloperToolController;
+use App\Http\Controllers\Middleware\DismissedPackageController;
+use App\Http\Controllers\Middleware\OpsAccessController;
+use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
 use App\Http\Controllers\Middleware\PlayerRegionMappingController;
 use App\Http\Controllers\Middleware\PlayerValidatorProfileController;
 use App\Http\Controllers\Middleware\PriceSyncController;
+use App\Http\Controllers\Middleware\RequestLogController;
 use App\Http\Controllers\Middleware\SandboxOrderController;
+use App\Http\Controllers\Middleware\SupplierController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
+use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\Reseller\DashboardController as ResellerDashboardController;
+use App\Http\Controllers\Reseller\EarningsController as ResellerEarningsController;
+use App\Http\Controllers\Reseller\ImpersonationController as ResellerImpersonationEndController;
+use App\Http\Controllers\Reseller\OrderController as ResellerOrderController;
+use App\Http\Controllers\Reseller\ProfileController as ResellerProfileController;
+use App\Http\Controllers\Reseller\ResellerAuthController;
+use App\Http\Controllers\Reseller\SubscriptionController as ResellerSubscriptionController;
+use App\Http\Controllers\Reseller\WithdrawalController as ResellerWithdrawalController;
+use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
-use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
 // ADR-019: the only mutating auth-adjacent route with no throttle,
 // unlike /checkout and /validate-player below. Tighter than either
 // (5/minute/IP, not 10) — this is a brute-force/credential-stuffing
 // target, not a genuine-retry-tolerant customer action.
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+//
+// Explicit `login` prefix — found live, 2026-08-27: ThrottleRequests'
+// default key is sha1($route->getDomain().'|'.$request->ip()), which
+// never includes the route path/URI at all. Every throttle:N,1 route
+// below with no prefix of its own shares that exact same bucket per
+// IP, regardless of each route's own configured maxAttempts — a guest
+// hitting /checkout, /client-errors, /validate-player etc. from the
+// same IP silently eats into /login's 5/minute budget (and vice
+// versa). Surfaced by the storefront-checkout E2E spec's own admin
+// API login getting a genuine 429 after only 1 real login attempt,
+// once the earlier playwright webServer-boot bug (see
+// e2e/scripts/boot-backend.sh) stopped masking it. Every throttle:
+// route in this file now gets its own prefix for the same reason,
+// not just this one.
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1,login');
 
 // ADR-014: unauthenticated infra probe, DB + queue connection only —
 // no order/customer data ever touches this endpoint.
 Route::get('/health', [HealthController::class, 'check']);
+
+// ADR-044 decision 8 — public (both admin's Bearer-token and
+// storefront's guest context report here), throttled log sink for a
+// zod response-schema mismatch. Not a general error-monitoring
+// endpoint — see ClientErrorController's own doc comment.
+Route::post('/client-errors', [ClientErrorController::class, 'store'])->middleware('throttle:30,1,client-errors');
 
 // Guest checkout (ADR-011) — no Customer auth exists, deliberately not
 // behind auth:sanctum. Money fields are still never client-trusted
@@ -56,7 +101,7 @@ Route::get('/health', [HealthController::class, 'check']);
 // Game/Package config, never from this request's own body.
 // ADR-014: throttle:10,1 — 10/minute/IP, loose enough for a genuine
 // customer retrying a failed attempt, tight enough to blunt a flood.
-Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1,checkout');
 
 // ADR-024 decision #1's "Apply" button — read-only preview, never
 // locks or spends a voucher's remaining balance (VoucherService::
@@ -65,21 +110,59 @@ Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('thro
 // abuse this rate limit exists to blunt, and the ownership-lock check
 // inside VoucherService::preview() already keeps a wrong guess from
 // revealing anything either way.
-Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware('throttle:10,1,voucher-preview');
+
+// Bug fix, 2026-08-30: read-only Package Price/Transaction Fee/Voucher
+// Discount/Total breakdown, fetched by the storefront's Order Summary
+// sidebar and Review Modal on every package/channel/voucher change —
+// see CheckoutController::previewTotal()'s own doc comment. Looser
+// than checkout/voucher-preview's 10/min: this is normal browsing
+// telemetry (no gateway call, no guessable secret, unlike a voucher
+// code), debounced client-side, but still worth a limit since it's a
+// public unauthenticated endpoint doing real DB work.
+Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware('throttle:30,1,checkout-preview-totals');
 
 // Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
 // as checkout above) — backend half of the Player-ID Validation
 // follow-up, docs/prd.md §14. Same throttle as checkout: this hits
 // unofficial third-party provider APIs (ADR-005 addendum), tighter
 // abuse-blunting matters more here than for a normal read endpoint.
-Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:10,1,validate-player');
 
 // Public "Track Order" lookup (ADR-011) — order_number (a ULID) is
 // high-entropy enough to be treated as proof of ownership on its own,
 // same trust model as a courier tracking number. Read-only, but still
 // throttled — a bit looser than checkout/validate since it's not
 // hitting a third-party API, just blunting scraping/enumeration.
-Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1');
+Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1,track-order');
+
+// ADR-053 (REV-1..5) — public guest review submission, same
+// order_number-as-proof-of-ownership trust model as track-order above.
+// reviews.order_id's own unique index is the real one-per-order
+// guarantee; this throttle only blunts a flood, same convention as
+// checkout/validate-player.
+Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])->middleware('throttle:10,1,review');
+
+// ADR-027's 2026-08-29 addendum, decisions 23/26/27 — membership
+// identity verification (email + OTP, no login/account). `send` uses
+// the named `otp-request` limiter (registered in AppServiceProvider,
+// 3/hour keyed by email — not IP, unlike every other throttle: route
+// in this file, since the abuse case is flooding one target inbox).
+// `verify` gets a plain IP throttle same shape as checkout/validate
+// -player; OtpService's own 5-attempt lockout is the real brute-force
+// defense for a submitted code.
+Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
+Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
+// ADR-055 decision 3: the upsell card's tier data — public (no session
+// token), returns [] when the kill switch is off. Deliberately separate
+// from the admin-only membership-plans prefix (same controller family,
+// different gate — this route is on the public MembershipController).
+Route::get('/membership/plans', [MembershipController::class, 'plans']);
+
+// Decisions 13/24/25 — the /membership dashboard's data. Auth is the
+// session token (Authorization: Bearer), not auth:sanctum — resolved
+// inside the controller itself, same reasoning as the OTP routes above.
+Route::get('/membership/me', [MembershipController::class, 'me']);
 
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
@@ -116,9 +199,45 @@ Route::prefix('catalog')->group(function () {
     // app/robots.ts.
     Route::get('/seo/settings', [SeoController::class, 'settings']);
     Route::get('/seo/redirects', [SeoController::class, 'redirects']);
-    Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1');
+    Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1,redirect-hit');
     Route::get('/seo/scripts', [SeoController::class, 'scripts']);
     Route::get('/seo/robots', [SeoController::class, 'robots']);
+});
+
+// ADR-058 (58a) — reseller portal auth, on the separate `reseller`
+// Sanctum guard (config/auth.php). Own throttle buckets from day one:
+// per the lesson above every throttle:N route needs its own prefix or
+// it silently shares one per-IP bucket with every other prefixless one.
+Route::prefix('reseller')->group(function () {
+    Route::post('/login', [ResellerAuthController::class, 'login'])->middleware('throttle:5,1,reseller-login');
+    Route::post('/set-password', [ResellerAuthController::class, 'setPassword'])->middleware('throttle:6,1,reseller-set-password');
+
+    // `auth:reseller` rejects any token whose tokenable is not a
+    // reseller_users model; `reseller.context` then activates ADR-057's
+    // tenant scope from the authenticated user's reseller_id.
+    Route::middleware(['auth:reseller', 'reseller.context'])->group(function () {
+        Route::post('/logout', [ResellerAuthController::class, 'logout']);
+        Route::get('/me', [ResellerAuthController::class, 'me']);
+
+        // ADR-059 (59a) — reseller portal read layer. Every route here
+        // is scoped to the authenticated reseller_user's own tenant by
+        // `reseller.context`; money reads go through
+        // ResellerEarningsService (decision 5).
+        Route::get('/dashboard', [ResellerDashboardController::class, 'show']);
+        Route::get('/orders', [ResellerOrderController::class, 'index']);
+        Route::get('/orders/{orderNumber}', [ResellerOrderController::class, 'show']);
+        Route::get('/earnings', [ResellerEarningsController::class, 'index']);
+        Route::get('/subscription', [ResellerSubscriptionController::class, 'show']);
+
+        // ADR-059 (59c) — write surface: profile bank details + WTH-1..5
+        // request side (approval stays admin) + the portal "Exit
+        // impersonation" close.
+        Route::get('/profile', [ResellerProfileController::class, 'show']);
+        Route::put('/profile', [ResellerProfileController::class, 'update']);
+        Route::get('/withdrawals', [ResellerWithdrawalController::class, 'index']);
+        Route::post('/withdrawals', [ResellerWithdrawalController::class, 'store']);
+        Route::post('/impersonation/end', [ResellerImpersonationEndController::class, 'end']);
+    });
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -145,6 +264,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{withdrawal}/complete', [WithdrawalController::class, 'complete']);
     });
 
+    // REV-1..5 (ADR-053) — PRD §3: "Admin ... manages orders, reports,
+    // reviews, withdrawals (below threshold), vouchers (below
+    // threshold)", so both roles, same tier as Orders/Vouchers.
+    Route::middleware('admin.role:super_admin,admin')->prefix('reviews')->group(function () {
+        Route::get('/', [AdminReviewController::class, 'index']);
+        Route::post('/bulk-approve', [AdminReviewController::class, 'bulkApprove']);
+        Route::patch('/{review}/approve', [AdminReviewController::class, 'approve']);
+        Route::patch('/{review}/reject', [AdminReviewController::class, 'reject']);
+    });
+
     // VCH-1..6 — Path A (store) is threshold-gated inside the
     // controller (VCH-6); Path B (storeFromOrder) never is, per the
     // founder's decision (docs/prd.md §14) — its amount is bounded by
@@ -152,6 +281,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin,admin')->group(function () {
         Route::prefix('vouchers')->group(function () {
             Route::get('/', [VoucherController::class, 'index']);
+            // ADR-036 — admin-triggered voucher consolidation.
+            Route::post('/merge', [VoucherController::class, 'merge']);
             Route::get('/{voucher}', [VoucherController::class, 'show']);
             Route::post('/', [VoucherController::class, 'store']);
             Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
@@ -175,6 +306,40 @@ Route::middleware('auth:sanctum')->group(function () {
     // ORD-1..7 — list + detail, plus retryDelivery (ORD-7's resolve
     // action, ADR-014). Makes a real order's outcome visible in the
     // Admin Panel and gives an operator a way to act on a failure.
+    // RPT-1..3 — see ReportService's doc comment for the grilled/pinned
+    // sales & profit definitions. Same role tier as Orders/Withdrawals:
+    // both already expose profit fields, Reports is read-only on top.
+    // DASH-1..6 (ADR-045) — same read-only-overview role tier as
+    // Reports, no reason to restrict further.
+    Route::middleware('admin.role:super_admin,admin')->prefix('dashboard')->group(function () {
+        Route::get('/summary', [DashboardController::class, 'summary']);
+        Route::get('/health', [DashboardController::class, 'health']);
+        Route::get('/funnel', [DashboardController::class, 'funnel']);
+        Route::get('/top-games', [DashboardController::class, 'topGames']);
+        Route::get('/hourly-activity', [DashboardController::class, 'hourlyActivity']);
+    });
+
+    Route::middleware('admin.role:super_admin,admin')->prefix('reports')->group(function () {
+        Route::get('/resellers', [ReportController::class, 'resellers']);
+        Route::get('/summary', [ReportController::class, 'summary']);
+        Route::get('/trend', [ReportController::class, 'trend']);
+        Route::get('/daily-breakdown', [ReportController::class, 'dailyBreakdown']);
+        Route::get('/top-games', [ReportController::class, 'topGames']);
+        Route::get('/breakdown/games', [ReportController::class, 'gameBreakdown']);
+        Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
+        Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
+        Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
+        Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
+        Route::get('/export', [ReportController::class, 'export']);
+    });
+
+    Route::middleware('admin.role:super_admin,admin')->prefix('customer-analytics')->group(function () {
+        Route::get('/summary', [CustomerAnalyticsController::class, 'summary']);
+        Route::get('/customers', [CustomerAnalyticsController::class, 'customers']);
+        Route::get('/customers/{email}', [CustomerAnalyticsController::class, 'show']);
+        Route::get('/export', [CustomerAnalyticsController::class, 'export']);
+    });
+
     Route::middleware('admin.role:super_admin,admin')->prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::get('/{order}', [OrderController::class, 'show']);
@@ -200,6 +365,36 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/mark-delivered', [SandboxOrderController::class, 'markDelivered']);
         Route::delete('/{order}', [SandboxOrderController::class, 'destroy']);
         Route::delete('/', [SandboxOrderController::class, 'destroyAll']);
+    });
+
+    // ADR-046 — Supplier Management: SUPP-1/CRUD/SUPP-5 only (SUPP-2/3/4
+    // deliberately not built here, already covered by Product Manager
+    // below — see ADR-046's Context). Super Admin only — supplier
+    // config, per PRD §3.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/suppliers')->group(function () {
+        Route::get('/', [SupplierController::class, 'index']);
+        Route::get('/available-slugs', [SupplierController::class, 'availableSlugs']);
+        Route::post('/', [SupplierController::class, 'store']);
+        Route::put('/{supplier}', [SupplierController::class, 'update']);
+        Route::patch('/{supplier}/status', [SupplierController::class, 'updateStatus']);
+        Route::delete('/{supplier}', [SupplierController::class, 'destroy']);
+        Route::post('/{supplier}/refresh-balance', [SupplierController::class, 'refreshBalance']);
+        Route::patch('/{supplier}/packages/status', [SupplierController::class, 'updatePackagesStatus']);
+    });
+
+    // ADR-051 (MUI-9) — read-only Request Logs viewer. Super Admin
+    // only, same boundary as every other supplier-facing screen here.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/request-logs')->group(function () {
+        Route::get('/', [RequestLogController::class, 'index']);
+        Route::get('/{request_log}', [RequestLogController::class, 'show']);
+    });
+
+    // ADR-054 (DEV-1/2, MUI-11) — Developer raw API tester. Super
+    // Admin only, same boundary as every other supplier-facing screen
+    // here; also the one screen in this area whose real (non-dry-run)
+    // calls can reach a live supplier API on demand.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/developer-tools')->group(function () {
+        Route::post('/test', [DeveloperToolController::class, 'test']);
     });
 
     // MID-1..6/SUPP-3 — Price Sync Stage 2: browse the raw Gamevion
@@ -255,6 +450,67 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
     });
 
+    // ADR-027's 2026-08-29 addendum, decisions 14/15: /admin/membership's
+    // backend — edit-only against the two fixed membership_plans rows,
+    // same super_admin tier as Settings/Price Sync (deliberately not
+    // under /middleware — no supplier-integration dependency).
+    Route::middleware('admin.role:super_admin')->prefix('membership-plans')->group(function () {
+        Route::get('/', [MembershipPlanController::class, 'index']);
+        Route::get('/preview', [MembershipPlanController::class, 'preview']);
+        Route::put('/{membershipPlan}', [MembershipPlanController::class, 'update']);
+        Route::patch('/enabled', [MembershipPlanController::class, 'updateEnabled']);
+    });
+
+    // ADR-027 continued addendum decision 15 / Phase 6.5 (grilled
+    // 2026-08-29): the member registry + fee collection half of
+    // /admin/membership. Same super_admin tier as membership-plans.
+    Route::middleware('admin.role:super_admin')->prefix('memberships')->group(function () {
+        Route::get('/', [AdminMembershipController::class, 'index']);
+        // ADR-061 decision 5: the brands a membership can be recorded
+        // against — internal, membership-enabled resellers only.
+        Route::get('/brands', [AdminMembershipController::class, 'brands']);
+        Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
+    });
+
+    // ADR-058 58b (RES-1..6) — admin Reseller Management. Same
+    // super_admin tier as Settings / Membership (platform-wide business
+    // config, no supplier-integration dependency so deliberately not
+    // under /middleware). The reseller PORTAL auth (58a) is a separate
+    // guard entirely, see the /reseller prefix above.
+    Route::middleware('admin.role:super_admin')->group(function () {
+        Route::prefix('resellers')->group(function () {
+            Route::get('/', [ResellerController::class, 'index']);
+            Route::post('/', [ResellerController::class, 'store']);
+            Route::get('/{reseller}', [ResellerController::class, 'show']);
+            Route::put('/{reseller}', [ResellerController::class, 'update']);
+            Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
+            Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+
+            // ADR-056 decision 8 — wholesale-tier assignment + fee actions.
+            Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
+            Route::post('/{reseller}/tier/charge', [ResellerController::class, 'chargeTierFee']);
+            Route::post('/{reseller}/tier/reactivate', [ResellerController::class, 'reactivateSubscription']);
+
+            // Staff logins + the set-password invite (58a's ResellerInviteService).
+            Route::post('/{reseller}/users', [ResellerController::class, 'storeUser']);
+            Route::post('/{reseller}/users/{resellerUser}/resend-invite', [ResellerController::class, 'resendInvite']);
+
+            // RES-4 impersonation.
+            Route::post('/{reseller}/impersonate', [ResellerImpersonationController::class, 'store']);
+        });
+
+        Route::get('/reseller-impersonation-sessions', [ResellerImpersonationController::class, 'index']);
+        Route::post('/reseller-impersonation-sessions/{impersonation_session}/end', [ResellerImpersonationController::class, 'end']);
+
+        // ADR-056 decision 1 — the reseller_membership_tiers CRUD ladder.
+        Route::prefix('reseller-tiers')->group(function () {
+            Route::get('/', [ResellerMembershipTierController::class, 'index']);
+            Route::post('/', [ResellerMembershipTierController::class, 'store']);
+            Route::put('/{reseller_tier}', [ResellerMembershipTierController::class, 'update']);
+            Route::delete('/{reseller_tier}', [ResellerMembershipTierController::class, 'destroy']);
+        });
+    });
+
     // ADR-029 — SEO Management: Overview, Global Settings/Meta
     // Templates (one table, decision 2), Game SEO (decision 11),
     // Redirects (decision 3/9), Scripts (addendum 2 decision 13),
@@ -283,6 +539,27 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/crawler-rules', [CrawlerRuleController::class, 'store']);
         Route::put('/crawler-rules/{crawler_rule}', [CrawlerRuleController::class, 'update']);
         Route::delete('/crawler-rules/{crawler_rule}', [CrawlerRuleController::class, 'destroy']);
+    });
+
+    // ADR-039 decision 9/10 — Database Backups: unified run history
+    // (BAK-1/2), manual "Backup Now" trigger (BAK-3), download/delete
+    // (BAK-4). Super Admin only, same tier as Settings/Price Sync — no
+    // restore endpoint anywhere here (decision 5, CLI/artisan-only).
+    Route::middleware('admin.role:super_admin')->prefix('middleware/backups')->group(function () {
+        Route::get('/', [BackupController::class, 'index']);
+        Route::get('/stats', [BackupController::class, 'stats']);
+        Route::post('/', [BackupController::class, 'store']);
+        Route::get('/{backup_run}', [BackupController::class, 'show']);
+        Route::get('/{backup_run}/download', [BackupController::class, 'download']);
+        Route::delete('/{backup_run}', [BackupController::class, 'destroy']);
+    });
+
+    // ADR-048 addendum — mints a short-lived (5 min) signed URL that
+    // bootstraps the one `web`-guard session this backend ever creates
+    // (OpsAccessController's own doc comment has the full story). Super
+    // Admin only, same tier as every other /middleware/* route.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/ops')->group(function () {
+        Route::post('/{target}/link', [OpsAccessController::class, 'mint']);
     });
 
     // SET-7/SET-11 — Payment Methods: per-channel activation/fee/gateway
@@ -348,11 +625,10 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-// Not behind auth:sanctum — Xendit isn't an admin user. Signature
+// Not behind auth:sanctum — CHIP isn't an admin user. Signature
 // verification inside the controller is the auth mechanism (PAY-1).
 // Rate-limited distinct from the general `api` group (which has no throttle
 // enabled at all, per bootstrap/app.php) — bounds the cost of an unsigned
 // flood before signature verification runs, without risking a real gateway
 // retry burst getting throttled. Found absent, fresh audit, 2026-08-14.
-Route::post('/webhooks/xendit', [XenditWebhookController::class, 'handle'])->middleware('throttle:120,1');
-Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])->middleware('throttle:120,1');
+Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])->middleware('throttle:120,1,webhook-chip');

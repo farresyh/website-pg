@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/modal";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Select from "@/components/form/Select";
-import Button from "@/components/ui/button/Button";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { listGames, listGamePackages, type Game, type GamePackage } from "@/lib/games";
 import type { CreateSandboxOrderValues } from "@/lib/sandboxOrders";
 
@@ -35,6 +47,16 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   const [packages, setPackages] = useState<GamePackage[] | null>(null);
   const [packageId, setPackageId] = useState<number | null>(null);
 
+  // Adjusted during render (React's own pattern for "reset state when a
+  // prop/other state changes"), not in the effect below — this way the
+  // effect only performs the actual async fetch, no synchronous setState.
+  const [packagesGameId, setPackagesGameId] = useState<number | null>(gameId);
+  if (gameId !== packagesGameId) {
+    setPackagesGameId(gameId);
+    setPackageId(null);
+    setPackages(null);
+  }
+
   const [playerId, setPlayerId] = useState("");
   const [serverId, setServerId] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -50,8 +72,6 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   }, []);
 
   useEffect(() => {
-    setPackageId(null);
-    setPackages(null);
     if (!gameId) return;
     listGamePackages(token, gameId).then((all) => setPackages(all.filter((p) => p.is_active)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,10 +102,9 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   }
 
   return (
-    <div className="max-w-md p-6">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Create Test Order</h3>
+    <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-        Creates a real Order row, marked as sandbox-only (is_test), paid immediately with no Xendit call, and starting
+        Creates a real Order row, marked as sandbox-only (is_test), paid immediately with no payment-gateway call, and starting
         already at a &quot;failed delivery&quot; state so it&apos;s instantly usable with Resend Delivery below.
       </p>
 
@@ -106,7 +125,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
           {games === null ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading games…</p>
           ) : (
-            <Select
+            <SimpleSelect
               id="sandbox_game"
               value={gameId !== null ? String(gameId) : ""}
               onChange={(value) => setGameId(value ? Number(value) : null)}
@@ -122,7 +141,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
           ) : packages === null ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading packages…</p>
           ) : (
-            <Select
+            <SimpleSelect
               id="sandbox_package"
               value={packageId !== null ? String(packageId) : ""}
               onChange={(value) => setPackageId(value ? Number(value) : null)}
@@ -148,7 +167,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting || !gameId || !packageId}>
@@ -156,14 +175,31 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
 
 export default function CreateSandboxOrderModal({ isOpen, onClose, onSubmit, token }: CreateSandboxOrderModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      {isOpen && <CreateSandboxOrderFields onClose={onClose} onSubmit={onSubmit} token={token} />}
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Test Order</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {isOpen && <CreateSandboxOrderFields onClose={onClose} onSubmit={onSubmit} token={token} />}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
   );
 }

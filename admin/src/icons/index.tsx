@@ -138,3 +138,50 @@ export const ImageIcon = (props: IconProps) => (
     />
   </svg>
 );
+
+export const ChartLineIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M4 20V4M4 20H20M4 15.5L9 10.5L13 14.5L20 7.5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const TrendUpIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M4 16L9.5 10.5L13.5 14.5L20 8M20 8H14.5M20 8V13.5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const TagIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M4.75 5.5C4.75 5.08579 5.08579 4.75 5.5 4.75H11.1893C11.3881 4.75 11.5789 4.82902 11.7197 4.96967L19.2803 12.5303C19.5732 12.8232 19.5732 13.2981 19.2803 13.5909L13.5909 19.2803C13.2981 19.5732 12.8232 19.5732 12.5303 19.2803L4.96967 11.7197C4.82902 11.5789 4.75 11.3881 4.75 11.1893V5.5ZM5.5 3.25C4.25736 3.25 3.25 4.25736 3.25 5.5V11.1893C3.25 11.7861 3.48705 12.3583 3.90901 12.7803L11.4697 20.3409C12.3576 21.2288 13.7936 21.2288 14.6816 20.3409L20.3409 14.6816C21.2288 13.7936 21.2288 12.3576 20.3409 11.4697L12.7803 3.90901C12.3583 3.48705 11.7861 3.25 11.1893 3.25H5.5ZM8.5 9.25C8.91421 9.25 9.25 8.91421 9.25 8.5C9.25 8.08579 8.91421 7.75 8.5 7.75C8.08579 7.75 7.75 8.08579 7.75 8.5C7.75 8.91421 8.08579 9.25 8.5 9.25Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+/** Same glyph the old `components/ui/modal` used for its close button (ADR-038 Dialog migration). */
+export const CloseIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M6.04289 16.5413C5.65237 16.9318 5.65237 17.565 6.04289 17.9555C6.43342 18.346 7.06658 18.346 7.45711 17.9555L11.9987 13.4139L16.5408 17.956C16.9313 18.3466 17.5645 18.3466 17.955 17.956C18.3455 17.5655 18.3455 16.9323 17.955 16.5418L13.4129 11.9997L17.955 7.4576C18.3455 7.06707 18.3455 6.43391 17.955 6.04338C17.5645 5.65286 16.9313 5.65286 16.5408 6.04338L11.9987 10.5855L7.45711 6.0439C7.06658 5.65338 6.43342 5.65338 6.04289 6.0439C5.65237 6.43442 5.65237 7.06759 6.04289 7.45811L10.5845 11.9997L6.04289 16.5413Z"
+      fill="currentColor"
+    />
+  </svg>
+);

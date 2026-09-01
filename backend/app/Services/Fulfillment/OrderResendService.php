@@ -7,6 +7,8 @@ use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\PlayerValidation;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Pricing\MembershipPricingService;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Pricing\PricingService;
 use Illuminate\Validation\ValidationException;
 
@@ -29,6 +31,7 @@ final class OrderResendService
     public function __construct(
         private readonly OrderFulfillmentService $fulfillment,
         private readonly PricingService $pricing,
+        private readonly MembershipPricingService $membershipPricing,
     ) {
     }
 
@@ -47,9 +50,9 @@ final class OrderResendService
 
         // Decision #3: the live reconciliation figures, captured at
         // the moment of this attempt — never the order's own frozen
-        // cost_price/reseller_cost_price (decision #2, untouched).
+        // cost_price/standard_selling_price (decision #2, untouched).
         $liveCostPrice = $targetPackage->cost_price;
-        $liveResellerCostPrice = $targetPackage->reseller_cost_price;
+        $liveStandardSellingPrice = $targetPackage->standard_selling_price;
         $priceDiff = $liveCostPrice - $order->cost_price;
 
         // Decision #5: platform_profit/reseller_profit are recomputed
@@ -61,14 +64,33 @@ final class OrderResendService
         // fulfill() credits the ledger with these exact figures.
         // final_amount/selling_price/transaction_fee are never part
         // of this update — decision #2/#5's immutability line.
-        $breakdown = $this->pricing->calculate($liveCostPrice, $liveResellerCostPrice, (float) $order->reseller_markup_pct);
+        //
+        // ADR-027 Phase 6: a member-priced order recomputes via the
+        // member formula instead — live cost_price (things a resync
+        // can change), but the order's own frozen member_discount_percent
+        // (never a live tier lookup), exactly mirroring how the standard
+        // chain above already treats reseller_markup_pct as frozen off
+        // the order while only cost_price is re-fetched live.
+        if ($order->pricing_basis === PricingBasis::Member) {
+            $liveMemberPrice = $this->membershipPricing->calculateMemberPrice(
+                $liveCostPrice,
+                (float) $targetPackage->markup_percent,
+                (float) $order->member_discount_percent,
+            );
+            $platformProfit = $liveMemberPrice - $liveCostPrice;
+            $resellerProfit = 0;
+        } else {
+            $breakdown = $this->pricing->calculate($liveCostPrice, $liveStandardSellingPrice, (float) $order->reseller_markup_pct);
+            $platformProfit = $breakdown->platformProfit;
+            $resellerProfit = $breakdown->resellerProfit;
+        }
 
         $order->update([
             'package_id' => $targetPackage->id,
             'supplier_id' => $targetPackage->supplier_id,
             'supplier_product_ref' => $targetPackage->supplier_package_ref,
-            'platform_profit' => $breakdown->platformProfit,
-            'reseller_profit' => $breakdown->resellerProfit,
+            'platform_profit' => $platformProfit,
+            'reseller_profit' => $resellerProfit,
         ]);
 
         $result = $this->fulfillment->fulfill($order->fresh());
@@ -77,7 +99,7 @@ final class OrderResendService
             'order_id' => $result->id,
             'package_id' => $targetPackage->id,
             'cost_price_sen' => $liveCostPrice,
-            'reseller_cost_price_sen' => $liveResellerCostPrice,
+            'standard_selling_price_sen' => $liveStandardSellingPrice,
             'price_diff_sen' => $priceDiff,
             'outcome' => $result->delivery_status === DeliveryStatus::Delivered ? 'success' : 'failed',
             'supplier_response' => $result->supplier_response,

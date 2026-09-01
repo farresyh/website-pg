@@ -12,12 +12,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type Voucher,
@@ -28,8 +38,10 @@ import {
   getVoucher,
   createVoucher,
   revokeVoucher,
+  mergeVouchers,
 } from "@/lib/vouchers";
 import CreateVoucherModal from "@/components/vouchers/CreateVoucherModal";
+import MergeVouchersModal from "@/components/vouchers/MergeVouchersModal";
 
 const STAT_CARDS: { key: keyof VoucherIndexResponse["stats"]; label: string }[] = [
   { key: "active", label: "Active" },
@@ -46,17 +58,20 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
-const statusColor: Record<Voucher["status"], "success" | "light" | "warning" | "error"> = {
+const statusSeverity: Record<Voucher["status"], "success" | "secondary" | "warn" | "danger" | "contrast"> = {
   active: "success",
-  exhausted: "light",
-  expired: "warning",
-  revoked: "error",
+  exhausted: "secondary",
+  expired: "warn",
+  revoked: "danger",
+  // ADR-036 — a merge's voided source, distinct from "exhausted"
+  // (spent through redemption) or "revoked" (an admin pulled it).
+  merged: "contrast",
 };
 
-const redemptionStatusColor: Record<VoucherRedemption["status"], "warning" | "success" | "light"> = {
-  reserved: "warning",
+const redemptionStatusSeverity: Record<VoucherRedemption["status"], "warn" | "success" | "secondary"> = {
+  reserved: "warn",
   committed: "success",
-  restored: "light",
+  restored: "secondary",
 };
 
 const DETAIL_STAT_CARDS: { key: keyof VoucherShowResponse["stats"]; label: string; isRm: boolean }[] = [
@@ -71,12 +86,18 @@ const DETAIL_STAT_CARDS: { key: keyof VoucherShowResponse["stats"]; label: strin
 export default function VouchersPage() {
   const router = useRouter();
   // Read in an effect, not render body — see UserDropdown.tsx for why.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [data, setData] = useState<VoucherIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+
+  // ADR-036 — only active vouchers are ever selectable (enforced by
+  // the checkbox itself, below); the server is still the real guard
+  // on same-customer/active-status.
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
 
   const [selected, setSelected] = useState<VoucherShowResponse | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -95,7 +116,6 @@ export default function VouchersPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
 
     listVouchers(s.token)
       .then(setData)
@@ -109,6 +129,20 @@ export default function VouchersPage() {
     if (!session) return;
     await createVoucher(session.token, values);
     setIsModalOpen(false);
+    await refresh(session.token);
+  }
+
+  function toggleSelected(voucherId: number) {
+    setSelectedIds((prev) =>
+      prev.includes(voucherId) ? prev.filter((id) => id !== voucherId) : [...prev, voucherId],
+    );
+  }
+
+  async function handleMerge(values: Parameters<typeof mergeVouchers>[1]) {
+    if (!session) return;
+    await mergeVouchers(session.token, values);
+    setIsMergeModalOpen(false);
+    setSelectedIds([]);
     await refresh(session.token);
   }
 
@@ -162,8 +196,8 @@ export default function VouchersPage() {
           </div>
           {voucher.status === "active" && (
             <Button
-              size="sm"
-              variant="danger"
+              size="small"
+              severity="danger"
               disabled={revokingId === voucher.id}
               onClick={async () => {
                 await handleRevoke(voucher);
@@ -186,7 +220,7 @@ export default function VouchersPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <p className="text-theme-xs text-gray-500 dark:text-gray-400">Status</p>
-              <Badge size="sm" color={statusColor[voucher.status]}>{voucher.status}</Badge>
+              <Tag severity={statusSeverity[voucher.status]}>{voucher.status}</Tag>
             </div>
             <div>
               <p className="text-theme-xs text-gray-500 dark:text-gray-400">Customer Email</p>
@@ -221,6 +255,31 @@ export default function VouchersPage() {
           </div>
         </div>
 
+        {(voucher.merges_as_target.length > 0 || voucher.merge_as_source) && (
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+            <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">Merge History</h2>
+            {voucher.merge_as_source && (
+              <p className="mb-3 text-theme-sm text-gray-700 dark:text-gray-300">
+                Merged into <span className="font-medium">{voucher.merge_as_source.target_voucher?.code ?? "—"}</span>
+              </p>
+            )}
+            {voucher.merges_as_target.length > 0 && (
+              <div>
+                <p className="mb-2 text-theme-xs text-gray-500 dark:text-gray-400">Consolidated from:</p>
+                <ul className="space-y-2">
+                  {voucher.merges_as_target.map((m) => (
+                    <li key={m.id} className="text-theme-sm text-gray-700 dark:text-gray-300">
+                      <span className="font-medium">{m.source_voucher?.code ?? `voucher #${m.source_voucher_id}`}</span>
+                      {" — "}
+                      {m.reason} <span className="text-theme-xs text-gray-400">({formatDate(m.created_at)})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
           {DETAIL_STAT_CARDS.map(({ key, label, isRm }) => (
             <div key={key} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -237,34 +296,42 @@ export default function VouchersPage() {
             <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Usage History</h2>
           </div>
           <div className="max-w-full overflow-x-auto">
-            <Table>
-              <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-                <TableRow>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                  <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</TableCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {voucher.redemptions.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                      {r.order?.order_number ?? `order #${r.order_id}`}
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                      -{formatRm(r.amount)}
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm">
-                      <Badge size="sm" color={redemptionStatusColor[r.status]}>{r.status}</Badge>
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                      {formatDate(r.created_at)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable data={voucher.redemptions} dataKey="id">
+              <DataTableTableContainer>
+                <DataTableTable>
+                  <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                    <DataTableTHeadRow>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
+                    </DataTableTHeadRow>
+                  </DataTableTHead>
+                  <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {({ item }) => {
+                      const r = item as unknown as VoucherRedemption;
+
+                      return (
+                        <DataTableRow key={r.id}>
+                          <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                            {r.order?.order_number ?? `order #${r.order_id}`}
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                            -{formatRm(r.amount)}
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <Tag severity={redemptionStatusSeverity[r.status]}>{r.status}</Tag>
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                            {formatDate(r.created_at)}
+                          </DataTableCell>
+                        </DataTableRow>
+                      );
+                    }}
+                  </DataTableTBody>
+                </DataTableTable>
+              </DataTableTableContainer>
+            </DataTable>
 
             {voucher.redemptions.length === 0 && (
               <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Not used yet.</p>
@@ -284,9 +351,17 @@ export default function VouchersPage() {
             Create and manage customer store-credit vouchers.
           </p>
         </div>
-        <Button size="sm" startIcon={<PlusIcon />} onClick={() => setIsModalOpen(true)}>
-          Create Voucher
-        </Button>
+        <div className="flex items-center gap-3">
+          {selectedIds.length >= 2 && (
+            <Button size="small" variant="outlined" onClick={() => setIsMergeModalOpen(true)}>
+              Merge Selected ({selectedIds.length})
+            </Button>
+          )}
+          <Button size="small" onClick={() => setIsModalOpen(true)}>
+            <PlusIcon />
+            Create Voucher
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -311,58 +386,77 @@ export default function VouchersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Code</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Remaining</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {data?.vouchers.map((v) => (
-                <TableRow key={v.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                    <button
-                      type="button"
-                      className="hover:text-brand-500 dark:hover:text-brand-400"
-                      onClick={() => openDetail(v.id)}
-                    >
-                      {v.code}
-                    </button>
-                    {v.order_id && (
-                      <span className="ml-2 text-theme-xs text-gray-400">order #{v.order_id}</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{v.customer_email}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.amount)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.remaining)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={statusColor[v.status]}>{v.status}</Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
-                        onClick={() => openDetail(v.id)}
-                      >
-                        View
-                      </button>
-                      {v.status === "active" && (
-                        <Button size="sm" variant="danger" disabled={revokingId === v.id} onClick={() => handleRevoke(v)}>
-                          Revoke
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={data?.vouchers ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">{null}</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Code</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Remaining</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const v = item as unknown as Voucher;
+
+                    return (
+                      <DataTableRow key={v.id}>
+                        <DataTableCell className="px-5 py-4">
+                          {v.status === "active" && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(v.id)}
+                              onChange={() => toggleSelected(v.id)}
+                              aria-label={`Select ${v.code} for merge`}
+                            />
+                          )}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                          <button
+                            type="button"
+                            className="hover:text-brand-500 dark:hover:text-brand-400"
+                            onClick={() => openDetail(v.id)}
+                          >
+                            {v.code}
+                          </button>
+                          {v.order_id && (
+                            <span className="ml-2 text-theme-xs text-gray-400">order #{v.order_id}</span>
+                          )}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{v.customer_email}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.amount)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.remaining)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={statusSeverity[v.status]}>{v.status}</Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                              onClick={() => openDetail(v.id)}
+                            >
+                              View
+                            </button>
+                            {v.status === "active" && (
+                              <Button size="small" severity="danger" disabled={revokingId === v.id} onClick={() => handleRevoke(v)}>
+                                Revoke
+                              </Button>
+                            )}
+                          </div>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {data?.vouchers.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No vouchers yet.</p>
@@ -374,6 +468,12 @@ export default function VouchersPage() {
       </div>
 
       <CreateVoucherModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreate} />
+      <MergeVouchersModal
+        isOpen={isMergeModalOpen}
+        vouchers={data?.vouchers.filter((v) => selectedIds.includes(v.id)) ?? []}
+        onClose={() => setIsMergeModalOpen(false)}
+        onSubmit={handleMerge}
+      />
     </div>
   );
 }

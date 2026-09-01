@@ -3,8 +3,11 @@
 namespace App\Services\Voucher;
 
 use App\Models\Voucher;
+use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,9 +21,7 @@ use Illuminate\Support\Str;
  */
 final class VoucherService
 {
-    public function __construct(private readonly LedgerService $ledger)
-    {
-    }
+    public function __construct(private readonly LedgerService $ledger) {}
 
     /**
      * The Voucher row and its ledger debit are two separate writes —
@@ -41,11 +42,13 @@ final class VoucherService
         ?int $approvedBy,
         ?int $orderId = null,
         ?string $customerPhone = null,
+        ?string $idempotencyKey = null,
     ): Voucher {
-        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId) {
+        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId, $idempotencyKey) {
             $voucher = Voucher::query()->create([
                 'order_id' => $orderId,
                 'code' => $this->generateCode(),
+                'idempotency_key' => $idempotencyKey,
                 'customer_email' => $customerEmail,
                 'customer_phone' => $customerPhone,
                 'amount' => $amount,
@@ -57,10 +60,97 @@ final class VoucherService
                 'approved_by' => $approvedBy,
             ]);
 
-            $this->ledger->credit('platform', null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
+            $this->ledger->credit(LedgerOwnerType::Platform, null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
 
             return $voucher;
         });
+    }
+
+    /**
+     * ADR-036 — admin-triggered, opt-in consolidation of two or more
+     * active vouchers belonging to the same customer into one new
+     * code. Mirrors restore()'s no-ledger-write shape deliberately:
+     * the combined liability already sits correctly in the ledger via
+     * the sources' own original `voucher_issued` debits (decision 5)
+     * — issue() is never called here, so no double-booking, and no
+     * reversal either since nothing is being un-booked.
+     *
+     * Sources are locked, verified active and same-customer, then
+     * voided (`remaining = 0`, `status = 'merged'`) — never deleted,
+     * matching this codebase's never-delete-audit-rows convention. The
+     * new voucher's `order_id` stays null: a merge has no single
+     * source order to attribute to.
+     */
+    public function merge(array $voucherIds, string $reason, int $mergedBy, ?string $expiresAt): Voucher
+    {
+        return DB::transaction(function () use ($voucherIds, $reason, $mergedBy, $expiresAt) {
+            $vouchers = Voucher::query()->whereIn('id', $voucherIds)->lockForUpdate()->get();
+
+            if ($vouchers->count() !== count(array_unique($voucherIds))) {
+                throw new InvalidVoucherException('One or more selected vouchers could not be found.');
+            }
+
+            foreach ($vouchers as $voucher) {
+                if ($voucher->status !== 'active') {
+                    throw new InvalidVoucherException("Voucher {$voucher->code} is not active and cannot be merged.");
+                }
+            }
+
+            $this->assertSameCustomer($vouchers);
+
+            $reference = $vouchers->first();
+            $totalRemaining = (int) $vouchers->sum('remaining');
+
+            $target = Voucher::query()->create([
+                'code' => $this->generateCode(),
+                'customer_email' => $reference->customer_email,
+                'customer_phone' => $reference->customer_phone,
+                'amount' => $totalRemaining,
+                'remaining' => $totalRemaining,
+                'status' => 'active',
+                'expires_at' => $expiresAt,
+                'reason' => $reason,
+                'created_by' => $mergedBy,
+                'approved_by' => null,
+            ]);
+
+            foreach ($vouchers as $voucher) {
+                $voucher->remaining = 0;
+                $voucher->status = 'merged';
+                $voucher->save();
+
+                VoucherMerge::query()->create([
+                    'source_voucher_id' => $voucher->id,
+                    'target_voucher_id' => $target->id,
+                    'reason' => $reason,
+                    'merged_by' => $mergedBy,
+                ]);
+            }
+
+            return $target;
+        });
+    }
+
+    /**
+     * Same email/phone equivalence rule assertUsable() already applies
+     * to a single voucher — extended here to require every selected
+     * voucher agree with the first on customer identity, so a merge
+     * can never silently combine two unrelated customers' vouchers.
+     */
+    private function assertSameCustomer(Collection $vouchers): void
+    {
+        $reference = $vouchers->first();
+
+        foreach ($vouchers as $voucher) {
+            $emailMatches = Str::lower($voucher->customer_email) === Str::lower($reference->customer_email);
+            $phoneMatches = $voucher->customer_phone !== null
+                && $reference->customer_phone !== null
+                && $voucher->customer_phone === $reference->customer_phone;
+
+            if (! $emailMatches && ! $phoneMatches) {
+                throw new InvalidVoucherException('Selected vouchers do not all belong to the same customer.');
+            }
+        }
     }
 
     private function generateCode(): string

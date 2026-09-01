@@ -17,5 +17,21 @@ services:
       timeout: 5s
       retries: 10
 
+  # ADR-048 — local dev's own Redis, now a real prerequisite of
+  # `composer run dev` (QUEUE_CONNECTION=redis, backend/.env.example) since
+  # Horizon requires it and has no `database`-driver fallback. Published on
+  # the default port so `php artisan horizon`/`queue:listen` running
+  # directly on the host (Herd, not inside a container) can reach it at
+  # 127.0.0.1:6379 — same "runs outside Docker, Docker only backs the data
+  # store" shape as the `mysql` service above. No AOF here (unlike
+  # docker-compose.prod.yml's redis): a local dev Redis losing an
+  # in-progress test job on restart is a non-event, not worth the disk
+  # I/O trade-off in a throwaway local environment.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
 volumes:
   mysql_data:

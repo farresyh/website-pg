@@ -36,6 +36,6 @@ class SaveRedirectRequest extends FormRequest
 
     private function resellerId(): int
     {
-        return Reseller::platformOwner()->id;
+        return Reseller::primary()->id;
     }
 }

@@ -11,9 +11,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type GalleryImage,
@@ -31,7 +31,7 @@ function formatSize(bytes: number): string {
 
 export default function GalleryPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [page, setPage] = useState<GalleryImagePage | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -50,7 +50,6 @@ export default function GalleryPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -183,10 +182,10 @@ export default function GalleryPage() {
               </p>
               <p className="text-theme-xs text-gray-400">{formatSize(image.size_bytes)}</p>
               <div className="mt-2 flex gap-1.5">
-                <Button size="sm" variant="outline" className="flex-1" onClick={() => handleCopyUrl(image)}>
+                <Button size="small" variant="outlined" className="flex-1" onClick={() => handleCopyUrl(image)}>
                   {copiedId === image.id ? "Copied!" : "Copy URL"}
                 </Button>
-                <Button size="sm" variant="danger" onClick={() => setDeletingImage(image)}>
+                <Button size="small" severity="danger" onClick={() => setDeletingImage(image)}>
                   Delete
                 </Button>
               </div>
@@ -208,10 +207,10 @@ export default function GalleryPage() {
             Page {page.current_page} of {page.last_page} ({page.total} total)
           </span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>
+            <Button size="small" variant="outlined" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>
               Previous
             </Button>
-            <Button size="sm" variant="outline" disabled={page.current_page >= page.last_page} onClick={() => setPageNumber((p) => p + 1)}>
+            <Button size="small" variant="outlined" disabled={page.current_page >= page.last_page} onClick={() => setPageNumber((p) => p + 1)}>
               Next
             </Button>
           </div>
@@ -230,10 +229,10 @@ export default function GalleryPage() {
               Banner that already references its URL.
             </p>
             <div className="mt-6 flex justify-end gap-2">
-              <Button size="sm" variant="outline" onClick={() => setDeletingImage(null)}>
+              <Button size="small" variant="outlined" onClick={() => setDeletingImage(null)}>
                 Cancel
               </Button>
-              <Button size="sm" variant="danger" onClick={handleDeleteConfirmed}>
+              <Button size="small" severity="danger" onClick={handleDeleteConfirmed}>
                 Delete
               </Button>
             </div>

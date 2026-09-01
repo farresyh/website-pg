@@ -14,23 +14,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * ADR-022's newest addendum, decision 5 — CHIP's counterpart to
- * XenditWebhookController, not behind auth:sanctum for the same
- * reason (the signature check IS the authentication for this route).
- * Deliberately a separate, self-contained controller rather than a
- * shared base with XenditWebhookController: today the post-
- * verification order-lifecycle logic happens to be identical, but per
- * this project's own "don't prematurely abstract" convention
- * (AGENTS.md), duplicating ~30 lines of an already-small, well-tested
- * controller costs less than a shared abstraction that would have to
- * be un-done the first time one gateway's webhook handling needs to
- * diverge from the other's.
+ * ADR-022's 2026-08-03 addendum, decision 5 — the payment webhook
+ * entry point, not behind auth:sanctum (the signature check IS the
+ * authentication for this route).
  *
  * Resolves `PaymentGatewayFactory::make('chip')` explicitly in the
  * constructor rather than the plain `PaymentGateway::class` default
- * binding — that default is deliberately pinned to Xendit
- * (AppServiceProvider's own doc comment), since a webhook route's
- * gateway is fixed by its URL, not resolved per-request.
+ * binding — a webhook route's gateway is fixed by its URL, not
+ * resolved per-request, so it names its gateway rather than leaning on
+ * whichever one happens to be the current default (ADR-022's
+ * 2026-09-01 addendum decision 2 — the seam stays even though CHIP is
+ * the only gateway, so this stays explicit for the day it isn't).
  *
  * ADR-014: fulfillment is dispatched to FulfillOrderJob, never run
  * inline — a slow/hung Gamevion response must never hold this request
@@ -82,8 +76,11 @@ class ChipWebhookController extends Controller
         if ($event->status !== PaymentStatus::Paid) {
             $order->update(['payment_status' => $event->status->value]);
 
-            // ADR-024 decision #6a — see XenditWebhookController's own
-            // identical branch for the full reasoning.
+            // ADR-024 decision #6a: a terminal Failed status (never a
+            // merely intermediate Pending update) gives back any
+            // reserved voucher redemption this order made — a no-op if
+            // this order never used a voucher. Mirrored by
+            // ReconcilePendingPaymentsCommand's own failure branch.
             if ($event->status === PaymentStatus::Failed) {
                 $this->vouchers->restore($order->id);
             }
@@ -91,8 +88,11 @@ class ChipWebhookController extends Controller
             return response()->json(['message' => 'acknowledged']);
         }
 
-        // Defense-in-depth — see XenditWebhookController's identical
-        // check for the full reasoning.
+        // Defense-in-depth: payment_ref already binds this webhook to
+        // one specific, fixed-amount purchase created by requestPayment()
+        // (amountSen: $order->final_amount), and a signature-verified
+        // paid status from CHIP already implies the full requested amount
+        // was received — this is a second, independent check.
         if ($event->amountSen !== $order->final_amount) {
             Log::error('Rejected CHIP webhook: amount mismatch', [
                 'expected_sen' => $order->final_amount,
@@ -102,7 +102,7 @@ class ChipWebhookController extends Controller
             return response()->json(['message' => 'amount mismatch'], 409);
         }
 
-        $order->update(['payment_status' => PaymentStatus::Paid->value]);
+        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
 
         FulfillOrderJob::dispatch($order->fresh());
 

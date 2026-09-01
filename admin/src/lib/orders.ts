@@ -34,7 +34,7 @@ export interface OrderResendAttempt {
   id: number;
   package: { id: number; name: string } | null;
   cost_price_sen: number;
-  reseller_cost_price_sen: number;
+  standard_selling_price_sen: number;
   price_diff_sen: number;
   outcome: "success" | "failed";
   note: string | null;
@@ -46,10 +46,21 @@ export interface OrderDetail extends OrderListItem {
   reference_number: string | null;
   customer_phone: string | null;
   cost_price: number;
-  reseller_cost_price: number;
+  standard_selling_price: number;
   reseller_markup_pct: string;
   voucher_discount: number | null;
   reseller_profit: number;
+  // ADR-027 Phase 6: pricing_basis="member" only when a session-
+  // recognized membership applied at checkout (quota-sufficient) —
+  // member_discount_percent/normal_selling_price/membership stay null
+  // otherwise. `membership.email` is the *member's* own identity
+  // (resolved from their session token) — can genuinely differ from
+  // `customer_email` above (the checkout contact form), e.g. a member
+  // checking out on someone else's behalf.
+  pricing_basis: "standard" | "member";
+  member_discount_percent: string | null;
+  normal_selling_price: number | null;
+  membership: { id: number; email: string; membership_plan: { name: string } } | null;
   payment_ref: string | null;
   supplier_ref: string | null;
   supplier_response: Record<string, unknown> | null;
@@ -125,6 +136,8 @@ export function resendOrderDelivery(token: string, id: number, values: { package
 export interface ValidatePlayerForResendResult {
   status: "invalid" | "region_unknown" | "wrong_region" | "valid";
   nickname: string | null;
+  country_code?: string | null;
+  redirect_game?: { slug: string; name: string } | null;
 }
 
 export function validatePlayerForResend(gameId: number, playerId: string, serverId?: string | null) {

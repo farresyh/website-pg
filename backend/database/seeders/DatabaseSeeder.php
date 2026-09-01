@@ -22,13 +22,18 @@ class DatabaseSeeder extends Seeder
             'email' => 'test@example.com',
         ]);
 
-        // PRD §8: exactly one Reseller row for the platform owner's own
-        // internal storefront (markup_pct=0) — see the
-        // create_resellers_table migration's doc comment for why this
-        // isn't a separate "no reseller yet" special case.
-        Reseller::query()->firstOrCreate(
-            ['business_name' => 'Platform Owner'],
-            ['markup_pct' => 0, 'status' => 'active'],
+        // ADR-061: the platform's own storefront is a Reseller row like
+        // any other — `is_owned` (our brand) + `is_primary` (the single
+        // console/job/migration fallback tenant, never deletable).
+        // markup_pct=0 so all its margin books as platform_profit.
+        Reseller::query()->updateOrCreate(
+            ['is_primary' => true],
+            [
+                'business_name' => 'PekanGame', // ADR-062
+                'markup_pct' => 0,
+                'status' => 'active',
+                'is_owned' => true,
+            ],
         );
 
         $this->call(PaymentMethodSeeder::class);

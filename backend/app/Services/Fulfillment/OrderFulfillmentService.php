@@ -3,6 +3,7 @@
 namespace App\Services\Fulfillment;
 
 use App\Models\Order;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
@@ -40,8 +41,7 @@ final class OrderFulfillmentService
         private readonly SupplierAdapterFactory $supplierAdapters,
         private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
-    ) {
-    }
+    ) {}
 
     /**
      * A webhook sender (Xendit's own docs call this out as expected
@@ -111,6 +111,7 @@ final class OrderFulfillmentService
                 playerId: $locked->player_id,
                 serverId: $locked->server_id,
                 customerPhone: $locked->customer_phone,
+                orderId: $locked->id,
             ));
 
             // ADR-032: branches on the adapter's normalized outcome,
@@ -169,6 +170,7 @@ final class OrderFulfillmentService
                 'supplier_ref' => $result->data['supplier_ref'] ?? null,
                 'supplier_response' => $result->data,
                 'delivery_status' => $this->orderStatus->markDelivered($processingStatus)->value,
+                'delivered_at' => now(),
             ]);
 
             $this->creditProfit($locked);
@@ -219,6 +221,7 @@ final class OrderFulfillmentService
                     'supplier_ref' => $supplierRef ?? $locked->supplier_ref,
                     'supplier_response' => $supplierResponse ?? $locked->supplier_response,
                     'delivery_status' => $deliveredStatus->value,
+                    'delivered_at' => now(),
                 ]);
 
                 $this->creditProfit($locked);
@@ -281,6 +284,7 @@ final class OrderFulfillmentService
                     'confirmed_at' => now()->toISOString(),
                 ],
                 'delivery_status' => $deliveredStatus->value,
+                'delivered_at' => now(),
             ]);
 
             $this->creditProfit($locked);
@@ -313,7 +317,7 @@ final class OrderFulfillmentService
             return;
         }
 
-        $this->ledger->credit('platform', null, $order->platform_profit, 'order_profit', 'order', $order->id);
-        $this->ledger->credit('reseller', $order->reseller_id, $order->reseller_profit, 'order_profit', 'order', $order->id);
+        $this->ledger->credit(LedgerOwnerType::Platform, null, $order->platform_profit, 'order_profit', 'order', $order->id);
+        $this->ledger->credit(LedgerOwnerType::Reseller, $order->reseller_id, $order->reseller_profit, 'order_profit', 'order', $order->id);
     }
 }

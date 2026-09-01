@@ -85,11 +85,12 @@ class VoucherRedeemConcurrencyTest extends TestCase
     private function order(string $orderNumber): Order
     {
         return Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => $orderNumber,
             'customer_email' => 'race@example.com',
             'player_id' => '123456',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 0,
             'final_amount' => 1000,

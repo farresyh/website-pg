@@ -1,4 +1,9 @@
-# Kedairuncitsoloz — Game Top-Up Reseller Platform
+# PekanGame — Game Top-Up Reseller Platform
+
+> Repo directory, git remote, database name, and internal key prefixes
+> still read `kedairuncitsoloz` / `topup-website` by deliberate choice
+> (ADR-062 §5 + its addendum) — those are churn with no user-visible
+> benefit. The brand everywhere a human looks is **PekanGame**.
 
 Guest-checkout storefront for reloading game credits (MLBB and others), backed
 by an admin panel and a supplier/payment middleware layer. Money-critical:
@@ -9,7 +14,7 @@ change to those paths with the same care the existing code already does.
 
 | Path | What | Notes |
 | --- | --- | --- |
-| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, `database`-driver queue/cache (see ADR-014/019) |
+| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, Redis-driver queue (Horizon, ADR-048) + `database`-driver cache (see ADR-014/019) |
 | `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery |
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011) |
 | `docs/` | `prd.md` (spec + build-status log), `adr.md` (decision log), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
@@ -35,6 +40,16 @@ Next.js-version warning specific to that app. This file covers the whole repo;
 - **New business terms get pinned before they leak into code** as ad-hoc
   naming — use `/mattpocock-skills:domain-modeling` (see PRD §13 Glossary for
   the terms already pinned: ledger, reference_number vs order_number, etc.).
+- **Admin UI components migrate to PrimeReact (Tailwind mode) opportunistically, per ADR-038.**
+  If you open a file in `admin/` that still uses a hand-rolled TailAdmin
+  primitive (`Table`, `Modal`, `Dropdown`/`DropdownItem`, `Badge`, `Button`,
+  or a basic form input from `components/form`) for work unrelated to this
+  migration, swap it for the PrimeReact-Tailwind equivalent as part of that
+  same change — don't leave it for a dedicated migration pass. Never force a
+  migration on an already-tested, live screen just to swap its component
+  library; the trigger is always "already touching this file for another
+  reason." `RichTextEditor` is exempt (no PrimeReact equivalent exists). See
+  `docs/prd.md`'s PrimeReact Migration Tracker for per-screen status.
 - **Money is never trusted from the client.** Price, cost, and profit are
   always computed server-side from stored `Package`/`Game` data at the moment
   of use — see ORD-9 in `docs/prd.md` and `PricingService`. If you find
@@ -62,6 +77,12 @@ Next.js-version warning specific to that app. This file covers the whole repo;
 
 ## Branch Workflow (ADR-037)
 
+- **Before editing any file for a build/fix task, run `git branch
+  --show-current` first.** If it comes back `staging` or `main`, cut a
+  `fix/*`/`feature/*` branch off `staging` (see below) before touching
+  anything — don't edit first and branch afterward. This step has been
+  skipped in practice even with this file loaded, so treat it as the actual
+  first action of the task, not implied by the rules below it.
 - **Never branch from `main`.** Every feature/fix branch is cut from
   `staging`, PRs back into `staging`, gets verified in the staging
   environment, and only then does `staging` merge into `main` for
@@ -96,7 +117,8 @@ or a one-line fix doesn't need it.
 ./scripts/dev.sh
 
 # Backend
-cd backend && composer run dev        # serve + queue:listen + pail + vite, all together
+cd backend && docker compose up -d redis  # ADR-048: QUEUE_CONNECTION=redis, composer run dev's horizon process needs this running first
+cd backend && composer run dev        # serve + horizon + pail + vite, all together
 cd backend && php artisan test        # fast suite (sqlite, no Docker)
 cd backend && docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurrency/locking proofs, needs real MySQL
 
@@ -104,28 +126,34 @@ cd backend && docker compose up -d && php artisan test -c phpunit.concurrency.xm
 cd admin && npm run dev               # or: npm run build && npm run lint
 cd storefront && npm run dev
 
-# E2E (ADR-023) — the 3 golden-path tests (checkout->payment->order status;
-# admin login->Resend Delivery; admin login->Issue Voucher), Chromium only.
-# Boots its own throwaway backend+DB — never touches the local dev DB.
-# Storefront checkout needs a real Xendit test-mode key: export
-# XENDIT_SECRET_KEY before running, or that one spec fails at the real
-# Xendit API call while the 2 admin specs still pass. Wired into CI
-# (.github/workflows/ci.yml's `playwright` job) — this is for running it
-# locally.
+# E2E (ADR-023) — the golden-path tests (checkout->payment->order status;
+# admin login->Resend Delivery; admin login->Issue Voucher; admin->Mark
+# Delivered), Chromium only. Boots its own throwaway backend+DB — never
+# touches the local dev DB. Needs NO external secret: both the supplier
+# layer (Gamevion) and the payment layer (CHIP) are bound to zero-network
+# fakes whenever APP_ENV=e2e (ADR-022's 2026-09-01 addendum put payment
+# on the same footing). Wired into CI (.github/workflows/ci.yml's
+# `playwright` job) — this is for running it locally.
 cd e2e && npm test
 ```
 
 **Known gotcha:** a queued job (Price Sync, order fulfillment/resend) needs an
-actual queue worker running — `composer run dev` includes one; a bare
-`php artisan serve` (or Laravel Herd on its own) does not. A stuck "Syncing…"
-state with nothing updating almost always means the worker isn't running, not
-a frontend bug — see `docs/prd.md` §14's 2026-07-27 live-testing entry. A
-second, quieter cause of the same symptom: `composer run dev` itself silently
-kills its own queue worker if `backend/node_modules` was never installed
-(`npm install` inside `backend/`, separate from `admin/`/`storefront/`'s own
-installs) — its `vite` step fails and `concurrently --kill-others` tears down
-`queue:listen` with it, visible only in the backend's own terminal output.
-See `docs/prd.md` §14's 2026-07-28 addendum.
+actual queue worker running — `composer run dev` includes one (`php artisan
+horizon`, since ADR-048); a bare `php artisan serve` (or Laravel Herd on its
+own) does not. A stuck "Syncing…" state with nothing updating almost always
+means the worker isn't running, not a frontend bug — see `docs/prd.md` §14's
+2026-07-27 live-testing entry. A second, quieter cause of the same symptom:
+`composer run dev` itself silently kills its own queue worker if
+`backend/node_modules` was never installed (`npm install` inside `backend/`,
+separate from `admin/`/`storefront/`'s own installs) — its `vite` step fails
+and `concurrently --kill-others` tears down `horizon` with it, visible only
+in the backend's own terminal output. See `docs/prd.md` §14's 2026-07-28
+addendum. **Third cause, since ADR-048:** `horizon` itself needs
+`backend/docker-compose.yml`'s `redis` service running (`QUEUE_CONNECTION`
+moved off `database` onto `redis`, and Horizon has no `database`-driver
+fallback) — if that container isn't up, `horizon`'s pane in `composer run
+dev`'s output shows a connection-refused error, not a silent no-op, but it's
+easy to miss in interleaved terminal output.
 
 **Second known gotcha:** a new migration written during a session only runs
 automatically against the *test* databases (sqlite `:memory:` for `php artisan
@@ -136,10 +164,14 @@ not proof the local dev DB has the new tables/columns. A `SQLSTATE[HY000]:
 ... no such table` (or "unknown column") error in the browser/Postman against
 a locally-running backend almost always means this — run `php artisan
 migrate:status` to confirm, then `php artisan migrate` — not a code bug. Any
-session that adds a migration should run `php artisan migrate` against the
-local dev DB before calling the feature done, not just the test suites — see
-`docs/prd.md` §14's 2026-07-29 Blacklist/Fraud entry for a live instance of
-this exact gotcha.
+session that adds a migration should run **plain `php artisan migrate`**
+(never `migrate:fresh`) against the local dev DB before calling the feature
+done, not just the test suites. `migrate:fresh` **drops every table** — the
+local sqlite dev DB is gitignored with no backup, so a `migrate:fresh` there
+permanently wipes any locally-set-up games/packages/test data. See
+`docs/prd.md` §14's 2026-07-29 Blacklist/Fraud entry for the additive-migrate
+gotcha and its 2026-08-31 ADR-061 PR-B entry for a `migrate:fresh` data-loss
+incident.
 
 **Third known gotcha:** `php artisan serve` re-reads `backend/.env` for the
 process it actually spawns and only passes through a small Laravel-hardcoded
@@ -153,3 +185,17 @@ script that exports `DB_DATABASE` to point `serve` at a throwaway DB silently
 serves requests against the real local dev DB instead, with no error — the
 served process just quietly uses `.env`'s own value. Any script that boots
 `php artisan serve` against env vars set outside `.env` needs `--no-reload`.
+
+**Fourth known gotcha:** capturing an `artisan` command's output via shell
+command substitution (`` $(...) ``) is only safe with `--no-ansi`. Symfony
+Console force-decorates output with ANSI color codes whenever it detects the
+`GITHUB_ACTIONS` env var, even though the command's stdout is being piped
+into a variable, not a real TTY — so the captured string silently contains
+escape-sequence bytes on CI while looking completely clean in any local
+shell (no `GITHUB_ACTIONS` var there). Found in `e2e/scripts/boot-backend.sh`
+(`export APP_KEY="$(php artisan key:generate --show)"`, 2026-08-27): the
+corrupted `APP_KEY` broke nothing until the first real encrypted write
+(`Supplier.api_config`, ADR-046), which then surfaced only as Playwright's
+generic "Process from config.webServer was not able to start" — see
+`docs/prd.md` §14's 2026-08-27 entry for the full root-cause chain. Any
+script that captures `artisan` output into a variable needs `--no-ansi`.

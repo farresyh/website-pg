@@ -11,7 +11,7 @@ class OrderNumberServiceTest extends TestCase
     {
         $service = new OrderNumberService();
 
-        $this->assertStringStartsWith('KRS-', $service->generate());
+        $this->assertMatchesRegularExpression('/^PG-[A-Z0-9]{12}$/', $service->generate());
     }
 
     public function test_generates_unique_order_numbers_across_calls(): void

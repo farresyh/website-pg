@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
+import { parseResponse } from "@/lib/schema-validation";
 
 /**
  * Real request/response contract for the public payment-methods
@@ -9,6 +11,8 @@ import { apiFetch } from "@/lib/api-client";
  * methods had zero effect on what this page showed). Deliberately has
  * no `gateway` field — which processor handles a channel is an
  * internal routing detail the backend never serializes here.
+ *
+ * ADR-044: schema is the source of truth for the wire shape below.
  */
 export interface PaymentChannel {
   channelCode: string;
@@ -16,14 +20,16 @@ export interface PaymentChannel {
   category: string;
 }
 
-interface PaymentChannelWire {
-  channel_code: string;
-  label: string;
-  category: string;
-}
+const PaymentChannelWireSchema = z.object({
+  channel_code: z.string(),
+  label: z.string(),
+  category: z.string(),
+});
 
 export async function listPaymentChannels(): Promise<PaymentChannel[]> {
-  const wire = await apiFetch<PaymentChannelWire[]>("/api/catalog/payment-methods");
+  const path = "/api/catalog/payment-methods";
+  const raw = await apiFetch<unknown>(path);
+  const wire = parseResponse(z.array(PaymentChannelWireSchema), raw, "PaymentChannelWire[]", path);
   return wire.map((channel) => ({
     channelCode: channel.channel_code,
     label: channel.label,

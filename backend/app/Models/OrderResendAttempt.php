@@ -18,7 +18,7 @@ class OrderResendAttempt extends Model
         'order_id',
         'package_id',
         'cost_price_sen',
-        'reseller_cost_price_sen',
+        'standard_selling_price_sen',
         'price_diff_sen',
         'outcome',
         'supplier_response',
@@ -28,7 +28,7 @@ class OrderResendAttempt extends Model
 
     protected $casts = [
         'cost_price_sen' => 'integer',
-        'reseller_cost_price_sen' => 'integer',
+        'standard_selling_price_sen' => 'integer',
         'price_diff_sen' => 'integer',
         'supplier_response' => 'array',
     ];

@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\Admin;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PlatformSettings;
 use App\Models\ResellerFooterSettings;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,6 +19,15 @@ use Tests\TestCase;
 class SettingsControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
 
     private function actingAsSuperAdmin(): void
     {
@@ -39,10 +49,10 @@ class SettingsControllerTest extends TestCase
         return Package::query()->create(array_merge([
             'game_id' => $game->id,
             'supplier_id' => $supplier->id,
-            'supplier_package_ref' => 'GV' . random_int(100000, 999999),
+            'supplier_package_ref' => 'GV'.random_int(100000, 999999),
             'name' => '100 Diamonds',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1100,
+            'standard_selling_price' => 1100,
             'markup_percent' => 10,
             'is_active' => true,
         ], $overrides));
@@ -74,17 +84,17 @@ class SettingsControllerTest extends TestCase
         $this->actingAsSuperAdmin();
 
         $response = $this->putJson('/api/settings/branding', [
-            'store_name' => 'KedaiRuncitSoloz',
+            'store_name' => 'PekanGame',
             'description' => 'Fast top-ups',
-            'support_email' => 'support@kedairuncitsoloz.my',
+            'support_email' => 'support@pekangame.space',
             'support_phone' => '+60123456789',
             'social_links' => ['facebook' => 'https://facebook.com/krs'],
         ]);
 
         $response->assertOk();
         $this->assertDatabaseHas('reseller_branding', [
-            'store_name' => 'KedaiRuncitSoloz',
-            'support_email' => 'support@kedairuncitsoloz.my',
+            'store_name' => 'PekanGame',
+            'support_email' => 'support@pekangame.space',
         ]);
     }
 
@@ -145,6 +155,7 @@ class SettingsControllerTest extends TestCase
         $response = $this->putJson('/api/settings/platform', [
             'maintenance_mode' => true,
             'maintenance_message' => 'Back soon',
+            'vip_spend_threshold_sen' => 500000,
             'telegram_notifications_enabled' => true,
             'telegram_bot_token' => 'abc123',
             'telegram_chat_id' => '-100999',
@@ -153,8 +164,23 @@ class SettingsControllerTest extends TestCase
         $response->assertOk();
         $this->assertDatabaseHas('platform_settings', [
             'maintenance_mode' => true,
+            'vip_spend_threshold_sen' => 500000,
             'telegram_notifications_enabled' => true,
         ]);
+    }
+
+    public function test_update_platform_persists_vip_spend_threshold(): void
+    {
+        $this->actingAsSuperAdmin();
+
+        $response = $this->putJson('/api/settings/platform', [
+            'maintenance_mode' => false,
+            'vip_spend_threshold_sen' => 750000,
+            'telegram_notifications_enabled' => false,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(750000, PlatformSettings::current()->vip_spend_threshold_sen);
     }
 
     public function test_bulk_markup_updates_every_active_package_and_logs_a_price_change(): void
@@ -170,13 +196,13 @@ class SettingsControllerTest extends TestCase
         $this->assertSame(1, $response->json('packages_updated'));
         $active->refresh();
         $this->assertEquals(20, $active->markup_percent);
-        $this->assertSame(1200, $active->reseller_cost_price);
+        $this->assertSame(1200, $active->standard_selling_price);
         $inactive->refresh();
         $this->assertEquals(10, $inactive->markup_percent);
         $this->assertDatabaseHas('price_change_logs', [
             'package_id' => $active->id,
-            'old_reseller_cost_price' => 1100,
-            'new_reseller_cost_price' => 1200,
+            'old_standard_selling_price' => 1100,
+            'new_standard_selling_price' => 1200,
         ]);
     }
 
@@ -184,12 +210,33 @@ class SettingsControllerTest extends TestCase
     {
         $this->actingAsSuperAdmin();
         $game = $this->game();
-        $this->package($game, ['markup_percent' => 20, 'reseller_cost_price' => 1200]);
+        $this->package($game, ['markup_percent' => 20, 'standard_selling_price' => 1200]);
 
         $response = $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20]);
 
         $response->assertOk();
         $this->assertSame(0, $response->json('packages_updated'));
         $this->assertDatabaseCount('price_change_logs', 0);
+    }
+
+    /**
+     * ADR-027's 2026-08-29 addendum: member_price_sen is computed live
+     * from Package.markup_percent, not a snapshot — a Platform Settings
+     * bulk markup change must propagate to it too, same as a single
+     * package's own markup edit. Proven via the real public catalog
+     * endpoint, not by asserting the DB column alone.
+     */
+    public function test_bulk_markup_change_is_reflected_in_public_catalog_member_price(): void
+    {
+        $this->actingAsSuperAdmin();
+        $game = $this->game();
+        $this->package($game);
+
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20])->assertOk();
+
+        // Effective markup 20% * (1-0.8) = 4% -> round(1000 * 1.04) = 1040.
+        $this->getJson("/api/catalog/games/{$game->slug}/packages")->assertJsonPath('0.member_price_sen', 1040);
     }
 }

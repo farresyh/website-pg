@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToReseller;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** ADR-029 decision 2: storefront-wide SEO defaults, templates, and pixel IDs — 1:1 with Reseller. */
 class ResellerSeoSettings extends Model
 {
+    /** ADR-057: tenant-scoped to the current reseller under the reseller guard. */
+    use BelongsToReseller;
+
     protected $table = 'reseller_seo_settings';
 
     protected $fillable = [
@@ -32,9 +35,4 @@ class ResellerSeoSettings extends Model
         'schema_breadcrumb_enabled' => 'boolean',
         'crawler_default_disallow_paths' => 'array',
     ];
-
-    public function reseller(): BelongsTo
-    {
-        return $this->belongsTo(Reseller::class);
-    }
 }

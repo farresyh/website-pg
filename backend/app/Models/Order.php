@@ -2,8 +2,12 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToReseller;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Pricing\PricingBasis;
+use Database\Factories\OrderFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,6 +15,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    /** ADR-057: tenant-scoped to the current reseller under the reseller guard. */
+    use BelongsToReseller;
+
+    /** @use HasFactory<OrderFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'order_number',
         'checkout_idempotency_key',
@@ -27,8 +37,12 @@ class Order extends Model
         'supplier_product_ref',
         'reseller_id',
         'voucher_id',
+        'pricing_basis',
+        'membership_id',
+        'member_discount_percent',
+        'normal_selling_price',
         'cost_price',
-        'reseller_cost_price',
+        'standard_selling_price',
         'reseller_markup_pct',
         'selling_price',
         'voucher_discount',
@@ -37,7 +51,9 @@ class Order extends Model
         'platform_profit',
         'reseller_profit',
         'payment_status',
+        'paid_at',
         'delivery_status',
+        'delivered_at',
         'payment_method',
         'payment_gateway',
         'channel_code',
@@ -48,8 +64,11 @@ class Order extends Model
 
     protected $casts = [
         'is_test' => 'boolean',
+        'pricing_basis' => PricingBasis::class,
+        'member_discount_percent' => 'decimal:2',
+        'normal_selling_price' => 'integer',
         'cost_price' => 'integer',
-        'reseller_cost_price' => 'integer',
+        'standard_selling_price' => 'integer',
         'reseller_markup_pct' => 'decimal:2',
         'selling_price' => 'integer',
         'voucher_discount' => 'integer',
@@ -58,7 +77,9 @@ class Order extends Model
         'platform_profit' => 'integer',
         'reseller_profit' => 'integer',
         'payment_status' => PaymentStatus::class,
+        'paid_at' => 'datetime',
         'delivery_status' => DeliveryStatus::class,
+        'delivered_at' => 'datetime',
         'supplier_response' => 'array',
     ];
 
@@ -77,9 +98,16 @@ class Order extends Model
         return $this->belongsTo(Supplier::class);
     }
 
-    public function reseller(): BelongsTo
+    /**
+     * ADR-027 Phase 6: which membership (if any) funded this order at
+     * the member price — null for every guest/standard order. Snapshot
+     * for audit/traceability, not a live pricing dependency (ORD-9's
+     * discipline: `member_discount_percent`/`normal_selling_price` are
+     * already frozen onto the order itself).
+     */
+    public function membership(): BelongsTo
     {
-        return $this->belongsTo(Reseller::class);
+        return $this->belongsTo(Membership::class);
     }
 
     /**
@@ -112,5 +140,14 @@ class Order extends Model
     public function voucherRedemption(): HasOne
     {
         return $this->hasOne(VoucherRedemption::class);
+    }
+
+    /**
+     * ADR-053 (REV-1..5): at most one, enforced by reviews.order_id's
+     * unique index — the primary spam control on submission.
+     */
+    public function review(): HasOne
+    {
+        return $this->hasOne(Review::class);
     }
 }

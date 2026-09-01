@@ -61,6 +61,7 @@ class OrderFulfillmentServiceTest extends TestCase
             )->id;
 
         return Order::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -68,7 +69,7 @@ class OrderFulfillmentServiceTest extends TestCase
             'supplier_id' => $supplierId,
             'supplier_product_ref' => 'FFP5',
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
@@ -255,6 +256,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertStringStartsWith('REF-', $result->reference_number);
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
         $this->assertSame('GV-RAPI-1A2B3C4D5E6F', $result->supplier_ref);
+        $this->assertNotNull($result->delivered_at);
     }
 
     /**
@@ -447,6 +449,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertTrue($result->supplier_response['manually_confirmed']);
         $this->assertSame('Jane Admin', $result->supplier_response['confirmed_by']);
         $this->assertSame('confirmed via Gamevion dashboard', $result->supplier_response['note']);
+        $this->assertNotNull($result->delivered_at);
     }
 
     public function test_mark_delivered_manually_credits_ledger_profit(): void
@@ -500,6 +503,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertSame(['status' => 'Sukses'], $result->supplier_response);
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+        $this->assertNotNull($result->delivered_at);
     }
 
     /**

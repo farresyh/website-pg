@@ -72,7 +72,7 @@ class SyncSupplierPricesJobTest extends TestCase
             'game_id' => $game->id,
             'name' => '14 Diamond',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1150,
+            'standard_selling_price' => 1150,
             'markup_percent' => 15,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => 'GV733',
@@ -111,11 +111,11 @@ class SyncSupplierPricesJobTest extends TestCase
         ]);
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV733',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '28 Diamond', 'cost_price' => 2000, 'reseller_cost_price' => 2300,
+            'game_id' => $game->id, 'name' => '28 Diamond', 'cost_price' => 2000, 'standard_selling_price' => 2300,
             'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV734',
         ]);
 
@@ -170,11 +170,11 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'markup_percent' => 15, 'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV733',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '20 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => '20 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'markup_percent' => 15, 'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'xld20',
         ]);
 
@@ -218,11 +218,11 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'markup_percent' => 15, 'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV733',
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '20 Diamond', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => '20 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'markup_percent' => 15, 'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'xld20',
         ]);
 

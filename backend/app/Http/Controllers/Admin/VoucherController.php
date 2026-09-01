@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Voucher\CreateVoucherRequest;
+use App\Http\Requests\Voucher\MergeVouchersRequest;
 use App\Http\Requests\Voucher\StoreVoucherFromOrderRequest;
 use App\Models\Order;
 use App\Models\Voucher;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -71,7 +73,15 @@ class VoucherController extends Controller
      */
     public function show(Voucher $voucher): JsonResponse
     {
-        $voucher->load(['redemptions.order:id,order_number', 'sourceOrder:id,order_number']);
+        $voucher->load([
+            'redemptions.order:id,order_number',
+            'sourceOrder:id,order_number',
+            // ADR-036 decision 6 — a merged voucher's real provenance:
+            // which source codes it traces back to (mergesAsTarget), or
+            // which merged code consumed this one (mergeAsSource).
+            'mergesAsTarget.sourceVoucher:id,code',
+            'mergeAsSource.targetVoucher:id,code',
+        ]);
 
         $totalUsed = (int) $voucher->redemptions->whereIn('status', ['reserved', 'committed'])->sum('amount');
         $restored = (int) $voucher->redemptions->where('status', 'restored')->sum('amount');
@@ -97,11 +107,26 @@ class VoucherController extends Controller
         ]);
     }
 
+    /**
+     * ADR-035 — Path A double-submission guard. Two-layer shape,
+     * identical to CheckoutController's own idempotency handling: a
+     * fast-path lookup by idempotency_key first (cheap, friendly), the
+     * DB unique constraint on vouchers.idempotency_key is the real
+     * serialization point for a genuine concurrent double-submit. A
+     * caught duplicate is a silent idempotent success — never a
+     * warning to the admin — since only one Voucher genuinely exists
+     * either way.
+     */
     public function store(CreateVoucherRequest $request): JsonResponse
     {
         $data = $request->validated();
         $admin = $request->user();
         $threshold = config('vouchers.maker_checker_threshold_sen');
+
+        $existing = Voucher::query()->where('idempotency_key', $data['idempotency_key'])->first();
+        if ($existing !== null) {
+            return response()->json($existing, 201);
+        }
 
         if ($data['amount'] >= $threshold && $admin->role !== 'super_admin') {
             throw ValidationException::withMessages([
@@ -109,14 +134,49 @@ class VoucherController extends Controller
             ]);
         }
 
-        $voucher = $this->vouchers->issue(
-            customerEmail: $data['customer_email'],
-            amount: $data['amount'],
-            reason: $data['reason'],
-            expiresAt: $data['expires_at'] ?? null,
-            createdBy: $admin->id,
-            approvedBy: $data['amount'] >= $threshold ? $admin->id : null,
-        );
+        try {
+            $voucher = $this->vouchers->issue(
+                customerEmail: $data['customer_email'],
+                amount: $data['amount'],
+                reason: $data['reason'],
+                expiresAt: $data['expires_at'] ?? null,
+                createdBy: $admin->id,
+                approvedBy: $data['amount'] >= $threshold ? $admin->id : null,
+                idempotencyKey: $data['idempotency_key'],
+            );
+        } catch (UniqueConstraintViolationException) {
+            // Lost a genuine race — a concurrent request with the same
+            // key won the INSERT between our lookup above and now.
+            $voucher = Voucher::query()->where('idempotency_key', $data['idempotency_key'])->firstOrFail();
+        }
+
+        return response()->json($voucher, 201);
+    }
+
+    /**
+     * ADR-036 — admin-triggered, opt-in merge of two or more active
+     * vouchers belonging to the same customer into one new code. Not
+     * maker-checker-gated (decision 7): a merge creates zero new
+     * liability, a materially different risk profile from issuing a
+     * genuinely new voucher — the mandatory `reason` field is the
+     * audit control, not a second approver.
+     */
+    public function merge(MergeVouchersRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        try {
+            $voucher = $this->vouchers->merge(
+                voucherIds: $data['voucher_ids'],
+                reason: $data['reason'],
+                mergedBy: $request->user()->id,
+                expiresAt: $data['expires_at'] ?? null,
+            );
+        } catch (InvalidVoucherException $e) {
+            throw ValidationException::withMessages([
+                'voucher_ids' => [$e->getMessage()],
+            ]);
+        }
 
         return response()->json($voucher, 201);
     }

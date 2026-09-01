@@ -42,6 +42,13 @@ return [
             'journal_mode' => null,
             'synchronous' => null,
             'transaction_mode' => 'DEFERRED',
+            // ADR-039 decision 1: excluded by name from every backup dump
+            // to preserve ADR-021's 7-day PII-retention guarantee — a raw
+            // dump that retained these rows for the backup's own
+            // retention window would silently undo that policy.
+            'dump' => [
+                'exclude_tables' => ['player_validations'],
+            ],
         ],
 
         'mysql' => [
@@ -62,6 +69,12 @@ return [
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
+            // ADR-039 decision 1 — see the sqlite connection above for
+            // the full rationale (this project's `dump.default` here is
+            // the same value regardless of which connection is active).
+            'dump' => [
+                'exclude_tables' => ['player_validations'],
+            ],
         ],
 
         'mariadb' => [

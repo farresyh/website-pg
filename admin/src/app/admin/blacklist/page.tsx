@@ -8,12 +8,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { PlusIcon } from "@/icons";
+import { useClientSession } from "@/hooks/useClientSession";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import {
   type BlacklistEntry,
@@ -33,8 +43,7 @@ const TYPE_LABEL: Record<BlacklistEntry["type"], string> = {
 
 export default function BlacklistPage() {
   const router = useRouter();
-  // Read in an effect, not render body — see UserDropdown.tsx for why.
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [data, setData] = useState<BlacklistIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,12 +60,17 @@ export default function BlacklistPage() {
   }
 
   useEffect(() => {
+    // A plain function call, not the useClientSession() hook above: this
+    // effect needs an immediate, authoritative read the moment it runs
+    // (real browser/sessionStorage, no SSR/hydration snapshot involved),
+    // not the hook's hydration-safe-but-eventually-consistent value —
+    // using the hook here raced its own resync on a hard navigation and
+    // fired a false redirect while a valid session existed, caught live.
     const s = getClientSession();
     if (!s) {
       router.replace("/login");
       return;
     }
-    setSession(s);
 
     listBlacklistEntries(s.token)
       .then(setData)
@@ -97,7 +111,8 @@ export default function BlacklistPage() {
             Internal fraud blacklist — blocks checkout independent of any supplier-side blacklist.
           </p>
         </div>
-        <Button size="sm" startIcon={<PlusIcon />} onClick={() => setIsModalOpen(true)}>
+        <Button size="small" onClick={() => setIsModalOpen(true)}>
+          <PlusIcon />
           Add Entry
         </Button>
       </div>
@@ -121,57 +136,65 @@ export default function BlacklistPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Type</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Value</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reason</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Added By</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Blocked Attempts</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {data?.entries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{TYPE_LABEL[entry.type]}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{entry.value}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{entry.reason}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{entry.creator?.name ?? "—"}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <button
-                      type="button"
-                      onClick={() => setHistoryEntryId(entry.id)}
-                      className="text-brand-500 hover:underline"
-                    >
-                      {entry.hits_count ?? 0}
-                    </button>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={entry.is_active ? "success" : "light"}>
-                      {entry.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    {entry.is_active ? (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={deactivatingId === entry.id}
-                        onClick={() => handleDeactivate(entry)}
-                      >
-                        Remove
-                      </Button>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={data?.entries ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Type</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Value</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reason</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Added By</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Blocked Attempts</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const entry = item as unknown as BlacklistEntry;
+
+                    return (
+                      <DataTableRow key={entry.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{TYPE_LABEL[entry.type]}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{entry.value}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{entry.reason}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{entry.creator?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryEntryId(entry.id)}
+                            className="text-brand-500 hover:underline"
+                          >
+                            {entry.hits_count ?? 0}
+                          </button>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={entry.is_active ? "success" : "secondary"}>
+                            {entry.is_active ? "Active" : "Inactive"}
+                          </Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          {entry.is_active ? (
+                            <Button
+                              size="small"
+                              severity="danger"
+                              disabled={deactivatingId === entry.id}
+                              onClick={() => handleDeactivate(entry)}
+                            >
+                              Remove
+                            </Button>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {data?.entries.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No blacklist entries yet.</p>

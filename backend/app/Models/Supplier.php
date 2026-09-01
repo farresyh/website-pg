@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Supplier extends Model
 {
@@ -14,6 +15,8 @@ class Supplier extends Model
         'api_config',
         'balance',
         'currency',
+        'last_tested_at',
+        'last_test_result',
     ];
 
     /**
@@ -29,5 +32,11 @@ class Supplier extends Model
         'is_active' => 'boolean',
         'api_config' => 'encrypted:array', // SUPP-5: encrypted at rest
         'balance' => 'decimal:2',
+        'last_tested_at' => 'datetime',
     ];
+
+    public function packages(): HasMany
+    {
+        return $this->hasMany(Package::class);
+    }
 }

@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToReseller;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * ADR-028 addendum decision 10: footer text + the three legal-page
@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class ResellerFooterSettings extends Model
 {
+    /** ADR-057: tenant-scoped to the current reseller under the reseller guard. */
+    use BelongsToReseller;
+
     protected $table = 'reseller_footer_settings';
 
     protected $fillable = [
@@ -27,9 +30,4 @@ class ResellerFooterSettings extends Model
     protected $casts = [
         'footer_game_ids' => 'array',
     ];
-
-    public function reseller(): BelongsTo
-    {
-        return $this->belongsTo(Reseller::class);
-    }
 }

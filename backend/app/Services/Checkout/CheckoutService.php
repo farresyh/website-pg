@@ -3,14 +3,20 @@
 namespace App\Services\Checkout;
 
 use App\Jobs\FulfillOrderJob;
+use App\Models\Membership;
 use App\Models\Order;
+use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
+use App\Services\Pricing\CheckoutTotal;
 use App\Services\Pricing\CheckoutTotalService;
+use App\Services\Pricing\MembershipPricingService;
+use App\Services\Pricing\PaymentMethodFeeConfig;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
@@ -33,8 +39,9 @@ final class CheckoutService
         private readonly CheckoutTotalService $checkoutTotal,
         private readonly OrderNumberService $orderNumbers,
         private readonly VoucherService $vouchers,
-    ) {
-    }
+        private readonly MembershipPricingService $membershipPricing,
+        private readonly MembershipQuotaService $membershipQuota,
+    ) {}
 
     /**
      * Deliberately NOT wrapped in one DB transaction spanning the
@@ -43,67 +50,55 @@ final class CheckoutService
      * after it succeeds, the failure mode is the safe direction — an
      * Order stuck at Pending with no payment_ref, recoverable by
      * retry — rather than the dangerous direction a wrapping
-     * transaction would risk: a real, payable Xendit payment link
+     * transaction would risk: a real, payable CHIP purchase link
      * existing with no matching Order anywhere in the system if the
-     * transaction rolled back after Xendit had already accepted it.
+     * transaction rolled back after CHIP had already accepted it.
      *
      * $gateway is caller-resolved (CheckoutController looks up the
      * matched PaymentMethod row's `gateway` column via
-     * PaymentGatewayFactory) rather than constructor-injected — a
-     * single fixed gateway can't serve a checkout that routes
-     * different channels to different gateways (multi-gateway seam,
-     * 2026-07-25, see the payment_methods migration's doc comment).
+     * PaymentGatewayFactory) rather than constructor-injected — kept
+     * this shape through ADR-022's 2026-09-01 addendum even though CHIP
+     * is the only gateway, so a future multi-region ADR that re-adds a
+     * second one needs no change here (see the payment_methods
+     * migration's doc comment).
      */
     public function initiate(CheckoutRequest $request, PaymentGateway $gateway): Order
     {
         $pricing = $this->pricing->calculate(
             $request->costPriceSen,
-            $request->resellerCostPriceSen,
+            $request->standardSellingPriceSen,
             $request->resellerMarkupPct,
         );
 
-        // ADR-024 decision #3: resolved server-side from the voucher's
-        // own stored code/remaining/ownership — never a client-
-        // submitted discount amount (ORD-9). preview() only reads, it
-        // never locks or mutates — the real, locked spend happens
-        // later, in requestPayment()/settleWithVoucher() below,
-        // matching decision #1's exact timing.
-        $voucherPreview = $request->voucherCode !== null
-            ? $this->vouchers->preview($request->voucherCode, $request->customerEmail, $request->customerPhone, $pricing->sellingPrice)
-            : null;
+        $member = $this->resolveMemberPricing($request);
 
-        $total = $this->checkoutTotal->calculate(
-            $pricing->sellingPrice,
-            $voucherPreview?->discountSen ?? 0,
+        $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
+        $platformProfit = $member !== null ? $member->memberPriceSen - $request->costPriceSen : $pricing->platformProfit;
+        $resellerProfit = $member !== null ? 0 : $pricing->resellerProfit;
+
+        [$voucherPreview, $total, $fullyCoveredByVoucher] = $this->computeTotal(
+            $sellingPriceForOrder,
+            $request->voucherCode,
+            $request->customerEmail,
+            $request->customerPhone,
             $request->paymentFeeConfig,
         );
 
-        // ADR-024 decision #5: a voucher covering the full price means
-        // feeBase is 0 — CheckoutTotalService's own transactionFee
-        // formula would still apply a payment method's flat-fee
-        // component even at feeBase=0 (only the percentage component
-        // scales with the base), which makes no sense for an order
-        // that never touches a payment gateway at all. Forced to 0
-        // here rather than trusting that formula for this branch.
-        $fullyCoveredByVoucher = $total->feeBase === 0 && $voucherPreview !== null;
-
-        // ADR-019 idempotency finding, verified directly against
-        // docs.xendit.co (not assumed): Payment Request v3 has no
-        // client-supplied idempotency-key header. Its real dedupe
-        // mechanism is server-side reference_id uniqueness — a second
-        // POST with the same reference_id (order_number, stable per
-        // Order) gets a clean 409 DATA_NOT_FOUND "Duplication is not
-        // allowed", never a second live payment request. So a
-        // TransientFailureRetryPolicy retry *within* this one call is
-        // already safe against double-charging. The gap that didn't
-        // close on its own — a retried POST /api/checkout HTTP request
-        // (customer double-click, client-side timeout retry) calling
-        // initiate() again from scratch with a brand-new order_number
-        // each time — is closed by $request->idempotencyKey below:
-        // stamped onto the Order at creation (not after payment
-        // succeeds), under a DB-level unique constraint, so a
-        // genuinely concurrent duplicate request fails fast at the
-        // INSERT rather than ever reaching the gateway a second time.
+        // ADR-019 idempotency finding: the checkout path never relies on
+        // a gateway-side idempotency-key header. A retried gateway call
+        // *within* this one initiate() reuses the same order_number as
+        // its reference, so a gateway that dedupes on reference (CHIP's
+        // `reference` field — verify the exact collision behaviour via
+        // app:chip-smoke-test before trusting it) won't create a second
+        // live purchase. The gap that didn't close on its own — a
+        // retried POST /api/checkout HTTP request (customer double-click,
+        // client-side timeout retry) calling initiate() again from
+        // scratch with a brand-new order_number each time — is closed by
+        // $request->idempotencyKey below: stamped onto the Order at
+        // creation (not after payment succeeds), under a DB-level unique
+        // constraint, so a genuinely concurrent duplicate request fails
+        // fast at the INSERT rather than ever reaching the gateway a
+        // second time.
         try {
             $order = Order::query()->create([
                 'order_number' => $this->orderNumbers->generate(),
@@ -119,16 +114,21 @@ final class CheckoutService
                 'supplier_product_ref' => $request->supplierProductRef,
                 'reseller_id' => $request->resellerId,
                 'voucher_id' => $voucherPreview?->voucherId,
+                'pricing_basis' => $member !== null ? PricingBasis::Member->value : PricingBasis::Standard->value,
+                'membership_id' => $member?->membershipId,
+                'member_discount_percent' => $member?->discountPercent,
+                'normal_selling_price' => $member !== null ? $pricing->sellingPrice : null,
                 'cost_price' => $pricing->costPrice,
-                'reseller_cost_price' => $pricing->resellerCostPrice,
+                'standard_selling_price' => $pricing->standardSellingPrice,
                 'reseller_markup_pct' => $request->resellerMarkupPct,
-                'selling_price' => $pricing->sellingPrice,
+                'selling_price' => $sellingPriceForOrder,
                 'voucher_discount' => $total->voucherDiscount,
                 'transaction_fee' => $fullyCoveredByVoucher ? 0 : $total->transactionFee,
                 'final_amount' => $fullyCoveredByVoucher ? 0 : $total->finalAmount,
-                'platform_profit' => $pricing->platformProfit,
-                'reseller_profit' => $pricing->resellerProfit,
+                'platform_profit' => $platformProfit,
+                'reseller_profit' => $resellerProfit,
                 'payment_status' => $fullyCoveredByVoucher ? PaymentStatus::Paid->value : PaymentStatus::Pending->value,
+                'paid_at' => $fullyCoveredByVoucher ? now() : null,
                 'delivery_status' => DeliveryStatus::NotStarted->value,
                 'payment_method' => $request->paymentMethod,
                 'payment_gateway' => $request->paymentGateway,
@@ -163,10 +163,10 @@ final class CheckoutService
      * payment_ref — the previous attempt's gateway call failed or the
      * process died before recording it. Reuses the Order's own already-
      * snapshotted pricing (ORD-9 — never recomputed here) and its own
-     * order_number as the Xendit reference_id, same as a fresh
-     * initiate() would, so Xendit's own reference_id dedupe still
-     * applies if that earlier attempt actually reached Xendit despite
-     * failing to persist locally.
+     * order_number as the gateway `reference`, same as a fresh
+     * initiate() would, so the gateway's own reference dedupe still
+     * applies if that earlier attempt actually reached the gateway
+     * despite failing to persist locally.
      */
     public function resume(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties = []): Order
     {
@@ -197,6 +197,8 @@ final class CheckoutService
             $this->logAcceptedVoucherRedemptionRace($order, $e);
         }
 
+        $this->decrementMembershipQuotaIfApplicable($order);
+
         FulfillOrderJob::dispatch($order->fresh());
 
         return $order->fresh();
@@ -213,7 +215,7 @@ final class CheckoutService
         // customer straight on their own order's status instead of the
         // general "look up an order" search page.
         $orderStatusUrl = rtrim((string) config('services.storefront.url'), '/')
-            . '/order/status/' . $order->order_number;
+            .'/order/status/'.$order->order_number;
 
         if (array_key_exists('success_return_url', $channelProperties)) {
             $channelProperties['success_return_url'] = $orderStatusUrl;
@@ -229,7 +231,7 @@ final class CheckoutService
             country: 'MY',
             channelCode: $channelCode,
             channelProperties: $channelProperties,
-            description: "KedaiRuncitSoloz order {$order->order_number}",
+            description: "PekanGame order {$order->order_number}",
             customer: new PaymentCustomer(
                 referenceId: $order->order_number,
                 givenNames: $order->customer_name,
@@ -271,6 +273,8 @@ final class CheckoutService
             }
         }
 
+        $this->decrementMembershipQuotaIfApplicable($order);
+
         return $order->fresh();
     }
 
@@ -305,5 +309,169 @@ final class CheckoutService
     private function isUniqueConstraintViolation(QueryException $e): bool
     {
         return $e->getCode() === '23000';
+    }
+
+    /**
+     * ADR-027 Phase 6 (its 2026-08-29 continued addendum, decisions
+     * 4/5/11): an unlocked read, deciding which price to charge — never
+     * the locked commit (that's decrementMembershipQuotaIfApplicable()
+     * below, at the same trust point VoucherService::redeem() already
+     * uses). Returns null (standard pricing applies) for three reasons
+     * treated identically, matching this codebase's "one generic
+     * outcome, don't let the caller distinguish why" discipline
+     * (VoucherService::assertUsable()'s own precedent): no membership
+     * resolved at all, the membership's plan somehow missing (defensive
+     * only — restrictOnDelete makes this unreachable in practice), or
+     * quota insufficient for this order (the confirmed 2026-08-29
+     * fallback — checkout is never blocked over it).
+     */
+    private function resolveMemberPricing(CheckoutRequest $request): ?MemberPricingResolution
+    {
+        return $this->resolveMemberPricingFor($request->membershipId, $request->costPriceSen, $request->packageMarkupPercent);
+    }
+
+    /**
+     * The actual lookup behind resolveMemberPricing() above, pulled out
+     * so previewTotal() (bug fix, 2026-08-30 — the storefront's
+     * pre-payment totals never included the real member discount or
+     * transaction fee) can resolve the identical pricing without going
+     * through a full CheckoutRequest, which carries order-creation-only
+     * fields (player_id, idempotency_key, ...) a preview has no use for.
+     */
+    private function resolveMemberPricingFor(?int $membershipId, int $costPriceSen, float $packageMarkupPercent): ?MemberPricingResolution
+    {
+        if ($membershipId === null) {
+            return null;
+        }
+
+        $membership = Membership::query()->with('membershipPlan')->find($membershipId);
+
+        if ($membership === null || $membership->membershipPlan === null) {
+            return null;
+        }
+
+        $discountPercent = (float) $membership->membershipPlan->discount_percent;
+        $memberPriceSen = $this->membershipPricing->calculateMemberPrice(
+            $costPriceSen,
+            $packageMarkupPercent,
+            $discountPercent,
+        );
+
+        if ($memberPriceSen > $membership->quota_remaining_sen) {
+            return null;
+        }
+
+        return new MemberPricingResolution($membership->id, $memberPriceSen, $discountPercent);
+    }
+
+    /**
+     * The voucher-preview + fee/total computation shared by initiate()
+     * and previewTotal() — a single seam so the two can never drift
+     * apart on the actual formula. Returns [VoucherPreview|null,
+     * CheckoutTotal, bool $fullyCoveredByVoucher].
+     *
+     * @return array{0: ?VoucherPreview, 1: CheckoutTotal, 2: bool}
+     */
+    private function computeTotal(
+        int $sellingPriceForOrder,
+        ?string $voucherCode,
+        string $customerEmail,
+        ?string $customerPhone,
+        PaymentMethodFeeConfig $paymentFeeConfig,
+    ): array {
+        // ADR-024 decision #3: resolved server-side from the voucher's
+        // own stored code/remaining/ownership — never a client-
+        // submitted discount amount (ORD-9). preview() only reads, it
+        // never locks or mutates — the real, locked spend happens
+        // later, in requestPayment()/settleWithVoucher() below,
+        // matching decision #1's exact timing.
+        $voucherPreview = $voucherCode !== null
+            ? $this->vouchers->preview($voucherCode, $customerEmail, $customerPhone, $sellingPriceForOrder)
+            : null;
+
+        $total = $this->checkoutTotal->calculate(
+            $sellingPriceForOrder,
+            $voucherPreview?->discountSen ?? 0,
+            $paymentFeeConfig,
+        );
+
+        // ADR-024 decision #5: a voucher covering the full price means
+        // feeBase is 0 — CheckoutTotalService's own transactionFee
+        // formula would still apply a payment method's flat-fee
+        // component even at feeBase=0 (only the percentage component
+        // scales with the base), which makes no sense for an order
+        // that never touches a payment gateway at all. Forced to 0
+        // here rather than trusting that formula for this branch.
+        $fullyCoveredByVoucher = $total->feeBase === 0 && $voucherPreview !== null;
+
+        return [$voucherPreview, $total, $fullyCoveredByVoucher];
+    }
+
+    /**
+     * Bug fix, 2026-08-30: the storefront's pre-payment Order Summary/
+     * Review Modal only ever showed `package price - voucher discount`,
+     * never the transaction fee — so the real charge (this exact
+     * formula, via initiate() above) was always higher than what the
+     * customer saw before clicking "Confirm & Pay" whenever the chosen
+     * channel had a nonzero fee. Read-only: no Order, no gateway call,
+     * no voucher lock (VoucherService::preview() itself never mutates).
+     */
+    public function previewTotal(
+        int $costPriceSen,
+        int $standardSellingPriceSen,
+        float $packageMarkupPercent,
+        float $resellerMarkupPct,
+        PaymentMethodFeeConfig $paymentFeeConfig,
+        ?int $membershipId,
+        ?string $voucherCode,
+        string $customerEmail,
+        ?string $customerPhone,
+    ): CheckoutTotalPreview {
+        $pricing = $this->pricing->calculate($costPriceSen, $standardSellingPriceSen, $resellerMarkupPct);
+
+        $member = $this->resolveMemberPricingFor($membershipId, $costPriceSen, $packageMarkupPercent);
+        $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
+
+        [, $total, $fullyCoveredByVoucher] = $this->computeTotal(
+            $sellingPriceForOrder,
+            $voucherCode,
+            $customerEmail,
+            $customerPhone,
+            $paymentFeeConfig,
+        );
+
+        return new CheckoutTotalPreview(
+            sellingPriceSen: $sellingPriceForOrder,
+            memberDiscountPercent: $member?->discountPercent,
+            voucherDiscountSen: $total->voucherDiscount,
+            transactionFeeSen: $fullyCoveredByVoucher ? 0 : $total->transactionFee,
+            finalAmountSen: $fullyCoveredByVoucher ? 0 : $total->finalAmount,
+        );
+    }
+
+    /**
+     * The locked commit — same trust point VoucherService::redeem()
+     * already uses (after the gateway confirms success, or immediately
+     * for a full-cover order), reached from both settleWithVoucher()
+     * and requestPayment(). A `false` result (lost the race against a
+     * concurrent order from the same member, quota already spent
+     * elsewhere) is logged, never clawed back — the charge already
+     * happened (ADR-004).
+     */
+    private function decrementMembershipQuotaIfApplicable(Order $order): void
+    {
+        if ($order->membership_id === null) {
+            return;
+        }
+
+        $succeeded = $this->membershipQuota->decrement($order->membership_id, $order->id, $order->selling_price);
+
+        if (! $succeeded) {
+            Log::error('Membership quota decrement failed after the order was already committed at the member price', [
+                'order_number' => $order->order_number,
+                'membership_id' => $order->membership_id,
+                'amount_sen' => $order->selling_price,
+            ]);
+        }
     }
 }

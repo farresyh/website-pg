@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
+use App\Http\Requests\Checkout\PreviewCheckoutTotalRequest;
 use App\Models\Game;
+use App\Models\Membership;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
@@ -16,12 +18,15 @@ use App\Services\Checkout\CheckoutService;
 use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Fraud\BlacklistService;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Membership\MembershipSessionTokenService;
+use App\Services\Membership\MembershipStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use App\Services\Voucher\InvalidVoucherException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -36,7 +41,7 @@ use Illuminate\Validation\ValidationException;
  * hands off to the already-tested
  * CheckoutService for pricing/Order-creation/payment-request logic —
  * this controller does not compute or trust any money value itself
- * (ORD-9's principle: cost/reseller-cost come from the stored
+ * (ORD-9's principle: cost/standard-selling-price come from the stored
  * Package, never from client input).
  *
  * Voucher-at-checkout (ADR-024): only `voucher_code` is ever accepted
@@ -53,8 +58,8 @@ class CheckoutController extends Controller
         private readonly PaymentMethodFeeResolver $fees,
         private readonly BlacklistService $blacklist,
         private readonly CheckoutVelocityGuard $velocityGuard,
-    ) {
-    }
+        private readonly MembershipSessionTokenService $membershipSessionTokens,
+    ) {}
 
     public function store(CreateCheckoutRequest $request): JsonResponse
     {
@@ -128,10 +133,14 @@ class CheckoutController extends Controller
 
         $this->assertNotBlacklisted($data['player_id'], $data['customer_email'], $data['customer_phone'] ?? null, $request->ip());
 
-        // PRD §8 / ADR-013: exactly one Reseller row for MVP (the
-        // platform owner, markup_pct=0) — see Reseller::platformOwner()
-        // for the firstOrCreate safety-net rationale.
-        $reseller = Reseller::platformOwner();
+        // ADR-061: the platform's own storefront is the primary Reseller
+        // (ADR-060 will resolve this per `Host` once storefronts are
+        // multi-tenant). Membership needs BOTH the global kill-switch and
+        // this brand's own toggle (ADR-061 decision 4).
+        $reseller = Reseller::primary();
+        $membershipId = $reseller->membershipEnabledEffective($platformSettings)
+            ? $this->resolveMembershipId($request, $reseller->id)
+            : null;
 
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
@@ -141,7 +150,8 @@ class CheckoutController extends Controller
                 playerId: $data['player_id'],
                 serverId: $data['server_id'] ?? null,
                 costPriceSen: $package->cost_price,
-                resellerCostPriceSen: $package->reseller_cost_price,
+                standardSellingPriceSen: $package->standard_selling_price,
+                packageMarkupPercent: (float) $package->markup_percent,
                 resellerMarkupPct: (float) $reseller->markup_pct,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,
@@ -155,6 +165,7 @@ class CheckoutController extends Controller
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
                 resellerId: $reseller->id,
+                membershipId: $membershipId,
             ), $gateway);
         } catch (DuplicateCheckoutAttemptException) {
             // Lost a genuine race — a concurrent request with the same
@@ -189,6 +200,72 @@ class CheckoutController extends Controller
         }
 
         return $this->buildCheckoutResponse($order, $gateway, 201);
+    }
+
+    /**
+     * Bug fix, 2026-08-30: read-only Package Price/Transaction Fee/
+     * Voucher Discount/Total breakdown for the storefront's Order
+     * Summary sidebar and Review Modal — see
+     * CheckoutService::previewTotal()'s own doc comment for why this
+     * exists (the displayed total never included the transaction fee
+     * before this). No Order is created, no payment gateway is called,
+     * no voucher is locked — matches store()'s own Game/Package
+     * active-status gate, but skips player-ID validation, blacklist,
+     * and velocity checks, none of which apply to a price display.
+     */
+    public function previewTotal(PreviewCheckoutTotalRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        $game = Game::query()->findOrFail($data['game_id']);
+        $package = Package::query()->findOrFail($data['package_id']);
+
+        if ($package->game_id !== $game->id) {
+            throw ValidationException::withMessages([
+                'package_id' => ['This package does not belong to the selected game.'],
+            ]);
+        }
+
+        if (! $game->is_active || ! $package->is_active) {
+            throw ValidationException::withMessages([
+                'package_id' => ['This package is not currently available.'],
+            ]);
+        }
+
+        $reseller = Reseller::primary();
+        $platformSettings = PlatformSettings::current();
+        $membershipId = $reseller->membershipEnabledEffective($platformSettings)
+            ? $this->resolveMembershipId($request, $reseller->id)
+            : null;
+
+        try {
+            $preview = $this->checkout->previewTotal(
+                costPriceSen: $package->cost_price,
+                standardSellingPriceSen: $package->standard_selling_price,
+                packageMarkupPercent: (float) $package->markup_percent,
+                resellerMarkupPct: (float) $reseller->markup_pct,
+                paymentFeeConfig: $this->fees->resolve($data['channel_code']),
+                membershipId: $membershipId,
+                voucherCode: $data['voucher_code'] ?? null,
+                customerEmail: $data['customer_email'] ?? '',
+                customerPhone: $data['customer_phone'] ?? null,
+            );
+        } catch (InvalidVoucherException) {
+            // Same generic message as store()'s own catch — a voucher
+            // that expired/was redeemed elsewhere between the storefront's
+            // own vouchers/preview call and this totals re-fetch.
+            throw ValidationException::withMessages([
+                'voucher_code' => ['This voucher code is not valid for this order.'],
+            ]);
+        }
+
+        return response()->json([
+            'selling_price_sen' => $preview->sellingPriceSen,
+            'member_discount_percent' => $preview->memberDiscountPercent,
+            'voucher_discount_sen' => $preview->voucherDiscountSen,
+            'transaction_fee_sen' => $preview->transactionFeeSen,
+            'final_amount_sen' => $preview->finalAmountSen,
+        ]);
     }
 
     /**
@@ -268,6 +345,54 @@ class CheckoutController extends Controller
             'server_id' => 'Server ID',
             default => 'additional field',
         };
+    }
+
+    /**
+     * ADR-027 Phase 6, base ADR decision 10: personalization happens
+     * once, silently, at "Proceed to Pay" — a session-recognized member
+     * gets member pricing with no extra step; anyone without a token
+     * (or an invalid/expired one) checks out exactly as a guest always
+     * has. Gated by the caller on `Reseller::membershipEnabledEffective()`
+     * (ADR-061 decision 4 — the global kill switch AND the brand's own
+     * toggle, seeded off) — the same gate
+     * `CatalogController` already applies to `member_price_sen`, so a
+     * pre-launch/disabled membership feature never silently applies
+     * member pricing at checkout even for an account with a still-valid
+     * session token from earlier testing. Same `Authorization: Bearer` convention
+     * `MembershipController::resolveEmail()` already uses — deliberately
+     * not a `CreateCheckoutRequest` field, since a header (not a body
+     * field the storefront must remember to set) matches how every
+     * other `/membership`-authenticated call already works.
+     *
+     * Checks `expires_at` explicitly rather than trusting `status`
+     * alone — no job anywhere yet flips a lapsed membership's `status`
+     * to Expired (MembershipStatus's own doc comment describes the
+     * intent, not a built mechanism), so `status` alone isn't reliable
+     * proof a membership is still genuinely current.
+     */
+    private function resolveMembershipId(Request $request, int $resellerId): ?int
+    {
+        $token = $request->bearerToken();
+
+        if ($token === null) {
+            return null;
+        }
+
+        $session = $this->membershipSessionTokens->resolve($token);
+
+        // ADR-061 decision 5: a session token minted on another brand's
+        // storefront never applies member pricing here — treated exactly
+        // like a missing/expired token (silent guest fallback).
+        if ($session === null || $session['reseller_id'] !== $resellerId) {
+            return null;
+        }
+
+        return Membership::query()
+            ->where('reseller_id', $resellerId)
+            ->where('email', $session['email'])
+            ->where('status', MembershipStatus::Active)
+            ->where('expires_at', '>=', now())
+            ->value('id');
     }
 
     /**

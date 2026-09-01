@@ -3,7 +3,6 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Models\Game;
-use App\Models\Reseller;
 use App\Models\ResellerBranding;
 use App\Models\ResellerFooterSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,11 +19,11 @@ class BrandingControllerTest extends TestCase
 
     private function seedBrandingAndFooter(array $brandingOverrides = [], array $footerOverrides = []): void
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
 
         ResellerBranding::query()->create(array_merge([
             'reseller_id' => $reseller->id,
-            'store_name' => 'KedaiRuncitSoloz',
+            'store_name' => 'PekanGame',
         ], $brandingOverrides));
 
         ResellerFooterSettings::query()->create(array_merge([
@@ -39,13 +38,13 @@ class BrandingControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/branding');
 
         $response->assertOk();
-        $this->assertSame('KedaiRuncitSoloz', $response->json('store_name'));
-        $this->assertSame('© 2026 KedaiRuncitSoloz. All rights reserved.', $response->json('footer_text'));
+        $this->assertSame('PekanGame', $response->json('store_name'));
+        $this->assertSame('© 2026 PekanGame. All rights reserved.', $response->json('footer_text'));
     }
 
     public function test_show_resolves_footer_games_in_the_stored_order(): void
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         $ml = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         $ff = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
 
@@ -74,7 +73,7 @@ class BrandingControllerTest extends TestCase
      */
     public function test_show_returns_the_same_footer_games_on_a_cached_second_request(): void
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = $this->primaryReseller();
         $ml = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         $ff = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
 
@@ -93,13 +92,31 @@ class BrandingControllerTest extends TestCase
 
     public function test_show_falls_back_to_reseller_business_name_when_branding_is_not_set(): void
     {
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $response = $this->getJson('/api/catalog/branding');
 
         $response->assertOk();
         $this->assertSame('Platform Owner', $response->json('store_name'));
         $this->assertSame([], $response->json('footer_games'));
+    }
+
+    /**
+     * Regression test, 2026-08-28: `show()` used to default a missing
+     * `social_links` to `[]`, which `json_encode`s as a JSON *array*.
+     * The storefront's zod schema expects an object (or `null`) — an
+     * empty array failed validation on every request with no branding
+     * saved yet, logged repeatedly via `/client-errors`. See
+     * `docs/prd.md` §14's 2026-08-27 addendum for how this was found.
+     */
+    public function test_show_returns_null_social_links_when_not_set(): void
+    {
+        $this->seedBrandingAndFooter();
+
+        $response = $this->getJson('/api/catalog/branding');
+
+        $response->assertOk();
+        $this->assertNull($response->json('social_links'));
     }
 
     public function test_legal_returns_sanitized_content_with_store_name_substituted(): void
@@ -109,7 +126,7 @@ class BrandingControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/legal/terms');
 
         $response->assertOk();
-        $this->assertStringContainsString('Welcome to KedaiRuncitSoloz', $response->json('content'));
+        $this->assertStringContainsString('Welcome to PekanGame', $response->json('content'));
         $this->assertStringNotContainsString('<script>', $response->json('content'));
     }
 
@@ -120,7 +137,7 @@ class BrandingControllerTest extends TestCase
 
     public function test_legal_returns_null_content_when_nothing_saved_yet(): void
     {
-        Reseller::platformOwner();
+        $this->primaryReseller();
 
         $response = $this->getJson('/api/catalog/legal/privacy');
 

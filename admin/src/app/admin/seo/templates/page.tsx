@@ -9,17 +9,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getSeoSettings, updateSeoSettings, type SeoSettings } from "@/lib/seo";
 
 export default function SeoTemplatesPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [settings, setSettings] = useState<SeoSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -31,7 +31,6 @@ export default function SeoTemplatesPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     getSeoSettings(s.token)
       .then(setSettings)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load templates."));

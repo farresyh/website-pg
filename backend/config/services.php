@@ -106,22 +106,6 @@ return [
         'cooldown_seconds' => (int) env('SUPPLIER_CIRCUIT_BREAKER_COOLDOWN_SECONDS', 60),
     ],
 
-    // Temporary env-based config for local/manual testing of
-    // XenditGateway. Test vs. live mode is controlled by which key
-    // type is set (Xendit's own convention: xnd_development_... vs
-    // xnd_production_...), not a separate sandbox URL/flag.
-    'xendit' => [
-        'base_url' => env('XENDIT_BASE_URL', 'https://api.xendit.co'),
-        'secret_key' => env('XENDIT_SECRET_KEY'),
-        'webhook_token' => env('XENDIT_WEBHOOK_TOKEN'),
-        // ADR-019: keep short so a slow Xendit response can't hold a
-        // customer-facing checkout request thread open indefinitely,
-        // compounded across retry attempts. Same discipline as
-        // GamevionAdapter's own timeout config above.
-        'timeout' => (int) env('XENDIT_TIMEOUT_SECONDS', 10),
-        'connect_timeout' => (int) env('XENDIT_CONNECT_TIMEOUT_SECONDS', 5),
-    ],
-
     /**
      * ADR-022 — CHIP Collect (docs.chip-in.asia). No separate
      * sandbox base URL is documented; CHIP tests using the same
@@ -138,6 +122,25 @@ return [
         'timeout' => (int) env('CHIP_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('CHIP_CONNECT_TIMEOUT_SECONDS', 5),
         'webhook_public_key_ttl' => (int) env('CHIP_WEBHOOK_PUBLIC_KEY_TTL_SECONDS', 86400),
+    ],
+
+    /**
+     * ADR-027's 2026-08-29 addendum, decisions 27/29 — email OTP
+     * delivery for membership verification (Meta/WhatsApp evaluated and
+     * rejected on cost per Decision 27). Base URL confirmed live against
+     * Plunk's own API reference (docs.useplunk.com/api-reference/overview,
+     * 2026-08-29) — a secret key (sk_*), Bearer auth. Genuinely new
+     * external dependency: no key exists yet, same "config placeholder
+     * until provisioned" pattern as Xendit/Gamevion when they were first
+     * wired.
+     */
+    'plunk' => [
+        'base_url' => env('PLUNK_BASE_URL', 'https://next-api.useplunk.com'),
+        'api_key' => env('PLUNK_API_KEY'),
+        'from_email' => env('PLUNK_FROM_EMAIL', 'no-reply@send.fixfastapp.com'),
+        'from_name' => env('PLUNK_FROM_NAME', 'FixFastApp'),
+        'timeout' => (int) env('PLUNK_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('PLUNK_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
     // Unofficial third-party MLBB validators (docs/prd.md research,
@@ -177,24 +180,41 @@ return [
         'retention_days' => (int) env('PLAYER_VALIDATION_RETENTION_DAYS', 7),
     ],
 
+    // ADR-051 decision 7: `validate_player` rows carry the same
+    // player-account nickname/ID category player_validation.retention_days
+    // above already governs, so they follow that same 7-day window
+    // rather than the blanket default — see
+    // PruneSupplierRequestLogsCommand.
+    'supplier_request_log' => [
+        'retention_days' => (int) env('SUPPLIER_REQUEST_LOG_RETENTION_DAYS', 30),
+        'validate_player_retention_days' => (int) env('SUPPLIER_REQUEST_LOG_VALIDATE_PLAYER_RETENTION_DAYS', 7),
+    ],
+
     // Same STOREFRONT_URL env var cors.php already reads (may be
     // comma-separated when multiple origins are allowed) — first entry
     // is the canonical origin used to build the per-order redirect URL
-    // Xendit sends the customer back to after hosted-page payment. See
+    // CHIP sends the customer back to after hosted-page payment. See
     // CheckoutService::requestPayment().
     'storefront' => [
         'url' => explode(',', env('STOREFRONT_URL', 'http://localhost:3001'))[0],
     ],
 
+    // ADR-058 (58a) — canonical origin of the reseller portal (ADR-059),
+    // used to build the absolute set-password invite link
+    // (ResellerInviteService). Distinct deploy target from the storefront.
+    'reseller_portal' => [
+        'url' => explode(',', env('RESELLER_PORTAL_URL', 'http://localhost:3002'))[0],
+    ],
+
     // ADR-021 (PAY-3) — ReconcilePendingPaymentsCommand's own thresholds.
     // pending_after_minutes: how stale a payment_status=pending order must
-    // be before it's even worth asking Xendit about (a checkout from 30
-    // seconds ago just hasn't had its webhook arrive yet — not a real gap).
-    // flag_after_hours: the fallback safety-net cap — no terminal answer
-    // from Xendit after this long means "flag for admin review", never
-    // "assume failed", since the gateway state might still be genuinely
-    // open (grilled explicitly in ADR-021, not decided by elapsed time
-    // alone).
+    // be before it's even worth asking the gateway about (a checkout from
+    // 30 seconds ago just hasn't had its webhook arrive yet — not a real
+    // gap). flag_after_hours: the fallback safety-net cap — no terminal
+    // answer from the gateway after this long means "flag for admin
+    // review", never "assume failed", since the gateway state might still
+    // be genuinely open (grilled explicitly in ADR-021, not decided by
+    // elapsed time alone).
     'payment_reconciliation' => [
         'pending_after_minutes' => (int) env('PAYMENT_RECONCILIATION_PENDING_AFTER_MINUTES', 30),
         'flag_after_hours' => (int) env('PAYMENT_RECONCILIATION_FLAG_AFTER_HOURS', 24),

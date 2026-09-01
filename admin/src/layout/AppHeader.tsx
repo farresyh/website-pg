@@ -48,7 +48,7 @@ const AppHeader: React.FC = () => {
           </button>
 
           <span className="text-base font-semibold text-gray-900 dark:text-white lg:hidden">
-            KedaiRuncitSoloz Admin
+            PekanGame Admin
           </span>
 
           <button

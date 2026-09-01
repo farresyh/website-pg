@@ -8,15 +8,19 @@
  * action proves a validator is genuinely plugged in on the backend —
  * not just that this row exists. See
  * backend/app/Http/Controllers/Middleware/PlayerValidatorProfileController.php.
+ *
+ * MUI-7 (grilled 2026-08-28, ADR-052) lives on this same page as the
+ * "Validate Player (by Game)" panel below — see ValidateByGamePanel.
  */
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Button from "@/components/ui/button/Button";
+import { Button } from "@/components/ui/button";
 import CreateValidatorModal from "@/components/middleware/CreateValidatorModal";
 import ValidatorCard from "@/components/middleware/ValidatorCard";
+import ValidateByGamePanel from "@/components/middleware/ValidateByGamePanel";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type PlayerRegionMapping,
@@ -36,7 +40,7 @@ import { type Game, listGames } from "@/lib/games";
 
 export default function ValidatorsPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
   const [validators, setValidators] = useState<PlayerValidatorProfile[] | null>(null);
   const [availableKeys, setAvailableKeys] = useState<AvailableValidatorKey[]>([]);
   const [games, setGames] = useState<Game[]>([]);
@@ -49,7 +53,6 @@ export default function ValidatorsPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,7 +71,7 @@ export default function ValidatorsPage() {
     load(session.token).catch((err: unknown) => {
       setError(err instanceof ApiError ? err.message : "Could not load validators.");
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session]);
 
   async function handleRefresh() {
@@ -189,7 +192,7 @@ export default function ValidatorsPage() {
 
       <div className="mb-6 flex gap-2">
         <Button onClick={() => setCreateOpen(true)}>+ Create Validator</Button>
-        <Button variant="outline" onClick={handleRefresh}>
+        <Button variant="outlined" onClick={handleRefresh}>
           Refresh
         </Button>
       </div>
@@ -234,6 +237,10 @@ export default function ValidatorsPage() {
       {validators === null && !error && (
         <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       )}
+
+      <div className="mt-8">
+        <ValidateByGamePanel games={games} />
+      </div>
     </div>
   );
 }

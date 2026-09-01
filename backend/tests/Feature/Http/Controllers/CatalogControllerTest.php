@@ -2,12 +2,17 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\AdminUser;
 use App\Models\Game;
+use App\Models\Membership;
+use App\Models\MembershipPlan;
 use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\Supplier;
+use App\Services\Membership\MembershipSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -15,12 +20,21 @@ use Tests\TestCase;
  * source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
  * §14/§15's NEXT SESSION pointer, "public catalog endpoint"). Every
  * assertion here also proves what must NEVER be present: cost_price/
- * reseller_cost_price/markup_percent/supplier_id/supplier_package_ref
+ * standard_selling_price/markup_percent/supplier_id/supplier_package_ref
  * (GameController::packages()'s own admin-only fields).
  */
 class CatalogControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ADR-061: these endpoints resolve the platform storefront via
+        // Reseller::primary(), which fails loud when it is absent.
+        $this->primaryReseller();
+    }
 
     private function makeSupplier(): Supplier
     {
@@ -60,22 +74,22 @@ class CatalogControllerTest extends TestCase
         $supplier = $this->makeSupplier();
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'reseller_cost_price' => 300,
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 480, 'reseller_cost_price' => 550,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 480, 'standard_selling_price' => 550,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '10 Diamonds (inactive)', 'cost_price' => 50, 'reseller_cost_price' => 60,
+            'game_id' => $game->id, 'name' => '10 Diamonds (inactive)', 'cost_price' => 50, 'standard_selling_price' => 60,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'C', 'is_active' => false,
         ]);
 
         $response = $this->getJson('/api/catalog/games');
 
         $response->assertOk();
-        // Platform Owner reseller markup_pct=0 (ADR-013) — selling_price equals reseller_cost_price in MVP.
+        // Platform Owner reseller markup_pct=0 (ADR-013) — selling_price equals standard_selling_price in MVP.
         $this->assertSame(300, $response->json()[0]['price_from_sen']);
     }
 
@@ -120,11 +134,11 @@ class CatalogControllerTest extends TestCase
         $supplier = $this->makeSupplier();
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'reseller_cost_price' => 300,
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
             'markup_percent' => 12.5, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds (inactive)', 'cost_price' => 480, 'reseller_cost_price' => 550,
+            'game_id' => $game->id, 'name' => '100 Diamonds (inactive)', 'cost_price' => 480, 'standard_selling_price' => 550,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => false,
         ]);
 
@@ -135,18 +149,18 @@ class CatalogControllerTest extends TestCase
         $this->assertCount(1, $packages);
         $this->assertSame('50 Diamonds', $packages[0]['name']);
         $this->assertSame(300, $packages[0]['selling_price_sen']);
-        foreach (['cost_price', 'reseller_cost_price', 'markup_percent', 'supplier_id', 'supplier_package_ref'] as $secretField) {
+        foreach (['cost_price', 'standard_selling_price', 'markup_percent', 'supplier_id', 'supplier_package_ref'] as $secretField) {
             $this->assertArrayNotHasKey($secretField, $packages[0]);
         }
     }
 
     public function test_packages_applies_reseller_markup_to_the_selling_price(): void
     {
-        Reseller::query()->create(['business_name' => 'Platform Owner', 'markup_pct' => 10, 'status' => 'active']);
+        $this->primaryReseller()->update(['markup_pct' => 10]);
         $supplier = $this->makeSupplier();
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'reseller_cost_price' => 300,
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
@@ -169,12 +183,12 @@ class CatalogControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => '14 Diamonds (Gamevion)', 'denomination' => 14,
-            'cost_price' => 500, 'reseller_cost_price' => 600,
+            'cost_price' => 500, 'standard_selling_price' => 600,
             'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV14', 'is_active' => true,
         ]);
         $cheaper = Package::query()->create([
             'game_id' => $game->id, 'name' => '14 Diamonds (Digiflazz)', 'denomination' => 14,
-            'cost_price' => 480, 'reseller_cost_price' => 550,
+            'cost_price' => 480, 'standard_selling_price' => 550,
             'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'DF14', 'is_active' => true,
         ]);
 
@@ -198,12 +212,12 @@ class CatalogControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => 'Starlight Membership', 'denomination' => null,
-            'cost_price' => 500, 'reseller_cost_price' => 600,
+            'cost_price' => 500, 'standard_selling_price' => 600,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-SL', 'is_active' => true,
         ]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => 'Weekly Pass', 'denomination' => null,
-            'cost_price' => 500, 'reseller_cost_price' => 600,
+            'cost_price' => 500, 'standard_selling_price' => 600,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-WP', 'is_active' => true,
         ]);
 
@@ -224,12 +238,12 @@ class CatalogControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         $first = Package::query()->create([
             'game_id' => $game->id, 'name' => '14 Diamonds (A)', 'denomination' => 14,
-            'cost_price' => 500, 'reseller_cost_price' => 550,
+            'cost_price' => 500, 'standard_selling_price' => 550,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A14', 'is_active' => true,
         ]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => '14 Diamonds (B)', 'denomination' => 14,
-            'cost_price' => 500, 'reseller_cost_price' => 550,
+            'cost_price' => 500, 'standard_selling_price' => 550,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B14', 'is_active' => true,
         ]);
 
@@ -255,22 +269,22 @@ class CatalogControllerTest extends TestCase
 
         Package::query()->create([
             'game_id' => $game->id, 'name' => '10209 Diamonds', 'denomination' => 10209,
-            'cost_price' => 61805, 'reseller_cost_price' => 71076,
+            'cost_price' => 61805, 'standard_selling_price' => 71076,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => '13 + 1 Diamonds', 'denomination' => 14,
-            'cost_price' => 94, 'reseller_cost_price' => 103,
+            'cost_price' => 94, 'standard_selling_price' => 103,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => '1252 + 194 Diamonds', 'denomination' => null,
-            'cost_price' => 9345, 'reseller_cost_price' => 10747,
+            'cost_price' => 9345, 'standard_selling_price' => 10747,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'C', 'is_active' => true,
         ]);
         Package::query()->create([
             'game_id' => $game->id, 'name' => '1192 Diamonds', 'denomination' => 1192,
-            'cost_price' => 7281, 'reseller_cost_price' => 8373,
+            'cost_price' => 7281, 'standard_selling_price' => 8373,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'D', 'is_active' => true,
         ]);
 
@@ -291,6 +305,186 @@ class CatalogControllerTest extends TestCase
     }
 
     /**
+     * ADR-027's 2026-08-29 addendum, decision 21: omitted entirely
+     * (never null) while the kill switch is off — its seeded default.
+     */
+    public function test_packages_omits_member_price_when_membership_feature_is_disabled(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
+
+        $response->assertOk();
+        $this->assertArrayNotHasKey('member_price_sen', $response->json()[0]);
+    }
+
+    /**
+     * Decisions 16/20/21: once enabled, member_price_sen reflects only
+     * the best-value tier (highest discount_percent — the seeded Tier 2
+     * at 80%), computed via MembershipPricingService against the
+     * package's own markup_percent, not a flat member-wide price.
+     */
+    public function test_packages_includes_best_tier_member_price_when_enabled(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
+
+        $response->assertOk();
+        // Tier 2 (seeded 80% discount): effective markup 15% * (1-0.8) = 3% -> round(1000 * 1.03) = 1030.
+        $this->assertSame(1030, $response->json()[0]['member_price_sen']);
+    }
+
+    /**
+     * Bug fix, 2026-08-30: a real Tier 1 member's browsing session must
+     * see their own tier's price (1075, effective markup 15%*(1-0.5))
+     * pre-payment, not Tier 2's anonymous "best tier" anchor (1030) —
+     * previously CatalogController::packages() always used the
+     * highest-discount plan regardless of who was asking, even though
+     * CheckoutService already charged the member correctly at their own
+     * tier. `member_price_personalized` distinguishes the two so the
+     * storefront never shows a price it won't actually honor at checkout.
+     */
+    public function test_packages_uses_the_authenticated_members_own_tier_price_not_the_anonymous_anchor(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $tier1 = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
+        Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
+            'email' => 'tier1-member@example.com',
+            'membership_plan_id' => $tier1->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 30000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, 'tier1-member@example.com');
+
+        // Anonymous request still gets Tier 2's anchor, unaffected.
+        $anonymous = $this->getJson('/api/catalog/games/free-fire-global/packages');
+        $anonymous->assertJsonPath('0.member_price_sen', 1030);
+        $this->assertArrayNotHasKey('member_price_personalized', $anonymous->json()[0]);
+
+        // The Tier 1 member's own request gets their real tier's price, flagged as personalized.
+        $memberResponse = $this->getJson(
+            '/api/catalog/games/free-fire-global/packages',
+            ['Authorization' => "Bearer {$token}"],
+        );
+        $memberResponse->assertJsonPath('0.member_price_sen', 1075);
+        $memberResponse->assertJsonPath('0.member_price_personalized', true);
+
+        // Re-querying anonymously afterward must still be Tier 2's anchor — no cache bleed between the two.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+    }
+
+    /**
+     * Decision 18: a tier edit (or the kill switch, tested separately
+     * below) must invalidate every game's packages cache at once, not
+     * just the one the admin happened to load most recently — proven
+     * end-to-end via the real admin endpoint, same discipline as this
+     * file's other cache-invalidation tests.
+     */
+    public function test_public_packages_cache_is_invalidated_when_a_membership_tier_discount_changes(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+
+        $tier2 = MembershipPlan::query()->orderByDesc('discount_percent')->first();
+        $this->putJson("/api/membership-plans/{$tier2->id}", [
+            'fee_sen' => $tier2->fee_sen,
+            'quota_sen' => $tier2->quota_sen,
+            'discount_percent' => 90,
+        ])->assertOk();
+
+        // Effective markup 15% * (1-0.9) = 1.5% -> round(1000 * 1.015) = 1015.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1015);
+    }
+
+    /**
+     * Decision 20: toggling the kill switch off must hide member_price_sen
+     * again immediately, not just wait out the TTL.
+     */
+    public function test_public_packages_cache_is_invalidated_when_the_kill_switch_is_toggled_off(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => false])->assertOk();
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
+        $this->assertArrayNotHasKey('member_price_sen', $response->json()[0]);
+    }
+
+    /**
+     * member_price_sen is computed live from Package.markup_percent, not
+     * a snapshot — a real admin edit to a package's own markup (not the
+     * membership tier's discount) must change it too. Proven via the
+     * real PackageController::updateMarkup endpoint, which invalidates
+     * this cache through GameController::forgetPackagesCache() ->
+     * CatalogController::forgetPackagesCache() — the same tagged-store
+     * fix this ADR's own cache migration needed (see that method's
+     * comment) applies here as much as to a direct membership_plans edit.
+     */
+    public function test_member_price_follows_a_real_package_markup_edit(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'markup_percent' => 15, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->patchJson('/api/membership-plans/enabled', ['membership_enabled' => true])->assertOk();
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1030);
+
+        // Real admin edit: package markup 15% -> 10% (through the real endpoint, not the model directly).
+        $this->patchJson("/api/packages/{$package->id}/markup", ['markup_percent' => 10])->assertOk();
+
+        // Effective markup 10% * (1-0.8) = 2% -> round(1000 * 1.02) = 1020.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonPath('0.member_price_sen', 1020);
+    }
+
+    /**
      * ADR-014 discipline extended to the public catalog: reuses the
      * exact same GameController::forgetIndexCache()/forgetPackagesCache()
      * choke points every admin write already calls through — proven
@@ -303,7 +497,7 @@ class CatalogControllerTest extends TestCase
 
         $this->getJson('/api/catalog/games')->assertJsonPath('0.name', 'Free Fire Global');
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
         $this->putJson("/api/games/{$game->id}", [
             'name' => $game->name, 'slug' => $game->slug, 'is_active' => false,
         ])->assertOk();
@@ -316,13 +510,13 @@ class CatalogControllerTest extends TestCase
         $supplier = $this->makeSupplier();
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'reseller_cost_price' => 300,
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonCount(1);
 
-        \Laravel\Sanctum\Sanctum::actingAs(\App\Models\AdminUser::factory()->create(['role' => 'admin']));
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
         $this->patchJson("/api/packages/{$package->id}/status", ['is_active' => false])->assertOk();
 
         $this->getJson('/api/catalog/games/free-fire-global/packages')->assertJsonCount(0);

@@ -23,11 +23,11 @@ use Illuminate\Validation\Rule;
  * sufficient. CheckoutController derives the Order's reporting
  * `payment_method` label from the matched row's `category`.
  *
- * `customer_name` added 2026-07-25: Xendit's Payment Request API
- * requires a `customer.individual_detail.given_names` for at least the
- * FPX channel (discovered live via the Payment Methods "Test" action —
+ * `customer_name` added 2026-07-25: the payment gateway requires a
+ * customer full name for at least the FPX channel (discovered live —
  * see PaymentCustomer's own doc comment) — guest checkout never
- * collected a name before this.
+ * collected a name before this. Still required by CHIP's `client`
+ * object (ADR-022).
  *
  * `idempotency_key` added 2026-07-29 (ADR-019's remaining gap, closed):
  * client-generated once per checkout attempt (the storefront's Review
@@ -53,11 +53,11 @@ use Illuminate\Validation\Rule;
  * `channel_properties` inner keys allowlisted 2026-08-21: the only keys
  * the storefront has ever sent are `success_return_url`/
  * `failure_return_url` (OrderForm.tsx), and CheckoutService::requestPayment()
- * overwrites both server-side anyway before they reach Xendit. A bare
+ * overwrites both server-side anyway before they reach the gateway. A bare
  * `POST /api/checkout` caller (bypassing the storefront) had no boundary
  * check stopping it from stuffing arbitrary extra keys into this array,
- * which then flowed straight into XenditGateway::createPaymentRequest()'s
- * real payload unfiltered.
+ * which then flowed straight into the gateway adapter's real payload
+ * unfiltered.
  */
 class CreateCheckoutRequest extends FormRequest
 {
@@ -75,7 +75,7 @@ class CreateCheckoutRequest extends FormRequest
             'game_id' => ['required', 'integer', 'exists:games,id'],
             'package_id' => ['required', 'integer', 'exists:packages,id'],
             'customer_email' => ['required', 'email', 'max:255'],
-            'customer_name' => ['required', 'string', 'max:50'], // Xendit individual_detail.given_names caps at 50
+            'customer_name' => ['required', 'string', 'max:50'], // CHIP client.full_name — keep names short
             'customer_phone' => ['required', 'string', 'max:32'],
             'player_id' => ['required', 'string', 'max:255'],
             'server_id' => ['nullable', 'string', 'max:255'],

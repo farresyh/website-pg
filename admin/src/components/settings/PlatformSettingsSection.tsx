@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
-import Button from "@/components/ui/button/Button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { applyBulkMarkup, updatePlatformSettings, type PlatformSettings } from "@/lib/settings";
 
@@ -30,6 +30,7 @@ export default function PlatformSettingsSection({
   platform: PlatformSettings;
   onSaved: () => void;
 }) {
+  const [vipThresholdRm, setVipThresholdRm] = useState(String(platform.vip_spend_threshold_sen / 100));
   const [maintenanceMode, setMaintenanceMode] = useState(platform.maintenance_mode);
   const [maintenanceMessage, setMaintenanceMessage] = useState(platform.maintenance_message ?? "");
   const [telegramEnabled, setTelegramEnabled] = useState(platform.telegram_notifications_enabled);
@@ -43,12 +44,19 @@ export default function PlatformSettingsSection({
   const [markupResult, setMarkupResult] = useState<string | null>(null);
 
   async function handleSave() {
+    const vipThresholdSen = Math.round(parseFloat(vipThresholdRm) * 100);
+    if (!Number.isFinite(vipThresholdSen) || vipThresholdSen < 0) {
+      setError("Enter a valid VIP spend threshold.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
       await updatePlatformSettings(token, {
         maintenance_mode: maintenanceMode,
         maintenance_message: maintenanceMessage || null,
+        vip_spend_threshold_sen: vipThresholdSen,
         telegram_notifications_enabled: telegramEnabled,
         telegram_bot_token: telegramBotToken || null,
         telegram_chat_id: telegramChatId || null,
@@ -67,7 +75,7 @@ export default function PlatformSettingsSection({
       setError("Enter a valid markup percentage.");
       return;
     }
-    if (!confirm(`Apply ${percent}% markup to every active package? This recomputes reseller_cost_price for all of them and cannot be undone in bulk.`)) {
+    if (!confirm(`Apply ${percent}% markup to every active package? This recomputes standard_selling_price for all of them and cannot be undone in bulk.`)) {
       return;
     }
 
@@ -102,6 +110,11 @@ export default function PlatformSettingsSection({
             <Input id="payment_channels" value="Managed in Payment Methods" disabled />
             <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">Stays at /middleware/payment-methods — not moved here.</p>
           </div>
+          <div>
+            <Label htmlFor="vip_spend_threshold">VIP spend threshold (RM)</Label>
+            <Input id="vip_spend_threshold" value={vipThresholdRm} onChange={(e) => setVipThresholdRm(e.target.value)} placeholder="5000" />
+            <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">Lifetime spend a customer needs to be tagged VIP in Customer Analytics (ADR-049).</p>
+          </div>
         </div>
       </div>
 
@@ -109,14 +122,14 @@ export default function PlatformSettingsSection({
         <h3 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white/90">Bulk markup update</h3>
         <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
           Applies a markup % to every currently-active package&apos;s <code>markup_percent</code>, recomputing{" "}
-          <code>reseller_cost_price</code> for each — logged the same as a manual per-package markup edit.
+          <code>standard_selling_price</code> for each — logged the same as a manual per-package markup edit.
         </p>
         <div className="flex items-end gap-3">
           <div className="w-32">
             <Label htmlFor="markup_percent">Markup %</Label>
             <Input id="markup_percent" value={markupPercent} onChange={(e) => setMarkupPercent(e.target.value)} placeholder="15" />
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={handleApplyMarkup} disabled={applyingMarkup || !markupPercent}>
+          <Button type="button" variant="outlined" size="small" onClick={handleApplyMarkup} disabled={applyingMarkup || !markupPercent}>
             {applyingMarkup ? "Applying…" : "Apply to All Packages"}
           </Button>
         </div>

@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api-client";
 
-export type VoucherStatus = "active" | "exhausted" | "expired" | "revoked";
+export type VoucherStatus = "active" | "exhausted" | "expired" | "revoked" | "merged";
 
 export interface Voucher {
   id: number;
@@ -43,10 +43,27 @@ export interface VoucherRedemption {
   order: { id: number; order_number: string } | null;
 }
 
+export interface VoucherMergeRef {
+  id: number;
+  reason: string;
+  merged_by: number | null;
+  created_at: string;
+  source_voucher_id: number;
+  target_voucher_id: number;
+  source_voucher?: { id: number; code: string };
+  target_voucher?: { id: number; code: string };
+}
+
 export interface VoucherDetail extends Voucher {
   customer_phone: string | null;
   redemptions: VoucherRedemption[];
   source_order: { id: number; order_number: string } | null;
+  // ADR-036 — provenance: which source codes fed into this voucher
+  // (non-empty only for a merge's own result), or the single merge
+  // that consumed this voucher as a source (non-null only once this
+  // voucher's own status is "merged").
+  merges_as_target: VoucherMergeRef[];
+  merge_as_source: VoucherMergeRef | null;
 }
 
 export interface VoucherShowResponse {
@@ -66,6 +83,7 @@ export interface CreateVoucherValues {
   amount: number;
   reason: string;
   expires_at?: string | null;
+  idempotency_key: string;
 }
 
 export function listVouchers(token: string) {
@@ -78,6 +96,16 @@ export function getVoucher(token: string, id: number) {
 
 export function createVoucher(token: string, values: CreateVoucherValues) {
   return apiFetch<Voucher>("/api/vouchers", { method: "POST", token, body: values });
+}
+
+export interface MergeVouchersValues {
+  voucher_ids: number[];
+  reason: string;
+  expires_at?: string | null;
+}
+
+export function mergeVouchers(token: string, values: MergeVouchersValues) {
+  return apiFetch<Voucher>("/api/vouchers/merge", { method: "POST", token, body: values });
 }
 
 export function revokeVoucher(token: string, id: number) {

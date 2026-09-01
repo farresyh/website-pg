@@ -17,7 +17,7 @@ class PaymentMethodFeeResolverTest extends TestCase
             'channel_code' => 'CARDS',
             'label' => 'Card',
             'category' => 'card',
-            'gateway' => 'xendit',
+            'gateway' => 'chip',
             'is_active' => true,
             'percentage_rate' => 1.9,
             'flat_fee_sen' => 90,
@@ -27,7 +27,7 @@ class PaymentMethodFeeResolverTest extends TestCase
     public function test_resolves_a_percentage_plus_flat_channel(): void
     {
         $this->paymentMethod();
-        $resolver = new PaymentMethodFeeResolver();
+        $resolver = new PaymentMethodFeeResolver;
 
         $fee = $resolver->resolve('CARDS');
 
@@ -44,7 +44,7 @@ class PaymentMethodFeeResolverTest extends TestCase
             'percentage_rate' => 0.0,
             'flat_fee_sen' => 210,
         ]);
-        $resolver = new PaymentMethodFeeResolver();
+        $resolver = new PaymentMethodFeeResolver;
 
         $fee = $resolver->resolve('AMBANK_FPX');
 
@@ -54,7 +54,7 @@ class PaymentMethodFeeResolverTest extends TestCase
 
     public function test_throws_for_an_unknown_channel(): void
     {
-        $resolver = new PaymentMethodFeeResolver();
+        $resolver = new PaymentMethodFeeResolver;
 
         $this->expectException(\RuntimeException::class);
 
@@ -64,7 +64,7 @@ class PaymentMethodFeeResolverTest extends TestCase
     public function test_throws_for_an_inactive_channel(): void
     {
         $this->paymentMethod(['channel_code' => 'GRABPAY', 'category' => 'ewallet', 'is_active' => false]);
-        $resolver = new PaymentMethodFeeResolver();
+        $resolver = new PaymentMethodFeeResolver;
 
         $this->expectException(\RuntimeException::class);
 

@@ -10,7 +10,7 @@ export interface Branding {
   support_email: string | null;
   support_phone: string | null;
   telegram_contact_link: string | null;
-  social_links: { facebook?: string; instagram?: string } | null;
+  social_links: { facebook?: string; instagram?: string; tiktok?: string; youtube?: string; whatsapp?: string } | null;
 }
 
 export interface FooterSettings {
@@ -26,11 +26,13 @@ export interface FooterSettings {
 export interface PlatformSettings {
   id: number;
   currency: string;
+  vip_spend_threshold_sen: number;
   maintenance_mode: boolean;
   maintenance_message: string | null;
   telegram_notifications_enabled: boolean;
   telegram_bot_token: string | null;
   telegram_chat_id: string | null;
+  membership_enabled: boolean;
 }
 
 export interface SettingsIndexResponse {
@@ -51,7 +53,12 @@ export type UpdateFooterValues = Pick<
 
 export type UpdatePlatformValues = Pick<
   PlatformSettings,
-  "maintenance_mode" | "maintenance_message" | "telegram_notifications_enabled" | "telegram_bot_token" | "telegram_chat_id"
+  | "maintenance_mode"
+  | "maintenance_message"
+  | "vip_spend_threshold_sen"
+  | "telegram_notifications_enabled"
+  | "telegram_bot_token"
+  | "telegram_chat_id"
 >;
 
 export function getSettings(token: string) {

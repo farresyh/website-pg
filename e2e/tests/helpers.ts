@@ -27,6 +27,15 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 
 export async function openOrder(page: Page, orderNumber: string): Promise<void> {
   await page.goto(`${ADMIN_URL}/admin/orders`);
+  // Same real synchronization point as loginAsAdmin's own wait, same
+  // reason (`next dev`/Turbopack on-demand compilation timing, not an
+  // arbitrary sleep) — found live 2026-08-28 adding new middleware
+  // pages/nav entries shifted the admin app's compile graph just
+  // enough to reproduce this spec's own version of the exact race
+  // loginAsAdmin already documents: two `/admin/orders` search inputs
+  // momentarily both in the DOM (a stale render lingering alongside
+  // the settled one), tripping Playwright's strict-mode locator.
+  await page.waitForLoadState("networkidle");
   await page.getByPlaceholder("Search order # or customer email…").fill(orderNumber);
   // Scoped to the matching row, not `.first()` — search is server-side
   // and re-fetches on every keystroke, so the table briefly still shows

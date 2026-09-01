@@ -14,11 +14,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import Badge from "@/components/ui/badge/Badge";
-import Button from "@/components/ui/button/Button";
+import {
+  DataTable,
+  DataTableTableContainer,
+  DataTableTable,
+  DataTableTHead,
+  DataTableTHeadRow,
+  DataTableTHeadCell,
+  DataTableTBody,
+  DataTableRow,
+  DataTableCell,
+} from "@/components/ui/datatable";
+import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
-import type { SessionPayload } from "@/lib/auth";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { type OrderListItem, type OrderPage, type OrderDetail } from "@/lib/orders";
 import {
@@ -41,22 +51,22 @@ function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
-const paymentStatusColor: Record<OrderListItem["payment_status"], "warning" | "success" | "error"> = {
-  pending: "warning",
+const paymentStatusSeverity: Record<OrderListItem["payment_status"], "warn" | "success" | "danger"> = {
+  pending: "warn",
   paid: "success",
-  failed: "error",
+  failed: "danger",
 };
 
-const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "warning" | "success" | "error" | "info"> = {
-  not_started: "light",
-  processing: "warning",
+const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondary" | "warn" | "success" | "danger" | "info"> = {
+  not_started: "secondary",
+  processing: "warn",
   delivered: "success",
-  failed: "error",
+  failed: "danger",
   // ADR-026 — reachable here too: resend()'s error_code field is
   // free-text, so typing "duplicate_reference" reaches needs_review
   // through the same OrderFulfillmentService::fulfill() logic a real
   // ambiguous Gamevion response would.
-  needs_review: "warning",
+  needs_review: "warn",
   // ADR-032 — sandbox orders can't structurally reach this (FakeSupplierAdapter
   // only ever simulates success/failure, never an async Pending), TS
   // just needs the key to satisfy the shared OrderListItem type.
@@ -65,10 +75,17 @@ const deliveryStatusColor: Record<OrderListItem["delivery_status"], "light" | "w
 
 export default function SandboxOrdersPage() {
   const router = useRouter();
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useClientSession();
 
   const [search, setSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
+  // Adjusted during render, not in an effect — see orders/page.tsx for
+  // why (resets pagination to 1 whenever the search term changes).
+  const [paginationSearchKey, setPaginationSearchKey] = useState(search);
+  if (paginationSearchKey !== search) {
+    setPaginationSearchKey(search);
+    setPageNumber(1);
+  }
   const [page, setPage] = useState<OrderPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -143,14 +160,8 @@ export default function SandboxOrdersPage() {
       router.replace("/login");
       return;
     }
-    setSession(s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    setPageNumber(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
 
   useEffect(() => {
     refreshList();
@@ -179,30 +190,30 @@ export default function SandboxOrdersPage() {
           <div className="mb-6">
             <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{selected.order_number}</h1>
             <p className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-              <Badge size="sm" color="warning">sandbox</Badge>
-              <Badge size="sm" color={paymentStatusColor[selected.payment_status]}>
+              <Tag severity="warn">sandbox</Tag>
+              <Tag severity={paymentStatusSeverity[selected.payment_status]}>
                 payment: {selected.payment_status}
-              </Badge>
-              <Badge size="sm" color={deliveryStatusColor[selected.delivery_status]}>
+              </Tag>
+              <Tag severity={deliveryStatusSeverity[selected.delivery_status]}>
                 delivery: {selected.delivery_status}
-              </Badge>
+              </Tag>
             </p>
             {selected.delivery_status === "needs_review" && <NeedsReviewBanner order={selected} sandbox />}
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {/* ADR-026 decision 4b's sandbox counterpart — the same retry mechanism resolves a needs_review test order, not just a failed one. */}
               {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
-                <Button size="sm" onClick={() => setResendModalOpen(true)}>
+                <Button size="small" onClick={() => setResendModalOpen(true)}>
                   Resend Delivery…
                 </Button>
               )}
               {/* ADR-026 decision 4a's sandbox counterpart. */}
               {selected.delivery_status === "needs_review" && (
-                <Button size="sm" variant="outline" onClick={() => setMarkDeliveredModalOpen(true)}>
+                <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
                   Mark as Delivered…
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => handleDelete(selected.id)}>
+              <Button size="small" variant="outlined" onClick={() => handleDelete(selected.id)}>
                 Delete Test Order
               </Button>
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
@@ -250,10 +261,10 @@ export default function SandboxOrdersPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={handleDeleteAll}>
+          <Button size="small" variant="outlined" onClick={handleDeleteAll}>
             Delete All Test Orders
           </Button>
-          <Button size="sm" onClick={() => setCreateModalOpen(true)}>
+          <Button size="small" onClick={() => setCreateModalOpen(true)}>
             Create Test Order…
           </Button>
         </div>
@@ -277,41 +288,49 @@ export default function SandboxOrdersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-gray-800">
-              <TableRow>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order #</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game / Package</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Amount</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Delivery</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {page?.data.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{order.order_number}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                    {order.game?.name ?? "—"}
-                    {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Badge size="sm" color={deliveryStatusColor[order.delivery_status]}>{order.delivery_status}</Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                    {new Date(order.created_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-theme-sm">
-                    <Button size="sm" variant="outline" onClick={() => session && openOrder(session.token, order.id)}>
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable data={page?.data ?? []} dataKey="id">
+            <DataTableTableContainer>
+              <DataTableTable>
+                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order #</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game / Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Amount</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Delivery</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                  </DataTableTHeadRow>
+                </DataTableTHead>
+                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {({ item }) => {
+                    const order = item as unknown as OrderListItem;
+
+                    return (
+                      <DataTableRow key={order.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{order.order_number}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {order.game?.name ?? "—"}
+                          {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {new Date(order.created_at).toLocaleString()}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Button size="small" variant="outlined" onClick={() => session && openOrder(session.token, order.id)}>
+                            View
+                          </Button>
+                        </DataTableCell>
+                      </DataTableRow>
+                    );
+                  }}
+                </DataTableTBody>
+              </DataTableTable>
+            </DataTableTableContainer>
+          </DataTable>
 
           {page?.data.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No test orders yet.</p>
@@ -326,10 +345,10 @@ export default function SandboxOrdersPage() {
         <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
           <span>Page {page.current_page} of {page.last_page} ({page.total} total)</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>
+            <Button size="small" variant="outlined" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>
               Previous
             </Button>
-            <Button size="sm" variant="outline" disabled={page.current_page >= page.last_page} onClick={() => setPageNumber((p) => p + 1)}>
+            <Button size="small" variant="outlined" disabled={page.current_page >= page.last_page} onClick={() => setPageNumber((p) => p + 1)}>
               Next
             </Button>
           </div>

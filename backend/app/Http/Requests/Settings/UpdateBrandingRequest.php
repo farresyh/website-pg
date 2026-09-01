@@ -26,6 +26,9 @@ class UpdateBrandingRequest extends FormRequest
             'social_links' => ['nullable', 'array'],
             'social_links.facebook' => ['nullable', 'string', 'max:2048'],
             'social_links.instagram' => ['nullable', 'string', 'max:2048'],
+            'social_links.tiktok' => ['nullable', 'string', 'max:2048'],
+            'social_links.youtube' => ['nullable', 'string', 'max:2048'],
+            'social_links.whatsapp' => ['nullable', 'string', 'max:2048'],
         ];
     }
 }

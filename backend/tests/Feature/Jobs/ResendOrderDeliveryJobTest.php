@@ -15,6 +15,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
+use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -49,6 +50,7 @@ class ResendOrderDeliveryJobTest extends TestCase
                 new VoucherService(new LedgerService()),
             ),
             new PricingService(),
+            new MembershipPricingService(),
         );
     }
 
@@ -92,10 +94,11 @@ class ResendOrderDeliveryJobTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'reseller_cost_price' => 900,
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         $order = Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
             'order_number' => 'KRS-RESEND-JOB-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -104,7 +107,7 @@ class ResendOrderDeliveryJobTest extends TestCase
             'supplier_id' => $supplier->id,
             'supplier_product_ref' => $package->supplier_package_ref,
             'cost_price' => 900,
-            'reseller_cost_price' => 900,
+            'standard_selling_price' => 900,
             'reseller_markup_pct' => 0,
             'selling_price' => 1000,
             'transaction_fee' => 100,

@@ -14,7 +14,7 @@ class RedirectController extends Controller
 {
     public function index(): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
 
         return response()->json(
             Redirect::query()->where('reseller_id', $reseller->id)->orderByDesc('hit_count')->get(),
@@ -23,7 +23,7 @@ class RedirectController extends Controller
 
     public function store(SaveRedirectRequest $request): JsonResponse
     {
-        $reseller = Reseller::platformOwner();
+        $reseller = Reseller::primary();
         $redirect = Redirect::query()->create([...$request->validated(), 'reseller_id' => $reseller->id]);
         PublicSeoController::forgetCache($reseller->id);
 

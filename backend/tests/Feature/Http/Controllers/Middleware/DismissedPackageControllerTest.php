@@ -44,7 +44,7 @@ class DismissedPackageControllerTest extends TestCase
             'game_id' => $game->id,
             'name' => '14 Diamond',
             'cost_price' => 1000,
-            'reseller_cost_price' => 1150,
+            'standard_selling_price' => 1150,
             'is_active' => false,
             'deactivated_reason' => 'admin',
             'deactivated_at' => now()->subDay(),
@@ -68,7 +68,7 @@ class DismissedPackageControllerTest extends TestCase
         $game = $this->game();
         $dismissed = $this->dismissedByAdmin($supplier, $game);
         $pendingReactivation = Package::query()->create([
-            'game_id' => $game->id, 'name' => 'Pending', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $game->id, 'name' => 'Pending', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now(),
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV999',
         ]);
@@ -122,7 +122,7 @@ class DismissedPackageControllerTest extends TestCase
     {
         $supplier = $this->supplier();
         $package = Package::query()->create([
-            'game_id' => $this->game()->id, 'name' => 'Active One', 'cost_price' => 1000, 'reseller_cost_price' => 1150,
+            'game_id' => $this->game()->id, 'name' => 'Active One', 'cost_price' => 1000, 'standard_selling_price' => 1150,
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV1',
         ]);
         $this->actingAsAdmin();

@@ -2,6 +2,7 @@
 
 namespace App\Services\Supplier;
 
+use App\Jobs\LogSupplierRequestJob;
 use App\Services\CircuitBreaker\CircuitBreaker;
 
 /**
@@ -27,22 +28,22 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
 
     public function checkBalance(): SupplierResponse
     {
-        return $this->guarded(fn () => $this->inner->checkBalance());
+        return $this->guarded(fn () => $this->inner->checkBalance(), 'checkBalance');
     }
 
     public function listProducts(): SupplierResponse
     {
-        return $this->guarded(fn () => $this->inner->listProducts());
+        return $this->guarded(fn () => $this->inner->listProducts(), 'listProducts');
     }
 
     public function createOrder(SupplierOrderRequest $request): SupplierResponse
     {
-        return $this->guarded(fn () => $this->inner->createOrder($request));
+        return $this->guarded(fn () => $this->inner->createOrder($request), 'createOrder', $request->orderId);
     }
 
     public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
     {
-        return $this->guarded(fn () => $this->inner->checkStatus($request));
+        return $this->guarded(fn () => $this->inner->checkStatus($request), 'checkStatus', $request->orderId);
     }
 
     public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
@@ -61,9 +62,27 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
      * in a row would wrongly block every other order/game on a
      * perfectly healthy supplier.
      */
-    private function guarded(callable $call): SupplierResponse
+    private function guarded(callable $call, string $callType, ?int $orderId = null): SupplierResponse
     {
         if ($this->breaker->isOpen()) {
+            // ADR-051 decision 3 — a synthetic row, not a real HTTP
+            // transfer, so this bypasses SupplierRequestLogger's
+            // on_stats hook entirely (there's no request to attach it
+            // to) and dispatches the write job directly.
+            LogSupplierRequestJob::dispatch([
+                'slug' => $this->breaker->name(),
+                'call_type' => $callType,
+                'order_id' => $orderId,
+                'method' => null,
+                'url' => null,
+                'status_code' => null,
+                'outcome' => 'skipped_breaker_open',
+                'duration_ms' => null,
+                'request_payload' => null,
+                'response_payload' => null,
+                'error_message' => 'Circuit breaker open — call was never sent.',
+            ]);
+
             return SupplierResponse::failure(
                 'CIRCUIT_OPEN',
                 'Supplier circuit breaker is open - too many recent failures, calls are paused for a cooldown window.',

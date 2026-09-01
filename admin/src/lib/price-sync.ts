@@ -63,8 +63,8 @@ export interface SyncDetailsGame {
     package: { id: number; name: string };
     old_cost_price: number;
     new_cost_price: number;
-    old_reseller_cost_price: number;
-    new_reseller_cost_price: number;
+    old_standard_selling_price: number;
+    new_standard_selling_price: number;
   }>;
   deactivated_packages: Array<{ id: number; name: string }>;
 }
@@ -84,7 +84,7 @@ export interface PendingReactivation {
   id: number;
   name: string;
   cost_price: number;
-  reseller_cost_price: number;
+  standard_selling_price: number;
   deactivated_reason: "supplier_sync";
   deactivated_at: string;
   supplier_package_ref: string;
@@ -102,7 +102,7 @@ export interface DismissedPackage {
   id: number;
   name: string;
   cost_price: number;
-  reseller_cost_price: number;
+  standard_selling_price: number;
   deactivated_reason: "admin";
   deactivated_at: string;
   supplier_package_ref: string;
@@ -195,8 +195,8 @@ export interface PendingPriceChange {
   id: number;
   old_cost_price: number;
   proposed_cost_price: number;
-  old_reseller_cost_price: number;
-  proposed_reseller_cost_price: number;
+  old_standard_selling_price: number;
+  proposed_standard_selling_price: number;
   status: "pending" | "approved" | "dismissed";
   created_at: string;
   package: {
