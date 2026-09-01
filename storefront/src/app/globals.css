@@ -15,11 +15,6 @@
  * Fonts: Space Grotesk (display/headings/CTA) + Inter (body) +
  * JetBrains Mono (prices/IDs), loaded via next/font/google in
  * layout.tsx and exposed here as CSS variables.
- *
- * The legacy `--color-bg / --color-brand / …` names below are kept
- * (re-pointed to the new palette) so every not-yet-migrated component
- * still renders correctly; ADR-064 moves component classes onto the
- * semantic vocabulary and this legacy block is then removed.
  */
 @theme {
   --font-display: var(--font-space-grotesk), "Space Grotesk", sans-serif;
@@ -71,20 +66,6 @@
 
   --color-outline: #7b7486;
   --color-outline-variant: #cbc3b7;
-
-  /* ---- Legacy names (ADR-064 migrates component classes off these) ---- */
-  --color-bg: #f7f4ec;
-  --color-bg-deep: #efe9db;
-  --color-surface-2: #f2ede1;
-  --color-border: #19192f;
-  --color-text: #19192f;
-  --color-text-muted: #4b4550;
-  --color-brand: #6b38d4;
-  --color-brand-light: #8455ef;
-  --color-brand-dark: #3d1f8f;
-  --color-on-brand: #ffffff;
-  --color-amber: #7a5200;
-  --color-error: #ba1a1a;
 
   /* ---- Radius: limited, squared-leaning ---- */
   --radius-sm: 0.25rem;
