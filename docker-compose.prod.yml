@@ -1,21 +1,36 @@
-# ADR-020 Phase 1 — production runtime stack. Distinct from
-# backend/docker-compose.yml (ADR-010, local-dev-only real MySQL for the
-# concurrency test suite) — that file is untouched and unrelated to this one.
+# Production runtime stack (ADR-020 Phase 1 + its 2026-09-01 addendum).
+# Distinct from backend/docker-compose.yml (ADR-010, local-dev-only real
+# MySQL for the concurrency suite) — that file is untouched.
 #
-# No `mysql` service: production DB is DigitalOcean Managed MySQL, off-box
-# (ADR-020 decision #2). No object-storage service: DigitalOcean Spaces is
-# external too. Cloudflare Origin CA/SSL termination happens on the
-# droplet's own host-level Nginx (ADR-020 decision #8) reverse-proxying to
-# this stack's `nginx` service's published port — not configured here,
-# since it needs the real droplet's filesystem to set up.
+# Runs on the one DigitalOcean droplet (`topup-prod-sgp1`, 4 GiB / 2 vCPU,
+# SGP1). Five services: nginx + php-fpm + horizon + redis + reverb.
+#  - No `mysql` service: production DB is DigitalOcean Managed MySQL,
+#    off-box (ADR-020 decision #2, tier cut to 1 GiB single-node by the
+#    2026-09-01 addendum).
+#  - No `admin`/`storefront`/`reseller` services: the three Next.js apps
+#    moved to Vercel (ADR-020's 2026-09-01 addendum reverses decision #4)
+#    — building 3 SSR apps on the box that serves checkout traffic was the
+#    OOM-a-money-critical-process risk decision #5's queue split guards
+#    against, one layer up.
+#  - No object-storage service: DigitalOcean Spaces is external too.
+#  - TLS: for the first launch the droplet's host-level nginx terminates
+#    Let's Encrypt for `api.pekangame.space` and reverse-proxies to this
+#    stack's `nginx` published port. Swaps to Cloudflare Origin CA + Proxy
+#    after the domain moves off Vercel DNS (ADR-020 decision #8 / addendum).
 #
-# ADR-037 — this same file is deployed twice on the same droplet (once for
-# production, once for staging), each from its own directory checkout with
-# its own .env/.env.local files. NGINX_PORT/ADMIN_PORT/STOREFRONT_PORT
-# (this directory's own .env, same convention as NEXT_PUBLIC_API_URL below
-# — not committed) let the two deployments bind different host ports;
-# container/network names already isolate via `docker compose -p <project>`.
-# Unset, all three default to production's original values.
+# The three backend-image services (php-fpm / horizon / reverb) carry both
+# `build:` (for `docker compose build` locally) and `image:` (for the CI
+# `push:main` pipeline's registry pull-deploy). The deploy runs
+# `IMAGE_TAG=<sha> docker compose pull && up -d --no-build`; a rollback
+# re-runs `up -d` with the previous SHA. IMAGE_TAG defaults to `latest`.
+# NGINX_PORT (this directory's own .env, not committed) lets the host-level
+# nginx pick where to proxy; ADR-037's staging stack, if ever built, sets
+# its own value.
+
+x-backend-image: &backend-image
+  build:
+    context: ./backend
+  image: registry.digitalocean.com/pekangame/backend:${IMAGE_TAG:-latest}
 
 services:
   nginx:
@@ -24,11 +39,6 @@ services:
     depends_on:
       - php-fpm
       - reverb
-    # Parameterized (ADR-037 decision #6) so a staging deploy of this same
-    # file, in its own directory checkout on the same droplet, can bind
-    # different host ports and coexist with production — container/network
-    # names already isolate for free via `docker compose -p <project>`.
-    # Defaults match production's original fixed ports unchanged.
     ports:
       - "${NGINX_PORT:-8080}:80"
     volumes:
@@ -36,90 +46,37 @@ services:
       - ./backend/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
   php-fpm:
-    build:
-      context: ./backend
+    <<: *backend-image
     restart: unless-stopped
     env_file:
       - ./backend/.env
     volumes:
       - ./backend/public:/var/www/html/public:ro
 
-  # ADR-048 decision 1/3 — replaces the three queue-worker-* containers
-  # this file used to run (one plain `queue:work` per queue). Horizon is
-  # its own supervisor process: config/horizon.php's `supervisor-orders`/
-  # `supervisor-price-sync`/`supervisor-backups` keys preserve the exact
-  # same per-queue isolation (ADR-020 decision #5's head-of-line-blocking
-  # rationale) and the exact same tries/sleep flags the three old
-  # `command:` lines used to pass on the CLI — now config, not per-
-  # container flags. Scale a queue by raising that supervisor's own
-  # `maxProcesses` in config/horizon.php, not `docker compose --scale`
-  # (Horizon manages its own worker count internally).
+  # ADR-048 decision 1/3 — Horizon is its own supervisor process:
+  # config/horizon.php's supervisor-orders / supervisor-price-sync /
+  # supervisor-backups keys preserve the exact per-queue isolation
+  # (ADR-020 decision #5's head-of-line-blocking rationale) the three old
+  # `queue:work` containers had. Scale a queue by raising that
+  # supervisor's `maxProcesses` in config, not `docker compose --scale`.
   horizon:
-    build:
-      context: ./backend
+    <<: *backend-image
     restart: unless-stopped
     depends_on:
       - redis
     env_file:
       - ./backend/.env
     command: php artisan horizon
-    # Laravel's own recommended graceful-shutdown window — `horizon:terminate`
-    # waits for the current job on each worker to finish before exiting.
+    # Laravel's recommended graceful-shutdown window — horizon:terminate
+    # waits for each worker's current job to finish before exiting.
     stop_grace_period: 90s
 
-  # NEXT_PUBLIC_API_URL is the one env var both Next.js apps actually read
-  # (grep-confirmed) — passed as a build arg since it's inlined into the
-  # client bundle at build time, not read at container-start (see each
-  # Dockerfile's own comment). Compose reads it from a `.env` file in this
-  # same directory (Docker Compose's own convention, distinct from
-  # backend/admin/storefront's own .env.local files) — not committed here.
-  admin:
-    build:
-      context: ./admin
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        # ADR-047 decision 1/3/5 — same Reverb build-arg wiring as
-        # storefront below (Price Sync/Backups' private channels).
-        NEXT_PUBLIC_REVERB_APP_KEY: ${NEXT_PUBLIC_REVERB_APP_KEY}
-        NEXT_PUBLIC_REVERB_HOST: ${NEXT_PUBLIC_REVERB_HOST}
-        NEXT_PUBLIC_REVERB_PORT: ${NEXT_PUBLIC_REVERB_PORT:-443}
-        NEXT_PUBLIC_REVERB_SCHEME: ${NEXT_PUBLIC_REVERB_SCHEME:-https}
-    restart: unless-stopped
-    ports:
-      - "${ADMIN_PORT:-3000}:3000"
-    env_file:
-      - ./admin/.env.local
-
-  storefront:
-    build:
-      context: ./storefront
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        # ADR-047 decision 1/5 — public-facing Reverb connection details
-        # (through nginx's /app/ proxy + Cloudflare, not the internal
-        # compose-network `reverb` hostname `php-fpm`/queue workers use).
-        # Read from this directory's own .env, same convention as
-        # NEXT_PUBLIC_API_URL above.
-        NEXT_PUBLIC_REVERB_APP_KEY: ${NEXT_PUBLIC_REVERB_APP_KEY}
-        NEXT_PUBLIC_REVERB_HOST: ${NEXT_PUBLIC_REVERB_HOST}
-        NEXT_PUBLIC_REVERB_PORT: ${NEXT_PUBLIC_REVERB_PORT:-443}
-        NEXT_PUBLIC_REVERB_SCHEME: ${NEXT_PUBLIC_REVERB_SCHEME:-https}
-    restart: unless-stopped
-    ports:
-      - "${STOREFRONT_PORT:-3001}:3000"
-    env_file:
-      - ./storefront/.env.local
-
-  # ADR-048 decision 1/2 reverses ADR-020 decision #3's "cache-only, queue
-  # stays on `database`" — QUEUE_CONNECTION is now `redis` (backend/.env),
-  # so this instance holds real, non-regenerable job state (a queued
-  # FulfillOrderJob for an already-paid order), not just regenerable cache
-  # entries. AOF persistence (`--appendonly yes`) is a hard prerequisite of
-  # that queue-driver move, not an optional hardening pass — without it, a
-  # Redis restart/crash/OOM would silently drop unprocessed jobs. Verify
-  # locally before any real deploy: `kill -9` this container mid-queue-burst,
-  # confirm jobs survive the restart (ADR-048's own consequence-to-track).
-  # No published port — only reachable over the compose network.
+  # ADR-048 decision 1/2 — QUEUE_CONNECTION is `redis` (backend/.env), so
+  # this instance holds real non-regenerable job state (a queued
+  # FulfillOrderJob for an already-paid order), not just regenerable
+  # cache. AOF (`--appendonly yes`) is a hard prerequisite of that move,
+  # not optional hardening — without it a Redis restart/OOM silently drops
+  # unprocessed jobs. No published port — compose-network only.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -127,24 +84,20 @@ services:
     volumes:
       - redis-data:/data
 
-  # ADR-047 decision 5 — Reverb's own realtime WebSocket server, same
-  # image/build as php-fpm (only the command differs, same pattern as the
-  # `horizon` service above). No published port: browser traffic
-  # reaches it only via `nginx`'s `/app/` reverse-proxy below (one TLS/
-  # domain surface for HTTP and WebSocket alike); `php-fpm`/`horizon`'s
-  # own managed workers publish events to it directly over the compose
-  # network (REVERB_HOST=reverb in backend/.env), never through nginx
-  # either.
+  # ADR-047 decision 5 — Reverb's realtime WebSocket server. Same image as
+  # php-fpm, only the command differs. No published port: browser traffic
+  # reaches it via nginx's `/app/` reverse-proxy (one TLS/domain surface
+  # for HTTP + WebSocket); php-fpm/horizon workers publish to it directly
+  # over the compose network (REVERB_HOST=reverb in backend/.env).
   reverb:
-    build:
-      context: ./backend
+    <<: *backend-image
     restart: unless-stopped
     env_file:
       - ./backend/.env
     command: php artisan reverb:start --host=0.0.0.0
 
 volumes:
-  # ADR-048 decision 2 — AOF persistence needs a durable mount, not just
-  # the container's own writable layer (which a `docker compose down`/
-  # image rebuild would discard along with any unprocessed queue jobs).
+  # ADR-048 decision 2 — AOF persistence needs a durable mount, not the
+  # container's own writable layer (a `compose down` / image rebuild
+  # discards that along with any unprocessed queue jobs).
   redis-data:
