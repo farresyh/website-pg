@@ -347,7 +347,7 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
 
         <StepCard number={2} title="Choose Package" locked={!step1Continued} lockHint="Complete Step 1 first">
           <PackageGrid packages={packages} selectedId={selectedPackageId} onSelect={setSelectedPackageId} />
-          {packages.length === 0 && <p className="text-sm text-text-muted">No packages available for this game yet.</p>}
+          {packages.length === 0 && <p className="text-sm text-on-surface-variant">No packages available for this game yet.</p>}
         </StepCard>
 
         <StepCard number={3} title="Choose Payment Method" locked={!step2Complete} lockHint="Choose a package first">
@@ -356,15 +356,17 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
             if (channels.length === 0) return null;
             return (
               <div key={group.key} className="mb-3.5 last:mb-0">
-                <p className="mb-1.5 text-[11.5px] font-bold tracking-wide text-text-muted uppercase">{group.label}</p>
+                <p className="mb-2 font-display text-[11px] font-bold tracking-wide text-on-surface-variant uppercase">{group.label}</p>
                 <div className="flex flex-wrap gap-2">
                   {channels.map((channel) => (
                     <button
                       key={channel.channelCode}
                       type="button"
                       onClick={() => setChannelCode(channel.channelCode)}
-                      className={`min-h-11 rounded-lg border px-3.5 text-[13px] font-semibold transition-colors ${
-                        channelCode === channel.channelCode ? "border-brand bg-brand/10" : "border-border bg-bg hover:border-brand-light"
+                      className={`min-h-11 rounded-md border-2 px-3.5 text-[13px] font-semibold transition-all ${
+                        channelCode === channel.channelCode
+                          ? "border-primary bg-primary-fixed neo-sm"
+                          : "border-ink bg-surface-container-lowest hover:bg-surface-container-low"
                       }`}
                     >
                       {channel.label}

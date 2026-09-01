@@ -9,17 +9,17 @@ const REASONS = [
 
 export default function WhyChooseUsSection() {
   return (
-    <section className="border-y border-border bg-surface py-10">
+    <section className="border-y-2 border-ink bg-surface-container py-12">
       <div className="mx-auto max-w-[1200px] px-4">
-        <h2 className="font-display mb-7 text-center text-[22px] tracking-wide">Why Choose PekanGame?</h2>
+        <h2 className="font-display mb-9 text-center text-headline-md tracking-tight">Why Choose PekanGame?</h2>
         <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
           {REASONS.map(({ icon: Icon, title, description }) => (
-            <div key={title} className="flex flex-col items-center gap-2.5 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-bg text-brand-light">
-                <Icon size={22} />
+            <div key={title} className="flex flex-col items-center gap-3 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-md border-2 border-ink bg-secondary-fixed-dim text-ink neo-sm">
+                <Icon size={24} weight="fill" />
               </div>
-              <h4 className="text-sm font-bold">{title}</h4>
-              <p className="text-[12.5px] leading-relaxed text-text-muted">{description}</p>
+              <h3 className="font-display text-base font-bold">{title}</h3>
+              <p className="text-[12.5px] leading-relaxed text-on-surface-variant">{description}</p>
             </div>
           ))}
         </div>

@@ -143,8 +143,8 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
     };
   }, [orderNumber]);
 
-  if (loading) return <p className="text-sm text-text-muted">Loading order…</p>;
-  if (error) return <p className="rounded-lg border border-border bg-surface p-4 text-sm text-text-muted">{error}</p>;
+  if (loading) return <p className="text-sm text-on-surface-variant">Loading order…</p>;
+  if (error) return <p className="rounded-md border-2 border-ink bg-surface-container p-4 text-sm text-on-surface-variant">{error}</p>;
   if (!order) return null;
 
   const stages = deriveStages(order);
@@ -162,11 +162,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           }}
         />
       )}
-      <div className="flex flex-col gap-5 rounded-2xl border border-border bg-surface p-6">
+      <div className="flex flex-col gap-5 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[13px] text-text-muted">Order Reference Number</p>
-            <p className="font-mono text-base font-bold text-brand-light">{order.order_number}</p>
+            <p className="text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">Order Reference Number</p>
+            <p className="font-mono text-base font-bold text-primary">{order.order_number}</p>
           </div>
           <div className="flex gap-2">
             <StatusBadge type="payment" status={order.payment_status} />
@@ -174,7 +174,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           </div>
         </div>
 
-        <hr className="border-border" />
+        <hr className="border-ink/25" />
 
         <div className="flex items-center gap-2">
           {stages.map((stage, i) => (
@@ -182,16 +182,16 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
               <div className="flex items-center gap-2.5">
                 <StageCircle state={stage.state} index={i + 1} />
                 <div>
-                  <p className="text-[13px] font-bold whitespace-nowrap">{stage.label}</p>
-                  <p className="text-[11px] whitespace-nowrap text-text-muted">{stage.sub}</p>
+                  <p className="font-display text-[13px] font-bold whitespace-nowrap">{stage.label}</p>
+                  <p className="text-[11px] whitespace-nowrap text-on-surface-variant">{stage.sub}</p>
                 </div>
               </div>
-              {i < stages.length - 1 && <div className="h-px min-w-5 flex-1 bg-border" />}
+              {i < stages.length - 1 && <div className="h-0.5 min-w-5 flex-1 bg-ink/25" />}
             </div>
           ))}
         </div>
 
-        <hr className="border-border" />
+        <hr className="border-ink/25" />
 
         <div className="flex flex-wrap gap-8">
           <Meta k="Game" v={order.game?.name ?? "—"} />
@@ -201,9 +201,9 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         </div>
       </div>
 
-      <div className="flex flex-col gap-3.5 rounded-2xl border border-border bg-surface p-6">
+      <div className="flex flex-col gap-3.5 rounded-lg border-2 border-ink bg-primary-fixed p-6 neo">
         <h3 className="text-[15px] font-bold">{hasFailure ? "Need Help With This Order?" : "Having an Issue with Your Order?"}</h3>
-        <p className="text-[13px] leading-relaxed text-text-muted">
+        <p className="text-[13px] leading-relaxed text-on-surface-variant">
           Contact our Customer Support team directly via WhatsApp for a manual check{hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
         </p>
         <Button href="https://wa.me/60000000000" className="justify-center">
@@ -222,27 +222,27 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
 function StageCircle({ state, index }: { state: StageState; index: number }) {
   if (state === "done") {
     return (
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand bg-brand text-on-brand">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-primary text-on-primary">
         <Check size={14} weight="bold" />
       </div>
     );
   }
   if (state === "failed") {
     return (
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-error bg-error/15 text-error text-xs font-bold">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-danger text-on-danger text-xs font-bold">
         !
       </div>
     );
   }
   if (state === "active") {
     return (
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand bg-surface-2">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-brand" />
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-secondary-container">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-ink" />
       </div>
     );
   }
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-bg text-[13px] text-text-muted">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-surface-container-lowest text-[13px] text-on-surface-variant">
       {index}
     </div>
   );
@@ -251,8 +251,8 @@ function StageCircle({ state, index }: { state: StageState; index: number }) {
 function Meta({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex min-w-[130px] flex-1 flex-col gap-1">
-      <span className="text-[12px] text-text-muted">{k}</span>
-      <span className="text-sm font-bold">{v}</span>
+      <span className="text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">{k}</span>
+      <span className="font-display text-sm font-bold">{v}</span>
     </div>
   );
 }

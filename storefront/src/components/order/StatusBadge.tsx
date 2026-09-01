@@ -16,9 +16,9 @@ const DELIVERY_LABELS: Record<string, { label: string; tone: "success" | "warnin
 };
 
 const TONE_CLASSES: Record<"success" | "warning" | "error", string> = {
-  success: "border-brand-light/40 bg-brand-dark/40 text-brand-light",
-  warning: "border-amber/40 bg-amber/10 text-amber",
-  error: "border-error/40 bg-error/10 text-error",
+  success: "border-ink bg-success text-on-success",
+  warning: "border-ink bg-warning text-on-warning",
+  error: "border-ink bg-danger text-on-danger",
 };
 
 /**
@@ -31,7 +31,9 @@ export default function StatusBadge({ type, status }: { type: "payment" | "deliv
   const entry = map[status] ?? { label: status, tone: "warning" as const };
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[12px] font-bold ${TONE_CLASSES[entry.tone]}`}>
+    <span
+      className={`inline-flex items-center rounded-sm border px-2.5 py-0.5 font-display text-[11px] font-bold uppercase tracking-wide ${TONE_CLASSES[entry.tone]}`}
+    >
       {entry.label}
     </span>
   );

@@ -33,26 +33,28 @@ export default function PackageGrid({ packages, selectedId, onSelect }: PackageG
             key={pkg.id}
             type="button"
             onClick={() => onSelect(pkg.id)}
-            className={`relative flex min-h-11 flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
-              selected ? "border-brand bg-brand/10" : "border-border bg-surface hover:border-brand-light"
+            className={`relative flex min-h-11 flex-col items-start gap-1 rounded-md border-2 p-3 text-left transition-all ${
+              selected
+                ? "border-primary bg-primary-fixed neo"
+                : "border-ink bg-surface-container-lowest neo-hover hover:bg-surface-container-low"
             }`}
           >
             {savingsPercent != null && savingsPercent > 0 && (
-              <span className="absolute -top-2 right-2 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-bold text-on-brand">
-                {isMemberPrice ? `Save ${savingsPercent}%` : `Member: Save ${savingsPercent}%`}
+              <span className="absolute -top-2.5 right-2 rounded-full border border-ink bg-tertiary px-1.5 py-0.5 font-display text-[10px] font-bold uppercase text-on-tertiary">
+                {isMemberPrice ? `Save ${savingsPercent}%` : `Member −${savingsPercent}%`}
               </span>
             )}
-            <span className="text-[13px] font-semibold">{pkg.name}</span>
+            <span className="font-display text-[13px] font-bold">{pkg.name}</span>
             {isMemberPrice && pkg.memberPriceRm != null ? (
               <span className="flex items-baseline gap-1.5">
-                <span className="text-[15px] font-extrabold text-brand-light">RM{pkg.memberPriceRm.toFixed(2)}</span>
-                <span className="text-[11px] text-text-muted line-through">RM{pkg.priceRm.toFixed(2)}</span>
+                <span className="font-mono text-[15px] font-bold text-primary">RM{pkg.memberPriceRm.toFixed(2)}</span>
+                <span className="font-mono text-[11px] text-on-surface-variant line-through">RM{pkg.priceRm.toFixed(2)}</span>
               </span>
             ) : (
-              <span className="text-[15px] font-extrabold">RM{pkg.priceRm.toFixed(2)}</span>
+              <span className="font-mono text-[15px] font-bold">RM{pkg.priceRm.toFixed(2)}</span>
             )}
             {!isMemberPrice && pkg.memberPriceRm != null && (
-              <span className="text-[11px] font-semibold text-brand-light">Member: RM{pkg.memberPriceRm.toFixed(2)}</span>
+              <span className="font-mono text-[11px] font-semibold text-primary">Member: RM{pkg.memberPriceRm.toFixed(2)}</span>
             )}
           </button>
         );

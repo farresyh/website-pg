@@ -96,14 +96,14 @@ export default async function OrderPage({ params }: OrderPageProps) {
       <SiteHeader />
       <main className="pb-16 lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 pt-5">
-          <nav className="mb-4 flex items-center gap-2 text-[13px] text-text-muted">
-            <Link href="/" className="hover:text-text">
+          <nav className="mb-4 flex items-center gap-2 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
+            <Link href="/" className="hover:text-primary">
               Home
             </Link>
-            <span className="text-border">›</span>
+            <span className="text-ink/40">›</span>
             <span>{game.category}</span>
-            <span className="text-border">›</span>
-            <span className="font-semibold text-brand-light">{game.name}</span>
+            <span className="text-ink/40">›</span>
+            <span className="text-primary">{game.name}</span>
           </nav>
         </div>
 

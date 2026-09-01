@@ -45,19 +45,19 @@ export default function RateOrderModal({
   const displayRating = hoverRating || rating;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 lg:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 lg:items-center" onClick={onClose}>
       <div
-        className="flex w-full flex-col overflow-y-auto rounded-t-2xl border border-border bg-surface p-6 lg:max-w-[420px] lg:rounded-2xl"
+        className="flex w-full flex-col overflow-y-auto rounded-t-lg border-2 border-ink bg-surface neo-lg p-6 lg:max-w-[420px] lg:rounded-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-xl tracking-wide">Rate Your Order</h2>
-          <button onClick={onClose} aria-label="Close" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-surface-2">
+        <div className="mb-4 flex items-center justify-between border-b-2 border-ink pb-3">
+          <h2 className="font-display text-xl font-bold uppercase tracking-tight">Rate Your Order</h2>
+          <button onClick={onClose} aria-label="Close" className="flex h-11 w-11 items-center justify-center rounded-md border-2 border-ink hover:bg-surface-container">
             <X size={18} />
           </button>
         </div>
 
-        <p className="mb-4 text-sm text-text-muted">How was your top-up experience?</p>
+        <p className="mb-4 text-sm text-on-surface-variant">How was your top-up experience?</p>
 
         <div className="mb-4 flex items-center justify-center gap-1" onMouseLeave={() => setHoverRating(0)}>
           {[1, 2, 3, 4, 5].map((value) => (
@@ -69,7 +69,7 @@ export default function RateOrderModal({
               onClick={() => setRating(value)}
               className="p-1"
             >
-              <Star size={32} weight={value <= displayRating ? "fill" : "regular"} className={value <= displayRating ? "text-yellow-400" : "text-text-muted"} />
+              <Star size={32} weight={value <= displayRating ? "fill" : "regular"} className={value <= displayRating ? "text-warning" : "text-on-surface-variant"} />
             </button>
           ))}
         </div>
@@ -79,10 +79,10 @@ export default function RateOrderModal({
           onChange={(e) => setComment(e.target.value)}
           placeholder="Leave a comment (optional)"
           rows={3}
-          className="mb-4 w-full rounded-lg border border-border bg-bg p-3 text-sm text-text placeholder:text-text-muted focus:border-brand focus:outline-none"
+          className="mb-4 w-full rounded-md border-2 border-ink bg-surface-container-lowest p-3 text-sm text-on-surface placeholder:text-outline focus:border-secondary focus:outline-none"
         />
 
-        {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
+        {error && <p className="mb-4 text-sm text-danger">{error}</p>}
 
         <Button onClick={handleSubmit} disabled={submitting || rating < 1} className="w-full">
           {submitting ? "Submitting…" : "Submit Review"}

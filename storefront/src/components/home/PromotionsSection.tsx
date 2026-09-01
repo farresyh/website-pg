@@ -1,22 +1,25 @@
+import SectionHeading from "@/components/home/SectionHeading";
+import Badge from "@/components/ui/Badge";
 import { PROMOTIONS } from "@/lib/placeholder-data";
 
 export default function PromotionsSection() {
   return (
-    <section id="promotions" className="mx-auto max-w-[1200px] px-4 py-10">
-      <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="font-display text-[22px] tracking-wide">This Week&apos;s Promotions</h2>
-      </div>
-      <div className="grid gap-3.5 lg:grid-cols-3">
+    <section id="promotions" className="mx-auto max-w-[1200px] px-4 py-12">
+      <SectionHeading title="This Week's Promotions" />
+      <div className="grid gap-4 lg:grid-cols-3">
         {PROMOTIONS.map((promo) => (
-          <div key={promo.id} className="rounded-xl border border-border bg-surface p-4.5">
-            <div className="mb-2.5 flex items-center gap-2.5">
-              <span className="rounded-full bg-amber/15 px-2.5 py-1 text-[11px] font-bold tracking-wide text-amber uppercase">
+          <div
+            key={promo.id}
+            className="flex flex-col rounded-lg border-2 border-ink bg-surface-container-lowest p-5 neo"
+          >
+            <div className="mb-3 flex flex-wrap items-center gap-2.5">
+              <Badge tone="warning" pill>
                 {promo.badge}
-              </span>
-              <span className="text-xs text-text-muted">Ends: {promo.endsAt}</span>
+              </Badge>
+              <span className="text-xs text-on-surface-variant">Ends: {promo.endsAt}</span>
             </div>
-            <h3 className="mb-1.5 text-[15px] font-bold">{promo.title}</h3>
-            <p className="text-[13px] leading-relaxed text-text-muted">{promo.description}</p>
+            <h3 className="mb-1.5 font-display text-headline-sm">{promo.title}</h3>
+            <p className="text-[13px] leading-relaxed text-on-surface-variant">{promo.description}</p>
           </div>
         ))}
       </div>
