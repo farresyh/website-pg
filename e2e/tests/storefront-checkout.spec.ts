@@ -25,7 +25,9 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   await page.getByRole("button", { name: "E2E Test Package" }).click();
-  await page.getByRole("button", { name: "AmBank" }).click();
+  // The one CHIP FPX button (E2ESeeder activates channel_code 'fpx');
+  // bank selection happens on CHIP's own hosted page, not here.
+  await page.getByRole("button", { name: "Online Banking (FPX)" }).click();
 
   await page.getByRole("button", { name: /Review & Pay/ }).click();
 
