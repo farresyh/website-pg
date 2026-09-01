@@ -227,7 +227,14 @@ v_do_token() {
     https://api.digitalocean.com/v2/account
 }
 v_dns_points_to_rip() {
-  local got; got="$(dig +short "$DOMAIN" A 2>/dev/null | tail -n1)"
+  local got=""
+  if command -v dig >/dev/null 2>&1; then
+    got="$(dig +short "$DOMAIN" A 2>/dev/null | grep -E '^[0-9.]+$' | tail -n1)"
+  elif command -v host >/dev/null 2>&1; then
+    got="$(host -t A "$DOMAIN" 2>/dev/null | awk '/has address/{a=$NF} END{print a}')"
+  elif command -v nslookup >/dev/null 2>&1; then
+    got="$(nslookup -type=A "$DOMAIN" 2>/dev/null | awk '/^Address: /{a=$2} END{print a}')"
+  fi
   [[ "$got" == "$RESERVED_IP" ]]
 }
 v_port_open()  { nc -z -w5 "$RESERVED_IP" "$1"; }
