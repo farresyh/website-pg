@@ -5,9 +5,15 @@
 FROM composer:2 AS vendor
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+# The `composer:2` image has no ext-pcntl (laravel/horizon, ADR-048, requires
+# it) and doesn't carry every extension the runtime stage installs below. This
+# stage only resolves + downloads packages (`--no-scripts --no-autoloader`) —
+# no dependency code runs here — so the platform check is deferred to the
+# php:8.4-fpm-alpine stage, which is the real runtime and installs the full
+# extension set (pdo_mysql mbstring exif pcntl bcmath gd zip intl).
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 COPY . .
-RUN composer dump-autoload --optimize --no-dev
+RUN composer dump-autoload --optimize --no-dev --ignore-platform-reqs
 
 # resources/views/welcome.blade.php (Laravel's default scaffold page,
 # unrelated to the real API product) uses @vite() — without a built
