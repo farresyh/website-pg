@@ -2765,10 +2765,12 @@ This addendum is open to challenge at review like any decision — the prefix to
 
 6. **TLS for `api.pekangame.space` is Forge-managed Let's Encrypt.** Same certificate authority as `ADR-020`'s 2026-09-01 addendum specified; Forge handles issuance, renewal, and nginx reload, retiring the manual certbot systemd timer. When the domain later transfers to Cloudflare (`ADR-020` decision 8 / addendum), this swaps to a Cloudflare Origin CA cert + Proxy + Full (Strict) — unchanged by this ADR.
 
-7. **Forge deploy script** (recorded here as version-controlled intent, not only dashboard state):
+7. **Monorepo layout on the Forge site.** This repo keeps the Laravel app in `backend/`, not at the repo root. The Forge site is created with **web directory `/backend/public`**, and every deploy-script / daemon / Horizon command runs from `/home/forge/api.pekangame.space/backend`. This is a Forge site-config choice (web directory + a `cd` prefix), not a repo change — the monorepo layout stays as it is.
+
+8. **Forge deploy script** (recorded here as version-controlled intent, not only dashboard state):
    ```bash
-   cd /home/forge/api.pekangame.space
-   git pull origin main
+   cd /home/forge/api.pekangame.space/backend
+   git -C /home/forge/api.pekangame.space pull origin main
    composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
    php artisan migrate --force
    php artisan config:cache
@@ -2776,12 +2778,13 @@ This addendum is open to challenge at review like any decision — the prefix to
    php artisan event:cache
    php artisan storage:link
    php artisan horizon:terminate      # Horizon restarts with the new code
-   ( flock -w 10 9 || exit 1; nginx -t && sudo service nginx reload ) 9>/tmp/fpmlock
+   ( flock -w 10 9 || exit 1; sudo -S service nginx reload ) 9>/tmp/fpmlock
+   sleep 3
    curl -fsS --max-time 10 https://api.pekangame.space/up   # fail the deploy on a bad health check
    ```
    `migrate --force` (never `migrate:fresh`) matches `ADR-020` decision 9; a failed migration surfaces via the failing `/up` check + Forge's deployment-failed notification, then a manual `php artisan migrate:rollback`. The very first deploy additionally runs `php artisan db:seed --class=ProductionSeeder` once (PR #44) and creates the first super admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 
-8. **Repo artifacts retired in this ADR's implementation PR** (same PR as the CI edit, not a separate pass): `backend/Dockerfile`, `backend/.dockerignore`, `backend/docker/nginx/default.conf`, `docker-compose.prod.yml`, `admin/Dockerfile`, `admin/.dockerignore`, `storefront/Dockerfile`, `storefront/.dockerignore`, and `output: "standalone"` in the three `next.config.ts` files (added only for the Docker images; Vercel does not use it). The DO Container Registry `pekangame` is deleted in the DO panel post-cutover. `backend/docker-compose.yml` (`ADR-010`, local-dev MySQL for the concurrency suite) is **kept, untouched** — unrelated to production. `~/pekangame-bootstrap.sh` (uncommitted, this machine only) is obsolete.
+9. **Repo artifacts retired in this ADR's implementation PR** (same PR as the CI edit, not a separate pass): `backend/Dockerfile`, `backend/.dockerignore`, `backend/docker/nginx/default.conf`, `docker-compose.prod.yml`, `admin/Dockerfile`, `admin/.dockerignore`, `storefront/Dockerfile`, `storefront/.dockerignore`, and `output: "standalone"` in the three `next.config.ts` files (added only for the Docker images; Vercel does not use it). The DO Container Registry `pekangame` is deleted in the DO panel post-cutover. `backend/docker-compose.yml` (`ADR-010`, local-dev MySQL for the concurrency suite) is **kept, untouched** — unrelated to production. `~/pekangame-bootstrap.sh` (uncommitted, this machine only) is obsolete.
 
 **Kept from `ADR-020` and its addenda, unchanged:** Managed MySQL off-box (decision 2); Redis for cache + queue (decision 3, now Forge-installed); Cloud Firewall 22/80/443 + key-only SSH + `fail2ban` (decision 7, now Forge-configured); the Cloudflare-fronting plan for after the domain transfer (decision 8); DO droplet backups + Managed MySQL's own backups / PITR; the Vercel frontends, 4 GiB droplet / 1 GiB DB tiers, and every named upgrade trigger (2026-09-01 addendum); DO droplet monitoring + an external uptime monitor on `/up` (mandatory per the addendum).
 
