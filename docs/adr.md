@@ -2521,7 +2521,7 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 
 ## ADR-063: Storefront visual system replacement — light neo-brutalist "Digital Architect" world
 
-**Status:** Accepted (design) — 2026-09-01, grilled with the founder (`grilling` + `impeccable` skills). Supersedes the palette / typography parts of ADR-028. Ships on `feature/pekangame-storefront-redesign`.
+**Status:** Accepted (design) — 2026-09-01, grilled with the founder (`grilling` + `impeccable` skills). Replaces the storefront's original visual world (the palette / fonts / logo established in PRD §15's storefront scaffold row and the `globals.css` header comment — never an ADR of its own). ADR-028's branding *pipeline* is untouched. Ships on `feature/pekangame-storefront-redesign`.
 
 **Context:**
 - The storefront ships **one hardcoded visual world**: `storefront/src/app/globals.css` `@theme` tokens (dark forest-green — `--color-bg: #04140e`, `--color-brand: #007400`), Bebas Neue + Source Sans 3 fonts (`layout.tsx`, `next/font/google`), a CSS-approximated diamond logo. This palette was "extracted from the real Kedai Runcit Soloz brand assets" (ADR-028) — it is now anti-reference.
@@ -2572,7 +2572,7 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 
 **Consequence to track:**
 - **Accepted debt:** this hardcodes exactly one visual world (PekanGame's). When ADR-060's `Host` multi-tenancy lands, a second `is_owned` brand renders in PekanGame's skin until the THM ADR ships a real per-tenant theme layer. The founder has accepted this explicitly (grilling Q11). THM stays its own ADR (PRD §6.15).
-- Supersedes ADR-028's palette derivation and its "extracted from the real brand assets" note, and the `globals.css` comment that states it. ADR-028's branding *pipeline* (DB-driven `store_name`, footer, legal) is unchanged.
+- Replaces the "palette extracted from the real Kedai Runcit Soloz logo/banner assets" world described in PRD §15's storefront scaffold row and stated in the old `globals.css` header comment (that comment is rewritten). This was never captured in an ADR — ADR-028 is the *branding pipeline* (DB-driven `store_name`, footer, legal) and is unchanged.
 - Bebas Neue / Source Sans 3 removal touches every component that names `font-display` expecting Bebas metrics — Space Grotesk is wider; heading line-heights and `tracking` need a re-check in the browser pass, not just a find-replace.
 - Tailwind v4: all tokens live in `globals.css @theme`; there is no `tailwind.config.js` to edit. Custom utilities (`neo-shadow`, `neo-shadow-hover`) are defined with `@utility`.
 - The warm-paper ground (`#F7F4EC`) must be checked for AA contrast against `on-surface-variant` body text in the audit pass — adjust the ground or the text token, not the primary hue.
@@ -2610,15 +2610,15 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 
 4. **`ReviewModal`** — utility-tier: 2px ink modal border, `shadow-2`, header + close, order-summary block, email / name / phone inputs, voucher input + Apply, total breakdown (package / fee / voucher deduction / total), T&C checkbox (custom neo checkbox), uppercase "Confirm & Pay" primary CTA. Backdrop blur + dim.
 
-5. **Order status (`order/status/[orderNumber]` + `OrderStatusTracker`)** — status tracker with the purple→cyan progress treatment, customer-info and payment-details cards, a "Need help?" sidebar card (`primary-fixed` fill, Contact Support + Buy Again). Realtime updates (ADR-047) unchanged.
+5. **Order status (`order/status/[orderNumber]` + `OrderStatusTracker`)** — reference + status + stage-tracker card, then a Stitch **bento grid** (Game & Package / Customer Info / Payment Details) + a "Need help?" sidebar card (`primary-fixed` fill, Contact Support + Buy Again). The bento's Customer Info + payment breakdown are their own decision — **[ADR-065](#adr-065-guest-order-status-detail--masked-contact--payment-breakdown-on-a-track-by-number-view)** widens the guest response (masked contact + `payment_method`/`selling_price`/`voucher_discount`/`transaction_fee`) and the ADR-047 broadcast payload in step with it.
 
 6. **Track-order (`track-order/page.tsx` + `TrackOrderClient`)** — bordered lookup form (utility tier) + a refined results table: ink header row, uppercase mono column labels, hover-highlighted rows, status pills (`neo-border` + container colour by state).
 
-7. **Membership page (`membership/page.tsx` + `MembershipClient`)** — email → OTP → dashboard flow reskinned to the language; OTP input is utility-tier with always-visible focus.
+7. **Membership page (`membership/page.tsx` + `MembershipClient`)** — email → OTP → dashboard flow reskinned to the language; OTP input is utility-tier with always-visible focus. The verified-member dashboard becomes the Stitch `membership_history` layout — see the build addendum.
 
-8. **Legal pages** (`about-us`, `privacy`, `terms` via `LegalPageContent`) and **not-found** — reskinned to a reading surface: paper ground, bordered content frame, Space Grotesk headings, Inter body. Content is unchanged (DB-driven / sanitized server-side).
+8. **Legal pages** (`about-us`, `privacy`, `terms` via `LegalPageContent`) — reskinned to a reading surface: paper ground, bordered content frame, Space Grotesk headings, Inter body. Content is unchanged (DB-driven / sanitized server-side). (No custom `not-found` page exists — see the build addendum.)
 
-9. **Layout chrome** — `SiteHeader` (bordered, wordmark + search + nav + Track Order CTA, the mobile search row kept), `SiteFooter` (`surface-container-highest`, 2px top border, columns + payment chips), `AnnouncementBar`, mobile `BottomNav` — all to the new language, all existing behaviour preserved.
+9. **Layout chrome** — `SiteHeader` (bordered, wordmark + search + nav + Track Order CTA, the mobile search row kept), `SiteFooter` (`surface-container-highest`, 2px top border, columns + payment chips), mobile `BottomNav` — all to the new language, all existing behaviour preserved. (`AnnouncementBar` was removed entirely — see the build addendum.)
 
 10. **Critique + polish** — after the surfaces exist, run `/impeccable critique` on the home + order flow, fold the findings in, then the single bounded verification pass from ADR-063 decision 10. Not an open loop.
 
@@ -2637,6 +2637,7 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 - **Nav "Promotions" → "Membership"** (`/membership`), in both `SiteHeader` and `BottomNav` (Crown icon), **rendered only when membership is enabled for the brand** — `listPlans()` returns `[]` under ADR-061's dual kill-switch, so the link is absent until the founder turns membership on, which keeps PRD §15's "no customer-facing membership link until launch" decision self-enforcing rather than a manual nav edit later. The homepage `PromotionsSection` + `#promotions` anchor stay.
 - **Membership dashboard → Stitch layout** (`fixfast_membership_history`): the verified-member view becomes a two-column status card (tier + Active pill | quota + renew date) plus the Stitch order-history **table** (Date / Game·Package / Order # / Price / Status), horizontally scrollable on narrow screens. Frontend-only — `created_at` and `order_number` were already in the `GET /api/membership/me` response, just not rendered. **Not built:** the Stitch "Account Links" sidebar (Profile Settings / Linked Wallets / Security) — those pages don't exist and won't (ADR-027's "lighter than an account" identity); Sign Out is the only real action.
 - **Order-status detail → Stitch bento layout** — its own decision, [ADR-065](#adr-065-guest-order-status-detail--masked-contact--payment-breakdown-on-a-track-by-number-view).
+- **`not-found` left as the Next.js default.** Decision 8 listed a custom not-found reskin, but `storefront/src/app/not-found.tsx` does not exist — Next renders its built-in page. No custom 404 was in scope; not created here.
 
 ---
 

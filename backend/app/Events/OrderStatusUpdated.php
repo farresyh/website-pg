@@ -15,10 +15,13 @@ use Illuminate\Queue\SerializesModels;
  * Broadcasts on a PUBLIC channel keyed by the order's own `order_number`
  * — no private-channel auth exists for guest checkout (ADR-011), the same
  * trust boundary `GET /api/track-order/{orderNumber}` already relies on
- * (`order_number` is a `Str::ulid()`, OrderNumberService). Payload mirrors
- * `TrackOrderController`'s narrow, customer-safe shape exactly — never the
- * internal financial/operational fields `backend/AGENTS.md` reserves for
- * admin-only responses.
+ * (`order_number` is a `Str::ulid()`, OrderNumberService). Payload is
+ * `TrackOrderController::customerSafePayload()` verbatim — one shape for
+ * the poll and the push (`TrackedOrderSchema` parses both). Carries the
+ * buyer's own contact **masked** and the payment breakdown they saw at
+ * checkout (ADR-065); never the internal financial/operational fields
+ * `backend/AGENTS.md` reserves for admin-only responses (no raw contact,
+ * no `standard_selling_price` / profit / `payment_ref`).
  *
  * Dispatched from `OrderObserver` via its own `DB::afterCommit()` +
  * try/catch, not by this class implementing `ShouldDispatchAfterCommit` —
