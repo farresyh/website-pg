@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Http\Controllers\TrackOrderController;
 use App\Models\Order;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -54,22 +55,10 @@ final class OrderStatusUpdated implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
-        return [
-            'order_number' => $this->order->order_number,
-            'game' => $this->order->game !== null
-                ? ['name' => $this->order->game->name, 'slug' => $this->order->game->slug]
-                : null,
-            'package_name' => $this->order->package?->name,
-            'player_id' => $this->order->player_id,
-            'server_id' => $this->order->server_id,
-            'final_amount' => $this->order->final_amount,
-            'payment_status' => $this->order->payment_status->value,
-            'delivery_status' => $this->order->delivery_status->value,
-            'created_at' => $this->order->created_at?->toISOString(),
-            // ADR-053 decision 3 — mirrors TrackOrderController's own
-            // has_review field, same reasoning as this class's own doc
-            // comment about matching that controller's shape exactly.
-            'has_review' => $this->order->review !== null,
-        ];
+        // One shape, one source (ADR-047 / ADR-065): identical to
+        // `GET /api/track-order/{orderNumber}` — masked contact +
+        // customer-facing payment breakdown, never an internal field.
+        // `TrackedOrderSchema` on the storefront parses both paths.
+        return TrackOrderController::customerSafePayload($this->order);
     }
 }

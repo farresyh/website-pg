@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Events\OrderStatusUpdated;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
@@ -63,15 +64,71 @@ class TrackOrderControllerTest extends TestCase
 
     public function test_never_exposes_internal_financial_or_supplier_fields(): void
     {
-        $order = $this->order(['order_number' => 'KRS-PRIVACY']);
+        $order = $this->order([
+            'order_number' => 'KRS-PRIVACY',
+            'customer_name' => 'Ahmad Danish',
+            'customer_email' => 'ahmad.danish@example.com',
+            'customer_phone' => '0123456789',
+            'payment_ref' => 'xnd_req_SECRET123',
+        ]);
 
         $response = $this->getJson("/api/track-order/{$order->order_number}");
 
         $response->assertOk();
         $keys = array_keys($response->json());
-        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref', 'customer_email', 'customer_phone'] as $forbidden) {
-            $this->assertNotContains($forbidden, $keys);
+        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref', 'customer_name', 'customer_email', 'customer_phone'] as $forbidden) {
+            $this->assertNotContains($forbidden, $keys, "leaked $forbidden");
         }
+
+        // ADR-065: the raw contact values must never appear anywhere in the body.
+        $body = $response->getContent();
+        $this->assertStringNotContainsString('ahmad.danish@example.com', $body);
+        $this->assertStringNotContainsString('0123456789', $body);
+        $this->assertStringNotContainsString('Ahmad Danish', $body);
+        $this->assertStringNotContainsString('xnd_req_SECRET123', $body);
+    }
+
+    public function test_returns_masked_contact_and_the_customer_facing_payment_breakdown(): void
+    {
+        $order = $this->order([
+            'order_number' => 'KRS-MASK',
+            'customer_name' => 'Ahmad Danish',
+            'customer_email' => 'ahmad.danish@example.com',
+            'customer_phone' => '0123456789',
+            'payment_method' => 'Touch \'n Go eWallet',
+            'selling_price' => 1090,
+            'voucher_discount' => 100,
+            'transaction_fee' => 100,
+            'final_amount' => 1090,
+        ]);
+
+        $this->getJson("/api/track-order/{$order->order_number}")
+            ->assertOk()
+            ->assertJson([
+                'customer_name_masked' => 'Ahmad D.',
+                'customer_email_masked' => 'a••••@example.com',
+                'customer_phone_masked' => '01•-•••-•789',
+                'payment_method' => 'Touch \'n Go eWallet',
+                'selling_price' => 1090,
+                'voucher_discount' => 100,
+                'transaction_fee' => 100,
+                'final_amount' => 1090,
+            ]);
+    }
+
+    public function test_broadcast_payload_matches_the_endpoint_shape(): void
+    {
+        $order = $this->order([
+            'order_number' => 'KRS-BROADCAST',
+            'customer_name' => 'Ahmad Danish',
+            'customer_email' => 'ahmad.danish@example.com',
+            'customer_phone' => '0123456789',
+        ])->fresh(['game', 'package', 'review']);
+
+        $endpoint = $this->getJson("/api/track-order/{$order->order_number}")->json();
+        $broadcast = (new OrderStatusUpdated($order))->broadcastWith();
+
+        $this->assertSame($endpoint, $broadcast);
     }
 
     public function test_returns_404_for_an_unknown_order_number(): void

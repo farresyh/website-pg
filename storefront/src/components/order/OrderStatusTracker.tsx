@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Check, WhatsappLogo } from "@phosphor-icons/react/dist/ssr";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, WhatsappLogo, GameController, User, CreditCard } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
 import { getEcho } from "@/lib/echo";
 import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
@@ -151,6 +151,10 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   const hasFailure = order.payment_status === "failed" || order.delivery_status === "failed";
   const showRateModal = order.delivery_status === "delivered" && !order.has_review && !rateModalDismissed;
 
+  const rm = (sen: number) => `RM${(sen / 100).toFixed(2)}`;
+  const hasContact =
+    order.customer_name_masked || order.customer_email_masked || order.customer_phone_masked;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
       {showRateModal && (
@@ -162,49 +166,90 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           }}
         />
       )}
-      <div className="flex flex-col gap-5 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">Order Reference Number</p>
-            <p className="font-mono text-base font-bold text-primary">{order.order_number}</p>
-          </div>
-          <div className="flex gap-2">
-            <StatusBadge type="payment" status={order.payment_status} />
-            <StatusBadge type="delivery" status={order.delivery_status} />
-          </div>
-        </div>
 
-        <hr className="border-ink/25" />
-
-        <div className="flex items-center gap-2">
-          {stages.map((stage, i) => (
-            <div key={stage.label} className="flex flex-1 items-center gap-2 last:flex-none">
-              <div className="flex items-center gap-2.5">
-                <StageCircle state={stage.state} index={i + 1} />
-                <div>
-                  <p className="font-display text-[13px] font-bold whitespace-nowrap">{stage.label}</p>
-                  <p className="text-[11px] whitespace-nowrap text-on-surface-variant">{stage.sub}</p>
-                </div>
-              </div>
-              {i < stages.length - 1 && <div className="h-0.5 min-w-5 flex-1 bg-ink/25" />}
+      <div className="flex flex-col gap-4">
+        {/* Reference + status + stage tracker */}
+        <div className="flex flex-col gap-5 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">
+                Order Reference Number
+              </p>
+              <p className="font-mono text-base font-bold text-primary">{order.order_number}</p>
             </div>
-          ))}
+            <div className="flex gap-2">
+              <StatusBadge type="payment" status={order.payment_status} />
+              <StatusBadge type="delivery" status={order.delivery_status} />
+            </div>
+          </div>
+
+          <hr className="border-ink/25" />
+
+          <div className="flex items-center gap-2">
+            {stages.map((stage, i) => (
+              <div key={stage.label} className="flex flex-1 items-center gap-2 last:flex-none">
+                <div className="flex items-center gap-2.5">
+                  <StageCircle state={stage.state} index={i + 1} />
+                  <div>
+                    <p className="font-display text-[13px] font-bold whitespace-nowrap">{stage.label}</p>
+                    <p className="text-[11px] whitespace-nowrap text-on-surface-variant">{stage.sub}</p>
+                  </div>
+                </div>
+                {i < stages.length - 1 && <div className="h-0.5 min-w-5 flex-1 bg-ink/25" />}
+              </div>
+            ))}
+          </div>
         </div>
 
-        <hr className="border-ink/25" />
+        {/* Bento: Game & Package / Customer Info / Payment Details */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <DetailCard icon={<GameController size={18} weight="fill" />} title="Game & Package">
+            <DetailRow k="Game" v={order.game?.name ?? "—"} />
+            <DetailRow k="Package" v={order.package_name ?? "—"} />
+            <DetailRow k="Player ID" v={order.player_id} mono />
+            {order.server_id && <DetailRow k="Server ID" v={order.server_id} mono last />}
+          </DetailCard>
 
-        <div className="flex flex-wrap gap-8">
-          <Meta k="Game" v={order.game?.name ?? "—"} />
-          <Meta k="Package" v={order.package_name ?? "—"} />
-          <Meta k="Player ID" v={order.server_id ? `${order.player_id} (${order.server_id})` : order.player_id} />
-          <Meta k="Amount Paid" v={`RM${(order.final_amount / 100).toFixed(2)}`} />
+          {hasContact && (
+            <DetailCard icon={<User size={18} weight="fill" />} title="Customer Info">
+              {order.customer_name_masked && <DetailRow k="Name" v={order.customer_name_masked} />}
+              {order.customer_email_masked && <DetailRow k="Email" v={order.customer_email_masked} />}
+              {order.customer_phone_masked && <DetailRow k="Phone" v={order.customer_phone_masked} last />}
+            </DetailCard>
+          )}
+
+          <div className={`rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo ${hasContact ? "md:col-span-2" : ""}`}>
+            <div className="mb-4 flex items-center gap-2 text-primary">
+              <CreditCard size={18} weight="fill" />
+              <h2 className="font-display text-headline-sm">Payment Details</h2>
+            </div>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex-1">
+                {order.payment_method && <DetailRow k="Method" v={order.payment_method} />}
+                <DetailRow k="Package Price" v={rm(order.selling_price)} mono />
+                <DetailRow k="Transaction Fee" v={`+ ${rm(order.transaction_fee)}`} mono />
+                {order.voucher_discount > 0 && (
+                  <DetailRow k="Voucher Deduction" v={`− ${rm(order.voucher_discount)}`} mono />
+                )}
+              </div>
+              <div className="border-2 border-ink bg-surface-container-high p-4 text-center md:min-w-[150px] md:text-right">
+                <span className="block text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">
+                  Amount Paid
+                </span>
+                <span className="block font-mono text-headline-md font-bold text-primary">{rm(order.final_amount)}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3.5 rounded-lg border-2 border-ink bg-primary-fixed p-6 neo">
-        <h3 className="text-[15px] font-bold">{hasFailure ? "Need Help With This Order?" : "Having an Issue with Your Order?"}</h3>
+      <div className="flex flex-col gap-3.5 rounded-lg border-2 border-ink bg-primary-fixed p-6 neo lg:sticky lg:top-24">
+        <h3 className="font-display text-[15px] font-bold">
+          {hasFailure ? "Need Help With This Order?" : "Having an Issue with Your Order?"}
+        </h3>
         <p className="text-[13px] leading-relaxed text-on-surface-variant">
-          Contact our Customer Support team directly via WhatsApp for a manual check{hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
+          Contact our Customer Support team directly via WhatsApp for a manual check
+          {hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
         </p>
         <Button href="https://wa.me/60000000000" className="justify-center">
           <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
@@ -215,6 +260,27 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+function DetailCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
+      <div className="mb-4 flex items-center gap-2 text-primary">
+        {icon}
+        <h2 className="font-display text-headline-sm">{title}</h2>
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function DetailRow({ k, v, mono, last }: { k: string; v: string; mono?: boolean; last?: boolean }) {
+  return (
+    <div className={`flex justify-between gap-4 py-2 ${last ? "" : "border-b border-ink/15"}`}>
+      <span className="text-[13px] text-on-surface-variant">{k}</span>
+      <span className={`text-right text-[13px] font-bold ${mono ? "font-mono" : ""}`}>{v}</span>
     </div>
   );
 }
@@ -244,15 +310,6 @@ function StageCircle({ state, index }: { state: StageState; index: number }) {
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-surface-container-lowest text-[13px] text-on-surface-variant">
       {index}
-    </div>
-  );
-}
-
-function Meta({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex min-w-[130px] flex-1 flex-col gap-1">
-      <span className="text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">{k}</span>
-      <span className="font-display text-sm font-bold">{v}</span>
     </div>
   );
 }
