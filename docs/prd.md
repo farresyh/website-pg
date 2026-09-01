@@ -1559,7 +1559,7 @@ No **storefront** nav link added in this session — the kill switch stays off, 
 4. **First-boot** — `db:seed --class=ProductionSeeder` + create super admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD`.
 5. **Post-cutover cleanup** — delete DO Container Registry `pekangame` ($5/mo), stale GitHub secrets; DO monitoring + alert policies + external uptime monitor on `/up`.
 6. Then **CHIP go-live** (FPX approval → webhook config on the live domain → real hosted-page test payment → activate the `fpx` payment_methods row) and **Digiflazz** live wiring (static IP whitelist `137.184.250.200` + the droplet egress IP, 2FA, webhook controller — still unbuilt; [project backlog](./adr.md)).
-7. Longer-tail, unblocked by deploy: **ADR-060** (branded `Host`-resolved storefront + checkout ledger-split), the storefront-checkout Playwright flakiness (delivery-poll 30s timeout), the `composer.json` `^8.3`→`^8.4` one-liner.
+7. Longer-tail, unblocked by deploy: **ADR-060** (branded `Host`-resolved storefront + checkout ledger-split), the `composer.json` `^8.3`→`^8.4` one-liner. (The storefront-checkout Playwright flake was the default 30s per-test timeout being too tight for a ~10-step flow whose last step is `next dev`'s cold-compile of the status route — fixed by raising `e2e/playwright.config.ts` `timeout` to 60s, PR #50.)
 
 ---
 
