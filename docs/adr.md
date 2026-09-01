@@ -2630,3 +2630,8 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 - `MembershipPromoCard` (ADR-055) and the member-pricing rows in `PackageGrid` depend on membership being enabled for the brand (ADR-061 `membershipEnabledEffective()`) — the redesign must keep the "hidden when kill-switch off" behaviour, not just restyle the visible state.
 - No automated FE tests exist for the storefront (ADR-023 E2E golden paths are the only coverage). The checkout golden path must stay green — re-run `cd e2e && npm test` (needs `XENDIT_SECRET_KEY`).
 - PRD §14 build-log + §15 storefront-status note owed on ship.
+
+**Build addendum — founder feedback, 2026-09-01:**
+- **`AnnouncementBar` deleted.** The purple top strip is removed from every page and the component file dropped (it was hardcoded marketing copy, not DB-driven — no feature lost).
+- **`QuickCounterCard` is an icon-tile grid, not a `<select>`** (matches the Stitch "Quick Top-Up" widget): the pinned `QUICK_COUNTER_SLUGS` games render as picker tiles (real thumbnail or a Phosphor icon + name), padded with the top catalog games to fill up to 6; no "browse all" link (the header search + Popular Picks cover the long tail).
+- **Nav "Promotions" → "Membership"** (`/membership`), in both `SiteHeader` and `BottomNav` (Crown icon), **rendered only when membership is enabled for the brand** — `listPlans()` returns `[]` under ADR-061's dual kill-switch, so the link is absent until the founder turns membership on, which keeps PRD §15's "no customer-facing membership link until launch" decision self-enforcing rather than a manual nav edit later. The homepage `PromotionsSection` + `#promotions` anchor stay.
