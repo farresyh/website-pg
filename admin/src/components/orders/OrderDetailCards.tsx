@@ -70,7 +70,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Payment / Supplier</h2>
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Payment Method</dt><dd>{order.payment_method ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Payment Ref (Xendit)</dt><dd>{order.payment_ref ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Payment Ref (CHIP)</dt><dd>{order.payment_ref ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Reference # (ORD-8)</dt><dd>{order.reference_number ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Supplier Ref</dt><dd>{order.supplier_ref ?? "—"}</dd></div>
         </dl>

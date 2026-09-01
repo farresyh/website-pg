@@ -14,6 +14,7 @@ use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\PlunkMailer;
 use App\Services\Payment\Chip\ChipGateway;
+use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\PlayerValidation\MlbbPlayerValidator;
@@ -176,7 +177,17 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(SupplierAdapterFactory::class);
 
-        $this->app->bind('payment-gateway.chip', function () {
+        $this->app->bind('payment-gateway.chip', function ($app) {
+            // ADR-023 decision #6 / ADR-022's 2026-09-01 addendum — the
+            // payment layer is faked for e2e the same way the supplier
+            // layer is above (CHIP verifies webhooks with an RSA
+            // signature the checkout spec cannot forge). Bound under the
+            // same key PaymentGatewayFactory and the default binding
+            // resolve, so the whole pipeline runs unchanged.
+            if ($app->environment('e2e')) {
+                return new FakePaymentGateway;
+            }
+
             $config = config('services.chip');
 
             return new ChipGateway(

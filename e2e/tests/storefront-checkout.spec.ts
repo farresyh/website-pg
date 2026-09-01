@@ -5,20 +5,17 @@ import {
   E2E_ADMIN_EMAIL,
   E2E_ADMIN_PASSWORD,
   E2E_GAME_SLUG,
-  XENDIT_WEBHOOK_TOKEN,
 } from "./constants";
 
 // Golden path — ADR-023. Covers the storefront's only revenue path:
-// guest checkout -> payment -> order status. Requires a real
-// XENDIT_SECRET_KEY (test-mode) in the environment booting the
-// backend (see e2e/scripts/boot-backend.sh) — Xendit is hit for real
-// against its own working sandbox (ADR-023 decision #6), unlike
-// Gamevion, which is faked unconditionally at the backend's container-
-// binding level (AppServiceProvider::register(), APP_ENV=e2e) and
-// needs no credential here. The real Xendit webhook callback is never
-// awaited — CI has no public URL to receive one — it's simulated by
-// POSTing a validly-signed payload directly to /api/webhooks/xendit
-// after capturing the real payment_ref Xendit's own API returned.
+// guest checkout -> payment -> order status. Needs no payment
+// credential: since ADR-022's 2026-09-01 addendum the payment layer is
+// faked at the backend's container-binding level for APP_ENV=e2e
+// (AppServiceProvider::register() -> FakePaymentGateway), the same way
+// Gamevion is (CHIP verifies webhooks with an RSA signature this spec
+// can't forge). The webhook callback is simulated by POSTing CHIP's
+// real flattened payload shape directly to /api/webhooks/chip after
+// capturing the payment_ref the fake gateway's createPayment returned.
 test("guest checkout -> payment -> order status", async ({ page, request }) => {
   await page.goto(`${STOREFRONT_URL}/order/${E2E_GAME_SLUG}`);
 
@@ -60,7 +57,7 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   const orderNumber = checkoutJson.order_number;
   expect(orderNumber).toBeTruthy();
 
-  // Look up the real payment_ref Xendit assigned — never exposed to
+  // Look up the payment_ref the gateway assigned — never exposed to
   // the storefront's own narrow response shape (ORD-9) — via the
   // already-authenticated admin API, the same way an operator would.
   const login = await request.post(`${BACKEND_URL}/api/login`, {
@@ -80,18 +77,17 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   const order = await detail.json();
   expect(order.payment_ref).toBeTruthy();
 
-  // Simulate Xendit's webhook callback (ADR-023 decision #6) — real
-  // shape per XenditGateway::parseWebhookEvent().
-  const webhook = await request.post(`${BACKEND_URL}/api/webhooks/xendit`, {
-    headers: { "x-callback-token": XENDIT_WEBHOOK_TOKEN, "Content-Type": "application/json" },
+  // Simulate CHIP's webhook callback (ADR-023 decision #6) — CHIP's
+  // real flattened Purchase shape per ChipGateway::parseWebhookEvent();
+  // FakePaymentGateway accepts it unsigned in the e2e env.
+  const webhook = await request.post(`${BACKEND_URL}/api/webhooks/chip`, {
+    headers: { "Content-Type": "application/json" },
     data: {
-      event: "payment.capture",
-      data: {
-        reference_id: orderNumber,
-        payment_request_id: order.payment_ref,
-        status: "SUCCEEDED",
-        request_amount: order.final_amount / 100,
-      },
+      event_type: "purchase.paid",
+      reference: orderNumber,
+      id: order.payment_ref,
+      status: "paid",
+      purchase: { total: order.final_amount },
     },
   });
   expect(webhook.ok()).toBeTruthy();
