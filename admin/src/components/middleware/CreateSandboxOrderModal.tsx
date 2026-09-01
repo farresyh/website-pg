@@ -104,7 +104,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   return (
     <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-        Creates a real Order row, marked as sandbox-only (is_test), paid immediately with no Xendit call, and starting
+        Creates a real Order row, marked as sandbox-only (is_test), paid immediately with no payment-gateway call, and starting
         already at a &quot;failed delivery&quot; state so it&apos;s instantly usable with Resend Delivery below.
       </p>
 

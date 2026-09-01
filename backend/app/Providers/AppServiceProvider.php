@@ -14,9 +14,9 @@ use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\PlunkMailer;
 use App\Services\Payment\Chip\ChipGateway;
+use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
-use App\Services\Payment\Xendit\XenditGateway;
 use App\Services\PlayerValidation\MlbbPlayerValidator;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
@@ -56,9 +56,11 @@ class AppServiceProvider extends ServiceProvider
      * rather than one hardcoded binding — CheckoutController looks up
      * the matched PaymentMethod row's `gateway` column and asks the
      * factory for the right implementation. PaymentGateway::class
-     * itself stays bound to Xendit as a default, since the webhook
-     * controller's route (/api/webhooks/xendit) is inherently
-     * gateway-specific by URL, not resolved per-request.
+     * itself is bound to CHIP as the default (ADR-022's 2026-09-01
+     * addendum — CHIP is the only gateway now); a webhook controller's
+     * route is gateway-specific by URL, not resolved per-request, so
+     * ChipWebhookController still asks the factory for 'chip' explicitly
+     * rather than leaning on this default.
      */
     public function register(): void
     {
@@ -175,19 +177,17 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(SupplierAdapterFactory::class);
 
-        $this->app->bind('payment-gateway.xendit', function () {
-            $config = config('services.xendit');
+        $this->app->bind('payment-gateway.chip', function ($app) {
+            // ADR-023 decision #6 / ADR-022's 2026-09-01 addendum — the
+            // payment layer is faked for e2e the same way the supplier
+            // layer is above (CHIP verifies webhooks with an RSA
+            // signature the checkout spec cannot forge). Bound under the
+            // same key PaymentGatewayFactory and the default binding
+            // resolve, so the whole pipeline runs unchanged.
+            if ($app->environment('e2e')) {
+                return new FakePaymentGateway;
+            }
 
-            return new XenditGateway(
-                baseUrl: $config['base_url'],
-                secretKey: (string) $config['secret_key'],
-                webhookToken: (string) $config['webhook_token'],
-                timeoutSeconds: $config['timeout'],
-                connectTimeoutSeconds: $config['connect_timeout'],
-            );
-        });
-
-        $this->app->bind('payment-gateway.chip', function () {
             $config = config('services.chip');
 
             return new ChipGateway(
@@ -202,7 +202,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(PaymentGatewayFactory::class);
 
-        $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.xendit'));
+        $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.chip'));
 
         // ADR-027's 2026-08-29 addendum, decision 27/29 — the only
         // email-sending vendor bound here, so a direct class binding

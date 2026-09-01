@@ -3,10 +3,10 @@
 /**
  * SET-7/SET-11 — see backend/app/Http/Controllers/Middleware/PaymentMethodController.php
  * and the create_payment_methods_table migration's doc comment for why
- * this is admin-curated (Xendit has no API to report which channels are
- * enabled for this merchant account) and why it lives under /middleware.
- * All channels seed `is_active = false` — admin confirms each one via
- * "Test" (fires a real, harmless payment request) before flipping it on.
+ * this is admin-curated (activation is a manual action gated on a real
+ * CHIP smoke test, not synced from any API) and why it lives under
+ * /middleware. All channels seed `is_active = false` — admin confirms
+ * each one via "Test" (fires a real, harmless payment request) first.
  */
 
 import React, { useEffect, useState } from "react";

@@ -293,11 +293,10 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
         channel_code: channelCode,
         idempotency_key: idempotencyKeyRef.current ?? crypto.randomUUID(),
         voucher_code: voucherCode ?? undefined,
-        // Xendit requires these for redirect-based channels (FPX, some
-        // e-wallets) — where it sends the customer back to after they
-        // complete payment on its own hosted page. We don't have the
-        // order_number yet at this point (only the backend does, right
-        // before it calls Xendit) — this generic URL is only a fallback:
+        // CHIP needs these for its hosted checkout page (FPX, DuitNow QR)
+        // — where it sends the customer back to after they pay. We do not
+        // have the order_number yet at this point (only the backend does,
+        // right before it calls CHIP) — this generic URL is only a fallback:
         // CheckoutService::requestPayment() overwrites it server-side
         // with the real /order/status/{order_number} once the Order
         // exists, so the customer lands straight on their own order

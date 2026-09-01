@@ -7,6 +7,7 @@ use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Order;
+use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\Voucher;
@@ -140,7 +141,7 @@ class OrderControllerTest extends TestCase
     }
 
     /**
-     * ADR-021 (PAY-3) — surfaces an order whose Xendit webhook never
+     * ADR-021 (PAY-3) — surfaces an order whose payment webhook never
      * arrived. Matches the same 30-minute window
      * ReconcilePendingPaymentsCommand itself acts on.
      */
@@ -449,7 +450,7 @@ class OrderControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
         $order = $this->order(['game_id' => $game->id, 'package_id' => $package->id]);
-        \App\Models\OrderResendAttempt::query()->create([
+        OrderResendAttempt::query()->create([
             'order_id' => $order->id,
             'package_id' => $package->id,
             'cost_price_sen' => 950,
@@ -476,7 +477,7 @@ class OrderControllerTest extends TestCase
     {
         $this->actingAsAdmin();
         $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'payment_status' => PaymentStatus::Paid->value]);
-        \App\Models\Voucher::query()->create([
+        Voucher::query()->create([
             'order_id' => $order->id,
             'code' => 'VC-TESTCODE',
             'customer_email' => $order->customer_email,

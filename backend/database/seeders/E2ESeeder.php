@@ -22,7 +22,7 @@ use Illuminate\Database\Seeder;
  * against: one Game+Package with no player-ID validation (keeps the
  * storefront wizard's Step 1 to a plain "Continue" gate — validator
  * chains are a separate, unfaked third-party mechanism this ADR never
- * scoped to touch), one active Xendit channel (checkout requires at
+ * scoped to touch), one active CHIP channel (checkout requires at
  * least one), and pre-existing orders for each admin golden path —
  * one failed order for the Issue Voucher test, a separate failed order
  * for the Resend Delivery test, and a needs_review order for the Mark
@@ -45,11 +45,13 @@ class E2ESeeder extends Seeder
         // just seeded).
         $reseller = Reseller::primary();
 
-        // AMBANK_FPX — confirmed live-tested successfully against the
-        // real Xendit sandbox (ADR-001's 2026-07-25 addendum). Every
-        // other seeded row stays is_active=false, matching production
-        // seeding convention (PaymentMethodSeeder's own doc comment).
-        PaymentMethod::query()->where('channel_code', 'AMBANK_FPX')->update(['is_active' => true]);
+        // CHIP FPX (`fpx`) — the one channel the golden-path checkout
+        // spec drives through. Every other seeded row stays
+        // is_active=false, matching production seeding convention
+        // (PaymentMethodSeeder's own doc comment). The checkout spec's
+        // real payment leg needs a CHIP test-mode key (CHIP_SECRET_KEY /
+        // CHIP_BRAND_ID) exported before `npm test` — see e2e/AGENTS.md.
+        PaymentMethod::query()->where('channel_code', 'fpx')->update(['is_active' => true]);
 
         $supplier = Supplier::query()->firstOrCreate(
             ['slug' => 'e2e-fake-supplier'],
@@ -109,7 +111,7 @@ class E2ESeeder extends Seeder
                 'reseller_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::Failed->value,
-                'payment_gateway' => 'xendit',
+                'payment_gateway' => 'chip',
             ],
         );
 
@@ -138,7 +140,7 @@ class E2ESeeder extends Seeder
                 'reseller_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::Failed->value,
-                'payment_gateway' => 'xendit',
+                'payment_gateway' => 'chip',
             ],
         );
 
@@ -168,7 +170,7 @@ class E2ESeeder extends Seeder
                 'reseller_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::NeedsReview->value,
-                'payment_gateway' => 'xendit',
+                'payment_gateway' => 'chip',
             ],
         );
     }

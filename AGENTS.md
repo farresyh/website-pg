@@ -121,14 +121,14 @@ cd backend && docker compose up -d && php artisan test -c phpunit.concurrency.xm
 cd admin && npm run dev               # or: npm run build && npm run lint
 cd storefront && npm run dev
 
-# E2E (ADR-023) — the 3 golden-path tests (checkout->payment->order status;
-# admin login->Resend Delivery; admin login->Issue Voucher), Chromium only.
-# Boots its own throwaway backend+DB — never touches the local dev DB.
-# Storefront checkout needs a real Xendit test-mode key: export
-# XENDIT_SECRET_KEY before running, or that one spec fails at the real
-# Xendit API call while the 2 admin specs still pass. Wired into CI
-# (.github/workflows/ci.yml's `playwright` job) — this is for running it
-# locally.
+# E2E (ADR-023) — the golden-path tests (checkout->payment->order status;
+# admin login->Resend Delivery; admin login->Issue Voucher; admin->Mark
+# Delivered), Chromium only. Boots its own throwaway backend+DB — never
+# touches the local dev DB. Needs NO external secret: both the supplier
+# layer (Gamevion) and the payment layer (CHIP) are bound to zero-network
+# fakes whenever APP_ENV=e2e (ADR-022's 2026-09-01 addendum put payment
+# on the same footing). Wired into CI (.github/workflows/ci.yml's
+# `playwright` job) — this is for running it locally.
 cd e2e && npm test
 ```
 

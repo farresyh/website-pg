@@ -17,9 +17,11 @@ Laravel-specific, loaded only when working inside `backend/`.
   store-credit `Voucher`, not a reversed payment.
 - **Supplier and payment integrations are behind adapters** —
   `SupplierAdapter` (`GamevionAdapter` is the one real implementation) and
-  `PaymentGateway` (`XenditGateway`, resolved per-channel via
-  `PaymentGatewayFactory`). Add a new supplier/gateway by implementing the
-  interface, not by branching inside a controller or service.
+  `PaymentGateway` (`ChipGateway` is the one real implementation since
+  ADR-022's 2026-09-01 addendum removed Xendit; still resolved per-channel
+  via `PaymentGatewayFactory`, which stays for a future multi-region
+  gateway). Add a new supplier/gateway by implementing the interface, not
+  by branching inside a controller or service.
 - **Money-critical concurrency is lock-guarded, proven with real
   subprocess tests** — see `LedgerService::withdraw()`,
   `VoucherService::redeem()`, `OrderFulfillmentService::fulfill()`, all
@@ -62,7 +64,7 @@ Laravel-specific, loaded only when working inside `backend/`.
 composer run dev                                          # serve + queue:listen + pail + vite together
 php artisan test                                           # fast suite (sqlite, no Docker)
 docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurrency suite, needs real MySQL
-php artisan app:xendit-smoke-test                           # hits the real Xendit sandbox
+php artisan app:chip-smoke-test                             # hits the real CHIP API (test-mode key; no separate sandbox URL)
 php artisan app:gamevion-smoke-test                         # hits the real Gamevion sandbox
 ```
 

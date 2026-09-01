@@ -115,24 +115,18 @@ jobs:
 
   # ADR-023 — the 3 golden-path tests only (guest checkout->payment->
   # order status; admin login->Resend Delivery; admin login->Issue
-  # Voucher), Chromium only. Gamevion is faked unconditionally
-  # (APP_ENV=e2e, AppServiceProvider::register()) — no secret needed
-  # for that. Xendit is hit for real against its own working sandbox
-  # (decision #6) and needs a real test-mode key: XENDIT_TEST_SECRET_KEY
-  # is NOT yet added as a repo secret — until it is, this job passes
-  # the 2 admin specs and fails only the checkout spec at the real
-  # Xendit API call, the same "structurally complete, blocked on an
-  # unprovisioned secret" gap this file's own build-and-push job below
-  # already carries for DIGITALOCEAN_ACCESS_TOKEN. Deliberately absent
-  # from build-and-push's own `needs:` list — ADR-020 decision #9
+  # Voucher), Chromium only. Both the supplier layer (Gamevion) and the
+  # payment layer (CHIP) are faked unconditionally when APP_ENV=e2e
+  # (AppServiceProvider::register() — ADR-022's 2026-09-01 addendum
+  # moved payment onto the same fake-for-e2e footing as the supplier
+  # layer), so this job needs no external secret at all. Deliberately
+  # absent from build-and-push's own `needs:` list — ADR-020 decision #9
   # explicitly does not require Playwright to gate a deploy, since
-  # Phase 1's existing test gate (396+ backend tests, concurrency
-  # proofs) is already strong; this job surfaces regressions without
-  # blocking shipping on it.
+  # Phase 1's existing test gate (backend tests, concurrency proofs) is
+  # already strong; this job surfaces regressions without blocking
+  # shipping on it.
   playwright:
     runs-on: ubuntu-latest
-    env:
-      XENDIT_SECRET_KEY: ${{ secrets.XENDIT_TEST_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2

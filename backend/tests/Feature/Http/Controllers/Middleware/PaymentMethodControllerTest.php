@@ -38,7 +38,7 @@ class PaymentMethodControllerTest extends TestCase
             'method_key' => 'ambank_fpx',
             'label' => 'AmBank',
             'category' => 'fpx',
-            'gateway' => 'xendit',
+            'gateway' => 'chip',
             'is_active' => false,
             'percentage_rate' => 0.0,
             'flat_fee_sen' => 210,
@@ -46,7 +46,7 @@ class PaymentMethodControllerTest extends TestCase
     }
 
     /**
-     * Real in-test fake bound through the same 'payment-gateway.xendit'
+     * Real in-test fake bound through the same 'payment-gateway.chip'
      * container key PaymentGatewayFactory resolves — see
      * CheckoutControllerTest for the same convention.
      */
@@ -83,7 +83,7 @@ class PaymentMethodControllerTest extends TestCase
             }
         };
 
-        $this->app->bind('payment-gateway.xendit', fn () => $gateway);
+        $this->app->bind('payment-gateway.chip', fn () => $gateway);
     }
 
     public function test_index_requires_authentication(): void
@@ -145,7 +145,7 @@ class PaymentMethodControllerTest extends TestCase
         $this->paymentMethod([
             'channel_code' => 'TOUCHNGO',
             'method_key' => 'tng',
-            'gateway' => 'xendit',
+            'gateway' => 'chip',
             'is_active' => true,
         ]);
         $chipTng = $this->paymentMethod([
@@ -169,7 +169,7 @@ class PaymentMethodControllerTest extends TestCase
         $this->paymentMethod([
             'channel_code' => 'TOUCHNGO',
             'method_key' => 'tng',
-            'gateway' => 'xendit',
+            'gateway' => 'chip',
             'is_active' => false,
         ]);
         $chipTng = $this->paymentMethod([
@@ -190,10 +190,10 @@ class PaymentMethodControllerTest extends TestCase
     public function test_update_status_allows_deactivating_even_when_another_row_shares_the_method_key(): void
     {
         $this->actingAsAdmin();
-        $xenditTng = $this->paymentMethod([
+        $activeTng = $this->paymentMethod([
             'channel_code' => 'TOUCHNGO',
             'method_key' => 'tng',
-            'gateway' => 'xendit',
+            'gateway' => 'chip',
             'is_active' => true,
         ]);
         $this->paymentMethod([
@@ -203,12 +203,12 @@ class PaymentMethodControllerTest extends TestCase
             'is_active' => false,
         ]);
 
-        $response = $this->patchJson("/api/middleware/payment-methods/{$xenditTng->id}/status", [
+        $response = $this->patchJson("/api/middleware/payment-methods/{$activeTng->id}/status", [
             'is_active' => false,
         ]);
 
         $response->assertOk();
-        $this->assertFalse($xenditTng->fresh()->is_active);
+        $this->assertFalse($activeTng->fresh()->is_active);
     }
 
     public function test_update_fee_changes_the_stored_rate(): void

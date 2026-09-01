@@ -63,7 +63,6 @@ use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
-use App\Http\Controllers\Webhooks\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
 // ADR-019: the only mutating auth-adjacent route with no throttle,
@@ -626,11 +625,10 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-// Not behind auth:sanctum — Xendit isn't an admin user. Signature
+// Not behind auth:sanctum — CHIP isn't an admin user. Signature
 // verification inside the controller is the auth mechanism (PAY-1).
 // Rate-limited distinct from the general `api` group (which has no throttle
 // enabled at all, per bootstrap/app.php) — bounds the cost of an unsigned
 // flood before signature verification runs, without risking a real gateway
 // retry burst getting throttled. Found absent, fresh audit, 2026-08-14.
-Route::post('/webhooks/xendit', [XenditWebhookController::class, 'handle'])->middleware('throttle:120,1,webhook-xendit');
 Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])->middleware('throttle:120,1,webhook-chip');

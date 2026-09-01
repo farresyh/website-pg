@@ -5,26 +5,18 @@ namespace Tests\Unit\Services\Payment;
 use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\Payment\PaymentRequest;
+use App\Services\Payment\PaymentResponse;
+use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Payment\UnsupportedPaymentGatewayException;
-use App\Services\Payment\Xendit\XenditGateway;
 use Illuminate\Http\Request;
 use Tests\TestCase;
 
 class PaymentGatewayFactoryTest extends TestCase
 {
-    public function test_resolves_the_xendit_gateway_bound_in_the_container(): void
-    {
-        $factory = $this->app->make(PaymentGatewayFactory::class);
-
-        $gateway = $factory->make('xendit');
-
-        $this->assertInstanceOf(PaymentGateway::class, $gateway);
-        $this->assertInstanceOf(XenditGateway::class, $gateway);
-    }
-
     /**
-     * ADR-022 — confirms 'chip' resolves for real, not just 'xendit',
-     * now that ChipGateway is bound in AppServiceProvider.
+     * ADR-022's 2026-09-01 addendum — CHIP is the only gateway bound in
+     * AppServiceProvider now (Xendit removed).
      */
     public function test_resolves_the_chip_gateway_bound_in_the_container(): void
     {
@@ -34,6 +26,21 @@ class PaymentGatewayFactoryTest extends TestCase
 
         $this->assertInstanceOf(PaymentGateway::class, $gateway);
         $this->assertInstanceOf(ChipGateway::class, $gateway);
+    }
+
+    /**
+     * 'xendit' was a real bound gateway until the 2026-09-01 addendum —
+     * it must now throw like any other unknown name, never silently
+     * misroute (a historical order's `payment_gateway = 'xendit'`
+     * snapshot reaching reconciliation is handled there, not here).
+     */
+    public function test_throws_for_the_removed_xendit_gateway(): void
+    {
+        $factory = $this->app->make(PaymentGatewayFactory::class);
+
+        $this->expectException(UnsupportedPaymentGatewayException::class);
+
+        $factory->make('xendit');
     }
 
     public function test_throws_for_an_unbound_gateway_name(): void
@@ -55,14 +62,14 @@ class PaymentGatewayFactoryTest extends TestCase
     {
         $fake = new class implements PaymentGateway
         {
-            public function createPayment(\App\Services\Payment\PaymentRequest $request): \App\Services\Payment\PaymentResponse
+            public function createPayment(PaymentRequest $request): PaymentResponse
             {
-                return \App\Services\Payment\PaymentResponse::success([]);
+                return PaymentResponse::success([]);
             }
 
-            public function getPayment(string $paymentRequestId): \App\Services\Payment\PaymentResponse
+            public function getPayment(string $paymentRequestId): PaymentResponse
             {
-                return \App\Services\Payment\PaymentResponse::success([]);
+                return PaymentResponse::success([]);
             }
 
             public function verifyWebhookSignature(Request $request): bool
@@ -70,7 +77,7 @@ class PaymentGatewayFactoryTest extends TestCase
                 return true;
             }
 
-            public function parseWebhookEvent(array $payload): \App\Services\Payment\PaymentWebhookEvent
+            public function parseWebhookEvent(array $payload): PaymentWebhookEvent
             {
                 throw new \RuntimeException('not used in this test');
             }

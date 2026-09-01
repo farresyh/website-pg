@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api-client";
  * and the create_payment_methods_table migration's doc comment for
  * the full "why admin-curated, why /middleware" reasoning. `gateway`
  * is schema readiness for a future second payment gateway (2026-07-25
- * multi-gateway seam) — only 'xendit' is ever real today.
+ * multi-gateway seam) — only 'chip' is real today (ADR-022 2026-09-01).
  */
 export interface PaymentMethod {
   id: number;

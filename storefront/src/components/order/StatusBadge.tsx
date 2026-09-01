@@ -22,7 +22,7 @@ const TONE_CLASSES: Record<"success" | "warning" | "error", string> = {
 };
 
 /**
- * `type="payment"` reads Xendit's state, `type="delivery"` reads the
+ * `type="payment"` reads the gateway's state, `type="delivery"` reads the
  * supplier's — the two independent state machines ORD-11 describes
  * are shown as two separate badges, never merged into one status.
  */

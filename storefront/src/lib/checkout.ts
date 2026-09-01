@@ -84,7 +84,7 @@ const CheckoutResultSchema = z.object({
   final_amount: z.number(),
   payment_status: z.string(),
   /**
-   * Xendit's Payment Request v3 `actions` payload, passed through
+   * CHIP's checkout `actions` payload (normalised by ChipGateway), passed through
    * unchanged by CheckoutController — for a redirect-based channel
    * (FPX, confirmed live 2026-07-29) this is really an ARRAY of
    * `{type, descriptor, value}` objects, not a flat object. Left
@@ -155,13 +155,11 @@ export async function previewCheckoutTotal(params: CheckoutTotalPreviewParams, m
 }
 
 /**
- * Extracts a redirect URL from Xendit's real `actions` shape (an array
- * of `{type, descriptor, value}` — confirmed live against a real
- * MAYB2U_FPX payment request, 2026-07-29) — `descriptor: "WEB_URL"` is
- * the one that means "send the browser here". Also checks the flat
- * `{desktop_web_checkout_url, ...}` object shape some other Xendit
- * product surfaces (Invoices) use, kept as a fallback in case a future
- * channel/gateway returns that instead.
+ * Extracts a redirect URL from the gateway's `actions` shape — an array
+ * of `{type, descriptor, value}` where `descriptor: "WEB_URL"` means
+ * "send the browser here" (ChipGateway normalises CHIP's `checkout_url`
+ * into exactly this). Also checks a flat `{desktop_web_checkout_url,
+ * ...}` object shape, kept as a defensive fallback.
  */
 export function extractCheckoutRedirectUrl(actions: unknown): string | null {
   if (Array.isArray(actions)) {

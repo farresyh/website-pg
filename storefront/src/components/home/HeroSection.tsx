@@ -4,7 +4,7 @@ import QuickCounterCard from "@/components/home/QuickCounterCard";
 import type { Game } from "@/lib/catalog";
 import type { HeroSlide } from "@/lib/hero-slides";
 
-const TRUST_ITEMS = ["3-Minute Delivery", "Xendit-Secured Payments", "24/7 WhatsApp Support"];
+const TRUST_ITEMS = ["3-Minute Delivery", "Secure FPX & DuitNow Payments", "24/7 WhatsApp Support"];
 
 export default function HeroSection({ games, slides }: { games: Game[]; slides: HeroSlide[] }) {
   return (

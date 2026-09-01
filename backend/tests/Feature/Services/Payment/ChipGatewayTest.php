@@ -7,7 +7,6 @@ use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentRequest;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -76,7 +75,7 @@ class ChipGatewayTest extends TestCase
                 && $request['success_redirect'] === 'https://storefront.test/order/status/KRS-1'
                 && $request['failure_redirect'] === 'https://storefront.test/order/status/KRS-1'
                 && $request['payment_method_whitelist'] === ['fpx'];
-            });
+        });
     }
 
     public function test_create_payment_normalizes_a_successful_response(): void
@@ -108,16 +107,15 @@ class ChipGatewayTest extends TestCase
     }
 
     /**
-     * The storefront's extractCheckoutRedirectUrl() only understands
-     * two shapes today: Xendit's real `actions: [{type, descriptor:
-     * "WEB_URL", value}]` array, or a flat object with a
-     * `*_checkout_url` key. CHIP's own response has neither — it's a
-     * bare `checkout_url` string — so ChipGateway must normalize into
-     * the same array shape Xendit already produces, or the storefront
-     * would need CHIP-specific frontend logic (which it must never
-     * need, per the gateway-agnostic PaymentResponse contract).
+     * The storefront's extractCheckoutRedirectUrl() understands an
+     * `actions: [{type, descriptor: "WEB_URL", value}]` array (or a
+     * flat object with a `*_checkout_url` key as a fallback). CHIP's
+     * own response has neither — it's a bare `checkout_url` string — so
+     * ChipGateway must normalize into that array shape, or the
+     * storefront would need CHIP-specific frontend logic (which it must
+     * never need, per the gateway-agnostic PaymentResponse contract).
      */
-    public function test_create_payment_normalizes_checkout_url_into_the_same_actions_shape_xendit_uses(): void
+    public function test_create_payment_normalizes_checkout_url_into_the_actions_array_shape(): void
     {
         Http::fake([
             'gate.chip-in.asia/*' => Http::response([
