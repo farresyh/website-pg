@@ -1,3 +1,8 @@
+# Secrets — never commit an env file at any level
+.env
+*.env
+!.env.example
+
 # OS / editor noise
 .DS_Store
 Thumbs.db

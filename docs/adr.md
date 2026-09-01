@@ -2739,3 +2739,63 @@ This addendum is open to challenge at review like any decision — the prefix to
 - The decision is **not** to expose `payment_ref` here. If a future bank-dispute self-service want reopens that, it reopens decision 1's "nothing internal" line — record it, don't just add the field. The `standard_selling_price` / profit / supplier-field exclusions are untouched and load-bearing.
 - Tests: `TrackOrderControllerTest` gains masked-shape assertions + a leak guard (no raw `customer_*` / `standard_selling_price` / `payment_ref` in the JSON); an `OrderStatusUpdated` payload test asserts the same shape so poll and push stay identical.
 - PRD §14 build-log + §15 note owed on ship (folded into the ADR-064 storefront entry).
+
+---
+
+## ADR-066: Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation
+
+**Status:** Accepted — 2026-09-02, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`. Reverses parts of `ADR-020` (decisions 4, 5, and decision 9's image-pipeline / SSH-deploy half); the reliability core of `ADR-020` and every one of its addenda is unchanged.
+
+**Context:**
+- `ADR-020` chose Docker Compose on a single DigitalOcean droplet, with a GitHub Actions pipeline building a backend image, pushing it to a DO Container Registry, and SSH-deploying via `docker compose pull && up -d`. Phase 1 (Dockerfiles, `docker-compose.prod.yml`, `ci.yml`) shipped 2026-07-30; the 2026-09-01 provisioning session moved the three Next.js apps to Vercel, cut the droplet to 4 GiB / DB to 1 GiB, and provisioned the DO infra (Reserved IP `137.184.250.200`, Cloud Firewall `topup-prod-fw`, Container Registry `pekangame`, Managed MySQL `topup-prod-mysql`, DNS `api.pekangame.space`).
+- The 2026-09-01 → 09-02 deploy session hit three latent pipeline bugs in a row (`trustProxies` unset behind the two nginx layers, PR #46; the CI health-check hitting `/api/health`, which is not a route, PR #46; the backend image never having built because `composer install` in the vendor stage lacked `--ignore-platform-reqs` for `laravel/horizon`'s `ext-pcntl` requirement, PR #48) plus an SSH mishap — the droplet was created without the `topup-prod` key. All three code bugs are fixed and CI's `build-and-push` is green; the SSH access was never recovered.
+- The founder — a solo, non-infra operator — asked mid-deploy whether Laravel Forge would be simpler. The founder already runs another production app (`nakhoda-prod`) on Forge with push-to-deploy.
+
+**Decision (each point grilled with the founder before acceptance):**
+
+1. **Deploy the backend with Laravel Forge, not Docker Compose.** Forge provisions and manages a native PHP-FPM / nginx / Redis / supervisor stack on the droplet — the shape every Laravel deployment assumes — with a web UI for deploys, env, TLS, and daemons. Rationale, grilled: the Docker path permanently leaves a one-person operation owning a `Dockerfile`, a `docker-compose.prod.yml`, a CI image-build-and-push job, a Container Registry, and a 15-stage bootstrap script; two of this session's three bugs (`--ignore-platform-reqs`, the compose-layer health-check wiring) cannot occur in a Forge deploy at all. `ADR-020` decision 4 chose Docker specifically for horizontal-scale / multi-country portability — but `ADR-020`'s own 2026-09-01 addendum already walked the outlook back to ~RM100k/month and committed to *vertical* scaling, and the 2026-08-14 capacity analysis (busiest minute ever = 9 orders over 230 days) shows one Forge-managed droplet carries 10–20× this business for years. Forge still does multiple servers, DO load balancers, and separate queue servers when a real second-country launch justifies it; the only thing genuinely given up is container portability to k8s / ECS, which was never realistically on this project's roadmap.
+
+2. **Forge plan: Growth ($19/mo) on the existing `JW Brothers` Forge org.** Forge Hobby ($12/mo) allows only **one external (bring-your-own-cloud) server**, and `nakhoda-prod` already occupies it. Growth lifts that to unlimited servers; Business ($39/mo) adds only a higher support tier and a Laravel-VPS discount that is irrelevant here (the server is on DO, not Laravel VPS). Net infrastructure cost change: Hobby→Growth is +$7/mo, minus the $5/mo DO Container Registry this ADR retires — roughly +$2/mo. `ADR-020`'s governing priority ("money spent to keep the system from crashing / easy to maintain is money the founder will spend") makes this trivially worth it. Billing separation from `kedairuncitsoloz` (a separate business) can be done later by moving the server to a dedicated Forge org — same non-blocking posture as the Vercel projects.
+
+3. **Provision a fresh Forge-owned droplet; do not repair the existing one.** The current droplet `topup-prod-sgp1` (id 596906796) is an empty box whose only history is the SSH mishap. Forge creates a new droplet via a DO API token, installs its own SSH key, and configures ufw / `fail2ban` / swap / key-only SSH from a clean base (satisfying `ADR-020` decision 7 natively). The Reserved IP `137.184.250.200` and the Cloud Firewall (tag `topup-prod`) are re-pointed to the new droplet, not rebuilt; the old droplet is destroyed once the new one serves a green health check. This retires `ADR-020`'s SSH-access blocker entirely — Forge owns the key.
+
+4. **Redis, Horizon, and Reverb run as native Forge-managed processes.** Redis is installed by Forge at provision time (cache + `QUEUE_CONNECTION=redis`, per `ADR-048`; AOF persistence set once via Forge's Redis config, since the queue now holds non-regenerable job state — `ADR-020` decision 3 revisit-trigger (a), already fired). Horizon runs under Forge's dedicated Horizon integration, which keeps `php artisan horizon` alive under supervisor and reads the existing `config/horizon.php` — its four per-queue supervisors (`supervisor-orders` / `supervisor-price-sync` / `supervisor-backups` / `supervisor-supplier-request-logs`, `ADR-048` decision 3) preserve the exact head-of-line-blocking isolation `ADR-020` decision 5 built with separate Compose services, with **no config change**. Reverb (`ADR-047`) runs as a Forge Daemon (`php artisan reverb:start`), reverse-proxied at `/app/` in the site's nginx config. This **reverses `ADR-020` decision 5's "no Supervisor"** — Forge uses supervisor, the correct choice on a native (non-containerised) box; that decision's reasoning was explicitly scoped to "this codebase's actual (containerised) deployment shape", which this ADR changes.
+
+5. **CI keeps every test job; only the image pipeline is removed.** `.github/workflows/ci.yml` keeps `backend-tests`, `backend-concurrency` (the MySQL 64-char guardrail, `ADR-021`), `admin` / `storefront` / `reseller` (tsc + build + lint), and `playwright`. The `build-and-push` and old SSH `deploy` jobs are deleted. A new `deploy` job, gated on all five test jobs passing on `main`, triggers the Forge deployment by POSTing to Forge's deploy webhook (`secrets.FORGE_DEPLOY_HOOK`). **Forge "Quick Deploy" stays OFF** — deploy happens only after the CI gate is green, preserving `ADR-020` decision 9's "the tests are the gate, not a human" while never deploying an unverified push.
+
+6. **TLS for `api.pekangame.space` is Forge-managed Let's Encrypt.** Same certificate authority as `ADR-020`'s 2026-09-01 addendum specified; Forge handles issuance, renewal, and nginx reload, retiring the manual certbot systemd timer. When the domain later transfers to Cloudflare (`ADR-020` decision 8 / addendum), this swaps to a Cloudflare Origin CA cert + Proxy + Full (Strict) — unchanged by this ADR.
+
+7. **Monorepo layout on the Forge site.** This repo keeps the Laravel app in `backend/`, not at the repo root. The Forge site is created with **web directory `/backend/public`**, and every deploy-script / daemon / Horizon command runs from `/home/forge/api.pekangame.space/backend`. This is a Forge site-config choice (web directory + a `cd` prefix), not a repo change — the monorepo layout stays as it is.
+
+8. **Forge deploy script** (recorded here as version-controlled intent, not only dashboard state):
+   ```bash
+   cd /home/forge/api.pekangame.space/backend
+   git -C /home/forge/api.pekangame.space pull origin main
+   composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+   php artisan migrate --force
+   php artisan config:cache
+   php artisan route:cache
+   php artisan event:cache
+   php artisan storage:link
+   php artisan horizon:terminate      # Horizon restarts with the new code
+   ( flock -w 10 9 || exit 1; sudo -S service nginx reload ) 9>/tmp/fpmlock
+   sleep 3
+   curl -fsS --max-time 10 https://api.pekangame.space/up   # fail the deploy on a bad health check
+   ```
+   `migrate --force` (never `migrate:fresh`) matches `ADR-020` decision 9; a failed migration surfaces via the failing `/up` check + Forge's deployment-failed notification, then a manual `php artisan migrate:rollback`. The very first deploy additionally runs `php artisan db:seed --class=ProductionSeeder` once (PR #44) and creates the first super admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+
+9. **Repo artifacts retired in this ADR's implementation PR** (same PR as the CI edit, not a separate pass): `backend/Dockerfile`, `backend/.dockerignore`, `backend/docker/nginx/default.conf`, `docker-compose.prod.yml`, `admin/Dockerfile`, `admin/.dockerignore`, `storefront/Dockerfile`, `storefront/.dockerignore`, and `output: "standalone"` in the three `next.config.ts` files (added only for the Docker images; Vercel does not use it). The DO Container Registry `pekangame` is deleted in the DO panel post-cutover. `backend/docker-compose.yml` (`ADR-010`, local-dev MySQL for the concurrency suite) is **kept, untouched** — unrelated to production. `~/pekangame-bootstrap.sh` (uncommitted, this machine only) is obsolete.
+
+**Kept from `ADR-020` and its addenda, unchanged:** Managed MySQL off-box (decision 2); Redis for cache + queue (decision 3, now Forge-installed); Cloud Firewall 22/80/443 + key-only SSH + `fail2ban` (decision 7, now Forge-configured); the Cloudflare-fronting plan for after the domain transfer (decision 8); DO droplet backups + Managed MySQL's own backups / PITR; the Vercel frontends, 4 GiB droplet / 1 GiB DB tiers, and every named upgrade trigger (2026-09-01 addendum); DO droplet monitoring + an external uptime monitor on `/up` (mandatory per the addendum).
+
+**Rationale:** The switch trades a scalability ceiling this project's own strategy says it will not reach for years against a permanent reduction in maintenance surface for a solo non-infra operator — removing an entire category of failure (image builds, registry auth, compose-layer wiring) and unifying the mental model with the founder's existing `nakhoda-prod` Forge server. Every `ADR-020` decision that was load-bearing for *reliability* (Managed DB, backups, firewall, monitoring, the Cloudflare plan) is kept verbatim; only the *runtime-and-delivery mechanism* changes.
+
+**Consequence to track:**
+- `config/horizon.php`'s `environments.production` block is now the sole definition of production queue concurrency — scaling a queue means raising `maxProcesses` there, and Forge's Horizon integration must run with `APP_ENV=production`.
+- Reverb's `/app/` nginx proxy block is hand-added to the Forge site config — it is not in the repo. If the site is recreated in Forge, this block must be re-added (recorded in the deploy wizard / runbook).
+- `bootstrap/app.php`'s `trustProxies(at: '*')` (PR #46) is still required — Forge's site nginx still fronts PHP-FPM. Removing the container layer does not make it unnecessary.
+- `FORGE_DEPLOY_HOOK` is a new required repo secret. `DIGITALOCEAN_ACCESS_TOKEN`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` are no longer used by CI and are deleted after cutover.
+- The DO Container Registry `pekangame` keeps costing $5/mo until deleted in the DO panel — an explicit post-cutover cleanup item, not automatic.
+- `composer.json` still declares `"php": "^8.3"` while the lock file requires `^8.4` (noted since `ADR-020` Phase 1) — the Forge server must be set to **PHP 8.4**; the stale constraint stays a safe one-line follow-up, still out of scope here.
+- If billing separation from `kedairuncitsoloz` is later wanted, moving the Forge server to a dedicated org and the Vercel projects to a dedicated team are the two actions — neither is blocked by anything in this ADR.
+- PRD §14 build-log + §15 deployment-status note owed on ship.
