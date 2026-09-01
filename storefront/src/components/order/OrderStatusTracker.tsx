@@ -65,7 +65,11 @@ function deriveStages(order: TrackedOrder): Stage[] {
     { label: "Payment Received", sub: paid ? "Paid" : "Waiting", state: paid ? "done" : "active" },
     {
       label: "Processing",
-      sub: order.delivery_status === "delivered" ? "Delivered" : delivering ? "Delivering…" : "Waiting",
+      // "Complete" not "Delivered" here — the delivery StatusBadge above
+      // is the one canonical "Delivered" label; a second identical string
+      // in the tracker breaks Playwright's strict getByText (E2E golden
+      // path) and reads as repetition.
+      sub: order.delivery_status === "delivered" ? "Complete" : delivering ? "Delivering…" : "Waiting",
       state: order.delivery_status === "delivered" ? "done" : paid && delivering ? "active" : "pending",
     },
     { label: "Order Complete", sub: order.delivery_status === "delivered" ? "Done" : "Waiting", state: order.delivery_status === "delivered" ? "done" : "pending" },
