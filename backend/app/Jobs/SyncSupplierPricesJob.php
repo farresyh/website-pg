@@ -5,9 +5,9 @@ namespace App\Jobs;
 use App\Http\Controllers\GameController;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Sync\PackagePriceSyncService;
 use App\Services\Sync\ProductSyncService;
-use App\Services\Supplier\SupplierAdapterFactory;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -64,15 +64,22 @@ final class SyncSupplierPricesJob implements ShouldQueue
     {
         $this->run->update(['status' => 'running', 'started_at' => now()]);
 
-        // Deliberate stopgap, unchanged from before this ADR: nothing
-        // else in the codebase creates the Gamevion Supplier row yet,
-        // so a fresh install still has at least one to sync.
-        Supplier::query()->firstOrCreate(
-            ['slug' => 'gamevion'],
-            ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
-        );
+        // Only suppliers that actually have credentials are syncable — a
+        // row whose api_config is still empty (created via /admin but not
+        // yet filled, or a leftover from the pre-ADR-046 stopgap this job
+        // used to create itself) can't be called and must not fail the
+        // whole run. It is skipped here, not attempted-then-caught, so an
+        // environment with no configured supplier yet is a clean no-op
+        // 'success', not a 'failed' run every scheduled tick.
+        $allActive = Supplier::query()->where('is_active', true)->get();
+        $suppliers = $allActive->filter(fn (Supplier $supplier) => filled($supplier->api_config))->values();
 
-        $suppliers = Supplier::query()->where('is_active', true)->get();
+        if ($allActive->count() !== $suppliers->count()) {
+            Log::info('SyncSupplierPricesJob: skipping supplier(s) with no api_config', [
+                'run_id' => $this->run->id,
+                'skipped' => $allActive->count() - $suppliers->count(),
+            ]);
+        }
 
         $stats = [
             'catalog_total' => 0, 'catalog_created' => 0, 'catalog_updated' => 0,
@@ -142,6 +149,24 @@ final class SyncSupplierPricesJob implements ShouldQueue
             'status' => 'success',
             'finished_at' => now(),
             'stats' => $stats,
+        ]);
+    }
+
+    /**
+     * `$tries = 1`, so an exception thrown outside handle()'s own
+     * per-supplier try/catch (a worker timeout, OOM, or a bug in the
+     * orchestration itself) goes straight here. Nothing else ever writes
+     * a terminal status onto this run and there is no reconcile sweep for
+     * PriceSyncRun the way there is for orders/payments — without this,
+     * the row is stranded at 'running' forever and /middleware/price-sync
+     * shows a permanent "Syncing…". Mark it failed with the reason.
+     */
+    public function failed(?Throwable $exception): void
+    {
+        $this->run->update([
+            'status' => 'failed',
+            'finished_at' => now(),
+            'error_message' => $exception?->getMessage() ?? 'Job failed without an exception message.',
         ]);
     }
 }
