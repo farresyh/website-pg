@@ -84,10 +84,13 @@ Next.js-version warning specific to that app. This file covers the whole repo;
   skipped in practice even with this file loaded, so treat it as the actual
   first action of the task, not implied by the rules below it.
 - **Never branch from `main`.** Every feature/fix branch is cut from
-  `staging`, PRs back into `staging`, gets verified in the staging
-  environment, and only then does `staging` merge into `main` for
-  production. Both `staging` and `main` are protected, PR-only, with
-  required CI checks.
+  `staging`, PRs back into `staging`, gets verified there (CI green — and,
+  for a frontend change, the PR's Vercel Preview deploy; there is no
+  separately-deployed staging server), and only then does `staging` merge
+  into `main`. **A push to `main` auto-deploys the backend to production**
+  via the CI `deploy` job (POSTs `FORGE_DEPLOY_HOOK`, gated on all test jobs
+  green — ADR-066); the three frontends auto-deploy from `main` on Vercel.
+  Both `staging` and `main` are protected, PR-only, with required CI checks.
 - **One exception: `hotfix/*` branches may cut directly from `main`**, scoped
   strictly to P0 incidents (payment/ledger/checkout down) where waiting on
   the full staging cycle isn't acceptable. Immediately after a hotfix merges
