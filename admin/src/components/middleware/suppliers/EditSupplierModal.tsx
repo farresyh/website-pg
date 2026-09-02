@@ -50,7 +50,15 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
   function visibleValue(key: string, fallback: string | boolean): string | boolean {
     if (key in visibleValues) return visibleValues[key];
     const fromServer = supplier.visible_config[key];
+    if (Array.isArray(fromServer)) return fallback;
     return fromServer ?? fallback;
+  }
+
+  /** `list` fields (ADR-067): comma-separated in the form, string[] in api_config. */
+  function listDisplayValue(key: string): string {
+    if (key in visibleValues) return String(visibleValues[key]);
+    const fromServer = supplier.visible_config[key];
+    return Array.isArray(fromServer) ? fromServer.join(", ") : "";
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -66,6 +74,13 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
     for (const field of fields) {
       if (field.type === "secret") {
         if (secretValues[field.key]?.trim()) apiConfig[field.key] = secretValues[field.key].trim();
+        continue;
+      }
+      if (field.type === "list") {
+        apiConfig[field.key] = listDisplayValue(field.key)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
         continue;
       }
       apiConfig[field.key] = field.type === "boolean" ? visibleValue(field.key, false) : visibleValue(field.key, "");
@@ -166,6 +181,9 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
                   );
                 }
 
+                const displayValue =
+                  field.type === "list" ? listDisplayValue(field.key) : String(visibleValue(field.key, ""));
+
                 return (
                   <div key={field.key}>
                     <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
@@ -174,7 +192,7 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
                     <input
                       className={inputClass}
                       placeholder={field.placeholder}
-                      value={String(visibleValue(field.key, ""))}
+                      value={displayValue}
                       onChange={(e) => setVisibleValues((v) => ({ ...v, [field.key]: e.target.value }))}
                     />
                   </div>

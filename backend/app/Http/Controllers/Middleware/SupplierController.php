@@ -28,7 +28,6 @@ use Illuminate\Validation\ValidationException;
  */
 class SupplierController extends Controller
 {
-
     /**
      * SUPP-1 — cards with connection status (CircuitBreaker::state(),
      * same cache-derived read DashboardService::health() already
@@ -91,10 +90,13 @@ class SupplierController extends Controller
 
     public function store(CreateSupplierRequest $request): JsonResponse
     {
-        $supplier = Supplier::query()->create(array_merge(
-            ['api_config' => []],
-            $request->validated(),
-        ));
+        $data = $request->validated();
+
+        if (array_key_exists('api_config', $data)) {
+            $data['api_config'] = SupplierConfigSchema::normalizeConfig($data['slug'], $data['api_config']);
+        }
+
+        $supplier = Supplier::query()->create(array_merge(['api_config' => []], $data));
 
         return response()->json($supplier, 201);
     }
@@ -107,13 +109,20 @@ class SupplierController extends Controller
      * untouched rather than being read as "clear it." Only the keys
      * actually present in this request's api_config overwrite their
      * counterpart; every other existing key survives.
+     *
+     * ADR-067 decision 2: after merging, `list`-type fields
+     * (`category_whitelist`) are coerced to a real `string[]` — the
+     * form submits them comma-separated.
      */
     public function update(UpdateSupplierRequest $request, Supplier $supplier): JsonResponse
     {
         $data = $request->validated();
 
         if (array_key_exists('api_config', $data)) {
-            $data['api_config'] = array_merge($supplier->api_config ?? [], $data['api_config']);
+            $data['api_config'] = SupplierConfigSchema::normalizeConfig(
+                $supplier->slug,
+                array_merge($supplier->api_config ?? [], $data['api_config']),
+            );
         }
 
         $supplier->update($data);
@@ -269,9 +278,9 @@ class SupplierController extends Controller
 
     /**
      * @return list<string> secret-type keys (per SupplierConfigSchema)
-     *                       that actually have a non-empty value —
-     *                       never the value itself, same $hidden
-     *                       boundary visibleConfig() already respects.
+     *                      that actually have a non-empty value —
+     *                      never the value itself, same $hidden
+     *                      boundary visibleConfig() already respects.
      */
     private function configuredSecretKeys(Supplier $supplier): array
     {

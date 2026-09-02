@@ -2,17 +2,19 @@
 
 namespace Tests\Feature\Services\Sync;
 
+use App\Models\Game;
+use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Currency\CurrencyRateService;
-use App\Services\Sync\ProductSyncFailedException;
-use App\Services\Sync\ProductSyncService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
+use App\Services\Sync\ProductSyncFailedException;
+use App\Services\Sync\ProductSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -22,18 +24,18 @@ class ProductSyncServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function supplier(): Supplier
+    private function supplier(array $overrides = []): Supplier
     {
-        return Supplier::query()->create([
+        return Supplier::query()->create(array_merge([
             'name' => 'Gamevion',
             'slug' => 'gamevion',
             'api_config' => [],
             'currency' => 'MYR',
-        ]);
+        ], $overrides));
     }
 
     /**
-     * @param SupplierCatalogItem[] $items
+     * @param  SupplierCatalogItem[]  $items
      */
     private function fakeAdapter(bool $success, array $items = [], ?string $errorCode = null, ?string $errorMessage = null): SupplierAdapter
     {
@@ -44,8 +46,7 @@ class ProductSyncServiceTest extends TestCase
                 private readonly array $items,
                 private readonly ?string $errorCode,
                 private readonly ?string $errorMessage,
-            ) {
-            }
+            ) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -84,7 +85,7 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('MLBB14', '14 Diamond (13+1 Bonus)', 'MOBA', 11.64, 'active'),
         ]);
 
-        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
 
         $this->assertSame(2, $result->total);
         $this->assertSame(2, $result->created);
@@ -97,6 +98,38 @@ class ProductSyncServiceTest extends TestCase
         $this->assertSame(1164, $row->price_sen); // 11.64 MYR -> sen
         $this->assertSame('active', $row->status_raw);
         $this->assertNotNull($row->last_synced_at);
+        // ADR-067 decision 4: no explicit groupLabel from the adapter
+        // falls back to category.
+        $this->assertSame('MOBA', $row->group_label);
+        $this->assertNull($row->type);
+    }
+
+    /**
+     * ADR-067 decision 4/5: when an adapter sets `groupLabel` / `type`
+     * explicitly (Digiflazz passes `brand` / `type`), those are stored
+     * verbatim — `group_label` is NOT the raw `category` in that case.
+     */
+    public function test_sync_stores_adapter_supplied_group_label_and_type(): void
+    {
+        $supplier = $this->supplier();
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem(
+                productRef: 'ml86',
+                name: 'Mobile Legends 86 Diamonds',
+                category: 'Games',
+                price: 20000.0,
+                status: 'active',
+                groupLabel: 'MOBILE LEGENDS',
+                type: 'Umum',
+            ),
+        ]);
+
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
+
+        $row = SupplierProduct::query()->where('external_ref', 'ml86')->firstOrFail();
+        $this->assertSame('Games', $row->category_raw);
+        $this->assertSame('MOBILE LEGENDS', $row->group_label);
+        $this->assertSame('Umum', $row->type);
     }
 
     /**
@@ -108,11 +141,11 @@ class ProductSyncServiceTest extends TestCase
     {
         $supplier = $this->supplier();
 
-        (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $this->fakeAdapter(true, [
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
         ]));
 
-        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $this->fakeAdapter(true, [
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds (renamed)', 'Free Fire', 12.5, 'active'),
         ]));
 
@@ -129,7 +162,7 @@ class ProductSyncServiceTest extends TestCase
     {
         $supplier = $this->supplier();
 
-        (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $this->fakeAdapter(true, [
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', null, 'inactive'),
         ]));
 
@@ -155,7 +188,7 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('pln20', 'PLN Token 20k', 'PLN Prepaid', 21000.0, 'active'),
         ]);
 
-        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
 
         $this->assertSame(1, $result->total);
         $this->assertSame(1, SupplierProduct::query()->count());
@@ -173,10 +206,79 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('pln20', 'PLN Token 20k', 'PLN Prepaid', 21000.0, 'active'),
         ]);
 
-        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
 
         $this->assertSame(2, $result->total);
         $this->assertSame(2, SupplierProduct::query()->count());
+    }
+
+    /**
+     * ADR-067: a row a completed sync no longer returns (a category now
+     * excluded by category_whitelist, or a product removed from the
+     * Digiflazz buyer area) is deleted — but only if it was never
+     * promoted, and never when the whole filtered list came back empty.
+     */
+    public function test_sync_prunes_an_unpromoted_row_the_supplier_no_longer_returns(): void
+    {
+        $supplier = $this->supplier();
+
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+            new SupplierCatalogItem('PLN20', 'PLN Token', 'PLN', 21.0, 'active'),
+        ]));
+        $this->assertSame(2, SupplierProduct::query()->count());
+
+        // Second run: PLN20 is gone from the catalog.
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]));
+
+        $this->assertSame(1, $result->pruned);
+        $this->assertSame(['FFP5'], SupplierProduct::query()->pluck('external_ref')->all());
+    }
+
+    public function test_sync_keeps_a_promoted_row_the_supplier_no_longer_returns(): void
+    {
+        $supplier = $this->supplier();
+        $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire']);
+
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+            new SupplierCatalogItem('FFP99', 'Free Fire 99', 'Free Fire', 90.0, 'active'),
+        ]));
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'FF 99', 'cost_price' => 9000, 'standard_selling_price' => 10000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'FFP99',
+        ]);
+
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]));
+
+        $this->assertSame(0, $result->pruned);
+        // FFP99's row stays so PackagePriceSyncService can deactivate its Package.
+        $this->assertTrue(SupplierProduct::query()->where('external_ref', 'FFP99')->exists());
+    }
+
+    public function test_sync_prunes_nothing_when_the_filtered_catalog_is_empty(): void
+    {
+        $supplier = $this->supplier(['api_config' => ['category_whitelist' => ['Nonexistent Category']]]);
+
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]));
+        // First run wrote nothing (whitelist matched nothing) — seed a row directly.
+        SupplierProduct::query()->create([
+            'supplier_id' => $supplier->id, 'external_ref' => 'OLD1', 'name' => 'Old', 'category_raw' => 'Games',
+            'group_label' => 'Games', 'price_sen' => 100, 'status_raw' => 'active', 'last_synced_at' => now()->subDay(),
+        ]);
+
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]));
+
+        $this->assertSame(0, $result->pruned);
+        $this->assertTrue(SupplierProduct::query()->where('external_ref', 'OLD1')->exists());
     }
 
     /**
@@ -194,7 +296,7 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('xld10', 'MLBB 10 Diamonds', 'Mobile Legends', 3200.0, 'active'),
         ]);
 
-        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
 
         // 3200 IDR * 0.000228 MYR/IDR = 0.7296 MYR = 72.96 sen -> ceil -> 73 sen.
         $this->assertSame(73, SupplierProduct::query()->firstOrFail()->price_sen);
@@ -208,7 +310,7 @@ class ProductSyncServiceTest extends TestCase
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
         ]);
 
-        $result = (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
 
         $this->assertNull($result->fxRateUsed);
     }
@@ -230,7 +332,7 @@ class ProductSyncServiceTest extends TestCase
 
         $this->expectException(ProductSyncFailedException::class);
 
-        (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
     }
 
     public function test_sync_throws_and_writes_nothing_when_the_adapter_call_fails(): void
@@ -239,7 +341,7 @@ class ProductSyncServiceTest extends TestCase
         $adapter = $this->fakeAdapter(false, [], 'timeout', 'Gamevion did not respond');
 
         try {
-            (new ProductSyncService(new CurrencyRateService()))->sync($supplier, $adapter);
+            (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
             $this->fail('Expected ProductSyncFailedException was not thrown.');
         } catch (ProductSyncFailedException) {
             // expected

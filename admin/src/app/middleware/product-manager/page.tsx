@@ -2,10 +2,17 @@
 
 /**
  * Price Sync Stage 2 (MID-1..6/SUPP-3) — two-level view, per founder
- * feedback (docs/prd.md §14): browse raw Gamevion items grouped by
- * `category_raw` (~22 groups), link a whole group to a Game ONCE, then
+ * feedback (docs/prd.md §14): browse raw supplier items grouped by
+ * `(supplier, group_label)`, link a whole group to a Game ONCE, then
  * curate individual items within that group. Re-deciding the Game on
- * every one of 316 items separately doesn't scale.
+ * every one of hundreds of items separately doesn't scale.
+ *
+ * ADR-067 decision 6: groups are per-supplier. `group_label` is the
+ * adapter-set grouping string — Gamevion's edition-level category
+ * ("Free Fire Global"), or Digiflazz's `brand` (its `category` is a
+ * flat "Games"). A supplier column + filter keeps two suppliers'
+ * near-identical groups apart so the founder can link both to one Game
+ * and let ADR-034's denomination dedup pick the storefront winner.
  */
 
 import { useEffect, useState } from "react";
@@ -43,6 +50,15 @@ import PromoteProductModal from "@/components/middleware/PromoteProductModal";
 
 function formatRm(sen: number | null): string {
   return sen === null ? "—" : `RM ${(sen / 100).toFixed(2)}`;
+}
+
+/** ADR-067 decision 6: a group is identified by (supplier id, group_label). */
+function groupKey(c: SupplierProductCategory): string {
+  return `${c.supplier?.id ?? "?"}:${c.group_label}`;
+}
+
+function sameGroup(a: SupplierProductCategory, b: SupplierProductCategory): boolean {
+  return groupKey(a) === groupKey(b);
 }
 
 /**
@@ -93,6 +109,7 @@ export default function ProductManagerPage() {
   const [categories, setCategories] = useState<SupplierProductCategory[] | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [categorySearch, setCategorySearch] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<SupplierProductCategory | null>(null);
@@ -118,7 +135,15 @@ export default function ProductManagerPage() {
     setCatalogPackages(null);
 
     try {
-      setItems((await listSupplierProducts(token, { category: category.category_raw ?? undefined, page: 1 })).data);
+      setItems(
+        (
+          await listSupplierProducts(token, {
+            supplier_id: category.supplier?.id,
+            group_label: category.group_label,
+            page: 1,
+          })
+        ).data,
+      );
       if (category.game_id) {
         setCatalogPackages(await listGamePackages(token, category.game_id));
       } else {
@@ -163,22 +188,23 @@ export default function ProductManagerPage() {
     // of the admin having to click it again.
     const refreshed = await listSupplierProductCategories(session.token, { search: categorySearch || undefined });
     setCategories(refreshed);
-    const reopened = refreshed.find((c) => c.category_raw === linkingCategory.category_raw);
+    const reopened = refreshed.find((c) => sameGroup(c, linkingCategory));
     if (reopened) await openCategory(session.token, reopened);
   }
 
   async function handleUpdateCheckoutInput(extraField: "server_id" | "zone_id" | null) {
-    if (!session || !selected?.game) return;
+    if (!session || !selected?.game || !selected.supplier) return;
 
     await linkSupplierProductCategory(session.token, {
-      category_raw: selected.category_raw ?? "",
+      supplier_id: selected.supplier.id,
+      group_label: selected.group_label,
       game_id: selected.game.id,
       validation_rules: { extra_field: extraField },
     });
 
     const refreshed = await listSupplierProductCategories(session.token, { search: categorySearch || undefined });
     setCategories(refreshed);
-    const reopened = refreshed.find((c) => c.category_raw === selected.category_raw);
+    const reopened = refreshed.find((c) => sameGroup(c, selected));
     if (reopened) setSelected(reopened);
   }
 
@@ -203,9 +229,11 @@ export default function ProductManagerPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
-              {selected.category_raw ?? "Uncategorized"}
+              {selected.group_label || "Uncategorized"}
             </h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <span className="font-medium">{selected.supplier?.name ?? "Unknown supplier"}</span>
+              {" · "}
               {selected.game ? (
                 <>
                   Linked to <span className="font-medium">{selected.game.name}</span>
@@ -231,7 +259,7 @@ export default function ProductManagerPage() {
         {!selected.game ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-gray-800 dark:bg-white/[0.03]">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Link this category to a Game before curating its {selected.total} item{selected.total === 1 ? "" : "s"}.
+              Link this group to a Game before curating its {selected.total} item{selected.total === 1 ? "" : "s"}.
             </p>
           </div>
         ) : (
@@ -366,12 +394,12 @@ export default function ProductManagerPage() {
             {tab === "checkout_input" && selected.game && (
               <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
                 <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-                  What Gamevion needs beyond Player ID (UID) for orders in this category — the admin decides this,
+                  What the supplier needs beyond Player ID (UID) for orders in this group — the admin decides this,
                   not a supplier API (ADR-005 addendum). Applies to every package under{" "}
                   <span className="font-medium text-gray-700 dark:text-gray-300">{selected.game.name}</span>.
                 </p>
                 <CheckoutInputEditor
-                  key={`${selected.category_raw}-${selected.game.id}`}
+                  key={`${groupKey(selected)}-${selected.game.id}`}
                   initial={selected.game.validation_rules}
                   onUpdate={handleUpdateCheckoutInput}
                 />
@@ -394,14 +422,26 @@ export default function ProductManagerPage() {
     );
   }
 
+  const supplierOptions = [
+    { value: "", label: "All suppliers" },
+    ...Array.from(
+      new Map((categories ?? []).flatMap((c) => (c.supplier ? [[c.supplier.slug, c.supplier.name] as const] : []))).entries(),
+    ).map(([slug, name]) => ({ value: slug, label: name })),
+  ];
+
+  const visibleCategories = (categories ?? [])
+    .filter((c) => supplierFilter === "" || c.supplier?.slug === supplierFilter)
+    .map((c) => ({ ...c, _key: groupKey(c) }));
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Product Manager</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Raw Gamevion catalog, grouped by category ({categories ? categories.length : "…"} groups). Link a
-            category to a Game once, then curate its packages.
+            Raw supplier catalogs, grouped per supplier ({categories ? categories.length : "…"} groups). Link a
+            group to a Game once, then curate its packages. Gamevion and Digiflazz can each carry the same game —
+            link both groups to one Game (ADR-067).
           </p>
         </div>
       </div>
@@ -412,24 +452,26 @@ export default function ProductManagerPage() {
         </p>
       )}
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           type="text"
-          placeholder="Search categories…"
+          placeholder="Search groups…"
           value={categorySearch}
           onChange={(e) => setCategorySearch(e.target.value)}
           className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
+        <SimpleSelect value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} className="w-48" />
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={categories ?? []} dataKey="category_raw">
+          <DataTable data={visibleCategories} dataKey="_key">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Category</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Group</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Items</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">In Catalog</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Linked Game</DataTableTHeadCell>
@@ -441,9 +483,12 @@ export default function ProductManagerPage() {
                     const category = item as unknown as SupplierProductCategory;
 
                     return (
-                      <DataTableRow key={category.category_raw ?? "uncategorized"}>
+                      <DataTableRow key={groupKey(category)}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {category.supplier?.name ?? "—"}
+                        </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                          {category.category_raw ?? "Uncategorized"}
+                          {category.group_label || "Uncategorized"}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.total}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.promoted_count}</DataTableCell>
@@ -474,8 +519,8 @@ export default function ProductManagerPage() {
             </DataTableTableContainer>
           </DataTable>
 
-          {categories?.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No categories found.</p>
+          {categories !== null && visibleCategories.length === 0 && (
+            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No groups found.</p>
           )}
           {categories === null && !error && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
@@ -487,7 +532,8 @@ export default function ProductManagerPage() {
         isOpen={linkingCategory !== null}
         onClose={() => setLinkingCategory(null)}
         onSubmit={handleLinkSubmit}
-        categoryRaw={linkingCategory?.category_raw ?? null}
+        supplierId={linkingCategory?.supplier?.id ?? null}
+        groupLabel={linkingCategory?.group_label ?? null}
         itemCount={linkingCategory?.total ?? 0}
         games={games}
       />

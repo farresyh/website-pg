@@ -25,7 +25,8 @@ interface LinkCategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (values: LinkCategoryValues) => Promise<void>;
-  categoryRaw: string | null;
+  supplierId: number | null;
+  groupLabel: string | null;
   itemCount: number;
   games: Game[];
 }
@@ -33,19 +34,21 @@ interface LinkCategoryModalProps {
 /**
  * Renders as a child of <Modal>, which unmounts while closed — same
  * fresh-mount-per-open reasoning as the other *FormFields components.
- * This decision is made ONCE per category (~15-40 items), not per
- * item — see docs/prd.md §14's Price Sync Stage 2 note.
+ * This decision is made ONCE per (supplier, group_label) group
+ * (~15-40 items), not per item — see docs/prd.md §14's Price Sync
+ * Stage 2 note and ADR-067 decision 6.
  */
 function LinkCategoryFields({
   onClose,
   onSubmit,
-  categoryRaw,
+  supplierId,
+  groupLabel,
   itemCount,
   games,
-}: Omit<LinkCategoryModalProps, "isOpen"> & { categoryRaw: string }) {
+}: Omit<LinkCategoryModalProps, "isOpen" | "supplierId" | "groupLabel"> & { supplierId: number; groupLabel: string }) {
   const [gameMode, setGameMode] = useState<"existing" | "new">(games.length > 0 ? "existing" : "new");
   const [gameId, setGameId] = useState(games[0] ? String(games[0].id) : "");
-  const [newGameName, setNewGameName] = useState(categoryRaw);
+  const [newGameName, setNewGameName] = useState(groupLabel);
   const [newGameCategory, setNewGameCategory] = useState("");
   // Defaults to whatever the initially-selected existing game already
   // has set — re-linking is the supported way to review/correct it.
@@ -75,7 +78,8 @@ function LinkCategoryFields({
     setSubmitting(true);
     try {
       await onSubmit({
-        category_raw: categoryRaw,
+        supplier_id: supplierId,
+        group_label: groupLabel,
         ...(gameMode === "existing"
           ? { game_id: Number(gameId) }
           : { new_game: { name: newGameName, category: newGameCategory || undefined } }),
@@ -91,7 +95,7 @@ function LinkCategoryFields({
   return (
     <>
       <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-        &quot;{categoryRaw}&quot; — {itemCount} raw item{itemCount === 1 ? "" : "s"}. Every item in this category
+        &quot;{groupLabel}&quot; — {itemCount} raw item{itemCount === 1 ? "" : "s"}. Every item in this group
         will use the game you pick here — you won&apos;t be asked again per item.
       </p>
 
@@ -163,7 +167,7 @@ function LinkCategoryFields({
   );
 }
 
-export default function LinkCategoryModal({ isOpen, onClose, onSubmit, categoryRaw, itemCount, games }: LinkCategoryModalProps) {
+export default function LinkCategoryModal({ isOpen, onClose, onSubmit, supplierId, groupLabel, itemCount, games }: LinkCategoryModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -179,11 +183,12 @@ export default function LinkCategoryModal({ isOpen, onClose, onSubmit, categoryR
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && categoryRaw && (
+              {isOpen && supplierId !== null && groupLabel !== null && (
                 <LinkCategoryFields
                   onClose={onClose}
                   onSubmit={onSubmit}
-                  categoryRaw={categoryRaw}
+                  supplierId={supplierId}
+                  groupLabel={groupLabel}
                   itemCount={itemCount}
                   games={games}
                 />

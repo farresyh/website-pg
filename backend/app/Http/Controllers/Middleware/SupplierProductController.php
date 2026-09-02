@@ -8,6 +8,7 @@ use App\Http\Requests\Middleware\LinkSupplierProductCategoryRequest;
 use App\Http\Requests\Middleware\PromoteSupplierProductRequest;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
@@ -17,40 +18,56 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * MID-1..6/SUPP-3: browse the raw catalog Stage 1 sync mirrored
- * (`supplier_products`), link a whole `category_raw` group to a Game
- * once, then promote individual rows into real, customer-facing
- * `Package`s under it. See docs/prd.md §14's Price Sync Stage 2 note
- * for why this lives under /middleware, not /admin — and why the
- * category-group step exists at all (founder feedback: re-picking a
+ * (`supplier_products`), link a whole `(supplier, group_label)` group
+ * to a Game once, then promote individual rows into real,
+ * customer-facing `Package`s under it. See docs/prd.md §14's Price
+ * Sync Stage 2 note for why this lives under /middleware, not /admin —
+ * and why the group step exists at all (founder feedback: re-picking a
  * Game for all 316 items one-by-one doesn't scale).
+ *
+ * ADR-067 decision 6: groups are keyed on `(supplier_id, group_label)`
+ * — `group_label` is the adapter-set grouping string (Gamevion:
+ * `category_raw`; Digiflazz: `brand`, because its `category` is a flat
+ * "Games"), and a supplier column/filter distinguishes two suppliers'
+ * near-identical groups (e.g. Gamevion "Mobile Legends" vs Digiflazz
+ * "MOBILE LEGENDS") so the founder can link both to one Game and let
+ * ADR-034's denomination dedup decide which package the storefront
+ * shows.
  */
 class SupplierProductController extends Controller
 {
     /**
-     * One row per distinct `category_raw` — this is the group-level
-     * view an admin lands on first (analogous to legacy's Games list).
-     * `game_id` reflects whatever any row in the group was last linked
-     * to (LinkSupplierProductCategoryRequest stamps every row in the
-     * group uniformly, so this is consistent unless a later Stage 1
-     * sync adds a brand-new item to an already-linked category before
-     * anyone re-links it — a known, accepted gap, not a bug).
+     * One row per distinct `(supplier_id, group_label)` — the
+     * group-level view an admin lands on first. `game_id` reflects
+     * whatever any row in the group was last linked to
+     * (LinkSupplierProductCategoryRequest stamps every row in the group
+     * uniformly, so this is consistent unless a later Stage 1 sync adds
+     * a brand-new item to an already-linked group before anyone
+     * re-links it — a known, accepted gap, not a bug).
      */
     public function categories(Request $request): JsonResponse
     {
         $query = SupplierProduct::query();
 
         if ($search = $request->query('search')) {
-            $query->where('category_raw', 'like', "%{$search}%");
+            $query->where('group_label', 'like', "%{$search}%");
         }
 
-        $products = $query->get(['category_raw', 'external_ref', 'game_id']);
+        $products = $query->get(['supplier_id', 'group_label', 'external_ref', 'game_id']);
         $promotedRefs = Package::query()->pluck('supplier_package_ref')->all();
+        $suppliers = Supplier::query()->get(['id', 'slug', 'name'])->keyBy('id');
 
         $categories = $products
-            ->groupBy(fn (SupplierProduct $p) => $p->category_raw ?? '')
-            ->map(function ($group, string $categoryRaw) use ($promotedRefs) {
+            ->groupBy(fn (SupplierProduct $p) => $p->supplier_id.'|'.$p->group_label)
+            ->map(function ($group) use ($promotedRefs, $suppliers) {
+                $first = $group->first();
+                $supplier = $suppliers->get($first->supplier_id);
+
                 return [
-                    'category_raw' => $categoryRaw !== '' ? $categoryRaw : null,
+                    'supplier' => $supplier
+                        ? ['id' => $supplier->id, 'slug' => $supplier->slug, 'name' => $supplier->name]
+                        : null,
+                    'group_label' => $first->group_label,
                     'total' => $group->count(),
                     'promoted_count' => $group->filter(
                         fn (SupplierProduct $p) => in_array($p->external_ref, $promotedRefs, true),
@@ -71,17 +88,20 @@ class SupplierProductController extends Controller
 
                 return $c;
             })
-            ->sortBy('category_raw')
+            ->sortBy(fn (array $c) => ($c['supplier']['name'] ?? '').'|'.$c['group_label'])
             ->values();
 
         return response()->json($categories);
     }
 
     /**
-     * Links every raw item sharing one `category_raw` to a Game in one
-     * action. Safe to call again later (e.g. after Stage 1 re-syncs
-     * new items into an already-linked category) — always re-stamps
-     * the whole group, not just unlinked rows.
+     * Links every raw item in one `(supplier_id, group_label)` group to
+     * a Game in one action. Safe to call again later (e.g. after Stage
+     * 1 re-syncs new items into an already-linked group) — always
+     * re-stamps the whole group, not just unlinked rows. Scoped to one
+     * supplier: linking Gamevion's "Mobile Legends" group never touches
+     * Digiflazz's "MOBILE LEGENDS" group even though both point at the
+     * same Game (ADR-067 decision 6).
      *
      * `validation_rules` is stamped onto the Game here too (existing
      * or newly-created) — re-linking is the supported way to correct
@@ -103,7 +123,8 @@ class SupplierProductController extends Controller
         $game->update(['validation_rules' => $data['validation_rules'] ?? null]);
 
         SupplierProduct::query()
-            ->where('category_raw', $data['category_raw'])
+            ->where('supplier_id', $data['supplier_id'])
+            ->where('group_label', $data['group_label'])
             ->update(['game_id' => $game->id]);
 
         return response()->json(['game' => $game]);
@@ -120,18 +141,24 @@ class SupplierProductController extends Controller
         $query = SupplierProduct::query()->with('supplier');
 
         if ($search = $request->query('search')) {
-            // Gamevion's raw item names are pure denominations ("100
-            // Diamonds") — the game identity lives in category_raw
+            // A supplier's raw item names are often pure denominations
+            // ("100 Diamonds") — the game identity lives in group_label
             // ("Free Fire Global"), not the name. Search both, or
             // typing a game name finds nothing.
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('category_raw', 'like', "%{$search}%");
+                    ->orWhere('group_label', 'like', "%{$search}%");
             });
         }
 
-        if ($category = $request->query('category')) {
-            $query->where('category_raw', $category);
+        // ADR-067 decision 6: a group is (supplier_id, group_label) —
+        // both are required to scope down to one group's items.
+        if ($supplierId = $request->query('supplier_id')) {
+            $query->where('supplier_id', $supplierId);
+        }
+
+        if ($request->query('group_label') !== null) {
+            $query->where('group_label', $request->query('group_label'));
         }
 
         $products = $query->orderBy('name')->paginate(50);
