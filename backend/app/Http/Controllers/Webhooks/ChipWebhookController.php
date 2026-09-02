@@ -64,6 +64,10 @@ class ChipWebhookController extends Controller
         Log::withContext([
             'order_number' => $order->order_number,
             'payment_request_id' => $event->paymentRequestId,
+            // Informational only — the controller keys off `status`, not
+            // `event_type` (a `success_callback` always carries a paid
+            // Purchase; `event_type` just names which trigger fired it).
+            'event_type' => $event->eventType,
         ]);
 
         // PAY-2: CHIP can and does deliver the same event more than

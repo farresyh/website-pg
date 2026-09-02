@@ -631,4 +631,6 @@ Route::middleware('auth:sanctum')->group(function () {
 // enabled at all, per bootstrap/app.php) — bounds the cost of an unsigned
 // flood before signature verification runs, without risking a real gateway
 // retry burst getting throttled. Found absent, fresh audit, 2026-08-14.
-Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])->middleware('throttle:120,1,webhook-chip');
+Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
+    ->middleware('throttle:120,1,webhook-chip')
+    ->name('webhooks.chip');

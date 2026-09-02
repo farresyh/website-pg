@@ -40,10 +40,21 @@ use Illuminate\Support\Facades\Http;
  *    `error`/`cancelled` (failure); everything else (`created`,
  *    `hold`, `pending_*`, `refunded`, `released`, `preauthorized`) is
  *    still in flight.
+ *  - Webhook delivery: this adapter uses CHIP's per-purchase
+ *    `success_callback` (a URL sent on `POST /purchases/`), not a
+ *    portal-registered webhook — ADR-022's 2026-09-04 webhook-model
+ *    addendum. CHIP POSTs a signed Purchase to that URL when the
+ *    purchase is paid; failure/cancel/chargeback outcomes are NOT
+ *    delivered this way and are caught by `ReconcilePendingPaymentsCommand`
+ *    (PAY-3 polling) instead.
  *  - Webhook authenticity: `X-Signature` header is a base64-encoded
  *    RSA PKCS#1 v1.5 signature of the SHA256 digest of the raw
  *    request body, verified against the public key from
- *    `GET /public_key/` (cached — see `webhookPublicKeyTtlSeconds`).
+ *    `GET /public_key/` (the account key — `success_callback` deliveries
+ *    use it; a registered webhook would carry its own key instead).
+ *    Cached for `webhookPublicKeyTtlSeconds`; a cached key that stops
+ *    verifying (a CHIP-side rotation) is re-fetched once, rate-limited,
+ *    and retried before the delivery is rejected.
  *  - Webhook payload is the Purchase object itself with an added
  *    `event_type` field (flattened, not nested under a `purchase` key
  *    — only the amount stays nested at `purchase.total`, same as the
@@ -53,6 +64,10 @@ final class ChipGateway implements PaymentGateway
 {
     private const PUBLIC_KEY_CACHE_KEY = 'payment-gateway.chip.public_key';
 
+    private const PUBLIC_KEY_REFRESH_COOLDOWN_KEY = 'payment-gateway.chip.public_key.refresh_cooldown';
+
+    private const PUBLIC_KEY_REFRESH_COOLDOWN_SECONDS = 60;
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $secretKey,
@@ -60,6 +75,7 @@ final class ChipGateway implements PaymentGateway
         private readonly int $timeoutSeconds = 10,
         private readonly int $connectTimeoutSeconds = 5,
         private readonly int $webhookPublicKeyTtlSeconds = 86400,
+        private readonly ?string $callbackUrl = null,
     ) {}
 
     public function createPayment(PaymentRequest $request): PaymentResponse
@@ -75,6 +91,11 @@ final class ChipGateway implements PaymentGateway
             ], fn ($value) => $value !== null),
             'brand_id' => $this->brandId,
             'reference' => $request->referenceId,
+            // Server-to-server paid notification (ADR-022 2026-09-04
+            // addendum). `success_redirect`/`failure_redirect` below are
+            // only the customer's browser landing — never trusted to move
+            // an order's payment_status.
+            'success_callback' => $this->callbackUrl,
             'success_redirect' => $request->channelProperties['success_return_url'] ?? null,
             'failure_redirect' => $request->channelProperties['failure_return_url'] ?? null,
             // CHIP's own channel enum ('fpx', 'fpx_b2b1', 'duitnow_qr',
@@ -122,13 +143,28 @@ final class ChipGateway implements PaymentGateway
             return false;
         }
 
-        $publicKey = $this->publicKey();
+        $body = $request->getContent();
+        $cachedKey = $this->publicKey();
 
-        if ($publicKey === null) {
-            return false;
+        if ($cachedKey !== null && $this->signatureMatches($body, $decodedSignature, $cachedKey)) {
+            return true;
         }
 
-        return openssl_verify($request->getContent(), $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256) === 1;
+        // A cached key that no longer verifies is what a CHIP-side key
+        // rotation looks like from here. Re-fetch once (rate-limited, so a
+        // flood of forged signatures can't hammer GET /public_key/) and
+        // retry against a genuinely different key before rejecting. A
+        // still-rejected delivery falls through to PAY-3 polling.
+        $freshKey = $this->refreshPublicKey();
+
+        return $freshKey !== null
+            && $freshKey !== $cachedKey
+            && $this->signatureMatches($body, $decodedSignature, $freshKey);
+    }
+
+    private function signatureMatches(string $body, string $decodedSignature, string $publicKey): bool
+    {
+        return openssl_verify($body, $decodedSignature, $publicKey, OPENSSL_ALGO_SHA256) === 1;
     }
 
     public function parseWebhookEvent(array $payload): PaymentWebhookEvent
@@ -157,6 +193,29 @@ final class ChipGateway implements PaymentGateway
             return $cached;
         }
 
+        return $this->fetchPublicKey();
+    }
+
+    /**
+     * Drop the cached key and re-fetch — for the "cached key stopped
+     * verifying" (rotation) path in verifyWebhookSignature(). Guarded by
+     * a short cooldown so repeated bad-signature requests trigger at most
+     * one live fetch per {@see self::PUBLIC_KEY_REFRESH_COOLDOWN_SECONDS}.
+     */
+    private function refreshPublicKey(): ?string
+    {
+        if (Cache::get(self::PUBLIC_KEY_REFRESH_COOLDOWN_KEY)) {
+            return null;
+        }
+
+        Cache::put(self::PUBLIC_KEY_REFRESH_COOLDOWN_KEY, true, self::PUBLIC_KEY_REFRESH_COOLDOWN_SECONDS);
+        Cache::forget(self::PUBLIC_KEY_CACHE_KEY);
+
+        return $this->fetchPublicKey();
+    }
+
+    private function fetchPublicKey(): ?string
+    {
         $response = $this->client()->get('/public_key/');
 
         if (! $response->successful()) {
