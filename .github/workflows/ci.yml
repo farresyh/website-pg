@@ -171,10 +171,15 @@ jobs:
   # which marks the Forge deployment failed and fires Forge's
   # deployment-failed notification; recovery is a manual
   # `php artisan migrate:rollback` + redeploy. `--fail-with-body` so a
-  # non-2xx from Forge fails this job.
+  # non-2xx from Forge fails this job while still printing Forge's
+  # response body. NOTE: `--fail-with-body` is mutually exclusive with
+  # `-f`/`--fail` — curl rejects `-f … --fail-with-body` outright
+  # ("option --fail-with-body: is badly used here"), which is why the
+  # flag here is `-sS`, not `-fsS` (the `-f` form silently failed every
+  # `main` deploy from the Forge cutover until 2026-09-02).
   deploy:
     if: github.ref == 'refs/heads/main'
     needs: [backend-tests, backend-concurrency, admin, storefront, reseller]
     runs-on: ubuntu-latest
     steps:
-      - run: curl -fsS --fail-with-body -X POST "${{ secrets.FORGE_DEPLOY_HOOK }}"
+      - run: curl -sS --fail-with-body --max-time 30 -X POST "${{ secrets.FORGE_DEPLOY_HOOK }}"
