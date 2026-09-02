@@ -18,7 +18,7 @@ export default async function TermsPage() {
   return (
     <>
       <SiteHeader />
-      <main className="pb-16 lg:pb-0">
+      <main className="pb-10 lg:pb-0">
         <LegalPageContent title="Terms & Conditions" content={content} />
       </main>
       <SiteFooter />

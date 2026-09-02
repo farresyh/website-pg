@@ -4,7 +4,7 @@ import { PROMOTIONS } from "@/lib/placeholder-data";
 
 export default function PromotionsSection() {
   return (
-    <section id="promotions" className="mx-auto max-w-[1200px] px-4 py-12">
+    <section id="promotions" className="mx-auto max-w-[1200px] px-4 py-9 lg:py-12">
       <SectionHeading title="This Week's Promotions" />
       <div className="grid gap-4 lg:grid-cols-3">
         {PROMOTIONS.map((promo) => (

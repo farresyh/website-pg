@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { TouchEvent } from "react";
 import Image from "next/image";
 import { CaretLeft, CaretRight, Fire } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
@@ -19,6 +20,10 @@ const AUTO_ROTATE_MS = 6000;
 export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  // A slide whose image URL 404s (deleted asset, missing storage link)
+  // falls back to the no-image paper layout rather than showing a dark
+  // scrim over nothing.
+  const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
   const reducedMotionRef = useRef(false);
 
   useEffect(() => {
@@ -36,10 +41,24 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const next = useCallback(() => setIndex((prev) => (prev + 1) % slides.length), [slides.length]);
   const prev = useCallback(() => setIndex((prev) => (prev - 1 + slides.length) % slides.length), [slides.length]);
 
+  // Touch swipe — the prev/next arrows are pointer-only (lg:flex), so
+  // without this a phone can only page via the dot indicators.
+  const touchStartX = useRef<number | null>(null);
+  const onTouchStart = (e: TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (e: TouchEvent) => {
+    if (touchStartX.current === null || slides.length <= 1) return;
+    const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
+    if (dx <= -40) next();
+    else if (dx >= 40) prev();
+    touchStartX.current = null;
+  };
+
   if (slides.length === 0) return null;
 
   const slide = slides[index % slides.length];
-  const hasImage = Boolean(slide.imageUrl);
+  const hasImage = Boolean(slide.imageUrl) && !brokenImages.has(slide.id);
 
   return (
     <div className="relative">
@@ -50,19 +69,31 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       />
 
       <div
-        className="relative flex h-[360px] flex-col justify-end overflow-hidden rounded-lg border-2 border-ink bg-surface-container-low neo lg:h-[420px]"
+        className="relative flex min-h-[360px] flex-col justify-end overflow-hidden rounded-lg border-2 border-ink bg-surface-container-low neo lg:h-[420px] lg:min-h-0"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
       >
         {hasImage && (
           <>
-            <Image src={slide.imageUrl as string} alt="" fill className="object-cover" priority />
-            <div className="absolute inset-0 bg-gradient-to-r from-ink/85 via-ink/55 to-transparent" aria-hidden="true" />
+            <Image
+              src={slide.imageUrl as string}
+              alt=""
+              fill
+              sizes="(min-width: 1024px) 66vw, 100vw"
+              className="object-cover"
+              priority
+              onError={() => setBrokenImages((prev) => new Set(prev).add(slide.id))}
+            />
+            {/* Left-anchored scrim: dark enough for the headline, then
+              * clears so the image reads on the right (ADR-064). */}
+            <div className="absolute inset-0 bg-gradient-to-r from-ink/80 via-ink/40 to-transparent" aria-hidden="true" />
           </>
         )}
 
         <div
-          className={`relative z-10 flex max-w-[560px] flex-col items-start gap-3 p-6 lg:p-10 ${
+          className={`relative z-10 flex max-w-[560px] flex-col items-start gap-3 p-5 lg:p-10 ${
             hasImage ? "text-surface-container-lowest" : "text-on-surface"
           }`}
         >
@@ -76,7 +107,7 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
               {slide.eyebrow}
             </span>
           )}
-          <h2 className="font-display text-[38px] font-bold leading-[1.02] tracking-tight lg:text-[56px]">{slide.title}</h2>
+          <h2 className="font-display text-[32px] font-bold leading-[1.05] tracking-tight sm:text-[38px] lg:text-[56px]">{slide.title}</h2>
           {slide.description && (
             <p className={`max-w-[440px] text-sm leading-relaxed ${hasImage ? "text-surface-container-lowest/90" : "text-on-surface-variant"}`}>
               {slide.description}

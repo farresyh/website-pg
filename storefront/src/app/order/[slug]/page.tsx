@@ -92,7 +92,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       )}
       <SiteHeader />
-      <main className="pb-16 lg:pb-0">
+      <main className="pb-10 lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 pt-5">
           <nav className="mb-4 flex items-center gap-2 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
             <Link href="/" className="hover:text-primary">

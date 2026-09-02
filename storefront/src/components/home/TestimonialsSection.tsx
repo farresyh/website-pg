@@ -5,7 +5,7 @@ import { TESTIMONIALS } from "@/lib/placeholder-data";
 
 export default function TestimonialsSection() {
   return (
-    <section className="mx-auto max-w-[1200px] px-4 py-12">
+    <section className="mx-auto max-w-[1200px] px-4 py-9 lg:py-12">
       <SectionHeading title="What Customers Say" />
       <div className="grid gap-4 lg:grid-cols-3">
         {TESTIMONIALS.map((t) => (

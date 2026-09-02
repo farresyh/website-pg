@@ -24,7 +24,7 @@ export default async function SiteFooter() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="border-t-2 border-ink bg-surface-container-highest pt-12 pb-6">
+    <footer className="border-t-2 border-ink bg-surface-container-highest pt-9 pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pt-12 lg:pb-6">
       <div className="mx-auto max-w-[1200px] px-4">
         <div className="mb-8 grid gap-8 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
