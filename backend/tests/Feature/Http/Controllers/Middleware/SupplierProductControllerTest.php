@@ -146,6 +146,40 @@ class SupplierProductControllerTest extends TestCase
         $this->assertSame('A', $response->json('data.0.external_ref'));
     }
 
+    public function test_index_paginates_a_large_group_and_reports_last_page(): void
+    {
+        // A real group ("Mobile Legends — Malaysia") holds >50 raw items;
+        // the admin/ Product Manager pages through `last_page` to reach
+        // every one of them (listAllSupplierProducts). Lock that contract.
+        $supplier = $this->supplier();
+        for ($i = 0; $i < 123; $i++) {
+            $this->rawProduct($supplier, [
+                'external_ref' => 'ML'.$i,
+                'category_raw' => 'Mobile Legends — Malaysia',
+                'group_label' => 'Mobile Legends — Malaysia',
+            ]);
+        }
+
+        $this->actingAsAdmin();
+        $url = '/api/middleware/supplier-products?supplier_id='.$supplier->id
+            .'&group_label='.urlencode('Mobile Legends — Malaysia');
+
+        $page1 = $this->getJson($url);
+        $page1->assertOk();
+        $this->assertCount(50, $page1->json('data'));
+        $this->assertSame(3, $page1->json('last_page'));
+        $this->assertSame(123, $page1->json('total'));
+
+        $page3 = $this->getJson($url.'&page=3');
+        $this->assertCount(23, $page3->json('data'));
+
+        $seen = collect([1, 2, 3])
+            ->flatMap(fn ($p) => $this->getJson($url.'&page='.$p)->json('data'))
+            ->pluck('external_ref')
+            ->unique();
+        $this->assertCount(123, $seen);
+    }
+
     public function test_categories_groups_raw_products_with_counts_and_linked_game(): void
     {
         $supplier = $this->supplier();

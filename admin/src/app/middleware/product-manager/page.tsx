@@ -39,7 +39,7 @@ import {
   type LinkCategoryValues,
   type PromoteValues,
   listSupplierProductCategories,
-  listSupplierProducts,
+  listAllSupplierProducts,
   linkSupplierProductCategory,
   promoteSupplierProduct,
 } from "@/lib/supplier-products";
@@ -136,13 +136,10 @@ export default function ProductManagerPage() {
 
     try {
       setItems(
-        (
-          await listSupplierProducts(token, {
-            supplier_id: category.supplier?.id,
-            group_label: category.group_label,
-            page: 1,
-          })
-        ).data,
+        await listAllSupplierProducts(token, {
+          supplier_id: category.supplier?.id,
+          group_label: category.group_label,
+        }),
       );
       if (category.game_id) {
         setCatalogPackages(await listGamePackages(token, category.game_id));
