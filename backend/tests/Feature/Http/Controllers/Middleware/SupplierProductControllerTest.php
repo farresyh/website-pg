@@ -27,7 +27,7 @@ class SupplierProductControllerTest extends TestCase
 
     private function rawProduct(Supplier $supplier, array $overrides = []): SupplierProduct
     {
-        return SupplierProduct::query()->create(array_merge([
+        $attributes = array_merge([
             'supplier_id' => $supplier->id,
             'external_ref' => 'GV733',
             'name' => '14 Diamond (13+1 Bonus)',
@@ -35,7 +35,14 @@ class SupplierProductControllerTest extends TestCase
             'price_sen' => 1164,
             'status_raw' => 'active',
             'last_synced_at' => now(),
-        ], $overrides));
+        ], $overrides);
+
+        // Mirror ProductSyncService's `groupLabel ?? category` fallback
+        // so a test that only sets `category_raw` still groups the way
+        // Gamevion's real sync does (ADR-067 decision 4).
+        $attributes['group_label'] ??= $attributes['category_raw'] ?? '';
+
+        return SupplierProduct::query()->create($attributes);
     }
 
     private function actingAsAdmin(): void
@@ -117,15 +124,22 @@ class SupplierProductControllerTest extends TestCase
         $this->assertSame('Free Fire Global', $response->json('data.0.category_raw'));
     }
 
-    public function test_index_can_filter_by_exact_category(): void
+    public function test_index_can_filter_by_supplier_and_group_label(): void
     {
-        $supplier = $this->supplier();
-        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Free Fire Global']);
-        $this->rawProduct($supplier, ['external_ref' => 'B', 'category_raw' => 'Free Fire (Malaysia)']);
+        $gamevion = $this->supplier();
+        $digiflazz = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR',
+        ]);
+        $this->rawProduct($gamevion, ['external_ref' => 'A', 'category_raw' => 'Free Fire Global', 'group_label' => 'Free Fire Global']);
+        $this->rawProduct($gamevion, ['external_ref' => 'B', 'category_raw' => 'Free Fire (Malaysia)', 'group_label' => 'Free Fire (Malaysia)']);
+        // Same group_label string, different supplier — must not leak in.
+        $this->rawProduct($digiflazz, ['external_ref' => 'C', 'category_raw' => 'Games', 'group_label' => 'Free Fire Global']);
 
         $this->actingAsAdmin();
 
-        $response = $this->getJson('/api/middleware/supplier-products?category='.urlencode('Free Fire Global'));
+        $response = $this->getJson(
+            '/api/middleware/supplier-products?supplier_id='.$gamevion->id.'&group_label='.urlencode('Free Fire Global'),
+        );
 
         $response->assertOk();
         $this->assertCount(1, $response->json('data'));
@@ -154,14 +168,40 @@ class SupplierProductControllerTest extends TestCase
         $response = $this->getJson('/api/middleware/supplier-products/categories');
 
         $response->assertOk();
-        $byCategory = collect($response->json())->keyBy('category_raw');
+        $byGroup = collect($response->json())->keyBy('group_label');
 
-        $this->assertSame(2, $byCategory['Free Fire Global']['total']);
-        $this->assertSame(1, $byCategory['Free Fire Global']['promoted_count']);
-        $this->assertSame($game->id, $byCategory['Free Fire Global']['game']['id']);
+        $this->assertSame(2, $byGroup['Free Fire Global']['total']);
+        $this->assertSame(1, $byGroup['Free Fire Global']['promoted_count']);
+        $this->assertSame($game->id, $byGroup['Free Fire Global']['game']['id']);
+        $this->assertSame('gamevion', $byGroup['Free Fire Global']['supplier']['slug']);
 
-        $this->assertSame(1, $byCategory['Mobile Legends']['total']);
-        $this->assertNull($byCategory['Mobile Legends']['game']);
+        $this->assertSame(1, $byGroup['Mobile Legends']['total']);
+        $this->assertNull($byGroup['Mobile Legends']['game']);
+    }
+
+    /**
+     * ADR-067 decision 6: the same group_label from two suppliers is
+     * two rows, not one merged blob — the founder links each to a Game
+     * separately, and a supplier column tells them apart.
+     */
+    public function test_categories_keeps_two_suppliers_same_label_group_separate(): void
+    {
+        $gamevion = $this->supplier();
+        $digiflazz = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR',
+        ]);
+        $this->rawProduct($gamevion, ['external_ref' => 'A', 'category_raw' => 'Mobile Legends', 'group_label' => 'Mobile Legends']);
+        $this->rawProduct($digiflazz, ['external_ref' => 'B', 'category_raw' => 'Games', 'group_label' => 'Mobile Legends']);
+        $this->rawProduct($digiflazz, ['external_ref' => 'C', 'category_raw' => 'Games', 'group_label' => 'Mobile Legends']);
+
+        $this->actingAsAdmin();
+
+        $rows = collect($this->getJson('/api/middleware/supplier-products/categories')->assertOk()->json())
+            ->filter(fn ($r) => $r['group_label'] === 'Mobile Legends')
+            ->keyBy(fn ($r) => $r['supplier']['slug']);
+
+        $this->assertSame(1, $rows['gamevion']['total']);
+        $this->assertSame(2, $rows['digiflazz']['total']);
     }
 
     /**
@@ -185,8 +225,8 @@ class SupplierProductControllerTest extends TestCase
         $response = $this->getJson('/api/middleware/supplier-products/categories');
 
         $response->assertOk();
-        $byCategory = collect($response->json())->keyBy('category_raw');
-        $this->assertSame(['extra_field' => 'zone_id'], $byCategory['Mobile Legends']['game']['validation_rules']);
+        $byGroup = collect($response->json())->keyBy('group_label');
+        $this->assertSame(['extra_field' => 'zone_id'], $byGroup['Mobile Legends']['game']['validation_rules']);
     }
 
     public function test_link_category_creates_a_new_game_and_stamps_every_item_in_the_category(): void
@@ -198,7 +238,8 @@ class SupplierProductControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
-            'category_raw' => 'Free Fire Global',
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Free Fire Global',
             'new_game' => ['name' => 'Free Fire Global', 'category' => 'Battle Royale'],
         ]);
 
@@ -219,7 +260,8 @@ class SupplierProductControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
-            'category_raw' => 'Free Fire Global',
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Free Fire Global',
             'game_id' => $game->id,
         ]);
 
@@ -242,7 +284,8 @@ class SupplierProductControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
-            'category_raw' => 'Mobile Legends',
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Mobile Legends',
             'new_game' => ['name' => 'Mobile Legends'],
             'validation_rules' => ['extra_field' => 'zone_id'],
         ]);
@@ -260,7 +303,8 @@ class SupplierProductControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
-            'category_raw' => 'Free Fire Global',
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Free Fire Global',
             'game_id' => $game->id,
             'validation_rules' => ['extra_field' => 'server_id'],
         ]);
@@ -276,7 +320,8 @@ class SupplierProductControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
-            'category_raw' => 'Free Fire Global',
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Free Fire Global',
             'new_game' => ['name' => 'Free Fire Global'],
             'validation_rules' => ['extra_field' => 'account_number'],
         ]);
@@ -292,7 +337,8 @@ class SupplierProductControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
-            'category_raw' => 'Free Fire Global',
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Free Fire Global',
             'game_id' => $game->id,
             'new_game' => ['name' => 'Another Game'],
         ]);
@@ -307,7 +353,8 @@ class SupplierProductControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
-            'category_raw' => 'Free Fire Global',
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Free Fire Global',
         ]);
 
         $response->assertUnprocessable();

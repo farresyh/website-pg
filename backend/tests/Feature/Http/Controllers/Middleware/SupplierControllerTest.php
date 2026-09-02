@@ -42,9 +42,7 @@ class SupplierControllerTest extends TestCase
     {
         return new class($success, $data) implements SupplierAdapter
         {
-            public function __construct(private bool $success, private array $data)
-            {
-            }
+            public function __construct(private bool $success, private array $data) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -189,6 +187,54 @@ class SupplierControllerTest extends TestCase
         $this->assertTrue($fresh->api_config['sandbox']);
         $this->assertSame('existing-secret', $fresh->api_config['bearer_token'], 'a secret not resubmitted must survive the update untouched');
         $this->assertSame('existing-key', $fresh->api_config['api_key']);
+    }
+
+    /**
+     * ADR-067 decision 2: the edit form submits `category_whitelist`
+     * comma-separated; it must land in api_config as a trimmed
+     * string[], and a blank value as [] (not [""]).
+     */
+    public function test_update_normalizes_the_digiflazz_category_whitelist_to_an_array(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier([
+            'slug' => 'digiflazz',
+            'api_config' => ['base_url' => 'https://api.digiflazz.com', 'username' => 'u', 'api_key' => 'k'],
+        ]);
+
+        $this->putJson("/api/middleware/suppliers/{$supplier->id}", [
+            'api_config' => ['category_whitelist' => 'Games, Voucher ,, '],
+        ])->assertOk();
+
+        $this->assertSame(['Games', 'Voucher'], $supplier->fresh()->api_config['category_whitelist']);
+
+        $this->putJson("/api/middleware/suppliers/{$supplier->id}", [
+            'api_config' => ['category_whitelist' => '  '],
+        ])->assertOk();
+
+        $this->assertSame([], $supplier->fresh()->api_config['category_whitelist']);
+    }
+
+    /**
+     * ADR-067 decision 2: category_whitelist is optional — a digiflazz
+     * row without it is still "fully configured" and its adapter still
+     * binds.
+     */
+    public function test_digiflazz_without_a_category_whitelist_is_still_fully_configured(): void
+    {
+        $this->actingAsAdmin();
+        $this->supplier([
+            'slug' => 'digiflazz',
+            'api_config' => [
+                'base_url' => 'https://api.digiflazz.com', 'username' => 'u', 'api_key' => 'k',
+                'testing' => false, 'customer_no_separator' => '',
+            ],
+        ]);
+
+        $row = collect($this->getJson('/api/middleware/suppliers')->assertOk()->json())
+            ->firstWhere('slug', 'digiflazz');
+
+        $this->assertTrue($row['is_fully_configured']);
     }
 
     public function test_destroy_is_blocked_when_packages_reference_the_supplier(): void

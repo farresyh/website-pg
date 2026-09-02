@@ -7,11 +7,14 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Links every raw `supplier_products` row sharing one `category_raw`
- * value (e.g. "Free Fire Global", ~15 items) to a Game in one action —
- * either an existing Game or a brand-new one created inline. This
- * decision is made ONCE per category, not per item (founder feedback,
- * docs/prd.md §14).
+ * Links every raw `supplier_products` row in one
+ * `(supplier_id, group_label)` group (e.g. Gamevion / "Free Fire
+ * Global", ~15 items) to a Game in one action — either an existing
+ * Game or a brand-new one created inline. This decision is made ONCE
+ * per group, not per item (founder feedback, docs/prd.md §14).
+ * ADR-067 decision 6 replaced the old bare `category_raw` key with
+ * `supplier_id` + `group_label` so a group belongs to exactly one
+ * supplier.
  *
  * `validation_rules.extra_field` rides along in the same action
  * (founder feedback, 2026-07-25): a game's supplier order-submission
@@ -34,7 +37,10 @@ class LinkSupplierProductCategoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'category_raw' => ['required', 'string'],
+            'supplier_id' => ['required', 'integer', 'exists:suppliers,id'],
+            // 'present', not 'required': '' is the legitimate group_label
+            // for a row a supplier gave neither a category nor a brand.
+            'group_label' => ['present', 'string'],
             'game_id' => ['nullable', 'required_without:new_game', 'integer', 'exists:games,id'],
             'new_game' => ['nullable', 'required_without:game_id', 'array'],
             'new_game.name' => ['required_with:new_game', 'string', 'max:255'],
