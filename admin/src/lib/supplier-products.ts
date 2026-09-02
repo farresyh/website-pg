@@ -13,6 +13,8 @@ export interface SupplierProduct {
   external_ref: string;
   name: string;
   category_raw: string | null;
+  group_label: string;
+  type: string | null;
   price_sen: number | null;
   status_raw: string | null;
   last_synced_at: string;
@@ -27,14 +29,17 @@ export interface SupplierProductPage {
 }
 
 /**
- * One distinct `category_raw` group — the level an admin browses
- * first. `game` is set once the whole category has been linked
- * (linkSupplierProductCategory); every item in a linked category
- * shares that Game, so the "which game" decision only happens once
- * per category, not per item.
+ * One distinct `(supplier, group_label)` group — the level an admin
+ * browses first (ADR-067 decision 6). `group_label` is the
+ * adapter-set grouping string (Gamevion: its category; Digiflazz: the
+ * brand). `game` is set once the whole group has been linked
+ * (linkSupplierProductCategory); every item in a linked group shares
+ * that Game, so the "which game" decision only happens once per group,
+ * not per item.
  */
 export interface SupplierProductCategory {
-  category_raw: string | null;
+  supplier: { id: number; slug: string; name: string } | null;
+  group_label: string;
   total: number;
   promoted_count: number;
   game_id: number | null;
@@ -42,7 +47,8 @@ export interface SupplierProductCategory {
 }
 
 export interface LinkCategoryValues {
-  category_raw: string;
+  supplier_id: number;
+  group_label: string;
   game_id?: number;
   new_game?: { name: string; category?: string };
   validation_rules?: GameValidationRules | null;
@@ -60,10 +66,14 @@ export interface PromoteValues {
   denomination?: number | null;
 }
 
-export function listSupplierProducts(token: string, params: { search?: string; category?: string; page?: number } = {}) {
+export function listSupplierProducts(
+  token: string,
+  params: { search?: string; supplier_id?: number; group_label?: string; page?: number } = {},
+) {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
-  if (params.category) query.set("category", params.category);
+  if (params.supplier_id !== undefined) query.set("supplier_id", String(params.supplier_id));
+  if (params.group_label !== undefined) query.set("group_label", params.group_label);
   if (params.page) query.set("page", String(params.page));
   const qs = query.toString();
 
