@@ -119,7 +119,8 @@ class DigiflazzAdapterTest extends TestCase
      * product_name, price, buyer/seller_product_status as real booleans)
      * into the same canonical SupplierCatalogItem shape GamevionAdapter
      * produces — never mixed-in raw Digiflazz field names. ADR-067
-     * decision 4: `brand` → `groupLabel`, `type` is carried raw.
+     * decision 4 + region addendum: `groupLabel` is `brand` — `type`,
+     * `type` is also carried raw.
      */
     public function test_list_products_normalizes_the_response_shape(): void
     {
@@ -129,8 +130,8 @@ class DigiflazzAdapterTest extends TestCase
                     [
                         'product_name' => 'Mobile Legends 10 Diamonds',
                         'category' => 'Games',
-                        'brand' => 'Mobile Legends',
-                        'type' => 'Umum',
+                        'brand' => 'MOBILE LEGENDS',
+                        'type' => 'Malaysia',
                         'buyer_sku_code' => 'xld10',
                         'price' => 3200,
                         'buyer_product_status' => true,
@@ -148,8 +149,32 @@ class DigiflazzAdapterTest extends TestCase
         $this->assertSame(3200.0, $result->data[0]->price);
         $this->assertSame('active', $result->data[0]->status);
         $this->assertSame('Games', $result->data[0]->category);
-        $this->assertSame('Mobile Legends', $result->data[0]->groupLabel);
-        $this->assertSame('Umum', $result->data[0]->type);
+        // ADR-067 region addendum: MLBB Malaysia is its own group,
+        // never merged with MLBB Indonesia / Global / Umum.
+        $this->assertSame('MOBILE LEGENDS — Malaysia', $result->data[0]->groupLabel);
+        $this->assertSame('Malaysia', $result->data[0]->type);
+    }
+
+    /**
+     * ADR-067 region addendum: a game Digiflazz lists with no `type`
+     * falls back to the bare `brand` as its group label.
+     */
+    public function test_list_products_group_label_falls_back_to_brand_when_no_type(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => [[
+                    'product_name' => 'Racing Master 100 Gold', 'category' => 'Games',
+                    'brand' => 'Racing Master', 'buyer_sku_code' => 'rm100', 'price' => 9000,
+                    'buyer_product_status' => true, 'seller_product_status' => true,
+                ]],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->listProducts();
+
+        $this->assertSame('Racing Master', $result->data[0]->groupLabel);
+        $this->assertNull($result->data[0]->type);
     }
 
     /**
