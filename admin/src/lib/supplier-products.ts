@@ -80,6 +80,26 @@ export function listSupplierProducts(
   return apiFetch<SupplierProductPage>(`/api/middleware/supplier-products${qs ? `?${qs}` : ""}`, { token });
 }
 
+/**
+ * `SupplierProductController::index` paginates at 50 items/page. One
+ * `(supplier, group_label)` group routinely holds more than that (e.g.
+ * "Mobile Legends — Malaysia" has 123 raw items), and the Product
+ * Manager must be able to promote every one of them — fetching only
+ * page 1 silently hides the rest. Page through to `last_page` and
+ * concatenate.
+ */
+export async function listAllSupplierProducts(
+  token: string,
+  params: { search?: string; supplier_id?: number; group_label?: string } = {},
+): Promise<SupplierProduct[]> {
+  const first = await listSupplierProducts(token, { ...params, page: 1 });
+  const all = [...first.data];
+  for (let page = 2; page <= first.last_page; page++) {
+    all.push(...(await listSupplierProducts(token, { ...params, page })).data);
+  }
+  return all;
+}
+
 export function listSupplierProductCategories(token: string, params: { search?: string } = {}) {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
