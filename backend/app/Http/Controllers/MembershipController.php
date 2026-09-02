@@ -89,8 +89,12 @@ class MembershipController extends Controller
             ->first();
 
         return response()->json([
+            // ADR-068 decision 16: the storefront pre-fills and locks the
+            // checkout contact email to this, so a logged-in member's
+            // orders can never be split across a mistyped address.
+            'email' => $email,
             'membership' => $membership !== null ? $this->publicMembership($membership) : null,
-            'order_history' => $this->orderHistory($resellerId, $email),
+            'order_history' => $this->orderHistory($resellerId, $email, $membership?->id),
         ]);
     }
 
@@ -133,14 +137,26 @@ class MembershipController extends Controller
      * Order.customer_email match, no new linkage table. Same narrow,
      * customer-safe field subset as TrackOrderController::show().
      *
+     * ADR-068 decision 17: match on customer_email OR membership_id, not
+     * email alone. Orders have carried membership_id since ADR-027
+     * Phase 6, so an order bought as this member surfaces even when its
+     * contact email differs — a legacy order, or one placed before
+     * decision 16 bound the checkout email.
+     *
      * @return array<int, array<string, mixed>>
      */
-    private function orderHistory(int $resellerId, string $email): array
+    private function orderHistory(int $resellerId, string $email, ?int $membershipId): array
     {
         return Order::query()
             ->with(['game:id,name,slug', 'package:id,name'])
             ->where('reseller_id', $resellerId)
-            ->where('customer_email', $email)
+            ->where(function ($query) use ($email, $membershipId): void {
+                $query->where('customer_email', $email);
+
+                if ($membershipId !== null) {
+                    $query->orWhere('membership_id', $membershipId);
+                }
+            })
             ->orderByDesc('created_at')
             ->limit(50)
             ->get()

@@ -76,9 +76,16 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
   // once a membership token appears — keyed by token so a lapsed/signed-
   // out session (or an SSR render, token === null) reads back null (guest)
   // without a synchronous setState-in-effect, mirroring the `personalized`
-  // pattern above.
-  const [memberTier, setMemberTier] = useState<{ token: string; tierName: string | null } | null>(null);
-  const activeTierName = memberTier && memberTier.token === membershipToken ? memberTier.tierName : null;
+  // pattern above. ADR-068 decision 16: the same call also carries the
+  // member's verified email, which the checkout contact field is bound to.
+  const [memberSession, setMemberSession] = useState<{
+    token: string;
+    tierName: string | null;
+    email: string | null;
+  } | null>(null);
+  const activeSession = memberSession && memberSession.token === membershipToken ? memberSession : null;
+  const activeTierName = activeSession?.tierName ?? null;
+  const memberEmail = activeSession?.email ?? null;
 
   useEffect(() => {
     if (!membershipToken) return;
@@ -100,10 +107,12 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
     // lapsed-token fetch resolves to null (guest), never an error.
     getMe(membershipToken)
       .then((me) => {
-        if (!cancelled) setMemberTier({ token: membershipToken, tierName: me.membership?.tierName ?? null });
+        if (!cancelled) {
+          setMemberSession({ token: membershipToken, tierName: me.membership?.tierName ?? null, email: me.email });
+        }
       })
       .catch(() => {
-        if (!cancelled) setMemberTier({ token: membershipToken, tierName: null });
+        if (!cancelled) setMemberSession({ token: membershipToken, tierName: null, email: null });
       });
     return () => {
       cancelled = true;
@@ -123,6 +132,16 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+
+  // ADR-068 decision 16: a signed-in member's contact email is their
+  // verified membership email, full stop — shown locked so an order can
+  // never land under a mistyped address the member won't see in their
+  // /membership history, and the backend enforces the same bind anyway.
+  // Derived (not synced into state) to match the token-keyed read-back
+  // pattern used for `personalized`/`memberSession` above. Name and
+  // phone stay editable — a member legitimately tops up for others.
+  const emailLocked = memberEmail !== null;
+  const contactEmail = memberEmail ?? customerEmail;
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -182,7 +201,7 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
   // changes back.
   const totalPreviewKey =
     selectedPackage && channelCode
-      ? JSON.stringify([selectedPackage.id, channelCode, voucherCode, membershipToken, customerEmail, customerPhone])
+      ? JSON.stringify([selectedPackage.id, channelCode, voucherCode, membershipToken, contactEmail, customerPhone])
       : null;
   const [totalPreview, setTotalPreview] = useState<{ key: string; result: CheckoutTotalPreview } | null>(null);
   const preview = totalPreview && totalPreview.key === totalPreviewKey ? totalPreview.result : null;
@@ -197,7 +216,7 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
         package_id: selectedPackage.id,
         channel_code: channelCode,
         voucher_code: voucherCode ?? undefined,
-        customer_email: voucherCode ? customerEmail : undefined,
+        customer_email: voucherCode ? contactEmail : undefined,
         customer_phone: voucherCode ? customerPhone : undefined,
       },
       membershipToken ?? undefined,
@@ -214,7 +233,7 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
     return () => {
       cancelled = true;
     };
-  }, [totalPreviewKey, game.id, selectedPackage, channelCode, voucherCode, membershipToken, customerEmail, customerPhone]);
+  }, [totalPreviewKey, game.id, selectedPackage, channelCode, voucherCode, membershipToken, contactEmail, customerPhone]);
 
   // Editing the ID after Step 1 was completed invalidates that
   // completion — re-lock downstream steps rather than trust stale state.
@@ -270,7 +289,7 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
     // Catches a malformed email/name/phone before the round trip instead
     // of after, using the same rules as the backend FormRequest.
     const contact = CheckoutContactSchema.safeParse({
-      customer_email: customerEmail,
+      customer_email: contactEmail,
       customer_name: customerName,
       customer_phone: customerPhone,
     });
@@ -409,8 +428,9 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
           playerId={playerId}
           serverId={game.extraField ? serverId : ""}
           channelLabel={selectedChannel.label}
-          customerEmail={customerEmail}
+          customerEmail={contactEmail}
           setCustomerEmail={setCustomerEmail}
+          emailLocked={emailLocked}
           customerName={customerName}
           setCustomerName={setCustomerName}
           customerPhone={customerPhone}

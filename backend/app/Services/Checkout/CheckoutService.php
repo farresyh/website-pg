@@ -72,6 +72,15 @@ final class CheckoutService
 
         $member = $this->resolveMemberPricing($request);
 
+        // ADR-068 decision 16: a logged-in member's order is attributed
+        // to their OTP-verified membership email, never a contact address
+        // typed into checkout — identity is not trusted from the client
+        // (the ORD-9 principle). Resolved from the membership id alone, so
+        // an out-of-quota member (standard-priced fallback, $member ===
+        // null) still gets their email bound. Name and phone stay as
+        // typed — a member legitimately tops up for other people.
+        $customerEmail = $this->resolveMemberEmail($request->membershipId) ?? $request->customerEmail;
+
         $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
         $platformProfit = $member !== null ? $member->memberPriceSen - $request->costPriceSen : $pricing->platformProfit;
         $resellerProfit = $member !== null ? 0 : $pricing->resellerProfit;
@@ -79,7 +88,7 @@ final class CheckoutService
         [$voucherPreview, $total, $fullyCoveredByVoucher] = $this->computeTotal(
             $sellingPriceForOrder,
             $request->voucherCode,
-            $request->customerEmail,
+            $customerEmail,
             $request->customerPhone,
             $request->paymentFeeConfig,
         );
@@ -103,7 +112,7 @@ final class CheckoutService
             $order = Order::query()->create([
                 'order_number' => $this->orderNumbers->generate(),
                 'checkout_idempotency_key' => $request->idempotencyKey,
-                'customer_email' => $request->customerEmail,
+                'customer_email' => $customerEmail,
                 'customer_name' => $request->customerName,
                 'customer_phone' => $request->customerPhone,
                 'player_id' => $request->playerId,
@@ -328,6 +337,23 @@ final class CheckoutService
     private function resolveMemberPricing(CheckoutRequest $request): ?MemberPricingResolution
     {
         return $this->resolveMemberPricingFor($request->membershipId, $request->costPriceSen, $request->packageMarkupPercent);
+    }
+
+    /**
+     * ADR-068 decision 16 — the membership's own OTP-verified email,
+     * looked up independently of member *pricing*. `CheckoutController::
+     * resolveMembershipId()` only ever returns an id for an Active,
+     * unexpired membership on this brand, so a non-null id here is a
+     * genuine logged-in member; a lapsed/absent session leaves the
+     * client-typed email untouched (guest behaviour, ADR-011).
+     */
+    private function resolveMemberEmail(?int $membershipId): ?string
+    {
+        if ($membershipId === null) {
+            return null;
+        }
+
+        return Membership::query()->whereKey($membershipId)->value('email');
     }
 
     /**
