@@ -7,6 +7,7 @@ use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -21,13 +22,14 @@ use Tests\TestCase;
  */
 class ChipGatewayTest extends TestCase
 {
-    private function gateway(int $publicKeyTtl = 86400): ChipGateway
+    private function gateway(int $publicKeyTtl = 86400, ?string $callbackUrl = 'https://api.pekangame.space/api/webhooks/chip'): ChipGateway
     {
         return new ChipGateway(
             baseUrl: 'https://gate.chip-in.asia/api/v1',
             secretKey: 'sk_test_123',
             brandId: 'brand-uuid-123',
             webhookPublicKeyTtlSeconds: $publicKeyTtl,
+            callbackUrl: $callbackUrl,
         );
     }
 
@@ -74,8 +76,30 @@ class ChipGatewayTest extends TestCase
                 && $request['purchase']['products'][0]['price'] === 10000
                 && $request['success_redirect'] === 'https://storefront.test/order/status/KRS-1'
                 && $request['failure_redirect'] === 'https://storefront.test/order/status/KRS-1'
+                && $request['success_callback'] === 'https://api.pekangame.space/api/webhooks/chip'
                 && $request['payment_method_whitelist'] === ['fpx'];
         });
+    }
+
+    public function test_create_payment_omits_success_callback_when_no_callback_url_is_configured(): void
+    {
+        Http::fake([
+            'gate.chip-in.asia/*' => Http::response([
+                'id' => 'purchase-123', 'status' => 'created', 'checkout_url' => 'https://gate.chip-in.asia/p/x/',
+                'reference' => 'KRS-1', 'purchase' => ['total' => 10000],
+            ], 201),
+        ]);
+
+        $this->gateway(callbackUrl: null)->createPayment(new PaymentRequest(
+            referenceId: 'KRS-1',
+            amountSen: 10000,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: 'fpx',
+            customer: new PaymentCustomer(referenceId: 'KRS-1', givenNames: 'Buyer One', email: 'buyer@example.com'),
+        ));
+
+        Http::assertSent(fn ($request) => ! array_key_exists('success_callback', $request->data()));
     }
 
     public function test_create_payment_normalizes_a_successful_response(): void
@@ -323,6 +347,62 @@ class ChipGatewayTest extends TestCase
         $gateway->verifyWebhookSignature($this->signedWebhookRequest('body-one', openssl_pkey_get_private($privateKeyPem)));
         $gateway->verifyWebhookSignature($this->signedWebhookRequest('body-two', openssl_pkey_get_private($privateKeyPem)));
 
+        Http::assertSentCount(1);
+    }
+
+    /**
+     * A CHIP-side account key rotation: the cached key no longer verifies
+     * a genuinely-signed delivery. The gateway re-fetches once and retries
+     * against the new key rather than rejecting (which would strand the
+     * order on the 15-min PAY-3 poll until the 24h TTL expired).
+     */
+    public function test_verify_webhook_signature_refetches_the_key_when_a_cached_key_stops_verifying(): void
+    {
+        $oldPair = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        $oldPublicKeyPem = openssl_pkey_get_details($oldPair)['key'];
+
+        $newPair = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        openssl_pkey_export($newPair, $newPrivateKeyPem);
+        $newPublicKeyPem = openssl_pkey_get_details($newPair)['key'];
+
+        // Stale key already cached; CHIP now serves the rotated one.
+        Cache::put('payment-gateway.chip.public_key', $oldPublicKeyPem, 86400);
+        Http::fake(['gate.chip-in.asia/*' => Http::response(json_encode($newPublicKeyPem), 200)]);
+
+        $request = $this->signedWebhookRequest(
+            '{"event_type":"purchase.paid","id":"purchase-123"}',
+            openssl_pkey_get_private($newPrivateKeyPem),
+        );
+
+        $this->assertTrue($this->gateway()->verifyWebhookSignature($request));
+        Http::assertSentCount(1);
+    }
+
+    /**
+     * The re-fetch is cooldown-guarded: a burst of forged signatures must
+     * not turn into a burst of GET /public_key/ calls.
+     */
+    public function test_verify_webhook_signature_rate_limits_the_key_refetch_under_a_forged_signature_burst(): void
+    {
+        $realPair = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        $realPublicKeyPem = openssl_pkey_get_details($realPair)['key'];
+
+        $attackerPair = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        openssl_pkey_export($attackerPair, $attackerPrivateKeyPem);
+
+        Cache::put('payment-gateway.chip.public_key', $realPublicKeyPem, 86400);
+        Http::fake(['gate.chip-in.asia/*' => Http::response(json_encode($realPublicKeyPem), 200)]);
+
+        $gateway = $this->gateway();
+        for ($i = 0; $i < 5; $i++) {
+            $forged = $this->signedWebhookRequest(
+                '{"event_type":"purchase.paid","id":"purchase-'.$i.'"}',
+                openssl_pkey_get_private($attackerPrivateKeyPem),
+            );
+            $this->assertFalse($gateway->verifyWebhookSignature($forged));
+        }
+
+        // First forged request refetches once; the cooldown blocks the rest.
         Http::assertSentCount(1);
     }
 }

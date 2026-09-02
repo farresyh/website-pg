@@ -197,6 +197,7 @@ class AppServiceProvider extends ServiceProvider
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
                 webhookPublicKeyTtlSeconds: $config['webhook_public_key_ttl'],
+                callbackUrl: $config['callback_url'] ?: null,
             );
         });
 

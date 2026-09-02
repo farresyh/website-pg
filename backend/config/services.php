@@ -114,6 +114,14 @@ return [
      * `webhook_public_key_ttl` controls how long ChipGateway caches
      * the RSA public key fetched from `GET /public_key/` before
      * re-fetching (webhook verification, ADR-022 decision 3).
+     *
+     * `callback_url` is the server-to-server `success_callback` CHIP
+     * POSTs a signed Purchase to when a purchase is paid (ADR-022's
+     * 2026-09-04 webhook-model addendum: per-purchase `success_callback`,
+     * not a portal-registered webhook). Defaults to this app's own
+     * `/api/webhooks/chip` route under `APP_URL`; the explicit override
+     * exists only for pointing a local tunnel at it during go-live
+     * testing without touching `APP_URL`.
      */
     'chip' => [
         'base_url' => env('CHIP_BASE_URL', 'https://gate.chip-in.asia/api/v1'),
@@ -122,6 +130,7 @@ return [
         'timeout' => (int) env('CHIP_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('CHIP_CONNECT_TIMEOUT_SECONDS', 5),
         'webhook_public_key_ttl' => (int) env('CHIP_WEBHOOK_PUBLIC_KEY_TTL_SECONDS', 86400),
+        'callback_url' => env('CHIP_CALLBACK_URL', rtrim((string) env('APP_URL'), '/').'/api/webhooks/chip'),
     ],
 
     /**
