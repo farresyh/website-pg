@@ -82,7 +82,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
         }
 
         $stats = [
-            'catalog_total' => 0, 'catalog_created' => 0, 'catalog_updated' => 0,
+            'catalog_total' => 0, 'catalog_created' => 0, 'catalog_updated' => 0, 'catalog_pruned' => 0,
             'price_changed' => 0, 'deactivated' => 0, 'floor_rejected' => 0, 'price_anomalies' => 0,
             // ADR-033 addendum decision 3: an array from day one — a
             // MYR-only run (Gamevion alone, today's only real case)
@@ -113,6 +113,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
             $stats['catalog_total'] += $stage1->total;
             $stats['catalog_created'] += $stage1->created;
             $stats['catalog_updated'] += $stage1->updated;
+            $stats['catalog_pruned'] += $stage1->pruned;
             $stats['price_changed'] += $stage2->priceChanged;
             $stats['deactivated'] += $stage2->deactivated;
             $stats['floor_rejected'] += $stage2->floorRejected;

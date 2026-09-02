@@ -51,8 +51,7 @@ final class DigiflazzAdapter implements SupplierAdapter
         private readonly ?string $proxyUrl = null,
         private readonly int $timeoutSeconds = 10,
         private readonly int $connectTimeoutSeconds = 5,
-    ) {
-    }
+    ) {}
 
     public function checkBalance(): SupplierResponse
     {
@@ -257,21 +256,34 @@ final class DigiflazzAdapter implements SupplierAdapter
     }
 
     /**
-     * `buyer_product_status` is a real boolean in Digiflazz's own API
-     * (confirmed from the docs' example) — mapped to the same
-     * 'active'/'inactive' string convention GamevionAdapter already
-     * uses, since PendingReactivationFinder and admin display both
-     * read `SupplierProduct.status_raw` as a string uniformly across
-     * suppliers.
+     * `buyer_product_status` and `seller_product_status` are both real
+     * booleans in Digiflazz's own API (confirmed live 2026-09-02) —
+     * mapped to the same 'active'/'inactive' string convention
+     * GamevionAdapter uses, since PendingReactivationFinder and admin
+     * display both read `SupplierProduct.status_raw` as a string
+     * uniformly across suppliers. ADR-067 decision 3: an item is
+     * 'active' only when BOTH flags are true — a seller disabling a
+     * product makes it dead even if we left it enabled in the buyer
+     * area.
+     *
+     * ADR-067 decision 4: `groupLabel` is `brand` (Digiflazz's
+     * `category` is a flat `"Games"` for every game, so it can't drive
+     * Product Manager grouping — `brand` is the real game identity).
+     * `type` (e.g. `"Aigo SS"`, membership tiers) is carried raw.
      */
     private function normalizeProduct(array $item): SupplierCatalogItem
     {
+        $isActive = ($item['buyer_product_status'] ?? false)
+            && ($item['seller_product_status'] ?? false);
+
         return new SupplierCatalogItem(
             productRef: $item['buyer_sku_code'] ?? '',
             name: $item['product_name'] ?? null,
             category: $item['category'] ?? null,
             price: isset($item['price']) ? (float) $item['price'] : null,
-            status: ($item['buyer_product_status'] ?? false) ? 'active' : 'inactive',
+            status: $isActive ? 'active' : 'inactive',
+            groupLabel: $item['brand'] ?? null,
+            type: $item['type'] ?? null,
         );
     }
 }

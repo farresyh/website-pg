@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services\Supplier;
 
+use App\Jobs\LogSupplierRequestJob;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierOutcome;
@@ -75,7 +76,7 @@ class DigiflazzAdapterTest extends TestCase
 
         $this->adapter()->checkBalance();
 
-        Queue::assertPushed(\App\Jobs\LogSupplierRequestJob::class, function ($job) {
+        Queue::assertPushed(LogSupplierRequestJob::class, function ($job) {
             $body = $job->entry()['request_payload']['body'];
 
             return $job->entry()['slug'] === 'digiflazz'
@@ -115,9 +116,10 @@ class DigiflazzAdapterTest extends TestCase
 
     /**
      * ADAPT-2: normalizes Digiflazz's own field names (buyer_sku_code,
-     * product_name, price, buyer_product_status as a real boolean) into
-     * the same canonical SupplierCatalogItem shape GamevionAdapter
-     * produces — never mixed-in raw Digiflazz field names.
+     * product_name, price, buyer/seller_product_status as real booleans)
+     * into the same canonical SupplierCatalogItem shape GamevionAdapter
+     * produces — never mixed-in raw Digiflazz field names. ADR-067
+     * decision 4: `brand` → `groupLabel`, `type` is carried raw.
      */
     public function test_list_products_normalizes_the_response_shape(): void
     {
@@ -128,9 +130,11 @@ class DigiflazzAdapterTest extends TestCase
                         'product_name' => 'Mobile Legends 10 Diamonds',
                         'category' => 'Games',
                         'brand' => 'Mobile Legends',
+                        'type' => 'Umum',
                         'buyer_sku_code' => 'xld10',
                         'price' => 3200,
                         'buyer_product_status' => true,
+                        'seller_product_status' => true,
                     ],
                 ],
             ], 200),
@@ -143,6 +147,9 @@ class DigiflazzAdapterTest extends TestCase
         $this->assertSame('Mobile Legends 10 Diamonds', $result->data[0]->name);
         $this->assertSame(3200.0, $result->data[0]->price);
         $this->assertSame('active', $result->data[0]->status);
+        $this->assertSame('Games', $result->data[0]->category);
+        $this->assertSame('Mobile Legends', $result->data[0]->groupLabel);
+        $this->assertSame('Umum', $result->data[0]->type);
     }
 
     /**
@@ -156,7 +163,30 @@ class DigiflazzAdapterTest extends TestCase
             'api.digiflazz.com/*' => Http::response([
                 'data' => [[
                     'product_name' => 'Retired SKU', 'category' => 'Games', 'brand' => 'X',
-                    'buyer_sku_code' => 'old10', 'price' => 1000, 'buyer_product_status' => false,
+                    'buyer_sku_code' => 'old10', 'price' => 1000,
+                    'buyer_product_status' => false, 'seller_product_status' => true,
+                ]],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->listProducts();
+
+        $this->assertSame('inactive', $result->data[0]->status);
+    }
+
+    /**
+     * ADR-067 decision 3: an item the seller has disabled is dead even
+     * if we left it enabled in our buyer area — 'active' requires BOTH
+     * buyer_product_status AND seller_product_status true.
+     */
+    public function test_list_products_maps_a_seller_disabled_product_as_inactive(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => [[
+                    'product_name' => 'Seller-pulled SKU', 'category' => 'Games', 'brand' => 'Y',
+                    'buyer_sku_code' => 'y10', 'price' => 5000,
+                    'buyer_product_status' => true, 'seller_product_status' => false,
                 ]],
             ], 200),
         ]);

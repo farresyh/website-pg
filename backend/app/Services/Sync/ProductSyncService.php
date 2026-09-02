@@ -2,6 +2,7 @@
 
 namespace App\Services\Sync;
 
+use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Currency\CurrencyRateService;
@@ -19,9 +20,7 @@ use Illuminate\Support\Carbon;
  */
 final class ProductSyncService
 {
-    public function __construct(private readonly CurrencyRateService $currencyRates)
-    {
-    }
+    public function __construct(private readonly CurrencyRateService $currencyRates) {}
 
     public function sync(Supplier $supplier, SupplierAdapter $adapter): ProductSyncResult
     {
@@ -67,6 +66,7 @@ final class ProductSyncService
         $syncedAt = Carbon::now();
         $created = 0;
         $updated = 0;
+        $seenRefs = [];
 
         foreach ($items as $item) {
             $row = SupplierProduct::query()->updateOrCreate(
@@ -77,6 +77,13 @@ final class ProductSyncService
                 [
                     'name' => $item->name ?? $item->productRef,
                     'category_raw' => $item->category,
+                    // ADR-067 decision 4: the adapter sets groupLabel from
+                    // whichever of its fields is the real "which game"
+                    // identity; fall back to category when it has no
+                    // opinion (keeps pre-ADR-067 Gamevion grouping intact
+                    // even before its adapter was taught to set it).
+                    'group_label' => $item->groupLabel ?? $item->category ?? '',
+                    'type' => $item->type,
                     'price_sen' => $this->toMyrSen($item->price, $fxRateUsed['rate'] ?? null),
                     'status_raw' => $item->status,
                     'last_synced_at' => $syncedAt,
@@ -84,7 +91,10 @@ final class ProductSyncService
             );
 
             $row->wasRecentlyCreated ? $created++ : $updated++;
+            $seenRefs[] = $item->productRef;
         }
+
+        $pruned = $this->pruneVanishedRows($supplier, $seenRefs);
 
         $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
@@ -92,10 +102,51 @@ final class ProductSyncService
             total: count($items),
             created: $created,
             updated: $updated,
+            pruned: $pruned,
             durationMs: $durationMs,
             syncedAt: $syncedAt,
             fxRateUsed: $fxRateUsed,
         );
+    }
+
+    /**
+     * ADR-067: a raw row this run did not see is one the supplier no
+     * longer returns — a category now excluded by `category_whitelist`,
+     * or a product removed from the Digiflazz buyer area. Delete it, so
+     * a stale group stops lingering in Product Manager forever (a re-sync
+     * never prunes on its own — `updateOrCreate` only ever adds/updates).
+     *
+     * Two guards keep this safe:
+     *  - A **promoted** row is always KEPT. Its Package is real
+     *    inventory, and PackagePriceSyncService (which runs right after
+     *    this, in the same job) needs the row's now-stale
+     *    `last_synced_at` to detect the vanished item and deactivate the
+     *    Package the proper soft, logged way.
+     *  - Nothing is pruned when `$seenRefs` is **empty**. `listProducts()`
+     *    fails hard before the write loop on any adapter error, so a run
+     *    that reaches here with zero items means either a genuinely empty
+     *    catalog or a `category_whitelist` that matches nothing (a typo) —
+     *    deleting every unpromoted row in either case is not worth the
+     *    blast radius.
+     *
+     * @param  list<string>  $seenRefs  every external_ref written this run
+     */
+    private function pruneVanishedRows(Supplier $supplier, array $seenRefs): int
+    {
+        if ($seenRefs === []) {
+            return 0;
+        }
+
+        $promotedRefs = Package::query()
+            ->where('supplier_id', $supplier->id)
+            ->pluck('supplier_package_ref')
+            ->all();
+
+        return SupplierProduct::query()
+            ->where('supplier_id', $supplier->id)
+            ->whereNotIn('external_ref', $seenRefs)
+            ->whereNotIn('external_ref', $promotedRefs)
+            ->delete();
     }
 
     /**
