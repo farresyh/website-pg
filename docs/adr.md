@@ -1271,6 +1271,23 @@ Key differences from Gamevion the adapter must absorb (ADR-006's own "never assu
 - Outbound IP (or the proxy's IP) must be whitelisted at Digiflazz; and Digiflazz's `52.74.250.133` must be whitelisted on our side before webhooks can be accepted (ADR-032).
 - The 90-day re-submit rule is enforced in ADR-032's reconcile guards, not here.
 
+**Addendum — Digiflazz wraps a business failure in an HTTP 4xx, 2026-09-03 (grilled with the founder via `/mattpocock-skills:grilling`, 1 round; `fix/digiflazz-4xx-business-envelope`).**
+
+**What the first real production order found.** `PG-PYAYMRYNUYV0` (a real RM1.94 FPX payment, the CHIP go-live step-b test) reached fulfilment and Digiflazz replied **HTTP 400** with a fully-formed body: `{"data":{"rc":"44","status":"Gagal","message":"Saldo tidak cukup"}}` — i.e. an ordinary insufficient-balance rejection, not a malformed request. This **contradicts this adapter's original assumption** ("Digiflazz always responds HTTP 200 for a well-formed request, even for an auth-level rejection" — the `rc: 45` IP-whitelist case in this ADR's Context did come back as 200). `DigiflazzAdapter::submitTransaction()` / `failureFrom()` checked `$response->failed()` **first** and returned a generic `"Digiflazz request failed with HTTP 400"`, discarding `rc`/`status`/`message` — so `/admin/orders` showed only "HTTP 400" while `/middleware/request-logs` (ADR-051, raw body) showed the real reason. Diagnosable, but only by digging.
+
+**Decision (each point grilled):**
+1. **Ordering: 5xx first, then trust the body.** A `$response->serverError()` (5xx) is always a transport error (`isServerError: true`, breaker-counting), whatever the body claims. For **2xx or 4xx**, the response body is authoritative: a `data.status` present → the existing `match` (Sukses/Pending/Gagal); a `data.rc` present without `status` → a Failure with that `rc`/`message` (Pending is impossible to assert without `status`); no usable `data` → the generic `"HTTP {status}"` transport error.
+2. **A business `Gagal` wrapped in a 4xx never sets `isServerError`.** `SupplierResponse::failure()`'s own documented intent — a run of ordinary business rejections isn't evidence the supplier is down, and must not trip `CircuitBreakingSupplierAdapter`. `isServerError: true` is now reserved for a real 5xx (and connection failures, unchanged).
+3. **Scope: both Digiflazz paths, not Gamevion.** `submitTransaction()` (→ `createOrder`/`checkStatus`, which re-submits the same shape, so a `checkStatus` that hits a 4xx `rc 44` mid-reconciliation now finalises the order as Failed instead of stranding it Pending) **and** `failureFrom()` (`checkBalance`/`listProducts` — bare `rc`, no `status`). `GamevionAdapter`'s 4xx handling already special-cases 409/`duplicate_reference` and 422, and there's no evidence it discards a useful body — left alone, noted here for a separate look if a Gamevion order ever surfaces the same lossy "HTTP 4xx" symptom.
+4. **Stored `orders.supplier_response` shape unchanged** — the normalized `error_code` + `error_message` (now `"44"` / `"Saldo tidak cukup"`). The full raw echo is always in `/middleware/request-logs`; no need to widen what the order row stores.
+
+**No lookup table of `rc` codes** — Digiflazz sends a human `message` with every response; the adapter passes it through. Only `status` (Sukses/Pending/Gagal) is load-bearing for the `SupplierOutcome`, and that path is unchanged.
+
+**Consequence to track:**
+- `PG-PYAYMRYNUYV0` itself: paid, delivery `failed` (Digiflazz deposit is Rp 0). Resolution per ADR-004 — top up Digiflazz, then Resend Delivery; or issue a voucher. It is the founder's own test order.
+- The retry predicate (`TransientFailureRetryPolicy`) is unchanged and still correct — `throw: false` means a 4xx never becomes a `RequestException` the predicate sees, so a business `rc` failure is never retried regardless of the HTTP status it wears.
+- 6 new `DigiflazzAdapterTest` cases; PRD §14/§15 updated on ship.
+
 ---
 
 ## ADR-031: Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (built 2026-08-25)
