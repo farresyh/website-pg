@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
-use App\Models\AdminUser;
 use App\Models\HeroSlide;
 use App\Models\Reseller;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -17,9 +17,10 @@ use Illuminate\Support\Facades\DB;
  * `composer install --no-dev`, so fakerphp/faker is absent). Every write
  * is idempotent — safe to re-run.
  *
- * The first real super admin is created from `ADMIN_EMAIL` /
- * `ADMIN_PASSWORD` in the environment (passed by the bootstrap wizard as
- * `docker compose exec -e …`, never committed). Skipped when either is
+ * The first real super admin is created by the `app:create-admin`
+ * command (ADR-066 cutover addendum), which reads
+ * `config('admin.seed_email|seed_password')` — env resolved inside a
+ * config file so `config:cache` bakes it in. Skipped when either is
  * unset or the address already exists.
  */
 class ProductionSeeder extends Seeder
@@ -75,34 +76,9 @@ class ProductionSeeder extends Seeder
             ],
         );
 
-        $this->seedFirstSuperAdmin();
-    }
-
-    private function seedFirstSuperAdmin(): void
-    {
-        $email = env('ADMIN_EMAIL');
-        $password = env('ADMIN_PASSWORD');
-
-        if (! is_string($email) || $email === '' || ! is_string($password) || $password === '') {
-            $this->command?->warn('ProductionSeeder: ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping super-admin creation.');
-
-            return;
-        }
-
-        if (AdminUser::query()->where('email', $email)->exists()) {
-            $this->command?->info("ProductionSeeder: super admin {$email} already exists — skipping.");
-
-            return;
-        }
-
-        AdminUser::create([
-            'name' => is_string(env('ADMIN_NAME')) && env('ADMIN_NAME') !== '' ? env('ADMIN_NAME') : 'Admin',
-            'email' => $email,
-            'password' => $password, // AdminUser 'password' cast => 'hashed'
-            'role' => 'super_admin',
-            'is_active' => true,
-        ]);
-
-        $this->command?->info("ProductionSeeder: created super admin {$email}.");
+        // ADR-066 cutover addendum: the super admin is created by
+        // app:create-admin, which reads config (not runtime env), so a
+        // reseed after `config:cache` no longer silently skips it.
+        Artisan::call('app:create-admin', [], $this->command?->getOutput());
     }
 }

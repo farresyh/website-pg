@@ -1,8 +1,10 @@
 # PekanGame
 
 A guest-checkout storefront for topping up game credits (MLBB and others),
-with an admin panel for catalog/order/withdrawal management and a middleware
-layer that syncs prices and validates player IDs against upstream suppliers.
+with an admin panel for catalog/order/withdrawal management, a reseller portal
+(resellers get their own branded storefront and an earnings ledger), and a
+middleware layer that syncs prices and validates player IDs against upstream
+suppliers.
 
 Money moves through this system for real: checkout payments, ledger-tracked
 balances, admin withdrawals, and store-credit vouchers. If you're new here,
@@ -14,9 +16,10 @@ behind them, not left implicit.
 
 | App | Tech | Purpose |
 | --- | --- | --- |
-| `backend/` | Laravel 13 (PHP 8.3), MySQL | API for storefront, admin, and middleware — checkout, orders, ledger, suppliers, payments |
-| `admin/` | Next.js 16 + React 19 + Tailwind v4 | Internal admin panel — games/packages, orders, withdrawals, vouchers, Price Sync Center, gallery |
+| `backend/` | Laravel 13 (PHP 8.3), MySQL | API for storefront, admin, reseller portal, and middleware — checkout, orders, ledger, suppliers, payments |
+| `admin/` | Next.js 16 + React 19 + Tailwind v4 | Internal admin panel — games/packages, orders, withdrawals, vouchers, resellers, Price Sync Center, gallery |
 | `storefront/` | Next.js 16 + React 19 + Tailwind v4 | Public storefront — catalog, guest checkout, order tracking |
+| `reseller/` | Next.js 16 + React 19 + Tailwind v4 | Reseller portal — a reseller's own orders, earnings ledger, withdrawals, wholesale-tier subscription (ADR-058/059) |
 
 Auth is bearer-token (Laravel Sanctum) end to end — there's no session-cookie
 auth and no CSRF surface between the frontends and the API (see ADR-009 and
@@ -56,9 +59,11 @@ does not start a worker for you.
 
 You'll need real credentials to exercise supplier/payment integrations
 end-to-end — `GAMEVION_BEARER_TOKEN`/`GAMEVION_API_KEY` (set
-`GAMEVION_SANDBOX=true` to avoid touching production) and
-`XENDIT_SECRET_KEY`/`XENDIT_WEBHOOK_TOKEN`. Without them, everything up to
-the supplier/payment call still works against the local DB.
+`GAMEVION_SANDBOX=true` to avoid touching production), and
+`CHIP_SECRET_KEY`/`CHIP_BRAND_ID` for the payment gateway (CHIP is the sole
+gateway since ADR-022's 2026-09-01 addendum — Xendit was removed). Without
+them, everything up to the supplier/payment call still works against the
+local DB.
 
 ## Testing
 
@@ -66,17 +71,19 @@ the supplier/payment call still works against the local DB.
 cd backend
 php artisan test                                              # fast suite, sqlite, no Docker needed
 docker compose up -d && php artisan test -c phpunit.concurrency.xml   # locking/concurrency proofs, needs real MySQL
-php artisan app:xendit-smoke-test      # hits the real Xendit sandbox
+php artisan app:chip-smoke-test        # hits the real CHIP API
 php artisan app:gamevion-smoke-test    # hits the real Gamevion sandbox
+php artisan app:digiflazz-smoke-test   # hits the real Digiflazz API
 ```
 
 ```bash
 cd admin && npm run lint && npx tsc --noEmit
 cd storefront && npm run lint && npx tsc --noEmit
+cd reseller && npm run lint && npx tsc --noEmit
 ```
 
 ```bash
-cd e2e && npm test   # Playwright, 3 golden paths (ADR-023) — boots its own throwaway backend+DB, real Chromium
+cd e2e && npm test   # Playwright, 4 golden paths (ADR-023) — boots its own throwaway backend+DB, real Chromium
 ```
 
 ## Documentation
@@ -92,7 +99,11 @@ cd e2e && npm test   # Playwright, 3 golden paths (ADR-023) — boots its own th
 
 ## Current status
 
-Pre-launch — the project currently runs on local development environments
-only (no production deployment yet; see ADR-010 and the "no production infra"
-notes in `docs/prd.md` §14). `docs/prd.md` §15 (MVP Scope Tracker) has the
-up-to-date picture of what's built vs. outstanding per feature area.
+**Deployed, pre-commercial-launch.** As of 2026-09-02 the backend is live on a
+Laravel Forge–managed DigitalOcean droplet at `api.pekangame.space`, and the
+three frontends are on Vercel (`pekangame.space`, `admin.pekangame.space`,
+`reseller.pekangame.space`) — see [ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation).
+Not yet open for real customers: no games are seeded, and the CHIP FPX
+payment channel is still pending gateway approval. `docs/prd.md` §14 has the
+running deploy log; §15 (MVP Scope Tracker) has what's built vs. outstanding
+per feature area.
