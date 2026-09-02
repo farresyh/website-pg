@@ -100,6 +100,11 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     position: relative;
+    /* A hard offset shadow or a nowrap row can poke a few px past the
+     * viewport on a phone; `clip` (not `hidden`) contains it without
+     * turning `<body>` into a scroll container, so the sticky header
+     * still works. Specific overflow sources are fixed at source too. */
+    overflow-x: clip;
   }
 
   h1,
@@ -148,17 +153,22 @@
 @utility neo-lg {
   box-shadow: 8px 8px 0 0 rgb(25 25 47 / 0.9);
 }
-/* Hover lift — pair with `transition-all` on the element. */
+/* Hover lift — pair with `transition-all` on the element. Gated on a
+ * real hover-capable pointer so it never sticks after a tap on touch. */
 @utility neo-hover {
-  &:hover {
-    box-shadow: 6px 6px 0 0 var(--color-primary);
-    transform: translate(-2px, -2px);
+  @media (hover: hover) {
+    &:hover {
+      box-shadow: 6px 6px 0 0 var(--color-primary);
+      transform: translate(-2px, -2px);
+    }
   }
 }
 @utility neo-hover-cyan {
-  &:hover {
-    box-shadow: 6px 6px 0 0 var(--color-secondary-container);
-    transform: translate(-2px, -2px);
+  @media (hover: hover) {
+    &:hover {
+      box-shadow: 6px 6px 0 0 var(--color-secondary-container);
+      transform: translate(-2px, -2px);
+    }
   }
 }
 

@@ -18,7 +18,7 @@ export default function TrackOrderPage() {
   return (
     <>
       <SiteHeader />
-      <main className="pb-16 lg:pb-0">
+      <main className="pb-10 lg:pb-0">
         <Suspense fallback={<div className="mx-auto max-w-[560px] px-4 py-10 text-sm text-on-surface-variant">Loading…</div>}>
           <TrackOrderClient />
         </Suspense>

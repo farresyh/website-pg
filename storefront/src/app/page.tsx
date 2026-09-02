@@ -25,7 +25,7 @@ export default async function HomePage() {
   return (
     <>
       <SiteHeader />
-      <main className="pb-16 lg:pb-0">
+      <main className="pb-10 lg:pb-0">
         <HeroSection games={games} slides={slides} />
         <PopularPicksSection games={games} />
         <PromotionsSection />

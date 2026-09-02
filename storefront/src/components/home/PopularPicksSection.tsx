@@ -12,7 +12,7 @@ export default function PopularPicksSection({ games: allGames }: { games: Game[]
   const games = normalized ? allGames.filter((g) => g.name.toLowerCase().includes(normalized)) : allGames;
 
   return (
-    <section id="popular-picks" className="mx-auto max-w-[1200px] px-4 py-12">
+    <section id="popular-picks" className="mx-auto max-w-[1200px] px-4 py-9 lg:py-12">
       <SectionHeading title="Popular Picks" link={{ label: "View All", href: "#popular-picks" }} className="mb-3" />
       <p className="mb-6 flex items-center gap-1.5 text-[13px] text-on-surface-variant">
         <Lightning size={14} weight="fill" className="text-primary" />

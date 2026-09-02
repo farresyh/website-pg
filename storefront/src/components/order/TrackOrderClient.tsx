@@ -66,7 +66,7 @@ export default function TrackOrderClient() {
 
   return (
     <div className="mx-auto max-w-[560px] px-4 py-12 lg:py-16">
-      <h1 className="font-display mb-2 text-headline-lg font-bold uppercase tracking-tight">Track Order</h1>
+      <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Track Order</h1>
       <p className="mb-6 text-sm text-on-surface-variant">Enter your order number to check its payment and delivery status.</p>
 
       <form onSubmit={handleSubmit} className="mb-6 flex flex-col gap-2.5 sm:flex-row">

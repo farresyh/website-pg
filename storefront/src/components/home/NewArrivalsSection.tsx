@@ -12,7 +12,7 @@ export default function NewArrivalsSection({ games }: { games: Game[] }) {
   const newest = [...games].sort((a, b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 4);
 
   return (
-    <section className="mx-auto max-w-[1200px] px-4 py-12">
+    <section className="mx-auto max-w-[1200px] px-4 py-9 lg:py-12">
       <SectionHeading title="New Arrivals" />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {newest.map((game) => (

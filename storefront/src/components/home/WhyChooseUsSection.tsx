@@ -9,7 +9,7 @@ const REASONS = [
 
 export default function WhyChooseUsSection() {
   return (
-    <section className="border-y-2 border-ink bg-surface-container py-12">
+    <section className="border-y-2 border-ink bg-surface-container py-9 lg:py-12">
       <div className="mx-auto max-w-[1200px] px-4">
         <h2 className="font-display mb-9 text-center text-headline-md tracking-tight">Why Choose PekanGame?</h2>
         <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
