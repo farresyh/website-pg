@@ -67,6 +67,7 @@ const OrderHistoryRowWireSchema = z.object({
 });
 
 const MeWireSchema = z.object({
+  email: z.string(),
   membership: MembershipWireSchema.nullable(),
   order_history: z.array(OrderHistoryRowWireSchema),
 });
@@ -90,6 +91,8 @@ export interface MembershipOrderHistoryRow {
 }
 
 export interface MembershipMe {
+  /** ADR-068 decision 16 — the member's OTP-verified email; the checkout contact email is bound to this. */
+  email: string;
   membership: MembershipDashboard | null;
   orderHistory: MembershipOrderHistoryRow[];
 }
@@ -99,6 +102,7 @@ export async function getMe(token: string): Promise<MembershipMe> {
   const wire = parseResponse(MeWireSchema, raw, "MeWire", "/api/membership/me");
 
   return {
+    email: wire.email,
     membership:
       wire.membership !== null
         ? {

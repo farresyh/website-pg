@@ -17,6 +17,10 @@ import {
 // real flattened payload shape directly to /api/webhooks/chip after
 // capturing the payment_ref the fake gateway's createPayment returned.
 test("guest checkout -> payment -> order status", async ({ page, request }) => {
+  // ~12-step flow ending in an async delivery + a cold-compiled status
+  // route — legitimately over the 60s default on a cold CI runner.
+  test.slow();
+
   await page.goto(`${STOREFRONT_URL}/order/${E2E_GAME_SLUG}`);
 
   await page.locator("#playerId").fill("900000001");
@@ -94,6 +98,13 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   });
   expect(webhook.ok()).toBeTruthy();
 
-  await page.goto(`${STOREFRONT_URL}/order/status/${encodeURIComponent(orderNumber)}`);
-  await expect(page.getByText("Delivered")).toBeVisible({ timeout: 30_000 });
+  // Delivery is async (queued FulfillOrderJob -> FakeSupplierGateway).
+  // Reload-poll rather than lean on the status page's own client poll
+  // interval + a single fixed wait — ADR-023 wants a flake fixed, not
+  // re-run, and the bare 30s assertion has flaked twice (PRs #68, #69)
+  // when a cold-compile of the status route eats into one poll cycle.
+  await expect(async () => {
+    await page.goto(`${STOREFRONT_URL}/order/status/${encodeURIComponent(orderNumber)}`);
+    await expect(page.getByText("Delivered")).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 45_000 });
 });

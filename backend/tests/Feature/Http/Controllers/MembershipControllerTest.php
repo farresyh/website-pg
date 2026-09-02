@@ -124,6 +124,54 @@ class MembershipControllerTest extends TestCase
         }
     }
 
+    /** ADR-068 decision 16 — the storefront binds the checkout email to this. */
+    public function test_me_returns_the_verified_session_email(): void
+    {
+        $token = $this->tokenFor('member@example.com');
+
+        $this->getJson('/api/membership/me', ['Authorization' => "Bearer {$token}"])
+            ->assertOk()
+            ->assertJsonPath('email', 'member@example.com');
+    }
+
+    /** ADR-068 decision 17 — an order bought as this member surfaces even when its contact email differs. */
+    public function test_me_order_history_also_matches_by_membership_id(): void
+    {
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        $membership = Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
+            'email' => 'member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 15000,
+            'expires_at' => now()->addDays(20),
+        ]);
+
+        $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        Order::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
+            'order_number' => 'KRS-LEGACY', 'reference_number' => 'REF-LEGACY',
+            'game_id' => $game->id, 'package_id' => $package->id, 'membership_id' => $membership->id,
+            'customer_name' => 'Member', 'customer_email' => 'typo@example.com', 'customer_phone' => '+60123456789',
+            'player_id' => '12345', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
+            'transaction_fee' => 0, 'platform_profit' => 50, 'reseller_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
+        ]);
+        $token = $this->tokenFor('member@example.com');
+
+        $orders = $this->getJson('/api/membership/me', ['Authorization' => "Bearer {$token}"])
+            ->assertOk()
+            ->json('order_history');
+
+        $this->assertCount(1, $orders);
+        $this->assertSame('KRS-LEGACY', $orders[0]['order_number']);
+    }
+
     public function test_plans_returns_empty_array_when_membership_disabled(): void
     {
         PlatformSettings::current()->update(['membership_enabled' => false]);
