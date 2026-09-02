@@ -23,8 +23,8 @@ export interface Supplier {
   is_fully_configured: boolean;
   /** Secret-type keys (per slug) that actually have a value set — never the value itself. Drives each secret field's own badge. */
   configured_secret_keys: string[];
-  /** ADR-046 decision 3 — only the non-secret api_config keys (base_url/sandbox/testing/etc.), pre-fills the Edit form. */
-  visible_config: Record<string, string | boolean | null>;
+  /** ADR-046 decision 3 — only the non-secret api_config keys (base_url/sandbox/testing/category_whitelist/etc.), pre-fills the Edit form. */
+  visible_config: Record<string, string | boolean | string[] | null>;
   /** ADR-046 addendum — null when this supplier has no sandbox/testing-mode field at all. */
   is_sandbox: boolean | null;
   reference_counts: {
@@ -37,19 +37,20 @@ export interface Supplier {
 /**
  * ADR-046 decision 3 — the Edit form's field structure per supplier:
  * "secret" fields are write-only and masked (SUPP-5, never
- * redisplayed by the backend), "text"/"boolean" fields are plain
- * visible/editable operational config (base_url, sandbox/testing
- * mode). `api_config` itself stays schemaless on the backend — this
- * list is the one place that needs updating when a supplier's real
- * shape is confirmed (e.g. Digiflazz, once its account is verified).
+ * redisplayed by the backend), "text"/"boolean"/"list" fields are
+ * plain visible/editable operational config (base_url, sandbox/testing
+ * mode, category whitelist). `api_config` itself stays schemaless on
+ * the backend — this list is the one place that needs updating when a
+ * supplier's real shape is confirmed. Mirror of the backend's
+ * SupplierConfigSchema; keep both in sync by hand.
  */
-export type SupplierFieldType = "text" | "boolean" | "secret";
+export type SupplierFieldType = "text" | "boolean" | "secret" | "list";
 
 export interface SupplierField {
   key: string;
   label: string;
   type: SupplierFieldType;
-  /** Format hint shown as the input's placeholder — text/boolean fields only; secrets are opaque tokens with no format to hint at. */
+  /** Format hint shown as the input's placeholder — text/list/boolean fields only; secrets are opaque tokens with no format to hint at. */
   placeholder?: string;
 }
 
@@ -66,6 +67,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "testing", label: "Testing Mode", type: "boolean" },
     { key: "customer_no_separator", label: "Customer No. Separator", type: "text", placeholder: "| (default — joins player ID and server ID)" },
+    // ADR-067 decision 2: Digiflazz's price-list spans Games/Data/Pulsa/PLN/etc.
+    // Blank = sync every category into Product Manager.
+    { key: "category_whitelist", label: "Category Whitelist", type: "list", placeholder: "Games (comma-separated; blank = sync all categories)" },
   ],
 };
 

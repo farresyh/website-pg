@@ -3,11 +3,11 @@
 namespace App\Console\Commands\Sync;
 
 use App\Models\Supplier;
-use App\Services\Sync\ProductSyncFailedException;
-use App\Services\Sync\ProductSyncService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Services\Supplier\UnsupportedSupplierException;
+use App\Services\Sync\ProductSyncFailedException;
+use App\Services\Sync\ProductSyncService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -63,7 +63,7 @@ class SyncSupplierProductsCommand extends Command
             }
 
             $succeeded++;
-            $this->info("Done in {$result->durationMs}ms — total: {$result->total}, created: {$result->created}, updated: {$result->updated}.");
+            $this->info("Done in {$result->durationMs}ms — total: {$result->total}, created: {$result->created}, updated: {$result->updated}, pruned: {$result->pruned}.");
         }
 
         return $succeeded > 0 || $suppliers->isEmpty() ? self::SUCCESS : self::FAILURE;

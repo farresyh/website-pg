@@ -42,8 +42,7 @@ final class GamevionAdapter implements SupplierAdapter
         private readonly ?string $proxyUrl = null,
         private readonly int $timeoutSeconds = 10,
         private readonly int $connectTimeoutSeconds = 5,
-    ) {
-    }
+    ) {}
 
     /**
      * ADR-046 addendum: always queries Gamevion's real/production
@@ -263,6 +262,12 @@ final class GamevionAdapter implements SupplierAdapter
      * Sandbox mode: sandbox_code/sandbox_price (string)/... — a
      * genuinely different field set for the same concept, confirmed
      * from the spec's oneOf. Both collapse to one canonical shape.
+     *
+     * ADR-067 decision 4: `groupLabel` is `category` — Gamevion's
+     * category string is already edition-level ("Free Fire Global",
+     * "Mobile Legends: Bang Bang (Malaysia)"), so it is the right
+     * Product Manager grouping key as-is. Gamevion has no `type`
+     * concept, so that stays null.
      */
     private function normalizeProduct(array $item): SupplierCatalogItem
     {
@@ -273,6 +278,7 @@ final class GamevionAdapter implements SupplierAdapter
                 category: $item['sandbox_category'] ?? null,
                 price: isset($item['sandbox_price']) ? (float) $item['sandbox_price'] : null,
                 status: $item['sandbox_status'] ?? null,
+                groupLabel: $item['sandbox_category'] ?? null,
             );
         }
 
@@ -282,6 +288,7 @@ final class GamevionAdapter implements SupplierAdapter
             category: $item['product_category'] ?? null,
             price: isset($item['product_price']) ? (float) $item['product_price'] : null,
             status: $item['product_status'] ?? null,
+            groupLabel: $item['product_category'] ?? null,
         );
     }
 }

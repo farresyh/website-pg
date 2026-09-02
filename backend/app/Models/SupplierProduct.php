@@ -19,6 +19,8 @@ class SupplierProduct extends Model
         'external_ref',
         'name',
         'category_raw',
+        'group_label',
+        'type',
         'price_sen',
         'status_raw',
         'last_synced_at',

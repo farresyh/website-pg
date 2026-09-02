@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Services\Supplier;
 
+use App\Jobs\LogSupplierRequestJob;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
+use App\Services\Supplier\RequestLog\DeveloperTestContext;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -122,7 +124,7 @@ class GamevionAdapterTest extends TestCase
 
         $this->adapter()->checkBalance();
 
-        Queue::assertPushed(\App\Jobs\LogSupplierRequestJob::class, function ($job) {
+        Queue::assertPushed(LogSupplierRequestJob::class, function ($job) {
             $entry = $job->entry();
 
             return $entry['slug'] === 'gamevion'
@@ -150,9 +152,9 @@ class GamevionAdapterTest extends TestCase
             ], 200),
         ]);
 
-        \App\Services\Supplier\RequestLog\DeveloperTestContext::runIn(fn () => $this->adapter()->checkBalance());
+        DeveloperTestContext::runIn(fn () => $this->adapter()->checkBalance());
 
-        Queue::assertPushed(\App\Jobs\LogSupplierRequestJob::class, fn ($job) => $job->entry()['call_type'] === 'dev_test_checkBalance');
+        Queue::assertPushed(LogSupplierRequestJob::class, fn ($job) => $job->entry()['call_type'] === 'dev_test_checkBalance');
     }
 
     /**
@@ -184,6 +186,8 @@ class GamevionAdapterTest extends TestCase
         $this->assertSame('Free Fire 5 Diamonds', $result->data[0]->name);
         $this->assertSame(1000.0, $result->data[0]->price);
         $this->assertSame('active', $result->data[0]->status);
+        // ADR-067 decision 4: Gamevion's category is already the group key.
+        $this->assertSame('Free Fire', $result->data[0]->groupLabel);
     }
 
     /**
@@ -220,6 +224,7 @@ class GamevionAdapterTest extends TestCase
         $this->assertSame('Free Fire 5 Diamonds', $result->data[0]->name);
         $this->assertSame(1000.0, $result->data[0]->price);
         $this->assertSame('active', $result->data[0]->status);
+        $this->assertSame('Free Fire', $result->data[0]->groupLabel);
     }
 
     /**

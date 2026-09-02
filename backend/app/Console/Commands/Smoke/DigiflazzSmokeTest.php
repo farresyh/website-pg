@@ -5,6 +5,7 @@ namespace App\Console\Commands\Smoke;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -20,6 +21,12 @@ use Illuminate\Support\Str;
  * specifically to be called for real, the same way Stripe's test card
  * numbers are. Each ref_id is freshly generated per run so a repeat
  * run never collides with a prior one.
+ *
+ * ADR-067 decision 10: with DigiflazzWebhookController still deferred,
+ * the two Pending cases (…233/…234) are verified only as far as the
+ * Pending state PLUS one immediate checkStatus() re-submit — proving
+ * the async-poll path the reconcile command relies on. Callback
+ * completion is left for the future webhook ADR.
  */
 #[Signature('app:digiflazz-smoke-test')]
 #[Description('Manually verify DigiflazzAdapter against the real Digiflazz API: balance, catalog, and all 4 official test-case transactions.')]
@@ -64,9 +71,11 @@ class DigiflazzSmokeTest extends Command
         foreach (self::TEST_CASES as $customerNo => $label) {
             $this->info("Running official test case [{$customerNo}] {$label}...");
 
+            $referenceNumber = 'SMOKE-'.Str::upper(Str::random(12));
+
             $result = $adapter->createOrder(new SupplierOrderRequest(
                 productRef: 'xld10',
-                referenceNumber: 'SMOKE-'.Str::upper(Str::random(12)),
+                referenceNumber: $referenceNumber,
                 playerId: $customerNo,
             ));
 
@@ -75,6 +84,22 @@ class DigiflazzSmokeTest extends Command
             // Not folded into $allOk — a Gagal/Pending outcome here is
             // the EXPECTED result for 3 of these 4 cases, not a real
             // failure of this smoke test.
+
+            // ADR-067 decision 10: for a Pending outcome, prove the
+            // async-poll path (checkStatus re-submits the same ref_id)
+            // that the reconcile command depends on while the webhook
+            // is deferred.
+            if ($result->outcome->value === 'pending') {
+                $this->info("  Pending — polling checkStatus [{$customerNo}]...");
+
+                $poll = $adapter->checkStatus(new SupplierStatusCheckRequest(
+                    supplierRef: $referenceNumber,
+                    productRef: 'xld10',
+                    playerId: $customerNo,
+                ));
+
+                $this->printResult("checkStatus [{$customerNo}]", $poll);
+            }
         }
 
         return $allOk ? self::SUCCESS : self::FAILURE;

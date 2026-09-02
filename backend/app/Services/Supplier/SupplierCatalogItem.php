@@ -8,6 +8,17 @@ namespace App\Services\Supplier;
  * contains. Formalized as a type (rather than a raw associative array)
  * so a second supplier adapter is compiler-enforced to normalize into
  * this same shape, not just conventionally expected to (ADAPT-3).
+ *
+ * `groupLabel` (ADR-067 decision 4) is the string the Product Manager
+ * groups a supplier's raw catalog by — set by the adapter itself,
+ * because only the adapter knows which of its supplier's fields
+ * carries the "which game" identity: Gamevion's `category` is already
+ * edition-level, so it passes `category`; Digiflazz's `category` is a
+ * flat `"Games"` for every game, so it passes `brand`. `null` means
+ * "no opinion" and `ProductSyncService` falls back to `category`.
+ * `type` is the supplier's own sub-classification (e.g. Digiflazz
+ * membership tiers) — stored raw for a future checkout need, never
+ * used for grouping.
  */
 final class SupplierCatalogItem
 {
@@ -17,6 +28,7 @@ final class SupplierCatalogItem
         public readonly ?string $category,
         public readonly ?float $price,
         public readonly ?string $status,
-    ) {
-    }
+        public readonly ?string $groupLabel = null,
+        public readonly ?string $type = null,
+    ) {}
 }
