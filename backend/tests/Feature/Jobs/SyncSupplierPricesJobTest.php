@@ -14,6 +14,8 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
+use App\Services\Sync\PackagePriceSyncService;
+use App\Services\Sync\ProductSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -23,6 +25,14 @@ class SyncSupplierPricesJobTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Any non-empty api_config — the job now skips a supplier whose
+     * api_config is blank (it can't be called), and every test here
+     * binds a fake adapter anyway, so the contents are irrelevant, only
+     * that it is not empty.
+     */
+    private const FAKE_CONFIG = ['base_url' => 'https://fake.test', 'bearer_token' => 't', 'api_key' => 'k', 'sandbox' => true];
+
     private function bindFakeAdapter(bool $success, array $items = [], string $slug = 'gamevion'): void
     {
         $this->app->bind("supplier-adapter.{$slug}", fn () => new class($success, $items) implements SupplierAdapter
@@ -30,8 +40,7 @@ class SyncSupplierPricesJobTest extends TestCase
             public function __construct(
                 private readonly bool $success,
                 private readonly array $items,
-            ) {
-            }
+            ) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -65,7 +74,7 @@ class SyncSupplierPricesJobTest extends TestCase
     public function test_job_runs_stage_1_and_2_and_marks_the_run_successful(): void
     {
         $supplier = Supplier::query()->create([
-            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR',
+            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR',
         ]);
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         $package = Package::query()->create([
@@ -85,8 +94,8 @@ class SyncSupplierPricesJobTest extends TestCase
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
         (new SyncSupplierPricesJob($run))->handle(
-            app(\App\Services\Sync\ProductSyncService::class),
-            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
         );
 
@@ -107,7 +116,7 @@ class SyncSupplierPricesJobTest extends TestCase
     {
         config(['packages.price_swing_threshold_percent' => 50]);
         $supplier = Supplier::query()->create([
-            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR',
+            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR',
         ]);
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
@@ -127,8 +136,8 @@ class SyncSupplierPricesJobTest extends TestCase
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
         (new SyncSupplierPricesJob($run))->handle(
-            app(\App\Services\Sync\ProductSyncService::class),
-            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
         );
 
@@ -141,15 +150,15 @@ class SyncSupplierPricesJobTest extends TestCase
     public function test_job_marks_the_run_failed_when_the_adapter_call_fails(): void
     {
         Supplier::query()->create([
-            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR',
+            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR',
         ]);
         $this->bindFakeAdapter(false);
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
         (new SyncSupplierPricesJob($run))->handle(
-            app(\App\Services\Sync\ProductSyncService::class),
-            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
         );
 
@@ -165,8 +174,8 @@ class SyncSupplierPricesJobTest extends TestCase
      */
     public function test_job_syncs_every_active_supplier_and_aggregates_stats(): void
     {
-        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
-        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => [], 'currency' => 'IDR']);
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => self::FAKE_CONFIG, 'currency' => 'IDR']);
 
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
@@ -196,8 +205,8 @@ class SyncSupplierPricesJobTest extends TestCase
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
         (new SyncSupplierPricesJob($run))->handle(
-            app(\App\Services\Sync\ProductSyncService::class),
-            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
         );
 
@@ -213,8 +222,8 @@ class SyncSupplierPricesJobTest extends TestCase
      */
     public function test_job_records_the_fx_rate_used_for_a_non_myr_supplier(): void
     {
-        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
-        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => [], 'currency' => 'IDR']);
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => self::FAKE_CONFIG, 'currency' => 'IDR']);
 
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
@@ -237,8 +246,8 @@ class SyncSupplierPricesJobTest extends TestCase
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
         (new SyncSupplierPricesJob($run))->handle(
-            app(\App\Services\Sync\ProductSyncService::class),
-            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
         );
 
@@ -251,14 +260,14 @@ class SyncSupplierPricesJobTest extends TestCase
 
     public function test_job_records_an_empty_fx_rates_used_array_when_every_supplier_is_myr(): void
     {
-        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
         $this->bindFakeAdapter(true, []);
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
         (new SyncSupplierPricesJob($run))->handle(
-            app(\App\Services\Sync\ProductSyncService::class),
-            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
         );
 
@@ -269,8 +278,8 @@ class SyncSupplierPricesJobTest extends TestCase
     /** ADR-031: an inactive supplier is never synced. */
     public function test_job_skips_an_inactive_supplier(): void
     {
-        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
-        Supplier::query()->create(['name' => 'Retired', 'slug' => 'retired-supplier', 'api_config' => [], 'currency' => 'MYR', 'is_active' => false]);
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
+        Supplier::query()->create(['name' => 'Retired', 'slug' => 'retired-supplier', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR', 'is_active' => false]);
 
         $this->bindFakeAdapter(true, []);
         // No 'supplier-adapter.retired-supplier' binding at all — if the
@@ -280,8 +289,8 @@ class SyncSupplierPricesJobTest extends TestCase
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
         (new SyncSupplierPricesJob($run))->handle(
-            app(\App\Services\Sync\ProductSyncService::class),
-            app(\App\Services\Sync\PackagePriceSyncService::class),
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
         );
 
@@ -296,5 +305,63 @@ class SyncSupplierPricesJobTest extends TestCase
         $job = new SyncSupplierPricesJob($run);
 
         $this->assertSame('price-sync', $job->queue);
+    }
+
+    /**
+     * A supplier that is active but not yet configured (empty api_config
+     * — a row created via /admin but not filled, or a leftover) is
+     * skipped, not attempted-then-failed: a tick with nothing syncable
+     * is a clean no-op 'success', not a 'failed' run.
+     */
+    public function test_job_is_a_clean_no_op_success_when_the_only_active_supplier_has_no_api_config(): void
+    {
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        // deliberately NO adapter binding — if the job tried to build one
+        // for an empty-config supplier it would throw and fail the run.
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+        );
+
+        $run->refresh();
+        $this->assertSame('success', $run->status);
+        $this->assertNotNull($run->finished_at);
+    }
+
+    /** Pre-ADR-046 stopgap removed: the job must not manufacture a Supplier row. */
+    public function test_job_does_not_create_a_gamevion_supplier_row(): void
+    {
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+        );
+
+        $this->assertDatabaseMissing('suppliers', ['slug' => 'gamevion']);
+        $this->assertSame('success', $run->refresh()->status);
+    }
+
+    /**
+     * $tries = 1, so a throw outside handle()'s per-supplier try/catch
+     * (worker timeout, OOM, an orchestration bug) lands in failed().
+     * Without it the run is stranded at 'running' forever — the real
+     * cause of the ~50 stuck runs found in production 2026-09-02.
+     */
+    public function test_failed_handler_marks_a_stranded_run_as_failed(): void
+    {
+        $run = PriceSyncRun::query()->create(['status' => 'running', 'started_at' => now()]);
+
+        (new SyncSupplierPricesJob($run))->failed(new RuntimeException('worker timed out'));
+
+        $run->refresh();
+        $this->assertSame('failed', $run->status);
+        $this->assertSame('worker timed out', $run->error_message);
+        $this->assertNotNull($run->finished_at);
     }
 }

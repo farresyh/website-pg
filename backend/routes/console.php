@@ -2,6 +2,7 @@
 
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\PriceSyncRun;
+use App\Models\Supplier;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -10,17 +11,29 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// ADR-015 decision #6: written now so it activates for free the
-// moment a real OS cron (`* * * * * php artisan schedule:run`) exists
-// on a deployed host — this project currently runs on local Herd
-// only, so this entry is inert today, not a claim that scheduled
-// Price Sync is actually running in production yet. Writes its own
-// PriceSyncRun row (triggered_by='system') the same way the manual
-// "Sync All Prices Now" trigger does, so Sync History (ADR-016) shows
-// both uniformly once that UI exists.
+// ADR-015 decision #6: writes its own PriceSyncRun row
+// (triggered_by='system') the same way the manual "Sync All Prices Now"
+// trigger does, so Sync History (ADR-016) shows both uniformly. Active
+// in production since the Forge cutover (2026-09-02).
+//
+// Skips creating a run entirely when there is no syncable supplier — an
+// active Supplier row with a non-empty api_config. Pre-launch (and any
+// time every supplier is paused/unconfigured) there is nothing to sync,
+// and a run per tick would just be Sync-History noise. The manual
+// trigger (PriceSyncController::store) is deliberately not gated this
+// way — the founder can still fire one to prove the pipeline.
 $priceSyncIntervalMinutes = config('packages.price_sync_interval_minutes');
 
 Schedule::call(function () {
+    $hasSyncableSupplier = Supplier::query()
+        ->where('is_active', true)
+        ->get()
+        ->contains(fn (Supplier $supplier) => filled($supplier->api_config));
+
+    if (! $hasSyncableSupplier) {
+        return;
+    }
+
     $run = PriceSyncRun::query()->create(['status' => 'queued', 'triggered_by' => 'system']);
     SyncSupplierPricesJob::dispatch($run);
 })->cron("*/{$priceSyncIntervalMinutes} * * * *")
