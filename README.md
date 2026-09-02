@@ -99,11 +99,14 @@ cd e2e && npm test   # Playwright, 4 golden paths (ADR-023) — boots its own th
 
 ## Current status
 
-**Deployed, pre-commercial-launch.** As of 2026-09-02 the backend is live on a
-Laravel Forge–managed DigitalOcean droplet at `api.pekangame.space`, and the
-three frontends are on Vercel (`pekangame.space`, `admin.pekangame.space`,
-`reseller.pekangame.space`) — see [ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation).
-Not yet open for real customers: no games are seeded, and the CHIP FPX
-payment channel is still pending gateway approval. `docs/prd.md` §14 has the
-running deploy log; §15 (MVP Scope Tracker) has what's built vs. outstanding
-per feature area.
+**Deployed, pre-commercial-launch — but it has taken its first real money.**
+The backend is live on a Laravel Forge–managed DigitalOcean droplet at
+`api.pekangame.space`, the three frontends are on Vercel (`pekangame.space`,
+`admin.pekangame.space`, `reseller.pekangame.space`) — see [ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation) —
+and as of 2026-09-03 CHIP FPX is **live** (live keys, `fpx` channel active): one
+real order (`PG-PYAYMRYNUYV0`, RM1.94) has been paid end-to-end through the CHIP
+hosted page + `success_callback` webhook. Not yet open for real customers: the
+catalogue is one placeholder game and no supplier account is funded, so orders
+can be paid but not delivered. `docs/prd.md` §14 has the running deploy log;
+§15 (MVP Scope Tracker) has what's built vs. outstanding, and its "NEXT SESSION"
+pointer has the launch blockers.
