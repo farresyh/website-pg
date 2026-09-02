@@ -9,7 +9,7 @@
 export default function LegalPageContent({ title, content }: { title: string; content: string | null }) {
   return (
     <div className="mx-auto max-w-[760px] px-4 py-12 lg:py-16">
-      <h1 className="font-display text-headline-lg font-bold uppercase tracking-tight text-on-surface">{title}</h1>
+      <h1 className="font-display text-3xl font-bold uppercase lg:text-headline-lg tracking-tight text-on-surface">{title}</h1>
       <div className="mt-6 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo lg:p-8">
         {content ? (
           <div

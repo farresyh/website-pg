@@ -5,7 +5,7 @@ import UserDropdown from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
 import React, { useState } from "react";
 
-const AppHeader: React.FC = () => {
+const AppHeader: React.FC<{ title?: string }> = ({ title = "PekanGame Admin" }) => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
 
@@ -48,7 +48,7 @@ const AppHeader: React.FC = () => {
           </button>
 
           <span className="text-base font-semibold text-gray-900 dark:text-white lg:hidden">
-            PekanGame Admin
+            {title}
           </span>
 
           <button

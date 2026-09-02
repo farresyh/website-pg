@@ -266,15 +266,24 @@ final class DigiflazzAdapter implements SupplierAdapter
      * product makes it dead even if we left it enabled in the buyer
      * area.
      *
-     * ADR-067 decision 4: `groupLabel` is `brand` (Digiflazz's
-     * `category` is a flat `"Games"` for every game, so it can't drive
-     * Product Manager grouping — `brand` is the real game identity).
-     * `type` (e.g. `"Aigo SS"`, membership tiers) is carried raw.
+     * ADR-067 decision 4 (+ its region addendum): `groupLabel` is
+     * `brand` joined with `type`. Digiflazz's `category` is a flat
+     * `"Games"` for every game; `brand` is the game ("MOBILE LEGENDS"),
+     * and `type` is its **region variant** ("Umum" / "Malaysia" /
+     * "Indonesia" / "Global" / ...) — exactly the region tabs in
+     * Digiflazz's own buyer-area UI. Grouping by `brand` alone would
+     * collapse every MLBB region into one group; Gamevion already keeps
+     * them apart ("Mobile Legends (Indonesia)" is its own `category`),
+     * so this matches. `type` is still carried raw for a future
+     * checkout need. A game with no `type` falls back to `brand` alone.
      */
     private function normalizeProduct(array $item): SupplierCatalogItem
     {
         $isActive = ($item['buyer_product_status'] ?? false)
             && ($item['seller_product_status'] ?? false);
+
+        $brand = $item['brand'] ?? null;
+        $type = $item['type'] ?? null;
 
         return new SupplierCatalogItem(
             productRef: $item['buyer_sku_code'] ?? '',
@@ -282,8 +291,20 @@ final class DigiflazzAdapter implements SupplierAdapter
             category: $item['category'] ?? null,
             price: isset($item['price']) ? (float) $item['price'] : null,
             status: $isActive ? 'active' : 'inactive',
-            groupLabel: $item['brand'] ?? null,
-            type: $item['type'] ?? null,
+            groupLabel: $this->groupLabel($brand, $type),
+            type: $type,
         );
+    }
+
+    private function groupLabel(?string $brand, ?string $type): ?string
+    {
+        $brand = $brand !== null ? trim($brand) : '';
+        $type = $type !== null ? trim($type) : '';
+
+        if ($brand === '') {
+            return $type === '' ? null : $type;
+        }
+
+        return $type === '' ? $brand : "{$brand} — {$type}";
     }
 }

@@ -1,37 +1,14 @@
 "use client";
 
-import { useSidebar } from "@/context/SidebarContext";
-import AppHeader from "@/layout/AppHeader";
-import AppSidebar from "@/layout/AppSidebar";
-import Backdrop from "@/layout/Backdrop";
 import React from "react";
+import AppSidebar from "@/layout/AppSidebar";
+import PanelShell from "@/layout/PanelShell";
 
 /**
  * Admin Panel shell (§6.2-6.18 of docs/prd.md). Accessible to both Admin
  * and Super Admin — per-page/action restrictions (e.g. AUTH-4 itself)
  * are enforced by the Laravel API, not here.
  */
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-
-  const mainContentMargin = isMobileOpen
-    ? "ml-0"
-    : isExpanded || isHovered
-      ? "lg:ml-[290px]"
-      : "lg:ml-[90px]";
-
-  return (
-    <div className="min-h-screen xl:flex">
-      <AppSidebar />
-      <Backdrop />
-      <div className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
-        <AppHeader />
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">{children}</div>
-      </div>
-    </div>
-  );
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return <PanelShell sidebar={<AppSidebar />}>{children}</PanelShell>;
 }

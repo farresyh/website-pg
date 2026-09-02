@@ -8,7 +8,7 @@ import { FAQ_ITEMS } from "@/lib/placeholder-data";
  */
 export default function FaqSection() {
   return (
-    <section className="mx-auto max-w-[840px] px-4 py-12">
+    <section className="mx-auto max-w-[840px] px-4 py-9 lg:py-12">
       <SectionHeading title="Frequently Asked Questions" />
       <div className="flex flex-col gap-3">
         {FAQ_ITEMS.map((item) => (

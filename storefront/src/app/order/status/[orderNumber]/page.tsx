@@ -25,9 +25,9 @@ export default async function OrderStatusPage({ params }: OrderStatusPageProps) 
   return (
     <>
       <SiteHeader />
-      <main className="pb-16 lg:pb-0">
+      <main className="pb-10 lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 py-8">
-          <h1 className="font-display mb-6 text-headline-lg font-bold uppercase tracking-tight">Order Status</h1>
+          <h1 className="font-display mb-6 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Order Status</h1>
           <OrderStatusTracker orderNumber={orderNumber} />
         </div>
         <div className="mx-auto max-w-[1200px] px-4">

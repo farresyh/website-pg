@@ -95,7 +95,7 @@ export default function MembershipClient() {
   if (token === null && emailStep === "email") {
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
-        <h1 className="font-display mb-2 text-headline-lg font-bold uppercase tracking-tight">Membership</h1>
+        <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Membership</h1>
         <p className="mb-6 text-sm text-on-surface-variant">Enter your email — we&apos;ll send a code to verify it&apos;s you.</p>
         <form onSubmit={handleSendCode} className="flex flex-col gap-3">
           <div className="flex min-h-11 items-center gap-2 rounded-md border-2 border-ink bg-surface-container-lowest px-3.5">
@@ -120,7 +120,7 @@ export default function MembershipClient() {
   if (token === null && emailStep === "otp") {
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
-        <h1 className="font-display mb-2 text-headline-lg font-bold uppercase tracking-tight">Enter Your Code</h1>
+        <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Enter Your Code</h1>
         <p className="mb-6 text-sm text-on-surface-variant">We sent a 6-digit code to {email}. It expires in 10 minutes.</p>
         <form onSubmit={handleVerify} className="flex flex-col items-center gap-4">
           <OtpInput value={code} onChange={setCode} disabled={verifying} />
@@ -150,7 +150,7 @@ export default function MembershipClient() {
   return (
     <div className="mx-auto flex max-w-[1000px] flex-col gap-gutter px-4 py-10 lg:py-16">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="font-display text-headline-lg font-bold uppercase tracking-tight">Membership &amp; Account</h1>
+        <h1 className="font-display text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Membership &amp; Account</h1>
         <Button variant="outline" size="sm" onClick={handleSignOut}>
           <SignOut size={16} weight="bold" /> Sign Out
         </Button>

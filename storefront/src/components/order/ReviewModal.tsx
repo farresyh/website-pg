@@ -147,7 +147,7 @@ export default function ReviewModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full flex-col overflow-y-auto rounded-t-lg border-2 border-ink bg-surface p-6 neo-lg lg:max-w-[480px] lg:rounded-lg"
+        className="flex max-h-[90dvh] w-full flex-col overflow-y-auto rounded-t-lg border-2 border-ink bg-surface p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] lg:max-w-[480px] lg:rounded-lg lg:pb-6 lg:neo-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between border-b-2 border-ink pb-3">

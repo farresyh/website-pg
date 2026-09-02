@@ -189,17 +189,18 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
 
           <hr className="border-ink/25" />
 
-          <div className="flex items-center gap-2">
+          {/* Vertical on mobile (each stage on its own row), horizontal
+            * timeline from lg up — a 3-4 stage nowrap row does not fit a
+            * phone. */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-2">
             {stages.map((stage, i) => (
-              <div key={stage.label} className="flex flex-1 items-center gap-2 last:flex-none">
-                <div className="flex items-center gap-2.5">
-                  <StageCircle state={stage.state} index={i + 1} />
-                  <div>
-                    <p className="font-display text-[13px] font-bold whitespace-nowrap">{stage.label}</p>
-                    <p className="text-[11px] whitespace-nowrap text-on-surface-variant">{stage.sub}</p>
-                  </div>
+              <div key={stage.label} className="flex items-center gap-2.5 lg:flex-1 lg:last:flex-none">
+                <StageCircle state={stage.state} index={i + 1} />
+                <div>
+                  <p className="font-display text-[13px] font-bold lg:whitespace-nowrap">{stage.label}</p>
+                  <p className="text-[11px] text-on-surface-variant lg:whitespace-nowrap">{stage.sub}</p>
                 </div>
-                {i < stages.length - 1 && <div className="h-0.5 min-w-5 flex-1 bg-ink/25" />}
+                {i < stages.length - 1 && <div className="hidden h-0.5 min-w-5 flex-1 bg-ink/25 lg:block" />}
               </div>
             ))}
           </div>

@@ -18,7 +18,7 @@ export default async function AboutUsPage() {
   return (
     <>
       <SiteHeader />
-      <main className="pb-16 lg:pb-0">
+      <main className="pb-10 lg:pb-0">
         <LegalPageContent title="About Us" content={content} />
       </main>
       <SiteFooter />

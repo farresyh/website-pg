@@ -1,8 +1,23 @@
 import type { NextConfig } from "next";
 
+/**
+ * `next/image` refuses any remote host not listed here (HTTP 400 from
+ * the optimizer, silent broken <img> on the page). Admin-uploaded
+ * images (hero slides, game thumbnails, gallery) are served from the
+ * backend's `/storage/**`, so the backend host — whatever
+ * NEXT_PUBLIC_API_URL points at — must be allowed, alongside the local
+ * dev hosts.
+ */
+const apiHost = process.env.NEXT_PUBLIC_API_URL
+  ? new URL(process.env.NEXT_PUBLIC_API_URL).hostname
+  : null;
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
+      ...(apiHost
+        ? ([{ protocol: "https" as const, hostname: apiHost, pathname: "/storage/**" }])
+        : []),
       {
         protocol: "https",
         hostname: "kedairuncit-backend.test",
