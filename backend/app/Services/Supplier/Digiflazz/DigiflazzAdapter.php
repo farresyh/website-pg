@@ -141,9 +141,11 @@ final class DigiflazzAdapter implements SupplierAdapter
             ->connectTimeout($this->connectTimeoutSeconds)
             ->acceptJson()
             // ADR-014: same shared retry predicate every adapter uses —
-            // connection failures and real 5xx only, never a business
-            // rc failure (which arrives as HTTP 200, so it never enters
-            // this retry path at all — see submitTransaction()).
+            // connection failures and real 5xx only. `throw: false` means
+            // a business `rc` failure never becomes a RequestException the
+            // predicate could see, so it is never retried regardless of
+            // the HTTP status Digiflazz wraps it in (2xx or 4xx) — the
+            // classification happens in submitTransaction()/failureFrom().
             ->retry([200, 500, 1000], when: TransientFailureRetryPolicy::shouldRetry(), throw: false);
 
         if ($this->proxyUrl !== null) {
@@ -174,53 +176,87 @@ final class DigiflazzAdapter implements SupplierAdapter
             'testing' => $this->testing ?: null,
         ], fn ($value) => $value !== null));
 
-        if ($response->failed()) {
+        // A real 5xx means Digiflazz itself is down — surface it as a
+        // server error so the circuit breaker sees it, whatever any body
+        // claims. Everything below trusts the response body.
+        if ($response->serverError()) {
             return SupplierResponse::failure(
                 (string) $response->status(),
                 "Digiflazz request failed with HTTP {$response->status()}",
-                isServerError: $response->serverError(),
+                isServerError: true,
             );
         }
 
-        $data = $response->json('data', []);
+        $data = $response->json('data');
 
-        return match ($data['status'] ?? null) {
-            'Sukses' => SupplierResponse::success([
-                'supplier_ref' => $data['sn'] ?? $data['ref_id'] ?? null,
-                'status' => $data['status'],
-                'rc' => $data['rc'] ?? null,
-                'message' => $data['message'] ?? null,
-                'price' => isset($data['price']) ? (float) $data['price'] : null,
-            ]),
-            'Pending' => SupplierResponse::pending([
-                'status' => $data['status'],
-                'rc' => $data['rc'] ?? null,
-                'message' => $data['message'] ?? null,
-            ]),
-            default => SupplierResponse::failure(
-                (string) ($data['rc'] ?? 'unknown'),
+        // Digiflazz wraps a well-formed {rc, status, message} envelope
+        // even under an HTTP 4xx (proven live 2026-09-02: HTTP 400 +
+        // `rc 44` "Saldo tidak cukup" — ADR-030's 2026-09-03 addendum).
+        // Trust the envelope's own three-way outcome whenever it is
+        // present; a business rejection is never a server error, even
+        // wearing a 4xx, so it never counts against the breaker.
+        if (is_array($data) && isset($data['status'])) {
+            return match ($data['status']) {
+                'Sukses' => SupplierResponse::success([
+                    'supplier_ref' => $data['sn'] ?? $data['ref_id'] ?? null,
+                    'status' => $data['status'],
+                    'rc' => $data['rc'] ?? null,
+                    'message' => $data['message'] ?? null,
+                    'price' => isset($data['price']) ? (float) $data['price'] : null,
+                ]),
+                'Pending' => SupplierResponse::pending([
+                    'status' => $data['status'],
+                    'rc' => $data['rc'] ?? null,
+                    'message' => $data['message'] ?? null,
+                ]),
+                default => SupplierResponse::failure(
+                    (string) ($data['rc'] ?? 'unknown'),
+                    $data['message'] ?? 'Unknown Digiflazz error',
+                ),
+            };
+        }
+
+        // An envelope carrying an `rc` but no `status` can only be a
+        // failure — Pending is impossible to assert without `status`.
+        if (is_array($data) && isset($data['rc'])) {
+            return SupplierResponse::failure(
+                (string) $data['rc'],
                 $data['message'] ?? 'Unknown Digiflazz error',
-            ),
-        };
-    }
+            );
+        }
 
-    /**
-     * Digiflazz always responds HTTP 200 for a well-formed request,
-     * even for an auth-level rejection (confirmed live, ADR-030
-     * Context: a real IP-whitelist rejection came back as `rc: 45`,
-     * not an HTTP 4xx) — checkBalance()/listProducts() have no
-     * documented three-way outcome the way the transaction endpoint
-     * does, so any non-'00' `rc` present in `data` is treated as a
-     * failure; its absence (the normal, undocumented-error case) means
-     * success.
-     */
-    private function failureFrom(Response $response): ?SupplierResponse
-    {
+        // No usable envelope — a genuine transport-level 4xx (a gateway
+        // error page, an empty body, a connection reset that exhausted
+        // the retries).
         if ($response->failed()) {
             return SupplierResponse::failure(
                 (string) $response->status(),
                 "Digiflazz request failed with HTTP {$response->status()}",
-                isServerError: $response->serverError(),
+                isServerError: false,
+            );
+        }
+
+        return SupplierResponse::failure('unknown', 'Unknown Digiflazz error');
+    }
+
+    /**
+     * Digiflazz's own error shape is inconsistent: an IP-whitelist
+     * rejection came back as `rc: 45` under HTTP 200 (ADR-030 Context),
+     * but the transaction endpoint returns a business failure — `rc 44`
+     * "Saldo tidak cukup" — under HTTP **400** (proven live 2026-09-02,
+     * ADR-030's 2026-09-03 addendum). So: a 5xx is always a transport
+     * error (breaker-counting); anything else is read from the body —
+     * a non-'00' `rc`, whether it rode a 2xx or a 4xx, is the real
+     * failure and is surfaced verbatim. checkBalance()/listProducts()
+     * have no Sukses/Pending/Gagal `status`, only a bare `rc`.
+     */
+    private function failureFrom(Response $response): ?SupplierResponse
+    {
+        if ($response->serverError()) {
+            return SupplierResponse::failure(
+                (string) $response->status(),
+                "Digiflazz request failed with HTTP {$response->status()}",
+                isServerError: true,
             );
         }
 
@@ -230,6 +266,14 @@ final class DigiflazzAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 (string) $data['rc'],
                 $data['message'] ?? 'Unknown Digiflazz error',
+            );
+        }
+
+        if ($response->failed()) {
+            return SupplierResponse::failure(
+                (string) $response->status(),
+                "Digiflazz request failed with HTTP {$response->status()}",
+                isServerError: false,
             );
         }
 

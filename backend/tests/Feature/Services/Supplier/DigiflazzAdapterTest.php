@@ -388,6 +388,93 @@ class DigiflazzAdapterTest extends TestCase
     }
 
     /**
+     * ADR-030's 2026-09-03 addendum: Digiflazz wraps a business failure
+     * in an HTTP 4xx — proven live, order PG-PYAYMRYNUYV0, HTTP 400 +
+     * `rc 44` "Saldo tidak cukup". The envelope's own outcome wins; it
+     * must NOT count against the circuit breaker.
+     */
+    public function test_create_order_reads_a_business_envelope_wrapped_in_a_4xx(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '44', 'sn' => '', 'message' => 'Saldo tidak cukup'],
+            ], 400),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'MLBB_MY_14_PG1', referenceNumber: 'REF-1', playerId: '51049607', serverId: '2005',
+        ));
+
+        $this->assertSame(SupplierOutcome::Failure, $result->outcome);
+        $this->assertSame('44', $result->errorCode);
+        $this->assertSame('Saldo tidak cukup', $result->errorMessage);
+        $this->assertFalse($result->isServerError);
+    }
+
+    /** A Pending status is honoured even under a 4xx — the match, not the HTTP code, classifies. */
+    public function test_create_order_honours_a_pending_status_under_a_4xx(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Pending', 'rc' => '03', 'message' => 'Transaksi Pending'],
+            ], 400),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001233',
+        ));
+
+        $this->assertSame(SupplierOutcome::Pending, $result->outcome);
+    }
+
+    /** A 4xx with no usable envelope is a genuine transport error — but still not breaker-counting. */
+    public function test_create_order_falls_back_to_a_transport_error_for_a_bodyless_4xx(): void
+    {
+        Http::fake(['api.digiflazz.com/*' => Http::response('<html>Bad Request</html>', 400)]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '123456789',
+        ));
+
+        $this->assertSame(SupplierOutcome::Failure, $result->outcome);
+        $this->assertSame('400', $result->errorCode);
+        $this->assertFalse($result->isServerError);
+    }
+
+    /** A 5xx is a transport error regardless of what body it carries — the breaker must see it. */
+    public function test_create_order_treats_a_5xx_as_a_server_error_even_with_a_business_body(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '44', 'message' => 'Saldo tidak cukup'],
+            ], 503),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '123456789',
+        ));
+
+        $this->assertTrue($result->isServerError);
+    }
+
+    /** cek-saldo / price-list carry only a bare `rc` — surface it whether it rides a 2xx or a 4xx. */
+    public function test_check_balance_surfaces_an_rc_delivered_under_a_4xx(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['rc' => '45', 'message' => 'IP kamu tidak dikenali'],
+            ], 400),
+        ]);
+
+        $result = $this->adapter()->checkBalance();
+
+        $this->assertFalse($result->success);
+        $this->assertSame('45', $result->errorCode);
+        $this->assertSame('IP kamu tidak dikenali', $result->errorMessage);
+        $this->assertFalse($result->isServerError);
+    }
+
+    /**
      * ADR-030 decision 1 / the docs' own confirmed behavior: checkStatus
      * is a literal re-submit of the topup request with the same ref_id
      * — requires the original buyer_sku_code + customer_no too, not

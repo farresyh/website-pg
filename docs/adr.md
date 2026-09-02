@@ -697,6 +697,8 @@ This prompted researching two candidate gateways — **CHIP** (`chip-in.asia`) a
 - The webhook route is now named `webhooks.chip`; `config('services.chip.callback_url')` is the single source for the URL CHIP is told.
 - Chargeback exposure stays zero only while the active channels are FPX / DuitNow QR. Activating cards (its own ADR) must add a registered webhook for `payment.charged_back` at that point.
 
+**Executed — 2026-09-02→03.** Both go-live steps done. **(a)** `scripts/chip-webhook-tunnel-test.sh` (a `/wizard`-style runner around a new `app:chip-webhook-smoke-test` command) ran against the real CHIP API with a test key + `cloudflared` tunnel — a real signed `success_callback` verified against the live `GET /public_key/`, parsed, and flipped a real Order to `Paid`. **(b)** the founder made a **real RM1.94 FPX payment on production with the live CHIP key** (money genuinely debited from their bank; order `PG-PYAYMRYNUYV0`, a member checkout): CHIP hosted page → `success_callback` to `https://api.pekangame.space/api/webhooks/chip` → signature verified → `payment_status = Paid`. **(c)** the `fpx` `payment_methods` row is active in production (RM1.00 flat fee). Payment + webhook are proven end-to-end in production with real money. Delivery failed (both suppliers are Rp 0 — a supplier-funding matter, not CHIP); `/admin/reports` correctly shows Sales RM1.94 / Owner Profit RM0.00 (profit is ledger-sourced and only booked on a delivered order). One quirk found: `/middleware/payment-methods` "Test This Channel" for `fpx` returns a spurious HTTP 400 (the `PaymentMethodController::test()` probe payload; real checkout works) — a non-blocking follow-up. DuitNow QR / FPX B2B1 stay inactive.
+
 ---
 
 ## ADR-023: Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules
@@ -1270,6 +1272,23 @@ Key differences from Gamevion the adapter must absorb (ADR-006's own "never assu
 - The Pending state + webhook/poll finalization are **ADR-032**'s work, not this ADR's.
 - Outbound IP (or the proxy's IP) must be whitelisted at Digiflazz; and Digiflazz's `52.74.250.133` must be whitelisted on our side before webhooks can be accepted (ADR-032).
 - The 90-day re-submit rule is enforced in ADR-032's reconcile guards, not here.
+
+**Addendum — Digiflazz wraps a business failure in an HTTP 4xx, 2026-09-03 (grilled with the founder via `/mattpocock-skills:grilling`, 1 round; `fix/digiflazz-4xx-business-envelope`).**
+
+**What the first real production order found.** `PG-PYAYMRYNUYV0` (a real RM1.94 FPX payment, the CHIP go-live step-b test) reached fulfilment and Digiflazz replied **HTTP 400** with a fully-formed body: `{"data":{"rc":"44","status":"Gagal","message":"Saldo tidak cukup"}}` — i.e. an ordinary insufficient-balance rejection, not a malformed request. This **contradicts this adapter's original assumption** ("Digiflazz always responds HTTP 200 for a well-formed request, even for an auth-level rejection" — the `rc: 45` IP-whitelist case in this ADR's Context did come back as 200). `DigiflazzAdapter::submitTransaction()` / `failureFrom()` checked `$response->failed()` **first** and returned a generic `"Digiflazz request failed with HTTP 400"`, discarding `rc`/`status`/`message` — so `/admin/orders` showed only "HTTP 400" while `/middleware/request-logs` (ADR-051, raw body) showed the real reason. Diagnosable, but only by digging.
+
+**Decision (each point grilled):**
+1. **Ordering: 5xx first, then trust the body.** A `$response->serverError()` (5xx) is always a transport error (`isServerError: true`, breaker-counting), whatever the body claims. For **2xx or 4xx**, the response body is authoritative: a `data.status` present → the existing `match` (Sukses/Pending/Gagal); a `data.rc` present without `status` → a Failure with that `rc`/`message` (Pending is impossible to assert without `status`); no usable `data` → the generic `"HTTP {status}"` transport error.
+2. **A business `Gagal` wrapped in a 4xx never sets `isServerError`.** `SupplierResponse::failure()`'s own documented intent — a run of ordinary business rejections isn't evidence the supplier is down, and must not trip `CircuitBreakingSupplierAdapter`. `isServerError: true` is now reserved for a real 5xx (and connection failures, unchanged).
+3. **Scope: both Digiflazz paths, not Gamevion.** `submitTransaction()` (→ `createOrder`/`checkStatus`, which re-submits the same shape, so a `checkStatus` that hits a 4xx `rc 44` mid-reconciliation now finalises the order as Failed instead of stranding it Pending) **and** `failureFrom()` (`checkBalance`/`listProducts` — bare `rc`, no `status`). `GamevionAdapter`'s 4xx handling already special-cases 409/`duplicate_reference` and 422, and there's no evidence it discards a useful body — left alone, noted here for a separate look if a Gamevion order ever surfaces the same lossy "HTTP 4xx" symptom.
+4. **Stored `orders.supplier_response` shape unchanged** — the normalized `error_code` + `error_message` (now `"44"` / `"Saldo tidak cukup"`). The full raw echo is always in `/middleware/request-logs`; no need to widen what the order row stores.
+
+**No lookup table of `rc` codes** — Digiflazz sends a human `message` with every response; the adapter passes it through. Only `status` (Sukses/Pending/Gagal) is load-bearing for the `SupplierOutcome`, and that path is unchanged.
+
+**Consequence to track:**
+- `PG-PYAYMRYNUYV0` itself: paid, delivery `failed` (Digiflazz deposit is Rp 0). Resolution per ADR-004 — top up Digiflazz, then Resend Delivery; or issue a voucher. It is the founder's own test order.
+- The retry predicate (`TransientFailureRetryPolicy`) is unchanged and still correct — `throw: false` means a 4xx never becomes a `RequestException` the predicate sees, so a business `rc` failure is never retried regardless of the HTTP status it wears.
+- 6 new `DigiflazzAdapterTest` cases; PRD §14/§15 updated on ship.
 
 ---
 
