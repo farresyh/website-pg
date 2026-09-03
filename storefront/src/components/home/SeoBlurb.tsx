@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function SeoBlurb() {
   return (
     <section className="mx-auto max-w-[1200px] px-4 py-9 lg:py-12">
@@ -6,9 +8,9 @@ export default function SeoBlurb() {
         <p className="max-w-[900px] text-[13px] leading-relaxed text-on-surface-variant">
           PekanGame offers the fastest top-up platform for gaming fans across Malaysia. Get the best prices for all your
           favorite games.{" "}
-          <a href="#" className="font-bold text-primary underline underline-offset-2">
+          <Link href="/about-us" className="font-bold text-primary underline underline-offset-2">
             Read More ›
-          </a>
+          </Link>
         </p>
       </div>
     </section>

@@ -2,20 +2,25 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
+import WebVitals from "@/components/WebVitals";
 import { SearchProvider } from "@/context/SearchContext";
+import { SiteConfigProvider } from "@/context/SiteConfigContext";
+import SiteHeader from "@/components/layout/SiteHeader";
+import BottomNav from "@/components/layout/BottomNav";
 import { getBranding } from "@/lib/branding";
+import { listPlans } from "@/lib/membership";
 import { getSeoSettings, getSeoScripts } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 
-// Branding/SEO settings are live, admin-editable data (same reasoning
-// already applied to page.tsx/sitemap.ts/robots.ts/etc.) — never bake
-// into a static next build artifact. Without this, Next.js's own
-// auto-generated /_not-found route tries to statically prerender
-// through this layout at build time, requiring a reachable backend
-// that doesn't exist in CI (or during a Docker image build, before a
-// real production backend is even up).
-export const dynamic = "force-dynamic";
+// ADR-071 PR1: `force-dynamic` removed. Branding/SEO reads now go
+// through Next's Data Cache (`lib/cache.ts` `catalogCache` — 60s
+// interim TTL + `catalog` tag) and each has a `safeRead` fallback, so
+// the build-time `/_not-found` prerender through this layout no longer
+// needs a reachable backend. Removing it is also what lets a route's
+// `loading.tsx` fallback and RSC prefetch work at all — an uncached
+// `await` in this layout blocks both.
 
 // ADR-063: Space Grotesk (display/headings/CTA) + Inter (body) +
 // JetBrains Mono (prices/order numbers/player IDs).
@@ -57,11 +62,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [branding, settings, scripts] = await Promise.all([
+  const [branding, settings, scripts, plans] = await Promise.all([
     getBranding(),
     getSeoSettings(),
     getSeoScripts(),
+    listPlans(),
   ]);
+  const membershipEnabled = plans.length > 0;
 
   const headScripts = scripts.filter((s) => s.location === "head").sort((a, b) => a.priority - b.priority);
   const bodyEndScripts = scripts.filter((s) => s.location === "body_end").sort((a, b) => a.priority - b.priority);
@@ -111,12 +118,31 @@ export default async function RootLayout({
         )}
       </head>
       <body>
-        <SearchProvider>{children}</SearchProvider>
+        {/* ADR-071 PR1a: the persistent chrome lives here, not per-page,
+          * so a route's `loading.tsx` fallback swaps only the page
+          * content — the header and bottom nav never unmount, and there
+          * is no double-mounted skeleton. SiteHeader/BottomNav are
+          * client components with no server fetch, so they add no
+          * Suspense point to the layout. SiteFooter (async) stays
+          * per-page — it is below the fold during any navigation. */}
+        <SiteConfigProvider value={{ membershipEnabled, branding }}>
+          <SearchProvider>
+            <SiteHeader />
+            {children}
+            <BottomNav />
+          </SearchProvider>
+        </SiteConfigProvider>
         {/* ADR-029 addendum decision 13: admin-authored end-of-body scripts, injected verbatim in priority order. */}
         {bodyEndScripts.map((s, i) => (
           <Script key={`body-end-script-${i}`} id={`seo-body-end-script-${i}`} strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: s.code }} />
         ))}
         {settings.ga_measurement_id && <GoogleAnalytics gaId={settings.ga_measurement_id} />}
+        {/* ADR-071 PR4 decision 12 — Core Web Vitals. SpeedInsights is
+          * the dashboard; WebVitals mirrors every measurement to
+          * `/api/vitals` so a budget regression is visible in the logs
+          * even when Speed Insights sampled a data point out. */}
+        <SpeedInsights />
+        <WebVitals />
       </body>
     </html>
   );

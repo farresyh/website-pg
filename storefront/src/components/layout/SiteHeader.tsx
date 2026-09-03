@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import Logo from "@/components/ui/Logo";
 import Button from "@/components/ui/Button";
 import { useSearch } from "@/context/SearchContext";
-import { listPlans } from "@/lib/membership";
+import { useSiteConfig } from "@/context/SiteConfigContext";
 
 /**
  * No "Log In" and no "Account" anywhere — storefront is guest-checkout
@@ -14,20 +13,13 @@ import { listPlans } from "@/lib/membership";
  * in the header row on desktop, full-width row below it on mobile.
  *
  * The "Membership" nav item only appears when membership is actually
- * enabled for this storefront (ADR-061's dual kill-switch — `listPlans`
- * returns `[]` when off). This keeps the recorded "no customer-facing
- * membership link until launch" decision (PRD §15) self-enforcing:
- * flip the switch and the link appears, no code change.
+ * enabled for this storefront (ADR-061's dual kill-switch). ADR-071
+ * PR1: `membershipEnabled` comes from `SiteConfigProvider` (resolved
+ * once server-side), not a per-mount `listPlans()` fetch.
  */
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
-  const [membershipEnabled, setMembershipEnabled] = useState(false);
-
-  useEffect(() => {
-    listPlans()
-      .then((plans) => setMembershipEnabled(plans.length > 0))
-      .catch(() => setMembershipEnabled(false));
-  }, []);
+  const { membershipEnabled } = useSiteConfig();
 
   return (
     <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">

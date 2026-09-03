@@ -32,6 +32,8 @@ export interface DashboardHealthSupplier {
   name: string;
   slug: string;
   balance: number;
+  /** ADR-069 — balance is below this supplier's api_config['low_balance_threshold']. */
+  low_balance: boolean;
   circuit_state: "closed" | "open";
 }
 

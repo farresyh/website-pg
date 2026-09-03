@@ -81,6 +81,16 @@ return [
         'customer_no_separator' => env('DIGIFLAZZ_CUSTOMER_NO_SEPARATOR', '|'),
         'timeout' => (int) env('DIGIFLAZZ_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('DIGIFLAZZ_CONNECT_TIMEOUT_SECONDS', 5),
+        // ADR-069 decision 3 — the inbound-webhook IP allowlist, a
+        // config-driven second gate behind the HMAC signature (which is
+        // the primary auth). Digiflazz's API-setup docs name
+        // 52.74.250.133; kept editable here so an added Digiflazz IP is
+        // a config change, not a deploy. The daily reconcile poll is the
+        // backstop if this ever goes stale. Comma-separated in env.
+        'webhook_ips' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('DIGIFLAZZ_WEBHOOK_IPS', '52.74.250.133')),
+        ))),
     ],
 
     // ADR-033 — keyless, no API key needed. CurrencyRateService reads
@@ -131,6 +141,21 @@ return [
         'connect_timeout' => (int) env('CHIP_CONNECT_TIMEOUT_SECONDS', 5),
         'webhook_public_key_ttl' => (int) env('CHIP_WEBHOOK_PUBLIC_KEY_TTL_SECONDS', 86400),
         'callback_url' => env('CHIP_CALLBACK_URL', rtrim((string) env('APP_URL'), '/').'/api/webhooks/chip'),
+    ],
+
+    /**
+     * ADR-071 PR2 — the storefront's Next.js `catalog` Data-Cache tag is
+     * purged on any catalog/SEO/branding/hero/payment mutation by
+     * POSTing to its `/api/revalidate` route (mirroring this backend's
+     * own `forgetCache()` discipline one layer up). Both values unset =
+     * no-op (local dev, CI, tests): the storefront still self-refreshes
+     * on its 60s TTL. `revalidate_url` is the storefront origin +
+     * `/api/revalidate`.
+     */
+    'next' => [
+        'revalidate_url' => env('NEXT_REVALIDATE_URL'),
+        'revalidate_secret' => env('NEXT_REVALIDATE_SECRET'),
+        'revalidate_timeout' => (int) env('NEXT_REVALIDATE_TIMEOUT_SECONDS', 8),
     ],
 
     /**

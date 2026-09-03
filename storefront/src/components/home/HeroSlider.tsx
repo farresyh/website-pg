@@ -86,9 +86,16 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
               priority
               onError={() => setBrokenImages((prev) => new Set(prev).add(slide.id))}
             />
-            {/* Left-anchored scrim: dark enough for the headline, then
-              * clears so the image reads on the right (ADR-064). */}
-            <div className="absolute inset-0 bg-gradient-to-r from-ink/80 via-ink/40 to-transparent" aria-hidden="true" />
+            {/* Scrim behind the headline. Mobile: bottom-anchored
+              * vertical gradient — the text sits at the bottom and spans
+              * nearly the full width, so a left→right scrim leaves the
+              * right half of the copy over an undimmed image (ADR-071
+              * PR0). Desktop (lg): left-anchored so the image still reads
+              * on the right (ADR-064). */}
+            <div
+              className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/50 to-ink/15 lg:bg-gradient-to-r lg:from-ink/80 lg:via-ink/40 lg:to-transparent"
+              aria-hidden="true"
+            />
           </>
         )}
 

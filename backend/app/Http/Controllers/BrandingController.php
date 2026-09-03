@@ -6,6 +6,7 @@ use App\Models\Game;
 use App\Models\Reseller;
 use App\Models\ResellerBranding;
 use App\Models\ResellerFooterSettings;
+use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Mews\Purifier\Facades\Purifier;
@@ -128,5 +129,6 @@ class BrandingController extends Controller
         foreach (array_keys(self::LEGAL_PAGES) as $page) {
             Cache::forget("catalog.public.branding.{$resellerId}.legal.{$page}");
         }
+        NextRevalidation::purge(); // ADR-071 PR2
     }
 }

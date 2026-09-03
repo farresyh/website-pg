@@ -337,6 +337,12 @@ final class DigiflazzAdapter implements SupplierAdapter
             status: $isActive ? 'active' : 'inactive',
             groupLabel: $this->groupLabel($brand, $type),
             type: $type,
+            // ADR-069 decision 10 — Digiflazz quotes in Indonesian
+            // rupiah; `price_sen` is that value converted to MYR sen
+            // at sync time (ADR-033). Keep the original for a sanity
+            // line in the Product Manager.
+            rawPrice: isset($item['price']) ? (float) $item['price'] : null,
+            rawCurrency: isset($item['price']) ? 'IDR' : null,
         );
     }
 

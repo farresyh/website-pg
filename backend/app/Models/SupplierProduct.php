@@ -22,12 +22,15 @@ class SupplierProduct extends Model
         'group_label',
         'type',
         'price_sen',
+        'raw_price',
+        'raw_currency',
         'status_raw',
         'last_synced_at',
     ];
 
     protected $casts = [
         'price_sen' => 'integer',
+        'raw_price' => 'decimal:2',
         'last_synced_at' => 'datetime',
     ];
 

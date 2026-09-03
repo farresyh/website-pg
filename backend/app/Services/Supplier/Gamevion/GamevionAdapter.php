@@ -271,24 +271,37 @@ final class GamevionAdapter implements SupplierAdapter
      */
     private function normalizeProduct(array $item): SupplierCatalogItem
     {
+        // ADR-069 decision 10: Gamevion already quotes in MYR — no FX
+        // conversion happens for it — so its raw price is the same
+        // number as `price`, tagged 'MYR'. Kept for parity so the
+        // Product Manager's sanity line renders uniformly across
+        // suppliers, not because a conversion needs checking here.
         if (array_key_exists('sandbox_code', $item)) {
+            $price = isset($item['sandbox_price']) ? (float) $item['sandbox_price'] : null;
+
             return new SupplierCatalogItem(
                 productRef: $item['sandbox_code'] ?? '',
                 name: $item['sandbox_serviceName'] ?? null,
                 category: $item['sandbox_category'] ?? null,
-                price: isset($item['sandbox_price']) ? (float) $item['sandbox_price'] : null,
+                price: $price,
                 status: $item['sandbox_status'] ?? null,
                 groupLabel: $item['sandbox_category'] ?? null,
+                rawPrice: $price,
+                rawCurrency: $price !== null ? 'MYR' : null,
             );
         }
+
+        $price = isset($item['product_price']) ? (float) $item['product_price'] : null;
 
         return new SupplierCatalogItem(
             productRef: $item['product_code'] ?? '',
             name: $item['product_serviceName'] ?? null,
             category: $item['product_category'] ?? null,
-            price: isset($item['product_price']) ? (float) $item['product_price'] : null,
+            price: $price,
             status: $item['product_status'] ?? null,
             groupLabel: $item['product_category'] ?? null,
+            rawPrice: $price,
+            rawCurrency: $price !== null ? 'MYR' : null,
         );
     }
 }

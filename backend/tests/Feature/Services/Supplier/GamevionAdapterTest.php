@@ -188,6 +188,11 @@ class GamevionAdapterTest extends TestCase
         $this->assertSame('active', $result->data[0]->status);
         // ADR-067 decision 4: Gamevion's category is already the group key.
         $this->assertSame('Free Fire', $result->data[0]->groupLabel);
+        // ADR-069 decision 10 — Gamevion already quotes in MYR (no FX
+        // conversion), so raw == price, tagged 'MYR', for a uniform
+        // Product Manager sanity line across suppliers.
+        $this->assertSame(1000.0, $result->data[0]->rawPrice);
+        $this->assertSame('MYR', $result->data[0]->rawCurrency);
     }
 
     /**
@@ -225,6 +230,8 @@ class GamevionAdapterTest extends TestCase
         $this->assertSame(1000.0, $result->data[0]->price);
         $this->assertSame('active', $result->data[0]->status);
         $this->assertSame('Free Fire', $result->data[0]->groupLabel);
+        $this->assertSame(1000.0, $result->data[0]->rawPrice);
+        $this->assertSame('MYR', $result->data[0]->rawCurrency);
     }
 
     /**

@@ -179,3 +179,83 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Bottom-nav clearance (ADR-071 PR1a). The fixed <BottomNav> is ~66px
+ * tall (44px min tap target + 20px padding + 2px border) plus the
+ * device safe-area inset; without this the last footer line and the
+ * bottoms of the last content cards sit behind it on mobile. Desktop
+ * has no bottom nav, so callers pair this with `lg:pb-0`. */
+@utility pb-nav {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+/* ---- Loading skeletons (ADR-071 PR1a) ----------------------------
+ * A skeleton is a filled paper block that sweeps a soft highlight
+ * left-to-right — the same warm-paper world as the real content, so
+ * the swap reads as "filling in", not "replacing". Card-shaped
+ * skeletons add `border-2 border-ink` at the call site. */
+@keyframes neo-skeleton-sweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+.neo-skeleton {
+  background-color: var(--color-surface-container);
+  background-image: linear-gradient(
+    100deg,
+    transparent 38%,
+    rgb(255 255 255 / 0.65) 50%,
+    transparent 62%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: neo-skeleton-sweep 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-skeleton {
+    animation: none;
+  }
+}
+
+/* "Delivered" moment (ADR-071 PR3) — the emotional payoff of the whole
+ * flow. The badge pops in, its checkmark draws itself. CSS only. */
+@keyframes neo-pop-in {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes neo-check-draw {
+  from {
+    stroke-dashoffset: 26;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.neo-delivered {
+  animation: neo-pop-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.neo-delivered svg path {
+  stroke-dasharray: 26;
+  animation: neo-check-draw 480ms ease-out 220ms both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .neo-delivered,
+  .neo-delivered svg path {
+    animation: none;
+  }
+}

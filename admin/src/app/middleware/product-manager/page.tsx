@@ -52,6 +52,20 @@ function formatRm(sen: number | null): string {
   return sen === null ? "—" : `RM ${(sen / 100).toFixed(2)}`;
 }
 
+/**
+ * ADR-069 — the "IDR 20,000" sanity line under the converted MYR price.
+ * Stress-test Q4: only meaningful when a real conversion happened —
+ * hidden for MYR-native suppliers (Gamevion), where raw == converted
+ * and the line is pure noise.
+ */
+function formatRaw(price: string | null, currency: string | null, priceSen: number | null): string | null {
+  if (price === null || currency === null || currency === "MYR") return null;
+  const n = Number(price);
+  if (!Number.isFinite(n)) return null;
+  if (priceSen !== null && Math.round(n * 100) === priceSen) return null;
+  return `${currency} ${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
 /** ADR-067 decision 6: a group is identified by (supplier id, group_label). */
 function groupKey(c: SupplierProductCategory): string {
   return `${c.supplier?.id ?? "?"}:${c.group_label}`;
@@ -309,6 +323,14 @@ export default function ProductManagerPage() {
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                                   {formatRm(product.price_sen)}
+                                  {formatRaw(product.raw_price, product.raw_currency, product.price_sen) && (
+                                    <>
+                                      <br />
+                                      <span className="text-theme-xs text-gray-400">
+                                        {formatRaw(product.raw_price, product.raw_currency, product.price_sen)}
+                                      </span>
+                                    </>
+                                  )}
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
                                   <Tag severity={product.is_promoted ? "success" : "secondary"}>

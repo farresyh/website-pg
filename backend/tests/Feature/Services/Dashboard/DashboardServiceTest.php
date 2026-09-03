@@ -174,6 +174,37 @@ class DashboardServiceTest extends TestCase
         $supplierRow = collect($health['suppliers'])->firstWhere('slug', $slug);
         $this->assertSame('open', $supplierRow['circuit_state']);
         $this->assertSame(15000.0, $supplierRow['balance']);
+        $this->assertFalse($supplierRow['low_balance']);
+    }
+
+    public function test_health_flags_a_supplier_whose_balance_is_below_its_threshold(): void
+    {
+        Supplier::query()->create([
+            'name' => 'Low One', 'slug' => 'low-'.uniqid(), 'currency' => 'IDR', 'balance' => 500,
+            'api_config' => ['low_balance_threshold' => '1000'],
+        ]);
+        Supplier::query()->create([
+            'name' => 'Fine One', 'slug' => 'fine-'.uniqid(), 'currency' => 'IDR', 'balance' => 5000,
+            'api_config' => ['low_balance_threshold' => '1000'],
+        ]);
+        Supplier::query()->create([
+            'name' => 'No Threshold', 'slug' => 'nothr-'.uniqid(), 'currency' => 'IDR', 'balance' => 1,
+            'api_config' => [],
+        ]);
+
+        $rows = collect($this->dashboard->health()['suppliers'])->keyBy('name');
+
+        $this->assertTrue($rows['Low One']['low_balance']);
+        $this->assertFalse($rows['Fine One']['low_balance']);
+        $this->assertFalse($rows['No Threshold']['low_balance'], 'no threshold means never flagged');
+
+        // ADR-069 stress-test Q8 — health() reads the threshold out of
+        // the encrypted api_config but must never surface it: the
+        // supplier row is a fixed whitelist of keys.
+        $this->assertSame(
+            ['id', 'name', 'slug', 'balance', 'low_balance', 'circuit_state'],
+            array_keys($rows['Low One']),
+        );
     }
 
     public function test_stuck_orders_combines_needs_review_and_stale_processing_and_stale_pending(): void

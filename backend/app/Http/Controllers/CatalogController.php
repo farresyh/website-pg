@@ -7,6 +7,7 @@ use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
 use App\Models\Reseller;
+use App\Services\Cache\NextRevalidation;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Pricing\MembershipPricingService;
@@ -326,10 +327,14 @@ class CatalogController extends Controller
      * the public cache keys to those same, single choke points rather
      * than scattering new invalidation calls across GameController/
      * PackageController/SupplierProductController.
+     *
+     * ADR-071 PR2: these choke points also purge the storefront's
+     * Next.js `catalog` Data-Cache tag (`NextRevalidation::purge()`).
      */
     public static function forgetIndexCache(): void
     {
         Cache::forget('catalog.public.games.index');
+        NextRevalidation::purge();
     }
 
     public static function forgetPackagesCache(int $gameId): void
@@ -353,6 +358,7 @@ class CatalogController extends Controller
         // A package price/status change also changes the index's
         // per-game price_from_sen — the index cache must go too.
         Cache::forget('catalog.public.games.index');
+        NextRevalidation::purge();
     }
 
     /**
@@ -363,6 +369,7 @@ class CatalogController extends Controller
     public static function forgetPackagesCacheForMembership(): void
     {
         Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->flush();
+        NextRevalidation::purge();
     }
 
     private static function packagesCacheKey(int $gameId, ?int $membershipPlanId = null): string

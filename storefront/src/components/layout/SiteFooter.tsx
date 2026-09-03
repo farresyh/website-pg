@@ -3,6 +3,7 @@ import { FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, WhatsAppIcon } fr
 import Logo from "@/components/ui/Logo";
 import { PAYMENT_METHODS } from "@/lib/placeholder-data";
 import { getBranding } from "@/lib/branding";
+import { resolveWhatsappHref } from "@/lib/whatsapp";
 
 const SOCIAL_ICONS = [
   { key: "facebook", label: "Facebook", Icon: FacebookIcon },
@@ -22,9 +23,12 @@ const SOCIAL_ICONS = [
 export default async function SiteFooter() {
   const branding = await getBranding();
   const currentYear = new Date().getFullYear();
+  // WhatsApp falls back to a wa.me link built from `support_phone` when
+  // no explicit `social_links.whatsapp` URL is set (ADR-071 PR0).
+  const socialLinks = { ...branding.socialLinks, whatsapp: resolveWhatsappHref(branding) ?? undefined };
 
   return (
-    <footer className="border-t-2 border-ink bg-surface-container-highest pt-9 pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pt-12 lg:pb-6">
+    <footer className="pb-nav border-t-2 border-ink bg-surface-container-highest pt-9 lg:pt-12 lg:pb-6">
       <div className="mx-auto max-w-[1200px] px-4">
         <div className="mb-8 grid gap-8 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
@@ -38,10 +42,10 @@ export default async function SiteFooter() {
             <div className="mt-4 flex gap-2.5">
               {SOCIAL_ICONS.map(
                 ({ key, label, Icon }) =>
-                  branding.socialLinks[key] && (
+                  socialLinks[key] && (
                     <a
                       key={key}
-                      href={branding.socialLinks[key]}
+                      href={socialLinks[key]}
                       aria-label={label}
                       className="flex h-11 w-11 items-center justify-center rounded-md border-2 border-ink bg-surface-container-lowest text-on-surface neo-sm hover:bg-surface-container-low"
                     >

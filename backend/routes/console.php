@@ -119,3 +119,13 @@ Schedule::command('app:charge-reseller-tier-fees')
     ->daily()
     ->name('reseller-tier-fee-charge')
     ->withoutOverlapping();
+
+// ADR-069 decision 12 — Supplier.balance is otherwise only refreshed
+// by an admin clicking "Refresh Balance", so the Dashboard Health
+// figure can be days stale. Refreshes every active configured supplier
+// once a day and logs a warning when a balance drops below its own
+// api_config['low_balance_threshold']. See RefreshSupplierBalancesCommand.
+Schedule::command('app:refresh-supplier-balances')
+    ->daily()
+    ->name('supplier-balance-refresh')
+    ->withoutOverlapping();

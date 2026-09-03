@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PaymentMethod;
+use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
@@ -60,5 +61,6 @@ class PaymentMethodCatalogController extends Controller
     public static function forgetCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+        NextRevalidation::purge(); // ADR-071 PR2
     }
 }

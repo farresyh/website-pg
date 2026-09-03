@@ -5,20 +5,27 @@ import { Check, WhatsappLogo, GameController, User, CreditCard } from "@phosphor
 import { ApiError } from "@/lib/api-client";
 import { getEcho } from "@/lib/echo";
 import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
+import { useSiteConfig } from "@/context/SiteConfigContext";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
 import RateOrderModal from "@/components/order/RateOrderModal";
 
-// ADR-047 decision 1/4: Reverb push (subscribed below) is now the primary
-// path — a status change reaches this component the moment
-// OrderStatusUpdated broadcasts, not on the next poll tick. This interval
-// is deliberately kept, at a much slower cadence, as the one fallback
-// decision 4 requires: if the WebSocket never connects (misconfigured env,
-// a network that blocks it) or a push event is somehow missed, the
-// customer still sees their order resolve within one polling window,
-// never stuck silently on a stale state.
-const POLL_INTERVAL_MS = 20000;
-const MAX_POLLS = 18; // ~6 minutes of fallback-poll safety net
+// ADR-047 decision 1/4: Reverb push (subscribed below) is the primary
+// path once it's deployed; this poll is the fallback for when the
+// WebSocket never connects (misconfigured env, a blocking network) or a
+// push is missed.
+//
+// ADR-071 PR3 — adaptive cadence, since Reverb is still deferred in
+// production (ADR-071 PR4): a fresh delivery usually resolves in the
+// first minute, so poll fast then, then back off. Keeps the "your
+// diamonds were delivered" moment near-instant (≤2s) without the
+// steady 20s load of a flat interval.
+const MAX_WATCH_MS = 6 * 60_000; // ~6 minutes total, unchanged
+function nextPollDelay(elapsedMs: number): number {
+  if (elapsedMs < 60_000) return 2_000; // first minute — the common case
+  if (elapsedMs < 180_000) return 10_000; // 1–3 minutes
+  return 20_000; // 3–6 minutes
+}
 
 type StageState = "done" | "active" | "pending" | "failed";
 
@@ -81,10 +88,11 @@ function isTerminal(order: TrackedOrder): boolean {
 }
 
 export default function OrderStatusTracker({ orderNumber }: { orderNumber: string }) {
+  const { whatsappHref } = useSiteConfig();
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const pollCount = useRef(0);
+  const watchStartedAt = useRef(0);
   // ADR-053 decision 4 — closing without submitting only suppresses the
   // popup for the rest of THIS page view; has_review (server-truth, not
   // this flag) is what decides whether it shows again on a later visit.
@@ -93,6 +101,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    watchStartedAt.current = Date.now();
 
     async function poll() {
       try {
@@ -102,9 +111,9 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         setError(null);
         setLoading(false);
 
-        if (!isTerminal(result) && pollCount.current < MAX_POLLS) {
-          pollCount.current += 1;
-          timer = setTimeout(poll, POLL_INTERVAL_MS);
+        const elapsed = Date.now() - watchStartedAt.current;
+        if (!isTerminal(result) && elapsed < MAX_WATCH_MS) {
+          timer = setTimeout(poll, nextPollDelay(elapsed));
         }
       } catch (err) {
         if (cancelled) return;
@@ -172,6 +181,32 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
       )}
 
       <div className="flex flex-col gap-4">
+        {/* ADR-071 PR3 — the "delivered" moment: the payoff of the whole
+          * masuk → pilih → bayar → dapat diamond flow. */}
+        {order.delivery_status === "delivered" && (
+          <div className="neo-delivered flex items-center gap-3.5 rounded-lg border-2 border-ink bg-success p-4 text-on-success neo">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-on-success">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M5 13l4 4L19 7"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <div>
+              {/* Not the word "Delivered" — the delivery StatusBadge is
+                * the one canonical "Delivered" label (same reason as
+                * deriveStages() uses "Complete"); a second copy breaks
+                * the E2E golden path's strict getByText. */}
+              <p className="font-display text-base font-bold uppercase tracking-tight">You&apos;re all set</p>
+              <p className="text-[13px] leading-snug">Your top-up is in your game account — enjoy!</p>
+            </div>
+          </div>
+        )}
+
         {/* Reference + status + stage tracker */}
         <div className="flex flex-col gap-5 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -256,9 +291,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           Contact our Customer Support team directly via WhatsApp for a manual check
           {hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
         </p>
-        <Button href="https://wa.me/60000000000" className="justify-center">
-          <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
-        </Button>
+        {whatsappHref && (
+          <Button href={whatsappHref} className="justify-center">
+            <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
+          </Button>
+        )}
         {order.game && (
           <Button href={`/order/${order.game.slug}`} variant="outline" className="justify-center">
             Buy Again

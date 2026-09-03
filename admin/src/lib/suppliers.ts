@@ -60,6 +60,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     { key: "bearer_token", label: "Bearer Token", type: "secret" },
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "sandbox", label: "Sandbox Mode", type: "boolean" },
+    // ADR-069 decision 13: a bare number in the supplier's balance
+    // currency — drives the daily low-balance warning + Health chip.
+    { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 50 (blank = no warning)" },
   ],
   digiflazz: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
@@ -70,8 +73,24 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-067 decision 2: Digiflazz's price-list spans Games/Data/Pulsa/PLN/etc.
     // Blank = sync every category into Product Manager.
     { key: "category_whitelist", label: "Category Whitelist", type: "list", placeholder: "Games (comma-separated; blank = sync all categories)" },
+    // ADR-069 decision 8: the HMAC-SHA1 secret set in Digiflazz's panel
+    // (Atur Koneksi > API > Webhook). Optional for outbound calls;
+    // DigiflazzWebhookController rejects every callback until it's set.
+    { key: "webhook_secret", label: "Webhook Secret", type: "secret" },
+    // ADR-069 decision 13: a bare number in IDR — drives the daily
+    // low-balance warning + the Dashboard Health chip.
+    { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 100000 (IDR; blank = no warning)" },
   ],
 };
+
+/**
+ * ADR-069 decision 8 — Digiflazz-only: the inbound webhook is inert
+ * until `webhook_secret` is saved. `configured_secret_keys` is the
+ * only signal this screen gets about which secrets are actually set.
+ */
+export function isWebhookConfigured(supplier: Supplier): boolean {
+  return supplier.slug !== "digiflazz" || supplier.configured_secret_keys.includes("webhook_secret");
+}
 
 export interface CreateSupplierValues {
   name: string;
@@ -99,8 +118,25 @@ export function createSupplier(token: string, values: CreateSupplierValues) {
   return apiFetch<Supplier>("/api/middleware/suppliers", { method: "POST", body: values, token });
 }
 
+/**
+ * ADR-069 decision 11 — after any `api_config` change, the backend
+ * runs a `checkBalance()` probe and returns the result, so a
+ * silently-broken credential rotation shows up immediately rather than
+ * only at the next order.
+ */
+export interface ConnectionProbe {
+  connection_ok: boolean;
+  balance: string | number | null;
+  error: string | null;
+  /** ADR-069 stress-test Q3 — the check was skipped because the breaker is open, not a credential failure. */
+  breaker_open?: boolean;
+}
+
 export function updateSupplier(token: string, supplierId: number, values: UpdateSupplierValues) {
-  return apiFetch<Supplier>(`/api/middleware/suppliers/${supplierId}`, { method: "PUT", body: values, token });
+  return apiFetch<Supplier & { connection_probe?: ConnectionProbe }>(
+    `/api/middleware/suppliers/${supplierId}`,
+    { method: "PUT", body: values, token },
+  );
 }
 
 /** ADR-046 decision 5 — the confirm warning itself lives in the caller (this is a plain toggle call). */

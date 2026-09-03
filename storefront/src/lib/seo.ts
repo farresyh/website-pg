@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * ADR-029 — public SEO data consumed server-side: settings/templates/
@@ -47,33 +48,67 @@ const CrawlerRuleWireSchema = z.object({
 
 export type CrawlerRuleWire = z.infer<typeof CrawlerRuleWireSchema>;
 
+const SEO_SETTINGS_FALLBACK: SeoSettings = {
+  default_meta_title: null,
+  default_meta_description: null,
+  default_og_image: null,
+  meta_title_template: null,
+  meta_description_template: null,
+  ga_measurement_id: null,
+  fb_pixel_id: null,
+  tiktok_pixel_id: null,
+  schema_organization_enabled: false,
+  schema_product_enabled: false,
+  schema_breadcrumb_enabled: false,
+};
+
 /**
- * No `next: { revalidate }` on any of these three — every call site
- * (root layout, `/order/[slug]`, `app/robots.ts`, `app/sitemap.ts`) is
- * already a per-request dynamic route, so a fetch-level cache on top
- * would only add stale-for-up-to-60s staleness on top of Laravel's own
- * `Cache::remember()` (which is itself invalidated immediately on an
- * admin save via `forgetCache()`/`forgetRobotsCache()`) — confirmed
- * live: without this, an admin-added crawler rule didn't show up on
- * `/robots.txt` for up to a minute despite the backend already
- * serving the fresh row.
+ * ADR-071 PR1: `getSeoSettings` / `getSeoScripts` feed the root layout,
+ * which no longer carries `force-dynamic` (so `loading.tsx` and RSC
+ * prefetch work). They join the shared `catalog` Data-Cache tag — an
+ * admin SEO save purges it via the PR2 revalidation webhook (mirroring
+ * Laravel's own `forgetCache()`), with the 60s TTL as the interim
+ * freshness floor until that lands.
+ *
+ * `getCrawlerRules` stays uncached: `app/robots.ts` keeps
+ * `force-dynamic` (route handler, per ADR-071), and a stale
+ * `/robots.txt` was a real past incident — an admin-added crawler rule
+ * took up to a minute to appear.
  */
 export async function getSeoSettings(): Promise<SeoSettings> {
   const path = "/api/catalog/seo/settings";
-  const raw = await apiFetch<unknown>(path);
-  return parseResponse(SeoSettingsSchema, raw, "SeoSettings", path);
+  return safeRead(
+    "getSeoSettings",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      return parseResponse(SeoSettingsSchema, raw, "SeoSettings", path);
+    },
+    SEO_SETTINGS_FALLBACK,
+  );
 }
 
 export async function getSeoScripts(): Promise<SeoScriptWire[]> {
   const path = "/api/catalog/seo/scripts";
-  const raw = await apiFetch<unknown>(path);
-  return parseResponse(z.array(SeoScriptWireSchema), raw, "SeoScriptWire[]", path);
+  return safeRead(
+    "getSeoScripts",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      return parseResponse(z.array(SeoScriptWireSchema), raw, "SeoScriptWire[]", path);
+    },
+    [],
+  );
 }
 
 export async function getCrawlerRules(): Promise<CrawlerRuleWire[]> {
   const path = "/api/catalog/seo/robots";
-  const raw = await apiFetch<unknown>(path);
-  return parseResponse(z.array(CrawlerRuleWireSchema), raw, "CrawlerRuleWire[]", path);
+  return safeRead(
+    "getCrawlerRules",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { cache: "no-store" });
+      return parseResponse(z.array(CrawlerRuleWireSchema), raw, "CrawlerRuleWire[]", path);
+    },
+    [],
+  );
 }
 
 /**

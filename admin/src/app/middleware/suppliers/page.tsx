@@ -40,6 +40,7 @@ import {
   deleteSupplier,
   refreshSupplierBalance,
   updateSupplierPackagesStatus,
+  isWebhookConfigured,
 } from "@/lib/suppliers";
 import CreateSupplierModal from "@/components/middleware/suppliers/CreateSupplierModal";
 import EditSupplierModal from "@/components/middleware/suppliers/EditSupplierModal";
@@ -57,6 +58,7 @@ export default function SuppliersPage() {
   const [availableSlugs, setAvailableSlugs] = useState<string[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -99,9 +101,25 @@ export default function SuppliersPage() {
 
   async function handleEdit(values: Parameters<typeof updateSupplier>[2]) {
     if (!session || !editTarget) return;
-    await updateSupplier(session.token, editTarget.id, values);
+    setNotice(null);
+    const updated = await updateSupplier(session.token, editTarget.id, values);
     setEditTarget(null);
     refresh(session.token);
+
+    // ADR-069 decision 11 — surface the post-save connection probe.
+    // Stress-test Q3: a breaker-open result is not a credential problem.
+    const probe = updated.connection_probe;
+    if (probe) {
+      let text: string;
+      if (probe.connection_ok) {
+        text = `Credentials saved — connection OK${probe.balance != null ? `, balance ${probe.balance}` : ""}.`;
+      } else if (probe.breaker_open) {
+        text = `Credentials saved. ${probe.error ?? ""}`.trim();
+      } else {
+        text = `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.`;
+      }
+      setNotice({ tone: probe.connection_ok ? "ok" : "warn", text });
+    }
   }
 
   async function handleToggleActive(supplier: Supplier) {
@@ -174,6 +192,18 @@ export default function SuppliersPage() {
         </p>
       )}
 
+      {notice && (
+        <p
+          className={
+            notice.tone === "ok"
+              ? "mb-4 rounded-lg bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/15 dark:text-success-400"
+              : "mb-4 rounded-lg bg-warning-50 px-4 py-3 text-sm text-warning-700 dark:bg-warning-500/15 dark:text-warning-400"
+          }
+        >
+          {notice.text}
+        </p>
+      )}
+
       {suppliers === null && !error && (
         <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       )}
@@ -236,6 +266,16 @@ export default function SuppliersPage() {
                     </Tag>
                   </dd>
                 </div>
+                {supplier.slug === "digiflazz" && (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Webhook</dt>
+                    <dd>
+                      <Tag severity={isWebhookConfigured(supplier) ? "success" : "warn"}>
+                        {isWebhookConfigured(supplier) ? "configured" : "not configured"}
+                      </Tag>
+                    </dd>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <dt className="text-gray-500 dark:text-gray-400">Balance</dt>
                   <dd className="text-gray-800 dark:text-white/90">
