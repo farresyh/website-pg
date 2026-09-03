@@ -144,6 +144,21 @@ return [
     ],
 
     /**
+     * ADR-071 PR2 — the storefront's Next.js `catalog` Data-Cache tag is
+     * purged on any catalog/SEO/branding/hero/payment mutation by
+     * POSTing to its `/api/revalidate` route (mirroring this backend's
+     * own `forgetCache()` discipline one layer up). Both values unset =
+     * no-op (local dev, CI, tests): the storefront still self-refreshes
+     * on its 60s TTL. `revalidate_url` is the storefront origin +
+     * `/api/revalidate`.
+     */
+    'next' => [
+        'revalidate_url' => env('NEXT_REVALIDATE_URL'),
+        'revalidate_secret' => env('NEXT_REVALIDATE_SECRET'),
+        'revalidate_timeout' => (int) env('NEXT_REVALIDATE_TIMEOUT_SECONDS', 8),
+    ],
+
+    /**
      * ADR-027's 2026-08-29 addendum, decisions 27/29 — email OTP
      * delivery for membership verification (Meta/WhatsApp evaluated and
      * rejected on cost per Decision 27). Base URL confirmed live against

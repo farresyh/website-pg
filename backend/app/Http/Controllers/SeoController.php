@@ -7,6 +7,7 @@ use App\Models\Redirect;
 use App\Models\Reseller;
 use App\Models\ResellerSeoSettings;
 use App\Models\SeoScript;
+use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -157,6 +158,7 @@ class SeoController extends Controller
         Cache::forget("catalog.public.seo.{$resellerId}");
         Cache::forget("catalog.public.redirects.{$resellerId}");
         Cache::forget("catalog.public.seo_scripts.{$resellerId}");
+        NextRevalidation::purge(); // ADR-071 PR2 — robots.txt stays force-dynamic, not in the Next cache
     }
 
     public static function forgetRobotsCache(): void
