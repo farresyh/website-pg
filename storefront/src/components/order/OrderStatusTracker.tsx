@@ -181,6 +181,28 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
       )}
 
       <div className="flex flex-col gap-4">
+        {/* ADR-071 PR3 — the "delivered" moment: the payoff of the whole
+          * masuk → pilih → bayar → dapat diamond flow. */}
+        {order.delivery_status === "delivered" && (
+          <div className="neo-delivered flex items-center gap-3.5 rounded-lg border-2 border-ink bg-success p-4 text-on-success neo">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-on-success">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M5 13l4 4L19 7"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <div>
+              <p className="font-display text-base font-bold uppercase tracking-tight">Delivered</p>
+              <p className="text-[13px] leading-snug">Your top-up is in your game account — enjoy!</p>
+            </div>
+          </div>
+        )}
+
         {/* Reference + status + stage tracker */}
         <div className="flex flex-col gap-5 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
           <div className="flex flex-wrap items-center justify-between gap-3">
