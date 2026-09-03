@@ -4,8 +4,10 @@ namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
 use App\Models\Membership;
+use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipPlan;
 use App\Models\Reseller;
+use App\Services\Membership\MembershipFeeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
@@ -200,5 +202,70 @@ class MembershipControllerTest extends TestCase
             'reason' => 'promo discount',
             'idempotency_key' => 'key-record-3',
         ])->assertOk();
+    }
+
+    // --- ADR-068 PR-3: the per-member detail ---
+
+    public function test_show_returns_state_fee_payments_and_checkout_attempts(): void
+    {
+        $this->actingAsSuperAdmin();
+        $plan = $this->tier1();
+        $admin = AdminUser::factory()->create(['role' => 'super_admin', 'name' => 'Ops Lead']);
+
+        // One admin-recorded fee (creates the membership).
+        $membership = app(MembershipFeeService::class)->recordFeePaid(
+            $this->brand->id, 'detail@example.com', $plan->id, $plan->fee_sen, $admin->id, null, 'key-detail-1',
+        );
+
+        // A failed self-serve attempt for the same email — must be visible.
+        MembershipCheckoutAttempt::query()->create([
+            'reseller_id' => $this->brand->id,
+            'email' => 'detail@example.com',
+            'membership_plan_id' => $plan->id,
+            'fee_sen' => $plan->fee_sen,
+            'total_charged_sen' => $plan->fee_sen + 100,
+            'channel_code' => 'fpx',
+            'subscription_number' => 'MS-DETAILTEST',
+            'idempotency_key' => 'idem-detail',
+            'status' => 'failed',
+        ]);
+
+        $response = $this->getJson("/api/memberships/{$membership->id}")->assertOk();
+
+        $response->assertJsonPath('member.email', 'detail@example.com')
+            ->assertJsonPath('member.status', 'active')
+            ->assertJsonPath('fee_payments.0.source', 'Admin — Ops Lead')
+            ->assertJsonPath('fee_payments.0.amount_sen', $plan->fee_sen)
+            ->assertJsonPath('checkout_attempts.0.subscription_number', 'MS-DETAILTEST')
+            ->assertJsonPath('checkout_attempts.0.status', 'failed')
+            ->assertJsonPath('orders_summary.count', 0);
+
+        $this->assertNotNull($response->json('fee_payments.0.ledger_entry_id'));
+    }
+
+    public function test_show_marks_a_self_serve_fee_payment_as_such(): void
+    {
+        $this->actingAsSuperAdmin();
+        $plan = $this->tier1();
+
+        $membership = app(MembershipFeeService::class)->recordFeePaid(
+            $this->brand->id, 'selfserve@example.com', $plan->id, $plan->fee_sen, null, null, 'key-detail-2',
+        );
+
+        $this->getJson("/api/memberships/{$membership->id}")
+            ->assertOk()
+            ->assertJsonPath('fee_payments.0.source', 'Self-serve');
+    }
+
+    public function test_show_requires_super_admin(): void
+    {
+        $plan = $this->tier1();
+        $membership = Membership::query()->create([
+            'reseller_id' => $this->brand->id, 'email' => 'x@example.com', 'membership_plan_id' => $plan->id,
+            'status' => 'active', 'cycle_started_at' => now(), 'quota_remaining_sen' => 1, 'expires_at' => now()->addDay(),
+        ]);
+
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $this->getJson("/api/memberships/{$membership->id}")->assertForbidden();
     }
 }

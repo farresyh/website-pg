@@ -135,3 +135,53 @@ export function recordMembershipPayment(token: string, values: RecordMembershipP
     body: values,
   });
 }
+
+// --- ADR-068 PR-3: per-member detail (/admin/membership/[id]) ---
+
+export function formatMemberRm(sen: number): string {
+  return `RM ${(sen / 100).toFixed(2)}`;
+}
+
+export function formatMemberDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export interface MemberFeePayment {
+  id: number;
+  date: string | null;
+  plan_name: string | null;
+  amount_sen: number;
+  /** "Admin — {name}" or "Self-serve". */
+  source: string;
+  reason: string | null;
+  ledger_entry_id: number | null;
+}
+
+export type MemberCheckoutAttemptStatus = "pending" | "paid" | "failed" | "expired";
+
+export interface MemberCheckoutAttempt {
+  id: number;
+  subscription_number: string;
+  date: string | null;
+  plan_name: string | null;
+  status: MemberCheckoutAttemptStatus;
+  fee_sen: number;
+  total_charged_sen: number;
+  channel_code: string;
+}
+
+export interface MembershipDetail {
+  member: MembershipListItem & { member_since: string | null };
+  fee_payments: MemberFeePayment[];
+  checkout_attempts: MemberCheckoutAttempt[];
+  orders_summary: {
+    count: number;
+    total_spent_sen: number;
+    margin_forgone_sen: number;
+  };
+}
+
+export function getMembershipDetail(token: string, id: number) {
+  return apiFetch<MembershipDetail>(`/api/memberships/${id}`, { token });
+}
