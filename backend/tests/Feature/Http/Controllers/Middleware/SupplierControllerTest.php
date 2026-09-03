@@ -265,6 +265,50 @@ class SupplierControllerTest extends TestCase
         $this->assertDatabaseMissing('suppliers', ['id' => $supplier->id]);
     }
 
+    public function test_update_probes_the_connection_after_an_api_config_change(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'old', 'api_key' => 'old-k', 'sandbox' => false]]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, ['balance' => 4242]));
+
+        $response = $this->putJson("/api/middleware/suppliers/{$supplier->id}", [
+            'api_config' => ['bearer_token' => 'rotated'],
+        ])->assertOk();
+
+        $response->assertJsonPath('connection_probe.connection_ok', true);
+        $this->assertEquals(4242, $response->json('connection_probe.balance'));
+        // The probe also refreshes the stored balance / last-tested marker.
+        $this->assertEquals(4242, $supplier->fresh()->balance);
+    }
+
+    public function test_update_surfaces_a_failed_connection_probe_without_failing_the_save(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'old', 'api_key' => 'old-k', 'sandbox' => false]]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(false));
+
+        $response = $this->putJson("/api/middleware/suppliers/{$supplier->id}", [
+            'api_config' => ['bearer_token' => 'rotated'],
+        ])->assertOk();
+
+        $response->assertJsonPath('connection_probe.connection_ok', false);
+        $this->assertNotNull($response->json('connection_probe.error'));
+        // The save still went through.
+        $this->assertSame('rotated', $supplier->fresh()->api_config['bearer_token']);
+    }
+
+    public function test_update_without_an_api_config_change_does_not_probe(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier();
+
+        $response = $this->putJson("/api/middleware/suppliers/{$supplier->id}", [
+            'name' => 'Gamevion Renamed',
+        ])->assertOk();
+
+        $this->assertNull($response->json('connection_probe'));
+    }
+
     public function test_refresh_balance_calls_the_live_adapter_and_stores_the_result(): void
     {
         $this->actingAsAdmin();

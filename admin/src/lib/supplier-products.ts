@@ -16,6 +16,9 @@ export interface SupplierProduct {
   group_label: string;
   type: string | null;
   price_sen: number | null;
+  /** ADR-069 — the supplier's own pre-conversion price + currency, display-only. */
+  raw_price: string | null;
+  raw_currency: string | null;
   status_raw: string | null;
   last_synced_at: string;
   is_promoted: boolean;

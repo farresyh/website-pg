@@ -153,6 +153,10 @@ class DigiflazzAdapterTest extends TestCase
         // never merged with MLBB Indonesia / Global / Umum.
         $this->assertSame('MOBILE LEGENDS — Malaysia', $result->data[0]->groupLabel);
         $this->assertSame('Malaysia', $result->data[0]->type);
+        // ADR-069 decision 10 — Digiflazz quotes in IDR; the raw
+        // figure is kept for a Product Manager sanity line.
+        $this->assertSame(3200.0, $result->data[0]->rawPrice);
+        $this->assertSame('IDR', $result->data[0]->rawCurrency);
     }
 
     /**

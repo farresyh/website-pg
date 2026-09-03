@@ -114,11 +114,12 @@ class SupplierController extends Controller
      * (`category_whitelist`) are coerced to a real `string[]` — the
      * form submits them comma-separated.
      */
-    public function update(UpdateSupplierRequest $request, Supplier $supplier): JsonResponse
+    public function update(UpdateSupplierRequest $request, Supplier $supplier, SupplierAdapterFactory $adapters): JsonResponse
     {
         $data = $request->validated();
+        $configChanged = array_key_exists('api_config', $data);
 
-        if (array_key_exists('api_config', $data)) {
+        if ($configChanged) {
             $data['api_config'] = SupplierConfigSchema::normalizeConfig(
                 $supplier->slug,
                 array_merge($supplier->api_config ?? [], $data['api_config']),
@@ -126,8 +127,57 @@ class SupplierController extends Controller
         }
 
         $supplier->update($data);
+        $supplier->refresh();
 
-        return response()->json($supplier->fresh());
+        $payload = $supplier->toArray();
+
+        // ADR-069 decision 11 — a credential change that silently fails
+        // to take (the masked-merge of ADR-046 decision 3 is exactly
+        // such a path) must surface now, not only when the next order
+        // fails. Probe the connection right after saving and hand the
+        // result back for the form to show. Never blocks the save.
+        if ($configChanged) {
+            $payload['connection_probe'] = $this->probeConnection($supplier, $adapters);
+        }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * ADR-069 decision 11 — a read-only checkBalance() through the same
+     * circuit-breaker-wrapped adapter path a real order uses, run after
+     * a credential change so a silently-broken rotation shows up on the
+     * spot. Writes balance / last_tested_* exactly as refreshBalance()
+     * does, so the two never disagree.
+     *
+     * @return array{connection_ok: bool, balance: mixed, error: string|null}
+     */
+    private function probeConnection(Supplier $supplier, SupplierAdapterFactory $adapters): array
+    {
+        try {
+            $adapter = $adapters->make($supplier->slug);
+        } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
+            return ['connection_ok' => false, 'balance' => null, 'error' => $e->getMessage()];
+        }
+
+        $response = $adapter->checkBalance();
+
+        $update = [
+            'last_tested_at' => now(),
+            'last_test_result' => $response->success ? 'success' : "failed: [{$response->errorCode}] {$response->errorMessage}",
+        ];
+
+        if ($response->success && isset($response->data['balance'])) {
+            $update['balance'] = $response->data['balance'];
+        }
+
+        $supplier->update($update);
+
+        return [
+            'connection_ok' => $response->success,
+            'balance' => $response->success ? ($response->data['balance'] ?? null) : null,
+            'error' => $response->success ? null : "[{$response->errorCode}] {$response->errorMessage}",
+        ];
     }
 
     /**
