@@ -2,6 +2,7 @@
 
 namespace App\Services\Membership;
 
+use App\Jobs\SendMembershipReceiptJob;
 use App\Models\Membership;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
@@ -13,10 +14,12 @@ use Illuminate\Support\Facades\DB;
 /**
  * ADR-027 continued addendum decision 15, grilled 2026-08-29 — the
  * single seam by which a membership-fee payment becomes a real
- * membership. The MVP path is an admin "Record Payment" action (manual
- * stopgap: no payment-gateway automation yet); a future real payment
- * flow's webhook calls this exact same method, so the manual and
- * automated paths can never drift apart.
+ * membership. Two callers, one seam: the admin "Record Payment" action
+ * (`$adminUserId` set, `$reason` admin-typed) and — since ADR-068 —
+ * the self-serve CHIP-checkout webhook / reconcile sweep
+ * (`MembershipSubscriptionService`, `$adminUserId` null, `$reason`
+ * null → derived). The two paths can never drift apart because they
+ * share this method.
  *
  * Grill-pinned behaviour (see the ADR-027 2026-08-29 addendum for the
  * full reasoning):
@@ -26,10 +29,12 @@ use Illuminate\Support\Facades\DB;
  *   cycle boundary, handled by ResetMembershipCyclesCommand. A lapsed
  *   membership (`expires_at` in the past) is instead reactivated with a
  *   fresh cycle + full quota (Q8).
- * - The fee amount is an admin-input value (Q4) — pre-filled from the
- *   plan's `fee_sen` by the caller, adjustable with a required reason
- *   when it deviates. It is booked to the ledger as a positive
- *   `membership_fee` credit (income into the platform owner).
+ * - The fee amount is the caller's value (Q4): admin-typed (pre-filled
+ *   from `plan.fee_sen`, adjustable with a required reason on deviation)
+ *   on the admin path; server-computed `fee_sen` (ADR-068 decision 4 —
+ *   never client-supplied) on the self-serve path. Booked to the ledger
+ *   as a positive `membership_fee` credit (income into the platform
+ *   owner).
  * - Plan change on renewal (Q5): `membership_plan_id` is always set to
  *   the submitted plan, whatever the current tier.
  * - Idempotency (Q11): `idempotency_key` + the fee-records unique index
@@ -60,13 +65,15 @@ final class MembershipFeeService
         string $email,
         int $planId,
         int $amountSen,
-        int $adminUserId,
+        ?int $adminUserId,
         ?string $reason,
         string $idempotencyKey,
     ): Membership {
         // Fast path (Q11): a replay of an already-recorded payment
         // returns the membership that payment activated/extended, never
-        // a second ledger entry.
+        // a second ledger entry — and never a second receipt email
+        // (ADR-068 S12: the mail dispatch below is only reached on a
+        // genuine create/transition).
         $existingRecord = MembershipFeeRecord::query()
             ->with('membership')
             ->where('idempotency_key', $idempotencyKey)
@@ -79,7 +86,8 @@ final class MembershipFeeService
         $plan = MembershipPlan::query()->findOrFail($planId);
 
         try {
-            return DB::transaction(function () use ($resellerId, $email, $plan, $amountSen, $adminUserId, $reason, $idempotencyKey) {
+            /** @var array{0: Membership, 1: string} $result */
+            $result = DB::transaction(function () use ($resellerId, $email, $plan, $amountSen, $adminUserId, $reason, $idempotencyKey) {
                 $membership = Membership::query()
                     ->where('reseller_id', $resellerId)
                     ->where('email', $email)
@@ -117,13 +125,22 @@ final class MembershipFeeService
                     $membership = Membership::query()->where('id', $membership->id)->lockForUpdate()->first();
                 }
 
-                if (! $isNew) {
-                    $this->applyTransition($membership, $plan);
-                }
+                $transition = $isNew
+                    ? 'subscription'
+                    : $this->applyTransition($membership, $plan);
 
-                $this->bookFee($membership, $plan, $amountSen, $adminUserId, $reason, $idempotencyKey);
+                // ADR-068 S12: the system (self-serve) path carries no
+                // admin-typed reason — derive one that names what
+                // happened, so /admin/membership's Fee Payments view and
+                // the ledger can tell a fresh subscription from a
+                // renewal. The admin path's own `reason` is untouched.
+                $effectiveReason = ($adminUserId === null && $reason === null)
+                    ? "self-serve {$transition}"
+                    : $reason;
 
-                return $membership;
+                $this->bookFee($membership, $plan, $amountSen, $adminUserId, $effectiveReason, $idempotencyKey);
+
+                return [$membership, $transition];
             });
         } catch (UniqueConstraintViolationException) {
             // Idempotency-key race: a concurrent duplicate already booked
@@ -135,9 +152,22 @@ final class MembershipFeeService
                 ->firstOrFail()
                 ->membership;
         }
+
+        [$membership, $transition] = $result;
+
+        // ADR-068 decision 9 — the receipt goes out on every genuine
+        // create/transition, admin-recorded or self-serve alike, after
+        // the transaction commits and off the request thread
+        // (backend/AGENTS.md: never mail inline on a webhook path).
+        SendMembershipReceiptJob::dispatch($membership->id, $transition, $amountSen);
+
+        return $membership;
     }
 
-    private function applyTransition(Membership $membership, MembershipPlan $plan): void
+    /**
+     * @return 'renewal'|'reactivation'
+     */
+    private function applyTransition(Membership $membership, MembershipPlan $plan): string
     {
         if ($membership->expires_at === null || $membership->expires_at->isPast()) {
             // Q8 reactivation: lapsed/expired member pays again — same
@@ -151,7 +181,7 @@ final class MembershipFeeService
                 'expires_at' => now()->addDays(self::CYCLE_DAYS),
             ]);
 
-            return;
+            return 'reactivation';
         }
 
         // Q1/Q2 active renewal: extend the paid-through date; quota and
@@ -162,17 +192,19 @@ final class MembershipFeeService
             'status' => MembershipStatus::Active,
             'expires_at' => $membership->expires_at->addDays(self::CYCLE_DAYS),
         ]);
+
+        return 'renewal';
     }
 
     private function bookFee(
         Membership $membership,
         MembershipPlan $plan,
         int $amountSen,
-        int $adminUserId,
+        ?int $adminUserId,
         ?string $reason,
         string $idempotencyKey,
     ): void {
-        $this->ledger->credit(
+        $ledgerEntry = $this->ledger->credit(
             LedgerOwnerType::Platform,
             null,
             $amountSen,
@@ -187,6 +219,7 @@ final class MembershipFeeService
             'membership_id' => $membership->id,
             'membership_plan_id' => $plan->id,
             'amount_sen' => $amountSen,
+            'ledger_entry_id' => $ledgerEntry->id,
             'admin_user_id' => $adminUserId,
             'reason' => $reason,
             'idempotency_key' => $idempotencyKey,

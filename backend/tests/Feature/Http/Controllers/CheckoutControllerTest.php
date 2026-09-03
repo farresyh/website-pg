@@ -929,6 +929,69 @@ class CheckoutControllerTest extends TestCase
     }
 
     /**
+     * ADR-068 decision 16: a signed-in member's order is always
+     * attributed to their OTP-verified membership email, even when a
+     * different address is typed into the checkout contact field — so
+     * the order can never go missing from their /membership history.
+     */
+    public function test_a_member_order_is_stored_under_the_membership_email_not_the_typed_one(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
+            'email' => 'real-member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 5000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = $this->membershipToken('real-member@example.com');
+
+        $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package, ['customer_email' => 'typo@example.com', 'customer_name' => 'Real Member']),
+            ['Authorization' => "Bearer {$token}"],
+        )->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('real-member@example.com', $order->customer_email);
+        $this->assertSame('Real Member', $order->customer_name); // name is left as typed
+    }
+
+    /** ADR-068 decision 16: the bind is keyed on the session, not on member pricing — a quota-exhausted member still gets it. */
+    public function test_an_out_of_quota_member_order_is_still_stored_under_the_membership_email(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->memberPackage();
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        Membership::query()->create([
+            'reseller_id' => $this->primaryReseller()->id,
+            'email' => 'broke-member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 1, // nowhere near the member price — standard fallback
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = $this->membershipToken('broke-member@example.com');
+
+        $this->postJson(
+            '/api/checkout',
+            $this->payload($game, $package, ['customer_email' => 'typo@example.com']),
+            ['Authorization' => "Bearer {$token}"],
+        )->assertCreated();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('standard', $order->pricing_basis->value);
+        $this->assertSame('broke-member@example.com', $order->customer_email);
+    }
+
+    /**
      * ADR-027's 2026-08-29 continued addendum, decision 4: a member
      * order's `reseller_profit` is always 0 — the platform absorbs the
      * entire member discount itself, never the reseller's own margin —

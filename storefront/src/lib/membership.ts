@@ -67,6 +67,7 @@ const OrderHistoryRowWireSchema = z.object({
 });
 
 const MeWireSchema = z.object({
+  email: z.string(),
   membership: MembershipWireSchema.nullable(),
   order_history: z.array(OrderHistoryRowWireSchema),
 });
@@ -90,6 +91,8 @@ export interface MembershipOrderHistoryRow {
 }
 
 export interface MembershipMe {
+  /** ADR-068 decision 16 — the member's OTP-verified email; the checkout contact email is bound to this. */
+  email: string;
   membership: MembershipDashboard | null;
   orderHistory: MembershipOrderHistoryRow[];
 }
@@ -99,6 +102,7 @@ export async function getMe(token: string): Promise<MembershipMe> {
   const wire = parseResponse(MeWireSchema, raw, "MeWire", "/api/membership/me");
 
   return {
+    email: wire.email,
     membership:
       wire.membership !== null
         ? {
@@ -118,5 +122,99 @@ export async function getMe(token: string): Promise<MembershipMe> {
       deliveryStatus: row.delivery_status,
       createdAt: row.created_at,
     })),
+  };
+}
+
+/**
+ * ADR-068 decision 6 — the authenticated subscribe view's data source:
+ * full plan rows (unlike the anonymous, narrow `listPlans()`), the
+ * caller's current plan, and a per-plan relation the UI uses to label
+ * and gate each option (`downgrade` is shown but disabled — S5).
+ */
+const SubscribePlanWireSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  fee_sen: z.number(),
+  quota_sen: z.number(),
+  discount_percent: z.number(),
+  relation: z.enum(["renew", "upgrade", "downgrade", "subscribe"]),
+});
+
+const SubscribeOptionsWireSchema = z.object({
+  current_plan_id: z.number().nullable(),
+  plans: z.array(SubscribePlanWireSchema),
+});
+
+export type SubscribeRelation = z.infer<typeof SubscribePlanWireSchema>["relation"];
+
+export interface SubscribePlan {
+  id: number;
+  name: string;
+  feeRm: number;
+  quotaRm: number;
+  discountPercent: number;
+  relation: SubscribeRelation;
+}
+
+export interface SubscribeOptions {
+  currentPlanId: number | null;
+  plans: SubscribePlan[];
+}
+
+export async function getSubscribeOptions(token: string): Promise<SubscribeOptions> {
+  const raw = await apiFetch<unknown>("/api/membership/subscribe-options", { token });
+  const wire = parseResponse(SubscribeOptionsWireSchema, raw, "SubscribeOptionsWire", "/api/membership/subscribe-options");
+  return {
+    currentPlanId: wire.current_plan_id,
+    plans: wire.plans.map((plan) => ({
+      id: plan.id,
+      name: plan.name,
+      feeRm: plan.fee_sen / 100,
+      quotaRm: plan.quota_sen / 100,
+      discountPercent: plan.discount_percent,
+      relation: plan.relation,
+    })),
+  };
+}
+
+const SubscribeWireSchema = z.object({
+  subscription_number: z.string(),
+  checkout_url: z.string().nullable(),
+  fee_sen: z.number(),
+  total_charged_sen: z.number(),
+});
+
+export interface SubscribeResult {
+  subscriptionNumber: string;
+  checkoutUrl: string | null;
+  feeRm: number;
+  totalChargedRm: number;
+}
+
+/**
+ * ADR-068 decision 5 — start a self-serve subscription payment. `planId`
+ * is the only monetary input (the fee is read server-side, ORD-9);
+ * `idempotencyKey` is client-generated and reused across a retry of the
+ * same attempt, mirroring checkout. Returns the CHIP checkout URL to
+ * redirect to.
+ */
+export async function subscribe(
+  token: string,
+  planId: number,
+  paymentMethod: string,
+  idempotencyKey: string,
+): Promise<SubscribeResult> {
+  const path = "/api/membership/subscribe";
+  const raw = await apiFetch<unknown>(path, {
+    method: "POST",
+    token,
+    body: { membership_plan_id: planId, payment_method: paymentMethod, idempotency_key: idempotencyKey },
+  });
+  const wire = parseResponse(SubscribeWireSchema, raw, "SubscribeWire", path);
+  return {
+    subscriptionNumber: wire.subscription_number,
+    checkoutUrl: wire.checkout_url,
+    feeRm: wire.fee_sen / 100,
+    totalChargedRm: wire.total_charged_sen / 100,
   };
 }

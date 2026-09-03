@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Membership\SubscribeRequest;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Order;
 use App\Models\Reseller;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
+use App\Services\Membership\MembershipSubscriptionException;
+use App\Services\Membership\MembershipSubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -27,7 +30,10 @@ use Illuminate\Support\Facades\Cache;
  */
 class MembershipController extends Controller
 {
-    public function __construct(private readonly MembershipSessionTokenService $sessionTokens) {}
+    public function __construct(
+        private readonly MembershipSessionTokenService $sessionTokens,
+        private readonly MembershipSubscriptionService $subscriptions,
+    ) {}
 
     /**
      * ADR-055 decision 3: the public tier listing for the storefront
@@ -89,9 +95,123 @@ class MembershipController extends Controller
             ->first();
 
         return response()->json([
+            // ADR-068 decision 16: the storefront pre-fills and locks the
+            // checkout contact email to this, so a logged-in member's
+            // orders can never be split across a mistyped address.
+            'email' => $email,
             'membership' => $membership !== null ? $this->publicMembership($membership) : null,
-            'order_history' => $this->orderHistory($resellerId, $email),
+            'order_history' => $this->orderHistory($resellerId, $email, $membership?->id),
         ]);
+    }
+
+    /**
+     * ADR-068 decision 6 — the authenticated tier list the /membership
+     * subscribe view renders: full plan rows (unlike the anonymous,
+     * deliberately-narrow `plans()`), plus the caller's current plan and
+     * a per-plan relation so the UI can label and gate each option.
+     * S15: an `expired` member is treated as having no current plan —
+     * every tier reads `subscribe`, and paying runs recordFeePaid's
+     * reactivate branch.
+     */
+    public function subscribeOptions(Request $request): JsonResponse
+    {
+        $session = $this->resolveSession($request);
+
+        if ($session === null) {
+            return response()->json(['message' => 'Invalid or expired session.'], 401);
+        }
+
+        if (! Reseller::primary()->membershipEnabledEffective()) {
+            return response()->json(['message' => 'Membership is not available.'], 403);
+        }
+
+        $current = Membership::query()
+            ->where('reseller_id', $session['reseller_id'])
+            ->where('email', $session['email'])
+            ->where('status', MembershipStatus::Active)
+            ->where('expires_at', '>=', now())
+            ->first();
+
+        $currentPlanId = $current?->membership_plan_id;
+        $currentDiscount = $currentPlanId !== null
+            ? (float) MembershipPlan::query()->whereKey($currentPlanId)->value('discount_percent')
+            : null;
+
+        $plans = MembershipPlan::query()
+            ->orderBy('id')
+            ->get()
+            ->map(fn (MembershipPlan $plan) => [
+                'id' => $plan->id,
+                'name' => $plan->name,
+                'fee_sen' => $plan->fee_sen,
+                'quota_sen' => $plan->quota_sen,
+                'discount_percent' => (float) $plan->discount_percent,
+                'relation' => $this->planRelation($plan, $currentPlanId, $currentDiscount),
+            ])
+            ->all();
+
+        return response()->json([
+            'current_plan_id' => $currentPlanId,
+            'plans' => $plans,
+        ]);
+    }
+
+    /**
+     * ADR-068 decision 5 — start a self-serve subscription payment. The
+     * plan is the only thing trusted from the client (ORD-9); brand,
+     * email, and the amount are all resolved server-side. Returns the
+     * CHIP checkout URL for the storefront to redirect to.
+     */
+    public function subscribe(SubscribeRequest $request): JsonResponse
+    {
+        $session = $this->resolveSession($request);
+
+        if ($session === null) {
+            return response()->json(['message' => 'Invalid or expired session.'], 401);
+        }
+
+        if (! Reseller::primary()->membershipEnabledEffective()) {
+            return response()->json(['message' => 'Membership is not available.'], 403);
+        }
+
+        try {
+            $attempt = $this->subscriptions->initiate(
+                $session['reseller_id'],
+                $session['email'],
+                (int) $request->validated('membership_plan_id'),
+                $request->validated('payment_method'),
+                $request->validated('channel_properties') ?? [],
+                $request->validated('idempotency_key'),
+            );
+        } catch (MembershipSubscriptionException $e) {
+            return response()->json(['message' => $e->getMessage()], 502);
+        }
+
+        return response()->json([
+            'subscription_number' => $attempt->subscription_number,
+            'checkout_url' => $attempt->checkout_url,
+            'fee_sen' => $attempt->fee_sen,
+            'total_charged_sen' => $attempt->total_charged_sen,
+        ], 201);
+    }
+
+    /**
+     * @return 'renew'|'upgrade'|'downgrade'|'subscribe'
+     */
+    private function planRelation(MembershipPlan $plan, ?int $currentPlanId, ?float $currentDiscount): string
+    {
+        if ($currentPlanId === null) {
+            return 'subscribe';
+        }
+
+        if ($plan->id === $currentPlanId) {
+            return 'renew';
+        }
+
+        // Compare on discount %, not id — "higher tier" means the better
+        // member price, which is what the anchor psychology is about
+        // (ADR-027 decision 4 / decision 19's Tier 2 > Tier 1 rule).
+        return (float) $plan->discount_percent > ($currentDiscount ?? 0.0) ? 'upgrade' : 'downgrade';
     }
 
     /**
@@ -133,14 +253,26 @@ class MembershipController extends Controller
      * Order.customer_email match, no new linkage table. Same narrow,
      * customer-safe field subset as TrackOrderController::show().
      *
+     * ADR-068 decision 17: match on customer_email OR membership_id, not
+     * email alone. Orders have carried membership_id since ADR-027
+     * Phase 6, so an order bought as this member surfaces even when its
+     * contact email differs — a legacy order, or one placed before
+     * decision 16 bound the checkout email.
+     *
      * @return array<int, array<string, mixed>>
      */
-    private function orderHistory(int $resellerId, string $email): array
+    private function orderHistory(int $resellerId, string $email, ?int $membershipId): array
     {
         return Order::query()
             ->with(['game:id,name,slug', 'package:id,name'])
             ->where('reseller_id', $resellerId)
-            ->where('customer_email', $email)
+            ->where(function ($query) use ($email, $membershipId): void {
+                $query->where('customer_email', $email);
+
+                if ($membershipId !== null) {
+                    $query->orWhere('membership_id', $membershipId);
+                }
+            })
             ->orderByDesc('created_at')
             ->limit(50)
             ->get()

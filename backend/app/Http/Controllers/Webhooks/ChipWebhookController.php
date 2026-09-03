@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\FulfillOrderJob;
+use App\Models\MembershipCheckoutAttempt;
 use App\Models\Order;
+use App\Services\Membership\MembershipCheckoutAttemptStatus;
+use App\Services\Membership\MembershipSubscriptionService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +41,7 @@ class ChipWebhookController extends Controller
     public function __construct(
         PaymentGatewayFactory $gatewayFactory,
         private readonly VoucherService $vouchers,
+        private readonly MembershipSubscriptionService $subscriptions,
     ) {
         $this->paymentGateway = $gatewayFactory->make('chip');
     }
@@ -54,8 +59,21 @@ class ChipWebhookController extends Controller
         $order = Order::query()->where('payment_ref', $event->paymentRequestId)->first();
 
         if ($order === null) {
+            // ADR-068 decision 3 / S2 — not an order: try a self-serve
+            // membership subscription, matched on our own
+            // `subscription_number` (echoed back as the event
+            // `referenceId`), not the CHIP purchase id.
+            $attempt = MembershipCheckoutAttempt::query()
+                ->where('subscription_number', $event->referenceId)
+                ->first();
+
+            if ($attempt !== null) {
+                return $this->handleMembershipAttempt($attempt, $event);
+            }
+
             Log::warning('Rejected CHIP webhook: no order found', [
                 'payment_request_id' => $event->paymentRequestId,
+                'reference' => $event->referenceId,
             ]);
 
             return response()->json(['message' => 'order not found'], 404);
@@ -109,6 +127,47 @@ class ChipWebhookController extends Controller
         $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
 
         FulfillOrderJob::dispatch($order->fresh());
+
+        return response()->json(['message' => 'ok']);
+    }
+
+    /**
+     * ADR-068 decision 3 — the membership-subscription branch. Same
+     * shape as the order path: dedupe a repeat delivery, acknowledge a
+     * non-paid status, cross-check the amount against the snapshot the
+     * attempt froze at creation (`total_charged_sen`, not the live
+     * plan fee), then hand a genuine paid event to the one shared seam.
+     */
+    private function handleMembershipAttempt(MembershipCheckoutAttempt $attempt, PaymentWebhookEvent $event): JsonResponse
+    {
+        Log::withContext([
+            'subscription_number' => $attempt->subscription_number,
+            'payment_request_id' => $event->paymentRequestId,
+            'event_type' => $event->eventType,
+        ]);
+
+        if ($attempt->status === MembershipCheckoutAttemptStatus::Paid) {
+            return response()->json(['message' => 'already processed']);
+        }
+
+        if ($event->status !== PaymentStatus::Paid) {
+            if ($event->status === PaymentStatus::Failed) {
+                $attempt->update(['status' => MembershipCheckoutAttemptStatus::Failed->value]);
+            }
+
+            return response()->json(['message' => 'acknowledged']);
+        }
+
+        if ($event->amountSen !== $attempt->total_charged_sen) {
+            Log::error('Rejected CHIP webhook: membership amount mismatch', [
+                'expected_sen' => $attempt->total_charged_sen,
+                'received_sen' => $event->amountSen,
+            ]);
+
+            return response()->json(['message' => 'amount mismatch'], 409);
+        }
+
+        $this->subscriptions->completePaidAttempt($attempt);
 
         return response()->json(['message' => 'ok']);
     }

@@ -17,6 +17,10 @@ import {
 // real flattened payload shape directly to /api/webhooks/chip after
 // capturing the payment_ref the fake gateway's createPayment returned.
 test("guest checkout -> payment -> order status", async ({ page, request }) => {
+  // ~12-step flow ending in an async delivery + a cold-compiled status
+  // route — legitimately over the 60s default on a cold CI runner.
+  test.slow();
+
   await page.goto(`${STOREFRONT_URL}/order/${E2E_GAME_SLUG}`);
 
   await page.locator("#playerId").fill("900000001");
@@ -94,6 +98,27 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   });
   expect(webhook.ok()).toBeTruthy();
 
+  // Delivery is async (queued FulfillOrderJob -> FakeSupplierGateway).
+  // Wait for the terminal state on the admin API — fast JSON, no
+  // Next.js route compile inside the loop — THEN assert the
+  // customer-facing status page reflects it. ADR-023 wants a flake
+  // fixed, not re-run: the bare status-page poll flaked repeatedly
+  // (PRs #68, #69) because a cold-compile of the status route raced
+  // the poll cadence, and a genuinely stuck job surfaced only as a
+  // vague page timeout. Decoupling the two makes "job never ran" fail
+  // here as "delivery_status never reached delivered".
+  await expect
+    .poll(
+      async () => {
+        const res = await request.get(`${BACKEND_URL}/api/orders/${orderId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return (await res.json()).delivery_status;
+      },
+      { timeout: 60_000, intervals: [1_000, 2_000, 3_000] },
+    )
+    .toBe("delivered");
+
   await page.goto(`${STOREFRONT_URL}/order/status/${encodeURIComponent(orderNumber)}`);
-  await expect(page.getByText("Delivered")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Delivered")).toBeVisible({ timeout: 15_000 });
 });

@@ -3,15 +3,18 @@
 namespace Database\Seeders;
 
 use App\Models\Game;
+use App\Models\MembershipOtpCode;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
+use App\Models\PlatformSettings;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * ADR-023 decision #7: the thin, explicitly-owned fixture layer for
@@ -52,6 +55,21 @@ class E2ESeeder extends Seeder
         // real payment leg needs a CHIP test-mode key (CHIP_SECRET_KEY /
         // CHIP_BRAND_ID) exported before `npm test` — see e2e/AGENTS.md.
         PaymentMethod::query()->where('channel_code', 'fpx')->update(['is_active' => true]);
+
+        // ADR-068 — the self-serve membership-subscribe golden path.
+        // Membership on for the primary brand (the effective gate needs
+        // both this and the reseller's own toggle, which primaryReseller
+        // seeds true), plus a pre-verifiable OTP fixture so the spec can
+        // obtain a real 30-day session token without an email round-trip
+        // (MAIL_MAILER=log in e2e). The seeded code hash matches
+        // E2E_MEMBER_OTP in e2e/tests/constants.ts.
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        $reseller->update(['membership_enabled' => true]);
+
+        MembershipOtpCode::query()->firstOrCreate(
+            ['reseller_id' => $reseller->id, 'email' => 'e2e-member@example.com', 'consumed_at' => null],
+            ['code_hash' => Hash::make('123456'), 'expires_at' => now()->addYear()],
+        );
 
         $supplier = Supplier::query()->firstOrCreate(
             ['slug' => 'e2e-fake-supplier'],

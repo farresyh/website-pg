@@ -330,5 +330,14 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('otp-request', function (Request $request) {
             return Limit::perHour(3)->by((string) $request->input('email'));
         });
+
+        // ADR-068 S18 — the self-serve subscribe endpoint, keyed on the
+        // member's session token (one bucket per member, not per IP —
+        // members behind one NAT must not starve each other). 10/min is
+        // ample for a human clicking "Subscribe"; it only exists to cap a
+        // script hammering CHIP-purchase creation.
+        RateLimiter::for('membership-subscribe', function (Request $request) {
+            return Limit::perMinute(10)->by((string) ($request->bearerToken() ?? $request->ip()));
+        });
     }
 }

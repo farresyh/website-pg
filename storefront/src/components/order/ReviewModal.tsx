@@ -21,6 +21,8 @@ interface ReviewModalProps {
   channelLabel: string;
   customerEmail: string;
   setCustomerEmail: (value: string) => void;
+  /** ADR-068 decision 16 — a signed-in member's email is fixed to their verified membership address. */
+  emailLocked?: boolean;
   customerName: string;
   setCustomerName: (value: string) => void;
   customerPhone: string;
@@ -62,6 +64,7 @@ export default function ReviewModal({
   channelLabel,
   customerEmail,
   setCustomerEmail,
+  emailLocked = false,
   customerName,
   setCustomerName,
   customerPhone,
@@ -181,8 +184,15 @@ export default function ReviewModal({
               value={customerEmail}
               onChange={(e) => setCustomerEmail(e.target.value)}
               placeholder="you@example.com"
-              className={inputClass}
+              readOnly={emailLocked}
+              aria-readonly={emailLocked}
+              className={emailLocked ? `${inputClass} cursor-not-allowed opacity-70` : inputClass}
             />
+            {emailLocked && (
+              <p className="mt-1.5 text-xs text-outline">
+                Your member email. Sign out on the Membership page to use a different address.
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="reviewName" className={labelClass}>

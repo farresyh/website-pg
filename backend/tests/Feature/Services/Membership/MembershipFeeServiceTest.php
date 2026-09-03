@@ -9,6 +9,7 @@ use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
 use App\Services\Membership\MembershipFeeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -27,6 +28,8 @@ class MembershipFeeServiceTest extends TestCase
     {
         parent::setUp();
         $this->rid = $this->primaryReseller()->id;
+        // ADR-068 decision 9: recordFeePaid() dispatches the receipt job.
+        Queue::fake();
     }
 
     private function plan(string $name = 'Tier 1'): MembershipPlan

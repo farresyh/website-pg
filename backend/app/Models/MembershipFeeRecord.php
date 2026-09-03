@@ -17,6 +17,7 @@ class MembershipFeeRecord extends Model
         'membership_id',
         'membership_plan_id',
         'amount_sen',
+        'ledger_entry_id',
         'admin_user_id',
         'reason',
         'idempotency_key',
@@ -34,5 +35,15 @@ class MembershipFeeRecord extends Model
     public function membershipPlan(): BelongsTo
     {
         return $this->belongsTo(MembershipPlan::class);
+    }
+
+    public function ledgerEntry(): BelongsTo
+    {
+        return $this->belongsTo(LedgerEntry::class);
+    }
+
+    public function adminUser(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class);
     }
 }

@@ -164,6 +164,15 @@ Route::get('/membership/plans', [MembershipController::class, 'plans']);
 // inside the controller itself, same reasoning as the OTP routes above.
 Route::get('/membership/me', [MembershipController::class, 'me']);
 
+// ADR-068 — self-serve subscription payment. Both session-token gated
+// inside the controller. `subscribe` carries the `membership-subscribe`
+// limiter (registered in AppServiceProvider — keyed on the bearer
+// token, one bucket per member session, so a shared NAT can't starve
+// other members).
+Route::get('/membership/subscribe-options', [MembershipController::class, 'subscribeOptions']);
+Route::post('/membership/subscribe', [MembershipController::class, 'subscribe'])
+    ->middleware('throttle:membership-subscribe');
+
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
 // §14/§15 NEXT SESSION pointer). A distinct `catalog/` prefix, not
@@ -470,6 +479,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // against — internal, membership-enabled resellers only.
         Route::get('/brands', [AdminMembershipController::class, 'brands']);
         Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
+        // ADR-068 decisions 14/15 — the per-member detail (state, fee
+        // history, checkout attempts incl. pending/failed). Declared
+        // after /brands so the static segment still wins.
+        Route::get('/{membership}', [AdminMembershipController::class, 'show']);
     });
 
     // ADR-058 58b (RES-1..6) — admin Reseller Management. Same
