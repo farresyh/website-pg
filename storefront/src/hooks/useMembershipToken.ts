@@ -1,12 +1,18 @@
 "use client";
 
 /**
- * Mirrors admin/src/hooks/useClientSession.ts's own reasoning:
- * useSyncExternalStore is the SSR-safe way to read a client-only
- * storage value — getServerSnapshot returns null so SSR/first
- * hydration render matches, and React reconciles to the real
- * localStorage value right after hydrating, with no setState-in-effect
- * call for react-hooks/set-state-in-effect to flag.
+ * `useSyncExternalStore` is the SSR-safe way to read a client-only
+ * value — `getServerSnapshot` returns null so SSR / the first hydration
+ * render match, then React reconciles to the real value right after
+ * hydrating, with no setState-in-effect for `react-hooks/set-state-in-
+ * effect` to flag.
+ *
+ * ADR-071 PR2b: the token is a cookie now (`lib/membership-session.ts`).
+ * Cookies have no native change event, so only the same-tab custom
+ * event drives reactivity here — a sign-in/out in *another* tab isn't
+ * reflected until this tab navigates. That's an accepted edge (the
+ * verify flow and shopping happen in one tab); the order page's SSR
+ * read via `MemberAwareOrderForm` is the authoritative source anyway.
  */
 
 import { useSyncExternalStore } from "react";
@@ -17,10 +23,8 @@ function getServerSnapshot(): string | null {
 }
 
 function subscribe(callback: () => void): () => void {
-  window.addEventListener("storage", callback);
   window.addEventListener(MEMBERSHIP_TOKEN_CHANGE_EVENT, callback);
   return () => {
-    window.removeEventListener("storage", callback);
     window.removeEventListener(MEMBERSHIP_TOKEN_CHANGE_EVENT, callback);
   };
 }
