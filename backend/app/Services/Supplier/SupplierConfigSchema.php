@@ -35,7 +35,14 @@ final class SupplierConfigSchema
      * category, unchanged pre-ADR-067 behaviour).
      */
     private const OPTIONAL = [
-        'digiflazz' => ['category_whitelist' => 'list'],
+        // ADR-069 decision 8 — `webhook_secret` is irrelevant to the
+        // outbound API (createOrder/checkBalance sign per-endpoint with
+        // username+api_key), so it must NOT gate "fully configured" or
+        // the adapter binding; it only matters to
+        // DigiflazzWebhookController, which hard-rejects when it is
+        // absent. `secret`-typed so the redactor + the masked-merge
+        // form treat it like any other credential.
+        'digiflazz' => ['category_whitelist' => 'list', 'webhook_secret' => 'secret'],
     ];
 
     /**

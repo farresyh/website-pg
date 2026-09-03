@@ -63,6 +63,7 @@ use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
+use App\Http\Controllers\Webhooks\DigiflazzWebhookController;
 use Illuminate\Support\Facades\Route;
 
 // ADR-019: the only mutating auth-adjacent route with no throttle,
@@ -647,3 +648,14 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
     ->middleware('throttle:120,1,webhook-chip')
     ->name('webhooks.chip');
+
+// ADR-069 — Digiflazz async-delivery finalization (the ADR-032
+// decision 4 half, deferred through ADR-032's own build and ADR-067).
+// Not behind auth:sanctum: the X-Hub-Signature HMAC check IS the auth,
+// with a config-driven IP allowlist as a second gate. Same throttle
+// rationale as the CHIP route above. The reconcile poll
+// (ReconcilePendingDeliveriesCommand::checkStalePending) remains the
+// backstop for any missed callback.
+Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle'])
+    ->middleware('throttle:120,1,webhook-digiflazz')
+    ->name('webhooks.digiflazz');

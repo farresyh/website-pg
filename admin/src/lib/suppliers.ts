@@ -70,8 +70,21 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-067 decision 2: Digiflazz's price-list spans Games/Data/Pulsa/PLN/etc.
     // Blank = sync every category into Product Manager.
     { key: "category_whitelist", label: "Category Whitelist", type: "list", placeholder: "Games (comma-separated; blank = sync all categories)" },
+    // ADR-069 decision 8: the HMAC-SHA1 secret set in Digiflazz's panel
+    // (Atur Koneksi > API > Webhook). Optional for outbound calls;
+    // DigiflazzWebhookController rejects every callback until it's set.
+    { key: "webhook_secret", label: "Webhook Secret", type: "secret" },
   ],
 };
+
+/**
+ * ADR-069 decision 8 — Digiflazz-only: the inbound webhook is inert
+ * until `webhook_secret` is saved. `configured_secret_keys` is the
+ * only signal this screen gets about which secrets are actually set.
+ */
+export function isWebhookConfigured(supplier: Supplier): boolean {
+  return supplier.slug !== "digiflazz" || supplier.configured_secret_keys.includes("webhook_secret");
+}
 
 export interface CreateSupplierValues {
   name: string;
