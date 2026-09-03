@@ -10,13 +10,20 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * ADR-068 decision 9 — the membership-fee receipt, sent on every
  * genuine create/transition through `MembershipFeeService::recordFeePaid()`
  * (admin-recorded and self-serve alike). Queued, never inline on the
- * CHIP webhook thread (backend/AGENTS.md); a Plunk outage retries here
- * and never touches the membership, which is already active.
+ * CHIP webhook thread (backend/AGENTS.md).
+ *
+ * A receipt is best-effort: the membership is already active, and every
+ * caller of the seam (an admin request, a webhook, the reconcile sweep)
+ * must be immune to Plunk being down. So a send failure is logged and
+ * swallowed here — no rethrow, no retry storm, no entry in
+ * `failed_jobs`. (This also keeps the seam safe under the `sync` queue
+ * driver the test suite uses.)
  *
  * `$transition` is `subscription` | `renewal` | `reactivation` — it
  * shapes the copy (and a zero `$amountSen` renders as a complimentary
@@ -26,18 +33,11 @@ final class SendMembershipReceiptJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
-
     public function __construct(
         public readonly int $membershipId,
         public readonly string $transition,
         public readonly int $amountSen,
     ) {}
-
-    public function backoff(): array
-    {
-        return [30, 120, 300];
-    }
 
     public function handle(PlunkMailer $mailer): void
     {
@@ -64,21 +64,20 @@ final class SendMembershipReceiptJob implements ShouldQueue
             default => "Your {$tier} membership is now active.",
         };
 
-        $mailer->send(
-            $membership->email,
-            "Your {$tier} membership — payment received",
-            "{$opening}\n\n"
-            ."{$amountLine}\n"
-            ."Active through: {$expires}\n\n"
-            ."Manage your membership any time at your account's Membership page.",
-        );
-    }
-
-    public function failed(\Throwable $exception): void
-    {
-        Log::error('SendMembershipReceiptJob exhausted all retries', [
-            'membership_id' => $this->membershipId,
-            'exception' => $exception->getMessage(),
-        ]);
+        try {
+            $mailer->send(
+                $membership->email,
+                "Your {$tier} membership — payment received",
+                "{$opening}\n\n"
+                ."{$amountLine}\n"
+                ."Active through: {$expires}\n\n"
+                ."Manage your membership any time at your account's Membership page.",
+            );
+        } catch (Throwable $e) {
+            Log::warning('SendMembershipReceiptJob: receipt email not sent', [
+                'membership_id' => $this->membershipId,
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 }

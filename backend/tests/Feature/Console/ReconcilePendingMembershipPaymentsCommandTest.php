@@ -14,6 +14,7 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -30,6 +31,7 @@ class ReconcilePendingMembershipPaymentsCommandTest extends TestCase
     {
         parent::setUp();
         $this->primaryReseller();
+        Queue::fake();
         PaymentMethod::query()->create([
             'channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip',
             'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100,
