@@ -122,6 +122,12 @@ class DigiflazzWebhookControllerTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $order->delivery_status);
         $this->assertSame('SN-999888', $order->supplier_ref);
         $this->assertNotNull($order->delivered_at);
+        // The raw webhook `data` object is stored verbatim as the
+        // supplier_response audit trail (informational — `price` is
+        // never used to compute anything, exactly as the synchronous
+        // path never trusts the supplier's echoed price).
+        $this->assertSame('Sukses', $order->supplier_response['status']);
+        $this->assertSame('SN-999888', $order->supplier_response['sn']);
 
         $this->assertDatabaseHas('ledger_entries', [
             'reference_type' => 'order',
