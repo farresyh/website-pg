@@ -1627,12 +1627,20 @@ No **storefront** nav link added in this session — the kill switch stays off, 
 
 **ADR-071 (PR0–4) + ADR-069 (PR-1..3) released to production 2026-09-03 — `staging`→`main` PR #85, merge commit.** CI `deploy` job green (Forge hook POSTed); `api.pekangame.space/up` + `pekangame.space/` both 200 after deploy. The storefront/admin/reseller Vercel projects auto-deployed from `main`. **Not yet verified on the box:** that `migrate --force` in the Forge deploy script applied ADR-069's additive migrations (`supplier_products.raw_price`/`raw_currency`, `suppliers.low_balance_threshold`/`webhook_secret`) — founder to confirm with `php artisan migrate:status`.
 
-**Remaining for ADR-071 / ADR-069 (founder, post-release):**
-1. `php artisan migrate:status` on the box — confirm the ADR-069 additive migrations ran; `migrate --force` if not.
-2. `php artisan config:clear && php artisan config:cache` (ADR-069 webhook route + `config/services.php` `next` block).
-3. Run the ADR-071 PR4 `/wizard` runbook (`adr-071-deploy-wizard.sh`, session scratchpad): `NEXT_REVALIDATE_URL`/`_SECRET` on Forge + `REVALIDATE_SECRET` on Vercel storefront; `BROADCAST_CONNECTION=reverb` + `REVERB_*` + Forge daemon `reverb:start` + nginx `/app` block + `NEXT_PUBLIC_REVERB_*` on Vercel storefront+admin; deploy-script caches; Cloudflare WebSocket check. Until run: storefront keeps the PR3 adaptive poll, catalog staleness falls back to the 60s TTL (both no-error).
-4. ADR-069: set `webhook_secret` on the digiflazz `Supplier` row + register `https://api.pekangame.space/api/webhooks/digiflazz` in the Digiflazz panel.
-5. Digiflazz + Gamevion are still Rp 0 — commercial-launch blocker is funding a supplier + building the catalogue (today: 1 placeholder game/package). Also set real Membership numbers.
+**ADR-071 PR4 infra + ADR-069 webhook fully deployed & verified in production 2026-09-04** (founder ran the 11-stage `/wizard` runbook with in-browser assist). Confirmed live:
+- **Migrations** — `migrate:status` clean; `raw_price`/`raw_currency` = Ran. `low_balance_threshold` + `webhook_secret` are `Supplier.api_config` keys (encrypted JSON), never columns — no migration for them, and none pending.
+- **Reverb** — Forge "Background process" `php8.4 artisan reverb:start --host=0.0.0.0 --port=8080` (dir `/home/forge/api.pekangame.space/backend`) = Running. nginx `location /app { proxy_pass 127.0.0.1:8080; …Upgrade… }` added to the General site config inside `server{}` before the FORGE CONFIG include (one line, prefix `/app` also catches `/apps/*` — Reverb's HTTP events API). `api.pekangame.space/app` → Reverb's own `404 "Not found."` (healthy — keyless path); `/apps/1/channels` → Reverb `"No matching application for ID [1]"` (proxy + daemon proven). `BROADCAST_CONNECTION=reverb` + `REVERB_*` in Forge `.env`.
+- **Revalidate webhook** — `NEXT_REVALIDATE_URL`/`_SECRET` in Forge `.env`; `REVALIDATE_SECRET` (Sensitive, non-public) on Vercel storefront; `NEXT_PUBLIC_REVERB_*` on Vercel storefront + admin (app *key* is a public Pusher-protocol identifier; the *secret* stays Forge-only). Both Vercel projects redeployed (no build cache, so `NEXT_PUBLIC_*` re-inlined).
+- **Deploy script** — already had `--optimize-autoloader` + `config:cache`/`route:cache`/`event:cache` + `horizon:terminate` + `/up` health curl; `view:cache` skipped (API, minimal Blade). No change needed.
+- **Cloudflare** — N/A: `api.pekangame.space` → DO droplet direct (`137.184.250.200`, no `cf-ray`), `pekangame.space` → Vercel. Nothing proxied through Cloudflare yet (that's ADR-060's future cutover).
+- **End-to-end** — founder confirmed: order status page flips to Delivered ~instantly (Reverb push, not the 20s poll); admin Price Sync updates live; a package price edit shows on the storefront in ~2s (webhook revalidate), not 60s.
+- **Digiflazz webhook** — Payload URL `https://api.pekangame.space/api/webhooks/digiflazz` + Secret registered in the Digiflazz panel, matching `Supplier.api_config['webhook_secret']`. Signature is HMAC-SHA1 of the raw body → `X-Hub-Signature: sha1=…`. Will prove itself on the first real `rc 03` pending order.
+
+**Still open (founder, not blocking):**
+- Merge the docs release-note PR (#86) to `staging`.
+- Delete the wizard's `adr-071-deploy-values.txt` (plaintext `REVERB_APP_SECRET` + `REVALIDATE_SECRET`) or move it somewhere safe.
+- Forge site → Laravel panel still shows "Reverb — Enable" (unclicked): leave it — clicking would try to auto-create a *second* daemon + nginx block. The manual setup is the live one.
+- **Commercial-launch blocker unchanged:** Digiflazz + Gamevion both Rp 0 — fund a supplier + build the catalogue (1 placeholder game/package today). Set real Membership numbers.
 
 Native View Transitions (decision 8) stay deferred — React 19.2 in this repo has no `ViewTransition` export. Cloudflare API edge-cache (decision 14) is RUM-gated.
 
