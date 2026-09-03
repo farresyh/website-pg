@@ -33,20 +33,11 @@ const CHANNEL_GROUPS: { key: "fpx" | "ewallet" | "card"; label: string }[] = [
 
 interface OrderFormProps {
   game: Game;
-  /** SSR-fetched, anonymous "best tier" anchor pricing. */
+  /** SSR-fetched, anonymous "best tier" anchor pricing — swapped for the member's real tier pricing client-side once a membership token is known. */
   packages: GamePackage[];
   paymentChannels: PaymentChannel[];
   /** ADR-055 decision 3: both tiers (`name`/`fee_sen`/`discount_percent`), `[]` when the membership kill switch is off. */
   membershipPlans: MembershipPlan[];
-  /**
-   * ADR-071 PR2 — when the membership session cookie was present at SSR
-   * (`ssrMembershipToken`), these are the server-resolved personalized
-   * packages + member info, so the common "verified before shopping"
-   * case pays no client round trip. `null` for a guest.
-   */
-  memberPackages: GamePackage[] | null;
-  memberSession: { tierName: string | null; email: string | null } | null;
-  ssrMembershipToken: string | null;
 }
 
 /**
@@ -59,60 +50,45 @@ interface OrderFormProps {
  * real last checkpoint (T&C + contact details) before submitCheckout()
  * ever fires.
  */
-export default function OrderForm({
-  game,
-  packages: initialPackages,
-  paymentChannels,
-  membershipPlans,
-  memberPackages,
-  memberSession: ssrMemberSession,
-  ssrMembershipToken,
-}: OrderFormProps) {
+export default function OrderForm({ game, packages: initialPackages, paymentChannels, membershipPlans }: OrderFormProps) {
   const router = useRouter();
   const membershipToken = useMembershipToken();
 
-  // ADR-055 (bug fix, 2026-08-30) + ADR-071 PR2: the `packages` prop is
-  // the anonymous "best tier" anchor; a member sees their own tier's
-  // price. Seeded from what the server already resolved for the SSR
-  // cookie token (`memberPackages` / `ssrMemberSession`), so a member
-  // who verified before landing here pays no client round trip. Keyed
-  // by token/slug so a stale value never lingers when either changes.
+  // Bug fix, 2026-08-30: the SSR-fetched `packages` prop is always the
+  // anonymous "best tier" anchor (no localStorage access at render
+  // time on the server) — a logged-in member otherwise saw Tier 2's
+  // price throughout Step 2/Review even when their own tier is Tier 1.
+  // Re-fetch once a membership token is available, personalized to the
+  // caller's own tier (CatalogController::resolveMemberPlan()). Keyed
+  // by which token/slug it was fetched for (rather than resetting
+  // state synchronously in the effect) so a stale fetch never lingers
+  // if the token or game changes, and falls back to the anonymous
+  // `initialPackages` for every other case, including no token.
   const [personalized, setPersonalized] = useState<{ token: string; slug: string; packages: GamePackage[] } | null>(
-    ssrMembershipToken && memberPackages
-      ? { token: ssrMembershipToken, slug: game.slug, packages: memberPackages }
-      : null,
+    null,
   );
   const packages =
     personalized && personalized.token === membershipToken && personalized.slug === game.slug
       ? personalized.packages
       : initialPackages;
 
-  // ADR-055 decision 2/6: the visitor's own tier (+ ADR-068 decision 16:
-  // their verified email, which the checkout contact field is bound to).
+  // ADR-055 decision 2/6: the visitor's own tier, resolved from getMe()
+  // once a membership token appears — keyed by token so a lapsed/signed-
+  // out session (or an SSR render, token === null) reads back null (guest)
+  // without a synchronous setState-in-effect, mirroring the `personalized`
+  // pattern above. ADR-068 decision 16: the same call also carries the
+  // member's verified email, which the checkout contact field is bound to.
   const [memberSession, setMemberSession] = useState<{
     token: string;
     tierName: string | null;
     email: string | null;
-  } | null>(
-    ssrMembershipToken
-      ? {
-          token: ssrMembershipToken,
-          tierName: ssrMemberSession?.tierName ?? null,
-          email: ssrMemberSession?.email ?? null,
-        }
-      : null,
-  );
+  } | null>(null);
   const activeSession = memberSession && memberSession.token === membershipToken ? memberSession : null;
   const activeTierName = activeSession?.tierName ?? null;
   const memberEmail = activeSession?.email ?? null;
 
   useEffect(() => {
     if (!membershipToken) return;
-    // The server already resolved this exact token in the RSC pass —
-    // nothing to re-fetch. This effect now only fires when the live
-    // cookie token has diverged from the SSR one (the visitor signed
-    // in or out *while on this page*).
-    if (membershipToken === ssrMembershipToken) return;
 
     let cancelled = false;
     getGamePackages(game.slug, membershipToken)
@@ -124,6 +100,11 @@ export default function OrderForm({
         // (ORD-9) — a failed re-fetch just leaves the anonymous anchor
         // pricing on screen rather than breaking the order flow.
       });
+    // ADR-055 decision 2/6: the upsell card needs the visitor's own
+    // tier to know which audience it's addressing (guest vs Tier 1
+    // member) and when to hide entirely (already on Tier 2). The
+    // /membership page's own dashboard call, reused here — a failed or
+    // lapsed-token fetch resolves to null (guest), never an error.
     getMe(membershipToken)
       .then((me) => {
         if (!cancelled) {
@@ -136,7 +117,7 @@ export default function OrderForm({
     return () => {
       cancelled = true;
     };
-  }, [membershipToken, game.slug, ssrMembershipToken]);
+  }, [membershipToken, game.slug]);
 
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
   const [playerId, setPlayerIdRaw] = useState("");
