@@ -122,6 +122,12 @@ class DigiflazzWebhookControllerTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $order->delivery_status);
         $this->assertSame('SN-999888', $order->supplier_ref);
         $this->assertNotNull($order->delivered_at);
+        // The raw webhook `data` object is stored verbatim as the
+        // supplier_response audit trail (informational — `price` is
+        // never used to compute anything, exactly as the synchronous
+        // path never trusts the supplier's echoed price).
+        $this->assertSame('Sukses', $order->supplier_response['status']);
+        $this->assertSame('SN-999888', $order->supplier_response['sn']);
 
         $this->assertDatabaseHas('ledger_entries', [
             'reference_type' => 'order',
@@ -246,22 +252,24 @@ class DigiflazzWebhookControllerTest extends TestCase
             ->assertStatus(401);
     }
 
-    public function test_a_request_from_an_ip_outside_the_allowlist_is_rejected_403(): void
+    public function test_a_signed_request_from_an_ip_outside_the_allowlist_is_still_processed(): void
     {
-        $order = $this->pendingOrder();
-
-        $this->sendWebhook($this->suksesData($order), ['ip' => '203.0.113.9'])
-            ->assertStatus(403);
-
-        $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
-    }
-
-    public function test_the_ip_allowlist_is_config_driven(): void
-    {
-        config()->set('services.digiflazz.webhook_ips', ['203.0.113.9']);
+        // ADR-069 stress-test Q1 — the IP allowlist is a soft signal
+        // (log only), never a gate: the signature is the real auth and
+        // `$request->ip()` becomes an edge IP behind any proxy/CDN.
         $order = $this->pendingOrder();
 
         $this->sendWebhook($this->suksesData($order), ['ip' => '203.0.113.9'])->assertOk();
+
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+    }
+
+    public function test_an_empty_webhook_ips_config_disables_the_ip_check(): void
+    {
+        config()->set('services.digiflazz.webhook_ips', []);
+        $order = $this->pendingOrder();
+
+        $this->sendWebhook($this->suksesData($order), ['ip' => '198.51.100.7'])->assertOk();
 
         $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
     }

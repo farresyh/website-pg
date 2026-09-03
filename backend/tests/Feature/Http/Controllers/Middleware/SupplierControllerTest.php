@@ -38,17 +38,17 @@ class SupplierControllerTest extends TestCase
         ], $overrides));
     }
 
-    private function fakeAdapter(bool $success = true, array $data = ['balance' => 5000]): SupplierAdapter
+    private function fakeAdapter(bool $success = true, array $data = ['balance' => 5000], string $errorCode = 'SERVER_ERROR'): SupplierAdapter
     {
-        return new class($success, $data) implements SupplierAdapter
+        return new class($success, $data, $errorCode) implements SupplierAdapter
         {
-            public function __construct(private bool $success, private array $data) {}
+            public function __construct(private bool $success, private array $data, private string $errorCode) {}
 
             public function checkBalance(): SupplierResponse
             {
                 return $this->success
                     ? SupplierResponse::success($this->data)
-                    : SupplierResponse::failure('SERVER_ERROR', 'supplier down', true);
+                    : SupplierResponse::failure($this->errorCode, 'supplier down', $this->errorCode === 'SERVER_ERROR');
             }
 
             public function listProducts(): SupplierResponse
@@ -98,8 +98,13 @@ class SupplierControllerTest extends TestCase
         $this->assertStringNotContainsString('secret-value', $response->getContent());
 
         // ADR-046 decision 3: non-secret keys (base_url/sandbox) are
-        // safe to expose so the Edit form can pre-fill them.
-        $this->assertSame(['base_url' => 'https://api.gamevion.com', 'sandbox' => true], $body['visible_config']);
+        // safe to expose so the Edit form can pre-fill them. ADR-069
+        // decision 13 adds the optional low_balance_threshold (null
+        // until set).
+        $this->assertSame(
+            ['base_url' => 'https://api.gamevion.com', 'sandbox' => true, 'low_balance_threshold' => null],
+            $body['visible_config'],
+        );
 
         // ADR-046 addendum: the card's Sandbox/Production badge.
         $this->assertTrue($body['is_sandbox']);
@@ -295,6 +300,23 @@ class SupplierControllerTest extends TestCase
         $this->assertNotNull($response->json('connection_probe.error'));
         // The save still went through.
         $this->assertSame('rotated', $supplier->fresh()->api_config['bearer_token']);
+    }
+
+    public function test_update_probe_treats_a_breaker_open_result_as_not_a_credential_failure(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'old', 'api_key' => 'old-k', 'sandbox' => false]]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(false, [], 'CIRCUIT_OPEN'));
+
+        $response = $this->putJson("/api/middleware/suppliers/{$supplier->id}", [
+            'api_config' => ['bearer_token' => 'rotated'],
+        ])->assertOk();
+
+        $response->assertJsonPath('connection_probe.connection_ok', false);
+        $response->assertJsonPath('connection_probe.breaker_open', true);
+        // The breaker case must NOT stamp last_test_result as a failure —
+        // it says nothing about the credential just saved.
+        $this->assertNull($supplier->fresh()->last_test_result);
     }
 
     public function test_update_without_an_api_config_change_does_not_probe(): void

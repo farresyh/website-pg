@@ -150,7 +150,12 @@ class SupplierController extends Controller
      * spot. Writes balance / last_tested_* exactly as refreshBalance()
      * does, so the two never disagree.
      *
-     * @return array{connection_ok: bool, balance: mixed, error: string|null}
+     * ADR-069 stress-test Q3 — a `CIRCUIT_OPEN` failure
+     * (`CircuitBreakingSupplierAdapter`, from *earlier* unrelated
+     * failures) is NOT evidence the credential just saved is wrong, so
+     * it is worded distinctly and does not stamp `last_test_result`.
+     *
+     * @return array{connection_ok: bool, balance: mixed, error: string|null, breaker_open?: bool}
      */
     private function probeConnection(Supplier $supplier, SupplierAdapterFactory $adapters): array
     {
@@ -161,6 +166,16 @@ class SupplierController extends Controller
         }
 
         $response = $adapter->checkBalance();
+
+        if (! $response->success && $response->errorCode === 'CIRCUIT_OPEN') {
+            return [
+                'connection_ok' => false,
+                'balance' => null,
+                'breaker_open' => true,
+                'error' => 'Connection check skipped — the circuit breaker is open from earlier failures. '
+                    .'Retry after the cooldown, or use Refresh Balance once it closes.',
+            ];
+        }
 
         $update = [
             'last_tested_at' => now(),
