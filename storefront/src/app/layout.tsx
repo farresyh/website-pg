@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
+import WebVitals from "@/components/WebVitals";
 import { SearchProvider } from "@/context/SearchContext";
 import { SiteConfigProvider } from "@/context/SiteConfigContext";
 import SiteHeader from "@/components/layout/SiteHeader";
@@ -135,6 +137,12 @@ export default async function RootLayout({
           <Script key={`body-end-script-${i}`} id={`seo-body-end-script-${i}`} strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: s.code }} />
         ))}
         {settings.ga_measurement_id && <GoogleAnalytics gaId={settings.ga_measurement_id} />}
+        {/* ADR-071 PR4 decision 12 — Core Web Vitals. SpeedInsights is
+          * the dashboard; WebVitals mirrors every measurement to
+          * `/api/vitals` so a budget regression is visible in the logs
+          * even when Speed Insights sampled a data point out. */}
+        <SpeedInsights />
+        <WebVitals />
       </body>
     </html>
   );
