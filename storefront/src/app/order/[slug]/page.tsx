@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import SiteFooter from "@/components/layout/SiteFooter";
-import OrderForm from "@/components/order/OrderForm";
+import MemberAwareOrderForm from "@/components/order/MemberAwareOrderForm";
+import OrderFormSkeleton from "@/components/skeletons/OrderFormSkeleton";
 import ProductHeaderCard from "@/components/order/ProductHeaderCard";
 import TrustStrip from "@/components/order/TrustStrip";
 import { getGame, getGamePackages } from "@/lib/catalog";
@@ -109,7 +111,19 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
         <div className="mx-auto max-w-[1200px] px-4 pb-10">
           <ProductHeaderCard game={game} />
-          <OrderForm game={game} packages={packages} paymentChannels={paymentChannels} membershipPlans={membershipPlans} />
+          {/* ADR-071 PR2b — the membership-cookie read lives inside this
+            * Suspense child (MemberAwareOrderForm), so it never blocks
+            * the route's own `loading.tsx`. A guest resolves instantly;
+            * a signed-in member sees this skeleton for the ~300–500ms it
+            * takes to resolve their personalized pricing server-side. */}
+          <Suspense fallback={<OrderFormSkeleton />}>
+            <MemberAwareOrderForm
+              game={game}
+              packages={packages}
+              paymentChannels={paymentChannels}
+              membershipPlans={membershipPlans}
+            />
+          </Suspense>
         </div>
 
         <TrustStrip />
