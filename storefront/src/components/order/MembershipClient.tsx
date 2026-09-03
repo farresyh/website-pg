@@ -184,15 +184,15 @@ export default function MembershipClient() {
     );
   }
 
-  // Unreachable — every `token === null` path returned above; this
-  // narrows `token` to `string` for the rest of the render.
-  if (token === null) return null;
+  // Unreachable — every `token === null` path, and the `dashboard === null`
+  // loading path, returned above; this narrows both for the rest of the
+  // render.
+  if (token === null || dashboard === null) return null;
 
-  // token !== null && dashboard !== null
-  const orders = dashboard?.orderHistory ?? [];
+  const orders = dashboard.orderHistory;
 
   return (
-    <div className="mx-auto flex max-w-[1000px] flex-col gap-gutter px-4 py-10 lg:py-16">
+    <div className="mx-auto flex max-w-[1000px] flex-col gap-8 px-4 py-10 lg:py-16">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-display text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Membership &amp; Account</h1>
         <Button variant="outline" size="sm" onClick={handleSignOut}>
@@ -207,8 +207,18 @@ export default function MembershipClient() {
         </section>
       )}
 
-      {/* Membership status */}
-      {dashboard?.membership && (
+      {/* Membership status — the active card, or a plain "not a member yet"
+          orientation line above the tier cards (ADR-068 PR-2 review). */}
+      {!dashboard.membership && (
+        <section className="rounded-lg border-2 border-ink bg-surface-container p-5 neo-sm">
+          <p className="font-display text-headline-sm font-bold">You&apos;re not a member yet</p>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Verified as <span className="font-medium text-on-surface">{dashboard.email}</span> — choose a plan below to
+            unlock member pricing on every top-up.
+          </p>
+        </section>
+      )}
+      {dashboard.membership && (
         <section className="flex flex-col items-start justify-between gap-6 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo md:flex-row md:items-center md:p-8">
           <div>
             <div className="mb-2 flex items-center gap-3">
