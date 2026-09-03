@@ -110,12 +110,12 @@ export default function MembershipSubscribe({ token }: { token: string }) {
   }
 
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex flex-col gap-6">
       <h2 className="border-b-2 border-ink pb-2 font-display text-headline-md uppercase tracking-tight">
         {options.currentPlanId === null ? "Choose a Membership" : "Manage Membership"}
       </h2>
 
-      <div className="grid gap-6 md:grid-cols-2 md:items-start">
+      <div className="grid gap-6 pt-3 md:grid-cols-2">
         {options.plans.map((plan) => {
           const isHero = plan.id === heroPlanId;
           const isDowngrade = plan.relation === "downgrade";
@@ -125,7 +125,7 @@ export default function MembershipSubscribe({ token }: { token: string }) {
             <div
               key={plan.id}
               className={[
-                "relative flex flex-col overflow-hidden rounded-lg border-2 border-ink neo",
+                "relative flex flex-col rounded-lg border-2 border-ink neo",
                 isHero
                   ? "order-first bg-secondary-container text-on-secondary-container md:order-none"
                   : "bg-surface-container-lowest",
@@ -133,9 +133,9 @@ export default function MembershipSubscribe({ token }: { token: string }) {
               ].join(" ")}
             >
               {isHero && (
-                <p className="border-b-2 border-ink bg-warning px-6 py-1.5 text-center font-display text-[11px] font-bold uppercase tracking-[0.15em] text-on-warning">
+                <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm border-2 border-ink bg-warning px-3 py-1 font-display text-[11px] font-bold uppercase tracking-[0.15em] text-on-warning neo-sm">
                   Best value
-                </p>
+                </span>
               )}
 
               <div className="flex flex-1 flex-col gap-4 p-6">
