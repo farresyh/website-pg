@@ -102,6 +102,15 @@ Schedule::command('app:reset-membership-cycles')
     ->name('membership-cycle-reset')
     ->withoutOverlapping();
 
+// ADR-068 decision 10 — catches a self-serve membership subscription
+// whose CHIP webhook was never delivered; completes it from the
+// gateway's own status, or expires a genuinely abandoned attempt. See
+// ReconcilePendingMembershipPaymentsCommand's own docblock.
+Schedule::command('app:reconcile-pending-membership-payments')
+    ->daily()
+    ->name('membership-payment-reconciliation')
+    ->withoutOverlapping();
+
 // ADR-056 — same inert-until-real-cron pattern as above. Collects the
 // monthly reseller wholesale-tier subscription fee from each reseller's
 // earnings balance and drives active -> grace (3 days) -> lapsed on an
