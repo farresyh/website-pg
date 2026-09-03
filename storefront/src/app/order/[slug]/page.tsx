@@ -7,7 +7,8 @@ import ProductHeaderCard from "@/components/order/ProductHeaderCard";
 import TrustStrip from "@/components/order/TrustStrip";
 import { getGame, getGamePackages } from "@/lib/catalog";
 import { listPaymentChannels } from "@/lib/payment-methods";
-import { listPlans } from "@/lib/membership";
+import { listPlans, getMe } from "@/lib/membership";
+import { getServerMembershipToken } from "@/lib/membership-session-server";
 import { getBranding } from "@/lib/branding";
 import { getSeoSettings, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
@@ -45,21 +46,37 @@ export async function generateMetadata({ params }: OrderPageProps): Promise<Meta
 
 export default async function OrderPage({ params }: OrderPageProps) {
   const { slug } = await params;
-  // ADR-071 PR1 decision 4: one parallel wave, not the old four serial
-  // awaits (getGame+seo, then packages, then channels, then plans) —
-  // none of these depend on another's result. All five reads are
-  // cached (`catalogCache`); `getGamePackages` here is the anonymous
-  // SSR variant (OrderForm re-fetches personalized once a membership
-  // token is known). ADR-055 decision 7: plans server-side, not a
-  // client round trip — `[]` when the membership kill switch is off.
-  const [game, settings, packages, paymentChannels, membershipPlans] = await Promise.all([
+
+  // ADR-071 PR2 (ADR-027 addendum): the membership session is a cookie
+  // now, so a verified member is resolved here in the server render —
+  // personalized package pricing + their verified email — instead of
+  // OrderForm firing a second client `getGamePackages(token)` +
+  // `getMe(token)` wave from a `useEffect` on every load. A guest, or a
+  // member who signs in/out *while on this page*, is still handled
+  // client-side by OrderForm's now-gated effect.
+  const membershipToken = await getServerMembershipToken();
+
+  // ADR-071 PR1 decision 4: one parallel wave. `getGamePackages(slug)`
+  // is the anonymous "best tier" anchor (kept — the upsell card needs
+  // it); the tokened variant + `getMe` only run for a signed-in member.
+  const [game, settings, packages, paymentChannels, membershipPlans, memberPackagesRaw, memberInfo] = await Promise.all([
     getGame(slug),
     getSeoSettings(),
     getGamePackages(slug),
     listPaymentChannels(),
     listPlans(),
+    membershipToken ? getGamePackages(slug, membershipToken) : Promise.resolve(null),
+    membershipToken ? getMe(membershipToken).catch(() => null) : Promise.resolve(null),
   ]);
   if (!game) notFound();
+
+  // A failed/lapsed personalized fetch (`safeRead` → `[]`) or a game
+  // with genuinely no packages both fall back to the anonymous anchor,
+  // never an empty member view.
+  const memberPackages = memberPackagesRaw && memberPackagesRaw.length > 0 ? memberPackagesRaw : null;
+  const memberSession = memberInfo
+    ? { tierName: memberInfo.membership?.tierName ?? null, email: memberInfo.email }
+    : null;
 
   // ADR-029 addendum decision 12: Product + Breadcrumb JSON-LD, each toggled per reseller_seo_settings.
   const productJsonLd = settings.schema_product_enabled
@@ -109,7 +126,15 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
         <div className="mx-auto max-w-[1200px] px-4 pb-10">
           <ProductHeaderCard game={game} />
-          <OrderForm game={game} packages={packages} paymentChannels={paymentChannels} membershipPlans={membershipPlans} />
+          <OrderForm
+            game={game}
+            packages={packages}
+            paymentChannels={paymentChannels}
+            membershipPlans={membershipPlans}
+            memberPackages={memberPackages}
+            memberSession={memberSession}
+            ssrMembershipToken={membershipToken}
+          />
         </div>
 
         <TrustStrip />
