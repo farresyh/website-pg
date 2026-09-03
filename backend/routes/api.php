@@ -479,6 +479,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // against — internal, membership-enabled resellers only.
         Route::get('/brands', [AdminMembershipController::class, 'brands']);
         Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
+        // ADR-068 decisions 14/15 — the per-member detail (state, fee
+        // history, checkout attempts incl. pending/failed). Declared
+        // after /brands so the static segment still wins.
+        Route::get('/{membership}', [AdminMembershipController::class, 'show']);
     });
 
     // ADR-058 58b (RES-1..6) — admin Reseller Management. Same

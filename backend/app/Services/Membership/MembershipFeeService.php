@@ -204,7 +204,7 @@ final class MembershipFeeService
         ?string $reason,
         string $idempotencyKey,
     ): void {
-        $this->ledger->credit(
+        $ledgerEntry = $this->ledger->credit(
             LedgerOwnerType::Platform,
             null,
             $amountSen,
@@ -219,6 +219,7 @@ final class MembershipFeeService
             'membership_id' => $membership->id,
             'membership_plan_id' => $plan->id,
             'amount_sen' => $amountSen,
+            'ledger_entry_id' => $ledgerEntry->id,
             'admin_user_id' => $adminUserId,
             'reason' => $reason,
             'idempotency_key' => $idempotencyKey,

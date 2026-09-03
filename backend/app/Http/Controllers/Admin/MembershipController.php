@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Membership\RecordMembershipPaymentRequest;
 use App\Models\Membership;
+use App\Models\MembershipCheckoutAttempt;
+use App\Models\MembershipFeeRecord;
+use App\Models\Order;
 use App\Models\Reseller;
 use App\Services\Membership\MembershipFeeService;
+use App\Services\Order\PaymentStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,9 +27,7 @@ use Illuminate\Http\Request;
  */
 class MembershipController extends Controller
 {
-    public function __construct(private readonly MembershipFeeService $fees)
-    {
-    }
+    public function __construct(private readonly MembershipFeeService $fees) {}
 
     /**
      * Member registry (Q9). Effective status is computed here (Q15):
@@ -89,6 +91,81 @@ class MembershipController extends Controller
                     'business_name' => $reseller->business_name,
                 ]),
         );
+    }
+
+    /**
+     * ADR-068 decisions 14/15 — the per-member detail behind
+     * /admin/membership/{id}. Read-only: the member's current state, its
+     * fee-payment history (each linked to the ledger entry it booked),
+     * its self-serve checkout attempts including the pending/failed ones
+     * the flat registry can't show (the support gap this view exists
+     * for), and a small member-orders summary.
+     */
+    public function show(Membership $membership): JsonResponse
+    {
+        $membership->loadMissing(['membershipPlan:id,name,quota_sen', 'reseller:id,business_name'])
+            ->loadCount('orders');
+
+        $feePayments = MembershipFeeRecord::query()
+            ->with(['membershipPlan:id,name', 'adminUser:id,name'])
+            ->where('membership_id', $membership->id)
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (MembershipFeeRecord $record) => [
+                'id' => $record->id,
+                'date' => $record->created_at?->toIso8601String(),
+                'plan_name' => $record->membershipPlan?->name,
+                'amount_sen' => $record->amount_sen,
+                'source' => $record->admin_user_id !== null
+                    ? 'Admin — '.($record->adminUser?->name ?? "user #{$record->admin_user_id}")
+                    : 'Self-serve',
+                'reason' => $record->reason,
+                'ledger_entry_id' => $record->ledger_entry_id,
+            ]);
+
+        // Attempts are keyed on (reseller_id, email), not membership_id —
+        // a row can exist before any membership does.
+        $attempts = MembershipCheckoutAttempt::query()
+            ->with('membershipPlan:id,name')
+            ->where('reseller_id', $membership->reseller_id)
+            ->where('email', $membership->email)
+            ->orderByDesc('id')
+            ->limit(25)
+            ->get()
+            ->map(fn (MembershipCheckoutAttempt $attempt) => [
+                'id' => $attempt->id,
+                'subscription_number' => $attempt->subscription_number,
+                'date' => $attempt->created_at?->toIso8601String(),
+                'plan_name' => $attempt->membershipPlan?->name,
+                'status' => $attempt->status->value,
+                'fee_sen' => $attempt->fee_sen,
+                'total_charged_sen' => $attempt->total_charged_sen,
+                'channel_code' => $attempt->channel_code,
+            ]);
+
+        $memberOrders = Order::query()
+            ->where('membership_id', $membership->id)
+            ->where('payment_status', PaymentStatus::Paid->value)
+            ->selectRaw('COUNT(*) as count')
+            ->selectRaw('COALESCE(SUM(final_amount), 0) as total_spent_sen')
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN COALESCE(normal_selling_price, selling_price) > selling_price '
+                .'THEN COALESCE(normal_selling_price, selling_price) - selling_price ELSE 0 END), 0) as margin_forgone_sen'
+            )
+            ->first();
+
+        return response()->json([
+            'member' => $this->present($membership) + [
+                'member_since' => $membership->created_at?->toIso8601String(),
+            ],
+            'fee_payments' => $feePayments,
+            'checkout_attempts' => $attempts,
+            'orders_summary' => [
+                'count' => (int) ($memberOrders->count ?? 0),
+                'total_spent_sen' => (int) ($memberOrders->total_spent_sen ?? 0),
+                'margin_forgone_sen' => (int) ($memberOrders->margin_forgone_sen ?? 0),
+            ],
+        ]);
     }
 
     public function recordPayment(RecordMembershipPaymentRequest $request): JsonResponse
