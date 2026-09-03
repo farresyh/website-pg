@@ -3,8 +3,15 @@
 namespace Tests\Feature\Http\Controllers\Webhooks;
 
 use App\Jobs\FulfillOrderJob;
+use App\Models\LedgerEntry;
+use App\Models\Membership;
+use App\Models\MembershipCheckoutAttempt;
+use App\Models\MembershipFeeRecord;
+use App\Models\MembershipPlan;
 use App\Models\Order;
 use App\Models\Supplier;
+use App\Services\Membership\MembershipCheckoutAttemptStatus;
+use App\Services\Membership\MembershipStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\SupplierAdapter;
@@ -263,5 +270,107 @@ class ChipWebhookControllerTest extends TestCase
         $fresh = $order->fresh();
         $this->assertSame(PaymentStatus::Failed, $fresh->payment_status);
         $this->assertSame(DeliveryStatus::NotStarted, $fresh->delivery_status);
+    }
+
+    // --- ADR-068: the self-serve membership-subscription branch ---
+
+    private function pendingAttempt(array $overrides = []): MembershipCheckoutAttempt
+    {
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+
+        return MembershipCheckoutAttempt::query()->create(array_merge([
+            'reseller_id' => $this->primaryReseller()->id,
+            'email' => 'sub@example.com',
+            'membership_plan_id' => $plan->id,
+            'fee_sen' => $plan->fee_sen,
+            'total_charged_sen' => $plan->fee_sen + 100,
+            'channel_code' => 'fpx',
+            'subscription_number' => 'MS-WEBHOOKTEST',
+            'idempotency_key' => 'idem-webhook-test',
+            'payment_ref' => 'chip-purchase-ms-1',
+            'status' => MembershipCheckoutAttemptStatus::Pending->value,
+        ], $overrides));
+    }
+
+    public function test_a_paid_membership_callback_activates_the_membership_and_marks_the_attempt_paid(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $attempt = $this->pendingAttempt();
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-ms-1',
+            'reference' => 'MS-WEBHOOKTEST',
+            'status' => 'paid',
+            'purchase' => ['total' => $attempt->total_charged_sen],
+        ], $privateKey);
+
+        $response->assertOk();
+        $this->assertSame(MembershipCheckoutAttemptStatus::Paid, $attempt->fresh()->status);
+
+        $membership = Membership::query()
+            ->where('reseller_id', $this->primaryReseller()->id)
+            ->where('email', 'sub@example.com')
+            ->firstOrFail();
+        $this->assertSame(MembershipStatus::Active, $membership->status);
+        $this->assertSame(1, MembershipFeeRecord::query()->where('idempotency_key', 'MS-WEBHOOKTEST')->count());
+        $this->assertSame($attempt->fee_sen, (int) LedgerEntry::query()->where('type', 'membership_fee')->sum('amount'));
+    }
+
+    public function test_a_repeat_membership_callback_is_acknowledged_without_double_booking(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $attempt = $this->pendingAttempt(['status' => MembershipCheckoutAttemptStatus::Paid->value]);
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-ms-1',
+            'reference' => 'MS-WEBHOOKTEST',
+            'status' => 'paid',
+            'purchase' => ['total' => $attempt->total_charged_sen],
+        ], $privateKey);
+
+        $response->assertOk()->assertJson(['message' => 'already processed']);
+        $this->assertSame(0, MembershipFeeRecord::query()->count());
+    }
+
+    public function test_a_membership_callback_with_the_wrong_amount_is_rejected_409(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $this->pendingAttempt();
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-ms-1',
+            'reference' => 'MS-WEBHOOKTEST',
+            'status' => 'paid',
+            'purchase' => ['total' => 1],
+        ], $privateKey);
+
+        $response->assertStatus(409);
+        $this->assertSame(MembershipCheckoutAttemptStatus::Pending, MembershipCheckoutAttempt::query()->firstOrFail()->status);
+        $this->assertSame(0, Membership::query()->count());
+    }
+
+    public function test_an_order_callback_still_resolves_when_a_membership_attempt_row_exists(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $this->fakeSupplierAdapter();
+        $order = $this->fakePaidOrder();
+        // A membership attempt whose subscription_number is unrelated —
+        // the order path must not be shadowed by it.
+        $this->pendingAttempt(['subscription_number' => 'MS-UNRELATED', 'payment_ref' => 'chip-purchase-ms-x', 'idempotency_key' => 'idem-x']);
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'paid',
+            'purchase' => ['total' => 1100],
+        ], $privateKey);
+
+        $response->assertOk();
+        $this->assertSame(PaymentStatus::Paid, $order->fresh()->payment_status);
+        $this->assertSame(MembershipCheckoutAttemptStatus::Pending, MembershipCheckoutAttempt::query()->firstOrFail()->status);
     }
 }

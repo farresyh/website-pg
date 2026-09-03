@@ -229,6 +229,16 @@ return [
         'flag_after_hours' => (int) env('PAYMENT_RECONCILIATION_FLAG_AFTER_HOURS', 24),
     ],
 
+    // ADR-068 decision 10 / S16 — the self-serve membership-subscription
+    // equivalent of payment_reconciliation above. A pending
+    // membership_checkout_attempts row older than `pending_after_minutes`
+    // is checked against the gateway; one still not paid after
+    // `expire_after_hours` is marked `expired` (abandoned).
+    'membership_reconciliation' => [
+        'pending_after_minutes' => (int) env('MEMBERSHIP_RECONCILIATION_PENDING_AFTER_MINUTES', 30),
+        'expire_after_hours' => (int) env('MEMBERSHIP_RECONCILIATION_EXPIRE_AFTER_HOURS', 24),
+    ],
+
     // ADR-026 (ORD-10) — 15 minutes comfortably exceeds FulfillOrderJob's
     // own worst-case retry-exhaustion window (HTTP-layer + job-layer
     // retries combined), so anything still stuck past this point is

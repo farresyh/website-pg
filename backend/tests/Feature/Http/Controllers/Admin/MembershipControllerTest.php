@@ -7,6 +7,7 @@ use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Reseller;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -31,6 +32,9 @@ class MembershipControllerTest extends TestCase
         // The primary reseller is internal + membership-enabled (the
         // helper's defaults), so it is a valid record-payment target.
         $this->brand = $this->primaryReseller();
+        // ADR-068 decision 9: recordFeePaid() now dispatches the receipt
+        // email; fake the queue so a booked payment doesn't reach Plunk.
+        Queue::fake();
     }
 
     private function actingAsSuperAdmin(): void
