@@ -10,16 +10,22 @@ import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
 import RateOrderModal from "@/components/order/RateOrderModal";
 
-// ADR-047 decision 1/4: Reverb push (subscribed below) is now the primary
-// path — a status change reaches this component the moment
-// OrderStatusUpdated broadcasts, not on the next poll tick. This interval
-// is deliberately kept, at a much slower cadence, as the one fallback
-// decision 4 requires: if the WebSocket never connects (misconfigured env,
-// a network that blocks it) or a push event is somehow missed, the
-// customer still sees their order resolve within one polling window,
-// never stuck silently on a stale state.
-const POLL_INTERVAL_MS = 20000;
-const MAX_POLLS = 18; // ~6 minutes of fallback-poll safety net
+// ADR-047 decision 1/4: Reverb push (subscribed below) is the primary
+// path once it's deployed; this poll is the fallback for when the
+// WebSocket never connects (misconfigured env, a blocking network) or a
+// push is missed.
+//
+// ADR-071 PR3 — adaptive cadence, since Reverb is still deferred in
+// production (ADR-071 PR4): a fresh delivery usually resolves in the
+// first minute, so poll fast then, then back off. Keeps the "your
+// diamonds were delivered" moment near-instant (≤2s) without the
+// steady 20s load of a flat interval.
+const MAX_WATCH_MS = 6 * 60_000; // ~6 minutes total, unchanged
+function nextPollDelay(elapsedMs: number): number {
+  if (elapsedMs < 60_000) return 2_000; // first minute — the common case
+  if (elapsedMs < 180_000) return 10_000; // 1–3 minutes
+  return 20_000; // 3–6 minutes
+}
 
 type StageState = "done" | "active" | "pending" | "failed";
 
@@ -86,7 +92,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const pollCount = useRef(0);
+  const watchStartedAt = useRef(0);
   // ADR-053 decision 4 — closing without submitting only suppresses the
   // popup for the rest of THIS page view; has_review (server-truth, not
   // this flag) is what decides whether it shows again on a later visit.
@@ -95,6 +101,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    watchStartedAt.current = Date.now();
 
     async function poll() {
       try {
@@ -104,9 +111,9 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         setError(null);
         setLoading(false);
 
-        if (!isTerminal(result) && pollCount.current < MAX_POLLS) {
-          pollCount.current += 1;
-          timer = setTimeout(poll, POLL_INTERVAL_MS);
+        const elapsed = Date.now() - watchStartedAt.current;
+        if (!isTerminal(result) && elapsed < MAX_WATCH_MS) {
+          timer = setTimeout(poll, nextPollDelay(elapsed));
         }
       } catch (err) {
         if (cancelled) return;

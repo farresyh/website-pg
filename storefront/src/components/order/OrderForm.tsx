@@ -145,6 +145,11 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // ADR-071 PR3 — once a checkout succeeds we are leaving this page for
+  // CHIP (or the order-status page). This stays true through that
+  // navigation so the "Taking you to payment…" overlay covers the gap
+  // rather than the page appearing to hang.
+  const [redirecting, setRedirecting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // One key per Review Modal open, reused across every resubmit within
   // that same open (double-click, retry-after-error) — a fresh open
@@ -338,6 +343,7 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
       }, getMembershipToken() ?? undefined);
 
       const redirectUrl = extractCheckoutRedirectUrl(result.payment_actions);
+      setRedirecting(true);
       if (redirectUrl) {
         window.location.assign(redirectUrl);
       } else {
@@ -451,6 +457,21 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
           onConfirm={handleConfirmPayment}
           onVoucherChange={setVoucherCode}
         />
+      )}
+
+      {redirecting && (
+        <div
+          className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-surface/95 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className="h-10 w-10 animate-spin rounded-full border-[3px] border-ink border-t-transparent"
+            aria-hidden="true"
+          />
+          <p className="font-display text-lg font-bold uppercase tracking-tight">Taking you to payment…</p>
+          <p className="text-sm text-on-surface-variant">Please don&apos;t close this window.</p>
+        </div>
       )}
     </div>
   );
