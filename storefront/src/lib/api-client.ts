@@ -27,6 +27,8 @@ export class ApiError extends Error {
 interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   token?: string;
+  /** Next.js Data Cache config — see lib/cache.ts's `catalogCache` (ADR-071 PR1). */
+  next?: { revalidate?: number | false; tags?: string[] };
 }
 
 export async function apiFetch<T>(path: string, { body, token, headers, ...init }: RequestOptions = {}): Promise<T> {

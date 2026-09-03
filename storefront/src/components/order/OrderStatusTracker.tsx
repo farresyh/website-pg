@@ -5,6 +5,7 @@ import { Check, WhatsappLogo, GameController, User, CreditCard } from "@phosphor
 import { ApiError } from "@/lib/api-client";
 import { getEcho } from "@/lib/echo";
 import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
+import { useSiteConfig } from "@/context/SiteConfigContext";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
 import RateOrderModal from "@/components/order/RateOrderModal";
@@ -81,6 +82,7 @@ function isTerminal(order: TrackedOrder): boolean {
 }
 
 export default function OrderStatusTracker({ orderNumber }: { orderNumber: string }) {
+  const { whatsappHref } = useSiteConfig();
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -256,9 +258,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           Contact our Customer Support team directly via WhatsApp for a manual check
           {hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
         </p>
-        <Button href="https://wa.me/60000000000" className="justify-center">
-          <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
-        </Button>
+        {whatsappHref && (
+          <Button href={whatsappHref} className="justify-center">
+            <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
+          </Button>
+        )}
         {order.game && (
           <Button href={`/order/${order.game.slug}`} variant="outline" className="justify-center">
             Buy Again
