@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
@@ -81,6 +81,57 @@ export default function ReviewModal({
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; result: VoucherPreviewResult } | null>(null);
 
+  const sheetRef = useRef<HTMLDivElement>(null);
+
+  // ADR-071 PR3 — this is the last checkpoint before money moves, so it
+  // gets real dialog discipline: body scroll lock, Esc to close, focus
+  // moved into the sheet and trapped within it, focus restored on close.
+  const FOCUSABLE =
+    'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  useEffect(() => {
+    if (!open) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const visibleFocusable = () =>
+      Array.from(sheetRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
+        (el) => el.offsetParent !== null,
+      );
+
+    // Focus the sheet itself first — reading from the top, not dropped
+    // into the middle at whatever the first input is.
+    sheetRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = visibleFocusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === sheetRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevBodyOverflow;
+      previouslyFocused?.focus?.();
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const canConfirm =
@@ -146,15 +197,25 @@ export default function ReviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm lg:items-center"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 backdrop-blur-sm lg:items-center"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90dvh] w-full flex-col overflow-y-auto rounded-t-lg border-2 border-ink bg-surface p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] lg:max-w-[480px] lg:rounded-lg lg:pb-6 lg:neo-lg"
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="review-modal-title"
+        tabIndex={-1}
+        // The confirm button lives in a sticky footer inside this
+        // scroll box (below), so it is always visible above the mobile
+        // bottom nav (ADR-071 PR3) — the sheet no longer runs off-screen.
+        className="flex max-h-[92dvh] w-full flex-col overflow-y-auto rounded-t-lg border-2 border-ink bg-surface focus:outline-none lg:max-w-[480px] lg:rounded-lg lg:neo-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between border-b-2 border-ink pb-3">
-          <h2 className="font-display text-xl font-bold uppercase tracking-tight">Order Review</h2>
+        <div className="flex items-center justify-between border-b-2 border-ink bg-surface px-6 pt-6 pb-3">
+          <h2 id="review-modal-title" className="font-display text-xl font-bold uppercase tracking-tight">
+            Order Review
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -164,6 +225,7 @@ export default function ReviewModal({
           </button>
         </div>
 
+        <div className="px-6 pt-5">
         <div className="mb-5 flex flex-col gap-2.5 text-sm">
           <Row k="Product" v={game.name} />
           <Row k="Package" v={pkg.name} />
@@ -277,7 +339,7 @@ export default function ReviewModal({
           </div>
         </div>
 
-        <label className="mb-4 flex cursor-pointer items-start gap-2.5">
+        <label className="mb-1 flex cursor-pointer items-start gap-2.5">
           <input
             type="checkbox"
             checked={tcChecked}
@@ -292,16 +354,28 @@ export default function ReviewModal({
             and confirm that the Player ID above is correct. Delivery to an incorrect ID cannot be reversed.
           </span>
         </label>
+        </div>
 
-        {submitError && (
-          <p className="mb-4 rounded-md border-2 border-danger bg-danger-container p-3 text-[13px] text-on-danger-container">
-            {submitError}
-          </p>
-        )}
-
-        <Button onClick={onConfirm} disabled={!canConfirm} className="w-full justify-center">
-          {submitting ? "Processing…" : payableRm === 0 ? "Confirm — Fully Covered by Voucher" : `Confirm & Pay RM${payableRm.toFixed(2)}`}
-        </Button>
+        {/* Sticky footer — the confirm CTA is always in view above the
+          * mobile bottom nav, no matter how far the sheet scrolls
+          * (ADR-071 PR3). */}
+        <div className="sticky bottom-0 mt-4 border-t-2 border-ink bg-surface px-6 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] lg:pb-6">
+          {submitError && (
+            <p className="mb-3 rounded-md border-2 border-danger bg-danger-container p-3 text-[13px] text-on-danger-container">
+              {submitError}
+            </p>
+          )}
+          {!tcChecked && (
+            <p className="mb-2 text-center text-[12px] text-on-surface-variant">Tick the box above to continue.</p>
+          )}
+          <Button onClick={onConfirm} disabled={!canConfirm} className="w-full justify-center">
+            {submitting
+              ? "Processing…"
+              : payableRm === 0
+                ? "Confirm — Fully Covered by Voucher"
+                : `Confirm & Pay RM${payableRm.toFixed(2)}`}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import { getMembershipToken } from "@/lib/membership-session";
 import { useMembershipToken } from "@/hooks/useMembershipToken";
 import { getMe, type MembershipPlan } from "@/lib/membership";
 import type { PaymentChannel } from "@/lib/payment-methods";
+import Button from "@/components/ui/Button";
 import Stepper, { type StepInfo } from "@/components/order/Stepper";
 import StepCard from "@/components/order/StepCard";
 import Step1AccountInfo from "@/components/order/Step1AccountInfo";
@@ -145,6 +146,11 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // ADR-071 PR3 — once a checkout succeeds we are leaving this page for
+  // CHIP (or the order-status page). This stays true through that
+  // navigation so the "Taking you to payment…" overlay covers the gap
+  // rather than the page appearing to hang.
+  const [redirecting, setRedirecting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // One key per Review Modal open, reused across every resubmit within
   // that same open (double-click, retry-after-error) — a fresh open
@@ -338,6 +344,7 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
       }, getMembershipToken() ?? undefined);
 
       const redirectUrl = extractCheckoutRedirectUrl(result.payment_actions);
+      setRedirecting(true);
       if (redirectUrl) {
         window.location.assign(redirectUrl);
       } else {
@@ -409,15 +416,20 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
       </div>
 
       <div className="flex flex-col gap-5 lg:sticky lg:top-20">
-        <OrderSummarySidebar
-          game={game}
-          selectedPackage={selectedPackage}
-          preview={preview}
-          playerId={playerId}
-          serverId={game.extraField ? serverId : ""}
-          ready={readyForReview}
-          onReview={openReview}
-        />
+        {/* The desktop summary. On mobile it's replaced by the sticky
+          * bottom bar below — the customer never has to scroll past 60
+          * packages to find the total and the CTA (ADR-071 PR3). */}
+        <div className="hidden lg:block">
+          <OrderSummarySidebar
+            game={game}
+            selectedPackage={selectedPackage}
+            preview={preview}
+            playerId={playerId}
+            serverId={game.extraField ? serverId : ""}
+            ready={readyForReview}
+            onReview={openReview}
+          />
+        </div>
         {showPromo && topTier && selectedPackage && selectedTier2MemberPriceRm !== null && (
           <MembershipPromoCard
             plan={topTier}
@@ -427,6 +439,23 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
             activeTierName={activeTierName}
           />
         )}
+      </div>
+
+      {/* Sticky mobile summary bar — always in reach, no scrolling to
+        * the bottom of the package list to find the total or the CTA
+        * (ADR-071 PR3). Replaces the bottom nav on this route. */}
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t-2 border-ink bg-surface-container-lowest px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] neo-lg lg:hidden">
+        <div className="mx-auto flex max-w-[560px] items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Total</p>
+            <p className="font-mono text-lg font-bold text-primary">
+              RM{(preview ? preview.final_amount_sen / 100 : selectedPackage?.priceRm ?? 0).toFixed(2)}
+            </p>
+          </div>
+          <Button onClick={openReview} disabled={!readyForReview} size="sm" className="shrink-0">
+            {readyForReview ? "Review & Pay" : "Complete steps"}
+          </Button>
+        </div>
       </div>
 
       {selectedPackage && selectedChannel && (
@@ -451,6 +480,21 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
           onConfirm={handleConfirmPayment}
           onVoucherChange={setVoucherCode}
         />
+      )}
+
+      {redirecting && (
+        <div
+          className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-surface/95 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className="h-10 w-10 animate-spin rounded-full border-[3px] border-ink border-t-transparent"
+            aria-hidden="true"
+          />
+          <p className="font-display text-lg font-bold uppercase tracking-tight">Taking you to payment…</p>
+          <p className="text-sm text-on-surface-variant">Please don&apos;t close this window.</p>
+        </div>
       )}
     </div>
   );

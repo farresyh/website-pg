@@ -33,6 +33,13 @@ export default function BottomNav() {
   const pathname = usePathname();
   const { membershipEnabled, whatsappHref } = useSiteConfig();
 
+  // ADR-071 PR3 — a game order page (`/order/<slug>`, not the status
+  // page) is a focused checkout task; its own sticky "Review & Pay" bar
+  // takes this slot instead. Home / Track Order / Support aren't what
+  // the customer needs mid-purchase.
+  const onCheckout = pathname.startsWith("/order/") && !pathname.startsWith("/order/status");
+  if (onCheckout) return null;
+
   const supportItem: NavItem[] = whatsappHref
     ? [{ href: whatsappHref, label: "Support", icon: WhatsappLogo, external: true }]
     : [];
