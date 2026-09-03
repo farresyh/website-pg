@@ -3218,11 +3218,15 @@ The founder reports that the storefront's purchase flow feels laggy and "stuck" 
 
 **Explicitly out of scope** (and why): full Partial Prerendering (deferred to a measurement trigger); shared-element view transitions and any motion library (a later "delight pass"); load balancing, read/write splitting, DB connection pooling, reverse-proxy tuning, speculative DB indexing (no scale problem to solve — the founder's instinct to check whether these were needed first was right, but the answer is no); re-wiring the promotions section to real data (own ADR); Cloudflare edge-caching in front of `api.pekangame.space` (PR3 evaluates it only — it may become its own ADR); an INP-by-route dashboard beyond the raw `web_vitals` table.
 
-**Delivery:** four PRs off `staging`, each independently shippable and CI-verified, then a `staging`→`main` release PR (merge commit, `--no-ff`) per push.
-- **PR0** — content fixes (decision 13).
-- **PR1** — perceived latency + layout + a11y + status-page state machine + adaptive poll + payment overlay (decisions 1, 7, 8, 9, 11; plus the `impeccable` design pass that precedes implementation). No backend, no data-layer changes.
-- **PR2** — the data layer (decisions 2, 3, 4, 5, 6; plus `React.memo` on `PackageGrid`, `useCallback` handlers, and a 150ms debounce on `previewCheckoutTotal`, targeting INP < 200ms on package selection).
-- **PR3** — observability + Reverb + deploy-time caches + the Cloudflare edge-cache evaluation (decisions 10, 12, 14).
+**Delivery:** PRs off `staging`, each independently shippable and CI-verified, then a `staging`→`main` release PR (merge commit, `--no-ff`) per push.
+
+**The original PR1/PR2 split was revised during PR1 build (2026-09-03).** `loading.tsx` (decision 1) and removing `force-dynamic` + Data-Cache-ing the reads (decision 2) turned out to be inseparable: a `loading.tsx` fallback cannot reveal while the root layout blocks on an uncached `await` (Next's own `loading.js` docs), so a skeleton-only PR that leaves `force-dynamic` in place ships a permanently-stuck skeleton. A second discovery, folded in: a **root** `app/loading.tsx` wrapping the whole app in one Suspense boundary never revealed on a streamed load in this Next 16.3.1 / React 19.2 / Turbopack stack (reproduced local `next dev` + `next build`, static and dynamic routes) — but this was a **local-only** artifact (the dev box's browser could not reach the API over TLS); the Vercel preview reveals cleanly. The fix that ships regardless: **route-scoped** `loading.tsx` only, no root one (`/` is static/ISR and needs none).
+
+- **PR0** — content fixes (decision 13). *Merged, PR #79.*
+- **PR1** — loading skeletons + the Data-Cache foundation they require: decisions 1, 2, 4, 5, plus the layout/bottom-nav half of decision 7 (persistent chrome moved into `layout.tsx`; the `pb-nav` bottom-nav clearance utility). Interim `revalidate: 60` on the `catalog` tag; `safeRead` graceful fallbacks let `next build` prerender the static routes with no backend; `SiteConfigProvider` removes the duplicate `listPlans`/`getBranding` client fetches. *PR #80 — Vercel-preview-verified: direct load of `/order/<slug>` shows skeleton → content, tap→skeleton ~115ms.*
+- **PR2** — the revalidation webhook (decision 3): Next `POST /api/revalidate` + Laravel `NextRevalidation::purge()` next to every `forgetCache()`, upgrading the interim TTL to tag-driven near-zero staleness. Plus the membership-token `localStorage`→cookie migration (decision 6, an ADR-027 addendum) and `React.memo` on `PackageGrid` + `useCallback` handlers + a 150ms `previewCheckoutTotal` debounce (INP < 200ms on package selection).
+- **PR3** — checkout/status surface: `ReviewModal` hardening + sticky mobile "Review & Pay" bar + grouped package tabs + `/order/status` state machine + adaptive poll + the "Taking you to payment…" overlay (decision 7 remainder, 8, 9, 11). The `impeccable` design pass precedes this one.
+- **PR4** — observability (Web Vitals RUM) + finishing the deferred ADR-047 Reverb deploy + deploy-time backend caches + the Cloudflare edge-cache evaluation (decisions 10, 12, 14).
 
 **Rationale:**
 
