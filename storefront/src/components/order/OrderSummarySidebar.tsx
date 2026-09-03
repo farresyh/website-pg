@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { LockSimple, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
 import type { CheckoutTotalPreview } from "@/lib/checkout";
@@ -19,7 +20,7 @@ interface OrderSummarySidebarProps {
   onReview: () => void;
 }
 
-export default function OrderSummarySidebar({
+function OrderSummarySidebar({
   game,
   selectedPackage,
   preview,
@@ -75,6 +76,12 @@ export default function OrderSummarySidebar({
     </div>
   );
 }
+
+// `memo` (ADR-071 PR2): skips re-render while the visitor types in the
+// Review Modal's contact fields — none of this component's props change
+// with that. Player-ID / preview changes still flow through (props do
+// change then).
+export default memo(OrderSummarySidebar);
 
 function Row({ k, v, dim, mono }: { k: string; v: string; dim?: boolean; mono?: boolean }) {
   return (
