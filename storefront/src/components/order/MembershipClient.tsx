@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Envelope, ShieldCheck, SignOut } from "@phosphor-icons/react/dist/ssr";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Envelope, ShieldCheck, SignOut, SpinnerGap, WarningCircle } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
 import { sendOtp, verifyOtp, getMe, type MembershipMe } from "@/lib/membership";
 import { setMembershipToken, clearMembershipToken } from "@/lib/membership-session";
@@ -9,6 +10,10 @@ import { useMembershipToken } from "@/hooks/useMembershipToken";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
 import OtpInput from "@/components/order/OtpInput";
+import MembershipSubscribe from "@/components/order/MembershipSubscribe";
+
+const POST_PAYMENT_POLL_MS = 3_000;
+const POST_PAYMENT_POLL_MAX = 10; // ~30s before we tell them to check their email
 
 /**
  * ADR-027's 2026-08-29 addendum, decisions 24/25: one entry point for
@@ -30,6 +35,10 @@ import OtpInput from "@/components/order/OtpInput";
  */
 export default function MembershipClient() {
   const token = useMembershipToken();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const checkoutParam = searchParams.get("checkout"); // "success" | "failed" | null (ADR-068 decision 12)
+
   const [emailStep, setEmailStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -37,6 +46,37 @@ export default function MembershipClient() {
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [dashboard, setDashboard] = useState<MembershipMe | null>(null);
+  const [confirmTimedOut, setConfirmTimedOut] = useState(false);
+
+  // ADR-068 decision 12: after paying, CHIP sends the member back to
+  // /membership?checkout=success. The webhook that activates the
+  // membership is async, so poll /me until it lands (or ~30s passes, at
+  // which point the receipt email is the fallback). Every setState is
+  // inside a callback, never synchronous in the effect body.
+  const awaitingActivation = checkoutParam === "success" && token !== null && (dashboard?.membership ?? null) === null;
+  useEffect(() => {
+    if (!awaitingActivation) return;
+
+    let tries = 0;
+    const id = setInterval(() => {
+      tries += 1;
+      getMe(token!)
+        .then((me) => {
+          if (me.membership !== null) {
+            setDashboard(me);
+            router.replace("/membership");
+          } else if (tries >= POST_PAYMENT_POLL_MAX) {
+            clearInterval(id);
+            setConfirmTimedOut(true);
+          }
+        })
+        .catch(() => {
+          /* transient — keep polling until the try cap */
+        });
+    }, POST_PAYMENT_POLL_MS);
+
+    return () => clearInterval(id);
+  }, [awaitingActivation, token, router]);
 
   // Fetches the dashboard whenever a valid token appears (fresh verify,
   // or one already sitting in localStorage from a prior visit) — every
@@ -144,6 +184,10 @@ export default function MembershipClient() {
     );
   }
 
+  // Unreachable — every `token === null` path returned above; this
+  // narrows `token` to `string` for the rest of the render.
+  if (token === null) return null;
+
   // token !== null && dashboard !== null
   const orders = dashboard?.orderHistory ?? [];
 
@@ -156,8 +200,15 @@ export default function MembershipClient() {
         </Button>
       </div>
 
+      {checkoutParam === "failed" && (
+        <section className="flex items-center gap-3 rounded-lg border-2 border-ink bg-warning p-4 text-sm text-on-warning neo">
+          <WarningCircle size={20} weight="fill" className="shrink-0" />
+          Payment wasn&apos;t completed. Nothing was charged — pick a plan below to try again.
+        </section>
+      )}
+
       {/* Membership status */}
-      {dashboard?.membership ? (
+      {dashboard?.membership && (
         <section className="flex flex-col items-start justify-between gap-6 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo md:flex-row md:items-center md:p-8">
           <div>
             <div className="mb-2 flex items-center gap-3">
@@ -176,11 +227,34 @@ export default function MembershipClient() {
             <p className="text-sm font-semibold">{new Date(dashboard.membership.expiresAt).toLocaleDateString()}</p>
           </div>
         </section>
-      ) : (
-        <section className="rounded-lg border-2 border-ink bg-surface-container p-6 text-sm text-on-surface-variant neo">
-          You&apos;re verified — no active membership yet. Subscription plans are coming soon.
+      )}
+
+      {/* Post-payment activation (ADR-068 decision 12) */}
+      {awaitingActivation && !confirmTimedOut && (
+        <section className="flex items-center gap-3 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 text-sm neo">
+          <SpinnerGap size={20} weight="bold" className="shrink-0 animate-spin" />
+          Confirming your payment… this usually takes a few seconds.
         </section>
       )}
+      {awaitingActivation && confirmTimedOut && (
+        <section className="flex flex-col gap-3 rounded-lg border-2 border-ink bg-surface-container p-6 text-sm neo">
+          <span className="flex items-center gap-3">
+            <WarningCircle size={20} weight="fill" className="shrink-0" />
+            This is taking longer than usual. If you completed payment, your membership will activate shortly and a receipt is on its way to your email.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.location.assign("/membership")}
+            className="self-start"
+          >
+            Check again
+          </Button>
+        </section>
+      )}
+
+      {/* Subscribe / renew / upgrade (ADR-068 decision 13) */}
+      {!awaitingActivation && <MembershipSubscribe token={token} />}
 
       {/* Order history */}
       <section className="flex flex-col gap-4">

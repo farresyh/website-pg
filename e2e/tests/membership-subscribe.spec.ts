@@ -1,18 +1,22 @@
 import { test, expect } from "@playwright/test";
-import { BACKEND_URL, E2E_MEMBER_EMAIL, E2E_MEMBER_OTP } from "./constants";
+import { BACKEND_URL, STOREFRONT_URL, E2E_MEMBER_EMAIL, E2E_MEMBER_OTP } from "./constants";
 
-// Golden path — ADR-068. Covers the self-serve membership subscription
-// revenue path end to end: verify -> subscribe -> pay -> membership
-// active. Pure API (the /membership subscribe UI is a separate PR); the
-// payment layer is the same APP_ENV=e2e FakePaymentGateway the checkout
-// golden path uses (ADR-023 decision #6), and the CHIP webhook is
-// simulated by POSTing CHIP's flattened payload shape to
-// /api/webhooks/chip after capturing the subscription_number — exactly
+const MEMBERSHIP_TOKEN_KEY = "krs_membership_token";
+
+// Golden path — ADR-068. Self-serve membership subscription, driven
+// through the real /membership subscribe UI: land as a verified member
+// -> pick a tier -> pay -> membership active. Identity is obtained via
+// the API (E2ESeeder plants a pre-verifiable OTP fixture; MAIL_MAILER=
+// log in e2e leaves no inbox to read a live code from) and injected into
+// localStorage — the OTP send/verify UI is Phase-5 code covered
+// elsewhere, not this spec's concern. The payment layer is the
+// APP_ENV=e2e FakePaymentGateway (ADR-023 decision #6); CHIP's
+// success_callback is simulated by POSTing its flattened payload to
+// /api/webhooks/chip after intercepting the subscribe response, exactly
 // as storefront-checkout.spec.ts does for an order.
-test("member verifies -> subscribes -> pays -> membership active", async ({ request }) => {
-  // 1. Obtain a real 30-day session token from the pre-verifiable OTP
-  //    fixture E2ESeeder plants (MAIL_MAILER=log in e2e, so there is no
-  //    inbox to read a live code from).
+test("verified member picks a tier -> pays -> membership active", async ({ page, request }) => {
+  test.slow();
+
   const verify = await request.post(`${BACKEND_URL}/api/membership/otp/verify`, {
     headers: { "Content-Type": "application/json" },
     data: { email: E2E_MEMBER_EMAIL, code: E2E_MEMBER_OTP },
@@ -20,42 +24,51 @@ test("member verifies -> subscribes -> pays -> membership active", async ({ requ
   expect(verify.ok()).toBeTruthy();
   const { token } = await verify.json();
   expect(token).toBeTruthy();
-  const auth = { Authorization: `Bearer ${token}` };
 
-  // 2. Pick a tier from the authenticated options endpoint.
-  const optionsRes = await request.get(`${BACKEND_URL}/api/membership/subscribe-options`, { headers: auth });
-  expect(optionsRes.ok()).toBeTruthy();
-  const options = await optionsRes.json();
-  expect(options.current_plan_id).toBeNull();
-  const planId = options.plans[0].id;
+  await page.addInitScript(
+    ([key, value]) => window.localStorage.setItem(key, value),
+    [MEMBERSHIP_TOKEN_KEY, token] as const,
+  );
 
-  // 3. Start the subscription checkout.
-  const subscribeRes = await request.post(`${BACKEND_URL}/api/membership/subscribe`, {
-    headers: { ...auth, "Content-Type": "application/json" },
-    data: { membership_plan_id: planId, payment_method: "fpx", idempotency_key: `e2e-${Date.now()}` },
+  // 1. Land on the dashboard — the subscribe surface is visible.
+  await page.goto(`${STOREFRONT_URL}/membership`);
+  await expect(page.getByRole("heading", { name: "Choose a Membership" })).toBeVisible({ timeout: 15_000 });
+
+  // 2. Pick the first tier; fpx is the only active channel so it
+  //    auto-selects, and continue to payment.
+  await page
+    .locator("section", { hasText: "Choose a Membership" })
+    .getByRole("button", { name: "Subscribe" })
+    .first()
+    .click();
+
+  let subscribeJson: { subscription_number: string; total_charged_sen: number } | undefined;
+  await page.route("**/api/membership/subscribe", async (route) => {
+    const response = await route.fetch();
+    subscribeJson = await response.json();
+    await route.fulfill({ response });
   });
-  expect(subscribeRes.status()).toBe(201);
-  const { subscription_number, checkout_url, total_charged_sen } = await subscribeRes.json();
-  expect(subscription_number).toMatch(/^MS-/);
-  expect(checkout_url).toBeTruthy();
 
-  // 4. Simulate CHIP's success_callback for that purchase.
+  await page.getByRole("button", { name: /Continue to Payment/ }).click();
+  await expect.poll(() => subscribeJson, { timeout: 15_000 }).toBeTruthy();
+  if (!subscribeJson) throw new Error("unreachable — asserted truthy above");
+  expect(subscribeJson.subscription_number).toMatch(/^MS-/);
+
+  // 3. Simulate CHIP's success_callback for that purchase.
   const webhook = await request.post(`${BACKEND_URL}/api/webhooks/chip`, {
     headers: { "Content-Type": "application/json" },
     data: {
       event_type: "purchase.paid",
-      reference: subscription_number,
-      id: `e2e-purchase-${subscription_number}`,
+      reference: subscribeJson.subscription_number,
+      id: `e2e-purchase-${subscribeJson.subscription_number}`,
       status: "paid",
-      purchase: { total: total_charged_sen },
+      purchase: { total: subscribeJson.total_charged_sen },
     },
   });
   expect(webhook.ok()).toBeTruthy();
 
-  // 5. The membership is now active for this session.
-  const meRes = await request.get(`${BACKEND_URL}/api/membership/me`, { headers: auth });
-  expect(meRes.ok()).toBeTruthy();
-  const me = await meRes.json();
-  expect(me.membership).not.toBeNull();
-  expect(me.membership.status).toBe("active");
+  // 4. Back on /membership?checkout=success the page polls /me until the
+  //    membership lands, then shows the active status card.
+  await page.goto(`${STOREFRONT_URL}/membership?checkout=success`);
+  await expect(page.getByText("Your current membership level.")).toBeVisible({ timeout: 45_000 });
 });

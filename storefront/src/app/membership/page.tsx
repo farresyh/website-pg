@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import BottomNav from "@/components/layout/BottomNav";
@@ -18,7 +19,11 @@ export default function MembershipPage() {
     <>
       <SiteHeader />
       <main className="pb-10 lg:pb-0">
-        <MembershipClient />
+        <Suspense
+          fallback={<p className="mx-auto max-w-[560px] px-4 py-10 text-sm text-on-surface-variant">Loading…</p>}
+        >
+          <MembershipClient />
+        </Suspense>
       </main>
       <SiteFooter />
       <BottomNav />
