@@ -13,3 +13,7 @@ export const E2E_GAME_SLUG = "e2e-test-game";
 export const E2E_VOUCHER_FIXTURE_ORDER_NUMBER = "PG-E2E-VOUCHER-FIXTURE";
 export const E2E_RESEND_FIXTURE_ORDER_NUMBER = "PG-E2E-RESEND-FIXTURE";
 export const E2E_NEEDS_REVIEW_FIXTURE_ORDER_NUMBER = "PG-E2E-NEEDSREVIEW-FIXTURE";
+
+/** ADR-068 — pre-verifiable OTP fixture for the membership-subscribe golden path (E2ESeeder). */
+export const E2E_MEMBER_EMAIL = "e2e-member@example.com";
+export const E2E_MEMBER_OTP = "123456";
