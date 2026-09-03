@@ -19,6 +19,13 @@ use Tests\TestCase;
  * OrderFulfillmentConcurrencyTest: proves the lock actually serializes
  * concurrent attempts, not just that the logic is correct in isolation.
  *
+ * ADR-069: DigiflazzWebhookController and CheckSupplierDeliveryJob (the
+ * reconcile poll) both mutate a Pending order ONLY through
+ * finalizePendingDelivery() — so this is also the concurrency proof
+ * for "the Digiflazz webhook races the poll". The webhook controller's
+ * own request-level guards (signature, IP, supplier/sku match,
+ * already-finalized no-op) are covered by DigiflazzWebhookControllerTest.
+ *
  * Requires: docker compose up -d (backend/docker-compose.yml)
  * Run with: php artisan test -c phpunit.concurrency.xml
  */

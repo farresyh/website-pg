@@ -81,6 +81,16 @@ return [
         'customer_no_separator' => env('DIGIFLAZZ_CUSTOMER_NO_SEPARATOR', '|'),
         'timeout' => (int) env('DIGIFLAZZ_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('DIGIFLAZZ_CONNECT_TIMEOUT_SECONDS', 5),
+        // ADR-069 decision 3 — the inbound-webhook IP allowlist, a
+        // config-driven second gate behind the HMAC signature (which is
+        // the primary auth). Digiflazz's API-setup docs name
+        // 52.74.250.133; kept editable here so an added Digiflazz IP is
+        // a config change, not a deploy. The daily reconcile poll is the
+        // backstop if this ever goes stale. Comma-separated in env.
+        'webhook_ips' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('DIGIFLAZZ_WEBHOOK_IPS', '52.74.250.133')),
+        ))),
     ],
 
     // ADR-033 — keyless, no API key needed. CurrencyRateService reads

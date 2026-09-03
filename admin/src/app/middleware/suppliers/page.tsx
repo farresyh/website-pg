@@ -40,6 +40,7 @@ import {
   deleteSupplier,
   refreshSupplierBalance,
   updateSupplierPackagesStatus,
+  isWebhookConfigured,
 } from "@/lib/suppliers";
 import CreateSupplierModal from "@/components/middleware/suppliers/CreateSupplierModal";
 import EditSupplierModal from "@/components/middleware/suppliers/EditSupplierModal";
@@ -236,6 +237,16 @@ export default function SuppliersPage() {
                     </Tag>
                   </dd>
                 </div>
+                {supplier.slug === "digiflazz" && (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Webhook</dt>
+                    <dd>
+                      <Tag severity={isWebhookConfigured(supplier) ? "success" : "warn"}>
+                        {isWebhookConfigured(supplier) ? "configured" : "not configured"}
+                      </Tag>
+                    </dd>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <dt className="text-gray-500 dark:text-gray-400">Balance</dt>
                   <dd className="text-gray-800 dark:text-white/90">
