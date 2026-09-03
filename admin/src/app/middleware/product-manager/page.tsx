@@ -52,6 +52,14 @@ function formatRm(sen: number | null): string {
   return sen === null ? "—" : `RM ${(sen / 100).toFixed(2)}`;
 }
 
+/** ADR-069 — the "Rp 20,000" sanity line under the converted MYR price. */
+function formatRaw(price: string | null, currency: string | null): string | null {
+  if (price === null || currency === null) return null;
+  const n = Number(price);
+  if (!Number.isFinite(n)) return null;
+  return `${currency} ${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
 /** ADR-067 decision 6: a group is identified by (supplier id, group_label). */
 function groupKey(c: SupplierProductCategory): string {
   return `${c.supplier?.id ?? "?"}:${c.group_label}`;
@@ -309,6 +317,14 @@ export default function ProductManagerPage() {
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                                   {formatRm(product.price_sen)}
+                                  {formatRaw(product.raw_price, product.raw_currency) && (
+                                    <>
+                                      <br />
+                                      <span className="text-theme-xs text-gray-400">
+                                        {formatRaw(product.raw_price, product.raw_currency)}
+                                      </span>
+                                    </>
+                                  )}
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
                                   <Tag severity={product.is_promoted ? "success" : "secondary"}>

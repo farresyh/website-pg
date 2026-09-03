@@ -85,6 +85,10 @@ final class ProductSyncService
                     'group_label' => $item->groupLabel ?? $item->category ?? '',
                     'type' => $item->type,
                     'price_sen' => $this->toMyrSen($item->price, $fxRateUsed['rate'] ?? null),
+                    // ADR-069 decision 10 — the supplier's pre-conversion
+                    // figure, display-only. Adapter-set, no branching here.
+                    'raw_price' => $item->rawPrice,
+                    'raw_currency' => $item->rawCurrency,
                     'status_raw' => $item->status,
                     'last_synced_at' => $syncedAt,
                 ],

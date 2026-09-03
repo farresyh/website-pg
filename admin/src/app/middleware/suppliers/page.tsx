@@ -58,6 +58,7 @@ export default function SuppliersPage() {
   const [availableSlugs, setAvailableSlugs] = useState<string[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -100,9 +101,23 @@ export default function SuppliersPage() {
 
   async function handleEdit(values: Parameters<typeof updateSupplier>[2]) {
     if (!session || !editTarget) return;
-    await updateSupplier(session.token, editTarget.id, values);
+    setNotice(null);
+    const updated = await updateSupplier(session.token, editTarget.id, values);
     setEditTarget(null);
     refresh(session.token);
+
+    // ADR-069 decision 11 — surface the post-save connection probe.
+    const probe = updated.connection_probe;
+    if (probe) {
+      setNotice(
+        probe.connection_ok
+          ? {
+              tone: "ok",
+              text: `Credentials saved — connection OK${probe.balance != null ? `, balance ${probe.balance}` : ""}.`,
+            }
+          : { tone: "warn", text: `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.` },
+      );
+    }
   }
 
   async function handleToggleActive(supplier: Supplier) {
@@ -172,6 +187,18 @@ export default function SuppliersPage() {
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
           {error}
+        </p>
+      )}
+
+      {notice && (
+        <p
+          className={
+            notice.tone === "ok"
+              ? "mb-4 rounded-lg bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/15 dark:text-success-400"
+              : "mb-4 rounded-lg bg-warning-50 px-4 py-3 text-sm text-warning-700 dark:bg-warning-500/15 dark:text-warning-400"
+          }
+        >
+          {notice.text}
         </p>
       )}
 

@@ -30,5 +30,12 @@ final class SupplierCatalogItem
         public readonly ?string $status,
         public readonly ?string $groupLabel = null,
         public readonly ?string $type = null,
+        // ADR-069 decision 10 — the supplier's own pre-conversion
+        // price + currency, set by the adapter from its own catalog
+        // shape. Display-only (a Product Manager sanity line); the
+        // converted `price` above stays the one value everything
+        // downstream uses.
+        public readonly ?float $rawPrice = null,
+        public readonly ?string $rawCurrency = null,
     ) {}
 }

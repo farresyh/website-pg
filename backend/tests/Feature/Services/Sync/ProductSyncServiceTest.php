@@ -105,6 +105,41 @@ class ProductSyncServiceTest extends TestCase
     }
 
     /**
+     * ADR-069 decision 10 — the adapter's `rawPrice` / `rawCurrency`
+     * are persisted verbatim (display-only), with no per-supplier
+     * branching in the sync layer. `price_sen` stays the converted
+     * value everything downstream reads.
+     */
+    public function test_sync_persists_the_adapter_supplied_raw_price_and_currency(): void
+    {
+        $supplier = $this->supplier();
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem(
+                productRef: 'xld10',
+                name: 'MLBB 10 Diamonds',
+                category: 'Games',
+                price: 4.56,
+                status: 'active',
+                groupLabel: 'MOBILE LEGENDS — Malaysia',
+                type: 'Malaysia',
+                rawPrice: 20000.0,
+                rawCurrency: 'IDR',
+            ),
+            new SupplierCatalogItem('NOPRICE', 'Unpriced item', 'Games', null, 'active'),
+        ]);
+
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
+
+        $row = SupplierProduct::query()->where('external_ref', 'xld10')->firstOrFail();
+        $this->assertSame('20000.00', $row->raw_price);
+        $this->assertSame('IDR', $row->raw_currency);
+
+        $unpriced = SupplierProduct::query()->where('external_ref', 'NOPRICE')->firstOrFail();
+        $this->assertNull($unpriced->raw_price);
+        $this->assertNull($unpriced->raw_currency);
+    }
+
+    /**
      * ADR-067 decision 4/5: when an adapter sets `groupLabel` / `type`
      * explicitly (Digiflazz passes `brand` / `type`), those are stored
      * verbatim — `group_label` is NOT the raw `category` in that case.

@@ -112,8 +112,23 @@ export function createSupplier(token: string, values: CreateSupplierValues) {
   return apiFetch<Supplier>("/api/middleware/suppliers", { method: "POST", body: values, token });
 }
 
+/**
+ * ADR-069 decision 11 — after any `api_config` change, the backend
+ * runs a `checkBalance()` probe and returns the result, so a
+ * silently-broken credential rotation shows up immediately rather than
+ * only at the next order.
+ */
+export interface ConnectionProbe {
+  connection_ok: boolean;
+  balance: string | number | null;
+  error: string | null;
+}
+
 export function updateSupplier(token: string, supplierId: number, values: UpdateSupplierValues) {
-  return apiFetch<Supplier>(`/api/middleware/suppliers/${supplierId}`, { method: "PUT", body: values, token });
+  return apiFetch<Supplier & { connection_probe?: ConnectionProbe }>(
+    `/api/middleware/suppliers/${supplierId}`,
+    { method: "PUT", body: values, token },
+  );
 }
 
 /** ADR-046 decision 5 — the confirm warning itself lives in the caller (this is a plain toggle call). */
