@@ -91,18 +91,27 @@ final class DashboardService
     {
         $breakerConfig = config('services.circuit_breaker');
 
-        $suppliers = Supplier::query()->get(['id', 'name', 'slug', 'balance'])->map(function (Supplier $supplier) use ($breakerConfig) {
+        $suppliers = Supplier::query()->get()->map(function (Supplier $supplier) use ($breakerConfig) {
             $breaker = new CircuitBreaker(
                 name: $supplier->slug,
                 failureThreshold: $breakerConfig['failure_threshold'],
                 cooldownSeconds: $breakerConfig['cooldown_seconds'],
             );
 
+            // ADR-069 decision 13 — low_balance is true only when both a
+            // balance and a threshold exist and the balance is under it.
+            $threshold = $supplier->api_config['low_balance_threshold'] ?? null;
+            $lowBalance = $supplier->balance !== null
+                && $threshold !== null
+                && is_numeric($threshold)
+                && (float) $supplier->balance < (float) $threshold;
+
             return [
                 'id' => $supplier->id,
                 'name' => $supplier->name,
                 'slug' => $supplier->slug,
                 'balance' => (float) $supplier->balance,
+                'low_balance' => $lowBalance,
                 'circuit_state' => $breaker->state()->value,
             ];
         })->values()->all();

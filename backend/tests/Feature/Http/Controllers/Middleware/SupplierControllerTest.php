@@ -98,8 +98,13 @@ class SupplierControllerTest extends TestCase
         $this->assertStringNotContainsString('secret-value', $response->getContent());
 
         // ADR-046 decision 3: non-secret keys (base_url/sandbox) are
-        // safe to expose so the Edit form can pre-fill them.
-        $this->assertSame(['base_url' => 'https://api.gamevion.com', 'sandbox' => true], $body['visible_config']);
+        // safe to expose so the Edit form can pre-fill them. ADR-069
+        // decision 13 adds the optional low_balance_threshold (null
+        // until set).
+        $this->assertSame(
+            ['base_url' => 'https://api.gamevion.com', 'sandbox' => true, 'low_balance_threshold' => null],
+            $body['visible_config'],
+        );
 
         // ADR-046 addendum: the card's Sandbox/Production badge.
         $this->assertTrue($body['is_sandbox']);

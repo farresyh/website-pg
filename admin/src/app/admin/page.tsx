@@ -218,8 +218,17 @@ export default function AdminDashboardPage() {
                     <span className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
                       {s.name}
                       <Tag severity={s.circuit_state === "closed" ? "success" : "danger"}>{s.circuit_state}</Tag>
+                      {s.low_balance && <Tag severity="warn">low balance</Tag>}
                     </span>
-                    <span className="tabular-nums text-gray-500 dark:text-gray-400">{s.balance.toLocaleString()}</span>
+                    <span
+                      className={
+                        s.low_balance
+                          ? "tabular-nums font-medium text-warning-600 dark:text-warning-400"
+                          : "tabular-nums text-gray-500 dark:text-gray-400"
+                      }
+                    >
+                      {s.balance.toLocaleString()}
+                    </span>
                   </li>
                 ))}
                 {health.suppliers.length === 0 && (

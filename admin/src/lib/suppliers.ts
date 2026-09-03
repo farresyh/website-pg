@@ -60,6 +60,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     { key: "bearer_token", label: "Bearer Token", type: "secret" },
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "sandbox", label: "Sandbox Mode", type: "boolean" },
+    // ADR-069 decision 13: a bare number in the supplier's balance
+    // currency — drives the daily low-balance warning + Health chip.
+    { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 50 (blank = no warning)" },
   ],
   digiflazz: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
@@ -74,6 +77,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // (Atur Koneksi > API > Webhook). Optional for outbound calls;
     // DigiflazzWebhookController rejects every callback until it's set.
     { key: "webhook_secret", label: "Webhook Secret", type: "secret" },
+    // ADR-069 decision 13: a bare number in IDR — drives the daily
+    // low-balance warning + the Dashboard Health chip.
+    { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 100000 (IDR; blank = no warning)" },
   ],
 };
 

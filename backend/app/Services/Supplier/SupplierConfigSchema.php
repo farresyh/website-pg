@@ -42,7 +42,17 @@ final class SupplierConfigSchema
         // DigiflazzWebhookController, which hard-rejects when it is
         // absent. `secret`-typed so the redactor + the masked-merge
         // form treat it like any other credential.
-        'digiflazz' => ['category_whitelist' => 'list', 'webhook_secret' => 'secret'],
+        //
+        // ADR-069 decision 13 — `low_balance_threshold` (a bare number
+        // in the supplier's own balance currency) drives the daily
+        // app:refresh-supplier-balances warning + the Dashboard Health
+        // chip. Absent = no warning.
+        'digiflazz' => [
+            'category_whitelist' => 'list',
+            'webhook_secret' => 'secret',
+            'low_balance_threshold' => 'text',
+        ],
+        'gamevion' => ['low_balance_threshold' => 'text'],
     ];
 
     /**
