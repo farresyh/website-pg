@@ -3,7 +3,6 @@ import SiteFooter from "@/components/layout/SiteFooter";
 import BottomNav from "@/components/layout/BottomNav";
 import HeroSection from "@/components/home/HeroSection";
 import PopularPicksSection from "@/components/home/PopularPicksSection";
-import PromotionsSection from "@/components/home/PromotionsSection";
 import NewArrivalsSection from "@/components/home/NewArrivalsSection";
 import WhyChooseUsSection from "@/components/home/WhyChooseUsSection";
 import PaymentMethodsSection from "@/components/home/PaymentMethodsSection";
@@ -28,7 +27,6 @@ export default async function HomePage() {
       <main className="pb-10 lg:pb-0">
         <HeroSection games={games} slides={slides} />
         <PopularPicksSection games={games} />
-        <PromotionsSection />
         <NewArrivalsSection games={games} />
         <WhyChooseUsSection />
         <PaymentMethodsSection />

@@ -2,48 +2,15 @@
  * Static placeholder content for the homepage. Games/packages moved to
  * lib/catalog.ts, hero slides to lib/hero-slides.ts, and payment
  * channels to lib/payment-methods.ts (all real backend data) —
- * everything remaining here (promotions, testimonials, FAQ) still has
- * no backing model, per the same "honest static content, not a fake
- * dynamic system" reasoning documented on PROMOTIONS below.
+ * everything remaining here (testimonials, FAQ) still has no backing
+ * model, kept as honest static content rather than a fake dynamic
+ * system.
+ *
+ * The "This Week's Promotions" section and its PROMOTIONS array were
+ * removed in ADR-071 PR0: hardcoded promos with past "Ends:" dates were
+ * live in production. Re-introducing promotions requires a real
+ * admin-editable model (its own future ADR), not placeholder data.
  */
-
-/**
- * Manually curated for v1 — no Promotion model/admin screen exists
- * yet (confirmed during the storefront planning audit), so this is
- * honest static content, not a fake "dynamic" system pretending to
- * read from a backend that isn't there.
- */
-export interface Promotion {
-  id: string;
-  badge: string;
-  endsAt: string;
-  title: string;
-  description: string;
-}
-
-export const PROMOTIONS: Promotion[] = [
-  {
-    id: "mlbb-bonus-diamonds",
-    badge: "Sunday Only",
-    endsAt: "Jul 28, 2026",
-    title: "10% Bonus Diamonds — MLBB",
-    description: "All-day Sunday offer — get free bonus diamonds on every 516 Diamonds pack.",
-  },
-  {
-    id: "steam-wallet-discount",
-    badge: "Limited",
-    endsAt: "Jul 31, 2026",
-    title: "15% Off Steam Wallet",
-    description: "Get 15% off your first Steam Wallet purchase this week.",
-  },
-  {
-    id: "tng-cashback",
-    badge: "Limited",
-    endsAt: "Jul 31, 2026",
-    title: "RM3 Cashback via Touch 'n Go",
-    description: "Cashback to your Touch 'n Go eWallet for your first transaction this week.",
-  },
-];
 
 export interface Testimonial {
   name: string;
