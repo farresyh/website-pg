@@ -95,19 +95,32 @@ final class SupplierConfigSchema
     public static function normalizeConfig(string $slug, array $config): array
     {
         foreach (self::fieldsFor($slug) as $key => $type) {
-            if ($type !== 'list' || ! array_key_exists($key, $config)) {
+            if (! array_key_exists($key, $config)) {
                 continue;
             }
 
-            $value = $config[$key];
+            if ($type === 'list') {
+                $value = $config[$key];
 
-            if (is_string($value)) {
-                $value = explode(',', $value);
+                if (is_string($value)) {
+                    $value = explode(',', $value);
+                }
+
+                $config[$key] = is_array($value)
+                    ? array_values(array_filter(array_map('trim', $value), static fn ($v) => $v !== ''))
+                    : [];
+
+                continue;
             }
 
-            $config[$key] = is_array($value)
-                ? array_values(array_filter(array_map('trim', $value), static fn ($v) => $v !== ''))
-                : [];
+            // ADR-069 stress-test Q6 — trim every scalar string value
+            // (`text` + `secret`). A paste artifact (trailing newline in
+            // `webhook_secret` → every signature 401s; trailing space in
+            // `low_balance_threshold` → is_numeric() false → the warning
+            // silently never fires) must not survive a save.
+            if (is_string($config[$key])) {
+                $config[$key] = trim($config[$key]);
+            }
         }
 
         return $config;

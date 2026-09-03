@@ -19,12 +19,20 @@ use Illuminate\Support\Facades\Log;
  * finalized here the moment Digiflazz confirms `Sukses`/`Gagal`,
  * instead of waiting on ReconcilePendingDeliveriesCommand's poll.
  *
- * Not behind auth:sanctum — Digiflazz is not an admin user. Two gates:
- *  1. request IP in `config('services.digiflazz.webhook_ips')` (403) —
- *     a config-driven second gate, not the primary auth.
- *  2. `X-Hub-Signature: sha1=<hex>` = HMAC-SHA1 of the raw body with
- *     `Supplier(slug=digiflazz).api_config['webhook_secret']` (401) —
- *     THE auth. Absent secret → every call is rejected (503).
+ * Not behind auth:sanctum — Digiflazz is not an admin user. Auth:
+ *  - `X-Hub-Signature: sha1=<hex>` = HMAC-SHA1 of the raw body with
+ *    `Supplier(slug=digiflazz).api_config['webhook_secret']` (401) —
+ *    THE auth. Absent secret → every call is rejected (503).
+ *  - `config('services.digiflazz.webhook_ips')` — a SOFT
+ *    defence-in-depth signal (log only, never a 403): `$request->ip()`
+ *    stops being the real client IP the moment a proxy/CDN sits in
+ *    front (ADR-069 stress-test Q1). Empty config = check disabled.
+ *
+ * A 404 from this route is BENIGN and expected: `fulfill()` writes
+ * `reference_number` and calls Digiflazz inside one DB::transaction(),
+ * so a `create` event racing that uncommitted transaction finds no
+ * row. The `update` event (post-commit) or the reconcile poll
+ * finalizes it. Do not alarm on 404s here.
  *
  * Mirrors ChipWebhookController's shape: verify, resolve the order,
  * hand off to the one shared money path (finalizePendingDelivery),
@@ -47,14 +55,9 @@ class DigiflazzWebhookController extends Controller
 
     public function handle(Request $request): JsonResponse
     {
-        $allowedIps = (array) config('services.digiflazz.webhook_ips', []);
-
-        if (! in_array($request->ip(), $allowedIps, true)) {
-            Log::warning('Rejected Digiflazz webhook: source IP not allowlisted', ['ip' => $request->ip()]);
-
-            return response()->json(['message' => 'forbidden'], 403);
-        }
-
+        // --- The HMAC signature is THE auth. Everything else is a soft
+        // signal. Check it first: it needs the webhook_secret, so an
+        // absent secret is a 503 (config gap), not a 401. ---
         $secret = Supplier::query()->where('slug', 'digiflazz')->first()?->api_config['webhook_secret'] ?? null;
 
         if ($secret === null || $secret === '') {
@@ -69,6 +72,20 @@ class DigiflazzWebhookController extends Controller
             Log::warning('Rejected Digiflazz webhook: invalid signature');
 
             return response()->json(['message' => 'invalid signature'], 401);
+        }
+
+        // ADR-069 stress-test Q1 — the IP allowlist is a SOFT
+        // defence-in-depth signal, not a gate: `$request->ip()` becomes
+        // an edge IP the moment anything (Cloudflare, a load balancer)
+        // sits in front, and a hard 403 there is a silent webhook
+        // outage that only the ~10-min poll would paper over. An empty
+        // `webhook_ips` config disables the check entirely.
+        $allowedIps = array_values(array_filter((array) config('services.digiflazz.webhook_ips', [])));
+
+        if ($allowedIps !== [] && ! in_array($request->ip(), $allowedIps, true)) {
+            Log::warning('Digiflazz webhook: source IP not in the allowlist (processing anyway — signature verified)', [
+                'ip' => $request->ip(),
+            ]);
         }
 
         // Soft — the signature is the real gate; a wrong User-Agent
@@ -97,9 +114,16 @@ class DigiflazzWebhookController extends Controller
         $order = Order::query()->with('supplier')->where('reference_number', $refId)->first();
 
         if ($order === null) {
-            // The daily reconcile poll is the backstop — nothing is
-            // lost, only delayed.
-            Log::warning('Rejected Digiflazz webhook: no order for ref_id', ['ref_id' => $refId]);
+            // ADR-069 stress-test Q2 — a 404 here is BENIGN and
+            // expected in normal operation: `fulfill()` writes
+            // `reference_number` and calls Digiflazz inside one
+            // DB::transaction(), so a `create` event that races our own
+            // uncommitted transaction sees no row. The later `update`
+            // event (after the txn commits) or the reconcile poll
+            // finalizes it — nothing is lost, only delayed.
+            Log::info('Digiflazz webhook: no order yet for ref_id — a create event likely raced fulfillment; the update event or poll will finalize', [
+                'ref_id' => $refId,
+            ]);
 
             return response()->json(['message' => 'order not found'], 404);
         }

@@ -128,6 +128,8 @@ export interface ConnectionProbe {
   connection_ok: boolean;
   balance: string | number | null;
   error: string | null;
+  /** ADR-069 stress-test Q3 — the check was skipped because the breaker is open, not a credential failure. */
+  breaker_open?: boolean;
 }
 
 export function updateSupplier(token: string, supplierId: number, values: UpdateSupplierValues) {

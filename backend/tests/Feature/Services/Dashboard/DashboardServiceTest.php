@@ -197,6 +197,14 @@ class DashboardServiceTest extends TestCase
         $this->assertTrue($rows['Low One']['low_balance']);
         $this->assertFalse($rows['Fine One']['low_balance']);
         $this->assertFalse($rows['No Threshold']['low_balance'], 'no threshold means never flagged');
+
+        // ADR-069 stress-test Q8 — health() reads the threshold out of
+        // the encrypted api_config but must never surface it: the
+        // supplier row is a fixed whitelist of keys.
+        $this->assertSame(
+            ['id', 'name', 'slug', 'balance', 'low_balance', 'circuit_state'],
+            array_keys($rows['Low One']),
+        );
     }
 
     public function test_stuck_orders_combines_needs_review_and_stale_processing_and_stale_pending(): void

@@ -37,10 +37,28 @@ class RefreshSupplierBalancesCommand extends Command
 {
     public function handle(SupplierAdapterFactory $adapters): int
     {
-        $suppliers = Supplier::query()
-            ->where('is_active', true)
-            ->get()
-            ->filter(fn (Supplier $s) => SupplierConfigSchema::missingKeys($s->slug, $s->api_config ?? []) === []);
+        $active = Supplier::query()->where('is_active', true)->get();
+
+        // ADR-069 stress-test Q5 — log every skipped supplier + its
+        // missing keys. `customer_no_separator` is REQUIRED for
+        // digiflazz but shows a default-looking placeholder in the Edit
+        // form; a supplier left partially configured would otherwise
+        // drop out of the daily refresh silently.
+        $suppliers = $active->filter(function (Supplier $s) {
+            $missing = SupplierConfigSchema::missingKeys($s->slug, $s->api_config ?? []);
+
+            if ($missing !== []) {
+                Log::info('refresh-supplier-balances: skipping supplier — not fully configured', [
+                    'supplier' => $s->slug,
+                    'missing' => $missing,
+                ]);
+                $this->warn("Skipping '{$s->slug}': missing ".implode(', ', $missing));
+
+                return false;
+            }
+
+            return true;
+        });
 
         if ($suppliers->isEmpty()) {
             $this->info('No active, fully-configured supplier to refresh.');

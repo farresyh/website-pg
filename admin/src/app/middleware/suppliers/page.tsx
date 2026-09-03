@@ -107,16 +107,18 @@ export default function SuppliersPage() {
     refresh(session.token);
 
     // ADR-069 decision 11 — surface the post-save connection probe.
+    // Stress-test Q3: a breaker-open result is not a credential problem.
     const probe = updated.connection_probe;
     if (probe) {
-      setNotice(
-        probe.connection_ok
-          ? {
-              tone: "ok",
-              text: `Credentials saved — connection OK${probe.balance != null ? `, balance ${probe.balance}` : ""}.`,
-            }
-          : { tone: "warn", text: `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.` },
-      );
+      let text: string;
+      if (probe.connection_ok) {
+        text = `Credentials saved — connection OK${probe.balance != null ? `, balance ${probe.balance}` : ""}.`;
+      } else if (probe.breaker_open) {
+        text = `Credentials saved. ${probe.error ?? ""}`.trim();
+      } else {
+        text = `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.`;
+      }
+      setNotice({ tone: probe.connection_ok ? "ok" : "warn", text });
     }
   }
 

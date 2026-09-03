@@ -71,4 +71,23 @@ class SupplierConfigSchemaTest extends TestCase
         $this->assertSame(['base_url' => 'x'], $out);
         $this->assertArrayNotHasKey('category_whitelist', $out);
     }
+
+    /**
+     * ADR-069 stress-test Q6 — a paste artifact (trailing newline in a
+     * secret → every signature 401s; trailing space in a numeric text
+     * field → is_numeric() false → warning never fires) must not
+     * survive a save. Booleans are left alone.
+     */
+    public function test_normalize_config_trims_scalar_text_and_secret_fields(): void
+    {
+        $out = SupplierConfigSchema::normalizeConfig('digiflazz', [
+            'webhook_secret' => "  sha1-secret\n",
+            'low_balance_threshold' => ' 100000 ',
+            'testing' => true,
+        ]);
+
+        $this->assertSame('sha1-secret', $out['webhook_secret']);
+        $this->assertSame('100000', $out['low_balance_threshold']);
+        $this->assertTrue($out['testing']);
+    }
 }
