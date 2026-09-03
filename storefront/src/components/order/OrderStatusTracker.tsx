@@ -197,7 +197,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
               </svg>
             </span>
             <div>
-              <p className="font-display text-base font-bold uppercase tracking-tight">Delivered</p>
+              {/* Not the word "Delivered" — the delivery StatusBadge is
+                * the one canonical "Delivered" label (same reason as
+                * deriveStages() uses "Complete"); a second copy breaks
+                * the E2E golden path's strict getByText. */}
+              <p className="font-display text-base font-bold uppercase tracking-tight">You&apos;re all set</p>
               <p className="text-[13px] leading-snug">Your top-up is in your game account — enjoy!</p>
             </div>
           </div>
