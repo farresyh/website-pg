@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\HeroSlide;
+use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
@@ -46,5 +47,6 @@ class HeroSlideController extends Controller
     public static function forgetCache(): void
     {
         Cache::forget('catalog.public.hero_slides');
+        NextRevalidation::purge(); // ADR-071 PR2
     }
 }

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { GamePackage } from "@/lib/catalog";
 
 interface PackageGridProps {
@@ -6,7 +7,14 @@ interface PackageGridProps {
   onSelect: (id: number) => void;
 }
 
-export default function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
+/**
+ * `memo` (ADR-071 PR2): up to ~60 package buttons. OrderForm re-renders
+ * on every keystroke in Player ID / the Review Modal's contact fields;
+ * its props here (`packages`, `selectedId`, the stable `setState`
+ * `onSelect`) don't change with any of that, so the grid should sit
+ * still. Targets INP < 200ms on a package tap.
+ */
+function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
   return (
     <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
       {packages.map((pkg) => {
@@ -62,3 +70,5 @@ export default function PackageGrid({ packages, selectedId, onSelect }: PackageG
     </div>
   );
 }
+
+export default memo(PackageGrid);

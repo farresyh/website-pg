@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -159,11 +159,14 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
   // applied voucher.
   const [voucherCode, setVoucherCode] = useState<string | null>(null);
 
-  function openReview() {
+  // useCallback so the memoized OrderSummarySidebar isn't re-rendered
+  // just because OrderForm re-rendered (ADR-071 PR2). Every dependency
+  // is a stable ref / setState.
+  const openReview = useCallback(() => {
     idempotencyKeyRef.current = crypto.randomUUID();
     setVoucherCode(null);
     setReviewOpen(true);
-  }
+  }, []);
 
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
   const selectedChannel = paymentChannels.find((c) => c.channelCode === channelCode) ?? null;
@@ -210,28 +213,36 @@ export default function OrderForm({ game, packages: initialPackages, paymentChan
     if (!totalPreviewKey || !selectedPackage || !channelCode) return;
 
     let cancelled = false;
-    previewCheckoutTotal(
-      {
-        game_id: game.id,
-        package_id: selectedPackage.id,
-        channel_code: channelCode,
-        voucher_code: voucherCode ?? undefined,
-        customer_email: voucherCode ? contactEmail : undefined,
-        customer_phone: voucherCode ? customerPhone : undefined,
-      },
-      membershipToken ?? undefined,
-    )
-      .then((result) => {
-        if (!cancelled) setTotalPreview({ key: totalPreviewKey, result });
-      })
-      .catch(() => {
-        // A failed preview just leaves the sidebar/modal without a fee
-        // breakdown (falls back to package-price-only display) rather
-        // than blocking the order flow — the real charge is still
-        // computed correctly server-side at checkout regardless (ORD-9).
-      });
+    // ADR-071 PR2: 150ms debounce — browsing packages, or typing in the
+    // Review Modal's email/phone (a voucher makes those part of the
+    // key), shouldn't fire a `previewCheckoutTotal` round trip per
+    // keystroke. A dep change within the window clears the pending call.
+    const timer = setTimeout(() => {
+      previewCheckoutTotal(
+        {
+          game_id: game.id,
+          package_id: selectedPackage.id,
+          channel_code: channelCode,
+          voucher_code: voucherCode ?? undefined,
+          customer_email: voucherCode ? contactEmail : undefined,
+          customer_phone: voucherCode ? customerPhone : undefined,
+        },
+        membershipToken ?? undefined,
+      )
+        .then((result) => {
+          if (!cancelled) setTotalPreview({ key: totalPreviewKey, result });
+        })
+        .catch(() => {
+          // A failed preview just leaves the sidebar/modal without a fee
+          // breakdown (falls back to package-price-only display) rather
+          // than blocking the order flow — the real charge is still
+          // computed correctly server-side at checkout regardless (ORD-9).
+        });
+    }, 150);
+
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [totalPreviewKey, game.id, selectedPackage, channelCode, voucherCode, membershipToken, contactEmail, customerPhone]);
 
