@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * ADR-027's 2026-08-29 addendum, decisions 23/24/25/27 — the
@@ -32,14 +33,29 @@ export interface MembershipPlan {
   discountPercent: number;
 }
 
+/**
+ * The membership tier list, doubling as the storefront-wide "is
+ * membership enabled" flag (`[]` when the kill switch is off — ADR-055).
+ * Storefront-wide config, not per-user, so it joins the `catalog`
+ * Data-Cache tag (ADR-071 PR1). A failed read reads as "off", never an
+ * error. PR2 lifts the server read into `SiteConfigProvider` so
+ * `SiteHeader` / `BottomNav` stop each re-fetching it per navigation.
+ */
 export async function listPlans(): Promise<MembershipPlan[]> {
-  const raw = await apiFetch<unknown>("/api/membership/plans");
-  const wire = parseResponse(z.array(MembershipPlanWireSchema), raw, "MembershipPlanWire[]", "/api/membership/plans");
-  return wire.map((plan) => ({
-    name: plan.name,
-    feeSen: plan.fee_sen,
-    discountPercent: plan.discount_percent,
-  }));
+  const path = "/api/membership/plans";
+  return safeRead(
+    "listPlans",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(z.array(MembershipPlanWireSchema), raw, "MembershipPlanWire[]", path);
+      return wire.map((plan) => ({
+        name: plan.name,
+        feeSen: plan.fee_sen,
+        discountPercent: plan.discount_percent,
+      }));
+    },
+    [],
+  );
 }
 
 export async function verifyOtp(email: string, code: string): Promise<string> {

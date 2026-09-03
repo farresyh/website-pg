@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * Real request/response contracts for the public catalog endpoints
@@ -135,21 +136,37 @@ function toPackage(wire: CatalogPackageWire): GamePackage {
 
 export async function listGames(): Promise<Game[]> {
   const path = "/api/catalog/games";
-  const raw = await apiFetch<unknown>(path);
-  const wire = parseResponse(z.array(CatalogGameWireSchema), raw, "CatalogGameWire[]", path);
-  return wire.map(toGame);
+  return safeRead(
+    "listGames",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(z.array(CatalogGameWireSchema), raw, "CatalogGameWire[]", path);
+      return wire.map(toGame);
+    },
+    [],
+  );
 }
 
 export async function getGame(slug: string): Promise<GameDetail | null> {
-  try {
-    const path = `/api/catalog/games/${encodeURIComponent(slug)}`;
-    const raw = await apiFetch<unknown>(path);
-    const wire = parseResponse(CatalogGameWireSchema, raw, "CatalogGameWire", path);
-    return toGameDetail(wire);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return null;
-    throw err;
-  }
+  const path = `/api/catalog/games/${encodeURIComponent(slug)}`;
+  return safeRead(
+    `getGame(${slug})`,
+    async () => {
+      try {
+        const raw = await apiFetch<unknown>(path, { next: catalogCache });
+        const wire = parseResponse(CatalogGameWireSchema, raw, "CatalogGameWire", path);
+        return toGameDetail(wire);
+      } catch (err) {
+        // A 404 is an expected "unknown slug" — resolve to null quietly
+        // (the page calls notFound()), don't log it as a failure.
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    // Any other failure (backend down, schema drift) also resolves to
+    // null → a clean 404 page rather than a 500 (ADR-071 PR1).
+    null,
+  );
 }
 
 /**
@@ -161,9 +178,28 @@ export async function getGame(slug: string): Promise<GameDetail | null> {
  */
 export async function getGamePackages(slug: string, membershipToken?: string): Promise<GamePackage[]> {
   const path = `/api/catalog/games/${encodeURIComponent(slug)}/packages`;
-  const raw = await apiFetch<unknown>(path, membershipToken ? { token: membershipToken } : undefined);
-  const wire = parseResponse(z.array(CatalogPackageWireSchema), raw, "CatalogPackageWire[]", path);
-  return wire.map(toPackage);
+  // Only the anonymous SSR read is cacheable — a `membershipToken`
+  // personalizes `member_price_sen` to the caller's own tier, and the
+  // Data Cache keys on URL only (not the Authorization header), so
+  // caching the personalized response would leak one member's price to
+  // everyone. The tokened variant stays per-request.
+  //
+  // A game with zero promoted packages, or a transient backend error,
+  // returns `[]` — OrderForm already renders a "no packages available
+  // yet" state — rather than 500-ing the whole order page (ADR-071 PR1
+  // graceful-degrade). The tokened client re-fetch is a display nicety
+  // and swallows failures the same way (OrderForm's own `.catch`).
+  return safeRead(
+    `getGamePackages(${slug})`,
+    async () => {
+      const raw = membershipToken
+        ? await apiFetch<unknown>(path, { token: membershipToken, cache: "no-store" })
+        : await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(z.array(CatalogPackageWireSchema), raw, "CatalogPackageWire[]", path);
+      return wire.map(toPackage);
+    },
+    [],
+  );
 }
 
 /** Quick Counter's shortlist — a small, hand-picked subset of real games by slug (editorial curation, not backend data). */

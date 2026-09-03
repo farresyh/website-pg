@@ -1,9 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
-import BottomNav from "@/components/layout/BottomNav";
 import OrderForm from "@/components/order/OrderForm";
 import ProductHeaderCard from "@/components/order/ProductHeaderCard";
 import TrustStrip from "@/components/order/TrustStrip";
@@ -47,16 +45,21 @@ export async function generateMetadata({ params }: OrderPageProps): Promise<Meta
 
 export default async function OrderPage({ params }: OrderPageProps) {
   const { slug } = await params;
-  const [game, settings] = await Promise.all([getGame(slug), getSeoSettings()]);
+  // ADR-071 PR1 decision 4: one parallel wave, not the old four serial
+  // awaits (getGame+seo, then packages, then channels, then plans) —
+  // none of these depend on another's result. All five reads are
+  // cached (`catalogCache`); `getGamePackages` here is the anonymous
+  // SSR variant (OrderForm re-fetches personalized once a membership
+  // token is known). ADR-055 decision 7: plans server-side, not a
+  // client round trip — `[]` when the membership kill switch is off.
+  const [game, settings, packages, paymentChannels, membershipPlans] = await Promise.all([
+    getGame(slug),
+    getSeoSettings(),
+    getGamePackages(slug),
+    listPaymentChannels(),
+    listPlans(),
+  ]);
   if (!game) notFound();
-
-  const packages = await getGamePackages(slug);
-  const paymentChannels = await listPaymentChannels();
-  // ADR-055 decision 7: plans fetched server-side alongside the other
-  // order-page data (not a client round trip), same 60s-TTL/tagged-store
-  // discipline as the catalog endpoints — `[]` when the membership kill
-  // switch is off, so the promo card simply renders nothing.
-  const membershipPlans = await listPlans();
 
   // ADR-029 addendum decision 12: Product + Breadcrumb JSON-LD, each toggled per reseller_seo_settings.
   const productJsonLd = settings.schema_product_enabled
@@ -91,8 +94,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
       {breadcrumbJsonLd && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       )}
-      <SiteHeader />
-      <main className="pb-10 lg:pb-0">
+      <main className="pb-nav lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 pt-5">
           <nav className="mb-4 flex items-center gap-2 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
             <Link href="/" className="hover:text-primary">
@@ -113,7 +115,6 @@ export default async function OrderPage({ params }: OrderPageProps) {
         <TrustStrip />
       </main>
       <SiteFooter />
-      <BottomNav />
     </>
   );
 }

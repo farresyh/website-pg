@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * Real request/response contract for the public hero-banner listing
@@ -55,7 +56,13 @@ function toHeroSlide(wire: HeroSlideWire): HeroSlide {
 
 export async function listHeroSlides(): Promise<HeroSlide[]> {
   const path = "/api/catalog/hero-slides";
-  const raw = await apiFetch<unknown>(path);
-  const wire = parseResponse(z.array(HeroSlideWireSchema), raw, "HeroSlideWire[]", path);
-  return wire.map(toHeroSlide);
+  return safeRead(
+    "listHeroSlides",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(z.array(HeroSlideWireSchema), raw, "HeroSlideWire[]", path);
+      return wire.map(toHeroSlide);
+    },
+    [],
+  );
 }

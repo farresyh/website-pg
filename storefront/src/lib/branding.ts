@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * ADR-028 + its 2026-08-22 addendum — real store branding/footer/legal
@@ -47,20 +48,41 @@ export interface Branding {
   footerGames: { id: number; name: string; slug: string }[];
 }
 
+const BRANDING_FALLBACK: Branding = {
+  storeName: "PekanGame",
+  description: null,
+  supportEmail: null,
+  supportPhone: null,
+  socialLinks: {},
+  footerText: null,
+  footerGames: [],
+};
+
+/**
+ * ADR-071 PR1: consumed by the root layout and `SiteFooter`, so it
+ * joins the `catalog` Data-Cache tag (60s interim TTL, purged on an
+ * admin branding save by the PR2 webhook). The fallback keeps a
+ * backend blip — or a backend-less CI build — from throwing.
+ */
 export async function getBranding(): Promise<Branding> {
   const path = "/api/catalog/branding";
-  const raw = await apiFetch<unknown>(path);
-  const wire = parseResponse(BrandingWireSchema, raw, "BrandingWire", path);
-
-  return {
-    storeName: wire.store_name,
-    description: wire.description,
-    supportEmail: wire.support_email,
-    supportPhone: wire.support_phone,
-    socialLinks: wire.social_links ?? {},
-    footerText: wire.footer_text,
-    footerGames: wire.footer_games,
-  };
+  return safeRead(
+    "getBranding",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(BrandingWireSchema, raw, "BrandingWire", path);
+      return {
+        storeName: wire.store_name,
+        description: wire.description,
+        supportEmail: wire.support_email,
+        supportPhone: wire.support_phone,
+        socialLinks: wire.social_links ?? {},
+        footerText: wire.footer_text,
+        footerGames: wire.footer_games,
+      };
+    },
+    BRANDING_FALLBACK,
+  );
 }
 
 export type LegalPage = "terms" | "privacy" | "about-us";
@@ -70,7 +92,13 @@ const LegalContentWireSchema = z.object({ content: z.string().nullable() });
 /** Already sanitized + `{store_name}`-substituted server-side — safe to render as-is. */
 export async function getLegalContent(page: LegalPage): Promise<string | null> {
   const path = `/api/catalog/legal/${page}`;
-  const raw = await apiFetch<unknown>(path);
-  const wire = parseResponse(LegalContentWireSchema, raw, "LegalContentWire", path);
-  return wire.content;
+  return safeRead(
+    `getLegalContent(${page})`,
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(LegalContentWireSchema, raw, "LegalContentWire", path);
+      return wire.content;
+    },
+    null,
+  );
 }

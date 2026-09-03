@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * Real request/response contract for the public payment-methods
@@ -28,11 +29,17 @@ const PaymentChannelWireSchema = z.object({
 
 export async function listPaymentChannels(): Promise<PaymentChannel[]> {
   const path = "/api/catalog/payment-methods";
-  const raw = await apiFetch<unknown>(path);
-  const wire = parseResponse(z.array(PaymentChannelWireSchema), raw, "PaymentChannelWire[]", path);
-  return wire.map((channel) => ({
-    channelCode: channel.channel_code,
-    label: channel.label,
-    category: channel.category,
-  }));
+  return safeRead(
+    "listPaymentChannels",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(z.array(PaymentChannelWireSchema), raw, "PaymentChannelWire[]", path);
+      return wire.map((channel) => ({
+        channelCode: channel.channel_code,
+        label: channel.label,
+        category: channel.category,
+      }));
+    },
+    [],
+  );
 }
