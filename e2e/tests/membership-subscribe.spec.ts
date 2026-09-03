@@ -7,9 +7,10 @@ const MEMBERSHIP_TOKEN_KEY = "krs_membership_token";
 // through the real /membership subscribe UI: land as a verified member
 // -> pick a tier -> pay -> membership active. Identity is obtained via
 // the API (E2ESeeder plants a pre-verifiable OTP fixture; MAIL_MAILER=
-// log in e2e leaves no inbox to read a live code from) and injected into
-// localStorage — the OTP send/verify UI is Phase-5 code covered
-// elsewhere, not this spec's concern. The payment layer is the
+// log in e2e leaves no inbox to read a live code from) and injected as
+// the session cookie — the OTP send/verify UI is Phase-5 code covered
+// elsewhere, not this spec's concern (ADR-071 PR2b moved the token from
+// localStorage to a cookie). The payment layer is the
 // APP_ENV=e2e FakePaymentGateway (ADR-023 decision #6); CHIP's
 // success_callback is simulated by POSTing its flattened payload to
 // /api/webhooks/chip after intercepting the subscribe response, exactly
@@ -25,10 +26,9 @@ test("verified member picks a tier -> pays -> membership active", async ({ page,
   const { token } = await verify.json();
   expect(token).toBeTruthy();
 
-  await page.addInitScript(
-    ([key, value]) => window.localStorage.setItem(key, value),
-    [MEMBERSHIP_TOKEN_KEY, token] as const,
-  );
+  await page.context().addCookies([
+    { name: MEMBERSHIP_TOKEN_KEY, value: token, url: STOREFRONT_URL, sameSite: "Lax" },
+  ]);
 
   // 1. Land on the dashboard — the subscribe surface is visible.
   await page.goto(`${STOREFRONT_URL}/membership`);
