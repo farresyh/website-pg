@@ -92,6 +92,23 @@ class OrderControllerTest extends TestCase
         $this->assertSame(1, Order::query()->count());
     }
 
+    /** No manual pre-check in the controller for this — proves the NoResellerTierAssignedException path (thrown by placeOrder() itself) is actually wired to a 422, not just theoretically reachable. */
+    public function test_422s_when_reseller_has_no_tier_assigned(): void
+    {
+        $this->primaryAffiliate();
+        $this->makePackage();
+        $reseller = Reseller::query()->create(['business_name' => 'No Tier', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+        $key = app(ResellerApiKeyService::class)->issue($reseller, 'Test key')['plainText'];
+
+        $response = $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => 'no-tier-test',
+        ], $this->authHeaders($key));
+
+        $response->assertStatus(422);
+        $this->assertSame(0, Order::query()->count());
+    }
+
     public function test_422s_for_an_unknown_product_code(): void
     {
         [$reseller, $key] = $this->makeFundedReseller();
