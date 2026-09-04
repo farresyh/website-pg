@@ -16,6 +16,8 @@ use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ResellerController;
+use App\Http\Controllers\Admin\ResellerTierController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
@@ -522,6 +524,30 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/', [AffiliateMembershipTierController::class, 'store']);
             Route::put('/{affiliate_tier}', [AffiliateMembershipTierController::class, 'update']);
             Route::delete('/{affiliate_tier}', [AffiliateMembershipTierController::class, 'destroy']);
+        });
+    });
+
+    // ADR-072/073 PR-B — admin Reseller (prepaid-wallet) account
+    // management: register account, assign tier, activate/deactivate.
+    // Same super_admin tier as Affiliate Management above. Distinct from
+    // `Affiliate` (whitelabel storefront partner) — see ADR-072 decision 1.
+    Route::middleware('admin.role:super_admin')->group(function () {
+        Route::prefix('resellers')->group(function () {
+            Route::get('/', [ResellerController::class, 'index']);
+            Route::post('/', [ResellerController::class, 'store']);
+            Route::get('/{reseller}', [ResellerController::class, 'show']);
+            Route::put('/{reseller}', [ResellerController::class, 'update']);
+            Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
+            Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
+            Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+        });
+
+        // ADR-073 decision 1 — the reseller_tiers CRUD ladder.
+        Route::prefix('reseller-tiers')->group(function () {
+            Route::get('/', [ResellerTierController::class, 'index']);
+            Route::post('/', [ResellerTierController::class, 'store']);
+            Route::put('/{reseller_tier}', [ResellerTierController::class, 'update']);
+            Route::delete('/{reseller_tier}', [ResellerTierController::class, 'destroy']);
         });
     });
 

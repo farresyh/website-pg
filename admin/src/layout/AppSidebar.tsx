@@ -41,6 +41,7 @@ const sections: PanelNavSection[] = [
       { kind: "link", name: "Blacklist", href: "/admin/blacklist", icon: <BlockIcon /> },
       { kind: "link", name: "Membership", href: "/admin/membership", icon: <BoxLineIcon /> },
       { kind: "link", name: "Affiliates", href: "/admin/affiliates", icon: <UserCircleIcon /> },
+      { kind: "link", name: "Resellers", href: "/admin/resellers", icon: <DollarLineIcon /> },
       {
         // ADR-029 decision 10 — the one collapsible nav group.
         kind: "group",
