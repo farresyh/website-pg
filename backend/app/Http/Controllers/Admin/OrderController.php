@@ -7,14 +7,18 @@ use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\Voucher;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -96,20 +100,7 @@ class OrderController extends Controller
             abort(404);
         }
 
-        return response()->json($order->load([
-            'game', 'package', 'supplier', 'affiliate', 'voucher',
-            // ADR-027 Phase 6: the member (if any) this order priced
-            // against — email + tier name, so admin can see who and
-            // which plan without a separate lookup. Note this
-            // membership's own email can genuinely differ from the
-            // order's own customer_email (identity comes from the
-            // session token, not the checkout contact form).
-            'membership.membershipPlan',
-            // ADR-017 decision #4: "Delivery Logs" — every resend
-            // attempt, most recent first, alongside the package it
-            // actually used (may differ from the order's own).
-            'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
-        ]));
+        return $this->orderDetailResponse($order);
     }
 
     /**
@@ -247,10 +238,119 @@ class OrderController extends Controller
         // none of them loaded. Found live: without this, the admin
         // panel's own setSelected(updated) crashes rendering
         // DeliveryLogsTable on the now-undefined resend_attempts.
-        return response()->json($result->load([
+        return $this->orderDetailResponse($result);
+    }
+
+    /**
+     * ADR-073 decision 7: the wallet-order counterpart to
+     * VoucherController::storeFromOrder() — for a `wallet_reseller_id`-
+     * owned order, this REPLACES Issue Voucher entirely in that order's
+     * detail screen (never shown alongside it), since Voucher's
+     * email-keyed mechanism has no meaning for a B2B wallet account and
+     * a dual option only invites the wrong one being clicked. Not a
+     * reopening of ADR-004's "no cash refund" policy — no cash ever
+     * leaves the platform, this is an internal-credit reversal back
+     * into a balance we fully control.
+     */
+    public function refundToWallet(Request $request, Order $order, LedgerService $ledger): JsonResponse
+    {
+        if ($order->is_test) {
+            abort(404);
+        }
+
+        if ($order->wallet_reseller_id === null) {
+            throw ValidationException::withMessages([
+                'order' => ['This order was not placed against a Reseller wallet.'],
+            ]);
+        }
+
+        if ($order->delivery_status !== DeliveryStatus::Failed) {
+            throw ValidationException::withMessages([
+                'order' => ['A wallet refund can only be issued for an order with a failed delivery.'],
+            ]);
+        }
+
+        // The same "did this already happen" guard Issue Voucher has
+        // (a unique index there; here the ledger reference pair is the
+        // structural backstop) — a repeat request against an already-
+        // refunded order is a no-op-safe rejection, not a second credit.
+        if ($this->alreadyRefundedToWallet($order)) {
+            throw ValidationException::withMessages([
+                'order' => ['This order has already been refunded to the reseller\'s wallet.'],
+            ]);
+        }
+
+        $ledger->credit(
+            LedgerOwnerType::ResellerWallet,
+            $order->wallet_reseller_id,
+            $order->final_amount,
+            'wallet_refund',
+            referenceType: 'order',
+            referenceId: $order->id,
+        );
+
+        Log::info('Order refunded to reseller wallet', [
+            'order_id' => $order->id,
+            'wallet_reseller_id' => $order->wallet_reseller_id,
+            'amount_sen' => $order->final_amount,
+            'admin_user_id' => $request->user()?->id,
+        ]);
+
+        return $this->orderDetailResponse($order->fresh());
+    }
+
+    /**
+     * The one shape every order-detail response returns — show() and
+     * every mutating action that hands back the updated order
+     * (markDelivered, refundToWallet) all funnel through here so they
+     * can never drift apart on which relations/fields the frontend's
+     * `OrderDetail` type expects (the exact bug markDelivered()'s own
+     * doc comment already records once).
+     */
+    private function orderDetailResponse(Order $order): JsonResponse
+    {
+        $order->load([
             'game', 'package', 'supplier', 'affiliate', 'voucher',
+            // ADR-073 decision 7: which Reseller (wallet) account placed
+            // this order, if any — the admin detail screen swaps "Issue
+            // Voucher" for "Refund to Wallet" when this is set.
+            'walletReseller:id,business_name',
+            // ADR-027 Phase 6: the member (if any) this order priced
+            // against — email + tier name, so admin can see who and
+            // which plan without a separate lookup. Note this
+            // membership's own email can genuinely differ from the
+            // order's own customer_email (identity comes from the
+            // session token, not the checkout contact form).
             'membership.membershipPlan',
+            // ADR-017 decision #4: "Delivery Logs" — every resend
+            // attempt, most recent first, alongside the package it
+            // actually used (may differ from the order's own).
             'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
-        ]));
+        ]);
+
+        return response()->json([
+            ...$order->toArray(),
+            // ADR-073 decision 7: computed, not a stored column — lets
+            // the frontend disable/hide the Refund to Wallet button on
+            // a fresh page load too, not just right after a successful
+            // action in the same session.
+            'wallet_refunded' => $this->alreadyRefundedToWallet($order),
+        ]);
+    }
+
+    /** The structural "did this already happen" check refundToWallet() itself also uses as its guard. */
+    private function alreadyRefundedToWallet(Order $order): bool
+    {
+        if ($order->wallet_reseller_id === null) {
+            return false;
+        }
+
+        return LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('owner_id', $order->wallet_reseller_id)
+            ->where('type', 'wallet_refund')
+            ->where('reference_type', 'order')
+            ->where('reference_id', $order->id)
+            ->exists();
     }
 }

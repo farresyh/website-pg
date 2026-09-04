@@ -57,7 +57,7 @@ export interface OrderDetail extends OrderListItem {
   // (resolved from their session token) — can genuinely differ from
   // `customer_email` above (the checkout contact form), e.g. a member
   // checking out on someone else's behalf.
-  pricing_basis: "standard" | "member";
+  pricing_basis: "standard" | "member" | "reseller-wallet";
   member_discount_percent: string | null;
   normal_selling_price: number | null;
   membership: { id: number; email: string; membership_plan: { name: string } } | null;
@@ -69,6 +69,13 @@ export interface OrderDetail extends OrderListItem {
   game: Game | null;
   supplier: { id: number; name: string } | null;
   affiliate: { id: number; business_name: string } | null;
+  // ADR-073 decision 5/7: which Reseller (wallet) account placed this
+  // order, if any. Non-null here is the signal the order detail screen
+  // uses to swap "Issue Voucher" for "Refund to Wallet" — never both.
+  wallet_reseller: { id: number; business_name: string } | null;
+  // ADR-073 decision 7: computed server-side (not a stored column) —
+  // true once a wallet_refund ledger entry exists for this order.
+  wallet_refunded: boolean;
   resend_attempts: OrderResendAttempt[];
   // VCH-7: null until VoucherController::storeFromOrder() has been
   // called for this order — the unique index on vouchers.order_id
@@ -158,6 +165,17 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
  */
 export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string } = {}) {
   return apiFetch<Voucher>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
+}
+
+/**
+ * ADR-073 decision 7: the wallet-order counterpart to
+ * issueVoucherFromOrder() above — replaces it entirely (never offered
+ * alongside) whenever `wallet_reseller` is set. Credits the order's
+ * `final_amount` back into that Reseller's wallet balance, no cash
+ * ever leaves the platform.
+ */
+export function refundOrderToWallet(token: string, id: number) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}/refund-to-wallet`, { method: "POST", token });
 }
 
 /**

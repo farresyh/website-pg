@@ -39,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder } from "@/lib/orders";
+import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder, refundOrderToWallet } from "@/lib/orders";
 import type { Voucher } from "@/lib/vouchers";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
@@ -118,12 +118,15 @@ function OrdersPageInner() {
   const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
   const [markDeliveredModalOpen, setMarkDeliveredModalOpen] = useState(false);
   const [markDeliveredMessage, setMarkDeliveredMessage] = useState<string | null>(null);
+  const [refundingToWallet, setRefundingToWallet] = useState(false);
+  const [refundMessage, setRefundMessage] = useState<string | null>(null);
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
     setResendMessage(null);
     setVoucherMessage(null);
     setMarkDeliveredMessage(null);
+    setRefundMessage(null);
     try {
       setSelected(await getOrder(token, id));
     } catch (err) {
@@ -143,6 +146,21 @@ function OrdersPageInner() {
   function handleMarkedDelivered(updated: OrderDetail) {
     setMarkDeliveredMessage("Delivery confirmed manually — ledger profit credited.");
     setSelected(updated);
+  }
+
+  async function handleRefundToWallet() {
+    const session = getClientSession();
+    if (!session || !selected) return;
+    setRefundingToWallet(true);
+    try {
+      const updated = await refundOrderToWallet(session.token, selected.id);
+      setRefundMessage(`Refunded ${formatRm(updated.final_amount)} to ${updated.wallet_reseller?.business_name}'s wallet.`);
+      setSelected(updated);
+    } catch (err) {
+      setRefundMessage(err instanceof ApiError ? err.message : "Refund failed.");
+    } finally {
+      setRefundingToWallet(false);
+    }
   }
 
   useEffect(() => {
@@ -221,8 +239,14 @@ function OrdersPageInner() {
               <Button size="small" onClick={() => setResendModalOpen(true)}>
                 Resend Delivery…
               </Button>
+              {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both, Voucher's email-keyed mechanism has no meaning for a B2B wallet account. */}
+              {selected.delivery_status === "failed" && selected.wallet_reseller && !selected.wallet_refunded && (
+                <Button size="small" variant="outlined" disabled={refundingToWallet} onClick={handleRefundToWallet}>
+                  {refundingToWallet ? "Refunding…" : "Refund to Wallet…"}
+                </Button>
+              )}
               {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for needs_review at all (ADR-026 decision 4c). */}
-              {selected.delivery_status === "failed" && !selected.voucher && (
+              {selected.delivery_status === "failed" && !selected.wallet_reseller && !selected.voucher && (
                 <Button size="small" variant="outlined" onClick={() => setVoucherModalOpen(true)}>
                   Issue Voucher…
                 </Button>
@@ -235,6 +259,7 @@ function OrdersPageInner() {
               )}
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
               {voucherMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{voucherMessage}</span>}
+              {refundMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{refundMessage}</span>}
             </div>
           )}
           {/* Rendered outside the failed/needs_review-gated block above,
@@ -249,6 +274,11 @@ function OrdersPageInner() {
           {selected.voucher && (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
               Voucher <span className="font-medium text-gray-800 dark:text-white/90">{selected.voucher.code}</span> already issued for this order.
+            </p>
+          )}
+          {selected.wallet_refunded && (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              Already refunded to <span className="font-medium text-gray-800 dark:text-white/90">{selected.wallet_reseller?.business_name}</span>&apos;s wallet.
             </p>
           )}
         </div>
