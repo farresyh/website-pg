@@ -154,6 +154,31 @@ export function creditResellerWallet(token: string, id: number, values: CreditRe
   );
 }
 
+/** ADR-074 decision 1: a Reseller API credential. `plain_text_key` only ever appears in issueResellerApiKey()'s own response. */
+export interface ResellerApiKey {
+  id: number;
+  name: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export function listResellerApiKeys(token: string, resellerId: number) {
+  return apiFetch<ResellerApiKey[]>(`/api/resellers/${resellerId}/api-keys`, { token });
+}
+
+export function issueResellerApiKey(token: string, resellerId: number, name: string) {
+  return apiFetch<ResellerApiKey & { plain_text_key: string }>(`/api/resellers/${resellerId}/api-keys`, {
+    method: "POST",
+    token,
+    body: { name },
+  });
+}
+
+export function revokeResellerApiKey(token: string, resellerId: number, apiKeyId: number) {
+  return apiFetch<void>(`/api/resellers/${resellerId}/api-keys/${apiKeyId}`, { method: "DELETE", token });
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**

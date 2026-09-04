@@ -31,6 +31,9 @@ use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Support\CurrentAffiliate;
+use Dedoc\Scramble\Scramble;
+use Dedoc\Scramble\Support\Generator\OpenApi;
+use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -322,6 +325,24 @@ class AppServiceProvider extends ServiceProvider
             return $user !== null && $user->is_active && $user->role === 'super_admin';
         });
 
+        // ADR-074 decision 3: the Reseller API docs page is deliberately
+        // public — it's meant to be handed to an external reseller's own
+        // dev team (same posture as Stripe/GitHub's own API docs), and
+        // Scramble's own `api_path` scoping already confines what it
+        // documents to `api/reseller/*` — no admin/internal route shape
+        // is ever exposed through it.
+        Gate::define('viewApiDocs', fn () => true);
+
+        // ADR-074 decision 1: every documented operation requires the
+        // Reseller API's bearer credential (EnsureResellerApiKey) —
+        // Scramble has no auto-detection for a non-Sanctum guard, so the
+        // security scheme is declared explicitly rather than left blank
+        // (a blank scheme would make the docs' own "Try it" panel never
+        // prompt for a key).
+        Scramble::extendOpenApi(function (OpenApi $openApi) {
+            $openApi->secure(SecurityScheme::http('bearer')->as('Reseller API key'));
+        });
+
         // ADR-027's 2026-08-29 addendum, decision 26: OTP requests are
         // rate-limited per email address (not just per IP, unlike every
         // other `throttle:` route in this app — the abuse case here is
@@ -338,6 +359,16 @@ class AppServiceProvider extends ServiceProvider
         // script hammering CHIP-purchase creation.
         RateLimiter::for('membership-subscribe', function (Request $request) {
             return Limit::perMinute(10)->by((string) ($request->bearerToken() ?? $request->ip()));
+        });
+
+        // ADR-074 decision 4 — the Reseller API channel's own throttle
+        // bucket, keyed on the API key itself (not IP): an external
+        // reseller's own system may be shared infrastructure behind one
+        // IP, and the auth boundary hasn't run yet at this point in the
+        // pipeline (this limiter fires before EnsureResellerApiKey), so
+        // the raw bearer token is the only identifier available.
+        RateLimiter::for('reseller-api', function (Request $request) {
+            return Limit::perMinute(60)->by((string) ($request->bearerToken() ?? $request->ip()));
         });
     }
 }

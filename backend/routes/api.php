@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ResellerApiKeyController;
 use App\Http\Controllers\Admin\ResellerController;
 use App\Http\Controllers\Admin\ResellerTierController;
 use App\Http\Controllers\Admin\ResellerWalletController;
@@ -61,12 +62,16 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceController;
+use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
+use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
 use App\Http\Controllers\Webhooks\DigiflazzWebhookController;
+use App\Http\Middleware\EnsureResellerApiKey;
 use Illuminate\Support\Facades\Route;
 
 // ADR-019: the only mutating auth-adjacent route with no throttle,
@@ -551,6 +556,13 @@ Route::middleware('auth:sanctum')->group(function () {
             // a Reseller its own entry point (see ADR-073's build addendum).
             Route::get('/{reseller}/wallet', [ResellerWalletController::class, 'index']);
             Route::post('/{reseller}/wallet/credit', [ResellerWalletController::class, 'credit']);
+
+            // ADR-074 decision 1 (PR-E) — issue/revoke a Reseller API
+            // credential. The plaintext key is only ever in store()'s
+            // response.
+            Route::get('/{reseller}/api-keys', [ResellerApiKeyController::class, 'index']);
+            Route::post('/{reseller}/api-keys', [ResellerApiKeyController::class, 'store']);
+            Route::delete('/{reseller}/api-keys/{api_key}', [ResellerApiKeyController::class, 'destroy']);
         });
 
         // ADR-073 decision 1 — the reseller_tiers CRUD ladder.
@@ -699,3 +711,16 @@ Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
 Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle'])
     ->middleware('throttle:120,1,webhook-digiflazz')
     ->name('webhooks.digiflazz');
+
+// ADR-074 — Reseller API channel. Not behind auth:sanctum:
+// EnsureResellerApiKey (a bearer `reseller_api_keys` credential) is its
+// own, deliberately separate auth boundary (decision 1) — never the
+// portal-login `reseller` Sanctum guard. Rate-limited per API key, not
+// IP (decision 4), via the `reseller-api` named limiter
+// (AppServiceProvider).
+Route::prefix('reseller/v1')->middleware(['throttle:reseller-api', EnsureResellerApiKey::class])->group(function () {
+    Route::get('/catalog', [ResellerApiCatalogController::class, 'index']);
+    Route::get('/balance', [ResellerApiBalanceController::class, 'show']);
+    Route::post('/orders', [ResellerApiOrderController::class, 'store']);
+    Route::get('/orders/{orderNumber}', [ResellerApiOrderController::class, 'show']);
+});

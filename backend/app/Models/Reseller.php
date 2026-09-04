@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -40,5 +41,11 @@ class Reseller extends Model
     public function tier(): BelongsTo
     {
         return $this->belongsTo(ResellerTier::class, 'reseller_tier_id');
+    }
+
+    /** ADR-074 decision 1: this account's Reseller API credentials. */
+    public function apiKeys(): HasMany
+    {
+        return $this->hasMany(ResellerApiKey::class);
     }
 }

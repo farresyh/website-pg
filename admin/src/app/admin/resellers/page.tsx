@@ -6,8 +6,9 @@
  * CRUD (ADR-073 decision 1). super_admin tier, same as Affiliates.
  * PrimeReact-Tailwind primitives only (ADR-038) — this screen is new.
  *
- * No order-placing logic yet (PR-D), no API key issuance yet (PR-E), no
- * portal login yet (PR-G) — see the ADR-072..075 phasing note.
+ * PR-D added order-placing logic; PR-E (ADR-074) added the "API Keys"
+ * row action (`ResellerApiKeysModal`, issue/revoke). No portal login
+ * yet (PR-G) — see the ADR-072..075 phasing note.
  */
 
 import { useEffect, useState } from "react";
@@ -56,6 +57,7 @@ import {
 import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/resellers/ResellerFormModal";
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
+import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -81,6 +83,7 @@ export default function ResellersPage() {
   const [deleteTarget, setDeleteTarget] = useState<ResellerRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
   const [walletTarget, setWalletTarget] = useState<ResellerRow | null>(null);
+  const [apiKeysTarget, setApiKeysTarget] = useState<ResellerRow | null>(null);
 
   function refresh(t: string) {
     return Promise.all([listResellers(t), listResellerTiers(t)])
@@ -204,6 +207,9 @@ export default function ResellersPage() {
                             <Button size="small" variant="outlined" onClick={() => setWalletTarget(r)}>
                               Wallet
                             </Button>
+                            <Button size="small" variant="outlined" onClick={() => setApiKeysTarget(r)}>
+                              API Keys
+                            </Button>
                             <Button size="small" variant="outlined" onClick={() => { setEditing(r); setFormOpen(true); }}>
                               Edit
                             </Button>
@@ -308,6 +314,15 @@ export default function ResellersPage() {
           token={token}
           reseller={walletTarget}
           onCredited={() => refresh(token)}
+        />
+      )}
+
+      {apiKeysTarget && (
+        <ResellerApiKeysModal
+          isOpen={apiKeysTarget !== null}
+          onClose={() => setApiKeysTarget(null)}
+          token={token}
+          reseller={apiKeysTarget}
         />
       )}
 
