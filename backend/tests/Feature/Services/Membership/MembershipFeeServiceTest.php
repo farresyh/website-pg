@@ -27,7 +27,7 @@ class MembershipFeeServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->rid = $this->primaryReseller()->id;
+        $this->rid = $this->primaryAffiliate()->id;
         // ADR-068 decision 9: recordFeePaid() dispatches the receipt job.
         Queue::fake();
     }
@@ -91,7 +91,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = Membership::query()->create([
-            'reseller_id' => $this->rid,
+            'affiliate_id' => $this->rid,
             'email' => 'active@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -123,7 +123,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = Membership::query()->create([
-            'reseller_id' => $this->rid,
+            'affiliate_id' => $this->rid,
             'email' => 'lapsed@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -155,7 +155,7 @@ class MembershipFeeServiceTest extends TestCase
         $admin = $this->admin();
 
         $membership = Membership::query()->create([
-            'reseller_id' => $this->rid,
+            'affiliate_id' => $this->rid,
             'email' => 'upgrade@example.com',
             'membership_plan_id' => $tier1->id,
             'status' => 'active',

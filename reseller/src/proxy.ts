@@ -6,7 +6,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth";
  * Next.js 16 renamed `middleware.ts` to `proxy.ts` (same mechanism).
  *
  * OPTIMISTIC redirect only (fast UX), NOT a security boundary — the
- * Laravel `reseller` guard authorizes every API call
+ * Laravel `affiliate` guard authorizes every API call
  * (foundation-security.md §1). Do not add real permission logic here.
  */
 export function proxy(request: NextRequest) {

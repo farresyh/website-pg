@@ -172,7 +172,7 @@ export default function OrdersPage() {
                   <td className="px-5 py-4 font-medium text-gray-800 dark:text-white/90">
                     {formatRm(order.final_amount)}
                   </td>
-                  <td className="px-5 py-4">{formatRm(order.reseller_profit)}</td>
+                  <td className="px-5 py-4">{formatRm(order.affiliate_profit)}</td>
                   <td className="px-5 py-4">
                     <StatusTag severity={paymentSeverity(order.payment_status)}>
                       {order.payment_status}

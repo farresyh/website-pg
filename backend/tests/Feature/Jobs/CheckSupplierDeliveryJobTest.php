@@ -43,7 +43,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
             )->id;
 
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-CHECK-TEST-1',
             'reference_number' => 'REF-CHECK-TEST-1',
             'customer_email' => 'buyer@example.com',
@@ -56,7 +56,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Pending->value,
         ], $overrides));
@@ -67,11 +67,11 @@ class CheckSupplierDeliveryJobTest extends TestCase
         $this->app->bind('supplier-adapter.digiflazz-test', fn () => $adapter);
 
         return new OrderFulfillmentService(
-            new OrderStatusService(),
-            new ReferenceNumberService(),
+            new OrderStatusService,
+            new ReferenceNumberService,
             $this->app->make(SupplierAdapterFactory::class),
-            new LedgerService(),
-            new VoucherService(new LedgerService()),
+            new LedgerService,
+            new VoucherService(new LedgerService),
         );
     }
 
@@ -79,9 +79,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
     {
         return new class($response) implements SupplierAdapter
         {
-            public function __construct(private readonly SupplierResponse $response)
-            {
-            }
+            public function __construct(private readonly SupplierResponse $response) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -112,7 +110,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
 
     public function test_finalizes_as_delivered_when_supplier_confirms_success(): void
     {
-        $order = $this->pendingOrder(['platform_profit' => 150, 'reseller_profit' => 50]);
+        $order = $this->pendingOrder(['platform_profit' => 150, 'affiliate_profit' => 50]);
         $fulfillment = $this->fulfillmentService($this->checkStatusAdapter(
             SupplierResponse::success(['supplier_ref' => 'DGFLZ-CHECK-1']),
         ));

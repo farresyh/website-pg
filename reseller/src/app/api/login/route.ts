@@ -3,9 +3,9 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
 
 /**
- * Server-side proxy for Laravel's POST /api/reseller/login (ADR-058 58a).
+ * Server-side proxy for Laravel's POST /api/affiliate/login (ADR-058 58a).
  * Mirrors `admin/src/app/api/login/route.ts`:
- *  1. the real Sanctum token + reseller payload go back to the client as
+ *  1. the real Sanctum token + affiliate payload go back to the client as
  *     JSON (for direct browser -> Laravel calls, ADR-009);
  *  2. a presence-only httpOnly cookie is set so `proxy.ts` can redirect
  *     signed-out visitors without a round trip — it never holds the token.
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const laravelResponse = await fetch(`${API_BASE_URL}/api/reseller/login`, {
+  const laravelResponse = await fetch(`${API_BASE_URL}/api/affiliate/login`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ email: body.email, password: body.password }),

@@ -2,13 +2,13 @@
 
 namespace Database\Seeders;
 
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\MembershipOtpCode;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
-use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Hash;
  * ADR-023 decision #7: the thin, explicitly-owned fixture layer for
  * the 3 Playwright golden-path tests. Reuses DatabaseSeeder as-is
  * (admin user `test@example.com`/`password`, the platform-owner
- * Reseller, the real PaymentMethodSeeder catalog) rather than
+ * Affiliate, the real PaymentMethodSeeder catalog) rather than
  * duplicating it, then adds exactly the rows the 3 specs assert
  * against: one Game+Package with no player-ID validation (keeps the
  * storefront wizard's Step 1 to a plain "Continue" gate — validator
@@ -43,10 +43,10 @@ class E2ESeeder extends Seeder
     {
         $this->call(DatabaseSeeder::class);
 
-        // ADR-061 PR-B: `orders.reseller_id` is NOT NULL — every fixture
+        // ADR-061 PR-B: `orders.affiliate_id` is NOT NULL — every fixture
         // order below is the primary brand's (the one `DatabaseSeeder`
         // just seeded).
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         // CHIP FPX (`fpx`) — the one channel the golden-path checkout
         // spec drives through. Every other seeded row stays
@@ -58,16 +58,16 @@ class E2ESeeder extends Seeder
 
         // ADR-068 — the self-serve membership-subscribe golden path.
         // Membership on for the primary brand (the effective gate needs
-        // both this and the reseller's own toggle, which primaryReseller
+        // both this and the affiliate's own toggle, which primaryAffiliate
         // seeds true), plus a pre-verifiable OTP fixture so the spec can
         // obtain a real 30-day session token without an email round-trip
         // (MAIL_MAILER=log in e2e). The seeded code hash matches
         // E2E_MEMBER_OTP in e2e/tests/constants.ts.
         PlatformSettings::current()->update(['membership_enabled' => true]);
-        $reseller->update(['membership_enabled' => true]);
+        $affiliate->update(['membership_enabled' => true]);
 
         MembershipOtpCode::query()->firstOrCreate(
-            ['reseller_id' => $reseller->id, 'email' => 'e2e-member@example.com', 'consumed_at' => null],
+            ['affiliate_id' => $affiliate->id, 'email' => 'e2e-member@example.com', 'consumed_at' => null],
             ['code_hash' => Hash::make('123456'), 'expires_at' => now()->addYear()],
         );
 
@@ -110,7 +110,7 @@ class E2ESeeder extends Seeder
         Order::query()->firstOrCreate(
             ['order_number' => 'PG-E2E-VOUCHER-FIXTURE'],
             [
-                'reseller_id' => $reseller->id,
+                'affiliate_id' => $affiliate->id,
                 'reference_number' => 'REF-E2E-VOUCHER-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-voucher-fixture@example.com',
@@ -126,7 +126,7 @@ class E2ESeeder extends Seeder
                 'transaction_fee' => 21,
                 'final_amount' => 621,
                 'platform_profit' => 100,
-                'reseller_profit' => 0,
+                'affiliate_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::Failed->value,
                 'payment_gateway' => 'chip',
@@ -139,7 +139,7 @@ class E2ESeeder extends Seeder
         Order::query()->firstOrCreate(
             ['order_number' => 'PG-E2E-RESEND-FIXTURE'],
             [
-                'reseller_id' => $reseller->id,
+                'affiliate_id' => $affiliate->id,
                 'reference_number' => 'REF-E2E-RESEND-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-resend-fixture@example.com',
@@ -155,7 +155,7 @@ class E2ESeeder extends Seeder
                 'transaction_fee' => 21,
                 'final_amount' => 621,
                 'platform_profit' => 100,
-                'reseller_profit' => 0,
+                'affiliate_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::Failed->value,
                 'payment_gateway' => 'chip',
@@ -169,7 +169,7 @@ class E2ESeeder extends Seeder
         Order::query()->firstOrCreate(
             ['order_number' => 'PG-E2E-NEEDSREVIEW-FIXTURE'],
             [
-                'reseller_id' => $reseller->id,
+                'affiliate_id' => $affiliate->id,
                 'reference_number' => 'REF-E2E-NEEDSREVIEW-FIXTURE',
                 'is_test' => false,
                 'customer_email' => 'e2e-needsreview-fixture@example.com',
@@ -185,7 +185,7 @@ class E2ESeeder extends Seeder
                 'transaction_fee' => 21,
                 'final_amount' => 621,
                 'platform_profit' => 100,
-                'reseller_profit' => 0,
+                'affiliate_profit' => 0,
                 'payment_status' => PaymentStatus::Paid->value,
                 'delivery_status' => DeliveryStatus::NeedsReview->value,
                 'payment_gateway' => 'chip',

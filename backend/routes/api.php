@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\AffiliateController;
+use App\Http\Controllers\Admin\AffiliateImpersonationController;
+use App\Http\Controllers\Admin\AffiliateMembershipTierController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\CustomerAnalyticsController;
@@ -13,15 +16,20 @@ use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
-use App\Http\Controllers\Admin\ResellerController;
-use App\Http\Controllers\Admin\ResellerImpersonationController;
-use App\Http\Controllers\Admin\ResellerMembershipTierController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
+use App\Http\Controllers\Affiliate\AffiliateAuthController;
+use App\Http\Controllers\Affiliate\DashboardController as AffiliateDashboardController;
+use App\Http\Controllers\Affiliate\EarningsController as AffiliateEarningsController;
+use App\Http\Controllers\Affiliate\ImpersonationController as AffiliateImpersonationEndController;
+use App\Http\Controllers\Affiliate\OrderController as AffiliateOrderController;
+use App\Http\Controllers\Affiliate\ProfileController as AffiliateProfileController;
+use App\Http\Controllers\Affiliate\SubscriptionController as AffiliateSubscriptionController;
+use App\Http\Controllers\Affiliate\WithdrawalController as AffiliateWithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
@@ -50,14 +58,6 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
-use App\Http\Controllers\Reseller\DashboardController as ResellerDashboardController;
-use App\Http\Controllers\Reseller\EarningsController as ResellerEarningsController;
-use App\Http\Controllers\Reseller\ImpersonationController as ResellerImpersonationEndController;
-use App\Http\Controllers\Reseller\OrderController as ResellerOrderController;
-use App\Http\Controllers\Reseller\ProfileController as ResellerProfileController;
-use App\Http\Controllers\Reseller\ResellerAuthController;
-use App\Http\Controllers\Reseller\SubscriptionController as ResellerSubscriptionController;
-use App\Http\Controllers\Reseller\WithdrawalController as ResellerWithdrawalController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
@@ -214,39 +214,39 @@ Route::prefix('catalog')->group(function () {
     Route::get('/seo/robots', [SeoController::class, 'robots']);
 });
 
-// ADR-058 (58a) — reseller portal auth, on the separate `reseller`
+// ADR-058 (58a) — affiliate portal auth, on the separate `affiliate`
 // Sanctum guard (config/auth.php). Own throttle buckets from day one:
 // per the lesson above every throttle:N route needs its own prefix or
 // it silently shares one per-IP bucket with every other prefixless one.
-Route::prefix('reseller')->group(function () {
-    Route::post('/login', [ResellerAuthController::class, 'login'])->middleware('throttle:5,1,reseller-login');
-    Route::post('/set-password', [ResellerAuthController::class, 'setPassword'])->middleware('throttle:6,1,reseller-set-password');
+Route::prefix('affiliate')->group(function () {
+    Route::post('/login', [AffiliateAuthController::class, 'login'])->middleware('throttle:5,1,affiliate-login');
+    Route::post('/set-password', [AffiliateAuthController::class, 'setPassword'])->middleware('throttle:6,1,affiliate-set-password');
 
-    // `auth:reseller` rejects any token whose tokenable is not a
-    // reseller_users model; `reseller.context` then activates ADR-057's
-    // tenant scope from the authenticated user's reseller_id.
-    Route::middleware(['auth:reseller', 'reseller.context'])->group(function () {
-        Route::post('/logout', [ResellerAuthController::class, 'logout']);
-        Route::get('/me', [ResellerAuthController::class, 'me']);
+    // `auth:affiliate` rejects any token whose tokenable is not a
+    // affiliate_users model; `affiliate.context` then activates ADR-057's
+    // tenant scope from the authenticated user's affiliate_id.
+    Route::middleware(['auth:affiliate', 'affiliate.context'])->group(function () {
+        Route::post('/logout', [AffiliateAuthController::class, 'logout']);
+        Route::get('/me', [AffiliateAuthController::class, 'me']);
 
-        // ADR-059 (59a) — reseller portal read layer. Every route here
-        // is scoped to the authenticated reseller_user's own tenant by
-        // `reseller.context`; money reads go through
-        // ResellerEarningsService (decision 5).
-        Route::get('/dashboard', [ResellerDashboardController::class, 'show']);
-        Route::get('/orders', [ResellerOrderController::class, 'index']);
-        Route::get('/orders/{orderNumber}', [ResellerOrderController::class, 'show']);
-        Route::get('/earnings', [ResellerEarningsController::class, 'index']);
-        Route::get('/subscription', [ResellerSubscriptionController::class, 'show']);
+        // ADR-059 (59a) — affiliate portal read layer. Every route here
+        // is scoped to the authenticated affiliate_user's own tenant by
+        // `affiliate.context`; money reads go through
+        // AffiliateEarningsService (decision 5).
+        Route::get('/dashboard', [AffiliateDashboardController::class, 'show']);
+        Route::get('/orders', [AffiliateOrderController::class, 'index']);
+        Route::get('/orders/{orderNumber}', [AffiliateOrderController::class, 'show']);
+        Route::get('/earnings', [AffiliateEarningsController::class, 'index']);
+        Route::get('/subscription', [AffiliateSubscriptionController::class, 'show']);
 
         // ADR-059 (59c) — write surface: profile bank details + WTH-1..5
         // request side (approval stays admin) + the portal "Exit
         // impersonation" close.
-        Route::get('/profile', [ResellerProfileController::class, 'show']);
-        Route::put('/profile', [ResellerProfileController::class, 'update']);
-        Route::get('/withdrawals', [ResellerWithdrawalController::class, 'index']);
-        Route::post('/withdrawals', [ResellerWithdrawalController::class, 'store']);
-        Route::post('/impersonation/end', [ResellerImpersonationEndController::class, 'end']);
+        Route::get('/profile', [AffiliateProfileController::class, 'show']);
+        Route::put('/profile', [AffiliateProfileController::class, 'update']);
+        Route::get('/withdrawals', [AffiliateWithdrawalController::class, 'index']);
+        Route::post('/withdrawals', [AffiliateWithdrawalController::class, 'store']);
+        Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end']);
     });
 });
 
@@ -330,14 +330,14 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('admin.role:super_admin,admin')->prefix('reports')->group(function () {
-        Route::get('/resellers', [ReportController::class, 'resellers']);
+        Route::get('/affiliates', [ReportController::class, 'affiliates']);
         Route::get('/summary', [ReportController::class, 'summary']);
         Route::get('/trend', [ReportController::class, 'trend']);
         Route::get('/daily-breakdown', [ReportController::class, 'dailyBreakdown']);
         Route::get('/top-games', [ReportController::class, 'topGames']);
         Route::get('/breakdown/games', [ReportController::class, 'gameBreakdown']);
         Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
-        Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
+        Route::get('/breakdown/affiliates', [ReportController::class, 'affiliateBreakdown']);
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
         Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
         Route::get('/export', [ReportController::class, 'export']);
@@ -477,7 +477,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin')->prefix('memberships')->group(function () {
         Route::get('/', [AdminMembershipController::class, 'index']);
         // ADR-061 decision 5: the brands a membership can be recorded
-        // against — internal, membership-enabled resellers only.
+        // against — internal, membership-enabled affiliates only.
         Route::get('/brands', [AdminMembershipController::class, 'brands']);
         Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
         // ADR-068 decisions 14/15 — the per-member detail (state, fee
@@ -486,42 +486,42 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{membership}', [AdminMembershipController::class, 'show']);
     });
 
-    // ADR-058 58b (RES-1..6) — admin Reseller Management. Same
+    // ADR-058 58b (RES-1..6) — admin Affiliate Management. Same
     // super_admin tier as Settings / Membership (platform-wide business
     // config, no supplier-integration dependency so deliberately not
-    // under /middleware). The reseller PORTAL auth (58a) is a separate
-    // guard entirely, see the /reseller prefix above.
+    // under /middleware). The affiliate PORTAL auth (58a) is a separate
+    // guard entirely, see the /affiliate prefix above.
     Route::middleware('admin.role:super_admin')->group(function () {
-        Route::prefix('resellers')->group(function () {
-            Route::get('/', [ResellerController::class, 'index']);
-            Route::post('/', [ResellerController::class, 'store']);
-            Route::get('/{reseller}', [ResellerController::class, 'show']);
-            Route::put('/{reseller}', [ResellerController::class, 'update']);
-            Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
-            Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+        Route::prefix('affiliates')->group(function () {
+            Route::get('/', [AffiliateController::class, 'index']);
+            Route::post('/', [AffiliateController::class, 'store']);
+            Route::get('/{affiliate}', [AffiliateController::class, 'show']);
+            Route::put('/{affiliate}', [AffiliateController::class, 'update']);
+            Route::patch('/{affiliate}/status', [AffiliateController::class, 'updateStatus']);
+            Route::delete('/{affiliate}', [AffiliateController::class, 'destroy']);
 
             // ADR-056 decision 8 — wholesale-tier assignment + fee actions.
-            Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
-            Route::post('/{reseller}/tier/charge', [ResellerController::class, 'chargeTierFee']);
-            Route::post('/{reseller}/tier/reactivate', [ResellerController::class, 'reactivateSubscription']);
+            Route::post('/{affiliate}/tier', [AffiliateController::class, 'assignTier']);
+            Route::post('/{affiliate}/tier/charge', [AffiliateController::class, 'chargeTierFee']);
+            Route::post('/{affiliate}/tier/reactivate', [AffiliateController::class, 'reactivateSubscription']);
 
-            // Staff logins + the set-password invite (58a's ResellerInviteService).
-            Route::post('/{reseller}/users', [ResellerController::class, 'storeUser']);
-            Route::post('/{reseller}/users/{resellerUser}/resend-invite', [ResellerController::class, 'resendInvite']);
+            // Staff logins + the set-password invite (58a's AffiliateInviteService).
+            Route::post('/{affiliate}/users', [AffiliateController::class, 'storeUser']);
+            Route::post('/{affiliate}/users/{affiliateUser}/resend-invite', [AffiliateController::class, 'resendInvite']);
 
             // RES-4 impersonation.
-            Route::post('/{reseller}/impersonate', [ResellerImpersonationController::class, 'store']);
+            Route::post('/{affiliate}/impersonate', [AffiliateImpersonationController::class, 'store']);
         });
 
-        Route::get('/reseller-impersonation-sessions', [ResellerImpersonationController::class, 'index']);
-        Route::post('/reseller-impersonation-sessions/{impersonation_session}/end', [ResellerImpersonationController::class, 'end']);
+        Route::get('/affiliate-impersonation-sessions', [AffiliateImpersonationController::class, 'index']);
+        Route::post('/affiliate-impersonation-sessions/{impersonation_session}/end', [AffiliateImpersonationController::class, 'end']);
 
-        // ADR-056 decision 1 — the reseller_membership_tiers CRUD ladder.
-        Route::prefix('reseller-tiers')->group(function () {
-            Route::get('/', [ResellerMembershipTierController::class, 'index']);
-            Route::post('/', [ResellerMembershipTierController::class, 'store']);
-            Route::put('/{reseller_tier}', [ResellerMembershipTierController::class, 'update']);
-            Route::delete('/{reseller_tier}', [ResellerMembershipTierController::class, 'destroy']);
+        // ADR-056 decision 1 — the affiliate_membership_tiers CRUD ladder.
+        Route::prefix('affiliate-tiers')->group(function () {
+            Route::get('/', [AffiliateMembershipTierController::class, 'index']);
+            Route::post('/', [AffiliateMembershipTierController::class, 'store']);
+            Route::put('/{affiliate_tier}', [AffiliateMembershipTierController::class, 'update']);
+            Route::delete('/{affiliate_tier}', [AffiliateMembershipTierController::class, 'destroy']);
         });
     });
 
@@ -529,7 +529,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Templates (one table, decision 2), Game SEO (decision 11),
     // Redirects (decision 3/9), Scripts (addendum 2 decision 13),
     // Crawler (addendum 2 decision 14). Same tier as Settings above —
-    // decision 6, no reseller self-service portal yet.
+    // decision 6, no affiliate self-service portal yet.
     Route::middleware('admin.role:super_admin')->prefix('seo')->group(function () {
         Route::get('/overview', [AdminSeoController::class, 'overview']);
         Route::get('/settings', [AdminSeoController::class, 'settings']);

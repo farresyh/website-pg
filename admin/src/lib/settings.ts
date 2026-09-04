@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/api-client";
 
 export interface Branding {
   id: number;
-  reseller_id: number;
+  affiliate_id: number;
   store_name: string;
   description: string | null;
   support_email: string | null;
@@ -15,7 +15,7 @@ export interface Branding {
 
 export interface FooterSettings {
   id: number;
-  reseller_id: number;
+  affiliate_id: number;
   footer_text: string | null;
   terms_content: string | null;
   privacy_content: string | null;

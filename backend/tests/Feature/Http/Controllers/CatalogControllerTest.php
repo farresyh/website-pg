@@ -3,11 +3,11 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
-use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Membership\MembershipSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,8 +32,8 @@ class CatalogControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: these endpoints resolve the platform storefront via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
     }
 
     private function makeSupplier(): Supplier
@@ -89,7 +89,7 @@ class CatalogControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/games');
 
         $response->assertOk();
-        // Platform Owner reseller markup_pct=0 (ADR-013) — selling_price equals standard_selling_price in MVP.
+        // Platform Owner affiliate markup_pct=0 (ADR-013) — selling_price equals standard_selling_price in MVP.
         $this->assertSame(300, $response->json()[0]['price_from_sen']);
     }
 
@@ -154,9 +154,9 @@ class CatalogControllerTest extends TestCase
         }
     }
 
-    public function test_packages_applies_reseller_markup_to_the_selling_price(): void
+    public function test_packages_applies_affiliate_markup_to_the_selling_price(): void
     {
-        $this->primaryReseller()->update(['markup_pct' => 10]);
+        $this->primaryAffiliate()->update(['markup_pct' => 10]);
         $supplier = $this->makeSupplier();
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         Package::query()->create([
@@ -372,7 +372,7 @@ class CatalogControllerTest extends TestCase
 
         $tier1 = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'tier1-member@example.com',
             'membership_plan_id' => $tier1->id,
             'status' => 'active',
@@ -380,7 +380,7 @@ class CatalogControllerTest extends TestCase
             'quota_remaining_sen' => 30000,
             'expires_at' => now()->addDays(20),
         ]);
-        $token = app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, 'tier1-member@example.com');
+        $token = app(MembershipSessionTokenService::class)->issue($this->primaryAffiliate()->id, 'tier1-member@example.com');
 
         // Anonymous request still gets Tier 2's anchor, unaffected.
         $anonymous = $this->getJson('/api/catalog/games/free-fire-global/packages');

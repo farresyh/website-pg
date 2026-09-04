@@ -33,7 +33,7 @@ class MembershipQuotaDecrementConcurrencyTest extends TestCase
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'race@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -88,7 +88,7 @@ class MembershipQuotaDecrementConcurrencyTest extends TestCase
     private function order(string $orderNumber): Order
     {
         return Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => $orderNumber,
             'customer_email' => 'race@example.com',
             'player_id' => '123456',
@@ -98,7 +98,7 @@ class MembershipQuotaDecrementConcurrencyTest extends TestCase
             'transaction_fee' => 0,
             'final_amount' => 1040,
             'platform_profit' => 140,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ]);

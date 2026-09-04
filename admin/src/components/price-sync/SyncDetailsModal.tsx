@@ -97,7 +97,7 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
                           <DataTableTHeadRow>
                             <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
                             <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Price</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate Price</DataTableTHeadCell>
                           </DataTableTHeadRow>
                         </DataTableTHead>
                         <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">

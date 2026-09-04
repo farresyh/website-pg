@@ -41,7 +41,7 @@ class OrderFulfillmentConcurrencyTest extends TestCase
         ]);
 
         $order = Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-RACE-1',
             'customer_email' => 'race@example.com',
             'player_id' => '123456',
@@ -53,7 +53,7 @@ class OrderFulfillmentConcurrencyTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ]);
@@ -98,7 +98,7 @@ class OrderFulfillmentConcurrencyTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $fresh->delivery_status);
         $this->assertNotNull($fresh->reference_number);
 
-        // Exactly two order_profit entries (platform + reseller) — not
+        // Exactly two order_profit entries (platform + affiliate) — not
         // four, which is what a lost race would have produced.
         $this->assertSame(2, LedgerEntry::query()->where('reference_id', $order->id)->count());
     }

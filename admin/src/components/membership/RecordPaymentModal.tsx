@@ -26,7 +26,7 @@ interface RecordPaymentModalProps {
   plans: MembershipPlan[];
   /** ADR-061 decision 5: internal, membership-enabled brands a membership can belong to. */
   brands: MembershipBrand[];
-  presetResellerId?: number;
+  presetAffiliateId?: number;
   presetEmail?: string;
   onSubmit: (values: RecordMembershipPaymentValues) => Promise<void>;
 }
@@ -42,9 +42,9 @@ function toRm(sen: number): string {
  * server-side. One idempotency key per open (ADR-035 pattern), fresh on
  * every mount since this unmounts while closed.
  */
-function RecordPaymentFields({ onClose, plans, brands, presetResellerId, presetEmail, onSubmit }: Omit<RecordPaymentModalProps, "isOpen">) {
-  const [resellerId, setResellerId] = useState(
-    presetResellerId ? String(presetResellerId) : brands[0]?.id ? String(brands[0].id) : "",
+function RecordPaymentFields({ onClose, plans, brands, presetAffiliateId, presetEmail, onSubmit }: Omit<RecordPaymentModalProps, "isOpen">) {
+  const [affiliateId, setAffiliateId] = useState(
+    presetAffiliateId ? String(presetAffiliateId) : brands[0]?.id ? String(brands[0].id) : "",
   );
   const [email, setEmail] = useState(presetEmail ?? "");
   const [planId, setPlanId] = useState(plans[0]?.id ? String(plans[0].id) : "");
@@ -75,7 +75,7 @@ function RecordPaymentFields({ onClose, plans, brands, presetResellerId, presetE
       return;
     }
 
-    if (!resellerId) {
+    if (!affiliateId) {
       setError("Pick a brand first.");
       return;
     }
@@ -89,7 +89,7 @@ function RecordPaymentFields({ onClose, plans, brands, presetResellerId, presetE
     setSubmitting(true);
     try {
       await onSubmit({
-        reseller_id: Number(resellerId),
+        affiliate_id: Number(affiliateId),
         email,
         membership_plan_id: selectedPlan.id,
         amount_sen: amountSen,
@@ -122,8 +122,8 @@ function RecordPaymentFields({ onClose, plans, brands, presetResellerId, presetE
             <SimpleSelect
               id="membership_brand"
               options={brands.map((b) => ({ value: String(b.id), label: b.business_name }))}
-              value={resellerId}
-              onChange={setResellerId}
+              value={affiliateId}
+              onChange={setAffiliateId}
             />
           </div>
         )}
@@ -167,7 +167,7 @@ function RecordPaymentFields({ onClose, plans, brands, presetResellerId, presetE
   );
 }
 
-export default function RecordPaymentModal({ isOpen, onClose, plans, brands, presetResellerId, presetEmail, onSubmit }: RecordPaymentModalProps) {
+export default function RecordPaymentModal({ isOpen, onClose, plans, brands, presetAffiliateId, presetEmail, onSubmit }: RecordPaymentModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -188,7 +188,7 @@ export default function RecordPaymentModal({ isOpen, onClose, plans, brands, pre
                   onClose={onClose}
                   plans={plans}
                   brands={brands}
-                  presetResellerId={presetResellerId}
+                  presetAffiliateId={presetAffiliateId}
                   presetEmail={presetEmail}
                   onSubmit={onSubmit}
                 />

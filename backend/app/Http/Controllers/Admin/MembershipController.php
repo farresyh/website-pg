@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Membership\RecordMembershipPaymentRequest;
+use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
 use App\Models\Order;
-use App\Models\Reseller;
 use App\Services\Membership\MembershipFeeService;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Http\JsonResponse;
@@ -38,11 +38,11 @@ class MembershipController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Membership::query()
-            ->with(['membershipPlan:id,name,quota_sen', 'reseller:id,business_name'])
+            ->with(['membershipPlan:id,name,quota_sen', 'affiliate:id,business_name'])
             ->withCount('orders');
 
-        if ($resellerId = $request->integer('reseller_id')) {
-            $query->where('reseller_id', $resellerId);
+        if ($affiliateId = $request->integer('affiliate_id')) {
+            $query->where('affiliate_id', $affiliateId);
         }
 
         match ($request->query('status')) {
@@ -81,14 +81,14 @@ class MembershipController extends Controller
     public function brands(): JsonResponse
     {
         return response()->json(
-            Reseller::query()
+            Affiliate::query()
                 ->where('is_owned', true)
                 ->where('membership_enabled', true)
                 ->orderBy('business_name')
                 ->get(['id', 'business_name'])
-                ->map(fn (Reseller $reseller) => [
-                    'id' => $reseller->id,
-                    'business_name' => $reseller->business_name,
+                ->map(fn (Affiliate $affiliate) => [
+                    'id' => $affiliate->id,
+                    'business_name' => $affiliate->business_name,
                 ]),
         );
     }
@@ -103,7 +103,7 @@ class MembershipController extends Controller
      */
     public function show(Membership $membership): JsonResponse
     {
-        $membership->loadMissing(['membershipPlan:id,name,quota_sen', 'reseller:id,business_name'])
+        $membership->loadMissing(['membershipPlan:id,name,quota_sen', 'affiliate:id,business_name'])
             ->loadCount('orders');
 
         $feePayments = MembershipFeeRecord::query()
@@ -123,11 +123,11 @@ class MembershipController extends Controller
                 'ledger_entry_id' => $record->ledger_entry_id,
             ]);
 
-        // Attempts are keyed on (reseller_id, email), not membership_id —
+        // Attempts are keyed on (affiliate_id, email), not membership_id —
         // a row can exist before any membership does.
         $attempts = MembershipCheckoutAttempt::query()
             ->with('membershipPlan:id,name')
-            ->where('reseller_id', $membership->reseller_id)
+            ->where('affiliate_id', $membership->affiliate_id)
             ->where('email', $membership->email)
             ->orderByDesc('id')
             ->limit(25)
@@ -171,7 +171,7 @@ class MembershipController extends Controller
     public function recordPayment(RecordMembershipPaymentRequest $request): JsonResponse
     {
         $membership = $this->fees->recordFeePaid(
-            (int) $request->validated('reseller_id'),
+            (int) $request->validated('affiliate_id'),
             $request->validated('email'),
             (int) $request->validated('membership_plan_id'),
             (int) $request->validated('amount_sen'),
@@ -181,7 +181,7 @@ class MembershipController extends Controller
         );
 
         return response()->json($this->present(
-            $membership->load(['membershipPlan:id,name,quota_sen', 'reseller:id,business_name']),
+            $membership->load(['membershipPlan:id,name,quota_sen', 'affiliate:id,business_name']),
         ));
     }
 
@@ -198,8 +198,8 @@ class MembershipController extends Controller
 
         return [
             'id' => $membership->id,
-            'reseller_id' => $membership->reseller_id,
-            'brand_name' => $membership->reseller?->business_name,
+            'affiliate_id' => $membership->affiliate_id,
+            'brand_name' => $membership->affiliate?->business_name,
             'email' => $membership->email,
             'plan_id' => $membership->membership_plan_id,
             'plan_name' => $membership->membershipPlan->name ?? null,

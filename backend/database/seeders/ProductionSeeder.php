@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Affiliate;
 use App\Models\HeroSlide;
-use App\Models\Reseller;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Artisan;
@@ -29,11 +29,11 @@ class ProductionSeeder extends Seeder
 
     public function run(): void
     {
-        // ADR-061: the platform's own storefront is a Reseller row like
+        // ADR-061: the platform's own storefront is an Affiliate row like
         // any other — is_owned (our brand) + is_primary (the single
         // console/job/migration fallback tenant). markup_pct=0 so all its
         // margin books as platform_profit.
-        $reseller = Reseller::query()->updateOrCreate(
+        $affiliate = Affiliate::query()->updateOrCreate(
             ['is_primary' => true],
             [
                 'business_name' => 'PekanGame', // ADR-062
@@ -47,9 +47,9 @@ class ProductionSeeder extends Seeder
         // internal business_name (ADR-028/062). Same shape the ADR-062
         // rename migration writes; the founder edits copy / footer / legal
         // through /admin after launch (ADR-062 decision 7).
-        if (! DB::table('reseller_branding')->where('reseller_id', $reseller->id)->exists()) {
-            DB::table('reseller_branding')->insert([
-                'reseller_id' => $reseller->id,
+        if (! DB::table('affiliate_branding')->where('affiliate_id', $affiliate->id)->exists()) {
+            DB::table('affiliate_branding')->insert([
+                'affiliate_id' => $affiliate->id,
                 'store_name' => 'PekanGame',
                 'description' => 'Fast, secure game top-ups delivered in minutes.',
                 'created_at' => now(),

@@ -41,7 +41,7 @@ class FulfillOrderJobTest extends TestCase
             )->id;
 
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-JOB-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -53,7 +53,7 @@ class FulfillOrderJobTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));

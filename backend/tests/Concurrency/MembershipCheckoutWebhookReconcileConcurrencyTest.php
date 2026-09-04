@@ -29,10 +29,10 @@ class MembershipCheckoutWebhookReconcileConcurrencyTest extends TestCase
     public function test_two_processes_completing_the_same_attempt_book_exactly_one_membership(): void
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
-        $reseller = $this->primaryReseller();
+        $affiliate = $this->primaryAffiliate();
 
         $attempt = MembershipCheckoutAttempt::query()->create([
-            'reseller_id' => $reseller->id,
+            'affiliate_id' => $affiliate->id,
             'email' => 'race-sub@example.com',
             'membership_plan_id' => $plan->id,
             'fee_sen' => $plan->fee_sen,

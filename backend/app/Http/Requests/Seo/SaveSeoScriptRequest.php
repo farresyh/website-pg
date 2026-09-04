@@ -29,7 +29,7 @@ class SaveSeoScriptRequest extends FormRequest
             'code' => ['required', 'string'],
             'priority' => ['sometimes', 'integer'],
             'is_active' => ['sometimes', 'boolean'],
-            'reseller_id' => ['nullable', 'integer', Rule::exists('resellers', 'id')],
+            'affiliate_id' => ['nullable', 'integer', Rule::exists('affiliates', 'id')],
         ];
     }
 

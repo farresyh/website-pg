@@ -32,7 +32,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Game</dt><dd>{order.game?.name ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Package</dt><dd>{order.package?.name ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Supplier</dt><dd>{order.supplier?.name ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Reseller</dt><dd>{order.reseller?.business_name ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Affiliate</dt><dd>{order.affiliate?.business_name ?? "—"}</dd></div>
         </dl>
       </div>
 
@@ -62,7 +62,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Transaction Fee</dt><dd>{formatRm(order.transaction_fee)}</dd></div>
           <div className="flex justify-between font-medium text-gray-800 dark:text-white/90"><dt>Final Amount</dt><dd>{formatRm(order.final_amount)}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Platform Profit</dt><dd>{formatRm(order.platform_profit)}</dd></div>
-          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Reseller Profit</dt><dd>{formatRm(order.reseller_profit)}</dd></div>
+          <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Affiliate Profit</dt><dd>{formatRm(order.affiliate_profit)}</dd></div>
         </dl>
       </div>
 

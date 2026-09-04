@@ -30,7 +30,7 @@ class ReconcilePendingMembershipPaymentsCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->primaryReseller();
+        $this->primaryAffiliate();
         Queue::fake();
         PaymentMethod::query()->create([
             'channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip',
@@ -43,7 +43,7 @@ class ReconcilePendingMembershipPaymentsCommandTest extends TestCase
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
 
         $attempt = MembershipCheckoutAttempt::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'fee_sen' => $plan->fee_sen,

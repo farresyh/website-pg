@@ -23,7 +23,7 @@ class CustomerAnalyticsControllerTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -33,7 +33,7 @@ class CustomerAnalyticsControllerTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 20,
+            'affiliate_profit' => 20,
             'payment_status' => PaymentStatus::Paid->value,
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Delivered->value,
@@ -108,7 +108,7 @@ class CustomerAnalyticsControllerTest extends TestCase
             ->assertOk()
             ->assertJsonStructure([
                 'customer_email', 'customer_name', 'customer_phone', 'segment', 'segment_label',
-                'stats', 'profit_analysis', 'monthly_trend', 'top_packages', 'top_resellers', 'order_history',
+                'stats', 'profit_analysis', 'monthly_trend', 'top_packages', 'top_affiliates', 'order_history',
             ])
             ->assertJson(['customer_email' => 'buyer@example.com']);
     }

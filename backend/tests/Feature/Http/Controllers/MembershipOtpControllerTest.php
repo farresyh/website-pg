@@ -21,8 +21,8 @@ class MembershipOtpControllerTest extends TestCase
     {
         parent::setUp();
         // ADR-061: send/verify resolve the storefront brand via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
         Http::fake(['next-api.useplunk.com/*' => Http::response(['success' => true], 200)]);
     }
 
@@ -77,7 +77,7 @@ class MembershipOtpControllerTest extends TestCase
         $token = $response->json('token');
         $this->assertIsString($token);
         $this->assertSame(
-            ['reseller_id' => $this->primaryReseller()->id, 'email' => 'member@example.com'],
+            ['affiliate_id' => $this->primaryAffiliate()->id, 'email' => 'member@example.com'],
             app(MembershipSessionTokenService::class)->resolve($token),
         );
     }

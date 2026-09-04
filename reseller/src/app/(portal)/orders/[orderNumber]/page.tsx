@@ -108,11 +108,11 @@ export default function OrderDetailPage() {
                 <Row label="Transaction fee" value={formatRm(order.transaction_fee)} />
                 <Row
                   label="Your markup"
-                  value={`${order.reseller_markup_pct}%`}
+                  value={`${order.affiliate_markup_pct}%`}
                 />
                 <Row
                   label="Your margin"
-                  value={formatRm(order.reseller_profit)}
+                  value={formatRm(order.affiliate_profit)}
                 />
               </div>
             </Panel>

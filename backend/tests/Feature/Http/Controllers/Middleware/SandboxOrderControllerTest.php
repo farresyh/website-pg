@@ -30,8 +30,8 @@ class SandboxOrderControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: these endpoints resolve the platform storefront via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
     }
 
     private function actingAsAdmin(): void
@@ -119,7 +119,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-1',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -127,7 +127,7 @@ class SandboxOrderControllerTest extends TestCase
             'game_id' => $game->id,
             'package_id' => $package->id,
             'cost_price' => 421, 'standard_selling_price' => 500, 'selling_price' => 500,
-            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'reseller_profit' => 0,
+            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);
@@ -143,7 +143,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $order = Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-2',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -151,7 +151,7 @@ class SandboxOrderControllerTest extends TestCase
             'game_id' => $game->id,
             'package_id' => $package->id,
             'cost_price' => 421, 'standard_selling_price' => 500, 'selling_price' => 500,
-            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'reseller_profit' => 0,
+            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);
@@ -301,7 +301,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $order = Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-MARK-DELIVERED',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -309,7 +309,7 @@ class SandboxOrderControllerTest extends TestCase
             'game_id' => $game->id,
             'package_id' => $package->id,
             'cost_price' => 421, 'standard_selling_price' => 500, 'selling_price' => 500,
-            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'reseller_profit' => 0,
+            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::NeedsReview->value,
         ]);
@@ -372,7 +372,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $order = Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-3',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -380,7 +380,7 @@ class SandboxOrderControllerTest extends TestCase
             'game_id' => $game->id,
             'package_id' => $package->id,
             'cost_price' => 421, 'standard_selling_price' => 500, 'selling_price' => 500,
-            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'reseller_profit' => 0,
+            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);
@@ -394,7 +394,7 @@ class SandboxOrderControllerTest extends TestCase
     {
         [$game, $package] = $this->gameWithPackage();
         $realOrder = Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-4',
             'is_test' => false,
             'customer_email' => 'buyer@example.com',
@@ -402,7 +402,7 @@ class SandboxOrderControllerTest extends TestCase
             'game_id' => $game->id,
             'package_id' => $package->id,
             'cost_price' => 421, 'standard_selling_price' => 500, 'selling_price' => 500,
-            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'reseller_profit' => 0,
+            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);

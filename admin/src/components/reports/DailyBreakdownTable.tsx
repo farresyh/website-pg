@@ -17,7 +17,7 @@ export function DailyBreakdownTable({ rows }: { rows: ReportDailyBreakdownRow[] 
             <th className="whitespace-nowrap px-4 py-3 font-medium">Orders</th>
             <th className="whitespace-nowrap px-4 py-3 font-medium">Sales</th>
             <th className="whitespace-nowrap px-4 py-3 font-medium">Owner Profit</th>
-            <th className="whitespace-nowrap px-4 py-3 font-medium">Reseller Profit</th>
+            <th className="whitespace-nowrap px-4 py-3 font-medium">Affiliate Profit</th>
             <th className="whitespace-nowrap px-4 py-3 font-medium">Fees</th>
             <th className="whitespace-nowrap px-4 py-3 font-medium">Avg Order</th>
           </tr>
@@ -32,7 +32,7 @@ export function DailyBreakdownTable({ rows }: { rows: ReportDailyBreakdownRow[] 
                 {formatRm(row.platform_profit)}
               </td>
               <td className="whitespace-nowrap px-4 py-3 tabular-nums text-violet-600 dark:text-violet-400">
-                {formatRm(row.reseller_profit)}
+                {formatRm(row.affiliate_profit)}
               </td>
               <td className="whitespace-nowrap px-4 py-3 tabular-nums text-gray-500 dark:text-gray-400">
                 {formatRm(row.transaction_fees)}

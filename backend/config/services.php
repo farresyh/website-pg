@@ -235,7 +235,11 @@ return [
 
     // ADR-058 (58a) — canonical origin of the reseller portal (ADR-059),
     // used to build the absolute set-password invite link
-    // (ResellerInviteService). Distinct deploy target from the storefront.
+    // (AffiliateInviteService). Distinct deploy target from the storefront.
+    // Key/env var stay "reseller_portal"/RESELLER_PORTAL_URL post-ADR-072:
+    // this is the shared reseller/ Next.js app itself (ADR-072 decision 3
+    // — both Affiliate and, later, Reseller-wallet accounts log into the
+    // same portal), not the renamed Affiliate entity.
     'reseller_portal' => [
         'url' => explode(',', env('RESELLER_PORTAL_URL', 'http://localhost:3002'))[0],
     ],

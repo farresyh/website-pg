@@ -99,7 +99,7 @@ class PendingPriceChangeControllerTest extends TestCase
         $this->assertSame(1, $ids->count());
     }
 
-    public function test_approve_applies_the_proposed_price_and_recomputes_reseller_price_from_live_markup(): void
+    public function test_approve_applies_the_proposed_price_and_recomputes_affiliate_price_from_live_markup(): void
     {
         $supplier = $this->supplier();
         $package = $this->flaggedPackage($supplier, $this->game(), ['markup_percent' => 20]); // admin edited markup since flagging

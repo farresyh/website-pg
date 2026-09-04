@@ -10,7 +10,7 @@ namespace App\Services\Pricing;
  * Deliberately a separate seam from PricingService (the cost ->
  * standard-selling-price -> selling-price chain, ADR-013) — membership discount
  * is a distinct concern layered on top of a package's own markup, not
- * a reseller-tier concept. Reuses PackageMarkupService's calculation
+ * an affiliate-tier concept. Reuses PackageMarkupService's calculation
  * shape (cost x (1 + markup%)) rather than sharing its instance.
  */
 final class MembershipPricingService

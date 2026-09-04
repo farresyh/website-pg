@@ -23,8 +23,8 @@ class VoucherPreviewControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: these endpoints resolve the platform storefront via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
     }
 
     /** @return array{game: Game, package: Package} */

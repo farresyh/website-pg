@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Ranked magnitude comparison (Top Games, Payment Method / Reseller
+ * Ranked magnitude comparison (Top Games, Payment Method / Affiliate
  * share) — single-hue bars per the dataviz skill's default ("sequential
  * is the safe default... unless the job is specifically identity or
  * polarity" — this is plain magnitude ranking, not series identity).

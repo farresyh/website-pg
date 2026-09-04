@@ -32,13 +32,13 @@ class MembershipControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: these endpoints resolve the platform storefront via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
     }
 
     private function tokenFor(string $email): string
     {
-        return app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, $email);
+        return app(MembershipSessionTokenService::class)->issue($this->primaryAffiliate()->id, $email);
     }
 
     public function test_me_requires_a_valid_session_token(): void
@@ -69,7 +69,7 @@ class MembershipControllerTest extends TestCase
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -97,20 +97,20 @@ class MembershipControllerTest extends TestCase
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST1', 'reference_number' => 'REF-TEST1',
             'game_id' => $game->id, 'package_id' => $package->id,
             'customer_name' => 'Member', 'customer_email' => 'member@example.com', 'customer_phone' => '+60123456789',
             'player_id' => '12345', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
-            'transaction_fee' => 0, 'platform_profit' => 50, 'reseller_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
+            'transaction_fee' => 0, 'platform_profit' => 50, 'affiliate_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
         ]);
         Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-OTHER', 'reference_number' => 'REF-OTHER',
             'game_id' => $game->id, 'package_id' => $package->id,
             'customer_name' => 'Someone Else', 'customer_email' => 'someone-else@example.com', 'customer_phone' => '+60111111111',
             'player_id' => '99999', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
-            'transaction_fee' => 0, 'platform_profit' => 50, 'reseller_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
+            'transaction_fee' => 0, 'platform_profit' => 50, 'affiliate_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
         ]);
         $token = $this->tokenFor('member@example.com');
 
@@ -139,7 +139,7 @@ class MembershipControllerTest extends TestCase
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -155,12 +155,12 @@ class MembershipControllerTest extends TestCase
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-LEGACY', 'reference_number' => 'REF-LEGACY',
             'game_id' => $game->id, 'package_id' => $package->id, 'membership_id' => $membership->id,
             'customer_name' => 'Member', 'customer_email' => 'typo@example.com', 'customer_phone' => '+60123456789',
             'player_id' => '12345', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
-            'transaction_fee' => 0, 'platform_profit' => 50, 'reseller_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
+            'transaction_fee' => 0, 'platform_profit' => 50, 'affiliate_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
         ]);
         $token = $this->tokenFor('member@example.com');
 

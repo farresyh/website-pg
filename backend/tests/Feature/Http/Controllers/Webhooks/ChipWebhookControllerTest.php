@@ -49,7 +49,7 @@ class ChipWebhookControllerTest extends TestCase
             )->id;
 
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -61,7 +61,7 @@ class ChipWebhookControllerTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
             'payment_gateway' => 'chip',
@@ -279,7 +279,7 @@ class ChipWebhookControllerTest extends TestCase
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
 
         return MembershipCheckoutAttempt::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'sub@example.com',
             'membership_plan_id' => $plan->id,
             'fee_sen' => $plan->fee_sen,
@@ -309,7 +309,7 @@ class ChipWebhookControllerTest extends TestCase
         $this->assertSame(MembershipCheckoutAttemptStatus::Paid, $attempt->fresh()->status);
 
         $membership = Membership::query()
-            ->where('reseller_id', $this->primaryReseller()->id)
+            ->where('affiliate_id', $this->primaryAffiliate()->id)
             ->where('email', 'sub@example.com')
             ->firstOrFail();
         $this->assertSame(MembershipStatus::Active, $membership->status);

@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Affiliate;
+use App\Models\AffiliateBranding;
+use App\Models\AffiliateFooterSettings;
 use App\Models\Game;
-use App\Models\Reseller;
-use App\Models\ResellerBranding;
-use App\Models\ResellerFooterSettings;
 use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -16,7 +16,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * ADR-028 + its 2026-08-22 addendum: public, guest-callable storefront
  * branding/footer/legal content — same no-auth reasoning as
  * CatalogController/HeroSlideController (ADR-011). Public call site #5
- * for Reseller::primary() — see that method's doc comment.
+ * for Affiliate::primary() — see that method's doc comment.
  */
 class BrandingController extends Controller
 {
@@ -30,15 +30,15 @@ class BrandingController extends Controller
 
     public function show(): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         $payload = Cache::remember(
-            "catalog.public.branding.{$reseller->id}",
+            "catalog.public.branding.{$affiliate->id}",
             self::CACHE_TTL_SECONDS,
-            function () use ($reseller) {
-                $branding = ResellerBranding::query()->where('reseller_id', $reseller->id)->first();
-                $footer = ResellerFooterSettings::query()->where('reseller_id', $reseller->id)->first();
-                $storeName = $branding?->store_name ?? $reseller->business_name;
+            function () use ($affiliate) {
+                $branding = AffiliateBranding::query()->where('affiliate_id', $affiliate->id)->first();
+                $footer = AffiliateFooterSettings::query()->where('affiliate_id', $affiliate->id)->first();
+                $storeName = $branding?->store_name ?? $affiliate->business_name;
 
                 $footerGames = Game::query()
                     ->whereIn('id', $footer?->footer_game_ids ?? [])
@@ -92,16 +92,16 @@ class BrandingController extends Controller
             throw new NotFoundHttpException;
         }
 
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
         $column = self::LEGAL_PAGES[$page];
 
         $payload = Cache::remember(
-            "catalog.public.branding.{$reseller->id}.legal.{$page}",
+            "catalog.public.branding.{$affiliate->id}.legal.{$page}",
             self::CACHE_TTL_SECONDS,
-            function () use ($reseller, $column) {
-                $branding = ResellerBranding::query()->where('reseller_id', $reseller->id)->first();
-                $footer = ResellerFooterSettings::query()->where('reseller_id', $reseller->id)->first();
-                $storeName = $branding?->store_name ?? $reseller->business_name;
+            function () use ($affiliate, $column) {
+                $branding = AffiliateBranding::query()->where('affiliate_id', $affiliate->id)->first();
+                $footer = AffiliateFooterSettings::query()->where('affiliate_id', $affiliate->id)->first();
+                $storeName = $branding?->store_name ?? $affiliate->business_name;
                 $content = $footer?->{$column};
 
                 return [
@@ -123,11 +123,11 @@ class BrandingController extends Controller
         return $content === null ? null : str_replace('{store_name}', $storeName, $content);
     }
 
-    public static function forgetCache(int $resellerId): void
+    public static function forgetCache(int $affiliateId): void
     {
-        Cache::forget("catalog.public.branding.{$resellerId}");
+        Cache::forget("catalog.public.branding.{$affiliateId}");
         foreach (array_keys(self::LEGAL_PAGES) as $page) {
-            Cache::forget("catalog.public.branding.{$resellerId}.legal.{$page}");
+            Cache::forget("catalog.public.branding.{$affiliateId}.legal.{$page}");
         }
         NextRevalidation::purge(); // ADR-071 PR2
     }

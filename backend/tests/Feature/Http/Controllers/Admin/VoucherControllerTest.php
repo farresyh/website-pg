@@ -21,7 +21,7 @@ class VoucherControllerTest extends TestCase
     private function makeOrder(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST-1',
             'reference_number' => 'REF-TEST-1',
             'customer_email' => 'buyer@example.com',
@@ -32,7 +32,7 @@ class VoucherControllerTest extends TestCase
             'transaction_fee' => 90,
             'final_amount' => 1090,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ], $overrides));

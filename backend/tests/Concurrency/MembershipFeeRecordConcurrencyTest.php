@@ -29,7 +29,7 @@ class MembershipFeeRecordConcurrencyTest extends TestCase
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
         $admin = AdminUser::factory()->create(['role' => 'super_admin']);
-        $reseller = $this->primaryReseller();
+        $affiliate = $this->primaryAffiliate();
 
         $resultFileA = tempnam(sys_get_temp_dir(), 'membership_fee_test_');
         $resultFileB = tempnam(sys_get_temp_dir(), 'membership_fee_test_');
@@ -46,7 +46,7 @@ class MembershipFeeRecordConcurrencyTest extends TestCase
 
         $command = fn (string $resultFile) => [
             PHP_BINARY, 'artisan', 'app:membership-test-record-fee',
-            (string) $reseller->id, 'race-fee@example.com', (string) $plan->id, (string) $plan->fee_sen, (string) $admin->id, 'race-key', $resultFile,
+            (string) $affiliate->id, 'race-fee@example.com', (string) $plan->id, (string) $plan->fee_sen, (string) $admin->id, 'race-key', $resultFile,
         ];
 
         $processA = Process::path(base_path())->env($env)->start($command($resultFileA));

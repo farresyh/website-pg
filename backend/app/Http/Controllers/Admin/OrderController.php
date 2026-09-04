@@ -97,7 +97,7 @@ class OrderController extends Controller
         }
 
         return response()->json($order->load([
-            'game', 'package', 'supplier', 'reseller', 'voucher',
+            'game', 'package', 'supplier', 'affiliate', 'voucher',
             // ADR-027 Phase 6: the member (if any) this order priced
             // against — email + tier name, so admin can see who and
             // which plan without a separate lookup. Note this
@@ -248,7 +248,7 @@ class OrderController extends Controller
         // panel's own setSelected(updated) crashes rendering
         // DeliveryLogsTable on the now-undefined resend_attempts.
         return response()->json($result->load([
-            'game', 'package', 'supplier', 'reseller', 'voucher',
+            'game', 'package', 'supplier', 'affiliate', 'voucher',
             'membership.membershipPlan',
             'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
         ]));

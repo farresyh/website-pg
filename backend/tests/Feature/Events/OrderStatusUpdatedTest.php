@@ -32,7 +32,7 @@ class OrderStatusUpdatedTest extends TestCase
         )->id;
 
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST-BROADCAST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -45,7 +45,7 @@ class OrderStatusUpdatedTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));
@@ -109,7 +109,7 @@ class OrderStatusUpdatedTest extends TestCase
 
         $payload = (new OrderStatusUpdated($order))->broadcastWith();
 
-        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref'] as $internalField) {
+        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'affiliate_profit', 'supplier_response', 'payment_ref', 'supplier_ref'] as $internalField) {
             $this->assertArrayNotHasKey($internalField, $payload, "broadcastWith() must never leak '{$internalField}'");
         }
 

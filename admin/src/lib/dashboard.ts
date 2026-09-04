@@ -58,7 +58,7 @@ export interface DashboardTopGame {
   sales: number;
   orders_count: number;
   platform_profit: number;
-  reseller_profit: number;
+  affiliate_profit: number;
   avg_order_value: number;
   pct_of_sales: number;
   comparison: MetricComparison;

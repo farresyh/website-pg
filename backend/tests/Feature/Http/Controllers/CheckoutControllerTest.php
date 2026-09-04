@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Jobs\FulfillOrderJob;
+use App\Models\Affiliate;
 use App\Models\BlacklistEntry;
 use App\Models\Game;
 use App\Models\Membership;
@@ -14,7 +15,6 @@ use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
 use App\Models\PlayerValidatorProfile;
-use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
@@ -41,9 +41,9 @@ class CheckoutControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: checkout resolves the platform's own storefront via
-        // Reseller::primary(), which fails loud when it is missing (no
+        // Affiliate::primary(), which fails loud when it is missing (no
         // more firstOrCreate). Every checkout path needs it present.
-        $this->primaryReseller();
+        $this->primaryAffiliate();
     }
 
     /**
@@ -200,7 +200,7 @@ class CheckoutControllerTest extends TestCase
         $order = Order::query()->firstOrFail();
         $this->assertSame($game->id, $order->game_id);
         $this->assertSame($package->id, $order->package_id);
-        $this->assertSame(500, $order->selling_price); // standard_selling_price + 0% reseller markup
+        $this->assertSame(500, $order->selling_price); // standard_selling_price + 0% affiliate markup
         $this->assertSame('pr-checkout-test', $order->payment_ref);
     }
 
@@ -223,7 +223,7 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame('FPX_ABMB', $order->channel_code);
     }
 
-    public function test_attaches_the_primary_reseller_to_the_order_at_zero_markup(): void
+    public function test_attaches_the_primary_affiliate_to_the_order_at_zero_markup(): void
     {
         $this->bindGateway();
         ['game' => $game, 'package' => $package] = $this->gameAndPackage();
@@ -231,25 +231,25 @@ class CheckoutControllerTest extends TestCase
         $response = $this->postJson('/api/checkout', $this->payload($game, $package));
 
         $response->assertCreated();
-        $reseller = Reseller::query()->where('is_primary', true)->sole();
-        $this->assertSame('0.00', (string) $reseller->markup_pct);
-        $this->assertSame($reseller->id, Order::query()->firstOrFail()->reseller_id);
+        $affiliate = Affiliate::query()->where('is_primary', true)->sole();
+        $this->assertSame('0.00', (string) $affiliate->markup_pct);
+        $this->assertSame($affiliate->id, Order::query()->firstOrFail()->affiliate_id);
     }
 
     public function test_checkout_does_not_silently_create_a_storefront_when_the_primary_is_missing(): void
     {
         $this->bindGateway();
-        Reseller::query()->forceDelete();
+        Affiliate::query()->forceDelete();
         ['game' => $game, 'package' => $package] = $this->gameAndPackage();
 
-        // ADR-061: Reseller::primary() throws (ModelNotFoundException via
+        // ADR-061: Affiliate::primary() throws (ModelNotFoundException via
         // sole()) rather than the old firstOrCreate silently conjuring a
         // storefront — a misconfigured environment is a loud, actionable
-        // failure, never a half-working checkout with a phantom reseller.
+        // failure, never a half-working checkout with a phantom affiliate.
         $this->postJson('/api/checkout', $this->payload($game, $package))
             ->assertNotFound();
 
-        $this->assertSame(0, Reseller::query()->count());
+        $this->assertSame(0, Affiliate::query()->count());
         $this->assertSame(0, Order::query()->count());
     }
 
@@ -853,7 +853,7 @@ class CheckoutControllerTest extends TestCase
 
     private function membershipToken(string $email): string
     {
-        return app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, $email);
+        return app(MembershipSessionTokenService::class)->issue($this->primaryAffiliate()->id, $email);
     }
 
     /**
@@ -868,7 +868,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -896,7 +896,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -921,7 +921,7 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame(1200, $order->normal_selling_price);
         $this->assertSame(1040, $order->selling_price);
         $this->assertSame(40, $order->platform_profit); // 1040 - 1000
-        $this->assertSame(0, $order->reseller_profit);
+        $this->assertSame(0, $order->affiliate_profit);
 
         $this->assertSame(960, $membership->fresh()->quota_remaining_sen); // 2000 - 1040
         $debit = MembershipQuotaDebit::query()->where('order_id', $order->id)->firstOrFail();
@@ -941,7 +941,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'real-member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -970,7 +970,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'broke-member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -993,23 +993,23 @@ class CheckoutControllerTest extends TestCase
 
     /**
      * ADR-027's 2026-08-29 continued addendum, decision 4: a member
-     * order's `reseller_profit` is always 0 — the platform absorbs the
-     * entire member discount itself, never the reseller's own margin —
-     * regardless of what `Reseller.markup_pct` is actually configured
+     * order's `affiliate_profit` is always 0 — the platform absorbs the
+     * entire member discount itself, never the affiliate's own margin —
+     * regardless of what `Affiliate.markup_pct` is actually configured
      * to. Proven here against a genuinely nonzero markup (10%), with a
      * standard order under the identical markup as the contrasting
-     * control case: same reseller, same package, same 10% — member
+     * control case: same affiliate, same package, same 10% — member
      * gets 0, standard gets a real cut.
      */
-    public function test_reseller_profit_is_always_zero_for_a_member_order_even_when_reseller_markup_is_nonzero(): void
+    public function test_affiliate_profit_is_always_zero_for_a_member_order_even_when_affiliate_markup_is_nonzero(): void
     {
         $this->bindGateway();
         ['game' => $game, 'package' => $package] = $this->memberPackage();
         PlatformSettings::current()->update(['membership_enabled' => true]);
-        $this->primaryReseller()->update(['markup_pct' => 10]);
+        $this->primaryAffiliate()->update(['markup_pct' => 10]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'markup-member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -1028,11 +1028,11 @@ class CheckoutControllerTest extends TestCase
         $memberOrder = Order::query()->where('customer_email', 'markup-member@example.com')->firstOrFail();
 
         $this->assertSame('member', $memberOrder->pricing_basis->value);
-        $this->assertSame('10.00', $memberOrder->reseller_markup_pct); // snapshotted, but unused for profit
-        $this->assertSame(1040, $memberOrder->selling_price); // unaffected by reseller markup
-        $this->assertSame(0, $memberOrder->reseller_profit);
+        $this->assertSame('10.00', $memberOrder->affiliate_markup_pct); // snapshotted, but unused for profit
+        $this->assertSame(1040, $memberOrder->selling_price); // unaffected by affiliate markup
+        $this->assertSame(0, $memberOrder->affiliate_profit);
 
-        // Control case: same reseller markup, no membership token — reseller must earn a real cut.
+        // Control case: same affiliate markup, no membership token — affiliate must earn a real cut.
         $standardResponse = $this->postJson('/api/checkout', $this->payload($game, $package, [
             'customer_email' => 'no-member@example.com',
             'idempotency_key' => (string) Str::uuid(),
@@ -1041,8 +1041,8 @@ class CheckoutControllerTest extends TestCase
         $standardOrder = Order::query()->where('customer_email', 'no-member@example.com')->firstOrFail();
 
         $this->assertSame('standard', $standardOrder->pricing_basis->value);
-        $this->assertSame(1320, $standardOrder->selling_price); // 1200 + 10% reseller markup
-        $this->assertSame(120, $standardOrder->reseller_profit); // round(1200 * 10%)
+        $this->assertSame(1320, $standardOrder->selling_price); // 1200 + 10% affiliate markup
+        $this->assertSame(120, $standardOrder->affiliate_profit); // round(1200 * 10%)
     }
 
     /**
@@ -1059,7 +1059,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         $membership = Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'poor-member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -1109,7 +1109,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => false]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -1243,7 +1243,7 @@ class CheckoutControllerTest extends TestCase
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',

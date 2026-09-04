@@ -41,7 +41,7 @@ final class PlunkMailer
     /**
      * The transactional-send primitive — `POST {base_url}/v1/send` with
      * the verified sender. Every feature-specific email (membership OTP,
-     * the ADR-058 reseller set-password invite) formats its own
+     * the ADR-058 affiliate set-password invite) formats its own
      * subject/body and calls this. Same short-timeout discipline as
      * ChipGateway/GamevionAdapter.
      */
