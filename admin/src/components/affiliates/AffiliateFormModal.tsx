@@ -118,7 +118,7 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
   }
 
   const tierOptions = [
-    { value: "", label: "— No tier (walk-in wholesale rate) —" },
+    { value: "", label: "— No tier (walk-in rate) —" },
     ...tiers
       .filter((t) => t.is_active)
       .map((t) => ({ value: String(t.id), label: `${t.name} (RM${(t.monthly_fee_sen / 100).toFixed(2)}/mo, +${t.markup_percent}%)` })),
@@ -152,7 +152,7 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
           </div>
           <div>
             <Label htmlFor="markup_pct">Affiliate markup %</Label>
-            <Input id="markup_pct" value={markupPct} onChange={(e) => setMarkupPct(e.target.value)} hint="Their own margin on top of the wholesale price." />
+            <Input id="markup_pct" value={markupPct} onChange={(e) => setMarkupPct(e.target.value)} hint="Their own margin on top of the tier price." />
           </div>
           <div>
             <Label htmlFor="max_markup_pct">Max markup % (ceiling)</Label>
@@ -217,11 +217,11 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
         {!isEditing && (
           <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
             <p className="mb-3 text-theme-xs font-medium text-gray-600 dark:text-gray-400">
-              Initial wholesale tier + first portal login (they receive a set-password invite by email).
+              Initial affiliate tier + first portal login (they receive a set-password invite by email).
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <Label htmlFor="tier_id">Wholesale tier</Label>
+                <Label htmlFor="tier_id">Affiliate tier</Label>
                 <SimpleSelect options={tierOptions} value={tierId} onChange={setTierId} />
               </div>
               <div>

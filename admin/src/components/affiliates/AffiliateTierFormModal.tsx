@@ -114,7 +114,7 @@ export default function AffiliateTierFormModal({ isOpen, onClose, onSubmit, edit
         <DialogPositioner>
           <DialogPopup className="w-full max-w-lg">
             <DialogHeader>
-              <DialogTitle>{editing ? `Edit ${editing.name}` : "Add Wholesale Tier"}</DialogTitle>
+              <DialogTitle>{editing ? `Edit ${editing.name}` : "Add Affiliate Tier"}</DialogTitle>
               <DialogHeaderActions>
                 <DialogClose aria-label="Close">
                   <CloseIcon className="h-5 w-5" />

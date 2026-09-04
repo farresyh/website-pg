@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, apiUpload, ApiError } from "@/lib/api-client";
 
 /**
  * ADR-072/073 PR-B — admin Reseller (prepaid-wallet) account management:
@@ -98,4 +98,85 @@ export function updateResellerTier(token: string, id: number, values: Partial<Re
 
 export function deleteResellerTier(token: string, id: number) {
   return apiFetch<{ message: string }>(`/api/reseller-tiers/${id}`, { method: "DELETE", token });
+}
+
+/**
+ * ADR-073 decision 3(b) (PR-C, re-scoped): admin manual-credit only.
+ * Self-serve CHIP top-up is deferred to whichever PR first gives a
+ * Reseller its own entry point to trigger it from (see the ADR-073
+ * build addendum) — no client-facing checkout flow exists yet.
+ */
+export interface WalletLedgerEntry {
+  id: number;
+  type: string;
+  amount: number;
+  reference_type: string | null;
+  reference_id: number | null;
+  receipt_name: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface WalletLedgerPage {
+  data: WalletLedgerEntry[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+export interface ResellerWallet {
+  balance_sen: number;
+  entries: WalletLedgerPage;
+}
+
+export function getResellerWallet(token: string, id: number, page?: number) {
+  const qs = page ? `?page=${page}` : "";
+
+  return apiFetch<ResellerWallet>(`/api/resellers/${id}/wallet${qs}`, { token });
+}
+
+export interface CreditResellerWalletValues {
+  amount_sen: number;
+  note?: string | null;
+  receipt?: File | null;
+}
+
+export function creditResellerWallet(token: string, id: number, values: CreditResellerWalletValues) {
+  const formData = new FormData();
+  formData.append("amount_sen", String(values.amount_sen));
+  if (values.note) formData.append("note", values.note);
+  if (values.receipt) formData.append("receipt", values.receipt);
+
+  return apiUpload<{ balance_sen: number; entry: WalletLedgerEntry }>(
+    `/api/resellers/${id}/wallet/credit`,
+    formData,
+    { token },
+  );
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
+
+/**
+ * Bearer-token-gated route (`wallet_receipts_disk` is deliberately
+ * private, ADR-073 decision 3(b)) — not a plain `<a href>`, same Blob +
+ * object-URL pattern as `downloadBackupRun`.
+ */
+export async function downloadWalletTopupReceipt(token: string, receiptId: number, filename: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/wallet-topup-receipts/${receiptId}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, undefined, `Download failed (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

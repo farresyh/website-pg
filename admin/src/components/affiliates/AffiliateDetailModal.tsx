@@ -122,10 +122,10 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
         </div>
       </div>
 
-      {/* Wholesale-tier subscription */}
+      {/* Affiliate-tier subscription */}
       <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Wholesale tier</h3>
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Affiliate tier</h3>
           {sub && <Tag severity={subStatusSeverity[sub.status]}>{sub.status}</Tag>}
         </div>
 
@@ -138,7 +138,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
           </div>
         ) : (
           <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-            No subscription — this affiliate pays the walk-in wholesale rate (standard selling price).
+            No subscription — this affiliate pays the walk-in rate (standard selling price).
           </p>
         )}
 

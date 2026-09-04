@@ -273,11 +273,11 @@ export default function AffiliatesPage() {
         </div>
       </div>
 
-      {/* Wholesale tiers */}
+      {/* Affiliate tiers */}
       <div className="mt-10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Wholesale tiers</h2>
+            <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Affiliate Tiers</h2>
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">
               Paid monthly subscription tiers (ADR-056). Markup % is applied over supplier cost price. Fee is
               collected from the affiliate&apos;s earnings balance.
