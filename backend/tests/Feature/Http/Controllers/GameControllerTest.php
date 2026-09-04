@@ -269,6 +269,45 @@ class GameControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
+    /** ADR-075's catalog-code addendum (2026-09-04), decision 1. */
+    public function test_update_sets_the_reseller_code(): void
+    {
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mobile-legends-malaysia']);
+        $this->actingAsAdmin();
+
+        $response = $this->putJson("/api/games/{$game->id}", [
+            'name' => $game->name, 'slug' => $game->slug, 'is_active' => true, 'reseller_code' => 'MLMY',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('MLMY', $game->refresh()->reseller_code);
+    }
+
+    public function test_update_rejects_a_reseller_code_with_digits(): void
+    {
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mobile-legends-malaysia']);
+        $this->actingAsAdmin();
+
+        $response = $this->putJson("/api/games/{$game->id}", [
+            'name' => $game->name, 'slug' => $game->slug, 'is_active' => true, 'reseller_code' => 'MLMY1',
+        ]);
+
+        $response->assertUnprocessable();
+    }
+
+    public function test_update_rejects_a_reseller_code_already_used_by_another_game(): void
+    {
+        Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mobile-legends-malaysia', 'reseller_code' => 'MLMY']);
+        $game = Game::query()->create(['name' => 'Mobile Legends Indonesia', 'slug' => 'mobile-legends-indonesia']);
+        $this->actingAsAdmin();
+
+        $response = $this->putJson("/api/games/{$game->id}", [
+            'name' => $game->name, 'slug' => $game->slug, 'is_active' => true, 'reseller_code' => 'MLMY',
+        ]);
+
+        $response->assertUnprocessable();
+    }
+
     /**
      * `packages.game_id` is `cascadeOnDelete()` — deleting a Game must
      * take its Packages with it, not orphan them.

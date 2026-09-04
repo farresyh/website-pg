@@ -33,6 +33,8 @@ export interface Game {
   id: number;
   name: string;
   slug: string;
+  /** ADR-075's catalog-code addendum (2026-09-04): the game segment of a reseller-facing product code (`{reseller_code}-{denomination-or-catalog_code}`, e.g. `MLMY-14`). Uppercase letters only, unique globally. Null = excluded from the Reseller API/Bot catalog, no effect on the storefront. */
+  reseller_code?: string | null;
   category: string | null;
   image_url?: string | null;
   banner_url?: string | null;
@@ -50,6 +52,8 @@ export interface GamePackage {
   name: string;
   /** ADR-034: the package's inherent value (e.g. diamond/UC amount) — storefront best-price dedup key is (game_id, denomination). Null for non-integer-amount products (bundles/passes). */
   denomination: number | null;
+  /** ADR-075's catalog-code addendum (2026-09-04): the denomination-less equivalent key, for bundles/passes — mutually exclusive with `denomination`. */
+  catalog_code: string | null;
   cost_price: number;
   standard_selling_price: number;
   markup_percent: string; // decimal cast serializes as a string
@@ -62,6 +66,7 @@ export interface GamePackage {
 export interface UpdateGameValues {
   name: string;
   slug: string;
+  reseller_code?: string | null;
   category?: string | null;
   image_url?: string | null;
   banner_url?: string | null;
@@ -121,6 +126,15 @@ export function updatePackageDenomination(token: string, packageId: number, deno
     method: "PATCH",
     token,
     body: { denomination },
+  });
+}
+
+/** ADR-075's catalog-code addendum (2026-09-04): the catalog_code counterpart to updatePackageDenomination() — for bundle/pass packages. Pass null to clear it. */
+export function updatePackageCatalogCode(token: string, packageId: number, catalogCode: string | null) {
+  return apiFetch<GamePackage>(`/api/packages/${packageId}/catalog-code`, {
+    method: "PATCH",
+    token,
+    body: { catalog_code: catalogCode },
   });
 }
 

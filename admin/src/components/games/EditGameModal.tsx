@@ -50,6 +50,7 @@ function EditGameFields({
   const [name, setName] = useState(game.name);
   const [slug, setSlug] = useState(game.slug);
   const [category, setCategory] = useState(game.category ?? "");
+  const [resellerCode, setResellerCode] = useState(game.reseller_code ?? "");
   const [imageUrl, setImageUrl] = useState(game.image_url ?? "");
   const [isActive, setIsActive] = useState(game.is_active ?? true);
   const [validatorProfileId, setValidatorProfileId] = useState(
@@ -69,6 +70,7 @@ function EditGameFields({
         name,
         slug,
         category: category || null,
+        reseller_code: resellerCode || null,
         image_url: imageUrl || null,
         is_active: isActive,
         player_validator_profile_id: validatorProfileId ? Number(validatorProfileId) : null,
@@ -128,6 +130,20 @@ function EditGameFields({
           <div>
             <Label htmlFor="game_category">Category (optional)</Label>
             <Input id="game_category" value={category} onChange={(e) => setCategory(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="game_reseller_code">Reseller Code (optional)</Label>
+            <Input
+              id="game_reseller_code"
+              value={resellerCode}
+              onChange={(e) => setResellerCode(e.target.value.toUpperCase())}
+              placeholder="e.g. MLMY"
+              maxLength={10}
+            />
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+              Uppercase letters only. The game segment of a Reseller API/Bot product code (e.g. <code>MLMY-14</code>). Leave
+              blank to keep this game out of the Reseller catalog.
+            </p>
           </div>
           <div>
             <Label htmlFor="game_image_url">Image URL (optional)</Label>

@@ -11,6 +11,7 @@ class Game extends Model
     protected $fillable = [
         'name',
         'slug',
+        'reseller_code',
         'category',
         'is_active',
         'sort_order',
