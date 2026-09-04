@@ -179,6 +179,49 @@ export function revokeResellerApiKey(token: string, resellerId: number, apiKeyId
   return apiFetch<void>(`/api/resellers/${resellerId}/api-keys/${apiKeyId}`, { method: "DELETE", token });
 }
 
+/**
+ * ADR-075 / PR-F build addendum decision 3: the Reseller Bot channel's
+ * group-linking UX. A pending row is platform-wide (a captured group
+ * isn't yet attributed to any Reseller) — the admin picks one and links
+ * it to a specific Reseller from that Reseller's own modal.
+ */
+export interface ResellerWhatsAppPendingLink {
+  whatsapp_group_id: string;
+  last_message_preview: string | null;
+  last_message_at: string | null;
+}
+
+export interface ResellerWhatsAppGroup {
+  id: number;
+  whatsapp_group_id: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export function listPendingWhatsAppGroups(token: string) {
+  return apiFetch<ResellerWhatsAppPendingLink[]>("/api/reseller-whatsapp-groups/pending", { token });
+}
+
+export function listResellerWhatsAppGroups(token: string, resellerId: number) {
+  return apiFetch<ResellerWhatsAppGroup[]>(`/api/resellers/${resellerId}/whatsapp-groups`, { token });
+}
+
+export function linkResellerWhatsAppGroup(token: string, resellerId: number, whatsappGroupId: string) {
+  return apiFetch<ResellerWhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups`, {
+    method: "POST",
+    token,
+    body: { whatsapp_group_id: whatsappGroupId },
+  });
+}
+
+export function updateResellerWhatsAppGroupStatus(token: string, resellerId: number, groupId: number, isActive: boolean) {
+  return apiFetch<ResellerWhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups/${groupId}/status`, {
+    method: "PATCH",
+    token,
+    body: { is_active: isActive },
+  });
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**

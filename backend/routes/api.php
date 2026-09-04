@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\ResellerApiKeyController;
 use App\Http\Controllers\Admin\ResellerController;
 use App\Http\Controllers\Admin\ResellerTierController;
 use App\Http\Controllers\Admin\ResellerWalletController;
+use App\Http\Controllers\Admin\ResellerWhatsAppGroupController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
@@ -71,6 +72,7 @@ use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
 use App\Http\Controllers\Webhooks\DigiflazzWebhookController;
+use App\Http\Controllers\Webhooks\OpenWaWebhookController;
 use App\Http\Middleware\EnsureResellerApiKey;
 use Illuminate\Support\Facades\Route;
 
@@ -563,7 +565,16 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{reseller}/api-keys', [ResellerApiKeyController::class, 'index']);
             Route::post('/{reseller}/api-keys', [ResellerApiKeyController::class, 'store']);
             Route::delete('/{reseller}/api-keys/{api_key}', [ResellerApiKeyController::class, 'destroy']);
+
+            // ADR-075 / PR-F build addendum decision 3 — link/unlink a
+            // WhatsApp group to this Reseller account. 'pending' (below,
+            // outside this {reseller} prefix) is platform-wide.
+            Route::get('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'index']);
+            Route::post('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'store']);
+            Route::patch('/{reseller}/whatsapp-groups/{group}/status', [ResellerWhatsAppGroupController::class, 'updateStatus']);
         });
+
+        Route::get('/reseller-whatsapp-groups/pending', [ResellerWhatsAppGroupController::class, 'pending']);
 
         // ADR-073 decision 1 — the reseller_tiers CRUD ladder.
         Route::prefix('reseller-tiers')->group(function () {
@@ -711,6 +722,17 @@ Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
 Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle'])
     ->middleware('throttle:120,1,webhook-digiflazz')
     ->name('webhooks.digiflazz');
+
+// ADR-075 / PR-F build addendum — the Reseller Bot channel's inbound
+// half (self-hosted OpenWA). Not behind auth:sanctum: the
+// X-Webhook-Signature HMAC check IS the auth, additionally hard-
+// restricted to 127.0.0.1 at the nginx layer (decision 4 — OpenWA is
+// co-located on the same droplet, a strictly stronger posture than
+// Digiflazz's soft/log-only IP check). Same throttle rationale as the
+// webhook routes above.
+Route::post('/webhooks/openwa', [OpenWaWebhookController::class, 'handle'])
+    ->middleware('throttle:120,1,webhook-openwa')
+    ->name('webhooks.openwa');
 
 // ADR-074 — Reseller API channel. Not behind auth:sanctum:
 // EnsureResellerApiKey (a bearer `reseller_api_keys` credential) is its

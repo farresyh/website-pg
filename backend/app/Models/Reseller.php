@@ -48,4 +48,10 @@ class Reseller extends Model
     {
         return $this->hasMany(ResellerApiKey::class);
     }
+
+    /** ADR-075 decision 2: this account's linked Reseller Bot WhatsApp groups. */
+    public function whatsAppGroups(): HasMany
+    {
+        return $this->hasMany(ResellerWhatsAppGroup::class);
+    }
 }

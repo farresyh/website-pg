@@ -289,4 +289,36 @@ return [
         'max_reconcile_age_days' => (int) env('DELIVERY_RECONCILIATION_MAX_RECONCILE_AGE_DAYS', 90),
     ],
 
+    // ADR-075 / PR-F build addendum — self-hosted OpenWA (github.com/
+    // rmyndharis/OpenWA), one shared WhatsApp session/number for every
+    // Reseller Bot-channel account. `engine` is OpenWA's own deployment
+    // config (ENGINE_TYPE env var on that process, not read by this app
+    // at all) — recorded here only as a comment: baileys first (PR-F
+    // build addendum decision 1), whatsapp-web.js later at the
+    // founder's own manual review, no automated switch trigger.
+    // `webhook_signature_header`/`_algo` are a best-guess default —
+    // OpenWA's own docs don't publish the exact header/algorithm the
+    // way Digiflazz's do — same "confirmed once the real account exists"
+    // posture `digiflazz.customer_no_separator` above already carries;
+    // correct at actual OpenWA provisioning time, not assumed here.
+    'openwa' => [
+        'base_url' => env('OPENWA_BASE_URL', 'http://127.0.0.1:2785'),
+        'session_id' => env('OPENWA_SESSION_ID'),
+        'api_key' => env('OPENWA_API_KEY'),
+        'webhook_secret' => env('OPENWA_WEBHOOK_SECRET'),
+        'webhook_signature_header' => env('OPENWA_WEBHOOK_SIGNATURE_HEADER', 'X-Webhook-Signature'),
+        'webhook_signature_algo' => env('OPENWA_WEBHOOK_SIGNATURE_ALGO', 'sha256'),
+        'timeout' => (int) env('OPENWA_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('OPENWA_CONNECT_TIMEOUT_SECONDS', 5),
+
+        // PR-F build addendum decision 3 — how long an unmatched
+        // group's pending-link row survives before app:prune-reseller-
+        // whatsapp-pending-links deletes it.
+        'pending_link_ttl_hours' => (int) env('OPENWA_PENDING_LINK_TTL_HOURS', 24),
+
+        // PR-F build addendum decision 2 — reseller_bot_command_logs
+        // retention, matching player_validations' own PII-adjacent window.
+        'command_log_retention_days' => (int) env('OPENWA_COMMAND_LOG_RETENTION_DAYS', 7),
+    ],
+
 ];

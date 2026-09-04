@@ -9,6 +9,7 @@ use App\Models\Voucher;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerService;
+use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
@@ -31,7 +32,7 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new ReportService);
+        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus);
     }
 
     private function order(array $overrides = []): Order
