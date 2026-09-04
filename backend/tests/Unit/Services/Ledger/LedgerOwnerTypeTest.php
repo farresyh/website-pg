@@ -11,6 +11,7 @@ class LedgerOwnerTypeTest extends TestCase
     {
         $this->assertSame('platform', LedgerOwnerType::Platform->value);
         $this->assertSame('affiliate', LedgerOwnerType::Affiliate->value);
+        $this->assertSame('reseller_wallet', LedgerOwnerType::ResellerWallet->value);
     }
 
     public function test_coerce_passes_an_enum_through_unchanged(): void

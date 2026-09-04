@@ -13,6 +13,12 @@ namespace App\Services\Ledger;
  *    brands, not just "the platform owner".
  *  - Affiliate → `('affiliate', <affiliates.id>)`: that one brand's own
  *    margin, withdrawn from its affiliate portal (ADR-059).
+ *  - ResellerWallet → `('reseller_wallet', <resellers.id>)`: a prepaid
+ *    wallet `Reseller` (ADR-073) account's own spend balance — a
+ *    structural mirror of `Affiliate`'s earnings account, except this one
+ *    only ever debits (never earns). Opened at `Reseller` account
+ *    creation (ADR-073 decision 3, ADR-072 PR-B), populated starting
+ *    PR-C's `wallet_topup`/`wallet_debit`/`wallet_refund` entry types.
  *
  * The string values are the literals already persisted since ADR-002 —
  * this enum replaces the scattered `'platform'` / `'affiliate'` magic
@@ -26,6 +32,7 @@ enum LedgerOwnerType: string
 {
     case Platform = 'platform';
     case Affiliate = 'affiliate';
+    case ResellerWallet = 'reseller_wallet';
 
     /**
      * Normalize a value that may already be an enum or a raw string
