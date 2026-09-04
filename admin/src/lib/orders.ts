@@ -24,6 +24,15 @@ export interface OrderListItem {
   created_at: string;
   game: { id: number; name: string } | null;
   package: { id: number; name: string } | null;
+  // Which brand's storefront this order belongs to (always set — every
+  // order has an affiliate, ADR-061) and, for a wallet order placed via
+  // the Reseller API/Bot (ADR-074/075), which Reseller account placed
+  // it — mutually informative, never both meaningfully "the source" at
+  // once: a wallet order's affiliate is always the platform's own
+  // primary brand (ADR-073 decision 5), so wallet_reseller is the one
+  // that actually answers "where did this order come from".
+  affiliate: { id: number; business_name: string } | null;
+  wallet_reseller: { id: number; business_name: string } | null;
 }
 
 /**
@@ -68,11 +77,10 @@ export interface OrderDetail extends OrderListItem {
   // ADR-017's resend gate needs player_validator_enabled/profile_id.
   game: Game | null;
   supplier: { id: number; name: string } | null;
-  affiliate: { id: number; business_name: string } | null;
-  // ADR-073 decision 5/7: which Reseller (wallet) account placed this
-  // order, if any. Non-null here is the signal the order detail screen
-  // uses to swap "Issue Voucher" for "Refund to Wallet" — never both.
-  wallet_reseller: { id: number; business_name: string } | null;
+  // affiliate/wallet_reseller inherited from OrderListItem — non-null
+  // wallet_reseller here is also the signal the order detail screen
+  // uses to swap "Issue Voucher" for "Refund to Wallet" (ADR-073
+  // decision 5/7), never both.
   // ADR-073 decision 7: computed server-side (not a stored column) —
   // true once a wallet_refund ledger entry exists for this order.
   wallet_refunded: boolean;
