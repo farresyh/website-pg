@@ -360,6 +360,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/resend', [OrderController::class, 'resend']);
         // ADR-026 decision 4a — the one needs_review exit that isn't a retry.
         Route::post('/{order}/mark-delivered', [OrderController::class, 'markDelivered']);
+        // ADR-073 decision 7 — the wallet-order counterpart to
+        // /vouchers/{order} (VoucherController::storeFromOrder), never
+        // both offered for the same order.
+        Route::post('/{order}/refund-to-wallet', [OrderController::class, 'refundToWallet']);
     });
 
     // ADR-018: a middleware-only sandbox for exercising the real Order

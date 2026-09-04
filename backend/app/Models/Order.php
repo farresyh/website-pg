@@ -36,6 +36,7 @@ class Order extends Model
         'supplier_id',
         'supplier_product_ref',
         'affiliate_id',
+        'wallet_reseller_id',
         'voucher_id',
         'pricing_basis',
         'membership_id',
@@ -96,6 +97,17 @@ class Order extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    /**
+     * ADR-073 decision 5: which `Reseller` (wallet) account placed this
+     * order, distinct from `affiliate()` (which brand's storefront it
+     * belongs to — always the primary brand for a wallet order). Null
+     * for every non-wallet order.
+     */
+    public function walletReseller(): BelongsTo
+    {
+        return $this->belongsTo(Reseller::class, 'wallet_reseller_id');
     }
 
     /**
