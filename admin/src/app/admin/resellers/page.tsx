@@ -55,6 +55,7 @@ import {
 } from "@/lib/resellers";
 import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/resellers/ResellerFormModal";
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
+import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -79,6 +80,7 @@ export default function ResellersPage() {
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ResellerRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
+  const [walletTarget, setWalletTarget] = useState<ResellerRow | null>(null);
 
   function refresh(t: string) {
     return Promise.all([listResellers(t), listResellerTiers(t)])
@@ -199,6 +201,9 @@ export default function ResellersPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <div className="flex flex-wrap gap-1.5">
+                            <Button size="small" variant="outlined" onClick={() => setWalletTarget(r)}>
+                              Wallet
+                            </Button>
                             <Button size="small" variant="outlined" onClick={() => { setEditing(r); setFormOpen(true); }}>
                               Edit
                             </Button>
@@ -295,6 +300,16 @@ export default function ResellersPage() {
           {tiers.length === 0 && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No tiers yet.</p>}
         </div>
       </div>
+
+      {walletTarget && (
+        <ResellerWalletModal
+          isOpen={walletTarget !== null}
+          onClose={() => setWalletTarget(null)}
+          token={token}
+          reseller={walletTarget}
+          onCredited={() => refresh(token)}
+        />
+      )}
 
       <ResellerFormModal
         isOpen={formOpen}

@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ResellerController;
 use App\Http\Controllers\Admin\ResellerTierController;
+use App\Http\Controllers\Admin\ResellerWalletController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
@@ -540,6 +541,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
             Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
             Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+
+            // ADR-073 decision 3(b) (PR-C) — admin manual-credit. Self-serve
+            // CHIP top-up (decision 3a) deferred to whichever PR first gives
+            // a Reseller its own entry point (see ADR-073's build addendum).
+            Route::get('/{reseller}/wallet', [ResellerWalletController::class, 'index']);
+            Route::post('/{reseller}/wallet/credit', [ResellerWalletController::class, 'credit']);
         });
 
         // ADR-073 decision 1 — the reseller_tiers CRUD ladder.
@@ -549,6 +556,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('/{reseller_tier}', [ResellerTierController::class, 'update']);
             Route::delete('/{reseller_tier}', [ResellerTierController::class, 'destroy']);
         });
+
+        Route::get('/wallet-topup-receipts/{walletTopupReceipt}/download', [ResellerWalletController::class, 'downloadReceipt']);
     });
 
     // ADR-029 — SEO Management: Overview, Global Settings/Meta
