@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\CircuitBreaker\CircuitBreaker;
+use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
@@ -30,7 +31,10 @@ final class DashboardService
     /** `orders` is the only queue this screen monitors (ADR-045 decision 9) — see DashboardService::health(). */
     private const MONITORED_QUEUE = 'orders';
 
-    public function __construct(private readonly ReportService $reports) {}
+    public function __construct(
+        private readonly ReportService $reports,
+        private readonly OpenWaSessionStatus $openWaSessionStatus,
+    ) {}
 
     /**
      * DASH-1 — reuses ReportService's own pinned Sales/Orders/Profit
@@ -140,9 +144,21 @@ final class DashboardService
             ->where('payment_status', PaymentStatus::Pending->value)
             ->count();
 
+        $openWaSession = $this->openWaSessionStatus->current();
+
         return [
             'suppliers' => $suppliers,
             'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it).',
+            // PR-F build addendum decision 5 — an active health signal
+            // for the Reseller Bot channel's OpenWA session, reversed
+            // from this screen's usual "no live ping" posture only in
+            // that it's push- not poll-driven: the last-known
+            // session.status webhook event, cache-backed, never a live
+            // call to OpenWA itself. Null = no event has ever arrived
+            // (not yet provisioned/linked), distinct from a known
+            // 'disconnected' state.
+            'openwa_session' => $openWaSession,
+            'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping). Null means no event has ever arrived, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
                 'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending older than {$pendingStaleMinutes} minutes (both thresholds from the same delivery_reconciliation config ReconcilePendingDeliveriesCommand itself uses — DELIVERY_RECONCILIATION_STALE_AFTER_MINUTES/PENDING_STALE_MINUTES). Excludes is_test orders.",

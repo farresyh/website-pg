@@ -7,8 +7,10 @@
  * PrimeReact-Tailwind primitives only (ADR-038) — this screen is new.
  *
  * PR-D added order-placing logic; PR-E (ADR-074) added the "API Keys"
- * row action (`ResellerApiKeysModal`, issue/revoke). No portal login
- * yet (PR-G) — see the ADR-072..075 phasing note.
+ * row action (`ResellerApiKeysModal`, issue/revoke); PR-F (ADR-075)
+ * added "WhatsApp Groups" (`ResellerWhatsAppGroupsModal`, link/unlink
+ * against the platform-wide pending list). No portal login yet (PR-G)
+ * — see the ADR-072..075 phasing note.
  */
 
 import { useEffect, useState } from "react";
@@ -58,6 +60,7 @@ import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/r
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
+import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -84,6 +87,7 @@ export default function ResellersPage() {
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
   const [walletTarget, setWalletTarget] = useState<ResellerRow | null>(null);
   const [apiKeysTarget, setApiKeysTarget] = useState<ResellerRow | null>(null);
+  const [whatsAppGroupsTarget, setWhatsAppGroupsTarget] = useState<ResellerRow | null>(null);
 
   function refresh(t: string) {
     return Promise.all([listResellers(t), listResellerTiers(t)])
@@ -210,6 +214,9 @@ export default function ResellersPage() {
                             <Button size="small" variant="outlined" onClick={() => setApiKeysTarget(r)}>
                               API Keys
                             </Button>
+                            <Button size="small" variant="outlined" onClick={() => setWhatsAppGroupsTarget(r)}>
+                              WhatsApp Groups
+                            </Button>
                             <Button size="small" variant="outlined" onClick={() => { setEditing(r); setFormOpen(true); }}>
                               Edit
                             </Button>
@@ -323,6 +330,15 @@ export default function ResellersPage() {
           onClose={() => setApiKeysTarget(null)}
           token={token}
           reseller={apiKeysTarget}
+        />
+      )}
+
+      {whatsAppGroupsTarget && (
+        <ResellerWhatsAppGroupsModal
+          isOpen={whatsAppGroupsTarget !== null}
+          onClose={() => setWhatsAppGroupsTarget(null)}
+          token={token}
+          reseller={whatsAppGroupsTarget}
         />
       )}
 

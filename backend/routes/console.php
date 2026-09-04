@@ -74,6 +74,20 @@ Schedule::call(fn () => Artisan::call('app:prune-supplier-request-logs'))
     ->name('supplier-request-log-pruning')
     ->withoutOverlapping();
 
+// PR-F build addendum (ADR-075) — same inert-until-real-cron pattern as
+// above. Prunes reseller_whatsapp_pending_links past its 24h TTL and
+// reseller_bot_command_logs past its 7-day retention — see each
+// command's own docblock.
+Schedule::call(fn () => Artisan::call('app:prune-reseller-whatsapp-pending-links'))
+    ->hourly()
+    ->name('reseller-whatsapp-pending-link-pruning')
+    ->withoutOverlapping();
+
+Schedule::call(fn () => Artisan::call('app:prune-reseller-bot-command-logs'))
+    ->daily()
+    ->name('reseller-bot-command-log-pruning')
+    ->withoutOverlapping();
+
 // ADR-039 decision 2 — same inert-until-real-cron pattern as above.
 // `--triggered-by=system` distinguishes this from the manual "Backup
 // Now" admin action, both of which go through the same

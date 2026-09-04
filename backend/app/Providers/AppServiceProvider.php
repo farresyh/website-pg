@@ -13,6 +13,7 @@ use App\Observers\PriceSyncRunObserver;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\PlunkMailer;
+use App\Services\OpenWa\OpenWaClient;
 use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
@@ -221,6 +222,20 @@ class AppServiceProvider extends ServiceProvider
                 apiKey: (string) $config['api_key'],
                 fromEmail: $config['from_email'],
                 fromName: $config['from_name'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
+
+        // ADR-075 / PR-F build addendum — the Reseller Bot channel's
+        // one seam to the self-hosted OpenWA gateway.
+        $this->app->bind(OpenWaClient::class, function () {
+            $config = config('services.openwa');
+
+            return new OpenWaClient(
+                baseUrl: $config['base_url'],
+                sessionId: $config['session_id'],
+                apiKey: $config['api_key'],
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
             );
