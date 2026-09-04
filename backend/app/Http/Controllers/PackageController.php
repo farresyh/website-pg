@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Games\UpdatePackageCatalogCodeRequest;
 use App\Http\Requests\Games\UpdatePackageDenominationRequest;
 use App\Http\Requests\Games\UpdatePackageMarkupRequest;
 use App\Http\Requests\Games\UpdatePackageRequest;
@@ -69,6 +70,21 @@ class PackageController extends Controller
     public function updateDenomination(UpdatePackageDenominationRequest $request, Package $package): JsonResponse
     {
         $package->update(['denomination' => $request->validated('denomination')]);
+        GameController::forgetPackagesCache($package->game_id);
+
+        return response()->json($package);
+    }
+
+    /**
+     * ADR-075's catalog-code addendum (2026-09-04), decision 2: the
+     * `catalog_code` counterpart to updateDenomination() above — sets
+     * the equivalence key for a bundle/pass Package instead of a real
+     * `denomination`. Mutual exclusivity between the two is enforced
+     * in UpdatePackageCatalogCodeRequest, not here.
+     */
+    public function updateCatalogCode(UpdatePackageCatalogCodeRequest $request, Package $package): JsonResponse
+    {
+        $package->update(['catalog_code' => $request->validated('catalog_code')]);
         GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);

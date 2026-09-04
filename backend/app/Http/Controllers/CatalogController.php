@@ -269,44 +269,65 @@ class CatalogController extends Controller
      * ADR-034: among active packages sharing a (game_id, denomination)
      * equivalence key, keep only the cheapest — the same product sold
      * by two suppliers must never let the client pick the pricier one
-     * (ORD-9, price is always server-computed). `denomination === null`
-     * packages (non-integer-amount products) are never grouped
-     * together — each stays its own row, matching the ADR's own
-     * "leaves existing packages empty" / "never dedup null" intent.
+     * (ORD-9, price is always server-computed).
+     *
+     * ADR-075's catalog-code addendum (2026-09-04) extends this with a
+     * second, independent equivalence key, `catalog_code` — the same
+     * dedup rule applied to bundle/pass packages (which never carry a
+     * `denomination`, ADR-034), grouped separately so the two key
+     * spaces can never collide with each other. A package with
+     * neither key set is never grouped — it stays its own row,
+     * matching ADR-034's original "never dedup null" intent.
      *
      * @param  Collection<int, Package>  $packages
      * @return Collection<int, Package>
      */
     private function dedupByDenomination($packages)
     {
-        [$withDenomination, $withoutDenomination] = $packages->partition(
+        [$withDenomination, $rest] = $packages->partition(
             fn (Package $package) => $package->denomination !== null,
+        );
+        [$withCatalogCode, $withoutEither] = $rest->partition(
+            fn (Package $package) => $package->catalog_code !== null,
         );
 
         $cheapestPerDenomination = $withDenomination
             ->groupBy('denomination')
-            ->map(function ($group) {
-                return $group
-                    ->sortBy([
-                        fn (Package $a, Package $b) => $this->sellingPriceSen($a) <=> $this->sellingPriceSen($b),
-                        fn (Package $a, Package $b) => $a->id <=> $b->id,
-                    ])
-                    ->first();
-            });
+            ->map(fn ($group) => $this->cheapestInGroup($group));
 
-        return $withoutDenomination->concat($cheapestPerDenomination->values())
+        $cheapestPerCatalogCode = $withCatalogCode
+            ->groupBy('catalog_code')
+            ->map(fn ($group) => $this->cheapestInGroup($group));
+
+        return $withoutEither
+            ->concat($cheapestPerDenomination->values())
+            ->concat($cheapestPerCatalogCode->values())
             ->sortBy([
                 // ADR-034 follow-up (founder feedback, 2026-08-25):
                 // smallest denomination first reads as cheapest-first
                 // to a customer, sorting numerically rather than
                 // alphabetically-by-name. Packages without a curated
-                // denomination sort last, by name — same ordering
+                // denomination (including every catalog_code-deduped
+                // bundle/pass) sort last, by name — same ordering
                 // GameController::packages() already applies admin-side.
                 fn (Package $a, Package $b) => ($a->denomination === null ? 1 : 0) <=> ($b->denomination === null ? 1 : 0),
                 fn (Package $a, Package $b) => $a->denomination <=> $b->denomination,
                 fn (Package $a, Package $b) => strcmp($a->name, $b->name),
             ])
             ->values();
+    }
+
+    /**
+     * @param  Collection<int, Package>  $group
+     */
+    private function cheapestInGroup($group): Package
+    {
+        return $group
+            ->sortBy([
+                fn (Package $a, Package $b) => $this->sellingPriceSen($a) <=> $this->sellingPriceSen($b),
+                fn (Package $a, Package $b) => $a->id <=> $b->id,
+            ])
+            ->first();
     }
 
     private function sellingPriceSen(Package $package): int

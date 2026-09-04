@@ -46,6 +46,7 @@ import {
   updatePackageMarkup,
   updatePackageStatus,
   updatePackageDenomination,
+  updatePackageCatalogCode,
   deletePackage,
 } from "@/lib/games";
 import EditGameModal from "@/components/games/EditGameModal";
@@ -126,6 +127,42 @@ function DenominationCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (deno
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        placeholder="—"
+        className="h-9 w-16 rounded-lg border border-gray-300 px-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+      />
+      <Button size="small" disabled={saving} onClick={handleUpdate}>
+        {saving ? "…" : "Update"}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * ADR-075's catalog-code addendum (2026-09-04): the catalog_code
+ * counterpart to DenominationCell above, for bundle/pass packages —
+ * mutually exclusive with `denomination` (enforced server-side).
+ * Uppercased client-side to match the backend's own normalization.
+ */
+function CatalogCodeCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (catalogCode: string | null) => Promise<void> }) {
+  const [value, setValue] = useState(pkg.catalog_code ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleUpdate() {
+    const trimmed = value.trim().toUpperCase();
+    setSaving(true);
+    try {
+      await onUpdate(trimmed === "" ? null : trimmed);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value.toUpperCase())}
         placeholder="—"
         className="h-9 w-16 rounded-lg border border-gray-300 px-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
       />
@@ -271,6 +308,18 @@ export default function GamesPage() {
     }
   }
 
+  async function handleUpdateCatalogCode(pkg: GamePackage, catalogCode: string | null) {
+    if (!session) return;
+    setError(null);
+    try {
+      // Merge, don't replace — same reasoning as handleUpdateMarkup.
+      const updated = await updatePackageCatalogCode(session.token, pkg.id, catalogCode);
+      setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, ...updated } : p)) ?? null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update catalog code.");
+    }
+  }
+
   if (selected) {
     return (
       <div>
@@ -307,6 +356,7 @@ export default function GamesPage() {
                       <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Denomination</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Catalog Code</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Markup %</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate Price</DataTableTHeadCell>
@@ -344,6 +394,13 @@ export default function GamesPage() {
                               key={`${pkg.id}-${pkg.denomination}`}
                               pkg={pkg}
                               onUpdate={(denomination) => handleUpdateDenomination(pkg, denomination)}
+                            />
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <CatalogCodeCell
+                              key={`${pkg.id}-${pkg.catalog_code}`}
+                              pkg={pkg}
+                              onUpdate={(catalogCode) => handleUpdateCatalogCode(pkg, catalogCode)}
                             />
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>

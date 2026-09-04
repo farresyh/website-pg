@@ -202,6 +202,84 @@ class PackageControllerTest extends TestCase
             ->assertUnauthorized();
     }
 
+    /**
+     * ADR-075's catalog-code addendum (2026-09-04): the catalog_code
+     * counterpart to denomination, for bundle/pass packages.
+     */
+    public function test_update_catalog_code_sets_the_value(): void
+    {
+        $package = $this->package(['denomination' => null, 'catalog_code' => null]);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$package->id}/catalog-code", [
+            'catalog_code' => 'P1',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('P1', $package->refresh()->catalog_code);
+    }
+
+    public function test_update_catalog_code_normalizes_to_uppercase(): void
+    {
+        $package = $this->package(['denomination' => null, 'catalog_code' => null]);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/catalog-code", ['catalog_code' => 'p1'])
+            ->assertOk();
+
+        $this->assertSame('P1', $package->refresh()->catalog_code);
+    }
+
+    public function test_update_catalog_code_can_clear_it_back_to_null(): void
+    {
+        $package = $this->package(['denomination' => null, 'catalog_code' => 'P1']);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/catalog-code", ['catalog_code' => null])
+            ->assertOk();
+
+        $this->assertNull($package->refresh()->catalog_code);
+    }
+
+    public function test_update_catalog_code_rejects_a_bare_numeric_string(): void
+    {
+        $package = $this->package(['denomination' => null, 'catalog_code' => null]);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/catalog-code", ['catalog_code' => '14'])
+            ->assertUnprocessable();
+    }
+
+    /**
+     * ADR-075's catalog-code addendum, decision 2: denomination and
+     * catalog_code are mutually exclusive on one Package.
+     */
+    public function test_update_catalog_code_rejects_when_denomination_already_set(): void
+    {
+        $package = $this->package(['denomination' => 14, 'catalog_code' => null]);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/catalog-code", ['catalog_code' => 'P1'])
+            ->assertUnprocessable();
+    }
+
+    public function test_update_denomination_rejects_when_catalog_code_already_set(): void
+    {
+        $package = $this->package(['denomination' => null, 'catalog_code' => 'P1']);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$package->id}/denomination", ['denomination' => 14])
+            ->assertUnprocessable();
+    }
+
+    public function test_update_catalog_code_requires_authentication(): void
+    {
+        $package = $this->package();
+
+        $this->patchJson("/api/packages/{$package->id}/catalog-code", ['catalog_code' => 'P1'])
+            ->assertUnauthorized();
+    }
+
     public function test_destroy_removes_the_package(): void
     {
         $package = $this->package();

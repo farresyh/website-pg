@@ -228,6 +228,65 @@ class CatalogControllerTest extends TestCase
     }
 
     /**
+     * ADR-075's catalog-code addendum (2026-09-04): the same dedup
+     * rule as denomination, applied to bundle/pass packages via
+     * catalog_code instead — two suppliers' equivalent "Weekly Pass"
+     * (admin-linked via the same catalog_code) must show only the
+     * cheaper one, same as a real-value package would.
+     */
+    public function test_packages_dedups_by_catalog_code_keeping_the_cheaper_one(): void
+    {
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass (Gamevion)', 'catalog_code' => 'P1',
+            'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV-WP', 'is_active' => true,
+        ]);
+        $cheaper = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass (Digiflazz)', 'catalog_code' => 'P1',
+            'cost_price' => 480, 'standard_selling_price' => 550,
+            'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'DF-WP', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $packages = $response->json();
+        $this->assertCount(1, $packages);
+        $this->assertSame($cheaper->id, $packages[0]['id']);
+        $this->assertSame(550, $packages[0]['selling_price_sen']);
+    }
+
+    /**
+     * A catalog_code group and a denomination group never interact —
+     * even if a bundle/pass's catalog_code happens to look like a
+     * denomination value elsewhere, they occupy different columns and
+     * are never compared against one another.
+     */
+    public function test_packages_catalog_code_and_denomination_groups_never_collide(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamonds', 'denomination' => 14,
+            'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV14', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass', 'catalog_code' => 'P1',
+            'cost_price' => 400, 'standard_selling_price' => 450,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-WP', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $this->assertCount(2, $response->json());
+    }
+
+    /**
      * Deterministic tie-break (lower package id) when two duplicate
      * packages price identically — not specified by the ADR itself,
      * but the pick must be stable across requests, not arbitrary.
