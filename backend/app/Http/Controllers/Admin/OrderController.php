@@ -53,7 +53,14 @@ class OrderController extends Controller
         // trustworthy at a glance (e.g. the "Need Action" count); a
         // sandbox order can only ever be seen/acted on via
         // Middleware\SandboxOrderController's own is_test=true scope.
-        $query = Order::query()->where('is_test', false)->with(['game:id,name', 'package:id,name']);
+        // `affiliate`/`walletReseller` — which brand's storefront (or,
+        // for a wallet order, which Reseller API/Bot account) this order
+        // came from. Founder-requested visibility: the list previously
+        // loaded neither, so there was no way to tell at a glance.
+        $query = Order::query()->where('is_test', false)->with([
+            'game:id,name', 'package:id,name',
+            'affiliate:id,business_name', 'walletReseller:id,business_name',
+        ]);
 
         match ($request->query('status')) {
             'need_action' => $query

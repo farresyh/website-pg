@@ -117,4 +117,45 @@ class ResellerCatalogServiceTest extends TestCase
         $this->assertNull($service->resolveByCode('MLMY-'));
         $this->assertNull($service->resolveByCode(''));
     }
+
+    /** ADR-074 decision 3 / ADR-075 decision 5's shared "price list" source. */
+    public function test_list_available_pairs_each_package_with_its_public_code(): void
+    {
+        $game = $this->game();
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 400, 'standard_selling_price' => 500,
+            'supplier_id' => $this->supplier()->id, 'supplier_package_ref' => 'A',
+        ]);
+
+        $items = app(ResellerCatalogService::class)->listAvailable();
+
+        $this->assertCount(1, $items);
+        $this->assertSame('MLMY-14', $items[0]['code']);
+        $this->assertSame('14 Diamond', $items[0]['package']->name);
+    }
+
+    public function test_list_available_skips_games_without_a_reseller_code(): void
+    {
+        $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'reseller_code' => null, 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'denomination' => 100,
+            'cost_price' => 400, 'standard_selling_price' => 500,
+            'supplier_id' => $this->supplier()->id, 'supplier_package_ref' => 'A',
+        ]);
+
+        $this->assertCount(0, app(ResellerCatalogService::class)->listAvailable());
+    }
+
+    public function test_list_available_skips_uncurated_packages(): void
+    {
+        $game = $this->game();
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Uncurated', 'denomination' => null, 'catalog_code' => null,
+            'cost_price' => 400, 'standard_selling_price' => 500,
+            'supplier_id' => $this->supplier()->id, 'supplier_package_ref' => 'A',
+        ]);
+
+        $this->assertCount(0, app(ResellerCatalogService::class)->listAvailable());
+    }
 }

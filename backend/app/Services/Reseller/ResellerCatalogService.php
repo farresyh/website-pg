@@ -4,6 +4,7 @@ namespace App\Services\Reseller;
 
 use App\Models\Game;
 use App\Models\Package;
+use Illuminate\Support\Collection;
 
 /**
  * ADR-075's catalog-code addendum (2026-09-04), decision 7: resolves
@@ -54,5 +55,38 @@ final class ResellerCatalogService
         $catalogCode = $denomination === null ? $rest : null;
 
         return Package::cheapestActiveFor($game->id, $denomination, $catalogCode);
+    }
+
+    /**
+     * Every orderable product across every reseller-coded Game, paired
+     * with its resolved public code — the shared "price list" source
+     * both the Reseller API's `GET /catalog` (ADR-074) and the future
+     * Reseller Bot's `.list` command (ADR-075) build their response
+     * from. A `Game` with no `reseller_code`, or with zero eligible
+     * active packages, contributes nothing; a `Package` with neither
+     * `denomination` nor `catalog_code` set (not yet curated) is
+     * skipped — there's no valid code to give it.
+     *
+     * Returns raw `Package` rows, never `Package.id`/
+     * `supplier_package_ref` — pricing (`PricingService::
+     * calculateForAffiliate()` against the caller's own `Reseller`
+     * tier) stays the caller's job, same division of responsibility as
+     * `resolveByCode()` above.
+     *
+     * @return Collection<int, array{code: string, package: Package}>
+     */
+    public function listAvailable(): Collection
+    {
+        return Game::query()
+            ->whereNotNull('reseller_code')
+            ->where('is_active', true)
+            ->get()
+            ->flatMap(fn (Game $game) => Package::cheapestActivePerGame($game->id)
+                ->filter(fn (Package $package) => $package->denomination !== null || $package->catalog_code !== null)
+                ->map(fn (Package $package) => [
+                    'code' => $game->reseller_code.'-'.($package->denomination ?? $package->catalog_code),
+                    'package' => $package,
+                ]))
+            ->values();
     }
 }

@@ -72,6 +72,45 @@ class OrderControllerTest extends TestCase
         $this->assertSame('100 Diamonds', $response->json('data.0.package.name'));
     }
 
+    /** Founder-requested visibility: which brand's storefront this order came from. */
+    public function test_index_lists_orders_with_the_affiliate_they_belong_to(): void
+    {
+        $affiliate = $this->primaryAffiliate();
+        $this->order(['affiliate_id' => $affiliate->id]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $this->assertSame($affiliate->id, $response->json('data.0.affiliate.id'));
+        $this->assertSame($affiliate->business_name, $response->json('data.0.affiliate.business_name'));
+    }
+
+    /** ADR-073 decision 5: which Reseller (wallet) account placed this order, for a wallet order. */
+    public function test_index_lists_wallet_orders_with_the_reseller_that_placed_them(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        $this->order(['wallet_reseller_id' => $reseller->id, 'payment_method' => 'wallet']);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $this->assertSame($reseller->id, $response->json('data.0.wallet_reseller.id'));
+        $this->assertSame('Acme Reseller', $response->json('data.0.wallet_reseller.business_name'));
+    }
+
+    public function test_index_wallet_reseller_is_null_for_a_normal_storefront_order(): void
+    {
+        $this->order();
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $this->assertNull($response->json('data.0.wallet_reseller'));
+    }
+
     public function test_index_can_filter_by_need_action(): void
     {
         $this->order(['order_number' => 'KRS-NEEDS-ACTION', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
