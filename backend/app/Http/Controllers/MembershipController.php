@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Membership\SubscribeRequest;
+use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Order;
-use App\Models\Reseller;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Membership\MembershipSubscriptionException;
@@ -52,7 +52,7 @@ class MembershipController extends Controller
      */
     public function plans(): JsonResponse
     {
-        $enabled = Reseller::primary()->membershipEnabledEffective();
+        $enabled = Affiliate::primary()->membershipEnabledEffective();
 
         if (! $enabled) {
             return response()->json([]);
@@ -85,11 +85,11 @@ class MembershipController extends Controller
             return response()->json(['message' => 'Invalid or expired session.'], 401);
         }
 
-        [$resellerId, $email] = [$session['reseller_id'], $session['email']];
+        [$affiliateId, $email] = [$session['affiliate_id'], $session['email']];
 
         $membership = Membership::query()
             ->with('membershipPlan')
-            ->where('reseller_id', $resellerId)
+            ->where('affiliate_id', $affiliateId)
             ->where('email', $email)
             ->where('status', MembershipStatus::Active)
             ->first();
@@ -100,7 +100,7 @@ class MembershipController extends Controller
             // orders can never be split across a mistyped address.
             'email' => $email,
             'membership' => $membership !== null ? $this->publicMembership($membership) : null,
-            'order_history' => $this->orderHistory($resellerId, $email, $membership?->id),
+            'order_history' => $this->orderHistory($affiliateId, $email, $membership?->id),
         ]);
     }
 
@@ -121,12 +121,12 @@ class MembershipController extends Controller
             return response()->json(['message' => 'Invalid or expired session.'], 401);
         }
 
-        if (! Reseller::primary()->membershipEnabledEffective()) {
+        if (! Affiliate::primary()->membershipEnabledEffective()) {
             return response()->json(['message' => 'Membership is not available.'], 403);
         }
 
         $current = Membership::query()
-            ->where('reseller_id', $session['reseller_id'])
+            ->where('affiliate_id', $session['affiliate_id'])
             ->where('email', $session['email'])
             ->where('status', MembershipStatus::Active)
             ->where('expires_at', '>=', now())
@@ -170,13 +170,13 @@ class MembershipController extends Controller
             return response()->json(['message' => 'Invalid or expired session.'], 401);
         }
 
-        if (! Reseller::primary()->membershipEnabledEffective()) {
+        if (! Affiliate::primary()->membershipEnabledEffective()) {
             return response()->json(['message' => 'Membership is not available.'], 403);
         }
 
         try {
             $attempt = $this->subscriptions->initiate(
-                $session['reseller_id'],
+                $session['affiliate_id'],
                 $session['email'],
                 (int) $request->validated('membership_plan_id'),
                 $request->validated('payment_method'),
@@ -216,18 +216,18 @@ class MembershipController extends Controller
 
     /**
      * ADR-061 decision 5: a session token is only honoured on the brand
-     * it was issued for. The storefront brand is `Reseller::primary()`
+     * it was issued for. The storefront brand is `Affiliate::primary()`
      * today (`Host`-resolved in ADR-060); a token from another brand
      * resolves to `null` here, exactly like an expired one.
      *
-     * @return array{reseller_id: int, email: string}|null
+     * @return array{affiliate_id: int, email: string}|null
      */
     private function resolveSession(Request $request): ?array
     {
         $token = $request->bearerToken();
         $session = $token !== null ? $this->sessionTokens->resolve($token) : null;
 
-        if ($session === null || $session['reseller_id'] !== Reseller::primary()->id) {
+        if ($session === null || $session['affiliate_id'] !== Affiliate::primary()->id) {
             return null;
         }
 
@@ -261,11 +261,11 @@ class MembershipController extends Controller
      *
      * @return array<int, array<string, mixed>>
      */
-    private function orderHistory(int $resellerId, string $email, ?int $membershipId): array
+    private function orderHistory(int $affiliateId, string $email, ?int $membershipId): array
     {
         return Order::query()
             ->with(['game:id,name,slug', 'package:id,name'])
-            ->where('reseller_id', $resellerId)
+            ->where('affiliate_id', $affiliateId)
             ->where(function ($query) use ($email, $membershipId): void {
                 $query->where('customer_email', $email);
 

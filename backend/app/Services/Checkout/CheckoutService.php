@@ -67,7 +67,7 @@ final class CheckoutService
         $pricing = $this->pricing->calculate(
             $request->costPriceSen,
             $request->standardSellingPriceSen,
-            $request->resellerMarkupPct,
+            $request->affiliateMarkupPct,
         );
 
         $member = $this->resolveMemberPricing($request);
@@ -83,7 +83,7 @@ final class CheckoutService
 
         $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
         $platformProfit = $member !== null ? $member->memberPriceSen - $request->costPriceSen : $pricing->platformProfit;
-        $resellerProfit = $member !== null ? 0 : $pricing->resellerProfit;
+        $affiliateProfit = $member !== null ? 0 : $pricing->affiliateProfit;
 
         [$voucherPreview, $total, $fullyCoveredByVoucher] = $this->computeTotal(
             $sellingPriceForOrder,
@@ -121,7 +121,7 @@ final class CheckoutService
                 'package_id' => $request->packageId,
                 'supplier_id' => $request->supplierId,
                 'supplier_product_ref' => $request->supplierProductRef,
-                'reseller_id' => $request->resellerId,
+                'affiliate_id' => $request->affiliateId,
                 'voucher_id' => $voucherPreview?->voucherId,
                 'pricing_basis' => $member !== null ? PricingBasis::Member->value : PricingBasis::Standard->value,
                 'membership_id' => $member?->membershipId,
@@ -129,13 +129,13 @@ final class CheckoutService
                 'normal_selling_price' => $member !== null ? $pricing->sellingPrice : null,
                 'cost_price' => $pricing->costPrice,
                 'standard_selling_price' => $pricing->standardSellingPrice,
-                'reseller_markup_pct' => $request->resellerMarkupPct,
+                'affiliate_markup_pct' => $request->affiliateMarkupPct,
                 'selling_price' => $sellingPriceForOrder,
                 'voucher_discount' => $total->voucherDiscount,
                 'transaction_fee' => $fullyCoveredByVoucher ? 0 : $total->transactionFee,
                 'final_amount' => $fullyCoveredByVoucher ? 0 : $total->finalAmount,
                 'platform_profit' => $platformProfit,
-                'reseller_profit' => $resellerProfit,
+                'affiliate_profit' => $affiliateProfit,
                 'payment_status' => $fullyCoveredByVoucher ? PaymentStatus::Paid->value : PaymentStatus::Pending->value,
                 'paid_at' => $fullyCoveredByVoucher ? now() : null,
                 'delivery_status' => DeliveryStatus::NotStarted->value,
@@ -446,14 +446,14 @@ final class CheckoutService
         int $costPriceSen,
         int $standardSellingPriceSen,
         float $packageMarkupPercent,
-        float $resellerMarkupPct,
+        float $affiliateMarkupPct,
         PaymentMethodFeeConfig $paymentFeeConfig,
         ?int $membershipId,
         ?string $voucherCode,
         string $customerEmail,
         ?string $customerPhone,
     ): CheckoutTotalPreview {
-        $pricing = $this->pricing->calculate($costPriceSen, $standardSellingPriceSen, $resellerMarkupPct);
+        $pricing = $this->pricing->calculate($costPriceSen, $standardSellingPriceSen, $affiliateMarkupPct);
 
         $member = $this->resolveMemberPricingFor($membershipId, $costPriceSen, $packageMarkupPercent);
         $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;

@@ -3,8 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\HeroSlide;
-use App\Models\Reseller;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -22,11 +22,11 @@ class DatabaseSeeder extends Seeder
             'email' => 'test@example.com',
         ]);
 
-        // ADR-061: the platform's own storefront is a Reseller row like
+        // ADR-061: the platform's own storefront is an Affiliate row like
         // any other — `is_owned` (our brand) + `is_primary` (the single
         // console/job/migration fallback tenant, never deletable).
         // markup_pct=0 so all its margin books as platform_profit.
-        Reseller::query()->updateOrCreate(
+        Affiliate::query()->updateOrCreate(
             ['is_primary' => true],
             [
                 'business_name' => 'PekanGame', // ADR-062

@@ -11,13 +11,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * never exposed via `toArray()`/`toJson()`, same defense-in-depth as
  * `Supplier.api_config`.
  *
- * ADR-061 decision 5 (PR-B): `reseller_id` scopes a code to the brand
+ * ADR-061 decision 5 (PR-B): `affiliate_id` scopes a code to the brand
  * that issued it — `OtpService::verify()` filters on it.
  */
 class MembershipOtpCode extends Model
 {
     protected $fillable = [
-        'reseller_id',
+        'affiliate_id',
         'email',
         'code_hash',
         'expires_at',
@@ -35,8 +35,8 @@ class MembershipOtpCode extends Model
         'attempts' => 'integer',
     ];
 
-    public function reseller(): BelongsTo
+    public function affiliate(): BelongsTo
     {
-        return $this->belongsTo(Reseller::class);
+        return $this->belongsTo(Affiliate::class);
     }
 }

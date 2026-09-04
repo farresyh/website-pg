@@ -32,15 +32,14 @@ final class OrderResendService
         private readonly OrderFulfillmentService $fulfillment,
         private readonly PricingService $pricing,
         private readonly MembershipPricingService $membershipPricing,
-    ) {
-    }
+    ) {}
 
     /**
      * @throws ValidationException when the target package isn't a
-     *         same-game swap (decision #1), isn't active, the order
-     *         isn't currently in a resendable state, or the game
-     *         requires player-ID validation that hasn't happened
-     *         recently (decision #6).
+     *                             same-game swap (decision #1), isn't active, the order
+     *                             isn't currently in a resendable state, or the game
+     *                             requires player-ID validation that hasn't happened
+     *                             recently (decision #6).
      */
     public function resend(Order $order, Package $targetPackage, ?string $note, ?string $triggeredBy): Order
     {
@@ -55,7 +54,7 @@ final class OrderResendService
         $liveStandardSellingPrice = $targetPackage->standard_selling_price;
         $priceDiff = $liveCostPrice - $order->cost_price;
 
-        // Decision #5: platform_profit/reseller_profit are recomputed
+        // Decision #5: platform_profit/affiliate_profit are recomputed
         // from this attempt's live package economics — same formula
         // PricingService already applies at checkout, reused here
         // rather than invented fresh — and set on Order *before*
@@ -69,7 +68,7 @@ final class OrderResendService
         // member formula instead — live cost_price (things a resync
         // can change), but the order's own frozen member_discount_percent
         // (never a live tier lookup), exactly mirroring how the standard
-        // chain above already treats reseller_markup_pct as frozen off
+        // chain above already treats affiliate_markup_pct as frozen off
         // the order while only cost_price is re-fetched live.
         if ($order->pricing_basis === PricingBasis::Member) {
             $liveMemberPrice = $this->membershipPricing->calculateMemberPrice(
@@ -78,11 +77,11 @@ final class OrderResendService
                 (float) $order->member_discount_percent,
             );
             $platformProfit = $liveMemberPrice - $liveCostPrice;
-            $resellerProfit = 0;
+            $affiliateProfit = 0;
         } else {
-            $breakdown = $this->pricing->calculate($liveCostPrice, $liveStandardSellingPrice, (float) $order->reseller_markup_pct);
+            $breakdown = $this->pricing->calculate($liveCostPrice, $liveStandardSellingPrice, (float) $order->affiliate_markup_pct);
             $platformProfit = $breakdown->platformProfit;
-            $resellerProfit = $breakdown->resellerProfit;
+            $affiliateProfit = $breakdown->affiliateProfit;
         }
 
         $order->update([
@@ -90,7 +89,7 @@ final class OrderResendService
             'supplier_id' => $targetPackage->supplier_id,
             'supplier_product_ref' => $targetPackage->supplier_package_ref,
             'platform_profit' => $platformProfit,
-            'reseller_profit' => $resellerProfit,
+            'affiliate_profit' => $affiliateProfit,
         ]);
 
         $result = $this->fulfillment->fulfill($order->fresh());

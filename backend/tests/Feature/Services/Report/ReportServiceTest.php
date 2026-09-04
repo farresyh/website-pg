@@ -2,10 +2,9 @@
 
 namespace Tests\Feature\Services\Report;
 
+use App\Models\Affiliate;
 use App\Models\Game;
-use App\Models\LedgerEntry;
 use App\Models\Order;
-use App\Models\Reseller;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -34,7 +33,7 @@ class ReportServiceTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -44,7 +43,7 @@ class ReportServiceTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 20,
+            'affiliate_profit' => 20,
             'payment_status' => PaymentStatus::Paid->value,
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Delivered->value,
@@ -76,23 +75,23 @@ class ReportServiceTest extends TestCase
 
     public function test_profit_is_ledger_sourced_not_the_cached_column(): void
     {
-        $delivered = $this->order(['platform_profit' => 100, 'reseller_profit' => 20]);
+        $delivered = $this->order(['platform_profit' => 100, 'affiliate_profit' => 20]);
         (new LedgerService)->credit('platform', null, $delivered->platform_profit, 'order_profit', 'order', $delivered->id);
-        (new LedgerService)->credit('reseller', null, $delivered->reseller_profit, 'order_profit', 'order', $delivered->id);
+        (new LedgerService)->credit('affiliate', null, $delivered->affiliate_profit, 'order_profit', 'order', $delivered->id);
 
         // Paid, but delivery failed and never became a ledger-recognized
         // profit — Order.platform_profit is still nonzero (stamped at
         // checkout), but must NOT count here.
         $this->order([
             'platform_profit' => 500,
-            'reseller_profit' => 80,
+            'affiliate_profit' => 80,
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);
 
         $summary = $this->reports->summary(null, null, null);
 
         $this->assertSame(100, $summary['platform_profit']);
-        $this->assertSame(20, $summary['reseller_profit']);
+        $this->assertSame(20, $summary['affiliate_profit']);
         $this->assertSame(2, $summary['orders_count']); // both still count as "orders"/"sales"
         $this->assertSame(2200, $summary['total_sales']);
     }
@@ -107,29 +106,29 @@ class ReportServiceTest extends TestCase
         $this->assertSame(10.0, $summary['margin_pct']);
     }
 
-    public function test_reseller_filter_scopes_sales_and_keeps_profits_separate(): void
+    public function test_affiliate_filter_scopes_sales_and_keeps_profits_separate(): void
     {
-        $resellerA = Reseller::query()->create(['business_name' => 'Reseller A', 'markup_pct' => 5]);
-        $resellerB = Reseller::query()->create(['business_name' => 'Reseller B', 'markup_pct' => 5]);
+        $affiliateA = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+        $affiliateB = Affiliate::query()->create(['business_name' => 'Affiliate B', 'markup_pct' => 5]);
 
-        $orderA = $this->order(['reseller_id' => $resellerA->id, 'final_amount' => 1000, 'platform_profit' => 50, 'reseller_profit' => 30]);
+        $orderA = $this->order(['affiliate_id' => $affiliateA->id, 'final_amount' => 1000, 'platform_profit' => 50, 'affiliate_profit' => 30]);
         (new LedgerService)->credit('platform', null, 50, 'order_profit', 'order', $orderA->id);
-        (new LedgerService)->credit('reseller', $resellerA->id, 30, 'order_profit', 'order', $orderA->id);
+        (new LedgerService)->credit('affiliate', $affiliateA->id, 30, 'order_profit', 'order', $orderA->id);
 
-        $orderB = $this->order(['reseller_id' => $resellerB->id, 'final_amount' => 2000, 'platform_profit' => 90, 'reseller_profit' => 60]);
+        $orderB = $this->order(['affiliate_id' => $affiliateB->id, 'final_amount' => 2000, 'platform_profit' => 90, 'affiliate_profit' => 60]);
         (new LedgerService)->credit('platform', null, 90, 'order_profit', 'order', $orderB->id);
-        (new LedgerService)->credit('reseller', $resellerB->id, 60, 'order_profit', 'order', $orderB->id);
+        (new LedgerService)->credit('affiliate', $affiliateB->id, 60, 'order_profit', 'order', $orderB->id);
 
         $summaryAll = $this->reports->summary(null, null, null);
-        $summaryA = $this->reports->summary(null, null, $resellerA->id);
+        $summaryA = $this->reports->summary(null, null, $affiliateA->id);
 
         $this->assertSame(3000, $summaryAll['total_sales']);
         $this->assertSame(140, $summaryAll['platform_profit']);
-        $this->assertSame(90, $summaryAll['reseller_profit']);
+        $this->assertSame(90, $summaryAll['affiliate_profit']);
 
         $this->assertSame(1000, $summaryA['total_sales']);
         $this->assertSame(50, $summaryA['platform_profit']);
-        $this->assertSame(30, $summaryA['reseller_profit']);
+        $this->assertSame(30, $summaryA['affiliate_profit']);
     }
 
     public function test_latest_order_is_most_recent_paid_by_paid_at(): void
@@ -156,16 +155,16 @@ class ReportServiceTest extends TestCase
         $this->assertSame(1500, $todayRow['sales']);
     }
 
-    public function test_export_rows_include_recognized_profit_and_reseller_name(): void
+    public function test_export_rows_include_recognized_profit_and_affiliate_name(): void
     {
-        $reseller = Reseller::query()->create(['business_name' => 'Reseller A', 'markup_pct' => 5]);
-        $order = $this->order(['reseller_id' => $reseller->id, 'final_amount' => 1000, 'platform_profit' => 50]);
+        $affiliate = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+        $order = $this->order(['affiliate_id' => $affiliate->id, 'final_amount' => 1000, 'platform_profit' => 50]);
         (new LedgerService)->credit('platform', null, 50, 'order_profit', 'order', $order->id);
 
         $rows = $this->reports->exportRows(null, null, null)->all();
 
         $this->assertCount(1, $rows);
-        $this->assertSame('Reseller A', $rows[0]['reseller_name']);
+        $this->assertSame('Affiliate A', $rows[0]['affiliate_name']);
         $this->assertSame(50, $rows[0]['platform_profit']);
     }
 
@@ -238,19 +237,19 @@ class ReportServiceTest extends TestCase
         $this->assertSame(25.0, $rows[1]['pct_of_sales']);
     }
 
-    public function test_reseller_breakdown_groups_by_reseller(): void
+    public function test_affiliate_breakdown_groups_by_affiliate(): void
     {
-        $resellerA = Reseller::query()->create(['business_name' => 'Reseller A', 'markup_pct' => 5]);
-        $orderA = $this->order(['reseller_id' => $resellerA->id, 'final_amount' => 1000, 'platform_profit' => 40, 'reseller_profit' => 20]);
+        $affiliateA = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+        $orderA = $this->order(['affiliate_id' => $affiliateA->id, 'final_amount' => 1000, 'platform_profit' => 40, 'affiliate_profit' => 20]);
         (new LedgerService)->credit('platform', null, 40, 'order_profit', 'order', $orderA->id);
-        (new LedgerService)->credit('reseller', $resellerA->id, 20, 'order_profit', 'order', $orderA->id);
+        (new LedgerService)->credit('affiliate', $affiliateA->id, 20, 'order_profit', 'order', $orderA->id);
 
-        $rows = $this->reports->resellerBreakdown(null, null, null);
+        $rows = $this->reports->affiliateBreakdown(null, null, null);
 
-        $this->assertSame('Reseller A', $rows[0]['reseller_name']);
+        $this->assertSame('Affiliate A', $rows[0]['affiliate_name']);
         $this->assertSame(1000, $rows[0]['sales']);
         $this->assertSame(40, $rows[0]['platform_profit']);
-        $this->assertSame(20, $rows[0]['reseller_profit']);
+        $this->assertSame(20, $rows[0]['affiliate_profit']);
     }
 
     public function test_order_status_funnel_counts_by_delivery_status(): void

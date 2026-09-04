@@ -36,7 +36,7 @@ Laravel-specific, loaded only when working inside `backend/`.
   payment gateway synchronously on the customer-facing path is very likely
   wrong; dispatch a job instead.
 - **Public API responses never leak internal financial fields** —
-  `cost_price`, `standard_selling_price`, `platform_profit`, `reseller_profit`,
+  `cost_price`, `standard_selling_price`, `platform_profit`, `affiliate_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing
   endpoint (`CatalogController`, `TrackOrderController`). Mirror their
   existing narrow-response-shape pattern for new public endpoints. Raw

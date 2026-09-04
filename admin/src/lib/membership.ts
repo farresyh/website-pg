@@ -81,7 +81,7 @@ export function listMembershipBrands(token: string) {
 
 export interface MembershipListItem {
   id: number;
-  reseller_id: number;
+  affiliate_id: number;
   brand_name: string | null;
   email: string;
   plan_id: number;
@@ -106,21 +106,21 @@ export type MembershipStatusFilter = "all" | "active" | "expired";
 
 export function listMemberships(
   token: string,
-  params: { status?: MembershipStatusFilter; planId?: number; search?: string; page?: number; resellerId?: number } = {},
+  params: { status?: MembershipStatusFilter; planId?: number; search?: string; page?: number; affiliateId?: number } = {},
 ) {
   const query = new URLSearchParams();
   if (params.status && params.status !== "all") query.set("status", params.status);
   if (params.planId) query.set("plan_id", String(params.planId));
   if (params.search) query.set("search", params.search);
   if (params.page) query.set("page", String(params.page));
-  if (params.resellerId) query.set("reseller_id", String(params.resellerId));
+  if (params.affiliateId) query.set("affiliate_id", String(params.affiliateId));
   const qs = query.toString();
 
   return apiFetch<MembershipPage>(`/api/memberships${qs ? `?${qs}` : ""}`, { token });
 }
 
 export interface RecordMembershipPaymentValues {
-  reseller_id: number;
+  affiliate_id: number;
   email: string;
   membership_plan_id: number;
   amount_sen: number;

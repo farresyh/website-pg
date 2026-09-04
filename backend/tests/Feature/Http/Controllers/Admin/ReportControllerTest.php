@@ -23,7 +23,7 @@ class ReportControllerTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -33,7 +33,7 @@ class ReportControllerTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 20,
+            'affiliate_profit' => 20,
             'payment_status' => PaymentStatus::Paid->value,
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Delivered->value,
@@ -134,12 +134,12 @@ class ReportControllerTest extends TestCase
         $this->getJson('/api/reports/breakdown/payment-methods')->assertOk()->assertJsonStructure(['payment_methods']);
     }
 
-    public function test_reseller_breakdown_returns_rows(): void
+    public function test_affiliate_breakdown_returns_rows(): void
     {
         $this->order();
         $this->actingAsAdmin();
 
-        $this->getJson('/api/reports/breakdown/resellers')->assertOk()->assertJsonStructure(['resellers']);
+        $this->getJson('/api/reports/breakdown/affiliates')->assertOk()->assertJsonStructure(['affiliates']);
     }
 
     public function test_order_status_funnel_returns_shape(): void

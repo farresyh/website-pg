@@ -2,7 +2,7 @@ import { apiFetch } from "@/lib/api-client";
 
 /**
  * ADR-059 59a read layer. Mirrors
- * `backend/app/Http/Controllers/Reseller/*` + `ResellerEarningsService`.
+ * `backend/app/Http/Controllers/Affiliate/*` + `AffiliateEarningsService`.
  * This client only forwards the bearer token and renders whatever the
  * backend returns — no money math here (foundation-security.md).
  */
@@ -37,7 +37,7 @@ export interface OrderListItem {
   game: { name: string; slug: string } | null;
   package_name: string | null;
   final_amount: number;
-  reseller_profit: number;
+  affiliate_profit: number;
   payment_status: PaymentStatus;
   delivery_status: DeliveryStatus;
   paid_at: string | null;
@@ -50,7 +50,7 @@ export interface OrderDetail extends OrderListItem {
   customer_phone: string | null;
   player_id: string | null;
   server_id: string | null;
-  reseller_markup_pct: number;
+  affiliate_markup_pct: number;
   voucher_discount: number;
   transaction_fee: number;
   payment_method: string | null;
@@ -98,7 +98,7 @@ export interface OrderFilters {
 }
 
 export function getDashboard(token: string) {
-  return apiFetch<DashboardStats>("/api/reseller/dashboard", { token });
+  return apiFetch<DashboardStats>("/api/affiliate/dashboard", { token });
 }
 
 export function listOrders(token: string, filters: OrderFilters = {}) {
@@ -110,29 +110,29 @@ export function listOrders(token: string, filters: OrderFilters = {}) {
   const query = params.toString();
 
   return apiFetch<Paginated<OrderListItem>>(
-    `/api/reseller/orders${query ? `?${query}` : ""}`,
+    `/api/affiliate/orders${query ? `?${query}` : ""}`,
     { token },
   );
 }
 
 export function getOrder(token: string, orderNumber: string) {
   return apiFetch<OrderDetail>(
-    `/api/reseller/orders/${encodeURIComponent(orderNumber)}`,
+    `/api/affiliate/orders/${encodeURIComponent(orderNumber)}`,
     { token },
   );
 }
 
 export function getEarnings(token: string, page = 1) {
-  return apiFetch<EarningsResponse>(`/api/reseller/earnings?page=${page}`, { token });
+  return apiFetch<EarningsResponse>(`/api/affiliate/earnings?page=${page}`, { token });
 }
 
 export function getSubscription(token: string) {
-  return apiFetch<SubscriptionResponse>("/api/reseller/subscription", { token });
+  return apiFetch<SubscriptionResponse>("/api/affiliate/subscription", { token });
 }
 
 // --- 59c: Profile + Withdrawal + Impersonation ---
 
-export interface ResellerProfile {
+export interface AffiliateProfile {
   business_name: string;
   contact_name: string | null;
   email: string | null;
@@ -173,30 +173,30 @@ export interface ImpersonationContext {
 }
 
 export interface MeResponse {
-  reseller_user: {
+  affiliate_user: {
     id: number;
-    reseller_id: number;
+    affiliate_id: number;
     name: string;
     email: string;
     last_login_at: string | null;
   };
-  reseller: { id: number; business_name: string; status: string } | null;
+  affiliate: { id: number; business_name: string; status: string } | null;
   impersonation: ImpersonationContext | null;
 }
 
 export function getMe(token: string) {
-  return apiFetch<MeResponse>("/api/reseller/me", { token });
+  return apiFetch<MeResponse>("/api/affiliate/me", { token });
 }
 
 export function getProfile(token: string) {
-  return apiFetch<ResellerProfile>("/api/reseller/profile", { token });
+  return apiFetch<AffiliateProfile>("/api/affiliate/profile", { token });
 }
 
 export function updateProfile(
   token: string,
   body: Partial<
     Pick<
-      ResellerProfile,
+      AffiliateProfile,
       | "contact_name"
       | "phone"
       | "bank_name"
@@ -205,7 +205,7 @@ export function updateProfile(
     >
   >,
 ) {
-  return apiFetch<ResellerProfile>("/api/reseller/profile", {
+  return apiFetch<AffiliateProfile>("/api/affiliate/profile", {
     method: "PUT",
     token,
     body,
@@ -213,7 +213,7 @@ export function updateProfile(
 }
 
 export function getWithdrawals(token: string) {
-  return apiFetch<WithdrawalsResponse>("/api/reseller/withdrawals", { token });
+  return apiFetch<WithdrawalsResponse>("/api/affiliate/withdrawals", { token });
 }
 
 export function createWithdrawal(
@@ -226,13 +226,13 @@ export function createWithdrawal(
   },
 ) {
   return apiFetch<{ id: number; amount: number; status: WithdrawalStatus }>(
-    "/api/reseller/withdrawals",
+    "/api/affiliate/withdrawals",
     { method: "POST", token, body },
   );
 }
 
 export function endImpersonation(token: string) {
-  return apiFetch<{ message: string }>("/api/reseller/impersonation/end", {
+  return apiFetch<{ message: string }>("/api/affiliate/impersonation/end", {
     method: "POST",
     token,
   });

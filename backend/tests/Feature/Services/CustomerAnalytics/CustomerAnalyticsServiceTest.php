@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\Services\CustomerAnalytics;
 
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PlatformSettings;
-use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\CustomerAnalytics\CustomerAnalyticsService;
 use App\Services\CustomerAnalytics\CustomerSegment;
@@ -37,7 +37,7 @@ class CustomerAnalyticsServiceTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -47,7 +47,7 @@ class CustomerAnalyticsServiceTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 20,
+            'affiliate_profit' => 20,
             'payment_status' => PaymentStatus::Paid->value,
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Delivered->value,
@@ -188,15 +188,15 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->assertSame('vip@example.com', $rows[0]['customer_email']);
     }
 
-    public function test_reseller_id_scopes_customers_to_that_reseller(): void
+    public function test_affiliate_id_scopes_customers_to_that_affiliate(): void
     {
-        $resellerA = Reseller::query()->create(['business_name' => 'Reseller A', 'markup_pct' => 5]);
-        $resellerB = Reseller::query()->create(['business_name' => 'Reseller B', 'markup_pct' => 5]);
+        $affiliateA = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+        $affiliateB = Affiliate::query()->create(['business_name' => 'Affiliate B', 'markup_pct' => 5]);
 
-        $this->order(['customer_email' => 'shared@example.com', 'reseller_id' => $resellerA->id, 'final_amount' => 1000]);
-        $this->order(['customer_email' => 'shared@example.com', 'reseller_id' => $resellerB->id, 'order_number' => 'KRS-r2', 'final_amount' => 2000]);
+        $this->order(['customer_email' => 'shared@example.com', 'affiliate_id' => $affiliateA->id, 'final_amount' => 1000]);
+        $this->order(['customer_email' => 'shared@example.com', 'affiliate_id' => $affiliateB->id, 'order_number' => 'KRS-r2', 'final_amount' => 2000]);
 
-        $rows = collect($this->analytics->customers(null, null, $resellerA->id, null))->keyBy('customer_email');
+        $rows = collect($this->analytics->customers(null, null, $affiliateA->id, null))->keyBy('customer_email');
 
         $this->assertCount(1, $rows);
         $this->assertSame(1000, $rows['shared@example.com']['total_spent']);
@@ -271,11 +271,11 @@ class CustomerAnalyticsServiceTest extends TestCase
             'cost_price' => 900,
             'transaction_fee' => 100,
             'platform_profit' => 100,
-            'reseller_profit' => 20,
+            'affiliate_profit' => 20,
             'delivery_status' => DeliveryStatus::Delivered->value,
         ]);
         (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $delivered->id);
-        (new LedgerService)->credit('reseller', null, 20, 'order_profit', 'order', $delivered->id);
+        (new LedgerService)->credit('affiliate', null, 20, 'order_profit', 'order', $delivered->id);
 
         // Paid but never delivered — counts toward stats()/total_spent,
         // must NOT count toward any Profit Analysis line.
@@ -296,7 +296,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->assertSame(1100, $detail['profit_analysis']['total_revenue']);
         $this->assertSame(900, $detail['profit_analysis']['supplier_cost']);
         $this->assertSame(100, $detail['profit_analysis']['transaction_fees']);
-        $this->assertSame(20, $detail['profit_analysis']['reseller_commission']);
+        $this->assertSame(20, $detail['profit_analysis']['affiliate_commission']);
         $this->assertSame(100, $detail['profit_analysis']['system_profit']);
     }
 
@@ -307,11 +307,11 @@ class CustomerAnalyticsServiceTest extends TestCase
             'order_number' => 'KRS-delivered',
             'final_amount' => 1000,
             'platform_profit' => 80,
-            'reseller_profit' => 10,
+            'affiliate_profit' => 10,
             'delivery_status' => DeliveryStatus::Delivered->value,
         ]);
         (new LedgerService)->credit('platform', null, 80, 'order_profit', 'order', $delivered->id);
-        (new LedgerService)->credit('reseller', null, 10, 'order_profit', 'order', $delivered->id);
+        (new LedgerService)->credit('affiliate', null, 10, 'order_profit', 'order', $delivered->id);
 
         $this->order([
             'customer_email' => 'history@example.com',
@@ -324,32 +324,32 @@ class CustomerAnalyticsServiceTest extends TestCase
         $rows = collect($detail['order_history'])->keyBy('order_number');
 
         $this->assertSame(80, $rows['KRS-delivered']['system_profit']);
-        $this->assertSame(10, $rows['KRS-delivered']['reseller_profit']);
+        $this->assertSame(10, $rows['KRS-delivered']['affiliate_profit']);
         // Admin's Order History → /admin/orders?order={id} deep link
         // needs the real numeric id, not just order_number.
         $this->assertSame($delivered->id, $rows['KRS-delivered']['id']);
         $this->assertNull($rows['KRS-pending']['system_profit']);
-        $this->assertNull($rows['KRS-pending']['reseller_profit']);
+        $this->assertNull($rows['KRS-pending']['affiliate_profit']);
     }
 
-    public function test_top_packages_and_resellers_rank_by_spend(): void
+    public function test_top_packages_and_affiliates_rank_by_spend(): void
     {
-        $resellerA = Reseller::query()->create(['business_name' => 'Reseller A', 'markup_pct' => 5]);
-        $resellerB = Reseller::query()->create(['business_name' => 'Reseller B', 'markup_pct' => 5]);
+        $affiliateA = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+        $affiliateB = Affiliate::query()->create(['business_name' => 'Affiliate B', 'markup_pct' => 5]);
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         $packageA = Package::query()->create(['game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 400, 'standard_selling_price' => 450, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
         $packageB = Package::query()->create(['game_id' => $game->id, 'name' => '172 Diamonds', 'cost_price' => 800, 'standard_selling_price' => 850, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
 
-        $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-a', 'package_id' => $packageA->id, 'reseller_id' => $resellerA->id, 'final_amount' => 500]);
-        $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-b', 'package_id' => $packageB->id, 'reseller_id' => $resellerB->id, 'final_amount' => 2000]);
+        $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-a', 'package_id' => $packageA->id, 'affiliate_id' => $affiliateA->id, 'final_amount' => 500]);
+        $this->order(['customer_email' => 'ranker@example.com', 'order_number' => 'KRS-b', 'package_id' => $packageB->id, 'affiliate_id' => $affiliateB->id, 'final_amount' => 2000]);
 
         $detail = $this->analytics->customerDetail('ranker@example.com');
 
         $this->assertSame('172 Diamonds', $detail['top_packages'][0]['name']);
         $this->assertSame(2000, $detail['top_packages'][0]['total_spent']);
-        $this->assertSame('Reseller B', $detail['top_resellers'][0]['name']);
-        $this->assertSame(2000, $detail['top_resellers'][0]['total_spent']);
+        $this->assertSame('Affiliate B', $detail['top_affiliates'][0]['name']);
+        $this->assertSame(2000, $detail['top_affiliates'][0]['total_spent']);
     }
 
     public function test_monthly_trend_buckets_by_paid_month(): void

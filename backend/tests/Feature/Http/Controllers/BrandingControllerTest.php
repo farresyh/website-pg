@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\AffiliateBranding;
+use App\Models\AffiliateFooterSettings;
 use App\Models\Game;
-use App\Models\ResellerBranding;
-use App\Models\ResellerFooterSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,15 +19,15 @@ class BrandingControllerTest extends TestCase
 
     private function seedBrandingAndFooter(array $brandingOverrides = [], array $footerOverrides = []): void
     {
-        $reseller = $this->primaryReseller();
+        $affiliate = $this->primaryAffiliate();
 
-        ResellerBranding::query()->create(array_merge([
-            'reseller_id' => $reseller->id,
+        AffiliateBranding::query()->create(array_merge([
+            'affiliate_id' => $affiliate->id,
             'store_name' => 'PekanGame',
         ], $brandingOverrides));
 
-        ResellerFooterSettings::query()->create(array_merge([
-            'reseller_id' => $reseller->id,
+        AffiliateFooterSettings::query()->create(array_merge([
+            'affiliate_id' => $affiliate->id,
         ], $footerOverrides));
     }
 
@@ -44,12 +44,12 @@ class BrandingControllerTest extends TestCase
 
     public function test_show_resolves_footer_games_in_the_stored_order(): void
     {
-        $reseller = $this->primaryReseller();
+        $affiliate = $this->primaryAffiliate();
         $ml = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         $ff = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
 
-        ResellerBranding::query()->create(['reseller_id' => $reseller->id, 'store_name' => 'KRS']);
-        ResellerFooterSettings::query()->create(['reseller_id' => $reseller->id, 'footer_game_ids' => [$ff->id, $ml->id]]);
+        AffiliateBranding::query()->create(['affiliate_id' => $affiliate->id, 'store_name' => 'KRS']);
+        AffiliateFooterSettings::query()->create(['affiliate_id' => $affiliate->id, 'footer_game_ids' => [$ff->id, $ml->id]]);
 
         $response = $this->getJson('/api/catalog/branding');
 
@@ -73,12 +73,12 @@ class BrandingControllerTest extends TestCase
      */
     public function test_show_returns_the_same_footer_games_on_a_cached_second_request(): void
     {
-        $reseller = $this->primaryReseller();
+        $affiliate = $this->primaryAffiliate();
         $ml = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
         $ff = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
 
-        ResellerBranding::query()->create(['reseller_id' => $reseller->id, 'store_name' => 'KRS']);
-        ResellerFooterSettings::query()->create(['reseller_id' => $reseller->id, 'footer_game_ids' => [$ff->id, $ml->id]]);
+        AffiliateBranding::query()->create(['affiliate_id' => $affiliate->id, 'store_name' => 'KRS']);
+        AffiliateFooterSettings::query()->create(['affiliate_id' => $affiliate->id, 'footer_game_ids' => [$ff->id, $ml->id]]);
 
         $first = $this->getJson('/api/catalog/branding');
         $second = $this->getJson('/api/catalog/branding');
@@ -90,9 +90,9 @@ class BrandingControllerTest extends TestCase
         $this->assertSame($first->json('footer_games'), $second->json('footer_games'));
     }
 
-    public function test_show_falls_back_to_reseller_business_name_when_branding_is_not_set(): void
+    public function test_show_falls_back_to_affiliate_business_name_when_branding_is_not_set(): void
     {
-        $this->primaryReseller();
+        $this->primaryAffiliate();
 
         $response = $this->getJson('/api/catalog/branding');
 
@@ -137,7 +137,7 @@ class BrandingControllerTest extends TestCase
 
     public function test_legal_returns_null_content_when_nothing_saved_yet(): void
     {
-        $this->primaryReseller();
+        $this->primaryAffiliate();
 
         $response = $this->getJson('/api/catalog/legal/privacy');
 

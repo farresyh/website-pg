@@ -127,7 +127,7 @@ export default function MemberDetailPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{member.email}</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {member.brand_name ?? `brand #${member.reseller_id}`} · member since {formatMemberDate(member.member_since)}
+            {member.brand_name ?? `brand #${member.affiliate_id}`} · member since {formatMemberDate(member.member_since)}
           </p>
         </div>
         <Tag severity={member.status === "active" ? "success" : "secondary"}>{member.status}</Tag>

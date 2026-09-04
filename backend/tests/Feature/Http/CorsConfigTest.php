@@ -6,8 +6,8 @@ use Tests\TestCase;
 
 /**
  * `config/cors.php`'s `allowed_origins` has silently broken a browser
- * app twice — storefront/ (checkout, player validation) and reseller/
- * (every `/api/reseller/*` read) — because a new Bearer-token Next app
+ * app twice — storefront/ (checkout, player validation) and affiliate/
+ * (every `/api/affiliate/*` read) — because a new Bearer-token Next app
  * on a new port was not added here, and a blocked CORS response never
  * surfaces to the page's own JS. This locks in all three origins so a
  * fourth app (or a config refactor) can't drop one unnoticed.
@@ -20,12 +20,12 @@ class CorsConfigTest extends TestCase
 
         $this->assertContains('http://localhost:3000', $origins, 'admin/ origin missing');
         $this->assertContains('http://localhost:3001', $origins, 'storefront/ origin missing');
-        $this->assertContains('http://localhost:3002', $origins, 'reseller/ portal origin missing');
+        $this->assertContains('http://localhost:3002', $origins, 'affiliate/ portal origin missing');
     }
 
-    public function test_a_reseller_portal_preflight_gets_an_allow_origin_header(): void
+    public function test_a_affiliate_portal_preflight_gets_an_allow_origin_header(): void
     {
-        $response = $this->call('OPTIONS', '/api/reseller/dashboard', server: [
+        $response = $this->call('OPTIONS', '/api/affiliate/dashboard', server: [
             'HTTP_ORIGIN' => 'http://localhost:3002',
             'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET',
         ]);

@@ -8,7 +8,7 @@ const outfit = Outfit({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "PekanGame — Reseller Portal",
-  description: "Earnings, orders, and storefront settings for reseller partners.",
+  description: "Earnings, orders, and storefront settings for affiliate partners.",
 };
 
 export default function RootLayout({

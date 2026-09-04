@@ -6,8 +6,8 @@ use App\Services\Pricing\PaymentMethodFeeConfig;
 
 /**
  * Inputs CheckoutService needs to create an Order + payment request.
- * game_id/package_id/supplier_id/reseller_id/supplier_product_ref are
- * accepted as already-resolved values — the Game/Package/Reseller
+ * game_id/package_id/supplier_id/affiliate_id/supplier_product_ref are
+ * accepted as already-resolved values — the Game/Package/Affiliate
  * models don't exist yet, so resolving them from a catalog is the
  * caller's problem for now, not this service's.
  */
@@ -22,7 +22,7 @@ final class CheckoutRequest
         public readonly int $costPriceSen,
         public readonly int $standardSellingPriceSen,
         public readonly float $packageMarkupPercent,
-        public readonly float $resellerMarkupPct,
+        public readonly float $affiliateMarkupPct,
         public readonly PaymentMethodFeeConfig $paymentFeeConfig,
         public readonly string $paymentMethod,
         public readonly string $paymentGateway,
@@ -34,8 +34,7 @@ final class CheckoutRequest
         public readonly ?int $gameId = null,
         public readonly ?int $packageId = null,
         public readonly ?int $supplierId = null,
-        public readonly ?int $resellerId = null,
+        public readonly ?int $affiliateId = null,
         public readonly ?int $membershipId = null,
-    ) {
-    }
+    ) {}
 }

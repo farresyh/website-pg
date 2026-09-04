@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Affiliate;
+use App\Models\AffiliateSeoSettings;
 use App\Models\CrawlerRule;
 use App\Models\Redirect;
-use App\Models\Reseller;
-use App\Models\ResellerSeoSettings;
 use App\Models\SeoScript;
 use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Cache;
  * middleware.ts's in-memory cache (decision 9), scripts for layout
  * injection (addendum 2 decision 13), crawler rules for app/robots.ts
  * (addendum 2 decision 14). Same no-auth reasoning as BrandingController
- * (ADR-011) — another public call site for Reseller::primary().
+ * (ADR-011) — another public call site for Affiliate::primary().
  */
 class SeoController extends Controller
 {
@@ -26,13 +26,13 @@ class SeoController extends Controller
 
     public function settings(): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         $payload = Cache::remember(
-            "catalog.public.seo.{$reseller->id}",
+            "catalog.public.seo.{$affiliate->id}",
             self::CACHE_TTL_SECONDS,
-            function () use ($reseller) {
-                $settings = ResellerSeoSettings::query()->where('reseller_id', $reseller->id)->first();
+            function () use ($affiliate) {
+                $settings = AffiliateSeoSettings::query()->where('affiliate_id', $affiliate->id)->first();
 
                 return [
                     'default_meta_title' => $settings?->default_meta_title,
@@ -60,13 +60,13 @@ class SeoController extends Controller
      */
     public function redirects(): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         $payload = Cache::remember(
-            "catalog.public.redirects.{$reseller->id}",
+            "catalog.public.redirects.{$affiliate->id}",
             self::CACHE_TTL_SECONDS,
             fn () => Redirect::query()
-                ->where('reseller_id', $reseller->id)
+                ->where('affiliate_id', $affiliate->id)
                 ->get(['id', 'from_path', 'to_path', 'status_code'])
                 ->toArray(),
         );
@@ -82,11 +82,11 @@ class SeoController extends Controller
      */
     public function recordRedirectHit(Request $request): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
         $fromPath = (string) $request->input('from_path');
 
         Redirect::query()
-            ->where('reseller_id', $reseller->id)
+            ->where('affiliate_id', $affiliate->id)
             ->where('from_path', $fromPath)
             ->increment('hit_count');
 
@@ -95,14 +95,14 @@ class SeoController extends Controller
 
     public function scripts(): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         $payload = Cache::remember(
-            "catalog.public.seo_scripts.{$reseller->id}",
+            "catalog.public.seo_scripts.{$affiliate->id}",
             self::CACHE_TTL_SECONDS,
             fn () => SeoScript::query()
                 ->where('is_active', true)
-                ->where(fn ($q) => $q->whereNull('reseller_id')->orWhere('reseller_id', $reseller->id))
+                ->where(fn ($q) => $q->whereNull('affiliate_id')->orWhere('affiliate_id', $affiliate->id))
                 ->orderBy('priority')
                 ->get(['location', 'code', 'priority'])
                 ->toArray(),
@@ -124,13 +124,13 @@ class SeoController extends Controller
      */
     public function robots(): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         $payload = Cache::remember(
             'catalog.public.crawler_rules',
             self::CACHE_TTL_SECONDS,
-            function () use ($reseller) {
-                $settings = ResellerSeoSettings::query()->where('reseller_id', $reseller->id)->first();
+            function () use ($affiliate) {
+                $settings = AffiliateSeoSettings::query()->where('affiliate_id', $affiliate->id)->first();
                 $defaultDisallow = $settings?->crawler_default_disallow_paths ?? [];
 
                 return CrawlerRule::query()
@@ -153,11 +153,11 @@ class SeoController extends Controller
         return response()->json($payload);
     }
 
-    public static function forgetCache(int $resellerId): void
+    public static function forgetCache(int $affiliateId): void
     {
-        Cache::forget("catalog.public.seo.{$resellerId}");
-        Cache::forget("catalog.public.redirects.{$resellerId}");
-        Cache::forget("catalog.public.seo_scripts.{$resellerId}");
+        Cache::forget("catalog.public.seo.{$affiliateId}");
+        Cache::forget("catalog.public.redirects.{$affiliateId}");
+        Cache::forget("catalog.public.seo_scripts.{$affiliateId}");
         NextRevalidation::purge(); // ADR-071 PR2 — robots.txt stays force-dynamic, not in the Next cache
     }
 

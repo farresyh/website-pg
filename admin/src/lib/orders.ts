@@ -47,9 +47,9 @@ export interface OrderDetail extends OrderListItem {
   customer_phone: string | null;
   cost_price: number;
   standard_selling_price: number;
-  reseller_markup_pct: string;
+  affiliate_markup_pct: string;
   voucher_discount: number | null;
-  reseller_profit: number;
+  affiliate_profit: number;
   // ADR-027 Phase 6: pricing_basis="member" only when a session-
   // recognized membership applied at checkout (quota-sufficient) —
   // member_discount_percent/normal_selling_price/membership stay null
@@ -68,7 +68,7 @@ export interface OrderDetail extends OrderListItem {
   // ADR-017's resend gate needs player_validator_enabled/profile_id.
   game: Game | null;
   supplier: { id: number; name: string } | null;
-  reseller: { id: number; business_name: string } | null;
+  affiliate: { id: number; business_name: string } | null;
   resend_attempts: OrderResendAttempt[];
   // VCH-7: null until VoucherController::storeFromOrder() has been
   // called for this order — the unique index on vouchers.order_id

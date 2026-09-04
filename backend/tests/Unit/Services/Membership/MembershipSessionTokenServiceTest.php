@@ -15,29 +15,29 @@ use Tests\TestCase;
  * Unit, not Feature: no DB row is ever read or written by this service.
  *
  * ADR-061 decision 5 (PR-B): the token now carries the brand it was
- * minted on; `resolve()` returns `['reseller_id' => int, 'email' => string]`.
+ * minted on; `resolve()` returns `['affiliate_id' => int, 'email' => string]`.
  */
 class MembershipSessionTokenServiceTest extends TestCase
 {
     public function test_issue_then_resolve_round_trips_the_brand_and_email(): void
     {
-        $service = new MembershipSessionTokenService();
+        $service = new MembershipSessionTokenService;
 
         $token = $service->issue(7, 'member@example.com');
 
-        $this->assertSame(['reseller_id' => 7, 'email' => 'member@example.com'], $service->resolve($token));
+        $this->assertSame(['affiliate_id' => 7, 'email' => 'member@example.com'], $service->resolve($token));
     }
 
     public function test_resolve_rejects_a_garbage_token(): void
     {
-        $service = new MembershipSessionTokenService();
+        $service = new MembershipSessionTokenService;
 
         $this->assertNull($service->resolve('not-a-real-token'));
     }
 
     public function test_resolve_rejects_an_expired_token(): void
     {
-        $service = new MembershipSessionTokenService();
+        $service = new MembershipSessionTokenService;
         $this->travelTo(now()->subDays(31));
         $token = $service->issue(7, 'member@example.com');
         $this->travelBack();
@@ -47,18 +47,18 @@ class MembershipSessionTokenServiceTest extends TestCase
 
     public function test_resolve_accepts_a_token_still_inside_the_30_day_window(): void
     {
-        $service = new MembershipSessionTokenService();
+        $service = new MembershipSessionTokenService;
         $this->travelTo(now()->subDays(29));
         $token = $service->issue(7, 'member@example.com');
         $this->travelBack();
 
-        $this->assertSame(['reseller_id' => 7, 'email' => 'member@example.com'], $service->resolve($token));
+        $this->assertSame(['affiliate_id' => 7, 'email' => 'member@example.com'], $service->resolve($token));
     }
 
-    /** A legacy token with no `reseller_id` claim is rejected outright. */
+    /** A legacy token with no `affiliate_id` claim is rejected outright. */
     public function test_resolve_rejects_a_token_without_a_brand_claim(): void
     {
-        $service = new MembershipSessionTokenService();
+        $service = new MembershipSessionTokenService;
         $legacy = Crypt::encryptString(json_encode([
             'email' => 'member@example.com',
             'expires_at' => now()->addDay()->timestamp,

@@ -10,14 +10,14 @@ import { apiFetch, ApiError } from "@/lib/api-client";
 export interface ReportFilters {
   year?: number;
   month?: number;
-  resellerId?: number;
+  affiliateId?: number;
 }
 
 export interface ReportSummary {
   total_sales: number;
   orders_count: number;
   platform_profit: number;
-  reseller_profit: number;
+  affiliate_profit: number;
   margin_pct: number;
   avg_order_value: number;
   latest_order: {
@@ -32,7 +32,7 @@ export interface ReportTrendDay {
   date: string;
   sales: number;
   platform_profit: number;
-  reseller_profit: number;
+  affiliate_profit: number;
 }
 
 export interface ReportDailyBreakdownRow {
@@ -40,7 +40,7 @@ export interface ReportDailyBreakdownRow {
   orders_count: number;
   sales: number;
   platform_profit: number;
-  reseller_profit: number;
+  affiliate_profit: number;
   transaction_fees: number;
   avg_order_value: number;
 }
@@ -51,7 +51,7 @@ export interface ReportGameRow {
   sales: number;
   orders_count: number;
   platform_profit: number;
-  reseller_profit: number;
+  affiliate_profit: number;
   avg_order_value: number;
   pct_of_sales: number;
 }
@@ -63,13 +63,13 @@ export interface ReportPaymentMethodRow {
   pct_of_sales: number;
 }
 
-export interface ReportResellerRow {
-  reseller_id: number | null;
-  reseller_name: string;
+export interface ReportAffiliateRow {
+  affiliate_id: number | null;
+  affiliate_name: string;
   sales: number;
   orders_count: number;
   platform_profit: number;
-  reseller_profit: number;
+  affiliate_profit: number;
   avg_order_value: number;
 }
 
@@ -95,7 +95,7 @@ export interface ReportMembershipBreakdown {
   membership_fee_revenue: number;
 }
 
-export interface ReportReseller {
+export interface ReportAffiliate {
   id: number;
   business_name: string;
 }
@@ -109,52 +109,52 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   return query ? `?${query}` : "";
 }
 
-export function listReportResellers(token: string) {
-  return apiFetch<ReportReseller[]>("/api/reports/resellers", { token });
+export function listReportAffiliates(token: string) {
+  return apiFetch<ReportAffiliate[]>("/api/reports/affiliates", { token });
 }
 
 export function getReportSummary(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
   return apiFetch<ReportSummary>(`/api/reports/summary${query}`, { token });
 }
 
-export function getReportTrend(token: string, days: 7 | 14 | 30, resellerId?: number) {
-  const query = buildQuery({ days, reseller_id: resellerId });
+export function getReportTrend(token: string, days: 7 | 14 | 30, affiliateId?: number) {
+  const query = buildQuery({ days, affiliate_id: affiliateId });
   return apiFetch<{ days: ReportTrendDay[] }>(`/api/reports/trend${query}`, { token });
 }
 
 export function getReportDailyBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
   return apiFetch<{ days: ReportDailyBreakdownRow[] }>(`/api/reports/daily-breakdown${query}`, { token });
 }
 
 export function getTopGames(token: string, filters: ReportFilters, limit = 5) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId, limit });
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId, limit });
   return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/top-games${query}`, { token });
 }
 
 export function getGameBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
   return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/breakdown/games${query}`, { token });
 }
 
 export function getPaymentMethodBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
   return apiFetch<{ payment_methods: ReportPaymentMethodRow[] }>(`/api/reports/breakdown/payment-methods${query}`, { token });
 }
 
-export function getResellerBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
-  return apiFetch<{ resellers: ReportResellerRow[] }>(`/api/reports/breakdown/resellers${query}`, { token });
+export function getAffiliateBreakdown(token: string, filters: ReportFilters) {
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  return apiFetch<{ affiliates: ReportAffiliateRow[] }>(`/api/reports/breakdown/affiliates${query}`, { token });
 }
 
 export function getOrderStatusFunnel(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
   return apiFetch<ReportOrderStatusFunnel>(`/api/reports/order-status-funnel${query}`, { token });
 }
 
 export function getMembershipBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, reseller_id: filters.resellerId });
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
   return apiFetch<ReportMembershipBreakdown>(`/api/reports/membership-breakdown${query}`, { token });
 }
 
@@ -173,7 +173,7 @@ export async function exportReport(
     format,
     year: filters.year,
     month: filters.month,
-    reseller_id: filters.resellerId,
+    affiliate_id: filters.affiliateId,
   });
 
   const response = await fetch(`${API_BASE_URL}/api/reports/export${query}`, {

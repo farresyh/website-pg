@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
-import { getProfile, updateProfile, type ResellerProfile } from "@/lib/portal";
+import { getProfile, updateProfile, type AffiliateProfile } from "@/lib/portal";
 import { PageHeader, Panel, ErrorNote } from "@/components/ui";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<ResellerProfile | null>(null);
+  const [profile, setProfile] = useState<AffiliateProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);

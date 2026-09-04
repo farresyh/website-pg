@@ -11,7 +11,7 @@ export type CustomerSegment = "vip" | "frequent" | "dormant" | "new" | "one_time
 export interface CustomerAnalyticsFilters {
   year?: number;
   month?: number;
-  resellerId?: number;
+  affiliateId?: number;
   segment?: CustomerSegment;
 }
 
@@ -49,7 +49,7 @@ function filterQuery(filters: CustomerAnalyticsFilters) {
   return buildQuery({
     year: filters.year,
     month: filters.month,
-    reseller_id: filters.resellerId,
+    affiliate_id: filters.affiliateId,
     segment: filters.segment,
   });
 }
@@ -64,7 +64,7 @@ export function getCustomerAnalyticsCustomers(token: string, filters: CustomerAn
   return apiFetch<{ customers: CustomerAnalyticsRow[] }>(`/api/customer-analytics/customers${query}`, { token });
 }
 
-/** ANL-5 (ADR-050) — full drill-down for one customer, always their full lifetime across every reseller. */
+/** ANL-5 (ADR-050) — full drill-down for one customer, always their full lifetime across every affiliate. */
 export interface CustomerDetailStats {
   total_orders: number;
   total_spent: number;
@@ -76,7 +76,7 @@ export interface CustomerDetailStats {
 export interface CustomerProfitAnalysis {
   total_revenue: number;
   supplier_cost: number;
-  reseller_commission: number;
+  affiliate_commission: number;
   transaction_fees: number;
   system_profit: number;
 }
@@ -100,9 +100,9 @@ export interface CustomerOrderHistoryRow {
   order_number: string;
   paid_at: string;
   package_name: string;
-  reseller_name: string;
+  affiliate_name: string;
   final_amount: number;
-  reseller_profit: number | null;
+  affiliate_profit: number | null;
   system_profit: number | null;
   delivery_status: string;
 }
@@ -117,7 +117,7 @@ export interface CustomerDetail {
   profit_analysis: CustomerProfitAnalysis;
   monthly_trend: CustomerMonthlyTrendPoint[];
   top_packages: CustomerTopBreakdownRow[];
-  top_resellers: CustomerTopBreakdownRow[];
+  top_affiliates: CustomerTopBreakdownRow[];
   order_history: CustomerOrderHistoryRow[];
 }
 

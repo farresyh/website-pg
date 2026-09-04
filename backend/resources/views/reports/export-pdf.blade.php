@@ -14,7 +14,7 @@
 </head>
 <body>
     <h1>Sales Report</h1>
-    <p class="meta">{{ $rangeLabel }}{{ $resellerLabel ? ' — '.$resellerLabel : '' }}</p>
+    <p class="meta">{{ $rangeLabel }}{{ $affiliateLabel ? ' — '.$affiliateLabel : '' }}</p>
 
     <table>
         <thead>
@@ -22,10 +22,10 @@
                 <th>Order #</th>
                 <th>Paid At</th>
                 <th>Customer</th>
-                <th>Reseller</th>
+                <th>Affiliate</th>
                 <th>Sales (RM)</th>
                 <th>Platform Profit (RM)</th>
-                <th>Reseller Profit (RM)</th>
+                <th>Affiliate Profit (RM)</th>
             </tr>
         </thead>
         <tbody>
@@ -34,10 +34,10 @@
                 <td>{{ $row['order_number'] }}</td>
                 <td>{{ $row['paid_at'] }}</td>
                 <td>{{ $row['customer_email'] }}</td>
-                <td>{{ $row['reseller_name'] ?? '-' }}</td>
+                <td>{{ $row['affiliate_name'] ?? '-' }}</td>
                 <td class="num">{{ number_format($row['final_amount'] / 100, 2) }}</td>
                 <td class="num">{{ number_format($row['platform_profit'] / 100, 2) }}</td>
-                <td class="num">{{ number_format($row['reseller_profit'] / 100, 2) }}</td>
+                <td class="num">{{ number_format($row['affiliate_profit'] / 100, 2) }}</td>
             </tr>
             @endforeach
         </tbody>

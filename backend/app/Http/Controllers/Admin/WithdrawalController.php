@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * WTH-1..5. MVP only ever operates on the single internal platform
  * owner (owner_type='platform', owner_id=null — see LedgerEntry's own
- * convention). Reseller-owned withdrawals are a Phase 2 concern.
+ * convention). Affiliate-owned withdrawals are a Phase 2 concern.
  */
 class WithdrawalController extends Controller
 {

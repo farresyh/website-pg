@@ -17,7 +17,7 @@ class Withdrawal extends Model
         'status',
         'admin_note',
         'requested_by',
-        'reseller_user_id',
+        'affiliate_user_id',
         'approved_by',
         'processed_at',
     ];

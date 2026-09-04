@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MembershipCheckoutAttempt extends Model
 {
     protected $fillable = [
-        'reseller_id',
+        'affiliate_id',
         'email',
         'membership_plan_id',
         'fee_sen',
@@ -38,8 +38,8 @@ class MembershipCheckoutAttempt extends Model
         return $this->belongsTo(MembershipPlan::class);
     }
 
-    public function reseller(): BelongsTo
+    public function affiliate(): BelongsTo
     {
-        return $this->belongsTo(Reseller::class);
+        return $this->belongsTo(Affiliate::class);
     }
 }

@@ -12,9 +12,9 @@
  * every browser-originated storefront call (checkout, player validation)
  * with a generic "failed to fetch", never surfaced as a CORS error to the
  * page's own JS, only visible in the Network tab's real response status.
- * The reseller portal (:3002) hit the exact same wall — its `/api/reseller/*`
- * reads all failed as "Could not load" until RESELLER_PORTAL_URL was added
- * below.
+ * The reseller portal (:3002) hit the exact same wall — its `/api/affiliate/*`
+ * (né `/api/reseller/*`, ADR-072 PR-A rename) reads all failed as "Could not
+ * load" until RESELLER_PORTAL_URL was added below.
  *
  * Laravel doesn't merge its own default cors.php unless this file exists in
  * config/ — without it, HandleCors matches zero paths and no CORS headers

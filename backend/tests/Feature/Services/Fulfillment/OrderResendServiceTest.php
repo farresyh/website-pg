@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\PlayerValidation;
+use App\Models\PlayerValidatorProfile;
 use App\Models\Supplier;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
@@ -50,14 +51,14 @@ class OrderResendServiceTest extends TestCase
 
         return new OrderResendService(
             new OrderFulfillmentService(
-                new OrderStatusService(),
-                new ReferenceNumberService(),
+                new OrderStatusService,
+                new ReferenceNumberService,
                 $this->app->make(SupplierAdapterFactory::class),
-                new LedgerService(),
-                new VoucherService(new LedgerService()),
+                new LedgerService,
+                new VoucherService(new LedgerService),
             ),
-            new PricingService(),
-            new MembershipPricingService(),
+            new PricingService,
+            new MembershipPricingService,
         );
     }
 
@@ -123,7 +124,7 @@ class OrderResendServiceTest extends TestCase
     private function failedOrder(Game $game, Package $package, Supplier $supplier, array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-RESEND-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -133,12 +134,12 @@ class OrderResendServiceTest extends TestCase
             'supplier_product_ref' => $package->supplier_package_ref,
             'cost_price' => 900,
             'standard_selling_price' => 900,
-            'reseller_markup_pct' => 0,
+            'affiliate_markup_pct' => 0,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ], $overrides));
@@ -289,7 +290,7 @@ class OrderResendServiceTest extends TestCase
     }
 
     /**
-     * Decision #5: platform_profit/reseller_profit are recomputed from
+     * Decision #5: platform_profit/affiliate_profit are recomputed from
      * this attempt's live package economics and only actually credited
      * to the ledger when this attempt is the one that succeeds —
      * mirrors OrderFulfillmentService::creditProfit()'s existing
@@ -302,12 +303,12 @@ class OrderResendServiceTest extends TestCase
         $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
         // Live cost is now higher than what the customer's snapshot assumed.
         $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1300, 'standard_selling_price' => 1300]);
-        $order = $this->failedOrder($game, $original, $supplier, ['reseller_markup_pct' => 0]);
+        $order = $this->failedOrder($game, $original, $supplier, ['affiliate_markup_pct' => 0]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, null, 'Admin');
 
-        // PricingService: platformProfit = standardSellingPrice - costPrice = 1300 - 1300 = 0 (markup 0%, reseller=platform owner).
+        // PricingService: platformProfit = standardSellingPrice - costPrice = 1300 - 1300 = 0 (markup 0%, affiliate=platform owner).
         $this->assertSame(0, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame(0, $order->fresh()->platform_profit);
     }
@@ -330,7 +331,7 @@ class OrderResendServiceTest extends TestCase
         $order = $this->failedOrder($game, $original, $supplier, [
             'pricing_basis' => 'member',
             'member_discount_percent' => 80.00,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
         ]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
@@ -338,17 +339,17 @@ class OrderResendServiceTest extends TestCase
 
         // effectiveMarkup = 20 * (1 - 0.8) = 4%; memberPrice = 1200 * 1.04 = 1248; platformProfit = 1248 - 1200 = 48.
         $this->assertSame(48, $order->fresh()->platform_profit);
-        $this->assertSame(0, $order->fresh()->reseller_profit);
+        $this->assertSame(0, $order->fresh()->affiliate_profit);
     }
 
     /**
      * ADR-027's 2026-08-29 continued addendum, decision 4 — same rule
      * as checkout time, proven again at resend: a member order's
-     * reseller_profit stays 0 regardless of the order's own frozen
-     * reseller_markup_pct (a genuinely nonzero 10% here). Resend never
-     * reads reseller_markup_pct for a member-priced order at all.
+     * affiliate_profit stays 0 regardless of the order's own frozen
+     * affiliate_markup_pct (a genuinely nonzero 10% here). Resend never
+     * reads affiliate_markup_pct for a member-priced order at all.
      */
-    public function test_resend_of_a_member_priced_order_keeps_reseller_profit_zero_even_with_a_nonzero_reseller_markup(): void
+    public function test_resend_of_a_member_priced_order_keeps_affiliate_profit_zero_even_with_a_nonzero_affiliate_markup(): void
     {
         $supplier = $this->supplier();
         $game = $this->game();
@@ -360,15 +361,15 @@ class OrderResendServiceTest extends TestCase
         $order = $this->failedOrder($game, $original, $supplier, [
             'pricing_basis' => 'member',
             'member_discount_percent' => 80.00,
-            'reseller_markup_pct' => 10.00,
-            'reseller_profit' => 0,
+            'affiliate_markup_pct' => 10.00,
+            'affiliate_profit' => 0,
         ]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, null, 'Admin');
 
         $this->assertSame(48, $order->fresh()->platform_profit);
-        $this->assertSame(0, $order->fresh()->reseller_profit);
+        $this->assertSame(0, $order->fresh()->affiliate_profit);
     }
 
     public function test_does_not_credit_the_ledger_when_the_resend_fails(): void
@@ -394,7 +395,7 @@ class OrderResendServiceTest extends TestCase
         $game = $this->game();
         $game->update([
             'player_validator_enabled' => true,
-            'player_validator_profile_id' => \App\Models\PlayerValidatorProfile::query()->create([
+            'player_validator_profile_id' => PlayerValidatorProfile::query()->create([
                 'name' => 'MLBB Validator', 'key' => 'mlbb',
             ])->id,
         ]);
@@ -428,7 +429,7 @@ class OrderResendServiceTest extends TestCase
         $game = $this->game();
         $game->update([
             'player_validator_enabled' => true,
-            'player_validator_profile_id' => \App\Models\PlayerValidatorProfile::query()->create([
+            'player_validator_profile_id' => PlayerValidatorProfile::query()->create([
                 'name' => 'MLBB Validator', 'key' => 'mlbb',
             ])->id,
         ]);

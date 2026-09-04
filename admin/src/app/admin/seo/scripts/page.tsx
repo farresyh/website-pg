@@ -1,6 +1,6 @@
 "use client";
 
-/** ADR-029 addendum 2 decision 13: ordered, multiple, reseller-scoped head/body_end scripts. */
+/** ADR-029 addendum 2 decision 13: ordered, multiple, affiliate-scoped head/body_end scripts. */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";

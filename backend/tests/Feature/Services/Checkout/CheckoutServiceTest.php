@@ -54,14 +54,14 @@ class CheckoutServiceTest extends TestCase
             'costPriceSen' => 900,
             'standardSellingPriceSen' => 900,
             'packageMarkupPercent' => 0.0,
-            'resellerMarkupPct' => 0.0,
+            'affiliateMarkupPct' => 0.0,
             'paymentFeeConfig' => new PaymentMethodFeeConfig(0.0, 100),
             'paymentMethod' => 'duitnow',
             'paymentGateway' => 'chip',
             'channelCode' => 'DUITNOW_PAY',
             'idempotencyKey' => (string) Str::uuid(),
             'supplierProductRef' => 'FFP5',
-            'resellerId' => $this->primaryReseller()->id,
+            'affiliateId' => $this->primaryAffiliate()->id,
         ], $overrides));
     }
 

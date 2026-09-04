@@ -30,17 +30,15 @@ final class DashboardService
     /** `orders` is the only queue this screen monitors (ADR-045 decision 9) — see DashboardService::health(). */
     private const MONITORED_QUEUE = 'orders';
 
-    public function __construct(private readonly ReportService $reports)
-    {
-    }
+    public function __construct(private readonly ReportService $reports) {}
 
     /**
      * DASH-1 — reuses ReportService's own pinned Sales/Orders/Profit
      * definitions verbatim (ledger-sourced profit, paid_at-scoped,
      * is_test-excluded) rather than re-deriving them. "Profit Today" is
      * platform profit only — this MVP has one internal owner today: a
-     * true reseller-profit split is Phase 2, and reseller_profit is
-     * already broken out per-reseller in Reports for whoever needs it.
+     * true affiliate-profit split is Phase 2, and affiliate_profit is
+     * already broken out per-affiliate in Reports for whoever needs it.
      */
     public function summary(): array
     {
@@ -67,13 +65,13 @@ final class DashboardService
             'profit_today' => [
                 'value' => $today['platform_profit'],
                 'comparison' => $this->comparison($today['platform_profit'], $yesterday['platform_profit']),
-                'definition' => "SUM(ledger_entries.amount), sen, type=order_profit, owner_type=platform, for orders paid today (Asia/Kuala_Lumpur) — never Order.platform_profit directly, since that column is stamped at checkout time before the delivery outcome is known (a paid-but-undelivered order correctly contributes RM0 here until it delivers).",
+                'definition' => 'SUM(ledger_entries.amount), sen, type=order_profit, owner_type=platform, for orders paid today (Asia/Kuala_Lumpur) — never Order.platform_profit directly, since that column is stamped at checkout time before the delivery outcome is known (a paid-but-undelivered order correctly contributes RM0 here until it delivers).',
             ],
             'vouchers_issued_today' => [
                 'value' => $vouchersToday['count'],
                 'amount_sen' => $vouchersToday['amount'],
                 'comparison' => $this->comparison($vouchersToday['count'], $vouchersYesterday['count']),
-                'definition' => "COUNT(*)/SUM(amount) of Vouchers with a non-null order_id (Path B — issued to compensate a failed order, ADR-004), created today (Asia/Kuala_Lumpur), excluding vouchers on is_test orders. Standalone admin-issued (Path A) vouchers are not counted — this tile tracks the order-failure compensation signal specifically.",
+                'definition' => 'COUNT(*)/SUM(amount) of Vouchers with a non-null order_id (Path B — issued to compensate a failed order, ADR-004), created today (Asia/Kuala_Lumpur), excluding vouchers on is_test orders. Standalone admin-issued (Path A) vouchers are not counted — this tile tracks the order-failure compensation signal specifically.',
             ],
         ];
     }

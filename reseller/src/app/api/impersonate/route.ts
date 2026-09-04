@@ -4,9 +4,9 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth";
 
 /**
  * ADR-059 59c: the landing endpoint for an admin RES-4 impersonation.
- * The admin opens `/impersonate#token=<minted reseller token>` in a new
+ * The admin opens `/impersonate#token=<minted affiliate token>` in a new
  * tab; the page POSTs that token here. We verify it against the backend
- * (`GET /api/reseller/me` must return a non-null `impersonation` block —
+ * (`GET /api/affiliate/me` must return a non-null `impersonation` block —
  * i.e. an open impersonation session exists for this exact token), then
  * set the presence-only gate cookie and hand the page the identity to
  * store client-side. Mirrors `app/api/login/route.ts`.
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Missing token." }, { status: 422 });
   }
 
-  const meResponse = await fetch(`${API_BASE_URL}/api/reseller/me`, {
+  const meResponse = await fetch(`${API_BASE_URL}/api/affiliate/me`, {
     headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
   });
 
@@ -44,8 +44,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     token,
-    reseller_user: me.reseller_user,
-    reseller: me.reseller,
+    affiliate_user: me.affiliate_user,
+    affiliate: me.affiliate,
     impersonation: me.impersonation,
   });
 }

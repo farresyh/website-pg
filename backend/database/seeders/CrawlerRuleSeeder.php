@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Models\Affiliate;
+use App\Models\AffiliateSeoSettings;
 use App\Models\CrawlerRule;
-use App\Models\Reseller;
-use App\Models\ResellerSeoSettings;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -89,9 +89,9 @@ class CrawlerRuleSeeder extends Seeder
      */
     private function seedDefaultDisallowPaths(): void
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
-        $settings = ResellerSeoSettings::query()->firstOrCreate(['reseller_id' => $reseller->id]);
+        $settings = AffiliateSeoSettings::query()->firstOrCreate(['affiliate_id' => $affiliate->id]);
 
         // Only backfill when genuinely unset — never overwrite an
         // admin's real choice (including an intentional empty list)

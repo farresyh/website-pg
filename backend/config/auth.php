@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\AdminUser;
-use App\Models\ResellerUser;
+use App\Models\AffiliateUser;
 
 return [
 
@@ -44,17 +44,17 @@ return [
             'provider' => 'admin_users',
         ],
 
-        // ADR-058 (58a): the reseller portal's own guard, fully separate
+        // ADR-058 (58a): the affiliate portal's own guard, fully separate
         // from the admin surface — its own user table, its own token
-        // namespace. `auth:reseller` resolves a Sanctum bearer token and
+        // namespace. `auth:affiliate` resolves a Sanctum bearer token and
         // (Sanctum v4 `Guard::hasValidProvider`) rejects any token whose
-        // tokenable is not a `reseller_users` model, so an admin token
-        // can never authenticate a reseller route and vice versa. The
-        // SetResellerContext middleware then activates ADR-057's tenant
-        // scope from the authenticated user's `reseller_id`.
-        'reseller' => [
+        // tokenable is not an `affiliate_users` model, so an admin token
+        // can never authenticate an affiliate route and vice versa. The
+        // SetAffiliateContext middleware then activates ADR-057's tenant
+        // scope from the authenticated user's `affiliate_id`.
+        'affiliate' => [
             'driver' => 'sanctum',
-            'provider' => 'reseller_users',
+            'provider' => 'affiliate_users',
         ],
     ],
 
@@ -82,9 +82,9 @@ return [
         ],
 
         // ADR-058 (58a).
-        'reseller_users' => [
+        'affiliate_users' => [
             'driver' => 'eloquent',
-            'model' => ResellerUser::class,
+            'model' => AffiliateUser::class,
         ],
     ],
 
@@ -116,14 +116,14 @@ return [
         ],
 
         // ADR-058 (58a): its own token table so a shared email address
-        // between an admin_user and a reseller_user can never collide on
+        // between an admin_user and an affiliate_user can never collide on
         // the `password_reset_tokens` email-primary-key. `expire` is 24h
         // rather than 60min — this broker also backs the first-time
-        // set-password invite (ResellerInviteService), which is an
+        // set-password invite (AffiliateInviteService), which is an
         // onboarding link, not a just-requested reset.
-        'reseller_users' => [
-            'provider' => 'reseller_users',
-            'table' => 'reseller_password_reset_tokens',
+        'affiliate_users' => [
+            'provider' => 'affiliate_users',
+            'table' => 'affiliate_password_reset_tokens',
             'expire' => 60 * 24,
             'throttle' => 60,
         ],

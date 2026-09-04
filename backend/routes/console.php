@@ -112,12 +112,12 @@ Schedule::command('app:reconcile-pending-membership-payments')
     ->withoutOverlapping();
 
 // ADR-056 — same inert-until-real-cron pattern as above. Collects the
-// monthly reseller wholesale-tier subscription fee from each reseller's
+// monthly affiliate wholesale-tier subscription fee from each affiliate's
 // earnings balance and drives active -> grace (3 days) -> lapsed on an
-// unpaid cycle — see ChargeResellerTierFeesCommand's own docblock.
-Schedule::command('app:charge-reseller-tier-fees')
+// unpaid cycle — see ChargeAffiliateTierFeesCommand's own docblock.
+Schedule::command('app:charge-affiliate-tier-fees')
     ->daily()
-    ->name('reseller-tier-fee-charge')
+    ->name('affiliate-tier-fee-charge')
     ->withoutOverlapping();
 
 // ADR-069 decision 12 — Supplier.balance is otherwise only refreshed

@@ -30,7 +30,7 @@ class OrderControllerTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -40,7 +40,7 @@ class OrderControllerTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));
@@ -586,7 +586,7 @@ class OrderControllerTest extends TestCase
         // DeliveryLogsTable on the now-undefined resend_attempts once
         // it replaced the full OrderDetail with this response.
         $response->assertJsonPath('resend_attempts', []);
-        $response->assertJsonStructure(['game', 'package', 'supplier', 'reseller', 'voucher']);
+        $response->assertJsonStructure(['game', 'package', 'supplier', 'affiliate', 'voucher']);
     }
 
     public function test_mark_delivered_requires_a_supplier_ref(): void

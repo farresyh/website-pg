@@ -16,21 +16,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * `Order.customer_email` against this row's `email`, unchanged from
  * the base ADR's design other than which column it matches on.
  *
- * ADR-061 decision 5 (PR-B): identity is now per-brand — `reseller_id`
- * plus `unique(reseller_id, email)`. The `BelongsToReseller` scoping
+ * ADR-061 decision 5 (PR-B): identity is now per-brand — `affiliate_id`
+ * plus `unique(affiliate_id, email)`. The `BelongsToAffiliate` scoping
  * trait is deliberately NOT applied: every read path is either a guest
- * storefront endpoint (no `reseller` guard active, so the scope would
+ * storefront endpoint (no `affiliate` guard active, so the scope would
  * be a no-op) or the admin registry (cross-brand on purpose).
- * Isolation is enforced by explicit `where('reseller_id', ...)` in
+ * Isolation is enforced by explicit `where('affiliate_id', ...)` in
  * `OtpService`, `CheckoutController`, `CatalogController`,
  * `MembershipController`, and `MembershipFeeService` — same reasoning
- * as `ResellerUser` (ADR-058 58b). Revisit if ADR-059 adds a
- * reseller-guard "my members" screen.
+ * as `AffiliateUser` (ADR-058 58b). Revisit if ADR-059 adds a
+ * affiliate-guard "my members" screen.
  */
 class Membership extends Model
 {
     protected $fillable = [
-        'reseller_id',
+        'affiliate_id',
         'email',
         'membership_plan_id',
         'status',
@@ -52,9 +52,9 @@ class Membership extends Model
     }
 
     /** ADR-061 decision 5: the brand this membership belongs to. */
-    public function reseller(): BelongsTo
+    public function affiliate(): BelongsTo
     {
-        return $this->belongsTo(Reseller::class);
+        return $this->belongsTo(Affiliate::class);
     }
 
     /**

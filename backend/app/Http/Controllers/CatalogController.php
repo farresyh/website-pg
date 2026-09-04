@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
-use App\Models\Reseller;
 use App\Services\Cache\NextRevalidation;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Cache;
  * platform's wholesale cost and margin) — only a computed
  * `selling_price_sen`, the same customer-facing price
  * CheckoutService prices an order at (PricingService, against the
- * Platform Owner Reseller row, per ADR-013).
+ * Platform Owner Affiliate row, per ADR-013).
  *
  * Lookup is always by slug, not the admin routes' numeric `{id}` — the
  * storefront's own URLs (`/order/[slug]`) are slug-based, and slug is
@@ -88,8 +88,8 @@ class CatalogController extends Controller
         // ADR-061 decision 4: Membership is live only when the global
         // kill-switch AND this storefront's own toggle are both on.
         // ADR-060 resolves the brand per `Host`; today it is the primary.
-        $reseller = Reseller::primary();
-        $membershipEnabled = $reseller->membershipEnabledEffective();
+        $affiliate = Affiliate::primary();
+        $membershipEnabled = $affiliate->membershipEnabledEffective();
 
         // Resolved once per request, outside the cache closure below —
         // a decrypt + one indexed Membership lookup, not worth caching
@@ -98,7 +98,7 @@ class CatalogController extends Controller
         // computes. A missing/unresolvable/lapsed token falls back to
         // null, same silent fallback CheckoutController::
         // resolveMembershipId() already uses — not an error.
-        $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request, $reseller->id) : null;
+        $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request, $affiliate->id) : null;
 
         $packages = Cache::store(config('cache.catalog_packages_store'))
             ->tags(['catalog.packages', "catalog.packages.game.{$game->id}"])
@@ -138,7 +138,7 @@ class CatalogController extends Controller
      * price pre-payment, even though CheckoutService already charged
      * them correctly at Tier 1 (docs/adr.md ADR-027).
      */
-    private function resolveMemberPlan(Request $request, int $resellerId): ?MembershipPlan
+    private function resolveMemberPlan(Request $request, int $affiliateId): ?MembershipPlan
     {
         $token = $request->bearerToken();
 
@@ -151,12 +151,12 @@ class CatalogController extends Controller
         // ADR-061 decision 5: a token from another brand's storefront is
         // ignored here — the caller falls back to the anonymous anchor
         // price, same as an unauthenticated request.
-        if ($session === null || $session['reseller_id'] !== $resellerId) {
+        if ($session === null || $session['affiliate_id'] !== $affiliateId) {
             return null;
         }
 
         return Membership::query()
-            ->where('reseller_id', $resellerId)
+            ->where('affiliate_id', $affiliateId)
             ->where('email', $session['email'])
             ->where('status', MembershipStatus::Active)
             ->where('expires_at', '>=', now())
@@ -311,12 +311,12 @@ class CatalogController extends Controller
 
     private function sellingPriceSen(Package $package): int
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         return $this->pricing->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $reseller->markup_pct,
+            (float) $affiliate->markup_pct,
         )->sellingPrice;
     }
 

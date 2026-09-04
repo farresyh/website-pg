@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Reseller;
+use App\Models\Affiliate;
 use App\Services\Report\ReportService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -22,13 +22,13 @@ class ReportController extends Controller
     public function __construct(private readonly ReportService $reports) {}
 
     /**
-     * Minimal reseller list for the Reports filter dropdown only — full
-     * Resellers Management CRUD (§6.7) is Phase 2, not built yet.
+     * Minimal affiliate list for the Reports filter dropdown only — full
+     * Affiliates Management CRUD (§6.7) is Phase 2, not built yet.
      */
-    public function resellers(): JsonResponse
+    public function affiliates(): JsonResponse
     {
         return response()->json(
-            Reseller::query()->orderBy('business_name')->get(['id', 'business_name']),
+            Affiliate::query()->orderBy('business_name')->get(['id', 'business_name']),
         );
     }
 
@@ -37,7 +37,7 @@ class ReportController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json(
-            $this->reports->summary($from, $toExclusive, $this->resellerId($request)),
+            $this->reports->summary($from, $toExclusive, $this->affiliateId($request)),
         );
     }
 
@@ -47,7 +47,7 @@ class ReportController extends Controller
         $days = in_array($days, [7, 14, 30], true) ? $days : 7;
 
         return response()->json([
-            'days' => $this->reports->dailyTrend($days, $this->resellerId($request)),
+            'days' => $this->reports->dailyTrend($days, $this->affiliateId($request)),
         ]);
     }
 
@@ -56,7 +56,7 @@ class ReportController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json([
-            'days' => $this->reports->dailyBreakdown($from, $toExclusive, $this->resellerId($request)),
+            'days' => $this->reports->dailyBreakdown($from, $toExclusive, $this->affiliateId($request)),
         ]);
     }
 
@@ -66,7 +66,7 @@ class ReportController extends Controller
         $limit = (int) $request->query('limit', 5);
 
         return response()->json([
-            'games' => $this->reports->gameBreakdown($from, $toExclusive, $this->resellerId($request), $limit),
+            'games' => $this->reports->gameBreakdown($from, $toExclusive, $this->affiliateId($request), $limit),
         ]);
     }
 
@@ -75,7 +75,7 @@ class ReportController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json([
-            'games' => $this->reports->gameBreakdown($from, $toExclusive, $this->resellerId($request)),
+            'games' => $this->reports->gameBreakdown($from, $toExclusive, $this->affiliateId($request)),
         ]);
     }
 
@@ -84,16 +84,16 @@ class ReportController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json([
-            'payment_methods' => $this->reports->paymentMethodBreakdown($from, $toExclusive, $this->resellerId($request)),
+            'payment_methods' => $this->reports->paymentMethodBreakdown($from, $toExclusive, $this->affiliateId($request)),
         ]);
     }
 
-    public function resellerBreakdown(Request $request): JsonResponse
+    public function affiliateBreakdown(Request $request): JsonResponse
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json([
-            'resellers' => $this->reports->resellerBreakdown($from, $toExclusive, $this->resellerId($request)),
+            'affiliates' => $this->reports->affiliateBreakdown($from, $toExclusive, $this->affiliateId($request)),
         ]);
     }
 
@@ -102,7 +102,7 @@ class ReportController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json(
-            $this->reports->orderStatusFunnel($from, $toExclusive, $this->resellerId($request)),
+            $this->reports->orderStatusFunnel($from, $toExclusive, $this->affiliateId($request)),
         );
     }
 
@@ -111,7 +111,7 @@ class ReportController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json(
-            $this->reports->membershipBreakdown($from, $toExclusive, $this->resellerId($request)),
+            $this->reports->membershipBreakdown($from, $toExclusive, $this->affiliateId($request)),
         );
     }
 
@@ -119,21 +119,21 @@ class ReportController extends Controller
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
-        $resellerId = $this->resellerId($request);
-        $rows = $this->reports->exportRows($from, $toExclusive, $resellerId)->all();
+        $affiliateId = $this->affiliateId($request);
+        $rows = $this->reports->exportRows($from, $toExclusive, $affiliateId)->all();
 
         $format = $request->query('format', 'csv');
         $rangeLabel = $this->rangeLabel($request->integer('year') ?: null, $request->integer('month') ?: null);
-        $resellerLabel = $resellerId ? Reseller::query()->find($resellerId)?->business_name : null;
+        $affiliateLabel = $affiliateId ? Affiliate::query()->find($affiliateId)?->business_name : null;
 
         return $format === 'pdf'
-            ? $this->exportPdf($rows, $rangeLabel, $resellerLabel)
+            ? $this->exportPdf($rows, $rangeLabel, $affiliateLabel)
             : $this->exportCsv($rows, $rangeLabel);
     }
 
-    private function resellerId(Request $request): ?int
+    private function affiliateId(Request $request): ?int
     {
-        return $request->filled('reseller_id') ? (int) $request->query('reseller_id') : null;
+        return $request->filled('affiliate_id') ? (int) $request->query('affiliate_id') : null;
     }
 
     private function rangeFromRequest(Request $request): array
@@ -159,17 +159,17 @@ class ReportController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Order #', 'Paid At', 'Customer', 'Reseller', 'Sales (RM)', 'Platform Profit (RM)', 'Reseller Profit (RM)']);
+            fputcsv($out, ['Order #', 'Paid At', 'Customer', 'Affiliate', 'Sales (RM)', 'Platform Profit (RM)', 'Affiliate Profit (RM)']);
 
             foreach ($rows as $row) {
                 fputcsv($out, [
                     $row['order_number'],
                     $row['paid_at'],
                     $row['customer_email'],
-                    $row['reseller_name'] ?? '',
+                    $row['affiliate_name'] ?? '',
                     number_format($row['final_amount'] / 100, 2, '.', ''),
                     number_format($row['platform_profit'] / 100, 2, '.', ''),
-                    number_format($row['reseller_profit'] / 100, 2, '.', ''),
+                    number_format($row['affiliate_profit'] / 100, 2, '.', ''),
                 ]);
             }
 
@@ -177,14 +177,14 @@ class ReportController extends Controller
         }, $filename, ['Content-Type' => 'text/csv']);
     }
 
-    private function exportPdf(array $rows, string $rangeLabel, ?string $resellerLabel): Response
+    private function exportPdf(array $rows, string $rangeLabel, ?string $affiliateLabel): Response
     {
         $filename = 'sales-report-'.str_replace(' ', '-', strtolower($rangeLabel)).'.pdf';
 
         return Pdf::loadView('reports.export-pdf', [
             'rows' => $rows,
             'rangeLabel' => $rangeLabel,
-            'resellerLabel' => $resellerLabel,
+            'affiliateLabel' => $affiliateLabel,
         ])->download($filename);
     }
 }

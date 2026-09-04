@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** ADR-029 addendum 2 decision 14: per-bot robots.txt rule, deliberately not reseller-scoped (see migration doc comment). */
+/** ADR-029 addendum 2 decision 14: per-bot robots.txt rule, deliberately not affiliate-scoped (see migration doc comment). */
 class CrawlerRule extends Model
 {
     protected $fillable = [

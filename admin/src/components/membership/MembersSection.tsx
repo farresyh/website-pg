@@ -65,14 +65,14 @@ export default function MembersSection({
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [presetEmail, setPresetEmail] = useState<string | undefined>(undefined);
-  const [presetResellerId, setPresetResellerId] = useState<number | undefined>(undefined);
+  const [presetAffiliateId, setPresetAffiliateId] = useState<number | undefined>(undefined);
 
   function refresh(nextPage = 1) {
     listMemberships(token, {
       status: statusFilter,
       search: search || undefined,
       page: nextPage,
-      resellerId: brandFilter === "all" ? undefined : Number(brandFilter),
+      affiliateId: brandFilter === "all" ? undefined : Number(brandFilter),
     })
       .then((res) => {
         setData(res.data);
@@ -100,7 +100,7 @@ export default function MembersSection({
     await recordMembershipPayment(token, values);
     setIsModalOpen(false);
     setPresetEmail(undefined);
-    setPresetResellerId(undefined);
+    setPresetAffiliateId(undefined);
     await refresh(page);
     onChanged();
   }
@@ -144,7 +144,7 @@ export default function MembersSection({
             size="small"
             onClick={() => {
               setPresetEmail(undefined);
-              setPresetResellerId(undefined);
+              setPresetAffiliateId(undefined);
               setIsModalOpen(true);
             }}
           >
@@ -187,7 +187,7 @@ export default function MembersSection({
                           {m.email}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                          {m.brand_name ?? `brand #${m.reseller_id}`}
+                          {m.brand_name ?? `brand #${m.affiliate_id}`}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {m.plan_name ?? `plan #${m.plan_id}`}
@@ -218,7 +218,7 @@ export default function MembersSection({
                               variant="outlined"
                               onClick={() => {
                                 setPresetEmail(m.email);
-                                setPresetResellerId(m.reseller_id);
+                                setPresetAffiliateId(m.affiliate_id);
                                 setIsModalOpen(true);
                               }}
                             >
@@ -261,7 +261,7 @@ export default function MembersSection({
         onClose={() => setIsModalOpen(false)}
         plans={plans}
         brands={brands}
-        presetResellerId={presetResellerId}
+        presetAffiliateId={presetAffiliateId}
         presetEmail={presetEmail}
         onSubmit={handleRecorded}
       />

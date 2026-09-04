@@ -3,7 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
-use App\Models\Reseller;
+use App\Models\Affiliate;
 use App\Models\SeoScript;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -20,8 +20,8 @@ class SeoScriptControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: these endpoints resolve the platform storefront via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
     }
 
     private function actingAsSuperAdmin(): void
@@ -49,7 +49,7 @@ class SeoScriptControllerTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $this->assertDatabaseHas('seo_scripts', ['name' => 'Google Analytics', 'reseller_id' => null]);
+        $this->assertDatabaseHas('seo_scripts', ['name' => 'Google Analytics', 'affiliate_id' => null]);
     }
 
     public function test_store_rejects_an_invalid_location(): void
@@ -88,12 +88,12 @@ class SeoScriptControllerTest extends TestCase
     public function test_store_invalidates_the_public_seo_cache(): void
     {
         $this->actingAsSuperAdmin();
-        $reseller = $this->primaryReseller();
-        Cache::put("catalog.public.seo_scripts.{$reseller->id}", ['stale' => true], 60);
+        $affiliate = $this->primaryAffiliate();
+        Cache::put("catalog.public.seo_scripts.{$affiliate->id}", ['stale' => true], 60);
 
         $this->postJson('/api/seo/scripts', ['name' => 'GA', 'location' => 'head', 'code' => '<script>x()</script>'])->assertCreated();
 
-        $this->assertFalse(Cache::has("catalog.public.seo_scripts.{$reseller->id}"));
+        $this->assertFalse(Cache::has("catalog.public.seo_scripts.{$affiliate->id}"));
     }
 
     public function test_update_persists_new_values(): void

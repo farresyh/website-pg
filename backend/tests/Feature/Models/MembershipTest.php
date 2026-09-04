@@ -2,27 +2,27 @@
 
 namespace Tests\Feature\Models;
 
+use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
-use App\Models\Reseller;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
  * ADR-061 decision 5 (PR-B): consumer-membership identity is per-brand —
- * `unique(reseller_id, email)`, not `unique(email)`.
+ * `unique(affiliate_id, email)`, not `unique(email)`.
  */
 class MembershipTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function make(int $resellerId, string $email): Membership
+    private function make(int $affiliateId, string $email): Membership
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
 
         return Membership::query()->create([
-            'reseller_id' => $resellerId,
+            'affiliate_id' => $affiliateId,
             'email' => $email,
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -34,8 +34,8 @@ class MembershipTest extends TestCase
 
     public function test_the_same_email_can_hold_a_membership_on_two_different_brands(): void
     {
-        $brandA = $this->primaryReseller();
-        $brandB = Reseller::query()->create([
+        $brandA = $this->primaryAffiliate();
+        $brandB = Affiliate::query()->create([
             'business_name' => 'Sister Brand', 'markup_pct' => 0, 'status' => 'active',
             'is_owned' => true, 'membership_enabled' => true,
         ]);
@@ -49,19 +49,19 @@ class MembershipTest extends TestCase
 
     public function test_the_same_email_cannot_be_recorded_twice_on_one_brand(): void
     {
-        $brand = $this->primaryReseller();
+        $brand = $this->primaryAffiliate();
         $this->make($brand->id, 'dup@example.com');
 
         $this->expectException(UniqueConstraintViolationException::class);
         $this->make($brand->id, 'dup@example.com');
     }
 
-    public function test_reseller_relation_resolves_the_owning_brand(): void
+    public function test_affiliate_relation_resolves_the_owning_brand(): void
     {
-        $brand = $this->primaryReseller();
+        $brand = $this->primaryAffiliate();
 
         $membership = $this->make($brand->id, 'member@example.com');
 
-        $this->assertTrue($membership->reseller->is($brand));
+        $this->assertTrue($membership->affiliate->is($brand));
     }
 }

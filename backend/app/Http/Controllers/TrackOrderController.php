@@ -15,7 +15,7 @@ use Illuminate\Http\JsonResponse;
  *
  * Deliberately returns a narrow, customer-safe subset of Order —
  * never `cost_price`/`standard_selling_price`/`platform_profit`/
- * `reseller_profit` (internal financial data) or
+ * `affiliate_profit` (internal financial data) or
  * `supplier_response`/`payment_ref`/`supplier_ref` (internal
  * operational fields) — only what the paying customer needs to see
  * their own order's status.

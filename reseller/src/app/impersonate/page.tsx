@@ -42,11 +42,11 @@ export default function ImpersonatePage() {
 
         setClientSession({
           token: payload.token,
-          reseller_user_id: payload.reseller_user.id,
-          reseller_id: payload.reseller_user.reseller_id,
-          name: payload.reseller_user.name,
-          email: payload.reseller_user.email,
-          business_name: payload.reseller?.business_name ?? "",
+          affiliate_user_id: payload.affiliate_user.id,
+          affiliate_id: payload.affiliate_user.affiliate_id,
+          name: payload.affiliate_user.name,
+          email: payload.affiliate_user.email,
+          business_name: payload.affiliate?.business_name ?? "",
           impersonating: true,
           admin_name: payload.impersonation?.admin_name ?? null,
           impersonation_session_id: payload.impersonation?.session_id,

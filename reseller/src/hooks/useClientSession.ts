@@ -12,12 +12,12 @@
 
 import { useSyncExternalStore } from "react";
 import { getClientSession, SESSION_CHANGE_EVENT } from "@/lib/session";
-import type { ResellerSessionPayload } from "@/lib/auth";
+import type { AffiliateSessionPayload } from "@/lib/auth";
 
 let cachedJson: string | null = null;
-let cachedSession: ResellerSessionPayload | null = null;
+let cachedSession: AffiliateSessionPayload | null = null;
 
-function getSnapshot(): ResellerSessionPayload | null {
+function getSnapshot(): AffiliateSessionPayload | null {
   const session = getClientSession();
   const json = session ? JSON.stringify(session) : null;
   if (json !== cachedJson) {
@@ -27,7 +27,7 @@ function getSnapshot(): ResellerSessionPayload | null {
   return cachedSession;
 }
 
-function getServerSnapshot(): ResellerSessionPayload | null {
+function getServerSnapshot(): AffiliateSessionPayload | null {
   return null;
 }
 
@@ -40,6 +40,6 @@ function subscribe(callback: () => void): () => void {
   };
 }
 
-export function useClientSession(): ResellerSessionPayload | null {
+export function useClientSession(): AffiliateSessionPayload | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

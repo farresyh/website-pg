@@ -42,7 +42,7 @@ use Illuminate\Support\Facades\DB;
  *   double-book a fee.
  *
  * Concurrency note: two unique constraints can fire here, and each has
- * its own recovery. `memberships.(reseller_id, email)` (a brand-new
+ * its own recovery. `memberships.(affiliate_id, email)` (a brand-new
  * member created by a concurrent record — ADR-061 decision 5 made this
  * per-brand) is caught *inside* the transaction — the blocked
  * INSERT surfaces the violation only after the winner committed, so a
@@ -61,7 +61,7 @@ final class MembershipFeeService
     public function __construct(private readonly LedgerService $ledger) {}
 
     public function recordFeePaid(
-        int $resellerId,
+        int $affiliateId,
         string $email,
         int $planId,
         int $amountSen,
@@ -87,9 +87,9 @@ final class MembershipFeeService
 
         try {
             /** @var array{0: Membership, 1: string} $result */
-            $result = DB::transaction(function () use ($resellerId, $email, $plan, $amountSen, $adminUserId, $reason, $idempotencyKey) {
+            $result = DB::transaction(function () use ($affiliateId, $email, $plan, $amountSen, $adminUserId, $reason, $idempotencyKey) {
                 $membership = Membership::query()
-                    ->where('reseller_id', $resellerId)
+                    ->where('affiliate_id', $affiliateId)
                     ->where('email', $email)
                     ->first();
                 $isNew = false;
@@ -97,7 +97,7 @@ final class MembershipFeeService
                 if ($membership === null) {
                     try {
                         $membership = Membership::query()->create([
-                            'reseller_id' => $resellerId,
+                            'affiliate_id' => $affiliateId,
                             'email' => $email,
                             'membership_plan_id' => $plan->id,
                             'status' => MembershipStatus::Active,
@@ -107,7 +107,7 @@ final class MembershipFeeService
                         ]);
                         $isNew = true;
                     } catch (UniqueConstraintViolationException) {
-                        // (reseller_id, email) race: a concurrent record
+                        // (affiliate_id, email) race: a concurrent record
                         // created this pair. The blocked INSERT surfaced
                         // the violation only after that transaction
                         // committed — but the plain snapshot read above
@@ -116,7 +116,7 @@ final class MembershipFeeService
                         // always sees committed data, and hold that lock
                         // through the transition.
                         $membership = Membership::query()
-                            ->where('reseller_id', $resellerId)
+                            ->where('affiliate_id', $affiliateId)
                             ->where('email', $email)
                             ->lockForUpdate()
                             ->first();
