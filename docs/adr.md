@@ -3529,6 +3529,19 @@ One grilled design (2026-09-04), split into four sequenced ADRs, delivered as se
 - The previously-planned `.topupbaki {amount}` Bot command (self-serve wallet top-up over WhatsApp, founder's own idea, not yet built) is unaffected by and compatible with this design — it would reuse `ResellerWalletTopupService` as-is and needs no changes here.
 - `docs/prd.md` §14/§15 gain this PR once shipped, same convention every other PR in this family has used.
 
+---
+
+**Build addendum — code shipped 2026-09-05** (PR #103, `feature/adr-076-reseller-bot-v2`, merged to `staging`, all 6 CI jobs green — backend-tests, backend-concurrency, admin, reseller, storefront, playwright). Everything the design above pinned, built as designed — no deviation found.
+
+- `Package::cheapestActivePerGame()` gained the final `sortBy` (denomination ascending, nulls last by name) — proven with a new `PackageTest` case using deliberately-out-of-order creation, matching the exact bug shape the live screenshots showed.
+- New `reseller_bot_order_notifications` migration (`order_id` unique — doubles as the FK's supporting index, per `backend/AGENTS.md`'s standalone-index gotcha) + model + `ResellerBotService::handleOrder()`'s `updateOrCreate` write.
+- New `App\Listeners\Reseller\SendResellerBotOrderNotification` (`ShouldQueue`, `orders` queue — same as `OrderStatusUpdated::broadcastQueue()`), registered in `AppServiceProvider` via `Event::listen()` (the same mechanism, not a new one). Lock-guarded (`DB::transaction()` + `lockForUpdate()` on the notification row) against a double-send race — not proven with a subprocess concurrency test, since this sends a WhatsApp message, not money.
+- `Admin\OrderController::refundToWallet()` gained the explicit notify call, guarded by `refund_notified_at`.
+- `.trackorder`/`.checkid`/`.info` built exactly as decided — `.checkid` deliberately skips the storefront's region-redirect resolution (decision 8's own "purely identity-confirmation" framing), writing the same `player_validations` audit row every other validation path does.
+- `App\Services\Reseller\Bot\ResellerBotReplyFormatter` — every reply string, both existing (re-templated) and new, in one place.
+- **Tests**: `PackageTest` +1, `ResellerBotServiceTest` +9 (new commands, rate limit, notification-row creation), new `SendResellerBotOrderNotificationTest` (6 — delivered/failed/intermediate/no-row/no-double-send/resend-refires, plus one real end-to-end test through the actual `OrderObserver`→`broadcast()`→`Event::listen()` chain rather than calling the listener directly), `OrderControllerTest` +2 (refund notify / no-row no-op). Full backend suite **1473/1473 fast** (sqlite, up from 1453) + **13/13 concurrency** (real MySQL, no regression), Pint clean on every touched file. Migrated against the local dev DB (plain `migrate`, not `fresh`).
+- **Not done — scope was backend-only, founder's own call** ("mula code backend dulu"): no admin frontend change (none needed — the existing WhatsApp Groups modal already covers this family). **Not yet live-verified against the real OpenWA session** (only the fast/concurrency suites + the fake-`PlayerValidator`/`Http::fake()` test doubles) — next session's first check before moving on.
+
 **PRD deltas — owed once PR-A ships:** §6.7 `RES-1..6` (Affiliate), a new §6.x for `Reseller` (wallet), §8 data-model rows, §13 Glossary (`Reseller Wallet Tier`/`Wallet Debit`/`Wallet Refund`, and the retired `Reseller Wholesale Tier` term renamed to `Affiliate`'s), §14/§15 build-status tracking as each PR ships.
 
 ---
