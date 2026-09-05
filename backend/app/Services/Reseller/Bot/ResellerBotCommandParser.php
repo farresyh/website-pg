@@ -12,7 +12,8 @@ namespace App\Services\Reseller\Bot;
  *
  * ADR-076 decisions 7-9 add v2's `.trackorder {order_number}`,
  * `.checkid {code} {playerId} [{serverId}]` (same shape as `.order`,
- * minus a product code), and the argument-less `.info`.
+ * minus a product code), and the argument-less `.info`. ADR-076 PR-H
+ * adds `.topupbaki {amount}` (amount in RM, e.g. `.topupbaki 50`).
  *
  * Pure text-in, DTO-out — no DB/service call here, so it's trivially
  * unit-testable without a database.
@@ -40,6 +41,10 @@ final class ResellerBotCommandParser
             '.baki' => new ResellerBotCommand(ResellerBotCommandType::Balance, $raw),
 
             '.info' => new ResellerBotCommand(ResellerBotCommandType::Info, $raw),
+
+            '.topupbaki' => isset($parts[1])
+                ? new ResellerBotCommand(ResellerBotCommandType::TopupBaki, $raw, amount: $parts[1])
+                : new ResellerBotCommand(ResellerBotCommandType::Unrecognized, $raw),
 
             '.order' => isset($parts[1], $parts[2])
                 ? new ResellerBotCommand(

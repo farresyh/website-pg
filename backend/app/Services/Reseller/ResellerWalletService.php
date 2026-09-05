@@ -8,6 +8,7 @@ use App\Models\WalletTopupAttempt;
 use App\Models\WalletTopupReceipt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,10 @@ use Illuminate\Support\Facades\Storage;
  */
 final class ResellerWalletService
 {
-    public function __construct(private readonly LedgerService $ledger) {}
+    public function __construct(
+        private readonly LedgerService $ledger,
+        private readonly ResellerBotWalletTopupNotifier $botNotifier,
+    ) {}
 
     public function balance(Reseller $reseller): int
     {
@@ -155,5 +159,13 @@ final class ResellerWalletService
 
             $attempt->update(['status' => WalletTopupAttemptStatus::Paid->value]);
         });
+
+        // ADR-076 PR-H decision 2 — a paid top-up fires no event, so the
+        // "top-up berjaya" WhatsApp reply is sent from here, the one seam
+        // both completion paths (CHIP webhook + reconcile backstop)
+        // share. A no-op unless this attempt was started via `.topupbaki`
+        // (a `reseller_bot_wallet_topups` row exists); `notified_at`
+        // guards a webhook redelivery.
+        $this->botNotifier->notifyPaid($attempt);
     }
 }

@@ -6,8 +6,10 @@ use App\Http\Controllers\TrackOrderController;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\WalletTopupAttempt;
 use App\Services\Order\DeliveryStatus;
 use App\Services\PlayerValidation\PlayerValidationResult;
+use App\Services\Reseller\ResellerWalletTopupService;
 use Illuminate\Support\Collection;
 
 /**
@@ -131,6 +133,17 @@ final class ResellerBotReplyFormatter
         );
     }
 
+    public static function checkIdWrongRegion(PlayerValidationResult $result, Game $correctGame): string
+    {
+        return self::wrap(
+            "⚠️ ID SAH — REGION LAIN\n\n"
+            .'Nama   : '.($result->nickname ?? '-')."\n"
+            .'Negara : '.$result->countryCode."\n\n"
+            ."Player ini untuk {$correctGame->name}.\n"
+            ."Guna kod {$correctGame->reseller_code} untuk .list / .order."
+        );
+    }
+
     public static function checkIdInvalid(): string
     {
         return '❌ ID tidak sah atau tidak dijumpai.';
@@ -151,6 +164,71 @@ final class ResellerBotReplyFormatter
         return 'Baki wallet anda: RM'.self::formatSen($sen);
     }
 
+    /**
+     * ADR-076 PR-H decision 5 — reply on a successful `.topupbaki`.
+     * `checkout_url` is non-null by the time this is called (the handler
+     * routes a null-link attempt to `topupCheckoutFailed()` instead).
+     */
+    public static function topupInitiated(WalletTopupAttempt $attempt): string
+    {
+        return self::wrap(
+            "「 TOP-UP WALLET 」\n\n"
+            .'Jumlah    : RM'.self::formatSen($attempt->amount_sen)."\n"
+            .'Caj       : RM'.self::formatSen($attempt->total_charged_sen)." (termasuk fi bank)\n"
+            .'Ref       : '.$attempt->reference."\n\n"
+            .$attempt->checkout_url."\n\n"
+            .'Klik untuk bayar, link sah selama 30 minit.'
+        );
+    }
+
+    /**
+     * ADR-076 PR-H decision 3 — a reseller who already has a pending
+     * attempt gets that attempt's own link back, not a plain rejection,
+     * so a lost first message is always self-recoverable.
+     */
+    public static function topupAlreadyPending(WalletTopupAttempt $attempt): string
+    {
+        return self::wrap(
+            "「 TOP-UP WALLET 」\n\n"
+            ."Anda sudah ada satu top-up yang belum dibayar.\n"
+            .'Jumlah    : RM'.self::formatSen($attempt->amount_sen)."\n"
+            .'Ref       : '.$attempt->reference."\n\n"
+            .$attempt->checkout_url."\n\n"
+            .'Klik untuk bayar, atau tunggu ia tamat tempoh sebelum buat yang baharu.'
+        );
+    }
+
+    /** ADR-076 PR-H decision 2 — message 2, sent once the CHIP webhook confirms payment. */
+    public static function topupPaid(int $balanceSen): string
+    {
+        return self::wrap(
+            "「 TOP-UP BERJAYA 」\n\n"
+            .'Baki wallet anda sekarang: RM'.self::formatSen($balanceSen)
+        );
+    }
+
+    /** ADR-076 PR-H decision 5 — below-minimum amount, replied without a wasted CHIP call. */
+    public static function topupBelowMinimum(): string
+    {
+        return 'Jumlah minimum top-up ialah RM'.self::formatSen(ResellerWalletTopupService::MIN_AMOUNT_SEN)
+            .'. Contoh: .topupbaki 50';
+    }
+
+    public static function topupInvalidAmount(): string
+    {
+        return 'Jumlah tidak sah. Masukkan jumlah dalam RM, contoh: .topupbaki 50';
+    }
+
+    public static function topupUnavailable(): string
+    {
+        return 'Top-up wallet tidak tersedia buat masa ini. Sila hubungi admin.';
+    }
+
+    public static function topupCheckoutFailed(): string
+    {
+        return 'Gagal memulakan top-up. Sila cuba sebentar lagi.';
+    }
+
     public static function commandList(): string
     {
         return self::wrap(
@@ -160,7 +238,8 @@ final class ResellerBotReplyFormatter
             .".order {kod} {playerId} [{serverId}] — buat order\n"
             .".trackorder {no_order} — semak status order\n"
             .".checkid {kod} {playerId} [{serverId}] — semak ID pemain\n"
-            .'.baki — semak baki wallet'
+            .".baki — semak baki wallet\n"
+            .'.topupbaki {jumlah} — top-up baki wallet (RM)'
         );
     }
 

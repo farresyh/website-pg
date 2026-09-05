@@ -31,6 +31,12 @@ export class ApiError extends Error {
     public status: number,
     public code: string | undefined,
     message: string,
+    // Laravel's field-level validation bag (422 responses). Most callers
+    // only need `message`; the set-password page needs to tell an
+    // `errors.email` (bad/expired token) response apart from an
+    // `errors.password` (weak/mismatched) one — ADR-058 set-password
+    // addendum decision 1.
+    public errors?: Record<string, string[]>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -65,6 +71,7 @@ export async function apiFetch<T>(
       response.status,
       payload?.code,
       payload?.message ?? `Request to ${path} failed (${response.status})`,
+      payload?.errors,
     );
   }
 
@@ -99,6 +106,7 @@ export async function apiUpload<T>(
       response.status,
       payload?.code,
       payload?.message ?? `Request to ${path} failed (${response.status})`,
+      payload?.errors,
     );
   }
 

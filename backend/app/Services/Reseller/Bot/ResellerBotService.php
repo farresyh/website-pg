@@ -4,22 +4,31 @@ namespace App\Services\Reseller\Bot;
 
 use App\Models\Game;
 use App\Models\Order;
+use App\Models\PaymentMethod;
+use App\Models\PlayerRegionMapping;
 use App\Models\PlayerValidation;
 use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
 use App\Models\ResellerBotOrderNotification;
+use App\Models\ResellerBotWalletTopup;
+use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
 use App\Services\PlayerValidation\UnsupportedPlayerValidatorException;
 use App\Services\Pricing\PricingService;
+use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\NoResellerTierAssignedException;
+use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
 use App\Services\Reseller\ResellerCatalogService;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
 use App\Services\Reseller\ResellerWalletService;
+use App\Services\Reseller\ResellerWalletTopupService;
+use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Reseller\WalletTopupCheckoutFailedException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -50,6 +59,7 @@ final class ResellerBotService
         private readonly PricingService $pricing,
         private readonly ResellerOrderPlacementService $placement,
         private readonly ResellerWalletService $wallet,
+        private readonly ResellerWalletTopupService $topups,
         private readonly PlayerValidatorRegistry $validators,
         private readonly OpenWaClient $openWa,
     ) {}
@@ -93,6 +103,18 @@ final class ResellerBotService
             return;
         }
 
+        // ADR-076 PR-H decision 4 — a stricter limit still for
+        // `.topupbaki` (5/min): every successful call mints a real CHIP
+        // payment reference, the most financially-sensitive command in
+        // this set. A genuinely independent counter from the 60/min and
+        // checkid 10/min keys (distinct namespace).
+        if ($command->type === ResellerBotCommandType::TopupBaki
+            && ! RateLimiter::attempt("reseller-bot-topupbaki:{$reseller->id}", 5, fn () => true, 60)) {
+            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan top-up. Sila cuba sebentar lagi.');
+
+            return;
+        }
+
         $reply = match ($command->type) {
             ResellerBotCommandType::ListGames => $this->handleListGames(),
             ResellerBotCommandType::ListGamePackages => $this->handleListGamePackages($reseller, $command, $whatsappGroupId),
@@ -101,6 +123,7 @@ final class ResellerBotService
             ResellerBotCommandType::TrackOrder => $this->handleTrackOrder($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::CheckId => $this->handleCheckId($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::Info => ResellerBotReplyFormatter::commandList(),
+            ResellerBotCommandType::TopupBaki => $this->handleTopupBaki($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::Unrecognized => $this->handleUnrecognized($reseller, $command, $whatsappGroupId),
         };
 
@@ -266,17 +289,37 @@ final class ResellerBotService
             return ResellerBotReplyFormatter::checkIdUnavailable();
         }
 
+        // ADR-076 decision 8's own "skip region resolution" was revised
+        // after live-testing: `.checkid mlid <a Malaysian player's id>`
+        // replied "valid, MY" — technically true (the id resolves) but
+        // misleading, since that player can't be topped up through the
+        // Indonesia game code. The region check mirrors
+        // `PlayerValidationController::resolveState()`: if the player's
+        // country maps (in `player_region_mappings`, admin-curated per
+        // profile) to a *different* game than the one whose `reseller_code`
+        // was used, tell the reseller which code to use instead. Degrades
+        // gracefully to the plain "valid + country" reply when no mapping
+        // row exists (data not set up) — no worse than before.
+        $wrongRegionGame = null;
+        if ($result->valid && $result->countryCode !== null) {
+            $mapping = PlayerRegionMapping::query()
+                ->where('player_validator_profile_id', $profile->id)
+                ->where('country_code', $result->countryCode)
+                ->with('game:id,name,reseller_code')
+                ->first();
+
+            if ($mapping !== null && $mapping->game_id !== $game->id) {
+                $wrongRegionGame = $mapping->game;
+            }
+        }
+
         // Same audit trail every other validation attempt writes to
-        // (`PlayerValidationController::record()`) — kept intentionally
-        // simple here (no region/redirect resolution, decision 8's own
-        // "purely identity-confirmation" framing): a reseller's
-        // `.checkid` is a quick sanity check, not a checkout-blocking
-        // gate.
+        // (`PlayerValidationController::record()`).
         PlayerValidation::query()->create([
             'game_id' => $game->id,
             'player_id' => (string) $command->playerId,
             'server_id' => $command->serverId,
-            'status' => $result->valid ? 'valid' : 'invalid',
+            'status' => $this->checkIdStatus($result->valid, $wrongRegionGame),
             'country_code' => $result->countryCode,
             'nickname' => $result->nickname,
             'provider' => $result->provider,
@@ -289,12 +332,110 @@ final class ResellerBotService
             return ResellerBotReplyFormatter::checkIdInvalid();
         }
 
+        if ($wrongRegionGame !== null) {
+            return ResellerBotReplyFormatter::checkIdWrongRegion($result, $wrongRegionGame);
+        }
+
         return ResellerBotReplyFormatter::checkIdValid($result);
+    }
+
+    private function checkIdStatus(bool $valid, ?Game $wrongRegionGame): string
+    {
+        if (! $valid) {
+            return 'invalid';
+        }
+
+        return $wrongRegionGame !== null ? 'wrong_region' : 'valid';
     }
 
     private function handleBalance(Reseller $reseller): string
     {
         return ResellerBotReplyFormatter::balance($this->wallet->balance($reseller));
+    }
+
+    /**
+     * ADR-076 PR-H — self-serve wallet top-up over WhatsApp. Reuses
+     * `ResellerWalletTopupService::initiate()` (PR-G's portal flow) with
+     * zero changes: parse the RM amount, pre-check it against the
+     * service's own minimum (no wasted CHIP call below it), pick the
+     * same default payment channel the portal Wallet screen defaults to
+     * (first active method, `PaymentMethodCatalogController`'s own
+     * `category`/`label` ordering), then record a
+     * `ResellerBotWalletTopup` row so message 2 (the webhook-confirmed
+     * "berjaya") knows which group to reply into.
+     */
+    private function handleTopupBaki(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
+    {
+        $raw = (string) $command->amount;
+
+        // RM, up to 2 decimals. A bare integer ("50") or "50.50" — never
+        // a currency symbol, thousands separator, or negative.
+        if (preg_match('/^\d{1,7}(\.\d{1,2})?$/', $raw) !== 1) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_invalid_amount');
+
+            return ResellerBotReplyFormatter::topupInvalidAmount();
+        }
+
+        $amountSen = (int) round(((float) $raw) * 100);
+
+        if ($amountSen < ResellerWalletTopupService::MIN_AMOUNT_SEN) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_below_minimum');
+
+            return ResellerBotReplyFormatter::topupBelowMinimum();
+        }
+
+        // Same default the portal Wallet screen uses — the first active
+        // payment method in `PaymentMethodCatalogController`'s ordering.
+        // The Bot channel has no in-chat channel picker; a reseller who
+        // needs a specific method uses the portal.
+        $method = PaymentMethod::query()
+            ->where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('label')
+            ->first();
+
+        if ($method === null) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_no_active_payment_method');
+
+            return ResellerBotReplyFormatter::topupUnavailable();
+        }
+
+        try {
+            $attempt = $this->topups->initiate($reseller, $amountSen, $method->channel_code, []);
+        } catch (InvalidWalletTopupAmountException) {
+            // Defensive — the pre-check above already covers this.
+            return ResellerBotReplyFormatter::topupBelowMinimum();
+        } catch (PendingWalletTopupAlreadyExistsException) {
+            // ADR-076 PR-H decision 3 — hand back the existing attempt's
+            // own link rather than a plain rejection.
+            $pending = WalletTopupAttempt::query()
+                ->where('reseller_id', $reseller->id)
+                ->where('status', WalletTopupAttemptStatus::Pending->value)
+                ->where('expires_at', '>', now())
+                ->latest('id')
+                ->first();
+
+            return $pending?->checkout_url !== null
+                ? ResellerBotReplyFormatter::topupAlreadyPending($pending)
+                : ResellerBotReplyFormatter::topupCheckoutFailed();
+        } catch (WalletTopupCheckoutFailedException) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_checkout_failed');
+
+            return ResellerBotReplyFormatter::topupCheckoutFailed();
+        }
+
+        if ($attempt->checkout_url === null) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_checkout_url_missing');
+
+            return ResellerBotReplyFormatter::topupCheckoutFailed();
+        }
+
+        ResellerBotWalletTopup::query()->updateOrCreate(
+            ['wallet_topup_attempt_id' => $attempt->id],
+            ['reseller_id' => $reseller->id, 'whatsapp_group_id' => $groupId],
+        );
+
+        return ResellerBotReplyFormatter::topupInitiated($attempt);
     }
 
     private function logFailure(Reseller $reseller, string $groupId, string $raw, string $reason): void
