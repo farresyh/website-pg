@@ -13,13 +13,16 @@ use Illuminate\Support\Facades\Log;
  * ADR-075 decision 4/5 — the Reseller Bot channel's inbound half. Not
  * behind auth:sanctum: OpenWA is not an admin user.
  *
- * Auth: `X-Webhook-Signature` HMAC over the raw body with
+ * Auth: `X-OpenWA-Signature` HMAC over the raw body with
  * `config('services.openwa.webhook_secret')` — mirrors
- * `DigiflazzWebhookController`'s HMAC-is-the-auth shape exactly. Header
- * name/algorithm are config-driven best-guesses (OpenWA's own docs
- * don't publish the exact spec) — confirm and correct at actual OpenWA
- * provisioning time, same posture `digiflazz.customer_no_separator`
- * already carries for an equivalent undocumented-until-real-account gap.
+ * `DigiflazzWebhookController`'s HMAC-is-the-auth shape, with one real
+ * difference confirmed against OpenWA's own docs (docs.open-wa.org) once
+ * a real instance was provisioned, 2026-09-05: the header value carries
+ * an `{algo}=` prefix before the hex digest (`sha256=<hex>`), not a bare
+ * hex string — `docs/adr.md`'s OpenWA provisioning entry has the full
+ * story. Header name/prefix are config-driven (`webhook_signature_header`/
+ * `_algo`), not hardcoded, so a future OpenWA version changing either
+ * doesn't need a code change.
  *
  * Unlike Digiflazz's soft/log-only IP check, this route is additionally
  * hard-restricted to `127.0.0.1` at the nginx layer (ADR-075 decision
@@ -45,7 +48,9 @@ class OpenWaWebhookController extends Controller
             return response()->json(['message' => 'webhook not configured'], 503);
         }
 
-        $expected = hash_hmac($config['webhook_signature_algo'], $request->getContent(), $secret);
+        // OpenWA's real format is "{algo}=<hex>" (e.g. "sha256=abcdef..."),
+        // not a bare hex digest — confirmed against docs.open-wa.org.
+        $expected = $config['webhook_signature_algo'].'='.hash_hmac($config['webhook_signature_algo'], $request->getContent(), $secret);
         $received = (string) $request->header($config['webhook_signature_header'], '');
 
         if (! hash_equals($expected, $received)) {
