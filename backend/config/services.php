@@ -235,7 +235,11 @@ return [
 
     // ADR-058 (58a) — canonical origin of the reseller portal (ADR-059),
     // used to build the absolute set-password invite link
-    // (ResellerInviteService). Distinct deploy target from the storefront.
+    // (AffiliateInviteService). Distinct deploy target from the storefront.
+    // Key/env var stay "reseller_portal"/RESELLER_PORTAL_URL post-ADR-072:
+    // this is the shared reseller/ Next.js app itself (ADR-072 decision 3
+    // — both Affiliate and, later, Reseller-wallet accounts log into the
+    // same portal), not the renamed Affiliate entity.
     'reseller_portal' => [
         'url' => explode(',', env('RESELLER_PORTAL_URL', 'http://localhost:3002'))[0],
     ],
@@ -264,6 +268,20 @@ return [
         'expire_after_hours' => (int) env('MEMBERSHIP_RECONCILIATION_EXPIRE_AFTER_HOURS', 24),
     ],
 
+    // ADR-073 decision 3(a) / PR-G planning addendum decision 9 — the
+    // self-serve wallet-top-up equivalent of payment_reconciliation
+    // above. Unlike a membership attempt (soft expire_after_hours), a
+    // WalletTopupAttempt already carries its own hard 30-minute
+    // expires_at (decision 8) — this command's own "expire" branch acts
+    // on that column directly, no separate expire-after config needed.
+    // pending_after_minutes is shorter than payment_reconciliation's own
+    // 30 (a top-up's whole window is only 30 minutes) — long enough
+    // that a webhook genuinely just hasn't arrived yet isn't mistaken
+    // for stuck.
+    'wallet_topup_reconciliation' => [
+        'pending_after_minutes' => (int) env('WALLET_TOPUP_RECONCILIATION_PENDING_AFTER_MINUTES', 5),
+    ],
+
     // ADR-026 (ORD-10) — 15 minutes comfortably exceeds FulfillOrderJob's
     // own worst-case retry-exhaustion window (HTTP-layer + job-layer
     // retries combined), so anything still stuck past this point is
@@ -283,6 +301,38 @@ return [
         // review instead of polled. Overridable per-supplier via
         // Supplier.api_config['max_reconcile_age_days'].
         'max_reconcile_age_days' => (int) env('DELIVERY_RECONCILIATION_MAX_RECONCILE_AGE_DAYS', 90),
+    ],
+
+    // ADR-075 / PR-F build addendum — self-hosted OpenWA (github.com/
+    // rmyndharis/OpenWA), one shared WhatsApp session/number for every
+    // Reseller Bot-channel account. `engine` is OpenWA's own deployment
+    // config (ENGINE_TYPE env var on that process, not read by this app
+    // at all) — recorded here only as a comment: baileys first (PR-F
+    // build addendum decision 1), whatsapp-web.js later at the
+    // founder's own manual review, no automated switch trigger.
+    // `webhook_signature_header`/`_algo` are a best-guess default —
+    // OpenWA's own docs don't publish the exact header/algorithm the
+    // way Digiflazz's do — same "confirmed once the real account exists"
+    // posture `digiflazz.customer_no_separator` above already carries;
+    // correct at actual OpenWA provisioning time, not assumed here.
+    'openwa' => [
+        'base_url' => env('OPENWA_BASE_URL', 'http://127.0.0.1:2785'),
+        'session_id' => env('OPENWA_SESSION_ID'),
+        'api_key' => env('OPENWA_API_KEY'),
+        'webhook_secret' => env('OPENWA_WEBHOOK_SECRET'),
+        'webhook_signature_header' => env('OPENWA_WEBHOOK_SIGNATURE_HEADER', 'X-Webhook-Signature'),
+        'webhook_signature_algo' => env('OPENWA_WEBHOOK_SIGNATURE_ALGO', 'sha256'),
+        'timeout' => (int) env('OPENWA_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('OPENWA_CONNECT_TIMEOUT_SECONDS', 5),
+
+        // PR-F build addendum decision 3 — how long an unmatched
+        // group's pending-link row survives before app:prune-reseller-
+        // whatsapp-pending-links deletes it.
+        'pending_link_ttl_hours' => (int) env('OPENWA_PENDING_LINK_TTL_HOURS', 24),
+
+        // PR-F build addendum decision 2 — reseller_bot_command_logs
+        // retention, matching player_validations' own PII-adjacent window.
+        'command_log_retention_days' => (int) env('OPENWA_COMMAND_LOG_RETENTION_DAYS', 7),
     ],
 
 ];

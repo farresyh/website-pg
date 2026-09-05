@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Voucher\PreviewVoucherRequest;
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Package;
-use App\Models\Reseller;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
@@ -22,7 +22,7 @@ use Illuminate\Validation\ValidationException;
  * an accurate new total before the customer commits to anything.
  *
  * sellingPrice is recomputed here the same way CheckoutController
- * does — from the stored Package/Reseller rows via PricingService,
+ * does — from the stored Package/Affiliate rows via PricingService,
  * never trusted from the client (ORD-9) — so the discount preview is
  * as real as the final checkout's own number, not a client-side guess.
  */
@@ -46,12 +46,12 @@ class VoucherPreviewController extends Controller
             ]);
         }
 
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         $pricingBreakdown = $this->pricing->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $reseller->markup_pct,
+            (float) $affiliate->markup_pct,
         );
 
         try {

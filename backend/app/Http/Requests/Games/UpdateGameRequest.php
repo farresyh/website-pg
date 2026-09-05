@@ -22,6 +22,13 @@ use Illuminate\Validation\Rule;
  * distinction in docs/prd.md §14's Player-ID Validation NEXT SESSION
  * note (the `/admin/games` toggle was always the agreed home for
  * this, not /middleware).
+ *
+ * `reseller_code`: ADR-075's catalog-code addendum (2026-09-04),
+ * decision 1 — the game segment of a Reseller API/Bot product code
+ * (`{reseller_code}-{denomination-or-catalog_code}`). Uppercase
+ * letters only, no digits/dashes, so a product code's trailing
+ * segment always parses unambiguously; unique globally (not scoped
+ * per-game) since it stands alone as a public identifier.
  */
 class UpdateGameRequest extends FormRequest
 {
@@ -42,6 +49,12 @@ class UpdateGameRequest extends FormRequest
                 'string',
                 'max:255',
                 Rule::unique('games', 'slug')->ignore($this->route('game')),
+            ],
+            'reseller_code' => [
+                'nullable',
+                'string',
+                'regex:/^[A-Z]{2,10}$/',
+                Rule::unique('games', 'reseller_code')->ignore($this->route('game')),
             ],
             'category' => ['nullable', 'string', 'max:255'],
             'image_url' => ['nullable', 'string', 'max:2048'],

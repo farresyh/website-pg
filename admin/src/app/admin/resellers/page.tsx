@@ -1,10 +1,19 @@
 "use client";
 
 /**
- * ADR-058 58b — admin Reseller Management (RES-1..6) + the
- * reseller_membership_tiers CRUD (ADR-056 decision 1). super_admin tier,
- * same as Settings / Membership. PrimeReact-Tailwind primitives only
- * (ADR-038) — this screen is new, so nothing to migrate.
+ * ADR-072/073 PR-B — admin Reseller (prepaid-wallet) account management:
+ * register account, assign tier, activate/deactivate + the reseller_tiers
+ * CRUD (ADR-073 decision 1). super_admin tier, same as Affiliates.
+ * PrimeReact-Tailwind primitives only (ADR-038) — this screen is new.
+ *
+ * PR-D added order-placing logic; PR-E (ADR-074) added the "API Keys"
+ * row action (`ResellerApiKeysModal`, issue/revoke); PR-F (ADR-075)
+ * added "WhatsApp Groups" (`ResellerWhatsAppGroupsModal`, link/unlink
+ * against the platform-wide pending list); PR-G added "Portal Users"
+ * (`ResellerPortalUsersModal`, admin-triggered set-password invite —
+ * registration itself stays admin-created, no self-serve signup, PR-G
+ * planning addendum decision 1). This closes the ADR-072..075 family —
+ * see the phasing note in `docs/adr.md`.
  */
 
 import { useEffect, useState } from "react";
@@ -39,7 +48,6 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   listResellers,
-  getReseller,
   createReseller,
   updateReseller,
   updateResellerStatus,
@@ -48,23 +56,15 @@ import {
   createResellerTier,
   updateResellerTier,
   deleteResellerTier,
-  listImpersonationSessions,
-  endImpersonationSession,
   type ResellerRow,
-  type ResellerDetail,
   type ResellerTier,
-  type ResellerSubscriptionStatus,
-  type ImpersonationSessionRow,
 } from "@/lib/resellers";
 import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/resellers/ResellerFormModal";
-import ResellerDetailModal from "@/components/resellers/ResellerDetailModal";
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
-
-const subSeverity: Record<ResellerSubscriptionStatus, "success" | "warn" | "danger"> = {
-  active: "success",
-  grace: "warn",
-  lapsed: "danger",
-};
+import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
+import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
+import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
+import ResellerPortalUsersModal from "@/components/resellers/ResellerPortalUsersModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -79,25 +79,26 @@ export default function ResellersPage() {
   const token = session?.token ?? null;
   const [resellers, setResellers] = useState<ResellerRow[] | null>(null);
   const [tiers, setTiers] = useState<ResellerTier[]>([]);
-  const [sessions, setSessions] = useState<ImpersonationSessionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ResellerRow | null>(null);
-  const [detail, setDetail] = useState<ResellerDetail | null>(null);
   const [tierFormOpen, setTierFormOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<ResellerTier | null>(null);
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ResellerRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
+  const [walletTarget, setWalletTarget] = useState<ResellerRow | null>(null);
+  const [apiKeysTarget, setApiKeysTarget] = useState<ResellerRow | null>(null);
+  const [whatsAppGroupsTarget, setWhatsAppGroupsTarget] = useState<ResellerRow | null>(null);
+  const [portalUsersTarget, setPortalUsersTarget] = useState<ResellerRow | null>(null);
 
   function refresh(t: string) {
-    return Promise.all([listResellers(t), listResellerTiers(t), listImpersonationSessions(t)])
-      .then(([r, ti, s]) => {
+    return Promise.all([listResellers(t), listResellerTiers(t)])
+      .then(([r, ti]) => {
         setResellers(r.resellers);
         setTiers(ti.tiers);
-        setSessions(s.sessions);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load resellers."));
   }
@@ -139,23 +140,11 @@ export default function ResellersPage() {
       contact_name: values.contact_name,
       email: values.email,
       phone: values.phone,
-      markup_pct: values.markup_pct,
-      max_markup_pct: values.max_markup_pct,
-      domains: values.domains,
       notes: values.notes,
-      is_owned: values.is_owned,
-      membership_enabled: values.membership_enabled,
     });
     setFormOpen(false);
     setEditing(null);
     await refresh(token);
-  }
-
-  async function openDetail(id: number) {
-    if (!token) return;
-    await guard(id, async () => {
-      setDetail(await getReseller(token, id));
-    });
   }
 
   if (error && !resellers) {
@@ -166,15 +155,14 @@ export default function ResellersPage() {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 
-  const activeSessions = sessions.filter((s) => s.active);
-
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Resellers</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Branded-storefront owners. The primary storefront is the first row and can&apos;t be deleted.
+            Prepaid-wallet wholesale buyers (Reseller API / Bot channels). Distinct from Affiliates — a reseller
+            spends from a deposited balance, never earns.
           </p>
         </div>
         <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
@@ -196,9 +184,7 @@ export default function ResellersPage() {
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className={TH}>Business</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Tier</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Earnings</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Orders</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Domains</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH}>Wallet balance</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -210,57 +196,56 @@ export default function ResellersPage() {
                       <DataTableRow key={r.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {r.business_name}
-                          {r.is_primary && <span className="ml-2 text-theme-xs text-gray-400">(primary)</span>}
-                          {r.is_owned && !r.is_primary && <span className="ml-2 text-theme-xs text-gray-400">(our brand)</span>}
-                          {r.membership_enabled && <span className="ml-2 text-theme-xs text-brand-500">membership</span>}
                           {r.contact_name && <p className="text-theme-xs font-normal text-gray-500 dark:text-gray-400">{r.contact_name}</p>}
                         </DataTableCell>
                         <DataTableCell className={TD}>
-                          {r.subscription ? (
-                            <span className="flex items-center gap-2">
-                              {r.subscription.tier_name ?? "—"}
-                              <Tag severity={subSeverity[r.subscription.status]}>{r.subscription.status}</Tag>
+                          {r.tier_name ? (
+                            <span>
+                              {r.tier_name} <span className="text-theme-xs text-gray-400">(+{r.markup_percent}%)</span>
                             </span>
                           ) : (
-                            <span className="text-gray-400">walk-in rate</span>
+                            <span className="text-gray-400">— no tier —</span>
                           )}
                         </DataTableCell>
-                        <DataTableCell className={TD}>{formatRm(r.earnings_balance_sen)}</DataTableCell>
-                        <DataTableCell className={TD}>{r.orders_count}</DataTableCell>
-                        <DataTableCell className={TD}>{r.domains.length > 0 ? r.domains.join(", ") : "—"}</DataTableCell>
+                        <DataTableCell className={TD}>{formatRm(r.wallet_balance_sen)}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
-                          <Tag severity={r.status === "active" ? "success" : "secondary"}>{r.status}</Tag>
+                          <Tag severity={r.is_active ? "success" : "secondary"}>{r.is_active ? "active" : "inactive"}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <div className="flex flex-wrap gap-1.5">
-                            <Button size="small" variant="outlined" disabled={busy === r.id} onClick={() => openDetail(r.id)}>
-                              Manage
+                            <Button size="small" variant="outlined" onClick={() => setWalletTarget(r)}>
+                              Wallet
+                            </Button>
+                            <Button size="small" variant="outlined" onClick={() => setApiKeysTarget(r)}>
+                              API Keys
+                            </Button>
+                            <Button size="small" variant="outlined" onClick={() => setWhatsAppGroupsTarget(r)}>
+                              WhatsApp Groups
+                            </Button>
+                            <Button size="small" variant="outlined" onClick={() => setPortalUsersTarget(r)}>
+                              Portal Users
                             </Button>
                             <Button size="small" variant="outlined" onClick={() => { setEditing(r); setFormOpen(true); }}>
                               Edit
                             </Button>
-                            {!r.is_primary && (
-                              <>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  disabled={busy === r.id}
-                                  onClick={() =>
-                                    r.status === "active"
-                                      ? setStatusTarget(r)
-                                      : guard(r.id, async () => {
-                                          await updateResellerStatus(token, r.id, "active");
-                                          await refresh(token);
-                                        })
-                                  }
-                                >
-                                  {r.status === "active" ? "Deactivate" : "Activate"}
-                                </Button>
-                                <Button size="small" variant="outlined" severity="danger" onClick={() => setDeleteTarget(r)}>
-                                  Delete
-                                </Button>
-                              </>
-                            )}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={busy === r.id}
+                              onClick={() =>
+                                r.is_active
+                                  ? setStatusTarget(r)
+                                  : guard(r.id, async () => {
+                                      await updateResellerStatus(token, r.id, true);
+                                      await refresh(token);
+                                    })
+                              }
+                            >
+                              {r.is_active ? "Deactivate" : "Activate"}
+                            </Button>
+                            <Button size="small" variant="outlined" severity="danger" onClick={() => setDeleteTarget(r)}>
+                              Delete
+                            </Button>
                           </div>
                         </DataTableCell>
                       </DataTableRow>
@@ -271,16 +256,17 @@ export default function ResellersPage() {
             </DataTableTableContainer>
           </DataTable>
         </div>
+        {resellers.length === 0 && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No resellers yet.</p>}
       </div>
 
-      {/* Wholesale tiers */}
+      {/* Wallet tiers */}
       <div className="mt-10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Wholesale tiers</h2>
+            <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Wallet tiers</h2>
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-              Paid monthly subscription tiers (ADR-056). Markup % is applied over supplier cost price. Fee is
-              collected from the reseller&apos;s earnings balance.
+              Fee-less prepaid-wallet tiers (ADR-073). Markup % is applied over supplier cost price on every wallet
+              order — a direct FK assignment, no billing cycle.
             </p>
           </div>
           <Button size="small" onClick={() => { setEditingTier(null); setTierFormOpen(true); }}>
@@ -297,9 +283,8 @@ export default function ResellersPage() {
                   <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                     <DataTableTHeadRow>
                       <DataTableTHeadCell className={TH}>Name</DataTableTHeadCell>
-                      <DataTableTHeadCell className={TH}>Monthly fee</DataTableTHeadCell>
                       <DataTableTHeadCell className={TH}>Markup %</DataTableTHeadCell>
-                      <DataTableTHeadCell className={TH}>Subscribers</DataTableTHeadCell>
+                      <DataTableTHeadCell className={TH}>Resellers</DataTableTHeadCell>
                       <DataTableTHeadCell className={TH}>Active</DataTableTHeadCell>
                       <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
                     </DataTableTHeadRow>
@@ -310,9 +295,8 @@ export default function ResellersPage() {
                       return (
                         <DataTableRow key={t.id}>
                           <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{t.name}</DataTableCell>
-                          <DataTableCell className={TD}>{formatRm(t.monthly_fee_sen)}</DataTableCell>
                           <DataTableCell className={TD}>{t.markup_percent}%</DataTableCell>
-                          <DataTableCell className={TD}>{t.subscriptions_count}</DataTableCell>
+                          <DataTableCell className={TD}>{t.resellers_count}</DataTableCell>
                           <DataTableCell className="px-5 py-4">
                             <Tag severity={t.is_active ? "success" : "secondary"}>{t.is_active ? "yes" : "no"}</Tag>
                           </DataTableCell>
@@ -338,67 +322,42 @@ export default function ResellersPage() {
         </div>
       </div>
 
-      {/* Impersonation log */}
-      <div className="mt-10">
-        <h2 className="mb-1 text-base font-semibold text-gray-800 dark:text-white/90">Impersonation sessions</h2>
-        <p className="mb-4 text-theme-xs text-gray-500 dark:text-gray-400">
-          {activeSessions.length} active. Every session is audited with the acting admin&apos;s identity (RES-4).
-        </p>
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-          <div className="max-w-full overflow-x-auto">
-            <DataTable data={sessions} dataKey="id">
-              <DataTableTableContainer>
-                <DataTableTable>
-                  <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
-                    <DataTableTHeadRow>
-                      <DataTableTHeadCell className={TH}>Reseller</DataTableTHeadCell>
-                      <DataTableTHeadCell className={TH}>Admin</DataTableTHeadCell>
-                      <DataTableTHeadCell className={TH}>Acting as</DataTableTHeadCell>
-                      <DataTableTHeadCell className={TH}>Started</DataTableTHeadCell>
-                      <DataTableTHeadCell className={TH}>Ended</DataTableTHeadCell>
-                      <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
-                    </DataTableTHeadRow>
-                  </DataTableTHead>
-                  <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {({ item }) => {
-                      const s = item as unknown as ImpersonationSessionRow;
-                      return (
-                        <DataTableRow key={s.id}>
-                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-800 dark:text-white/90">{s.reseller ?? "—"}</DataTableCell>
-                          <DataTableCell className={TD}>{s.admin ?? "—"}</DataTableCell>
-                          <DataTableCell className={TD}>{s.acting_as ?? "—"}</DataTableCell>
-                          <DataTableCell className={TD}>{new Date(s.started_at).toLocaleString("en-MY")}</DataTableCell>
-                          <DataTableCell className={TD}>
-                            {s.ended_at ? `${new Date(s.ended_at).toLocaleString("en-MY")} (${s.ended_reason})` : <Tag severity="warn">active</Tag>}
-                          </DataTableCell>
-                          <DataTableCell className="px-5 py-4">
-                            {s.active && (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                disabled={busy === s.id}
-                                onClick={() =>
-                                  guard(s.id, async () => {
-                                    await endImpersonationSession(token, s.id);
-                                    await refresh(token);
-                                  })
-                                }
-                              >
-                                End
-                              </Button>
-                            )}
-                          </DataTableCell>
-                        </DataTableRow>
-                      );
-                    }}
-                  </DataTableTBody>
-                </DataTableTable>
-              </DataTableTableContainer>
-            </DataTable>
-          </div>
-          {sessions.length === 0 && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No impersonation sessions yet.</p>}
-        </div>
-      </div>
+      {walletTarget && (
+        <ResellerWalletModal
+          isOpen={walletTarget !== null}
+          onClose={() => setWalletTarget(null)}
+          token={token}
+          reseller={walletTarget}
+          onCredited={() => refresh(token)}
+        />
+      )}
+
+      {apiKeysTarget && (
+        <ResellerApiKeysModal
+          isOpen={apiKeysTarget !== null}
+          onClose={() => setApiKeysTarget(null)}
+          token={token}
+          reseller={apiKeysTarget}
+        />
+      )}
+
+      {whatsAppGroupsTarget && (
+        <ResellerWhatsAppGroupsModal
+          isOpen={whatsAppGroupsTarget !== null}
+          onClose={() => setWhatsAppGroupsTarget(null)}
+          token={token}
+          reseller={whatsAppGroupsTarget}
+        />
+      )}
+
+      {portalUsersTarget && (
+        <ResellerPortalUsersModal
+          isOpen={portalUsersTarget !== null}
+          onClose={() => setPortalUsersTarget(null)}
+          token={token}
+          reseller={portalUsersTarget}
+        />
+      )}
 
       <ResellerFormModal
         isOpen={formOpen}
@@ -407,21 +366,6 @@ export default function ResellersPage() {
         editing={editing}
         tiers={tiers}
       />
-
-      {detail && (
-        <ResellerDetailModal
-          isOpen={detail !== null}
-          onClose={() => setDetail(null)}
-          token={token}
-          detail={detail}
-          tiers={tiers}
-          onChanged={(d) => {
-            setDetail(d);
-            refresh(token);
-          }}
-          onRefresh={() => refresh(token)}
-        />
-      )}
 
       <ResellerTierFormModal
         isOpen={tierFormOpen}
@@ -450,8 +394,8 @@ export default function ResellersPage() {
               </DialogHeader>
               <DialogContent>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Their branded storefront stops taking new orders (ADR-060 returns 503) and any live impersonation
-                  session ends. Existing earnings stay withdrawable.
+                  This reseller can&apos;t place new orders on either channel. The wallet balance stays untouched and
+                  refundable.
                 </p>
               </DialogContent>
               <DialogFooter>
@@ -462,7 +406,7 @@ export default function ResellersPage() {
                   onClick={() =>
                     statusTarget &&
                     guard(statusTarget.id, async () => {
-                      await updateResellerStatus(token, statusTarget.id, "inactive");
+                      await updateResellerStatus(token, statusTarget.id, false);
                       setStatusTarget(null);
                       await refresh(token);
                     })
@@ -487,8 +431,7 @@ export default function ResellersPage() {
               </DialogHeader>
               <DialogContent>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Soft-delete — order history is kept. Only allowed when the earnings balance is exactly zero and no
-                  withdrawal is pending or approved.
+                  Soft-delete — only allowed when the wallet balance is exactly zero.
                 </p>
               </DialogContent>
               <DialogFooter>
@@ -524,7 +467,7 @@ export default function ResellersPage() {
               </DialogHeader>
               <DialogContent>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Soft-delete. Blocked if any reseller has an active or grace subscription on this tier.
+                  Soft-delete. Blocked if any reseller is currently assigned to this tier.
                 </p>
               </DialogContent>
               <DialogFooter>

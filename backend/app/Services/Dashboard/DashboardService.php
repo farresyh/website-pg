@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\CircuitBreaker\CircuitBreaker;
+use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
@@ -30,17 +31,18 @@ final class DashboardService
     /** `orders` is the only queue this screen monitors (ADR-045 decision 9) — see DashboardService::health(). */
     private const MONITORED_QUEUE = 'orders';
 
-    public function __construct(private readonly ReportService $reports)
-    {
-    }
+    public function __construct(
+        private readonly ReportService $reports,
+        private readonly OpenWaSessionStatus $openWaSessionStatus,
+    ) {}
 
     /**
      * DASH-1 — reuses ReportService's own pinned Sales/Orders/Profit
      * definitions verbatim (ledger-sourced profit, paid_at-scoped,
      * is_test-excluded) rather than re-deriving them. "Profit Today" is
      * platform profit only — this MVP has one internal owner today: a
-     * true reseller-profit split is Phase 2, and reseller_profit is
-     * already broken out per-reseller in Reports for whoever needs it.
+     * true affiliate-profit split is Phase 2, and affiliate_profit is
+     * already broken out per-affiliate in Reports for whoever needs it.
      */
     public function summary(): array
     {
@@ -67,13 +69,13 @@ final class DashboardService
             'profit_today' => [
                 'value' => $today['platform_profit'],
                 'comparison' => $this->comparison($today['platform_profit'], $yesterday['platform_profit']),
-                'definition' => "SUM(ledger_entries.amount), sen, type=order_profit, owner_type=platform, for orders paid today (Asia/Kuala_Lumpur) — never Order.platform_profit directly, since that column is stamped at checkout time before the delivery outcome is known (a paid-but-undelivered order correctly contributes RM0 here until it delivers).",
+                'definition' => 'SUM(ledger_entries.amount), sen, type=order_profit, owner_type=platform, for orders paid today (Asia/Kuala_Lumpur) — never Order.platform_profit directly, since that column is stamped at checkout time before the delivery outcome is known (a paid-but-undelivered order correctly contributes RM0 here until it delivers).',
             ],
             'vouchers_issued_today' => [
                 'value' => $vouchersToday['count'],
                 'amount_sen' => $vouchersToday['amount'],
                 'comparison' => $this->comparison($vouchersToday['count'], $vouchersYesterday['count']),
-                'definition' => "COUNT(*)/SUM(amount) of Vouchers with a non-null order_id (Path B — issued to compensate a failed order, ADR-004), created today (Asia/Kuala_Lumpur), excluding vouchers on is_test orders. Standalone admin-issued (Path A) vouchers are not counted — this tile tracks the order-failure compensation signal specifically.",
+                'definition' => 'COUNT(*)/SUM(amount) of Vouchers with a non-null order_id (Path B — issued to compensate a failed order, ADR-004), created today (Asia/Kuala_Lumpur), excluding vouchers on is_test orders. Standalone admin-issued (Path A) vouchers are not counted — this tile tracks the order-failure compensation signal specifically.',
             ],
         ];
     }
@@ -142,9 +144,21 @@ final class DashboardService
             ->where('payment_status', PaymentStatus::Pending->value)
             ->count();
 
+        $openWaSession = $this->openWaSessionStatus->current();
+
         return [
             'suppliers' => $suppliers,
             'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it).',
+            // PR-F build addendum decision 5 — an active health signal
+            // for the Reseller Bot channel's OpenWA session, reversed
+            // from this screen's usual "no live ping" posture only in
+            // that it's push- not poll-driven: the last-known
+            // session.status webhook event, cache-backed, never a live
+            // call to OpenWA itself. Null = no event has ever arrived
+            // (not yet provisioned/linked), distinct from a known
+            // 'disconnected' state.
+            'openwa_session' => $openWaSession,
+            'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping). Null means no event has ever arrived, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
                 'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending older than {$pendingStaleMinutes} minutes (both thresholds from the same delivery_reconciliation config ReconcilePendingDeliveriesCommand itself uses — DELIVERY_RECONCILIATION_STALE_AFTER_MINUTES/PENDING_STALE_MINUTES). Excludes is_test orders.",

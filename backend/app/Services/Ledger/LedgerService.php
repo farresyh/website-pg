@@ -34,7 +34,7 @@ final class LedgerService
     /**
      * Batched balance lookup for a list of same-type owners — one grouped
      * query instead of one `balance()` call per owner (ADR-058 58b's
-     * reseller table renders an earnings balance per row). Owners with no
+     * affiliate table renders an earnings balance per row). Owners with no
      * ledger entries are returned as `0`, so the result always has a key
      * for every id passed in.
      *
@@ -95,10 +95,10 @@ final class LedgerService
      * addendum). The `ledger_accounts` row is locked as a pure mutex — it
      * holds no balance data itself. Throws InsufficientBalanceException
      * (the caller decides whether that is fatal — a withdrawal rejects it,
-     * a reseller tier-fee charge starts a grace period instead, ADR-056).
+     * an affiliate tier-fee charge starts a grace period instead, ADR-056).
      *
      * `$type` is the ledger entry type recorded for the debit
-     * ('withdrawal', 'reseller_tier_fee', …). The stored `amount` is
+     * ('withdrawal', 'affiliate_tier_fee', …). The stored `amount` is
      * negative.
      */
     public function debit(
@@ -135,7 +135,7 @@ final class LedgerService
     /**
      * A payout debit — `type = 'withdrawal'`. Thin wrapper over debit()
      * kept as the named entry point every existing caller (WithdrawalController,
-     * the reseller/platform-owner payout flow) already uses.
+     * the affiliate/platform-owner payout flow) already uses.
      */
     public function withdraw(
         LedgerOwnerType|string $ownerType,

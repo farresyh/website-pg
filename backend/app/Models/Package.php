@@ -4,13 +4,22 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Collection;
 
+/**
+ * ADR-075's catalog-code addendum (2026-09-04): `denomination`
+ * (ADR-034) and `catalog_code` are two independent equivalence keys
+ * — a package carries at most one of them (enforced at the
+ * FormRequest layer, see UpdatePackageDenominationRequest/
+ * UpdatePackageCatalogCodeRequest), never both.
+ */
 class Package extends Model
 {
     protected $fillable = [
         'game_id',
         'name',
         'denomination',
+        'catalog_code',
         'cost_price',
         'standard_selling_price',
         'markup_percent',
@@ -40,5 +49,86 @@ class Package extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    /**
+     * ADR-075's catalog-code addendum (2026-09-04), decision 7: the
+     * single-code resolution the Reseller API/Bot channels
+     * (`ResellerCatalogService::resolveByCode()`) use — pass exactly
+     * one of `$denomination`/`$catalogCode`, never both. Cheapest
+     * active package wins ties broken by lowest `id`, ordered on
+     * `cost_price` directly (not the storefront's customer-facing
+     * selling price) since that ordering is equivalent for any single
+     * fixed markup percentage and needs no `PricingService`/
+     * `Affiliate` dependency inside the model layer.
+     *
+     * Bulk storefront listing (`CatalogController::dedupByDenomination()`)
+     * is a separate, pre-existing code path (ADR-034) — left as-is for
+     * the `denomination` branch to avoid any behavior change to a
+     * live, money-adjacent screen; it's extended with the same
+     * cheapest-wins rule for the new `catalog_code` branch there.
+     */
+    public static function cheapestActiveFor(int $gameId, ?int $denomination, ?string $catalogCode): ?self
+    {
+        $query = static::query()->where('game_id', $gameId)->where('is_active', true);
+
+        if ($denomination !== null) {
+            $query->where('denomination', $denomination);
+        } elseif ($catalogCode !== null) {
+            $query->where('catalog_code', $catalogCode);
+        } else {
+            return null;
+        }
+
+        return $query->orderBy('cost_price')->orderBy('id')->first();
+    }
+
+    /**
+     * Every active package for one Game, deduped down to one winner per
+     * `denomination`/`catalog_code` equivalence group — the bulk sibling
+     * of `cheapestActiveFor()`, same cheapest-wins rule (lowest
+     * `cost_price`, `id` tie-break), reused by
+     * `ResellerCatalogService::listAvailable()` (ADR-074/075's shared
+     * "price list" source for the API and Bot channels).
+     *
+     * Deliberately separate from the storefront's own bulk listing
+     * (`CatalogController::dedupByDenomination()`, ADR-034/ADR-075's
+     * catalog-code addendum) rather than a shared call site: that
+     * method's cheapest-pick is selling-price-based (needs
+     * `PricingService`/`Affiliate::primary()`, a controller-level
+     * dependency this model layer doesn't take on) — provably the same
+     * winner as this cost_price-based rule for any single flat markup,
+     * but keeping the storefront's own proven code path untouched
+     * avoids any behavior change to that live screen.
+     *
+     * @return Collection<int, self>
+     */
+    public static function cheapestActivePerGame(int $gameId): Collection
+    {
+        $packages = static::query()->where('game_id', $gameId)->where('is_active', true)->get();
+
+        [$withDenomination, $rest] = $packages->partition(fn (self $p) => $p->denomination !== null);
+        [$withCatalogCode, $neither] = $rest->partition(fn (self $p) => $p->catalog_code !== null);
+
+        $cheapestPerDenomination = $withDenomination->groupBy('denomination')->map(fn ($group) => self::cheapestInGroup($group));
+        $cheapestPerCatalogCode = $withCatalogCode->groupBy('catalog_code')->map(fn ($group) => self::cheapestInGroup($group));
+
+        return $neither
+            ->concat($cheapestPerDenomination->values())
+            ->concat($cheapestPerCatalogCode->values())
+            ->values();
+    }
+
+    /**
+     * @param  Collection<int, self>  $group
+     */
+    private static function cheapestInGroup(Collection $group): self
+    {
+        return $group
+            ->sortBy([
+                fn (self $a, self $b) => $a->cost_price <=> $b->cost_price,
+                fn (self $a, self $b) => $a->id <=> $b->id,
+            ])
+            ->first();
     }
 }

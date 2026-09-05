@@ -28,7 +28,7 @@ class LedgerWithdrawConcurrencyTest extends TestCase
     public function test_only_one_of_two_simultaneous_withdrawals_succeeds_when_combined_amount_exceeds_balance(): void
     {
         $ledger = app(LedgerService::class);
-        $ownerType = 'reseller';
+        $ownerType = 'affiliate';
         $ownerId = 999;
 
         $ledger->openAccount($ownerType, $ownerId);
@@ -67,8 +67,8 @@ class LedgerWithdrawConcurrencyTest extends TestCase
         $successes = array_filter($outcomes, fn ($r) => $r === 'success');
         $failures = array_filter($outcomes, fn ($r) => str_starts_with($r, 'failed:'));
 
-        $this->assertCount(1, $successes, "Expected exactly one success, got: " . json_encode($outcomes));
-        $this->assertCount(1, $failures, "Expected exactly one failure, got: " . json_encode($outcomes));
+        $this->assertCount(1, $successes, 'Expected exactly one success, got: '.json_encode($outcomes));
+        $this->assertCount(1, $failures, 'Expected exactly one failure, got: '.json_encode($outcomes));
         $this->assertSame(300, $ledger->balance($ownerType, $ownerId));
     }
 }

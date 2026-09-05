@@ -3,7 +3,7 @@
 /**
  * ADR-025 decision #8: sixth Price Sync Center section — a supplier
  * price swing large enough to cross the configured threshold, blocked
- * from applying until an admin Approves (recomputes reseller price
+ * from applying until an admin Approves (recomputes affiliate price
  * from the package's live markup, decision #6) or Dismisses (reverts
  * to the old, already-proven-safe price, decision #7) it here.
  * Extracted from page.tsx to keep that file's own size in check, same

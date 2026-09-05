@@ -2,7 +2,7 @@ import { apiFetch } from "@/lib/api-client";
 
 /**
  * ADR-059 59a read layer. Mirrors
- * `backend/app/Http/Controllers/Reseller/*` + `ResellerEarningsService`.
+ * `backend/app/Http/Controllers/Affiliate/*` + `AffiliateEarningsService`.
  * This client only forwards the bearer token and renders whatever the
  * backend returns — no money math here (foundation-security.md).
  */
@@ -31,29 +31,36 @@ export interface DashboardStats {
   subscription: SubscriptionSnapshot | null;
 }
 
+/**
+ * ADR-072 decision 5 / PR-G: the reseller-portal (wallet) `Order`
+ * screens reuse this exact same shape, over a narrower backend response
+ * (`ResellerPortal\OrderController`) — every affiliate-only field
+ * (`reference_number`, `affiliate_profit`, the customer/money detail
+ * fields) is simply absent from that response, never present-but-zero.
+ */
 export interface OrderListItem {
   order_number: string;
-  reference_number: string | null;
+  reference_number?: string | null;
   game: { name: string; slug: string } | null;
   package_name: string | null;
   final_amount: number;
-  reseller_profit: number;
+  affiliate_profit?: number;
   payment_status: PaymentStatus;
   delivery_status: DeliveryStatus;
-  paid_at: string | null;
+  paid_at?: string | null;
   created_at: string | null;
 }
 
 export interface OrderDetail extends OrderListItem {
-  customer_email: string | null;
-  customer_name: string | null;
-  customer_phone: string | null;
+  customer_email?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
   player_id: string | null;
   server_id: string | null;
-  reseller_markup_pct: number;
-  voucher_discount: number;
-  transaction_fee: number;
-  payment_method: string | null;
+  affiliate_markup_pct?: number;
+  voucher_discount?: number;
+  transaction_fee?: number;
+  payment_method?: string | null;
   delivered_at: string | null;
 }
 
@@ -98,41 +105,50 @@ export interface OrderFilters {
 }
 
 export function getDashboard(token: string) {
-  return apiFetch<DashboardStats>("/api/reseller/dashboard", { token });
+  return apiFetch<DashboardStats>("/api/affiliate/dashboard", { token });
 }
 
-export function listOrders(token: string, filters: OrderFilters = {}) {
+/**
+ * ADR-072 decision 5 / PR-G: both account types have an Orders screen,
+ * over two different (but response-compatible) backend endpoints —
+ * `ownerType` picks which one. `search` has no reseller-portal
+ * equivalent (the backend endpoint doesn't accept it) — silently
+ * ignored rather than sent for a reseller session.
+ */
+export function listOrders(
+  token: string,
+  ownerType: "affiliate" | "reseller",
+  filters: OrderFilters = {},
+) {
   const params = new URLSearchParams();
   if (filters.payment_status) params.set("payment_status", filters.payment_status);
   if (filters.delivery_status) params.set("delivery_status", filters.delivery_status);
-  if (filters.search) params.set("search", filters.search);
+  if (filters.search && ownerType === "affiliate") params.set("search", filters.search);
   if (filters.page) params.set("page", String(filters.page));
   const query = params.toString();
 
-  return apiFetch<Paginated<OrderListItem>>(
-    `/api/reseller/orders${query ? `?${query}` : ""}`,
-    { token },
-  );
+  const base = ownerType === "affiliate" ? "/api/affiliate/orders" : "/api/reseller-portal/orders";
+
+  return apiFetch<Paginated<OrderListItem>>(`${base}${query ? `?${query}` : ""}`, { token });
 }
 
-export function getOrder(token: string, orderNumber: string) {
-  return apiFetch<OrderDetail>(
-    `/api/reseller/orders/${encodeURIComponent(orderNumber)}`,
-    { token },
-  );
+export function getOrder(token: string, ownerType: "affiliate" | "reseller", orderNumber: string) {
+  const base = ownerType === "affiliate" ? "/api/affiliate/orders" : "/api/reseller-portal/orders";
+
+  return apiFetch<OrderDetail>(`${base}/${encodeURIComponent(orderNumber)}`, { token });
 }
 
 export function getEarnings(token: string, page = 1) {
-  return apiFetch<EarningsResponse>(`/api/reseller/earnings?page=${page}`, { token });
+  return apiFetch<EarningsResponse>(`/api/affiliate/earnings?page=${page}`, { token });
 }
 
 export function getSubscription(token: string) {
-  return apiFetch<SubscriptionResponse>("/api/reseller/subscription", { token });
+  return apiFetch<SubscriptionResponse>("/api/affiliate/subscription", { token });
 }
 
 // --- 59c: Profile + Withdrawal + Impersonation ---
 
-export interface ResellerProfile {
+export interface AffiliateProfile {
   business_name: string;
   contact_name: string | null;
   email: string | null;
@@ -173,30 +189,32 @@ export interface ImpersonationContext {
 }
 
 export interface MeResponse {
-  reseller_user: {
+  affiliate_user: {
     id: number;
-    reseller_id: number;
+    owner_type: "affiliate" | "reseller";
+    owner_id: number;
     name: string;
     email: string;
     last_login_at: string | null;
   };
-  reseller: { id: number; business_name: string; status: string } | null;
+  affiliate: { id: number; business_name: string; status: string } | null;
+  reseller: { id: number; business_name: string; is_active: boolean } | null;
   impersonation: ImpersonationContext | null;
 }
 
 export function getMe(token: string) {
-  return apiFetch<MeResponse>("/api/reseller/me", { token });
+  return apiFetch<MeResponse>("/api/affiliate/me", { token });
 }
 
 export function getProfile(token: string) {
-  return apiFetch<ResellerProfile>("/api/reseller/profile", { token });
+  return apiFetch<AffiliateProfile>("/api/affiliate/profile", { token });
 }
 
 export function updateProfile(
   token: string,
   body: Partial<
     Pick<
-      ResellerProfile,
+      AffiliateProfile,
       | "contact_name"
       | "phone"
       | "bank_name"
@@ -205,7 +223,7 @@ export function updateProfile(
     >
   >,
 ) {
-  return apiFetch<ResellerProfile>("/api/reseller/profile", {
+  return apiFetch<AffiliateProfile>("/api/affiliate/profile", {
     method: "PUT",
     token,
     body,
@@ -213,7 +231,7 @@ export function updateProfile(
 }
 
 export function getWithdrawals(token: string) {
-  return apiFetch<WithdrawalsResponse>("/api/reseller/withdrawals", { token });
+  return apiFetch<WithdrawalsResponse>("/api/affiliate/withdrawals", { token });
 }
 
 export function createWithdrawal(
@@ -226,13 +244,13 @@ export function createWithdrawal(
   },
 ) {
   return apiFetch<{ id: number; amount: number; status: WithdrawalStatus }>(
-    "/api/reseller/withdrawals",
+    "/api/affiliate/withdrawals",
     { method: "POST", token, body },
   );
 }
 
 export function endImpersonation(token: string) {
-  return apiFetch<{ message: string }>("/api/reseller/impersonation/end", {
+  return apiFetch<{ message: string }>("/api/affiliate/impersonation/end", {
     method: "POST",
     token,
   });

@@ -58,6 +58,17 @@ Schedule::call(fn () => Artisan::call('app:reconcile-pending-deliveries'))
     ->name('delivery-reconciliation')
     ->withoutOverlapping();
 
+// ADR-073 decision 3(a) / PR-G planning addendum decision 9 — same
+// 15-min cadence as payment-reconciliation above (not membership's own
+// daily one): a WalletTopupAttempt's whole window is only 30 minutes
+// (decision 8), so a coarser cadence would risk recovering a genuinely
+// paid top-up hours late. See ReconcilePendingWalletTopupsCommand's own
+// docblock.
+Schedule::command('app:reconcile-pending-wallet-topups')
+    ->cron('*/15 * * * *')
+    ->name('wallet-topup-reconciliation')
+    ->withoutOverlapping();
+
 // ADR-021 — same inert-until-real-cron pattern as above. Prunes
 // player_validations PII past its retention window — see
 // PrunePlayerValidationsCommand's own docblock.
@@ -72,6 +83,20 @@ Schedule::call(fn () => Artisan::call('app:prune-player-validations'))
 Schedule::call(fn () => Artisan::call('app:prune-supplier-request-logs'))
     ->daily()
     ->name('supplier-request-log-pruning')
+    ->withoutOverlapping();
+
+// PR-F build addendum (ADR-075) — same inert-until-real-cron pattern as
+// above. Prunes reseller_whatsapp_pending_links past its 24h TTL and
+// reseller_bot_command_logs past its 7-day retention — see each
+// command's own docblock.
+Schedule::call(fn () => Artisan::call('app:prune-reseller-whatsapp-pending-links'))
+    ->hourly()
+    ->name('reseller-whatsapp-pending-link-pruning')
+    ->withoutOverlapping();
+
+Schedule::call(fn () => Artisan::call('app:prune-reseller-bot-command-logs'))
+    ->daily()
+    ->name('reseller-bot-command-log-pruning')
     ->withoutOverlapping();
 
 // ADR-039 decision 2 — same inert-until-real-cron pattern as above.
@@ -112,12 +137,12 @@ Schedule::command('app:reconcile-pending-membership-payments')
     ->withoutOverlapping();
 
 // ADR-056 — same inert-until-real-cron pattern as above. Collects the
-// monthly reseller wholesale-tier subscription fee from each reseller's
+// monthly affiliate wholesale-tier subscription fee from each affiliate's
 // earnings balance and drives active -> grace (3 days) -> lapsed on an
-// unpaid cycle — see ChargeResellerTierFeesCommand's own docblock.
-Schedule::command('app:charge-reseller-tier-fees')
+// unpaid cycle — see ChargeAffiliateTierFeesCommand's own docblock.
+Schedule::command('app:charge-affiliate-tier-fees')
     ->daily()
-    ->name('reseller-tier-fee-charge')
+    ->name('affiliate-tier-fee-charge')
     ->withoutOverlapping();
 
 // ADR-069 decision 12 — Supplier.balance is otherwise only refreshed

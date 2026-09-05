@@ -8,7 +8,7 @@ import { clearClientSession, getClientSession } from "@/lib/session";
 /**
  * ADR-058 decision 4 / ADR-059 59c: shown above every screen whenever
  * the current session was started by an admin impersonating this
- * reseller. "Exit" closes the impersonation session server-side
+ * affiliate. "Exit" closes the impersonation session server-side
  * (revoking the token) and clears the local session.
  */
 export default function ImpersonationBanner() {

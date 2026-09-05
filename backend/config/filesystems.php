@@ -51,6 +51,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Wallet Top-Up Receipt Disk
+    |--------------------------------------------------------------------------
+    |
+    | ADR-073 decision 3(b): the optional receipt/proof file an admin
+    | attaches to a manual `Reseller` (wallet) top-up, for audit — same
+    | "deliberately private" reasoning as backup_disk above (a real bank
+    | transfer receipt, not something to serve at a guessable public URL).
+    | Local by default; swap to "s3"/"r2" via env only, no code change.
+    |
+    */
+
+    'wallet_receipts_disk' => env('WALLET_RECEIPTS_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

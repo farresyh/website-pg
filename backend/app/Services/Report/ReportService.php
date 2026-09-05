@@ -2,10 +2,10 @@
 
 namespace App\Services\Report;
 
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
-use App\Models\Reseller;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -22,7 +22,7 @@ use Illuminate\Support\Collection;
  *   payment_status=Paid orders, scoped by `paid_at` (when money actually
  *   arrived), never `created_at` (when checkout merely started) — an
  *   abandoned/still-pending checkout has no business value yet.
- * - "Profit" is never read off Order.platform_profit/reseller_profit
+ * - "Profit" is never read off Order.platform_profit/affiliate_profit
  *   directly (those columns are stamped at checkout time, before the
  *   delivery outcome is known). It is summed from `ledger_entries`
  *   type=order_profit instead, which OrderFulfillmentService only ever
@@ -56,21 +56,21 @@ final class ReportService
         return [$start->setTimezone('UTC'), $end->setTimezone('UTC')];
     }
 
-    public function summary(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    public function summary(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $totalSales = (int) $this->scopedOrders($from, $toExclusive, $resellerId)->sum('final_amount');
-        $ordersCount = $this->scopedOrders($from, $toExclusive, $resellerId)->count();
-        $latest = $this->scopedOrders($from, $toExclusive, $resellerId)
+        $totalSales = (int) $this->scopedOrders($from, $toExclusive, $affiliateId)->sum('final_amount');
+        $ordersCount = $this->scopedOrders($from, $toExclusive, $affiliateId)->count();
+        $latest = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->orderByDesc('paid_at')
             ->first(['order_number', 'paid_at', 'customer_email', 'final_amount']);
 
-        $profit = $this->profitTotals($from, $toExclusive, $resellerId);
+        $profit = $this->profitTotals($from, $toExclusive, $affiliateId);
 
         return [
             'total_sales' => $totalSales,
             'orders_count' => $ordersCount,
             'platform_profit' => $profit['platform'],
-            'reseller_profit' => $profit['reseller'],
+            'affiliate_profit' => $profit['affiliate'],
             'margin_pct' => $totalSales > 0 ? round($profit['platform'] / $totalSales * 100, 2) : 0.0,
             'avg_order_value' => $ordersCount > 0 ? (int) round($totalSales / $ordersCount) : 0,
             'latest_order' => $latest ? [
@@ -91,14 +91,14 @@ final class ReportService
      * delivery on this platform is near-instant in practice, and this
      * keeps the sales/profit overlay visually matched day-for-day.
      */
-    public function dailyTrend(int $days, ?int $resellerId): array
+    public function dailyTrend(int $days, ?int $affiliateId): array
     {
         $todayKl = CarbonImmutable::now(self::TIMEZONE)->startOfDay();
         $startKl = $todayKl->subDays($days - 1);
         $fromUtc = $startKl->setTimezone('UTC');
         $toExclusiveUtc = $todayKl->addDay()->setTimezone('UTC');
 
-        $orders = $this->scopedOrders($fromUtc, $toExclusiveUtc, $resellerId)
+        $orders = $this->scopedOrders($fromUtc, $toExclusiveUtc, $affiliateId)
             ->get(['id', 'paid_at', 'final_amount']);
 
         $salesByDate = [];
@@ -110,7 +110,7 @@ final class ReportService
             $orderDateById[$order->id] = $dateKey;
         }
 
-        [$platformProfitByDate, $resellerProfitByDate] = $this->profitByKey($orderDateById);
+        [$platformProfitByDate, $affiliateProfitByDate] = $this->profitByKey($orderDateById);
 
         $rows = [];
         $cursor = $startKl;
@@ -121,7 +121,7 @@ final class ReportService
                 'date' => $key,
                 'sales' => $salesByDate[$key] ?? 0,
                 'platform_profit' => $platformProfitByDate[$key] ?? 0,
-                'reseller_profit' => $resellerProfitByDate[$key] ?? 0,
+                'affiliate_profit' => $affiliateProfitByDate[$key] ?? 0,
             ];
             $cursor = $cursor->addDay();
         }
@@ -136,9 +136,9 @@ final class ReportService
      * unbounded/all-time range zero-filled day-by-day would be an
      * unbounded row count. Newest first, matching the reference layout.
      */
-    public function dailyBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    public function dailyBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $orders = $this->scopedOrders($from, $toExclusive, $resellerId)
+        $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->get(['id', 'paid_at', 'final_amount', 'transaction_fee']);
 
         $salesByDate = [];
@@ -154,7 +154,7 @@ final class ReportService
             $orderDateById[$order->id] = $dateKey;
         }
 
-        [$platformProfitByDate, $resellerProfitByDate] = $this->profitByKey($orderDateById);
+        [$platformProfitByDate, $affiliateProfitByDate] = $this->profitByKey($orderDateById);
 
         $rows = [];
 
@@ -164,7 +164,7 @@ final class ReportService
                 'orders_count' => $ordersCountByDate[$date],
                 'sales' => $sales,
                 'platform_profit' => $platformProfitByDate[$date] ?? 0,
-                'reseller_profit' => $resellerProfitByDate[$date] ?? 0,
+                'affiliate_profit' => $affiliateProfitByDate[$date] ?? 0,
                 'transaction_fees' => $feesByDate[$date],
                 'avg_order_value' => (int) round($sales / $ordersCountByDate[$date]),
             ];
@@ -180,9 +180,9 @@ final class ReportService
      * passed) — same per-order grouping pattern as dailyBreakdown, keyed
      * by game_id instead of date.
      */
-    public function gameBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId, ?int $limit = null): array
+    public function gameBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, ?int $limit = null): array
     {
-        $orders = $this->scopedOrders($from, $toExclusive, $resellerId)
+        $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->get(['id', 'game_id', 'final_amount']);
 
         $salesByGame = [];
@@ -196,7 +196,7 @@ final class ReportService
             $orderGameById[$order->id] = $key;
         }
 
-        [$platformProfitByGame, $resellerProfitByGame] = $this->profitByKey($orderGameById);
+        [$platformProfitByGame, $affiliateProfitByGame] = $this->profitByKey($orderGameById);
 
         $gameNames = Game::query()->whereIn('id', array_filter(array_keys($salesByGame)))->pluck('name', 'id');
         $totalSales = array_sum($salesByGame);
@@ -210,7 +210,7 @@ final class ReportService
                 'sales' => $sales,
                 'orders_count' => $ordersCountByGame[$gameId],
                 'platform_profit' => $platformProfitByGame[$gameId] ?? 0,
-                'reseller_profit' => $resellerProfitByGame[$gameId] ?? 0,
+                'affiliate_profit' => $affiliateProfitByGame[$gameId] ?? 0,
                 'avg_order_value' => (int) round($sales / $ordersCountByGame[$gameId]),
                 'pct_of_sales' => $totalSales > 0 ? round($sales / $totalSales * 100, 2) : 0.0,
             ];
@@ -227,9 +227,9 @@ final class ReportService
      * the payment channel a customer picked has no bearing on profit
      * recognition, which is delivery-driven, not payment-driven.
      */
-    public function paymentMethodBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    public function paymentMethodBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $orders = $this->scopedOrders($from, $toExclusive, $resellerId)
+        $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->get(['payment_method', 'final_amount']);
 
         $salesByMethod = [];
@@ -260,41 +260,41 @@ final class ReportService
     }
 
     /**
-     * Resellers tab — reseller IS the grouping dimension here, so
-     * $resellerId (when passed) just narrows the breakdown to that one
+     * Affiliates tab — affiliate IS the grouping dimension here, so
+     * $affiliateId (when passed) just narrows the breakdown to that one
      * row rather than being the usual whole-scope filter.
      */
-    public function resellerBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    public function affiliateBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $orders = $this->scopedOrders($from, $toExclusive, $resellerId)
-            ->get(['id', 'reseller_id', 'final_amount']);
+        $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->get(['id', 'affiliate_id', 'final_amount']);
 
-        $salesByReseller = [];
-        $ordersCountByReseller = [];
-        $orderResellerById = [];
+        $salesByAffiliate = [];
+        $ordersCountByAffiliate = [];
+        $orderAffiliateById = [];
 
         foreach ($orders as $order) {
-            $key = $order->reseller_id ?? 0;
-            $salesByReseller[$key] = ($salesByReseller[$key] ?? 0) + $order->final_amount;
-            $ordersCountByReseller[$key] = ($ordersCountByReseller[$key] ?? 0) + 1;
-            $orderResellerById[$order->id] = $key;
+            $key = $order->affiliate_id ?? 0;
+            $salesByAffiliate[$key] = ($salesByAffiliate[$key] ?? 0) + $order->final_amount;
+            $ordersCountByAffiliate[$key] = ($ordersCountByAffiliate[$key] ?? 0) + 1;
+            $orderAffiliateById[$order->id] = $key;
         }
 
-        [$platformProfitByReseller, $resellerProfitByReseller] = $this->profitByKey($orderResellerById);
+        [$platformProfitByAffiliate, $affiliateProfitByAffiliate] = $this->profitByKey($orderAffiliateById);
 
-        $resellerNames = Reseller::query()->whereIn('id', array_filter(array_keys($salesByReseller)))->pluck('business_name', 'id');
+        $affiliateNames = Affiliate::query()->whereIn('id', array_filter(array_keys($salesByAffiliate)))->pluck('business_name', 'id');
 
         $rows = [];
 
-        foreach ($salesByReseller as $id => $sales) {
+        foreach ($salesByAffiliate as $id => $sales) {
             $rows[] = [
-                'reseller_id' => $id ?: null,
-                'reseller_name' => $id ? ($resellerNames[$id] ?? 'Unknown Reseller') : 'Unknown Reseller',
+                'affiliate_id' => $id ?: null,
+                'affiliate_name' => $id ? ($affiliateNames[$id] ?? 'Unknown Affiliate') : 'Unknown Affiliate',
                 'sales' => $sales,
-                'orders_count' => $ordersCountByReseller[$id],
-                'platform_profit' => $platformProfitByReseller[$id] ?? 0,
-                'reseller_profit' => $resellerProfitByReseller[$id] ?? 0,
-                'avg_order_value' => (int) round($sales / $ordersCountByReseller[$id]),
+                'orders_count' => $ordersCountByAffiliate[$id],
+                'platform_profit' => $platformProfitByAffiliate[$id] ?? 0,
+                'affiliate_profit' => $affiliateProfitByAffiliate[$id] ?? 0,
+                'avg_order_value' => (int) round($sales / $ordersCountByAffiliate[$id]),
             ];
         }
 
@@ -318,9 +318,9 @@ final class ReportService
      *   ledger entry's own created_at against the same report range,
      *   since a fee is not an order and has no paid_at.
      */
-    public function membershipBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    public function membershipBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $orders = $this->scopedOrders($from, $toExclusive, $resellerId)
+        $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->get(['pricing_basis', 'final_amount', 'selling_price', 'normal_selling_price']);
 
         $memberSales = 0;
@@ -366,9 +366,9 @@ final class ReportService
      * actionable order list at /admin/orders — this is a health-at-a-
      * glance count, not a worklist.
      */
-    public function orderStatusFunnel(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    public function orderStatusFunnel(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $counts = $this->scopedOrders($from, $toExclusive, $resellerId)
+        $counts = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->selectRaw('delivery_status, COUNT(*) as count')
             ->groupBy('delivery_status')
             ->pluck('count', 'delivery_status');
@@ -396,12 +396,12 @@ final class ReportService
      * scope as summary(), joined to the order's actually-recognized
      * (ledger) profit rather than its cached column.
      */
-    public function exportRows(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): Collection
+    public function exportRows(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): Collection
     {
-        $orders = $this->scopedOrders($from, $toExclusive, $resellerId)
-            ->with('reseller:id,business_name')
+        $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->with('affiliate:id,business_name')
             ->orderBy('paid_at')
-            ->get(['id', 'order_number', 'paid_at', 'customer_email', 'final_amount', 'reseller_id']);
+            ->get(['id', 'order_number', 'paid_at', 'customer_email', 'final_amount', 'affiliate_id']);
 
         $profitByOrder = LedgerEntry::query()
             ->where('type', 'order_profit')
@@ -417,15 +417,15 @@ final class ReportService
                 'order_number' => $order->order_number,
                 'paid_at' => $order->paid_at?->setTimezone(self::TIMEZONE)->toDateTimeString(),
                 'customer_email' => $order->customer_email,
-                'reseller_name' => $order->reseller?->business_name,
+                'affiliate_name' => $order->affiliate?->business_name,
                 'final_amount' => $order->final_amount,
                 'platform_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount'),
-                'reseller_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Reseller->value)->sum('amount'),
+                'affiliate_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Affiliate->value)->sum('amount'),
             ];
         });
     }
 
-    private function scopedOrders(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): Builder
+    private function scopedOrders(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): Builder
     {
         $query = Order::query()
             ->where('is_test', false)
@@ -445,14 +445,14 @@ final class ReportService
             $query->where('paid_at', '<', $toExclusive);
         }
 
-        if ($resellerId !== null) {
-            $query->where('reseller_id', $resellerId);
+        if ($affiliateId !== null) {
+            $query->where('affiliate_id', $affiliateId);
         }
 
         return $query;
     }
 
-    private function profitTotals(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    private function profitTotals(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
         $query = LedgerEntry::query()
             ->join('orders', function ($join) {
@@ -471,8 +471,8 @@ final class ReportService
             $query->where('orders.paid_at', '<', $toExclusive);
         }
 
-        if ($resellerId !== null) {
-            $query->where('orders.reseller_id', $resellerId);
+        if ($affiliateId !== null) {
+            $query->where('orders.affiliate_id', $affiliateId);
         }
 
         $totals = $query->selectRaw('ledger_entries.owner_type as owner_type, SUM(ledger_entries.amount) as total')
@@ -481,13 +481,13 @@ final class ReportService
 
         return [
             'platform' => (int) ($totals['platform'] ?? 0),
-            'reseller' => (int) ($totals['reseller'] ?? 0),
+            'affiliate' => (int) ($totals['affiliate'] ?? 0),
         ];
     }
 
     /**
      * Generic order-id -> arbitrary group-key profit rollup (date, game
-     * id, reseller id, ...) shared by every breakdown method above.
+     * id, affiliate id, ...) shared by every breakdown method above.
      *
      * @param  array<int, int|string>  $orderKeyById  order id => group key
      * @return array{0: array<int|string, int>, 1: array<int|string, int>}
@@ -505,7 +505,7 @@ final class ReportService
             ->get(['reference_id', 'owner_type', 'amount']);
 
         $platformByKey = [];
-        $resellerByKey = [];
+        $affiliateByKey = [];
 
         foreach ($entries as $entry) {
             $key = $orderKeyById[$entry->reference_id] ?? null;
@@ -516,11 +516,11 @@ final class ReportService
 
             if ($entry->owner_type === LedgerOwnerType::Platform->value) {
                 $platformByKey[$key] = ($platformByKey[$key] ?? 0) + $entry->amount;
-            } elseif ($entry->owner_type === LedgerOwnerType::Reseller->value) {
-                $resellerByKey[$key] = ($resellerByKey[$key] ?? 0) + $entry->amount;
+            } elseif ($entry->owner_type === LedgerOwnerType::Affiliate->value) {
+                $affiliateByKey[$key] = ($affiliateByKey[$key] ?? 0) + $entry->amount;
             }
         }
 
-        return [$platformByKey, $resellerByKey];
+        return [$platformByKey, $affiliateByKey];
     }
 }

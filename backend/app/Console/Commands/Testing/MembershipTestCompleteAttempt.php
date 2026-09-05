@@ -31,7 +31,7 @@ class MembershipTestCompleteAttempt extends Command
             $subscriptions->completePaidAttempt($attempt);
 
             $membershipId = Membership::query()
-                ->where('reseller_id', $attempt->reseller_id)
+                ->where('affiliate_id', $attempt->affiliate_id)
                 ->where('email', $attempt->email)
                 ->value('id');
 

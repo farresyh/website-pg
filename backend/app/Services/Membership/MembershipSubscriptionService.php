@@ -41,7 +41,7 @@ final class MembershipSubscriptionService
      * @param  array<string, mixed>  $channelProperties
      */
     public function initiate(
-        int $resellerId,
+        int $affiliateId,
         string $email,
         int $planId,
         string $channelCode,
@@ -63,7 +63,7 @@ final class MembershipSubscriptionService
         // member already has a live CHIP purchase: hand back that one
         // rather than open a second the member could also pay.
         $recent = MembershipCheckoutAttempt::query()
-            ->where('reseller_id', $resellerId)
+            ->where('affiliate_id', $affiliateId)
             ->where('email', $email)
             ->where('status', MembershipCheckoutAttemptStatus::Pending->value)
             ->where('created_at', '>=', now()->subMinutes(self::DEDUP_WINDOW_MINUTES))
@@ -87,7 +87,7 @@ final class MembershipSubscriptionService
         $totalChargedSen = $this->totals->calculate($plan->fee_sen, 0, $feeConfig)->finalAmount;
 
         $attempt = MembershipCheckoutAttempt::query()->create([
-            'reseller_id' => $resellerId,
+            'affiliate_id' => $affiliateId,
             'email' => $email,
             'membership_plan_id' => $plan->id,
             'fee_sen' => $plan->fee_sen,
@@ -111,7 +111,7 @@ final class MembershipSubscriptionService
     public function completePaidAttempt(MembershipCheckoutAttempt $attempt): void
     {
         $this->membershipFees->recordFeePaid(
-            $attempt->reseller_id,
+            $attempt->affiliate_id,
             $attempt->email,
             $attempt->membership_plan_id,
             $attempt->fee_sen,

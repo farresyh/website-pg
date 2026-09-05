@@ -18,7 +18,7 @@ export interface SeoOverview {
 
 export interface SeoSettings {
   id: number;
-  reseller_id: number;
+  affiliate_id: number;
   default_meta_title: string | null;
   default_meta_description: string | null;
   default_og_image: string | null;
@@ -35,7 +35,7 @@ export interface SeoSettings {
 }
 
 export type UpdateSeoSettingsValues = Partial<
-  Omit<SeoSettings, "id" | "reseller_id">
+  Omit<SeoSettings, "id" | "affiliate_id">
 >;
 
 export type GameSeoStatus = "complete" | "incomplete" | "missing";
@@ -85,7 +85,7 @@ export type UpdateGameSeoValues = Partial<
 
 export interface Redirect {
   id: number;
-  reseller_id: number;
+  affiliate_id: number;
   from_path: string;
   to_path: string;
   status_code: 301 | 302;
@@ -96,7 +96,7 @@ export type SaveRedirectValues = Pick<Redirect, "from_path" | "to_path" | "statu
 
 export interface SeoScript {
   id: number;
-  reseller_id: number | null;
+  affiliate_id: number | null;
   name: string;
   location: "head" | "body_end";
   code: string;

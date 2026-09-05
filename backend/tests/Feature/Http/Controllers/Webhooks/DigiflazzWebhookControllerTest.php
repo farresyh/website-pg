@@ -5,9 +5,12 @@ namespace Tests\Feature\Http\Controllers\Webhooks;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
+use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Supplier\SupplierOutcome;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -44,7 +47,7 @@ class DigiflazzWebhookControllerTest extends TestCase
         $supplierId = $overrides['supplier_id'] ?? $this->digiflazzSupplier()->id;
 
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-DGF-1',
             'reference_number' => 'REF-DGF-1',
             'customer_email' => 'buyer@example.com',
@@ -58,7 +61,7 @@ class DigiflazzWebhookControllerTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 150,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Pending->value,
             'payment_gateway' => 'chip',
@@ -68,7 +71,7 @@ class DigiflazzWebhookControllerTest extends TestCase
     /**
      * @param  array<string, mixed>  $data  the `data` object of the payload
      */
-    private function sendWebhook(array $data, array $opts = []): \Illuminate\Testing\TestResponse
+    private function sendWebhook(array $data, array $opts = []): TestResponse
     {
         $secret = $opts['secret'] ?? self::SECRET;
         $ip = $opts['ip'] ?? self::DIGIFLAZZ_IP;
@@ -213,9 +216,9 @@ class DigiflazzWebhookControllerTest extends TestCase
         $order = $this->pendingOrder();
 
         // The poll backup (CheckSupplierDeliveryJob) got there first.
-        app(\App\Services\Fulfillment\OrderFulfillmentService::class)->finalizePendingDelivery(
+        app(OrderFulfillmentService::class)->finalizePendingDelivery(
             $order,
-            \App\Services\Supplier\SupplierOutcome::Success,
+            SupplierOutcome::Success,
             'SN-FROM-POLL',
             ['status' => 'Sukses'],
         );

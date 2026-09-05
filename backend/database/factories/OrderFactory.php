@@ -2,8 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Models\Affiliate;
 use App\Models\Order;
-use App\Models\Reseller;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -11,15 +11,15 @@ use Illuminate\Support\Str;
 
 /**
  * ADR-061 decision 9 (PR-B): the first `Order` factory. Built now
- * because `orders.reseller_id` is NOT NULL from this PR on — a bare
- * `Order::create` with no reseller now fails — and because ADR-059/060
+ * because `orders.affiliate_id` is NOT NULL from this PR on — a bare
+ * `Order::create` with no affiliate now fails — and because ADR-059/060
  * tests will lean on it.
  *
  * Defaults deliberately describe a plain paid, undelivered guest order
- * priced with zero reseller markup (the primary brand's default), so a
- * test that cares about a state names it explicitly. `reseller_id`
+ * priced with zero affiliate markup (the primary brand's default), so a
+ * test that cares about a state names it explicitly. `affiliate_id`
  * resolves the single `is_primary` row, creating it if a test never
- * did — same shape as `Tests\TestCase::primaryReseller()`.
+ * did — same shape as `Tests\TestCase::primaryAffiliate()`.
  *
  * @extends Factory<Order>
  */
@@ -36,7 +36,7 @@ class OrderFactory extends Factory
 
         return [
             'order_number' => 'PG-'.strtoupper(Str::random(12)),
-            'reseller_id' => fn () => Reseller::query()->firstOrCreate(
+            'affiliate_id' => fn () => Affiliate::query()->firstOrCreate(
                 ['is_primary' => true],
                 [
                     'business_name' => 'PekanGame', // ADR-062
@@ -55,7 +55,7 @@ class OrderFactory extends Factory
             'transaction_fee' => $transactionFee,
             'final_amount' => $sellingPrice + $transactionFee,
             'platform_profit' => $sellingPrice - $costPrice,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid,
             'delivery_status' => DeliveryStatus::NotStarted,
         ];
@@ -71,8 +71,8 @@ class OrderFactory extends Factory
         return $this->state(fn () => ['delivery_status' => DeliveryStatus::Delivered]);
     }
 
-    public function forReseller(Reseller $reseller): static
+    public function forAffiliate(Affiliate $affiliate): static
     {
-        return $this->state(fn () => ['reseller_id' => $reseller->id]);
+        return $this->state(fn () => ['affiliate_id' => $affiliate->id]);
     }
 }

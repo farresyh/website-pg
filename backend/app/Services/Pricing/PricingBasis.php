@@ -9,9 +9,13 @@ namespace App\Services\Pricing;
  * stamps Member. `OrderResendService` branches on this to know whether
  * to recompute profit via PricingService (Standard) or
  * MembershipPricingService (Member).
+ *
+ * ADR-073 decision 4: a `Reseller` (wallet) order stamps `ResellerWallet`
+ * — priced via `reseller_tiers.markup_percent`, distinct from both.
  */
 enum PricingBasis: string
 {
     case Standard = 'standard';
     case Member = 'member';
+    case ResellerWallet = 'reseller-wallet';
 }

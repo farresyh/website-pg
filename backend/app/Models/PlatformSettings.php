@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Model;
  * `current()` is a `firstOrCreate` safety net for any environment that
  * skipped seeding. `membership_enabled` here is the global master
  * kill-switch (ADR-061 decision 4) — the per-brand toggle lives on
- * `resellers.membership_enabled`; both must be true for Membership to
- * be live on a storefront (`Reseller::membershipEnabledEffective()`).
+ * `affiliates.membership_enabled`; both must be true for Membership to
+ * be live on a storefront (`Affiliate::membershipEnabledEffective()`).
  */
 class PlatformSettings extends Model
 {

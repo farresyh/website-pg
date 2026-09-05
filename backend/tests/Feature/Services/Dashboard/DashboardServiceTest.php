@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Services\Dashboard;
 
+use App\Models\Game;
 use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerService;
+use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
@@ -30,13 +32,13 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new ReportService);
+        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus);
     }
 
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -46,7 +48,7 @@ class DashboardServiceTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 20,
+            'affiliate_profit' => 20,
             'payment_status' => PaymentStatus::Paid->value,
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Delivered->value,
@@ -338,7 +340,7 @@ class DashboardServiceTest extends TestCase
 
     public function test_top_games_comparison_vs_prior_seven_day_window(): void
     {
-        $game = \App\Models\Game::query()->create(['name' => 'Test Game', 'slug' => 'test-game-'.uniqid()]);
+        $game = Game::query()->create(['name' => 'Test Game', 'slug' => 'test-game-'.uniqid()]);
 
         $this->order(['final_amount' => 2000, 'game_id' => $game->id]);
         $lastWeek = $this->order(['final_amount' => 1000, 'game_id' => $game->id]);

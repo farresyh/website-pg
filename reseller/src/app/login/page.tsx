@@ -2,7 +2,7 @@
 
 /**
  * ADR-058 58a reseller-portal login. Wired to Laravel's
- * POST /api/reseller/login via the `/api/login` Route Handler (which
+ * POST /api/affiliate/login via the `/api/login` Route Handler (which
  * also sets the optimistic-gate cookie — see lib/auth.ts). MFA is
  * descoped for the reseller portal (matches admin AUTH-7 — ADR-059
  * session decision), so there is no second step here.
@@ -42,11 +42,14 @@ export default function LoginPage() {
 
       setClientSession({
         token: payload.token,
-        reseller_user_id: payload.reseller_user.id,
-        reseller_id: payload.reseller_user.reseller_id,
-        name: payload.reseller_user.name,
-        email: payload.reseller_user.email,
-        business_name: payload.reseller?.business_name ?? "",
+        affiliate_user_id: payload.affiliate_user.id,
+        owner_type: payload.affiliate_user.owner_type,
+        owner_id: payload.affiliate_user.owner_id,
+        name: payload.affiliate_user.name,
+        email: payload.affiliate_user.email,
+        // ADR-072 decision 5 / PR-G: exactly one of these two is
+        // populated depending on owner_type (never both).
+        business_name: payload.affiliate?.business_name ?? payload.reseller?.business_name ?? "",
       });
       router.push("/dashboard");
     } catch {

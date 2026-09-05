@@ -1,7 +1,8 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
-use App\Http\Middleware\SetResellerContext;
+use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -37,9 +38,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin.role' => EnsureAdminRole::class,
             // ADR-058 (58a): activates ADR-057's tenant scope from the
-            // authenticated reseller_user. Always paired with
-            // `auth:reseller` on reseller-portal routes.
-            'reseller.context' => SetResellerContext::class,
+            // authenticated affiliate_user. Always paired with
+            // `auth:affiliate` on affiliate-portal routes.
+            'affiliate.context' => SetAffiliateContext::class,
+            // ADR-072 decision 4 / PR-G: the owner_type gate —
+            // `account.type:affiliate` / `account.type:reseller` — on
+            // every `affiliate`-guard route (both the existing Affiliate
+            // portal and the new Reseller wallet portal).
+            'account.type' => EnsureAccountType::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

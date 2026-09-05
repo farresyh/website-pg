@@ -83,7 +83,7 @@ function PromoteProductFields({
       </div>
 
       <p className="mb-4 text-theme-xs text-gray-400">
-        Reseller markup is set afterward in Games &amp; Packages, not here.
+        Affiliate markup is set afterward in Games &amp; Packages, not here.
       </p>
 
       {error && (

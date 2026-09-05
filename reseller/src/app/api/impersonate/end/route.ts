@@ -4,7 +4,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth";
 
 /**
  * ADR-059 59c: the portal "Exit impersonation" — proxies to the backend
- * `POST /api/reseller/impersonation/end` (closes the audit session +
+ * `POST /api/affiliate/impersonation/end` (closes the audit session +
  * revokes the token) and always clears the local gate cookie, so the
  * proxy sends the now-signed-out tab to /login.
  */
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const authHeader = request.headers.get("Authorization");
 
   if (authHeader) {
-    await fetch(`${API_BASE_URL}/api/reseller/impersonation/end`, {
+    await fetch(`${API_BASE_URL}/api/affiliate/impersonation/end`, {
       method: "POST",
       headers: { Accept: "application/json", Authorization: authHeader },
     }).catch(() => null);

@@ -2,15 +2,93 @@
 
 import { useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { getProfile, updateProfile, type ResellerProfile } from "@/lib/portal";
-import { PageHeader, Panel, ErrorNote } from "@/components/ui";
+import { getProfile, updateProfile, type AffiliateProfile } from "@/lib/portal";
+import { getResellerProfile, type ResellerProfile } from "@/lib/reseller-portal";
+import { PageHeader, Panel, ErrorNote, StatusTag } from "@/components/ui";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
 export default function ProfilePage() {
+  const session = useClientSession();
+  const ownerType = session?.owner_type ?? "affiliate";
+
+  return ownerType === "reseller" ? <ResellerProfileView /> : <AffiliateProfileView />;
+}
+
+/**
+ * ADR-072 decision 5 / PR-G: a Reseller (wallet) portal account's
+ * Profile screen is view-only — its business details are
+ * admin-curated (`/admin/resellers`), no existing precedent to mirror
+ * for self-service edit here (unlike Affiliate's payout-details form).
+ */
+function ResellerProfileView() {
   const [profile, setProfile] = useState<ResellerProfile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const session = getClientSession();
+    if (!session) return;
+
+    let cancelled = false;
+    getResellerProfile(session.token)
+      .then((result) => {
+        if (!cancelled) setProfile(result);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof ApiError ? err.message : "Could not load your profile.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div>
+      <PageHeader
+        title="Profile"
+        subtitle="Your account details. Managed by the platform — contact support to make changes."
+      />
+
+      {error && <ErrorNote message={error} />}
+      {!profile && !error && (
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+      )}
+
+      {profile && (
+        <Panel title="Account">
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            <Row label="Business name" value={profile.business_name} />
+            <Row label="Contact name" value={profile.contact_name ?? "—"} />
+            <Row label="Email" value={profile.email ?? "—"} />
+            <Row label="Phone" value={profile.phone ?? "—"} />
+            <Row label="Tier" value={profile.tier_name ?? "—"} />
+            <Row
+              label="Markup over cost"
+              value={profile.markup_percent !== null ? `${profile.markup_percent}%` : "—"}
+            />
+            <Row
+              label="Status"
+              value={
+                <StatusTag severity={profile.is_active ? "success" : "danger"}>
+                  {profile.is_active ? "Active" : "Deactivated"}
+                </StatusTag>
+              }
+            />
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+function AffiliateProfileView() {
+  const [profile, setProfile] = useState<AffiliateProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);

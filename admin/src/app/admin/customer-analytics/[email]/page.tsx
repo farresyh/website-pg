@@ -204,9 +204,9 @@ export default function CustomerDetailPage() {
             <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{formatRm(revenue)}</p>
           </div>
           <div className="rounded-xl bg-green-50 p-4 text-center dark:bg-green-500/10">
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Reseller Profit</p>
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Affiliate Profit</p>
             <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
-              {formatRm(detail.profit_analysis.reseller_commission)}
+              {formatRm(detail.profit_analysis.affiliate_commission)}
             </p>
           </div>
           <div className="rounded-xl bg-purple-50 p-4 text-center dark:bg-purple-500/10">
@@ -238,12 +238,12 @@ export default function CustomerDetailPage() {
                 <td className="py-2 text-gray-500 dark:text-gray-400">{pct(detail.profit_analysis.supplier_cost, revenue)}</td>
               </tr>
               <tr>
-                <td className="py-2 text-gray-700 dark:text-gray-300">Reseller Commission</td>
+                <td className="py-2 text-gray-700 dark:text-gray-300">Affiliate Commission</td>
                 <td className="py-2 text-success-600 dark:text-success-400">
-                  -{formatRm(detail.profit_analysis.reseller_commission)}
+                  -{formatRm(detail.profit_analysis.affiliate_commission)}
                 </td>
                 <td className="py-2 text-gray-500 dark:text-gray-400">
-                  {pct(detail.profit_analysis.reseller_commission, revenue)}
+                  {pct(detail.profit_analysis.affiliate_commission, revenue)}
                 </td>
               </tr>
               <tr>
@@ -286,7 +286,7 @@ export default function CustomerDetailPage() {
         )}
       </div>
 
-      {/* Top Packages / Top Resellers */}
+      {/* Top Packages / Top Affiliates */}
       <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
           <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Top Packages</h3>
@@ -310,12 +310,12 @@ export default function CustomerDetailPage() {
           )}
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Top Resellers</h3>
-          {detail.top_resellers.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">No resellers yet.</p>
+          <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Top Affiliates</h3>
+          {detail.top_affiliates.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No affiliates yet.</p>
           ) : (
             <div className="space-y-3">
-              {detail.top_resellers.map((row) => (
+              {detail.top_affiliates.map((row) => (
                 <div key={row.id ?? row.name} className="flex items-center justify-between">
                   <div>
                     <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">{row.name}</p>
@@ -344,9 +344,9 @@ export default function CustomerDetailPage() {
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Revenue</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reseller Profit</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate Profit</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">System Profit</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -371,13 +371,13 @@ export default function CustomerDetailPage() {
                           {row.package_name}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                          {row.reseller_name}
+                          {row.affiliate_name}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {formatRm(row.final_amount)}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                          {row.reseller_profit === null ? "—" : formatRm(row.reseller_profit)}
+                          {row.affiliate_profit === null ? "—" : formatRm(row.affiliate_profit)}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {row.system_profit === null ? "—" : formatRm(row.system_profit)}

@@ -3,7 +3,7 @@
 /**
  * RPT-1..3 (docs/prd.md §6.9), expanded 2026-08-27 into a tabbed
  * analytics layout (Overview/Sales Analysis/Profit Analysis/Orders/
- * Games/Payment Methods/Resellers). Every figure mirrors
+ * Games/Payment Methods/Affiliates). Every figure mirrors
  * backend/app/Services/Report/ReportService.php's pinned definitions
  * (grilled 2026-08-26) — sales/orders/latest-order are paid_at-scoped
  * Paid orders, profit is ledger-sourced (not the cached Order column),
@@ -32,17 +32,17 @@ import { Tabs, TabsList, TabsTab, TabsIndicator, TabsPanels, TabsPanel } from "@
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type ReportReseller, type ReportFilters, listReportResellers, exportReport } from "@/lib/reports";
+import { type ReportAffiliate, type ReportFilters, listReportAffiliates, exportReport } from "@/lib/reports";
 import { OverviewTab } from "@/components/reports/tabs/OverviewTab";
 import { SalesAnalysisTab } from "@/components/reports/tabs/SalesAnalysisTab";
 import { ProfitAnalysisTab } from "@/components/reports/tabs/ProfitAnalysisTab";
 import { OrdersTab } from "@/components/reports/tabs/OrdersTab";
 import { GamesTab } from "@/components/reports/tabs/GamesTab";
 import { PaymentMethodsTab } from "@/components/reports/tabs/PaymentMethodsTab";
-import { ResellersTab } from "@/components/reports/tabs/ResellersTab";
+import { AffiliatesTab } from "@/components/reports/tabs/AffiliatesTab";
 import { MembershipTab } from "@/components/reports/tabs/MembershipTab";
 
-const RESELLER_ALL = "all";
+const AFFILIATE_ALL = "all";
 const YEAR_ALL = "all";
 
 const currentYear = new Date().getFullYear();
@@ -62,7 +62,7 @@ const TABS = [
   { value: "orders", label: "Orders" },
   { value: "games", label: "Games" },
   { value: "payment-methods", label: "Payment Methods" },
-  { value: "resellers", label: "Resellers" },
+  { value: "affiliates", label: "Affiliates" },
   { value: "membership", label: "Membership" },
 ] as const;
 
@@ -70,8 +70,8 @@ export default function ReportsPage() {
   const router = useRouter();
   const session = useClientSession();
 
-  const [resellers, setResellers] = useState<ReportReseller[]>([]);
-  const [resellerId, setResellerId] = useState<string>(RESELLER_ALL);
+  const [affiliates, setAffiliates] = useState<ReportAffiliate[]>([]);
+  const [affiliateId, setAffiliateId] = useState<string>(AFFILIATE_ALL);
   const [year, setYear] = useState<string>(YEAR_ALL);
   const [month, setMonth] = useState<string>(YEAR_ALL);
   const [activeTab, setActiveTab] = useState<string>("overview");
@@ -90,11 +90,11 @@ export default function ReportsPage() {
   const filters: ReportFilters = {
     year: year === YEAR_ALL ? undefined : Number(year),
     month: year === YEAR_ALL || month === YEAR_ALL ? undefined : Number(month),
-    resellerId: resellerId === RESELLER_ALL ? undefined : Number(resellerId),
+    affiliateId: affiliateId === AFFILIATE_ALL ? undefined : Number(affiliateId),
   };
 
   const refresh = useCallback((token: string) => {
-    listReportResellers(token).then(setResellers).catch(() => undefined);
+    listReportAffiliates(token).then(setAffiliates).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -116,9 +116,9 @@ export default function ReportsPage() {
     }
   }
 
-  const resellerOptions = [
-    { label: "All Resellers", value: RESELLER_ALL },
-    ...resellers.map((r) => ({ label: r.business_name, value: String(r.id) })),
+  const affiliateOptions = [
+    { label: "All Affiliates", value: AFFILIATE_ALL },
+    ...affiliates.map((r) => ({ label: r.business_name, value: String(r.id) })),
   ];
 
   return (
@@ -149,7 +149,7 @@ export default function ReportsPage() {
 
       {/* Filter row — one row, above the charts (dataviz interaction.md) */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <FilterSelect label="Reseller" value={resellerId} onChange={setResellerId} options={resellerOptions} />
+        <FilterSelect label="Affiliate" value={affiliateId} onChange={setAffiliateId} options={affiliateOptions} />
         <FilterSelect
           label="Year"
           value={year}
@@ -198,8 +198,8 @@ export default function ReportsPage() {
               <TabsPanel value="payment-methods">
                 {activeTab === "payment-methods" && <PaymentMethodsTab token={session.token} filters={filters} />}
               </TabsPanel>
-              <TabsPanel value="resellers">
-                {activeTab === "resellers" && <ResellersTab token={session.token} filters={filters} />}
+              <TabsPanel value="affiliates">
+                {activeTab === "affiliates" && <AffiliatesTab token={session.token} filters={filters} />}
               </TabsPanel>
               <TabsPanel value="membership">
                 {activeTab === "membership" && <MembershipTab token={session.token} filters={filters} />}

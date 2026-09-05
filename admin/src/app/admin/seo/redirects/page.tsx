@@ -1,6 +1,6 @@
 "use client";
 
-/** ADR-029 decision 3/9, addendum 2 decision 15: reseller-scoped exact-path redirects, hit-counted. */
+/** ADR-029 decision 3/9, addendum 2 decision 15: affiliate-scoped exact-path redirects, hit-counted. */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";

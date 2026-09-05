@@ -19,7 +19,7 @@ class ResetMembershipCyclesCommandTest extends TestCase
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
 
         return Membership::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',

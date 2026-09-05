@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\AffiliateController;
+use App\Http\Controllers\Admin\AffiliateImpersonationController;
+use App\Http\Controllers\Admin\AffiliateMembershipTierController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\CustomerAnalyticsController;
@@ -13,15 +16,25 @@ use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\ResellerApiKeyController;
 use App\Http\Controllers\Admin\ResellerController;
-use App\Http\Controllers\Admin\ResellerImpersonationController;
-use App\Http\Controllers\Admin\ResellerMembershipTierController;
+use App\Http\Controllers\Admin\ResellerTierController;
+use App\Http\Controllers\Admin\ResellerWalletController;
+use App\Http\Controllers\Admin\ResellerWhatsAppGroupController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
+use App\Http\Controllers\Affiliate\AffiliateAuthController;
+use App\Http\Controllers\Affiliate\DashboardController as AffiliateDashboardController;
+use App\Http\Controllers\Affiliate\EarningsController as AffiliateEarningsController;
+use App\Http\Controllers\Affiliate\ImpersonationController as AffiliateImpersonationEndController;
+use App\Http\Controllers\Affiliate\OrderController as AffiliateOrderController;
+use App\Http\Controllers\Affiliate\ProfileController as AffiliateProfileController;
+use App\Http\Controllers\Affiliate\SubscriptionController as AffiliateSubscriptionController;
+use App\Http\Controllers\Affiliate\WithdrawalController as AffiliateWithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
@@ -50,20 +63,21 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
-use App\Http\Controllers\Reseller\DashboardController as ResellerDashboardController;
-use App\Http\Controllers\Reseller\EarningsController as ResellerEarningsController;
-use App\Http\Controllers\Reseller\ImpersonationController as ResellerImpersonationEndController;
-use App\Http\Controllers\Reseller\OrderController as ResellerOrderController;
-use App\Http\Controllers\Reseller\ProfileController as ResellerProfileController;
-use App\Http\Controllers\Reseller\ResellerAuthController;
-use App\Http\Controllers\Reseller\SubscriptionController as ResellerSubscriptionController;
-use App\Http\Controllers\Reseller\WithdrawalController as ResellerWithdrawalController;
+use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceController;
+use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
+use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
+use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKeyController;
+use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
+use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
+use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
 use App\Http\Controllers\Webhooks\DigiflazzWebhookController;
+use App\Http\Controllers\Webhooks\OpenWaWebhookController;
+use App\Http\Middleware\EnsureResellerApiKey;
 use Illuminate\Support\Facades\Route;
 
 // ADR-019: the only mutating auth-adjacent route with no throttle,
@@ -214,40 +228,73 @@ Route::prefix('catalog')->group(function () {
     Route::get('/seo/robots', [SeoController::class, 'robots']);
 });
 
-// ADR-058 (58a) — reseller portal auth, on the separate `reseller`
+// ADR-058 (58a) — affiliate portal auth, on the separate `affiliate`
 // Sanctum guard (config/auth.php). Own throttle buckets from day one:
 // per the lesson above every throttle:N route needs its own prefix or
 // it silently shares one per-IP bucket with every other prefixless one.
-Route::prefix('reseller')->group(function () {
-    Route::post('/login', [ResellerAuthController::class, 'login'])->middleware('throttle:5,1,reseller-login');
-    Route::post('/set-password', [ResellerAuthController::class, 'setPassword'])->middleware('throttle:6,1,reseller-set-password');
+Route::prefix('affiliate')->group(function () {
+    Route::post('/login', [AffiliateAuthController::class, 'login'])->middleware('throttle:5,1,affiliate-login');
+    Route::post('/set-password', [AffiliateAuthController::class, 'setPassword'])->middleware('throttle:6,1,affiliate-set-password');
 
-    // `auth:reseller` rejects any token whose tokenable is not a
-    // reseller_users model; `reseller.context` then activates ADR-057's
-    // tenant scope from the authenticated user's reseller_id.
-    Route::middleware(['auth:reseller', 'reseller.context'])->group(function () {
-        Route::post('/logout', [ResellerAuthController::class, 'logout']);
-        Route::get('/me', [ResellerAuthController::class, 'me']);
+    // `auth:affiliate` rejects any token whose tokenable is not a
+    // affiliate_users model; `affiliate.context` then activates ADR-057's
+    // tenant scope from the authenticated user's owner_id.
+    //
+    // ADR-072 decision 4 / PR-G: `account.type:affiliate` is the
+    // mandatory backend gate on every route below — a Reseller (wallet)
+    // account's token can authenticate `auth:affiliate` (same guard,
+    // decision 6) but must never reach an Affiliate-only endpoint like
+    // Withdrawal/Subscription. `/logout` and `/me` are shared by both
+    // account types (PR-G planning addendum decision 6) so stay outside
+    // this gate.
+    Route::middleware(['auth:affiliate'])->group(function () {
+        Route::post('/logout', [AffiliateAuthController::class, 'logout']);
+        Route::get('/me', [AffiliateAuthController::class, 'me']);
 
-        // ADR-059 (59a) — reseller portal read layer. Every route here
-        // is scoped to the authenticated reseller_user's own tenant by
-        // `reseller.context`; money reads go through
-        // ResellerEarningsService (decision 5).
-        Route::get('/dashboard', [ResellerDashboardController::class, 'show']);
-        Route::get('/orders', [ResellerOrderController::class, 'index']);
-        Route::get('/orders/{orderNumber}', [ResellerOrderController::class, 'show']);
-        Route::get('/earnings', [ResellerEarningsController::class, 'index']);
-        Route::get('/subscription', [ResellerSubscriptionController::class, 'show']);
+        Route::middleware(['account.type:affiliate', 'affiliate.context'])->group(function () {
+            // ADR-059 (59a) — affiliate portal read layer. Every route here
+            // is scoped to the authenticated affiliate_user's own tenant by
+            // `affiliate.context`; money reads go through
+            // AffiliateEarningsService (decision 5).
+            Route::get('/dashboard', [AffiliateDashboardController::class, 'show']);
+            Route::get('/orders', [AffiliateOrderController::class, 'index']);
+            Route::get('/orders/{orderNumber}', [AffiliateOrderController::class, 'show']);
+            Route::get('/earnings', [AffiliateEarningsController::class, 'index']);
+            Route::get('/subscription', [AffiliateSubscriptionController::class, 'show']);
 
-        // ADR-059 (59c) — write surface: profile bank details + WTH-1..5
-        // request side (approval stays admin) + the portal "Exit
-        // impersonation" close.
-        Route::get('/profile', [ResellerProfileController::class, 'show']);
-        Route::put('/profile', [ResellerProfileController::class, 'update']);
-        Route::get('/withdrawals', [ResellerWithdrawalController::class, 'index']);
-        Route::post('/withdrawals', [ResellerWithdrawalController::class, 'store']);
-        Route::post('/impersonation/end', [ResellerImpersonationEndController::class, 'end']);
+            // ADR-059 (59c) — write surface: profile bank details + WTH-1..5
+            // request side (approval stays admin) + the portal "Exit
+            // impersonation" close.
+            Route::get('/profile', [AffiliateProfileController::class, 'show']);
+            Route::put('/profile', [AffiliateProfileController::class, 'update']);
+            Route::get('/withdrawals', [AffiliateWithdrawalController::class, 'index']);
+            Route::post('/withdrawals', [AffiliateWithdrawalController::class, 'store']);
+            Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end']);
+        });
     });
+});
+
+// ADR-072/073 PR-G — the Reseller (wallet) portal's own screens, on the
+// SAME `affiliate` guard/login endpoint as above (decision 6) —
+// `account.type:reseller` is the only new gate, layered on after auth,
+// never a parallel auth mechanism. Scope is view + top-up + history
+// only (planning addendum decision 2) — order *placement* stays
+// exclusively the API (PR-E)/Bot (PR-F) channels.
+Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:reseller'])->group(function () {
+    Route::get('/wallet', [ResellerPortalWalletController::class, 'show']);
+    Route::post('/wallet/topup', [ResellerPortalWalletController::class, 'topup']);
+
+    Route::get('/orders', [ResellerPortalOrderController::class, 'index']);
+    Route::get('/orders/{orderNumber}', [ResellerPortalOrderController::class, 'show']);
+
+    Route::get('/profile', [ResellerPortalProfileController::class, 'show']);
+
+    // Full self-service (planning addendum decision 7) — capped at 5
+    // active keys. Admin retains the same capability in parallel
+    // (`/admin/resellers/{reseller}/api-keys*`), not removed.
+    Route::get('/api-keys', [ResellerPortalApiKeyController::class, 'index']);
+    Route::post('/api-keys', [ResellerPortalApiKeyController::class, 'store']);
+    Route::delete('/api-keys/{api_key}', [ResellerPortalApiKeyController::class, 'destroy']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -330,14 +377,14 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('admin.role:super_admin,admin')->prefix('reports')->group(function () {
-        Route::get('/resellers', [ReportController::class, 'resellers']);
+        Route::get('/affiliates', [ReportController::class, 'affiliates']);
         Route::get('/summary', [ReportController::class, 'summary']);
         Route::get('/trend', [ReportController::class, 'trend']);
         Route::get('/daily-breakdown', [ReportController::class, 'dailyBreakdown']);
         Route::get('/top-games', [ReportController::class, 'topGames']);
         Route::get('/breakdown/games', [ReportController::class, 'gameBreakdown']);
         Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
-        Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
+        Route::get('/breakdown/affiliates', [ReportController::class, 'affiliateBreakdown']);
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
         Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
         Route::get('/export', [ReportController::class, 'export']);
@@ -357,6 +404,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/resend', [OrderController::class, 'resend']);
         // ADR-026 decision 4a — the one needs_review exit that isn't a retry.
         Route::post('/{order}/mark-delivered', [OrderController::class, 'markDelivered']);
+        // ADR-073 decision 7 — the wallet-order counterpart to
+        // /vouchers/{order} (VoucherController::storeFromOrder), never
+        // both offered for the same order.
+        Route::post('/{order}/refund-to-wallet', [OrderController::class, 'refundToWallet']);
     });
 
     // ADR-018: a middleware-only sandbox for exercising the real Order
@@ -477,7 +528,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin')->prefix('memberships')->group(function () {
         Route::get('/', [AdminMembershipController::class, 'index']);
         // ADR-061 decision 5: the brands a membership can be recorded
-        // against — internal, membership-enabled resellers only.
+        // against — internal, membership-enabled affiliates only.
         Route::get('/brands', [AdminMembershipController::class, 'brands']);
         Route::post('/record-payment', [AdminMembershipController::class, 'recordPayment']);
         // ADR-068 decisions 14/15 — the per-member detail (state, fee
@@ -486,11 +537,49 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{membership}', [AdminMembershipController::class, 'show']);
     });
 
-    // ADR-058 58b (RES-1..6) — admin Reseller Management. Same
+    // ADR-058 58b (RES-1..6) — admin Affiliate Management. Same
     // super_admin tier as Settings / Membership (platform-wide business
     // config, no supplier-integration dependency so deliberately not
-    // under /middleware). The reseller PORTAL auth (58a) is a separate
-    // guard entirely, see the /reseller prefix above.
+    // under /middleware). The affiliate PORTAL auth (58a) is a separate
+    // guard entirely, see the /affiliate prefix above.
+    Route::middleware('admin.role:super_admin')->group(function () {
+        Route::prefix('affiliates')->group(function () {
+            Route::get('/', [AffiliateController::class, 'index']);
+            Route::post('/', [AffiliateController::class, 'store']);
+            Route::get('/{affiliate}', [AffiliateController::class, 'show']);
+            Route::put('/{affiliate}', [AffiliateController::class, 'update']);
+            Route::patch('/{affiliate}/status', [AffiliateController::class, 'updateStatus']);
+            Route::delete('/{affiliate}', [AffiliateController::class, 'destroy']);
+
+            // ADR-056 decision 8 — wholesale-tier assignment + fee actions.
+            Route::post('/{affiliate}/tier', [AffiliateController::class, 'assignTier']);
+            Route::post('/{affiliate}/tier/charge', [AffiliateController::class, 'chargeTierFee']);
+            Route::post('/{affiliate}/tier/reactivate', [AffiliateController::class, 'reactivateSubscription']);
+
+            // Staff logins + the set-password invite (58a's AffiliateInviteService).
+            Route::post('/{affiliate}/users', [AffiliateController::class, 'storeUser']);
+            Route::post('/{affiliate}/users/{affiliateUser}/resend-invite', [AffiliateController::class, 'resendInvite']);
+
+            // RES-4 impersonation.
+            Route::post('/{affiliate}/impersonate', [AffiliateImpersonationController::class, 'store']);
+        });
+
+        Route::get('/affiliate-impersonation-sessions', [AffiliateImpersonationController::class, 'index']);
+        Route::post('/affiliate-impersonation-sessions/{impersonation_session}/end', [AffiliateImpersonationController::class, 'end']);
+
+        // ADR-056 decision 1 — the affiliate_membership_tiers CRUD ladder.
+        Route::prefix('affiliate-tiers')->group(function () {
+            Route::get('/', [AffiliateMembershipTierController::class, 'index']);
+            Route::post('/', [AffiliateMembershipTierController::class, 'store']);
+            Route::put('/{affiliate_tier}', [AffiliateMembershipTierController::class, 'update']);
+            Route::delete('/{affiliate_tier}', [AffiliateMembershipTierController::class, 'destroy']);
+        });
+    });
+
+    // ADR-072/073 PR-B — admin Reseller (prepaid-wallet) account
+    // management: register account, assign tier, activate/deactivate.
+    // Same super_admin tier as Affiliate Management above. Distinct from
+    // `Affiliate` (whitelabel storefront partner) — see ADR-072 decision 1.
     Route::middleware('admin.role:super_admin')->group(function () {
         Route::prefix('resellers')->group(function () {
             Route::get('/', [ResellerController::class, 'index']);
@@ -498,38 +587,53 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{reseller}', [ResellerController::class, 'show']);
             Route::put('/{reseller}', [ResellerController::class, 'update']);
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
+            Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
             Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
 
-            // ADR-056 decision 8 — wholesale-tier assignment + fee actions.
-            Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
-            Route::post('/{reseller}/tier/charge', [ResellerController::class, 'chargeTierFee']);
-            Route::post('/{reseller}/tier/reactivate', [ResellerController::class, 'reactivateSubscription']);
-
-            // Staff logins + the set-password invite (58a's ResellerInviteService).
+            // PR-G — this account's portal login (ADR-072 decision 5),
+            // mirrors AffiliateController's own staff-login actions.
             Route::post('/{reseller}/users', [ResellerController::class, 'storeUser']);
-            Route::post('/{reseller}/users/{resellerUser}/resend-invite', [ResellerController::class, 'resendInvite']);
+            Route::post('/{reseller}/users/{affiliateUser}/resend-invite', [ResellerController::class, 'resendInvite']);
 
-            // RES-4 impersonation.
-            Route::post('/{reseller}/impersonate', [ResellerImpersonationController::class, 'store']);
+            // ADR-073 decision 3(b) (PR-C) — admin manual-credit. Self-serve
+            // CHIP top-up (decision 3a) deferred to whichever PR first gives
+            // a Reseller its own entry point (see ADR-073's build addendum).
+            Route::get('/{reseller}/wallet', [ResellerWalletController::class, 'index']);
+            Route::post('/{reseller}/wallet/credit', [ResellerWalletController::class, 'credit']);
+
+            // ADR-074 decision 1 (PR-E) — issue/revoke a Reseller API
+            // credential. The plaintext key is only ever in store()'s
+            // response.
+            Route::get('/{reseller}/api-keys', [ResellerApiKeyController::class, 'index']);
+            Route::post('/{reseller}/api-keys', [ResellerApiKeyController::class, 'store']);
+            Route::delete('/{reseller}/api-keys/{api_key}', [ResellerApiKeyController::class, 'destroy']);
+
+            // ADR-075 / PR-F build addendum decision 3 — link/unlink a
+            // WhatsApp group to this Reseller account. 'pending' (below,
+            // outside this {reseller} prefix) is platform-wide.
+            Route::get('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'index']);
+            Route::post('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'store']);
+            Route::patch('/{reseller}/whatsapp-groups/{group}/status', [ResellerWhatsAppGroupController::class, 'updateStatus']);
         });
 
-        Route::get('/reseller-impersonation-sessions', [ResellerImpersonationController::class, 'index']);
-        Route::post('/reseller-impersonation-sessions/{impersonation_session}/end', [ResellerImpersonationController::class, 'end']);
+        Route::get('/reseller-whatsapp-groups/pending', [ResellerWhatsAppGroupController::class, 'pending']);
 
-        // ADR-056 decision 1 — the reseller_membership_tiers CRUD ladder.
+        // ADR-073 decision 1 — the reseller_tiers CRUD ladder.
         Route::prefix('reseller-tiers')->group(function () {
-            Route::get('/', [ResellerMembershipTierController::class, 'index']);
-            Route::post('/', [ResellerMembershipTierController::class, 'store']);
-            Route::put('/{reseller_tier}', [ResellerMembershipTierController::class, 'update']);
-            Route::delete('/{reseller_tier}', [ResellerMembershipTierController::class, 'destroy']);
+            Route::get('/', [ResellerTierController::class, 'index']);
+            Route::post('/', [ResellerTierController::class, 'store']);
+            Route::put('/{reseller_tier}', [ResellerTierController::class, 'update']);
+            Route::delete('/{reseller_tier}', [ResellerTierController::class, 'destroy']);
         });
+
+        Route::get('/wallet-topup-receipts/{walletTopupReceipt}/download', [ResellerWalletController::class, 'downloadReceipt']);
     });
 
     // ADR-029 — SEO Management: Overview, Global Settings/Meta
     // Templates (one table, decision 2), Game SEO (decision 11),
     // Redirects (decision 3/9), Scripts (addendum 2 decision 13),
     // Crawler (addendum 2 decision 14). Same tier as Settings above —
-    // decision 6, no reseller self-service portal yet.
+    // decision 6, no affiliate self-service portal yet.
     Route::middleware('admin.role:super_admin')->prefix('seo')->group(function () {
         Route::get('/overview', [AdminSeoController::class, 'overview']);
         Route::get('/settings', [AdminSeoController::class, 'settings']);
@@ -635,6 +739,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
         Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
         Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
+        Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);
         Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
     });
 });
@@ -659,3 +764,27 @@ Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
 Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle'])
     ->middleware('throttle:120,1,webhook-digiflazz')
     ->name('webhooks.digiflazz');
+
+// ADR-075 / PR-F build addendum — the Reseller Bot channel's inbound
+// half (self-hosted OpenWA). Not behind auth:sanctum: the
+// X-Webhook-Signature HMAC check IS the auth, additionally hard-
+// restricted to 127.0.0.1 at the nginx layer (decision 4 — OpenWA is
+// co-located on the same droplet, a strictly stronger posture than
+// Digiflazz's soft/log-only IP check). Same throttle rationale as the
+// webhook routes above.
+Route::post('/webhooks/openwa', [OpenWaWebhookController::class, 'handle'])
+    ->middleware('throttle:120,1,webhook-openwa')
+    ->name('webhooks.openwa');
+
+// ADR-074 — Reseller API channel. Not behind auth:sanctum:
+// EnsureResellerApiKey (a bearer `reseller_api_keys` credential) is its
+// own, deliberately separate auth boundary (decision 1) — never the
+// portal-login `reseller` Sanctum guard. Rate-limited per API key, not
+// IP (decision 4), via the `reseller-api` named limiter
+// (AppServiceProvider).
+Route::prefix('reseller/v1')->middleware(['throttle:reseller-api', EnsureResellerApiKey::class])->group(function () {
+    Route::get('/catalog', [ResellerApiCatalogController::class, 'index']);
+    Route::get('/balance', [ResellerApiBalanceController::class, 'show']);
+    Route::post('/orders', [ResellerApiOrderController::class, 'store']);
+    Route::get('/orders/{orderNumber}', [ResellerApiOrderController::class, 'show']);
+});

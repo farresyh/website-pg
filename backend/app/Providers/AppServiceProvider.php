@@ -13,6 +13,7 @@ use App\Observers\PriceSyncRunObserver;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\PlunkMailer;
+use App\Services\OpenWa\OpenWaClient;
 use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
@@ -30,7 +31,10 @@ use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
-use App\Support\CurrentReseller;
+use App\Support\CurrentAffiliate;
+use Dedoc\Scramble\Scramble;
+use Dedoc\Scramble\Support\Generator\OpenApi;
+use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -64,12 +68,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // ADR-057: the reseller-tenant resolver ResellerScope reads.
+        // ADR-057: the affiliate-tenant resolver AffiliateScope reads.
         // `scoped`, not `singleton` — reset between HTTP requests and
         // between queue jobs so one request's tenant never leaks into
-        // the next. Populated by the reseller-guard middleware (ADR-058);
+        // the next. Populated by the affiliate-guard middleware (ADR-058);
         // inert (no tenant context) everywhere else.
-        $this->app->scoped(CurrentReseller::class);
+        $this->app->scoped(CurrentAffiliate::class);
 
         // ADR-023 decision #6: the real checkout->fulfillment pipeline
         // runs against a real, separately-booted server process during
@@ -223,6 +227,20 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
+        // ADR-075 / PR-F build addendum — the Reseller Bot channel's
+        // one seam to the self-hosted OpenWA gateway.
+        $this->app->bind(OpenWaClient::class, function () {
+            $config = config('services.openwa');
+
+            return new OpenWaClient(
+                baseUrl: $config['base_url'],
+                sessionId: $config['session_id'],
+                apiKey: $config['api_key'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
+
         // MLBB's validator chain — AcidGameShop -> Nexone -> MooGold,
         // priority order per the founder's own reliability ranking.
         // Bound under 'player-validator.mlbb' so PlayerValidatorRegistry
@@ -322,6 +340,24 @@ class AppServiceProvider extends ServiceProvider
             return $user !== null && $user->is_active && $user->role === 'super_admin';
         });
 
+        // ADR-074 decision 3: the Reseller API docs page is deliberately
+        // public — it's meant to be handed to an external reseller's own
+        // dev team (same posture as Stripe/GitHub's own API docs), and
+        // Scramble's own `api_path` scoping already confines what it
+        // documents to `api/reseller/*` — no admin/internal route shape
+        // is ever exposed through it.
+        Gate::define('viewApiDocs', fn () => true);
+
+        // ADR-074 decision 1: every documented operation requires the
+        // Reseller API's bearer credential (EnsureResellerApiKey) —
+        // Scramble has no auto-detection for a non-Sanctum guard, so the
+        // security scheme is declared explicitly rather than left blank
+        // (a blank scheme would make the docs' own "Try it" panel never
+        // prompt for a key).
+        Scramble::extendOpenApi(function (OpenApi $openApi) {
+            $openApi->secure(SecurityScheme::http('bearer')->as('Reseller API key'));
+        });
+
         // ADR-027's 2026-08-29 addendum, decision 26: OTP requests are
         // rate-limited per email address (not just per IP, unlike every
         // other `throttle:` route in this app — the abuse case here is
@@ -338,6 +374,16 @@ class AppServiceProvider extends ServiceProvider
         // script hammering CHIP-purchase creation.
         RateLimiter::for('membership-subscribe', function (Request $request) {
             return Limit::perMinute(10)->by((string) ($request->bearerToken() ?? $request->ip()));
+        });
+
+        // ADR-074 decision 4 — the Reseller API channel's own throttle
+        // bucket, keyed on the API key itself (not IP): an external
+        // reseller's own system may be shared infrastructure behind one
+        // IP, and the auth boundary hasn't run yet at this point in the
+        // pipeline (this limiter fires before EnsureResellerApiKey), so
+        // the raw bearer token is the only identifier available.
+        RateLimiter::for('reseller-api', function (Request $request) {
+            return Limit::perMinute(60)->by((string) ($request->bearerToken() ?? $request->ip()));
         });
     }
 }

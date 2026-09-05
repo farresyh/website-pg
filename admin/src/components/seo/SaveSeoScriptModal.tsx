@@ -47,7 +47,7 @@ function Fields({ script, onClose, onSubmit }: Omit<Props, "isOpen">) {
     setError(null);
     setSubmitting(true);
     try {
-      await onSubmit({ name, location, code, priority: Number(priority), is_active: isActive, reseller_id: script?.reseller_id ?? null });
+      await onSubmit({ name, location, code, priority: Number(priority), is_active: isActive, affiliate_id: script?.affiliate_id ?? null });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {

@@ -9,12 +9,12 @@ use App\Http\Requests\Settings\BulkMarkupRequest;
 use App\Http\Requests\Settings\UpdateBrandingRequest;
 use App\Http\Requests\Settings\UpdateFooterSettingsRequest;
 use App\Http\Requests\Settings\UpdatePlatformSettingsRequest;
+use App\Models\Affiliate;
+use App\Models\AffiliateBranding;
+use App\Models\AffiliateFooterSettings;
 use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\PriceChangeLog;
-use App\Models\Reseller;
-use App\Models\ResellerBranding;
-use App\Models\ResellerFooterSettings;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -32,21 +32,21 @@ class SettingsController extends Controller
 
     public function index(): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         return response()->json([
-            'branding' => $this->brandingFor($reseller),
-            'footer' => $this->footerFor($reseller),
+            'branding' => $this->brandingFor($affiliate),
+            'footer' => $this->footerFor($affiliate),
             'platform' => PlatformSettings::current(),
         ]);
     }
 
     public function updateBranding(UpdateBrandingRequest $request): JsonResponse
     {
-        $reseller = Reseller::primary();
-        $branding = $this->brandingFor($reseller);
+        $affiliate = Affiliate::primary();
+        $branding = $this->brandingFor($affiliate);
         $branding->update($request->validated());
-        BrandingController::forgetCache($reseller->id);
+        BrandingController::forgetCache($affiliate->id);
 
         return response()->json($branding);
     }
@@ -61,8 +61,8 @@ class SettingsController extends Controller
      */
     public function updateFooter(UpdateFooterSettingsRequest $request): JsonResponse
     {
-        $reseller = Reseller::primary();
-        $footer = $this->footerFor($reseller);
+        $affiliate = Affiliate::primary();
+        $footer = $this->footerFor($affiliate);
 
         $data = $request->validated();
         foreach (['footer_text', 'terms_content', 'privacy_content', 'about_us_content'] as $field) {
@@ -72,7 +72,7 @@ class SettingsController extends Controller
         }
 
         $footer->update($data);
-        BrandingController::forgetCache($reseller->id);
+        BrandingController::forgetCache($affiliate->id);
 
         return response()->json($footer);
     }
@@ -136,16 +136,16 @@ class SettingsController extends Controller
         return response()->json(['packages_updated' => $changed]);
     }
 
-    private function brandingFor(Reseller $reseller): ResellerBranding
+    private function brandingFor(Affiliate $affiliate): AffiliateBranding
     {
-        return ResellerBranding::query()->firstOrCreate(
-            ['reseller_id' => $reseller->id],
-            ['store_name' => $reseller->business_name],
+        return AffiliateBranding::query()->firstOrCreate(
+            ['affiliate_id' => $affiliate->id],
+            ['store_name' => $affiliate->business_name],
         );
     }
 
-    private function footerFor(Reseller $reseller): ResellerFooterSettings
+    private function footerFor(Affiliate $affiliate): AffiliateFooterSettings
     {
-        return ResellerFooterSettings::query()->firstOrCreate(['reseller_id' => $reseller->id]);
+        return AffiliateFooterSettings::query()->firstOrCreate(['affiliate_id' => $affiliate->id]);
     }
 }

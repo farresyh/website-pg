@@ -302,8 +302,8 @@ final class OrderFulfillmentService
     /**
      * Every delivered order writes exactly two order_profit credit
      * entries (PRD §8 LedgerEntry) — kept as two rows even though MVP
-     * has only the single internal owner-reseller, so this never needs
-     * to change when Phase 2 onboards real third-party resellers.
+     * has only the single internal owner-affiliate, so this never needs
+     * to change when Phase 2 onboards real third-party affiliates.
      *
      * ADR-018 decision #6: the single, explicit guard that keeps a
      * sandbox order from ever reaching the real ledger — chosen over a
@@ -318,6 +318,6 @@ final class OrderFulfillmentService
         }
 
         $this->ledger->credit(LedgerOwnerType::Platform, null, $order->platform_profit, 'order_profit', 'order', $order->id);
-        $this->ledger->credit(LedgerOwnerType::Reseller, $order->reseller_id, $order->reseller_profit, 'order_profit', 'order', $order->id);
+        $this->ledger->credit(LedgerOwnerType::Affiliate, $order->affiliate_id, $order->affiliate_profit, 'order_profit', 'order', $order->id);
     }
 }

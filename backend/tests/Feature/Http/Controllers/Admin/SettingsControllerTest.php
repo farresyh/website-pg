@@ -3,10 +3,10 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\AffiliateFooterSettings;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\PlatformSettings;
-use App\Models\ResellerFooterSettings;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -25,8 +25,8 @@ class SettingsControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: these endpoints resolve the platform storefront via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
     }
 
     private function actingAsSuperAdmin(): void
@@ -74,8 +74,8 @@ class SettingsControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonStructure(['branding' => ['store_name'], 'footer', 'platform' => ['currency']]);
         $this->assertSame('MYR', $response->json('platform.currency'));
-        $this->assertDatabaseCount('reseller_branding', 1);
-        $this->assertDatabaseCount('reseller_footer_settings', 1);
+        $this->assertDatabaseCount('affiliate_branding', 1);
+        $this->assertDatabaseCount('affiliate_footer_settings', 1);
         $this->assertDatabaseCount('platform_settings', 1);
     }
 
@@ -92,7 +92,7 @@ class SettingsControllerTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertDatabaseHas('reseller_branding', [
+        $this->assertDatabaseHas('affiliate_branding', [
             'store_name' => 'PekanGame',
             'support_email' => 'support@pekangame.space',
         ]);
@@ -108,7 +108,7 @@ class SettingsControllerTest extends TestCase
         ]);
 
         $response->assertOk();
-        $stored = ResellerFooterSettings::query()->first();
+        $stored = AffiliateFooterSettings::query()->first();
         $this->assertStringContainsString('{store_name}', $stored->terms_content);
         $this->assertStringNotContainsString('<script>', $stored->terms_content);
         $this->assertStringContainsString('<b>', $stored->terms_content);
@@ -145,7 +145,7 @@ class SettingsControllerTest extends TestCase
         $response = $this->putJson('/api/settings/footer', ['footer_game_ids' => $ids]);
 
         $response->assertOk();
-        $this->assertSame($ids, ResellerFooterSettings::query()->first()->footer_game_ids);
+        $this->assertSame($ids, AffiliateFooterSettings::query()->first()->footer_game_ids);
     }
 
     public function test_update_platform_persists_maintenance_and_telegram_fields(): void

@@ -27,15 +27,14 @@ use Illuminate\Validation\ValidationException;
  *   actually paid (ORD-9 principle applied to refunds), not an open
  *   admin choice.
  * Both debit the 'platform' ledger at issuance (type=voucher_issued).
- * MVP has no Reseller model yet, so reseller-wallet issuance (the
+ * MVP has no Affiliate model yet, so affiliate-wallet issuance (the
  * founder's other stated option) is Phase 2.
  */
 class VoucherController extends Controller
 {
     public function __construct(
         private readonly VoucherService $vouchers,
-    ) {
-    }
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -247,5 +246,4 @@ class VoucherController extends Controller
 
         return response()->json($voucher);
     }
-
 }

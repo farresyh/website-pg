@@ -15,7 +15,7 @@ export function MembershipTab({ token, filters }: { token: string; filters: Repo
       .then(setRow)
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.year, filters.month, filters.resellerId]);
+  }, [token, filters.year, filters.month, filters.affiliateId]);
 
   return (
     <div>

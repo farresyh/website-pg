@@ -5,6 +5,9 @@ namespace Tests\Feature\Services\Fulfillment;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
+use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -42,11 +45,11 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->app->bind('supplier-adapter.'.self::DEFAULT_SUPPLIER_SLUG, fn () => $adapter);
 
         return new OrderFulfillmentService(
-            new OrderStatusService(),
-            new ReferenceNumberService(),
+            new OrderStatusService,
+            new ReferenceNumberService,
             $this->app->make(SupplierAdapterFactory::class),
-            new LedgerService(),
-            new VoucherService(new LedgerService()),
+            new LedgerService,
+            new VoucherService(new LedgerService),
         );
     }
 
@@ -61,7 +64,7 @@ class OrderFulfillmentServiceTest extends TestCase
             )->id;
 
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -74,7 +77,7 @@ class OrderFulfillmentServiceTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));
@@ -93,8 +96,7 @@ class OrderFulfillmentServiceTest extends TestCase
                 private readonly ?array $data,
                 private readonly ?string $errorCode,
                 private readonly ?string $errorMessage,
-            ) {
-            }
+            ) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -130,9 +132,7 @@ class OrderFulfillmentServiceTest extends TestCase
     {
         return new class($data) implements SupplierAdapter
         {
-            public function __construct(private readonly array $data)
-            {
-            }
+            public function __construct(private readonly array $data) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -204,11 +204,11 @@ class OrderFulfillmentServiceTest extends TestCase
         $order = $this->paidOrder(['supplier_id' => $supplierA->id]);
 
         $service = new OrderFulfillmentService(
-            new OrderStatusService(),
-            new ReferenceNumberService(),
+            new OrderStatusService,
+            new ReferenceNumberService,
             $this->app->make(SupplierAdapterFactory::class),
-            new LedgerService(),
-            new VoucherService(new LedgerService()),
+            new LedgerService,
+            new VoucherService(new LedgerService),
         );
 
         $result = $service->fulfill($order);
@@ -237,7 +237,7 @@ class OrderFulfillmentServiceTest extends TestCase
     {
         $order = $this->paidOrder(['supplier_product_ref' => null]);
 
-        $this->expectException(\App\Services\Fulfillment\OrderFulfillmentException::class);
+        $this->expectException(OrderFulfillmentException::class);
 
         $this->service($this->fakeSupplierAdapter(true))->fulfill($order);
     }
@@ -264,14 +264,14 @@ class OrderFulfillmentServiceTest extends TestCase
      * order_profit credit entries, even in MVP where both currently
      * resolve to the same internal owner.
      */
-    public function test_fulfill_credits_platform_and_reseller_profit_on_delivery(): void
+    public function test_fulfill_credits_platform_and_affiliate_profit_on_delivery(): void
     {
-        $order = $this->paidOrder(['platform_profit' => 150, 'reseller_profit' => 50]);
+        $order = $this->paidOrder(['platform_profit' => 150, 'affiliate_profit' => 50]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($order);
 
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
-        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'affiliate')->sum('amount'));
     }
 
     /**
@@ -282,7 +282,7 @@ class OrderFulfillmentServiceTest extends TestCase
      */
     public function test_fulfill_marks_pending_on_a_pending_supplier_response(): void
     {
-        $order = $this->paidOrder(['platform_profit' => 150, 'reseller_profit' => 50]);
+        $order = $this->paidOrder(['platform_profit' => 150, 'affiliate_profit' => 50]);
 
         $result = $this->service($this->fakePendingSupplierAdapter(['trx_id' => 'DGFLZ-1']))->fulfill($order);
 
@@ -301,7 +301,7 @@ class OrderFulfillmentServiceTest extends TestCase
      */
     public function test_fulfill_skips_ledger_credit_for_a_test_order(): void
     {
-        $order = $this->paidOrder(['is_test' => true, 'platform_profit' => 150, 'reseller_profit' => 50]);
+        $order = $this->paidOrder(['is_test' => true, 'platform_profit' => 150, 'affiliate_profit' => 50]);
 
         $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'SANDBOX-1']))->fulfill($order);
 
@@ -378,7 +378,7 @@ class OrderFulfillmentServiceTest extends TestCase
      */
     public function test_fulfill_commits_a_reserved_voucher_redemption_on_delivery(): void
     {
-        $voucher = \App\Models\Voucher::query()->create([
+        $voucher = Voucher::query()->create([
             'code' => 'VC-TESTCOMMIT',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,
@@ -389,7 +389,7 @@ class OrderFulfillmentServiceTest extends TestCase
 
         $order = $this->paidOrder(['voucher_id' => $voucher->id, 'voucher_discount' => 500]);
 
-        \App\Models\VoucherRedemption::query()->create([
+        VoucherRedemption::query()->create([
             'voucher_id' => $voucher->id,
             'order_id' => $order->id,
             'amount' => 500,
@@ -398,7 +398,7 @@ class OrderFulfillmentServiceTest extends TestCase
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($order);
 
-        $this->assertSame('committed', \App\Models\VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+        $this->assertSame('committed', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
         // Committing must never touch the voucher's own remaining balance.
         $this->assertSame(500, $voucher->fresh()->remaining);
     }
@@ -457,14 +457,14 @@ class OrderFulfillmentServiceTest extends TestCase
         $order = $this->paidOrder([
             'delivery_status' => DeliveryStatus::NeedsReview->value,
             'platform_profit' => 150,
-            'reseller_profit' => 50,
+            'affiliate_profit' => 50,
         ]);
 
         $this->service($this->fakeSupplierAdapter(true))
             ->markDeliveredManually($order, 'GV-RAPI-MANUAL2', null, 'Jane Admin');
 
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
-        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'affiliate')->sum('amount'));
     }
 
     /**
@@ -492,7 +492,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $order = $this->paidOrder([
             'delivery_status' => DeliveryStatus::Pending->value,
             'platform_profit' => 150,
-            'reseller_profit' => 50,
+            'affiliate_profit' => 50,
         ]);
 
         $result = $this->service($this->fakeSupplierAdapter(true))
@@ -502,7 +502,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertSame('DGFLZ-FINAL-1', $result->supplier_ref);
         $this->assertSame(['status' => 'Sukses'], $result->supplier_response);
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
-        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'reseller')->sum('amount'));
+        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'affiliate')->sum('amount'));
         $this->assertNotNull($result->delivered_at);
     }
 
@@ -527,7 +527,7 @@ class OrderFulfillmentServiceTest extends TestCase
 
     public function test_finalize_pending_delivery_commits_a_reserved_voucher_redemption_on_success(): void
     {
-        $voucher = \App\Models\Voucher::query()->create([
+        $voucher = Voucher::query()->create([
             'code' => 'VC-TESTPENDINGCOMMIT',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,
@@ -540,7 +540,7 @@ class OrderFulfillmentServiceTest extends TestCase
             'voucher_id' => $voucher->id,
             'voucher_discount' => 500,
         ]);
-        \App\Models\VoucherRedemption::query()->create([
+        VoucherRedemption::query()->create([
             'voucher_id' => $voucher->id,
             'order_id' => $order->id,
             'amount' => 500,
@@ -550,7 +550,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->service($this->fakeSupplierAdapter(true))
             ->finalizePendingDelivery($order, SupplierOutcome::Success, 'DGFLZ-FINAL-2');
 
-        $this->assertSame('committed', \App\Models\VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+        $this->assertSame('committed', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
     }
 
     /**
@@ -573,7 +573,7 @@ class OrderFulfillmentServiceTest extends TestCase
     {
         $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Pending->value]);
 
-        $this->expectException(\App\Services\Fulfillment\OrderFulfillmentException::class);
+        $this->expectException(OrderFulfillmentException::class);
 
         $this->service($this->fakeSupplierAdapter(true))
             ->finalizePendingDelivery($order, SupplierOutcome::Pending);

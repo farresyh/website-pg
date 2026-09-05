@@ -5,27 +5,27 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\SeoController as PublicSeoController;
 use App\Http\Requests\Seo\SaveRedirectRequest;
+use App\Models\Affiliate;
 use App\Models\Redirect;
-use App\Models\Reseller;
 use Illuminate\Http\JsonResponse;
 
-/** ADR-029 decision 3/9: admin CRUD over reseller-scoped path redirects. */
+/** ADR-029 decision 3/9: admin CRUD over affiliate-scoped path redirects. */
 class RedirectController extends Controller
 {
     public function index(): JsonResponse
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         return response()->json(
-            Redirect::query()->where('reseller_id', $reseller->id)->orderByDesc('hit_count')->get(),
+            Redirect::query()->where('affiliate_id', $affiliate->id)->orderByDesc('hit_count')->get(),
         );
     }
 
     public function store(SaveRedirectRequest $request): JsonResponse
     {
-        $reseller = Reseller::primary();
-        $redirect = Redirect::query()->create([...$request->validated(), 'reseller_id' => $reseller->id]);
-        PublicSeoController::forgetCache($reseller->id);
+        $affiliate = Affiliate::primary();
+        $redirect = Redirect::query()->create([...$request->validated(), 'affiliate_id' => $affiliate->id]);
+        PublicSeoController::forgetCache($affiliate->id);
 
         return response()->json($redirect, 201);
     }
@@ -33,16 +33,16 @@ class RedirectController extends Controller
     public function update(SaveRedirectRequest $request, Redirect $redirect): JsonResponse
     {
         $redirect->update($request->validated());
-        PublicSeoController::forgetCache($redirect->reseller_id);
+        PublicSeoController::forgetCache($redirect->affiliate_id);
 
         return response()->json($redirect);
     }
 
     public function destroy(Redirect $redirect): JsonResponse
     {
-        $resellerId = $redirect->reseller_id;
+        $affiliateId = $redirect->affiliate_id;
         $redirect->delete();
-        PublicSeoController::forgetCache($resellerId);
+        PublicSeoController::forgetCache($affiliateId);
 
         return response()->json(null, 204);
     }

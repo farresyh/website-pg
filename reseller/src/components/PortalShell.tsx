@@ -1,28 +1,79 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { useClientSession } from "@/hooks/useClientSession";
 import { clearClientSession, getClientSession } from "@/lib/session";
-import { useTheme } from "@/context/ThemeContext";
+import PanelSidebar, { type PanelNavSection } from "@/layout/PanelSidebar";
+import PortalHeader from "@/layout/PortalHeader";
+import Backdrop from "@/layout/Backdrop";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import { GridIcon, ListIcon, DollarLineIcon, TrendUpIcon, BoxLineIcon, UserCircleIcon, KeyIcon } from "@/icons";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/orders", label: "Orders" },
-  { href: "/earnings", label: "Earnings" },
-  { href: "/withdrawal", label: "Withdrawal" },
-  { href: "/subscription", label: "Subscription" },
-  { href: "/profile", label: "Profile" },
+const AFFILIATE_SECTIONS: PanelNavSection[] = [
+  {
+    title: "Menu",
+    items: [
+      { kind: "link", name: "Dashboard", href: "/dashboard", icon: <GridIcon /> },
+      { kind: "link", name: "Orders", href: "/orders", icon: <ListIcon /> },
+      { kind: "link", name: "Earnings", href: "/earnings", icon: <TrendUpIcon /> },
+      { kind: "link", name: "Withdrawal", href: "/withdrawal", icon: <DollarLineIcon /> },
+      { kind: "link", name: "Subscription", href: "/subscription", icon: <BoxLineIcon /> },
+      { kind: "link", name: "Profile", href: "/profile", icon: <UserCircleIcon /> },
+    ],
+  },
 ];
 
+// ADR-072 decision 5 / PR-G: a Reseller (wallet) portal account never
+// sees Earnings/Subscription/Withdrawal (it only ever spends, never
+// earns) — Wallet + API Keys replace them. An Affiliate never sees
+// Wallet/API-Keys, the reverse of the same rule.
+const RESELLER_SECTIONS: PanelNavSection[] = [
+  {
+    title: "Menu",
+    items: [
+      { kind: "link", name: "Dashboard", href: "/dashboard", icon: <GridIcon /> },
+      { kind: "link", name: "Orders", href: "/orders", icon: <ListIcon /> },
+      { kind: "link", name: "Wallet", href: "/wallet", icon: <DollarLineIcon /> },
+      { kind: "link", name: "API Keys", href: "/api-keys", icon: <KeyIcon /> },
+      { kind: "link", name: "Profile", href: "/profile", icon: <UserCircleIcon /> },
+    ],
+  },
+];
+
+/**
+ * Shared chrome for the portal — mirrors `admin/src/layout/PanelShell.tsx`
+ * + `AppSidebar.tsx` structurally (collapsible desktop rail, off-canvas
+ * mobile drawer + backdrop, sticky header with the same toggle) so this
+ * app's responsive behavior can never visually drift from the admin/
+ * middleware panels again (founder feedback, 2026-09-05). `reseller/`
+ * has no shared workspace with `admin/`, so `PanelSidebar`/`Backdrop`/
+ * `SidebarContext` here are maintained copies, not imports — see
+ * PanelSidebar.tsx's own header comment.
+ */
 export default function PortalShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  return (
+    <SidebarProvider>
+      <PortalShellFrame>{children}</PortalShellFrame>
+    </SidebarProvider>
+  );
+}
+
+function PortalShellFrame({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const session = useClientSession();
-  const { theme, toggleTheme } = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
+  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+
+  const isReseller = session?.owner_type === "reseller";
+  const sections = isReseller ? RESELLER_SECTIONS : AFFILIATE_SECTIONS;
+
+  const mainContentMargin = isMobileOpen
+    ? "ml-0"
+    : isExpanded || isHovered
+      ? "lg:ml-[290px]"
+      : "lg:ml-[90px]";
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -40,59 +91,32 @@ export default function PortalShell({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen lg:flex">
-      <aside className="border-b border-gray-200 bg-white px-4 py-4 lg:h-screen lg:w-64 lg:border-b-0 lg:border-r dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="mb-6 px-2">
-          <p className="text-theme-xs font-medium uppercase tracking-wide text-gray-400">
-            Reseller Portal
-          </p>
-          <p className="mt-0.5 truncate text-sm font-semibold text-gray-800 dark:text-white/90">
-            {session?.business_name || "—"}
-          </p>
-        </div>
-        <nav className="flex gap-1 lg:flex-col">
-          {NAV.map((item) => {
-            const active =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`menu-item ${active ? "menu-item-active" : "menu-item-inactive"}`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
+    <div className="min-h-screen xl:flex">
+      <PanelSidebar
+        homeHref="/dashboard"
+        brandLabel="PekanGame"
+        shortLabel="PG"
+        sections={sections}
+        extra={
+          <>
+            <p className="mt-1 text-theme-xs font-medium uppercase tracking-wide text-gray-400">
+              {isReseller ? "Reseller Portal" : "Affiliate Portal"}
+            </p>
+            <p className="mt-0.5 truncate text-sm font-medium text-gray-600 dark:text-gray-300">
+              {session?.business_name || "—"}
+            </p>
+          </>
+        }
+      />
+      <Backdrop />
 
-      <div className="flex-1">
-        <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-white/[0.03]">
-          <div className="text-theme-sm text-gray-500 dark:text-gray-400">
-            {session ? `${session.name} · ${session.email}` : ""}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
-            >
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
-            >
-              {loggingOut ? "Signing out…" : "Sign out"}
-            </button>
-          </div>
-        </header>
-
+      <div className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
+        <PortalHeader
+          sessionLabel={session ? `${session.name} · ${session.email}` : ""}
+          onSignOut={handleLogout}
+          signingOut={loggingOut}
+        />
         <ImpersonationBanner />
-
         <main className="mx-auto max-w-(--breakpoint-xl) p-4 md:p-6">{children}</main>
       </div>
     </div>

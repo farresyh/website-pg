@@ -3,11 +3,11 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
-use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Membership\MembershipSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,8 +32,8 @@ class CatalogControllerTest extends TestCase
         parent::setUp();
 
         // ADR-061: these endpoints resolve the platform storefront via
-        // Reseller::primary(), which fails loud when it is absent.
-        $this->primaryReseller();
+        // Affiliate::primary(), which fails loud when it is absent.
+        $this->primaryAffiliate();
     }
 
     private function makeSupplier(): Supplier
@@ -89,7 +89,7 @@ class CatalogControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/games');
 
         $response->assertOk();
-        // Platform Owner reseller markup_pct=0 (ADR-013) — selling_price equals standard_selling_price in MVP.
+        // Platform Owner affiliate markup_pct=0 (ADR-013) — selling_price equals standard_selling_price in MVP.
         $this->assertSame(300, $response->json()[0]['price_from_sen']);
     }
 
@@ -154,9 +154,9 @@ class CatalogControllerTest extends TestCase
         }
     }
 
-    public function test_packages_applies_reseller_markup_to_the_selling_price(): void
+    public function test_packages_applies_affiliate_markup_to_the_selling_price(): void
     {
-        $this->primaryReseller()->update(['markup_pct' => 10]);
+        $this->primaryAffiliate()->update(['markup_pct' => 10]);
         $supplier = $this->makeSupplier();
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
         Package::query()->create([
@@ -218,6 +218,65 @@ class CatalogControllerTest extends TestCase
         Package::query()->create([
             'game_id' => $game->id, 'name' => 'Weekly Pass', 'denomination' => null,
             'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-WP', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $this->assertCount(2, $response->json());
+    }
+
+    /**
+     * ADR-075's catalog-code addendum (2026-09-04): the same dedup
+     * rule as denomination, applied to bundle/pass packages via
+     * catalog_code instead — two suppliers' equivalent "Weekly Pass"
+     * (admin-linked via the same catalog_code) must show only the
+     * cheaper one, same as a real-value package would.
+     */
+    public function test_packages_dedups_by_catalog_code_keeping_the_cheaper_one(): void
+    {
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass (Gamevion)', 'catalog_code' => 'P1',
+            'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'GV-WP', 'is_active' => true,
+        ]);
+        $cheaper = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass (Digiflazz)', 'catalog_code' => 'P1',
+            'cost_price' => 480, 'standard_selling_price' => 550,
+            'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'DF-WP', 'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mobile-legends/packages');
+
+        $response->assertOk();
+        $packages = $response->json();
+        $this->assertCount(1, $packages);
+        $this->assertSame($cheaper->id, $packages[0]['id']);
+        $this->assertSame(550, $packages[0]['selling_price_sen']);
+    }
+
+    /**
+     * A catalog_code group and a denomination group never interact —
+     * even if a bundle/pass's catalog_code happens to look like a
+     * denomination value elsewhere, they occupy different columns and
+     * are never compared against one another.
+     */
+    public function test_packages_catalog_code_and_denomination_groups_never_collide(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamonds', 'denomination' => 14,
+            'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV14', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass', 'catalog_code' => 'P1',
+            'cost_price' => 400, 'standard_selling_price' => 450,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-WP', 'is_active' => true,
         ]);
 
@@ -372,7 +431,7 @@ class CatalogControllerTest extends TestCase
 
         $tier1 = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'tier1-member@example.com',
             'membership_plan_id' => $tier1->id,
             'status' => 'active',
@@ -380,7 +439,7 @@ class CatalogControllerTest extends TestCase
             'quota_remaining_sen' => 30000,
             'expires_at' => now()->addDays(20),
         ]);
-        $token = app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, 'tier1-member@example.com');
+        $token = app(MembershipSessionTokenService::class)->issue($this->primaryAffiliate()->id, 'tier1-member@example.com');
 
         // Anonymous request still gets Tier 2's anchor, unaffected.
         $anonymous = $this->getJson('/api/catalog/games/free-fire-global/packages');

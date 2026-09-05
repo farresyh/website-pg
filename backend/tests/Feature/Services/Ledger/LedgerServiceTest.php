@@ -33,27 +33,27 @@ class LedgerServiceTest extends TestCase
     public function test_withdraw_decreases_balance_when_sufficient(): void
     {
         $service = app(LedgerService::class);
-        $service->openAccount('reseller', 1);
-        $service->credit('reseller', 1, 1000, 'order_profit', 'order', 1);
+        $service->openAccount('affiliate', 1);
+        $service->credit('affiliate', 1, 1000, 'order_profit', 'order', 1);
 
-        $service->withdraw('reseller', 1, 400, 'withdrawal', 55);
+        $service->withdraw('affiliate', 1, 400, 'withdrawal', 55);
 
-        $this->assertSame(600, $service->balance('reseller', 1));
+        $this->assertSame(600, $service->balance('affiliate', 1));
     }
 
     public function test_withdraw_rejects_when_insufficient_balance_and_leaves_balance_unchanged(): void
     {
         $service = app(LedgerService::class);
-        $service->openAccount('reseller', 2);
-        $service->credit('reseller', 2, 300, 'order_profit', 'order', 1);
+        $service->openAccount('affiliate', 2);
+        $service->credit('affiliate', 2, 300, 'order_profit', 'order', 1);
 
         try {
-            $service->withdraw('reseller', 2, 400, 'withdrawal', 56);
+            $service->withdraw('affiliate', 2, 400, 'withdrawal', 56);
             $this->fail('Expected InsufficientBalanceException was not thrown.');
         } catch (InsufficientBalanceException) {
             // expected
         }
 
-        $this->assertSame(300, $service->balance('reseller', 2));
+        $this->assertSame(300, $service->balance('affiliate', 2));
     }
 }

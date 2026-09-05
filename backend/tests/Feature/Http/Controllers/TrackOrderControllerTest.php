@@ -20,7 +20,7 @@ class TrackOrderControllerTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -31,7 +31,7 @@ class TrackOrderControllerTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Delivered->value,
         ], $overrides));
@@ -76,7 +76,7 @@ class TrackOrderControllerTest extends TestCase
 
         $response->assertOk();
         $keys = array_keys($response->json());
-        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'reseller_profit', 'supplier_response', 'payment_ref', 'supplier_ref', 'customer_name', 'customer_email', 'customer_phone'] as $forbidden) {
+        foreach (['cost_price', 'standard_selling_price', 'platform_profit', 'affiliate_profit', 'supplier_response', 'payment_ref', 'supplier_ref', 'customer_name', 'customer_email', 'customer_phone'] as $forbidden) {
             $this->assertNotContains($forbidden, $keys, "leaked $forbidden");
         }
 

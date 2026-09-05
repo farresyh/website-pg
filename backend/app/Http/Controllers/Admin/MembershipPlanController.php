@@ -6,11 +6,11 @@ use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Membership\UpdateMembershipEnabledRequest;
 use App\Http\Requests\Membership\UpdateMembershipPlanRequest;
+use App\Models\Affiliate;
 use App\Models\MembershipPlan;
 use App\Models\MembershipPlanChange;
 use App\Models\Package;
 use App\Models\PlatformSettings;
-use App\Models\Reseller;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use Illuminate\Http\JsonResponse;
@@ -64,12 +64,12 @@ class MembershipPlanController extends Controller
             return response()->json(['package_name' => null]);
         }
 
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
         $packageMarkupPercent = (float) $package->markup_percent;
         $normalPriceSen = $this->pricing->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $reseller->markup_pct,
+            (float) $affiliate->markup_pct,
         )->sellingPrice;
         $effectiveMarkupPercent = $this->membershipPricing->effectiveMarkupPercent($packageMarkupPercent, $discountPercent);
         $memberPriceSen = $this->membershipPricing->calculateMemberPrice(

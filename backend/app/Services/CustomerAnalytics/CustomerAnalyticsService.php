@@ -37,7 +37,7 @@ use Illuminate\Support\Collection;
  *   constants below.
  * - Computed live on every request, no caching (decision 6) — matches
  *   ReportService's own precedent.
- * - Reseller-aware from day one via an optional $resellerId filter,
+ * - Affiliate-aware from day one via an optional $affiliateId filter,
  *   mirroring ReportService/ADR-013 (decision 7).
  *
  * All money figures are integer sen. All "days ago" comparisons use
@@ -61,16 +61,16 @@ final class CustomerAnalyticsService
      * lifetime question by definition, so it's evaluated against each
      * scoped customer's lifetime order count, not their in-range count.
      */
-    public function stats(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    public function stats(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $scoped = $this->aggregatesByEmail($from, $toExclusive, $resellerId);
+        $scoped = $this->aggregatesByEmail($from, $toExclusive, $affiliateId);
 
         $totalCustomers = count($scoped);
         $totalSpent = array_sum(array_column($scoped, 'total_spent'));
         $totalOrders = array_sum(array_column($scoped, 'orders_count'));
 
         $isFiltered = $from !== null || $toExclusive !== null;
-        $lifetime = $isFiltered ? $this->aggregatesByEmail(null, null, $resellerId) : $scoped;
+        $lifetime = $isFiltered ? $this->aggregatesByEmail(null, null, $affiliateId) : $scoped;
 
         $repeatCustomers = 0;
         foreach (array_keys($scoped) as $email) {
@@ -109,12 +109,12 @@ final class CustomerAnalyticsService
      *
      * @return list<array<string, mixed>>
      */
-    public function customers(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId, ?CustomerSegment $segmentFilter): array
+    public function customers(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, ?CustomerSegment $segmentFilter): array
     {
-        $lifetime = $this->aggregatesByEmail(null, null, $resellerId);
+        $lifetime = $this->aggregatesByEmail(null, null, $affiliateId);
 
         $isFiltered = $from !== null || $toExclusive !== null;
-        $period = $isFiltered ? $this->aggregatesByEmail($from, $toExclusive, $resellerId) : null;
+        $period = $isFiltered ? $this->aggregatesByEmail($from, $toExclusive, $affiliateId) : null;
 
         $vipThresholdSen = PlatformSettings::current()->vip_spend_threshold_sen;
 
@@ -158,7 +158,7 @@ final class CustomerAnalyticsService
      * if the email has no Paid, non-test orders at all.
      *
      * Two deliberately different scopes on one page (ADR-050 decision
-     * 2): stats/monthly-trend/top-packages/top-resellers/order-history
+     * 2): stats/monthly-trend/top-packages/top-affiliates/order-history
      * are Paid-scoped (same rule as the list screen); the Profit
      * Analysis panel is scoped to *delivered* orders only, so its five
      * lines (Revenue/Cost/Commission/Fees/Profit) share one population
@@ -166,8 +166,8 @@ final class CustomerAnalyticsService
      * contributes real spend but zero recognized profit (ReportService's
      * own rule), which would silently break that arithmetic.
      *
-     * Always the customer's full lifetime data across every reseller
-     * (ADR-050 decision 6) — the $resellerId list-filter is deliberately
+     * Always the customer's full lifetime data across every affiliate
+     * (ADR-050 decision 6) — the $affiliateId list-filter is deliberately
      * not accepted here.
      *
      * @return array<string, mixed>|null
@@ -176,7 +176,7 @@ final class CustomerAnalyticsService
     {
         $orders = $this->scopedOrders(null)
             ->where('customer_email', $customerEmail)
-            ->with(['package:id,name', 'reseller:id,business_name'])
+            ->with(['package:id,name', 'affiliate:id,business_name'])
             ->orderByDesc('paid_at')
             ->get();
 
@@ -207,10 +207,10 @@ final class CustomerAnalyticsService
             ->get(['reference_id', 'owner_type', 'amount'])
             ->groupBy('reference_id');
 
-        $resellerCommission = 0;
+        $affiliateCommission = 0;
         $systemProfit = 0;
         foreach ($profitByOrder as $entries) {
-            $resellerCommission += (int) $entries->where('owner_type', LedgerOwnerType::Reseller->value)->sum('amount');
+            $affiliateCommission += (int) $entries->where('owner_type', LedgerOwnerType::Affiliate->value)->sum('amount');
             $systemProfit += (int) $entries->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount');
         }
 
@@ -232,7 +232,7 @@ final class CustomerAnalyticsService
             'profit_analysis' => [
                 'total_revenue' => (int) $delivered->sum('final_amount'),
                 'supplier_cost' => (int) $delivered->sum('cost_price'),
-                'reseller_commission' => $resellerCommission,
+                'affiliate_commission' => $affiliateCommission,
                 'transaction_fees' => (int) $delivered->sum('transaction_fee'),
                 'system_profit' => $systemProfit,
             ],
@@ -242,10 +242,10 @@ final class CustomerAnalyticsService
                 'package_id',
                 fn (Order $o) => $o->package?->name ?? 'Unknown Package',
             ),
-            'top_resellers' => $this->topSpendBreakdown(
+            'top_affiliates' => $this->topSpendBreakdown(
                 $orders,
-                'reseller_id',
-                fn (Order $o) => $o->reseller?->business_name ?? 'Unknown Reseller',
+                'affiliate_id',
+                fn (Order $o) => $o->affiliate?->business_name ?? 'Unknown Affiliate',
             ),
             'order_history' => $orders->map(function (Order $order) use ($profitByOrder) {
                 // Order.delivery_status is cast to the DeliveryStatus enum
@@ -261,9 +261,9 @@ final class CustomerAnalyticsService
                     'order_number' => $order->order_number,
                     'paid_at' => $order->paid_at->setTimezone(self::TIMEZONE)->toIso8601String(),
                     'package_name' => $order->package?->name ?? 'Unknown Package',
-                    'reseller_name' => $order->reseller?->business_name ?? 'Unknown Reseller',
+                    'affiliate_name' => $order->affiliate?->business_name ?? 'Unknown Affiliate',
                     'final_amount' => $order->final_amount,
-                    'reseller_profit' => $isDelivered ? (int) $entries?->where('owner_type', LedgerOwnerType::Reseller->value)->sum('amount') : null,
+                    'affiliate_profit' => $isDelivered ? (int) $entries?->where('owner_type', LedgerOwnerType::Affiliate->value)->sum('amount') : null,
                     'system_profit' => $isDelivered ? (int) $entries?->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount') : null,
                     'delivery_status' => $order->delivery_status,
                 ];
@@ -313,7 +313,7 @@ final class CustomerAnalyticsService
 
     /**
      * ADR-050 decision 4 — top 5 by spend, Paid-scoped, grouped by an
-     * arbitrary FK column (package_id/reseller_id) already eager-loaded
+     * arbitrary FK column (package_id/affiliate_id) already eager-loaded
      * onto $orders.
      *
      * @return list<array{id: ?int, name: string, orders_count: int, total_spent: int, pct_of_spend: float}>
@@ -384,9 +384,9 @@ final class CustomerAnalyticsService
      *
      * @return array<string, array{orders_count: int, total_spent: int, first_order_at: CarbonImmutable, last_order_at: CarbonImmutable, customer_name: ?string}>
      */
-    private function aggregatesByEmail(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $resellerId): array
+    private function aggregatesByEmail(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $query = $this->scopedOrders($resellerId);
+        $query = $this->scopedOrders($affiliateId);
 
         if ($from !== null) {
             $query->where('paid_at', '>=', $from);
@@ -432,15 +432,15 @@ final class CustomerAnalyticsService
         return $result;
     }
 
-    private function scopedOrders(?int $resellerId): Builder
+    private function scopedOrders(?int $affiliateId): Builder
     {
         $query = Order::query()
             ->where('is_test', false)
             ->where('payment_status', PaymentStatus::Paid->value)
             ->whereNotNull('paid_at');
 
-        if ($resellerId !== null) {
-            $query->where('reseller_id', $resellerId);
+        if ($affiliateId !== null) {
+            $query->where('affiliate_id', $affiliateId);
         }
 
         return $query;

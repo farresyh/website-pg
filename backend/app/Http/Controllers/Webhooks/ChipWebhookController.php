@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Jobs\FulfillOrderJob;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\Order;
+use App\Models\WalletTopupAttempt;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSubscriptionService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentWebhookEvent;
+use App\Services\Reseller\ResellerWalletService;
+use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +45,7 @@ class ChipWebhookController extends Controller
         PaymentGatewayFactory $gatewayFactory,
         private readonly VoucherService $vouchers,
         private readonly MembershipSubscriptionService $subscriptions,
+        private readonly ResellerWalletService $wallets,
     ) {
         $this->paymentGateway = $gatewayFactory->make('chip');
     }
@@ -69,6 +73,18 @@ class ChipWebhookController extends Controller
 
             if ($attempt !== null) {
                 return $this->handleMembershipAttempt($attempt, $event);
+            }
+
+            // PR-G planning addendum decision 11 — the third fallback
+            // branch: not an order or a membership attempt, try a
+            // self-serve wallet top-up, matched on our own
+            // WalletTopupAttempt.reference.
+            $topupAttempt = WalletTopupAttempt::query()
+                ->where('reference', $event->referenceId)
+                ->first();
+
+            if ($topupAttempt !== null) {
+                return $this->handleWalletTopupAttempt($topupAttempt, $event);
             }
 
             Log::warning('Rejected CHIP webhook: no order found', [
@@ -168,6 +184,49 @@ class ChipWebhookController extends Controller
         }
 
         $this->subscriptions->completePaidAttempt($attempt);
+
+        return response()->json(['message' => 'ok']);
+    }
+
+    /**
+     * PR-G planning addendum decision 11 — the wallet-top-up branch.
+     * Same shape as the order/membership branches: dedupe a repeat
+     * delivery, acknowledge a non-paid status, cross-check the amount
+     * against the snapshot the attempt froze at creation
+     * (`total_charged_sen`, the fee-inclusive CHIP charge — never
+     * `amount_sen`, the wallet-credited value), then hand a genuine
+     * paid event to the one shared seam.
+     */
+    private function handleWalletTopupAttempt(WalletTopupAttempt $attempt, PaymentWebhookEvent $event): JsonResponse
+    {
+        Log::withContext([
+            'wallet_topup_reference' => $attempt->reference,
+            'payment_request_id' => $event->paymentRequestId,
+            'event_type' => $event->eventType,
+        ]);
+
+        if ($attempt->status === WalletTopupAttemptStatus::Paid) {
+            return response()->json(['message' => 'already processed']);
+        }
+
+        if ($event->status !== PaymentStatus::Paid) {
+            if ($event->status === PaymentStatus::Failed) {
+                $attempt->update(['status' => WalletTopupAttemptStatus::Failed->value]);
+            }
+
+            return response()->json(['message' => 'acknowledged']);
+        }
+
+        if ($event->amountSen !== $attempt->total_charged_sen) {
+            Log::error('Rejected CHIP webhook: wallet top-up amount mismatch', [
+                'expected_sen' => $attempt->total_charged_sen,
+                'received_sen' => $event->amountSen,
+            ]);
+
+            return response()->json(['message' => 'amount mismatch'], 409);
+        }
+
+        $this->wallets->completeTopup($attempt);
 
         return response()->json(['message' => 'ok']);
     }

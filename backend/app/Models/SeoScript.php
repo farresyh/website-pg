@@ -5,11 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** ADR-029 addendum 2 decision 13: admin-authored head/body_end script, null reseller_id = global. */
+/** ADR-029 addendum 2 decision 13: admin-authored head/body_end script, null affiliate_id = global. */
 class SeoScript extends Model
 {
     protected $fillable = [
-        'reseller_id',
+        'affiliate_id',
         'name',
         'location',
         'code',
@@ -22,8 +22,8 @@ class SeoScript extends Model
         'is_active' => 'boolean',
     ];
 
-    public function reseller(): BelongsTo
+    public function affiliate(): BelongsTo
     {
-        return $this->belongsTo(Reseller::class);
+        return $this->belongsTo(Affiliate::class);
     }
 }

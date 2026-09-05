@@ -3,10 +3,10 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipPlan;
-use App\Models\Reseller;
 use App\Services\Membership\MembershipFeeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -19,21 +19,21 @@ use Tests\TestCase;
  * `super_admin` only, same tier as membership-plans.
  *
  * ADR-061 decision 5 (PR-B): a membership belongs to one brand — every
- * record-payment call names the `reseller_id`, and the registry can be
+ * record-payment call names the `affiliate_id`, and the registry can be
  * filtered by it.
  */
 class MembershipControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    private Reseller $brand;
+    private Affiliate $brand;
 
     protected function setUp(): void
     {
         parent::setUp();
-        // The primary reseller is internal + membership-enabled (the
+        // The primary affiliate is internal + membership-enabled (the
         // helper's defaults), so it is a valid record-payment target.
-        $this->brand = $this->primaryReseller();
+        $this->brand = $this->primaryAffiliate();
         // ADR-068 decision 9: recordFeePaid() now dispatches the receipt
         // email; fake the queue so a booked payment doesn't reach Plunk.
         Queue::fake();
@@ -67,7 +67,7 @@ class MembershipControllerTest extends TestCase
         $plan = $this->tier1();
 
         Membership::query()->create([
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'active@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -78,7 +78,7 @@ class MembershipControllerTest extends TestCase
 
         // Lapsed but status not yet flipped by the sweep — must read expired (Q15).
         Membership::query()->create([
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'lapsed@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -102,7 +102,7 @@ class MembershipControllerTest extends TestCase
     {
         $this->actingAsSuperAdmin();
         $plan = $this->tier1();
-        $otherBrand = Reseller::query()->create([
+        $otherBrand = Affiliate::query()->create([
             'business_name' => 'Sister Brand',
             'markup_pct' => 0,
             'status' => 'active',
@@ -111,25 +111,25 @@ class MembershipControllerTest extends TestCase
         ]);
 
         Membership::query()->create([
-            'reseller_id' => $this->brand->id, 'email' => 'a@example.com', 'membership_plan_id' => $plan->id,
+            'affiliate_id' => $this->brand->id, 'email' => 'a@example.com', 'membership_plan_id' => $plan->id,
             'status' => 'active', 'cycle_started_at' => now(), 'quota_remaining_sen' => 1, 'expires_at' => now()->addDay(),
         ]);
         Membership::query()->create([
-            'reseller_id' => $otherBrand->id, 'email' => 'b@example.com', 'membership_plan_id' => $plan->id,
+            'affiliate_id' => $otherBrand->id, 'email' => 'b@example.com', 'membership_plan_id' => $plan->id,
             'status' => 'active', 'cycle_started_at' => now(), 'quota_remaining_sen' => 1, 'expires_at' => now()->addDay(),
         ]);
 
-        $rows = $this->getJson("/api/memberships?reseller_id={$otherBrand->id}")->assertOk()->json('data');
+        $rows = $this->getJson("/api/memberships?affiliate_id={$otherBrand->id}")->assertOk()->json('data');
 
         $this->assertCount(1, $rows);
         $this->assertSame('b@example.com', $rows[0]['email']);
     }
 
-    public function test_brands_lists_only_internal_membership_enabled_resellers(): void
+    public function test_brands_lists_only_internal_membership_enabled_affiliates(): void
     {
         $this->actingAsSuperAdmin();
-        Reseller::query()->create(['business_name' => 'Third-party', 'markup_pct' => 5, 'status' => 'active', 'is_owned' => false, 'membership_enabled' => false]);
-        Reseller::query()->create(['business_name' => 'Internal, membership off', 'markup_pct' => 0, 'status' => 'active', 'is_owned' => true, 'membership_enabled' => false]);
+        Affiliate::query()->create(['business_name' => 'Third-party', 'markup_pct' => 5, 'status' => 'active', 'is_owned' => false, 'membership_enabled' => false]);
+        Affiliate::query()->create(['business_name' => 'Internal, membership off', 'markup_pct' => 0, 'status' => 'active', 'is_owned' => true, 'membership_enabled' => false]);
 
         $brands = $this->getJson('/api/memberships/brands')->assertOk()->json();
 
@@ -142,20 +142,20 @@ class MembershipControllerTest extends TestCase
         $plan = $this->tier1();
 
         $this->postJson('/api/memberships/record-payment', [
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'new@example.com',
             'membership_plan_id' => $plan->id,
             'amount_sen' => $plan->fee_sen,
             'idempotency_key' => 'key-record-1',
         ])->assertOk()->assertJson([
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'new@example.com',
             'plan_id' => $plan->id,
             'status' => 'active',
         ]);
 
         $this->assertDatabaseHas('memberships', [
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'new@example.com',
         ]);
     }
@@ -164,15 +164,15 @@ class MembershipControllerTest extends TestCase
     {
         $this->actingAsSuperAdmin();
         $plan = $this->tier1();
-        $thirdParty = Reseller::query()->create(['business_name' => 'Reseller X', 'markup_pct' => 8, 'status' => 'active', 'is_owned' => false]);
+        $thirdParty = Affiliate::query()->create(['business_name' => 'Affiliate X', 'markup_pct' => 8, 'status' => 'active', 'is_owned' => false]);
 
         $this->postJson('/api/memberships/record-payment', [
-            'reseller_id' => $thirdParty->id,
+            'affiliate_id' => $thirdParty->id,
             'email' => 'new@example.com',
             'membership_plan_id' => $plan->id,
             'amount_sen' => $plan->fee_sen,
             'idempotency_key' => 'key-record-x',
-        ])->assertUnprocessable()->assertJsonValidationErrors('reseller_id');
+        ])->assertUnprocessable()->assertJsonValidationErrors('affiliate_id');
     }
 
     public function test_record_payment_requires_reason_when_amount_deviates_from_plan_fee(): void
@@ -181,7 +181,7 @@ class MembershipControllerTest extends TestCase
         $plan = $this->tier1();
 
         $this->postJson('/api/memberships/record-payment', [
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'promo@example.com',
             'membership_plan_id' => $plan->id,
             'amount_sen' => $plan->fee_sen + 100, // deviates, no reason
@@ -195,7 +195,7 @@ class MembershipControllerTest extends TestCase
         $plan = $this->tier1();
 
         $this->postJson('/api/memberships/record-payment', [
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'promo@example.com',
             'membership_plan_id' => $plan->id,
             'amount_sen' => 500,
@@ -219,7 +219,7 @@ class MembershipControllerTest extends TestCase
 
         // A failed self-serve attempt for the same email — must be visible.
         MembershipCheckoutAttempt::query()->create([
-            'reseller_id' => $this->brand->id,
+            'affiliate_id' => $this->brand->id,
             'email' => 'detail@example.com',
             'membership_plan_id' => $plan->id,
             'fee_sen' => $plan->fee_sen,
@@ -261,7 +261,7 @@ class MembershipControllerTest extends TestCase
     {
         $plan = $this->tier1();
         $membership = Membership::query()->create([
-            'reseller_id' => $this->brand->id, 'email' => 'x@example.com', 'membership_plan_id' => $plan->id,
+            'affiliate_id' => $this->brand->id, 'email' => 'x@example.com', 'membership_plan_id' => $plan->id,
             'status' => 'active', 'cycle_started_at' => now(), 'quota_remaining_sen' => 1, 'expires_at' => now()->addDay(),
         ]);
 

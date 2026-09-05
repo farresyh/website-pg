@@ -43,14 +43,14 @@ class ResendOrderDeliveryJobTest extends TestCase
 
         return new OrderResendService(
             new OrderFulfillmentService(
-                new OrderStatusService(),
-                new ReferenceNumberService(),
+                new OrderStatusService,
+                new ReferenceNumberService,
                 $this->app->make(SupplierAdapterFactory::class),
-                new LedgerService(),
-                new VoucherService(new LedgerService()),
+                new LedgerService,
+                new VoucherService(new LedgerService),
             ),
-            new PricingService(),
-            new MembershipPricingService(),
+            new PricingService,
+            new MembershipPricingService,
         );
     }
 
@@ -98,7 +98,7 @@ class ResendOrderDeliveryJobTest extends TestCase
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
         $order = Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-RESEND-JOB-1',
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -108,12 +108,12 @@ class ResendOrderDeliveryJobTest extends TestCase
             'supplier_product_ref' => $package->supplier_package_ref,
             'cost_price' => 900,
             'standard_selling_price' => 900,
-            'reseller_markup_pct' => 0,
+            'affiliate_markup_pct' => 0,
             'selling_price' => 1000,
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);

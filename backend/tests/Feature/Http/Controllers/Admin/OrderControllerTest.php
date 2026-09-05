@@ -9,8 +9,11 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Models\Voucher;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,7 +33,7 @@ class OrderControllerTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -40,7 +43,7 @@ class OrderControllerTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));
@@ -67,6 +70,45 @@ class OrderControllerTest extends TestCase
         $response->assertOk();
         $this->assertSame('Free Fire Global', $response->json('data.0.game.name'));
         $this->assertSame('100 Diamonds', $response->json('data.0.package.name'));
+    }
+
+    /** Founder-requested visibility: which brand's storefront this order came from. */
+    public function test_index_lists_orders_with_the_affiliate_they_belong_to(): void
+    {
+        $affiliate = $this->primaryAffiliate();
+        $this->order(['affiliate_id' => $affiliate->id]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $this->assertSame($affiliate->id, $response->json('data.0.affiliate.id'));
+        $this->assertSame($affiliate->business_name, $response->json('data.0.affiliate.business_name'));
+    }
+
+    /** ADR-073 decision 5: which Reseller (wallet) account placed this order, for a wallet order. */
+    public function test_index_lists_wallet_orders_with_the_reseller_that_placed_them(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        $this->order(['wallet_reseller_id' => $reseller->id, 'payment_method' => 'wallet']);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $this->assertSame($reseller->id, $response->json('data.0.wallet_reseller.id'));
+        $this->assertSame('Acme Reseller', $response->json('data.0.wallet_reseller.business_name'));
+    }
+
+    public function test_index_wallet_reseller_is_null_for_a_normal_storefront_order(): void
+    {
+        $this->order();
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $this->assertNull($response->json('data.0.wallet_reseller'));
     }
 
     public function test_index_can_filter_by_need_action(): void
@@ -586,7 +628,7 @@ class OrderControllerTest extends TestCase
         // DeliveryLogsTable on the now-undefined resend_attempts once
         // it replaced the full OrderDetail with this response.
         $response->assertJsonPath('resend_attempts', []);
-        $response->assertJsonStructure(['game', 'package', 'supplier', 'reseller', 'voucher']);
+        $response->assertJsonStructure(['game', 'package', 'supplier', 'affiliate', 'voucher']);
     }
 
     public function test_mark_delivered_requires_a_supplier_ref(): void
@@ -657,5 +699,73 @@ class OrderControllerTest extends TestCase
         $order = $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
 
         $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])->assertUnauthorized();
+    }
+
+    /** ADR-073 decision 7: makes a wallet Reseller + its ledger account, mirrors order()'s helper shape. */
+    private function walletReseller(): Reseller
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+
+        return $reseller;
+    }
+
+    public function test_refund_to_wallet_credits_the_reseller_and_returns_the_order(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/refund-to-wallet");
+
+        $response->assertOk()
+            ->assertJsonPath('wallet_reseller.id', $reseller->id)
+            ->assertJsonPath('wallet_refunded', true);
+        $this->assertSame(945, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+        $this->assertDatabaseHas('ledger_entries', [
+            'owner_type' => 'reseller_wallet', 'owner_id' => $reseller->id,
+            'type' => 'wallet_refund', 'amount' => 945, 'reference_type' => 'order', 'reference_id' => $order->id,
+        ]);
+    }
+
+    public function test_refund_to_wallet_rejects_a_non_wallet_order(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertUnprocessable();
+    }
+
+    public function test_refund_to_wallet_rejects_a_non_failed_order(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'delivery_status' => DeliveryStatus::NotStarted->value,
+        ]);
+
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertUnprocessable();
+    }
+
+    public function test_refund_to_wallet_rejects_a_repeat_request(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertUnprocessable();
+
+        $this->assertSame(945, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
     }
 }

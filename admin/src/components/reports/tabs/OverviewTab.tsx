@@ -51,13 +51,13 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
       .then((res) => setDailyRows(res.days))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.year, filters.month, filters.resellerId]);
+  }, [token, filters.year, filters.month, filters.affiliateId]);
 
   useEffect(() => {
-    getReportTrend(token, days, filters.resellerId)
+    getReportTrend(token, days, filters.affiliateId)
       .then((res) => setTrend(res.days))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the sales trend."));
-  }, [token, days, filters.resellerId]);
+  }, [token, days, filters.affiliateId]);
 
   return (
     <div>
@@ -71,7 +71,7 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
         <StatCard icon={<ChartLineIcon width={18} height={18} />} color="blue" label="Total Sales" value={summary ? formatRm(summary.total_sales) : "—"} />
         <StatCard icon={<ListIcon width={18} height={18} />} color="indigo" label="Total Orders" value={summary ? summary.orders_count.toLocaleString() : "—"} />
         <StatCard icon={<TrendUpIcon width={18} height={18} />} color="green" label="Owner Profit" value={summary ? formatRm(summary.platform_profit) : "—"} sub={summary ? `${summary.margin_pct.toFixed(2)}% margin` : undefined} />
-        <StatCard icon={<UserCircleIcon width={18} height={18} />} color="violet" label="Reseller Profit" value={summary ? formatRm(summary.reseller_profit) : "—"} />
+        <StatCard icon={<UserCircleIcon width={18} height={18} />} color="violet" label="Affiliate Profit" value={summary ? formatRm(summary.affiliate_profit) : "—"} />
         <StatCard icon={<TagIcon width={18} height={18} />} color="amber" label="Avg Order Value" value={summary ? formatRm(summary.avg_order_value) : "—"} />
       </div>
 

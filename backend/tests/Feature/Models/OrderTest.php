@@ -17,7 +17,7 @@ class OrderTest extends TestCase
     private function makeOrder(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST-1',
             'reference_number' => null,
             'customer_email' => 'buyer@example.com',
@@ -28,7 +28,7 @@ class OrderTest extends TestCase
             'transaction_fee' => 90,
             'final_amount' => 1090,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));
@@ -53,7 +53,7 @@ class OrderTest extends TestCase
     public function test_reference_number_is_generated_once_and_reused_on_retry(): void
     {
         $order = $this->makeOrder(['reference_number' => null]);
-        $service = new ReferenceNumberService();
+        $service = new ReferenceNumberService;
 
         $firstAttempt = $service->resolve($order->reference_number);
         $order->update(['reference_number' => $firstAttempt]);
@@ -76,7 +76,7 @@ class OrderTest extends TestCase
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ]);
 
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
         $newStatus = $service->startDelivery($order->payment_status, $order->delivery_status);
         $order->update(['delivery_status' => $newStatus->value]);
 

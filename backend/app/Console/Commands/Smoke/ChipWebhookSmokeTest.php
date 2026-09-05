@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands\Smoke;
 
+use App\Models\Affiliate;
 use App\Models\Order;
 use App\Models\Package;
-use App\Models\Reseller;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
@@ -112,7 +112,7 @@ class ChipWebhookSmokeTest extends Command
 
         $order = Order::query()->create([
             'order_number' => $reference,
-            'reseller_id' => Reseller::primary()->id,
+            'affiliate_id' => Affiliate::primary()->id,
             'customer_email' => 'webhook-smoke@example.com',
             'customer_name' => 'Webhook Smoke',
             'player_id' => '51049607',
@@ -127,7 +127,7 @@ class ChipWebhookSmokeTest extends Command
             'transaction_fee' => 0,
             'final_amount' => $package->standard_selling_price,
             'platform_profit' => $package->standard_selling_price - $package->cost_price,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
             'payment_gateway' => 'chip',

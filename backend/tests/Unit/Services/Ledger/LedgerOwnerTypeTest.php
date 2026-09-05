@@ -10,12 +10,13 @@ class LedgerOwnerTypeTest extends TestCase
     public function test_backing_values_match_the_literals_persisted_since_adr_002(): void
     {
         $this->assertSame('platform', LedgerOwnerType::Platform->value);
-        $this->assertSame('reseller', LedgerOwnerType::Reseller->value);
+        $this->assertSame('affiliate', LedgerOwnerType::Affiliate->value);
+        $this->assertSame('reseller_wallet', LedgerOwnerType::ResellerWallet->value);
     }
 
     public function test_coerce_passes_an_enum_through_unchanged(): void
     {
-        $this->assertSame(LedgerOwnerType::Reseller, LedgerOwnerType::coerce(LedgerOwnerType::Reseller));
+        $this->assertSame(LedgerOwnerType::Affiliate, LedgerOwnerType::coerce(LedgerOwnerType::Affiliate));
     }
 
     public function test_coerce_resolves_a_known_string(): void

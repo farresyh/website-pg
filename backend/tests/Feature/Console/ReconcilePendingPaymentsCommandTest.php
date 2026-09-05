@@ -32,7 +32,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',
@@ -42,7 +42,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
             'transaction_fee' => 100,
             'final_amount' => 1100,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
             'payment_gateway' => 'chip',

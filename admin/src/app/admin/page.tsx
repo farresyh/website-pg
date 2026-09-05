@@ -234,6 +234,24 @@ export default function AdminDashboardPage() {
                 {health.suppliers.length === 0 && (
                   <li className="text-theme-sm text-gray-400 dark:text-gray-500">No suppliers configured yet.</li>
                 )}
+                {/* PR-F build addendum decision 5 — Reseller Bot channel's OpenWA session, an active chip (never a silent gap) since a down session is a reseller's live paid ordering path. */}
+                <li className="flex items-center justify-between text-theme-sm">
+                  <span className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
+                    Reseller Bot (WhatsApp)
+                    {health.openwa_session ? (
+                      <Tag severity={health.openwa_session.status === "connected" ? "success" : "danger"}>
+                        {health.openwa_session.status}
+                      </Tag>
+                    ) : (
+                      <Tag severity="secondary">not provisioned</Tag>
+                    )}
+                  </span>
+                  {health.openwa_session && (
+                    <span className="text-theme-xs text-gray-400 dark:text-gray-500">
+                      {new Date(health.openwa_session.at).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
+                </li>
               </ul>
               <div className="flex items-center gap-1.5 pb-1">
                 <span className="text-theme-xs text-gray-400 dark:text-gray-500">Supplier status/balance</span>

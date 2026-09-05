@@ -6,9 +6,10 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * ADR-058 58b (RES-3 / ADR-056 decision 8): assign or change a
- * reseller's wholesale-tier subscription. The controller writes a
- * `reseller_tier_changes` audit row via ResellerSubscriptionService.
+ * ADR-073 decision 1: assign or change a reseller's wallet tier — a
+ * direct FK swap, effective immediately, no billing cycle or audit trail
+ * table (contrast `AssignAffiliateTierRequest`, which feeds a subscription
+ * state machine + `affiliate_tier_changes` history).
  */
 class AssignResellerTierRequest extends FormRequest
 {
@@ -23,8 +24,7 @@ class AssignResellerTierRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'tier_id' => ['required', 'integer', Rule::exists('reseller_membership_tiers', 'id')->whereNull('deleted_at')],
-            'note' => ['nullable', 'string', 'max:500'],
+            'reseller_tier_id' => ['required', 'integer', Rule::exists('reseller_tiers', 'id')->whereNull('deleted_at')],
         ];
     }
 }

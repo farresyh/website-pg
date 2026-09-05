@@ -6,11 +6,12 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * ADR-058 58b: add another staff login to an existing reseller. The row
- * is created with a null password; the new user gets the same
- * set-password invite (ResellerInviteService) as the first user created
- * in RES-2. One reseller can have several staff users from day one
- * (the schema has supported it since 58a).
+ * ADR-072 decision 5 / PR-G planning addendum decision 1: add a portal
+ * login for an existing `Reseller` (wallet) account. Mirrors
+ * `StoreAffiliateUserRequest` exactly — the row is created with a null
+ * password, the new user gets the same set-password invite
+ * (`AffiliateInviteService`, generalized for `owner_type`) an `Affiliate`
+ * staff user gets.
  */
 class StoreResellerUserRequest extends FormRequest
 {
@@ -26,7 +27,7 @@ class StoreResellerUserRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('reseller_users', 'email')],
+            'email' => ['required', 'email', 'max:255', Rule::unique('affiliate_users', 'email')],
         ];
     }
 }

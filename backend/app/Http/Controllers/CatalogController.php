@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
-use App\Models\Reseller;
 use App\Services\Cache\NextRevalidation;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Cache;
  * platform's wholesale cost and margin) — only a computed
  * `selling_price_sen`, the same customer-facing price
  * CheckoutService prices an order at (PricingService, against the
- * Platform Owner Reseller row, per ADR-013).
+ * Platform Owner Affiliate row, per ADR-013).
  *
  * Lookup is always by slug, not the admin routes' numeric `{id}` — the
  * storefront's own URLs (`/order/[slug]`) are slug-based, and slug is
@@ -88,8 +88,8 @@ class CatalogController extends Controller
         // ADR-061 decision 4: Membership is live only when the global
         // kill-switch AND this storefront's own toggle are both on.
         // ADR-060 resolves the brand per `Host`; today it is the primary.
-        $reseller = Reseller::primary();
-        $membershipEnabled = $reseller->membershipEnabledEffective();
+        $affiliate = Affiliate::primary();
+        $membershipEnabled = $affiliate->membershipEnabledEffective();
 
         // Resolved once per request, outside the cache closure below —
         // a decrypt + one indexed Membership lookup, not worth caching
@@ -98,7 +98,7 @@ class CatalogController extends Controller
         // computes. A missing/unresolvable/lapsed token falls back to
         // null, same silent fallback CheckoutController::
         // resolveMembershipId() already uses — not an error.
-        $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request, $reseller->id) : null;
+        $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request, $affiliate->id) : null;
 
         $packages = Cache::store(config('cache.catalog_packages_store'))
             ->tags(['catalog.packages', "catalog.packages.game.{$game->id}"])
@@ -138,7 +138,7 @@ class CatalogController extends Controller
      * price pre-payment, even though CheckoutService already charged
      * them correctly at Tier 1 (docs/adr.md ADR-027).
      */
-    private function resolveMemberPlan(Request $request, int $resellerId): ?MembershipPlan
+    private function resolveMemberPlan(Request $request, int $affiliateId): ?MembershipPlan
     {
         $token = $request->bearerToken();
 
@@ -151,12 +151,12 @@ class CatalogController extends Controller
         // ADR-061 decision 5: a token from another brand's storefront is
         // ignored here — the caller falls back to the anonymous anchor
         // price, same as an unauthenticated request.
-        if ($session === null || $session['reseller_id'] !== $resellerId) {
+        if ($session === null || $session['affiliate_id'] !== $affiliateId) {
             return null;
         }
 
         return Membership::query()
-            ->where('reseller_id', $resellerId)
+            ->where('affiliate_id', $affiliateId)
             ->where('email', $session['email'])
             ->where('status', MembershipStatus::Active)
             ->where('expires_at', '>=', now())
@@ -269,38 +269,46 @@ class CatalogController extends Controller
      * ADR-034: among active packages sharing a (game_id, denomination)
      * equivalence key, keep only the cheapest — the same product sold
      * by two suppliers must never let the client pick the pricier one
-     * (ORD-9, price is always server-computed). `denomination === null`
-     * packages (non-integer-amount products) are never grouped
-     * together — each stays its own row, matching the ADR's own
-     * "leaves existing packages empty" / "never dedup null" intent.
+     * (ORD-9, price is always server-computed).
+     *
+     * ADR-075's catalog-code addendum (2026-09-04) extends this with a
+     * second, independent equivalence key, `catalog_code` — the same
+     * dedup rule applied to bundle/pass packages (which never carry a
+     * `denomination`, ADR-034), grouped separately so the two key
+     * spaces can never collide with each other. A package with
+     * neither key set is never grouped — it stays its own row,
+     * matching ADR-034's original "never dedup null" intent.
      *
      * @param  Collection<int, Package>  $packages
      * @return Collection<int, Package>
      */
     private function dedupByDenomination($packages)
     {
-        [$withDenomination, $withoutDenomination] = $packages->partition(
+        [$withDenomination, $rest] = $packages->partition(
             fn (Package $package) => $package->denomination !== null,
+        );
+        [$withCatalogCode, $withoutEither] = $rest->partition(
+            fn (Package $package) => $package->catalog_code !== null,
         );
 
         $cheapestPerDenomination = $withDenomination
             ->groupBy('denomination')
-            ->map(function ($group) {
-                return $group
-                    ->sortBy([
-                        fn (Package $a, Package $b) => $this->sellingPriceSen($a) <=> $this->sellingPriceSen($b),
-                        fn (Package $a, Package $b) => $a->id <=> $b->id,
-                    ])
-                    ->first();
-            });
+            ->map(fn ($group) => $this->cheapestInGroup($group));
 
-        return $withoutDenomination->concat($cheapestPerDenomination->values())
+        $cheapestPerCatalogCode = $withCatalogCode
+            ->groupBy('catalog_code')
+            ->map(fn ($group) => $this->cheapestInGroup($group));
+
+        return $withoutEither
+            ->concat($cheapestPerDenomination->values())
+            ->concat($cheapestPerCatalogCode->values())
             ->sortBy([
                 // ADR-034 follow-up (founder feedback, 2026-08-25):
                 // smallest denomination first reads as cheapest-first
                 // to a customer, sorting numerically rather than
                 // alphabetically-by-name. Packages without a curated
-                // denomination sort last, by name — same ordering
+                // denomination (including every catalog_code-deduped
+                // bundle/pass) sort last, by name — same ordering
                 // GameController::packages() already applies admin-side.
                 fn (Package $a, Package $b) => ($a->denomination === null ? 1 : 0) <=> ($b->denomination === null ? 1 : 0),
                 fn (Package $a, Package $b) => $a->denomination <=> $b->denomination,
@@ -309,14 +317,27 @@ class CatalogController extends Controller
             ->values();
     }
 
+    /**
+     * @param  Collection<int, Package>  $group
+     */
+    private function cheapestInGroup($group): Package
+    {
+        return $group
+            ->sortBy([
+                fn (Package $a, Package $b) => $this->sellingPriceSen($a) <=> $this->sellingPriceSen($b),
+                fn (Package $a, Package $b) => $a->id <=> $b->id,
+            ])
+            ->first();
+    }
+
     private function sellingPriceSen(Package $package): int
     {
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
 
         return $this->pricing->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $reseller->markup_pct,
+            (float) $affiliate->markup_pct,
         )->sellingPrice;
     }
 

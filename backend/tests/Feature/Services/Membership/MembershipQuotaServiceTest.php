@@ -26,7 +26,7 @@ class MembershipQuotaServiceTest extends TestCase
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
 
         return Membership::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member@example.com',
             'membership_plan_id' => $plan->id,
             'status' => 'active',
@@ -39,7 +39,7 @@ class MembershipQuotaServiceTest extends TestCase
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-QUOTA-1',
             'customer_email' => 'member@example.com',
             'player_id' => '123456',
@@ -49,7 +49,7 @@ class MembershipQuotaServiceTest extends TestCase
             'transaction_fee' => 0,
             'final_amount' => 1040,
             'platform_profit' => 140,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));

@@ -13,7 +13,6 @@ final readonly class PricingBreakdown
         public int $standardSellingPrice,
         public int $sellingPrice,
         public int $platformProfit,
-        public int $resellerProfit,
-    ) {
-    }
+        public int $affiliateProfit,
+    ) {}
 }

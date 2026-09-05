@@ -24,6 +24,15 @@ export interface OrderListItem {
   created_at: string;
   game: { id: number; name: string } | null;
   package: { id: number; name: string } | null;
+  // Which brand's storefront this order belongs to (always set — every
+  // order has an affiliate, ADR-061) and, for a wallet order placed via
+  // the Reseller API/Bot (ADR-074/075), which Reseller account placed
+  // it — mutually informative, never both meaningfully "the source" at
+  // once: a wallet order's affiliate is always the platform's own
+  // primary brand (ADR-073 decision 5), so wallet_reseller is the one
+  // that actually answers "where did this order come from".
+  affiliate: { id: number; business_name: string } | null;
+  wallet_reseller: { id: number; business_name: string } | null;
 }
 
 /**
@@ -47,9 +56,9 @@ export interface OrderDetail extends OrderListItem {
   customer_phone: string | null;
   cost_price: number;
   standard_selling_price: number;
-  reseller_markup_pct: string;
+  affiliate_markup_pct: string;
   voucher_discount: number | null;
-  reseller_profit: number;
+  affiliate_profit: number;
   // ADR-027 Phase 6: pricing_basis="member" only when a session-
   // recognized membership applied at checkout (quota-sufficient) —
   // member_discount_percent/normal_selling_price/membership stay null
@@ -57,7 +66,7 @@ export interface OrderDetail extends OrderListItem {
   // (resolved from their session token) — can genuinely differ from
   // `customer_email` above (the checkout contact form), e.g. a member
   // checking out on someone else's behalf.
-  pricing_basis: "standard" | "member";
+  pricing_basis: "standard" | "member" | "reseller-wallet";
   member_discount_percent: string | null;
   normal_selling_price: number | null;
   membership: { id: number; email: string; membership_plan: { name: string } } | null;
@@ -68,7 +77,13 @@ export interface OrderDetail extends OrderListItem {
   // ADR-017's resend gate needs player_validator_enabled/profile_id.
   game: Game | null;
   supplier: { id: number; name: string } | null;
-  reseller: { id: number; business_name: string } | null;
+  // affiliate/wallet_reseller inherited from OrderListItem — non-null
+  // wallet_reseller here is also the signal the order detail screen
+  // uses to swap "Issue Voucher" for "Refund to Wallet" (ADR-073
+  // decision 5/7), never both.
+  // ADR-073 decision 7: computed server-side (not a stored column) —
+  // true once a wallet_refund ledger entry exists for this order.
+  wallet_refunded: boolean;
   resend_attempts: OrderResendAttempt[];
   // VCH-7: null until VoucherController::storeFromOrder() has been
   // called for this order — the unique index on vouchers.order_id
@@ -158,6 +173,17 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
  */
 export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string } = {}) {
   return apiFetch<Voucher>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
+}
+
+/**
+ * ADR-073 decision 7: the wallet-order counterpart to
+ * issueVoucherFromOrder() above — replaces it entirely (never offered
+ * alongside) whenever `wallet_reseller` is set. Credits the order's
+ * `final_amount` back into that Reseller's wallet balance, no cash
+ * ever leaves the platform.
+ */
+export function refundOrderToWallet(token: string, id: number) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}/refund-to-wallet`, { method: "POST", token });
 }
 
 /**

@@ -43,7 +43,7 @@ import {
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type ReportReseller, listReportResellers } from "@/lib/reports";
+import { type ReportAffiliate, listReportAffiliates } from "@/lib/reports";
 import {
   type CustomerAnalyticsFilters,
   type CustomerAnalyticsRow,
@@ -54,7 +54,7 @@ import {
   exportCustomerAnalytics,
 } from "@/lib/customer-analytics";
 
-const RESELLER_ALL = "all";
+const AFFILIATE_ALL = "all";
 const YEAR_ALL = "all";
 const SEGMENT_ALL = "all";
 
@@ -97,8 +97,8 @@ export default function CustomerAnalyticsPage() {
   const router = useRouter();
   const session = useClientSession();
 
-  const [resellers, setResellers] = useState<ReportReseller[]>([]);
-  const [resellerId, setResellerId] = useState<string>(RESELLER_ALL);
+  const [affiliates, setAffiliates] = useState<ReportAffiliate[]>([]);
+  const [affiliateId, setAffiliateId] = useState<string>(AFFILIATE_ALL);
   const [year, setYear] = useState<string>(YEAR_ALL);
   const [month, setMonth] = useState<string>(YEAR_ALL);
   const [segment, setSegment] = useState<string>(SEGMENT_ALL);
@@ -119,13 +119,13 @@ export default function CustomerAnalyticsPage() {
   const filters: CustomerAnalyticsFilters = {
     year: year === YEAR_ALL ? undefined : Number(year),
     month: year === YEAR_ALL || month === YEAR_ALL ? undefined : Number(month),
-    resellerId: resellerId === RESELLER_ALL ? undefined : Number(resellerId),
+    affiliateId: affiliateId === AFFILIATE_ALL ? undefined : Number(affiliateId),
     segment: segment === SEGMENT_ALL ? undefined : (segment as CustomerSegment),
   };
 
   useEffect(() => {
     if (!session) return;
-    listReportResellers(session.token).then(setResellers).catch(() => undefined);
+    listReportAffiliates(session.token).then(setAffiliates).catch(() => undefined);
   }, [session]);
 
   const refresh = useCallback((token: string, f: CustomerAnalyticsFilters) => {
@@ -141,7 +141,7 @@ export default function CustomerAnalyticsPage() {
     if (!session) return;
     refresh(session.token, filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, year, month, resellerId, segment]);
+  }, [session, year, month, affiliateId, segment]);
 
   async function handleExport() {
     if (!session) return;
@@ -156,9 +156,9 @@ export default function CustomerAnalyticsPage() {
     }
   }
 
-  const resellerOptions = [
-    { label: "All Resellers", value: RESELLER_ALL },
-    ...resellers.map((r) => ({ label: r.business_name, value: String(r.id) })),
+  const affiliateOptions = [
+    { label: "All Affiliates", value: AFFILIATE_ALL },
+    ...affiliates.map((r) => ({ label: r.business_name, value: String(r.id) })),
   ];
 
   return (
@@ -214,7 +214,7 @@ export default function CustomerAnalyticsPage() {
 
       {/* ANL-4: filters */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <FilterSelect label="Reseller" value={resellerId} onChange={setResellerId} options={resellerOptions} />
+        <FilterSelect label="Affiliate" value={affiliateId} onChange={setAffiliateId} options={affiliateOptions} />
         <FilterSelect label="Segment" value={segment} onChange={setSegment} options={segmentOptions} />
         <FilterSelect
           label="Year"

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getClientSession } from "@/lib/session";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   listOrders,
@@ -30,6 +31,8 @@ const DELIVERY_OPTIONS = [
 ];
 
 export default function OrdersPage() {
+  const session = useClientSession();
+  const ownerType = session?.owner_type ?? "affiliate";
   const [page, setPage] = useState(1);
   const [paymentStatus, setPaymentStatus] = useState("");
   const [deliveryStatus, setDeliveryStatus] = useState("");
@@ -49,7 +52,7 @@ export default function OrdersPage() {
     if (appliedSearch) filters.search = appliedSearch;
 
     let cancelled = false;
-    listOrders(session.token, filters)
+    listOrders(session.token, ownerType, filters)
       .then((result) => {
         if (cancelled) return;
         setData(result);
@@ -66,7 +69,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [page, paymentStatus, deliveryStatus, appliedSearch]);
+  }, [page, paymentStatus, deliveryStatus, appliedSearch, ownerType]);
 
   function resetToFirstPage<T>(setter: (v: T) => void) {
     return (value: T) => {
@@ -78,7 +81,14 @@ export default function OrdersPage() {
 
   return (
     <div>
-      <PageHeader title="Orders" subtitle="Every order placed on your storefront." />
+      <PageHeader
+        title="Orders"
+        subtitle={
+          ownerType === "affiliate"
+            ? "Every order placed on your storefront."
+            : "Your own wallet order history."
+        }
+      />
 
       {error && <ErrorNote message={error} />}
 
@@ -111,31 +121,33 @@ export default function OrdersPage() {
             ))}
           </select>
         </label>
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setLoading(true);
-            setPage(1);
-            setAppliedSearch(search.trim());
-          }}
-        >
-          <label className="text-theme-xs text-gray-500 dark:text-gray-400">
-            Search
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Order no. / ref / email"
-              className="mt-1 block w-56 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-theme-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+        {ownerType === "affiliate" && (
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setLoading(true);
+              setPage(1);
+              setAppliedSearch(search.trim());
+            }}
           >
-            Apply
-          </button>
-        </form>
+            <label className="text-theme-xs text-gray-500 dark:text-gray-400">
+              Search
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Order no. / ref / email"
+                className="mt-1 block w-56 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-theme-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              />
+            </label>
+            <button
+              type="submit"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+            >
+              Apply
+            </button>
+          </form>
+        )}
       </div>
 
       <Panel>
@@ -146,7 +158,7 @@ export default function OrdersPage() {
                 <th className="px-5 py-3">Order</th>
                 <th className="px-5 py-3">Game / Package</th>
                 <th className="px-5 py-3">Total</th>
-                <th className="px-5 py-3">Your margin</th>
+                {ownerType === "affiliate" && <th className="px-5 py-3">Your margin</th>}
                 <th className="px-5 py-3">Payment</th>
                 <th className="px-5 py-3">Delivery</th>
                 <th className="px-5 py-3">Date</th>
@@ -172,7 +184,9 @@ export default function OrdersPage() {
                   <td className="px-5 py-4 font-medium text-gray-800 dark:text-white/90">
                     {formatRm(order.final_amount)}
                   </td>
-                  <td className="px-5 py-4">{formatRm(order.reseller_profit)}</td>
+                  {ownerType === "affiliate" && (
+                    <td className="px-5 py-4">{formatRm(order.affiliate_profit ?? 0)}</td>
+                  )}
                   <td className="px-5 py-4">
                     <StatusTag severity={paymentSeverity(order.payment_status)}>
                       {order.payment_status}

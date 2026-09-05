@@ -28,7 +28,7 @@ class CustomerAnalyticsController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json(
-            $this->analytics->stats($from, $toExclusive, $this->resellerId($request)),
+            $this->analytics->stats($from, $toExclusive, $this->affiliateId($request)),
         );
     }
 
@@ -40,7 +40,7 @@ class CustomerAnalyticsController extends Controller
             'customers' => $this->analytics->customers(
                 $from,
                 $toExclusive,
-                $this->resellerId($request),
+                $this->affiliateId($request),
                 $this->segmentFromRequest($request),
             ),
         ]);
@@ -48,7 +48,7 @@ class CustomerAnalyticsController extends Controller
 
     /**
      * ANL-5 (ADR-050) — always the customer's full lifetime detail
-     * across every reseller (decision 6); no reseller_id/date filter
+     * across every affiliate (decision 6); no affiliate_id/date filter
      * accepted here, unlike the list/summary/export endpoints above.
      */
     public function show(string $email): JsonResponse
@@ -69,7 +69,7 @@ class CustomerAnalyticsController extends Controller
         $rows = $this->analytics->customers(
             $from,
             $toExclusive,
-            $this->resellerId($request),
+            $this->affiliateId($request),
             $this->segmentFromRequest($request),
         );
 
@@ -94,9 +94,9 @@ class CustomerAnalyticsController extends Controller
         }, $filename, ['Content-Type' => 'text/csv']);
     }
 
-    private function resellerId(Request $request): ?int
+    private function affiliateId(Request $request): ?int
     {
-        return $request->filled('reseller_id') ? (int) $request->query('reseller_id') : null;
+        return $request->filled('affiliate_id') ? (int) $request->query('affiliate_id') : null;
     }
 
     private function segmentFromRequest(Request $request): ?CustomerSegment

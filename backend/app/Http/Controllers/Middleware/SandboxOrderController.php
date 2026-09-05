@@ -6,10 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\Middleware\CreateSandboxOrderRequest;
 use App\Http\Requests\Middleware\ResendSandboxOrderDeliveryRequest;
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
-use App\Models\Reseller;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
 use App\Services\Ledger\LedgerService;
@@ -68,7 +68,7 @@ class SandboxOrderController extends Controller
         $this->assertIsSandboxOrder($order);
 
         return response()->json($order->load([
-            'game', 'package', 'supplier', 'reseller',
+            'game', 'package', 'supplier', 'affiliate',
             'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
         ]));
     }
@@ -96,11 +96,11 @@ class SandboxOrderController extends Controller
             ]);
         }
 
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
         $pricing = app(PricingService::class)->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $reseller->markup_pct,
+            (float) $affiliate->markup_pct,
         );
 
         $order = Order::query()->create([
@@ -115,15 +115,15 @@ class SandboxOrderController extends Controller
             'package_id' => $package->id,
             'supplier_id' => $package->supplier_id,
             'supplier_product_ref' => $package->supplier_package_ref,
-            'reseller_id' => $reseller->id,
+            'affiliate_id' => $affiliate->id,
             'cost_price' => $pricing->costPrice,
             'standard_selling_price' => $pricing->standardSellingPrice,
-            'reseller_markup_pct' => $reseller->markup_pct,
+            'affiliate_markup_pct' => $affiliate->markup_pct,
             'selling_price' => $pricing->sellingPrice,
             'transaction_fee' => 0,
             'final_amount' => $pricing->sellingPrice,
             'platform_profit' => $pricing->platformProfit,
-            'reseller_profit' => $pricing->resellerProfit,
+            'affiliate_profit' => $pricing->affiliateProfit,
             'payment_status' => PaymentStatus::Paid->value,
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Failed->value,
@@ -176,7 +176,7 @@ class SandboxOrderController extends Controller
             $request->user()?->name,
         );
 
-        return response()->json($result->fresh(['game', 'package', 'supplier', 'reseller', 'resendAttempts']));
+        return response()->json($result->fresh(['game', 'package', 'supplier', 'affiliate', 'resendAttempts']));
     }
 
     /**
@@ -204,7 +204,7 @@ class SandboxOrderController extends Controller
             $request->user()?->name ?? 'Sandbox Tester',
         );
 
-        return response()->json($result->fresh(['game', 'package', 'supplier', 'reseller', 'resendAttempts']));
+        return response()->json($result->fresh(['game', 'package', 'supplier', 'affiliate', 'resendAttempts']));
     }
 
     /**

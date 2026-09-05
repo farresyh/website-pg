@@ -31,7 +31,7 @@ class MembershipSubscriptionControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->primaryReseller();
+        $this->primaryAffiliate();
         PlatformSettings::current()->update(['membership_enabled' => true]);
         $this->activeFpx();
         $this->bindGateway();
@@ -39,7 +39,7 @@ class MembershipSubscriptionControllerTest extends TestCase
 
     private function tokenFor(string $email): string
     {
-        return app(MembershipSessionTokenService::class)->issue($this->primaryReseller()->id, $email);
+        return app(MembershipSessionTokenService::class)->issue($this->primaryAffiliate()->id, $email);
     }
 
     private function activeFpx(): PaymentMethod
@@ -221,7 +221,7 @@ class MembershipSubscriptionControllerTest extends TestCase
     {
         $tier1 = $this->tier('Tier 1');
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 't1@example.com',
             'membership_plan_id' => $tier1->id,
             'status' => 'active',
@@ -243,7 +243,7 @@ class MembershipSubscriptionControllerTest extends TestCase
     {
         $tier2 = $this->tier('Tier 2');
         Membership::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'lapsed@example.com',
             'membership_plan_id' => $tier2->id,
             'status' => 'expired',

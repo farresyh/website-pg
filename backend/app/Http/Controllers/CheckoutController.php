@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Http\Requests\Checkout\PreviewCheckoutTotalRequest;
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\Order;
@@ -11,7 +12,6 @@ use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
-use App\Models\Reseller;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
@@ -32,7 +32,7 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Public, guest-checkout endpoint (ADR-011 — no Customer auth exists;
- * anyone can call this). Resolves Game/Package/Reseller, enforces the
+ * anyone can call this). Resolves Game/Package/Affiliate, enforces the
  * game's per-game validation_rules (ADR-005 addendum — Gamevion's
  * order endpoint has no field schema of its own, so we must know
  * whether a second field beyond Player ID is required before ever
@@ -133,13 +133,13 @@ class CheckoutController extends Controller
 
         $this->assertNotBlacklisted($data['player_id'], $data['customer_email'], $data['customer_phone'] ?? null, $request->ip());
 
-        // ADR-061: the platform's own storefront is the primary Reseller
+        // ADR-061: the platform's own storefront is the primary Affiliate
         // (ADR-060 will resolve this per `Host` once storefronts are
         // multi-tenant). Membership needs BOTH the global kill-switch and
         // this brand's own toggle (ADR-061 decision 4).
-        $reseller = Reseller::primary();
-        $membershipId = $reseller->membershipEnabledEffective($platformSettings)
-            ? $this->resolveMembershipId($request, $reseller->id)
+        $affiliate = Affiliate::primary();
+        $membershipId = $affiliate->membershipEnabledEffective($platformSettings)
+            ? $this->resolveMembershipId($request, $affiliate->id)
             : null;
 
         try {
@@ -152,7 +152,7 @@ class CheckoutController extends Controller
                 costPriceSen: $package->cost_price,
                 standardSellingPriceSen: $package->standard_selling_price,
                 packageMarkupPercent: (float) $package->markup_percent,
-                resellerMarkupPct: (float) $reseller->markup_pct,
+                affiliateMarkupPct: (float) $affiliate->markup_pct,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,
                 paymentGateway: $paymentMethod->gateway,
@@ -164,7 +164,7 @@ class CheckoutController extends Controller
                 gameId: $game->id,
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
-                resellerId: $reseller->id,
+                affiliateId: $affiliate->id,
                 membershipId: $membershipId,
             ), $gateway);
         } catch (DuplicateCheckoutAttemptException) {
@@ -232,10 +232,10 @@ class CheckoutController extends Controller
             ]);
         }
 
-        $reseller = Reseller::primary();
+        $affiliate = Affiliate::primary();
         $platformSettings = PlatformSettings::current();
-        $membershipId = $reseller->membershipEnabledEffective($platformSettings)
-            ? $this->resolveMembershipId($request, $reseller->id)
+        $membershipId = $affiliate->membershipEnabledEffective($platformSettings)
+            ? $this->resolveMembershipId($request, $affiliate->id)
             : null;
 
         try {
@@ -243,7 +243,7 @@ class CheckoutController extends Controller
                 costPriceSen: $package->cost_price,
                 standardSellingPriceSen: $package->standard_selling_price,
                 packageMarkupPercent: (float) $package->markup_percent,
-                resellerMarkupPct: (float) $reseller->markup_pct,
+                affiliateMarkupPct: (float) $affiliate->markup_pct,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 membershipId: $membershipId,
                 voucherCode: $data['voucher_code'] ?? null,
@@ -352,7 +352,7 @@ class CheckoutController extends Controller
      * once, silently, at "Proceed to Pay" — a session-recognized member
      * gets member pricing with no extra step; anyone without a token
      * (or an invalid/expired one) checks out exactly as a guest always
-     * has. Gated by the caller on `Reseller::membershipEnabledEffective()`
+     * has. Gated by the caller on `Affiliate::membershipEnabledEffective()`
      * (ADR-061 decision 4 — the global kill switch AND the brand's own
      * toggle, seeded off) — the same gate
      * `CatalogController` already applies to `member_price_sen`, so a
@@ -370,7 +370,7 @@ class CheckoutController extends Controller
      * intent, not a built mechanism), so `status` alone isn't reliable
      * proof a membership is still genuinely current.
      */
-    private function resolveMembershipId(Request $request, int $resellerId): ?int
+    private function resolveMembershipId(Request $request, int $affiliateId): ?int
     {
         $token = $request->bearerToken();
 
@@ -383,12 +383,12 @@ class CheckoutController extends Controller
         // ADR-061 decision 5: a session token minted on another brand's
         // storefront never applies member pricing here — treated exactly
         // like a missing/expired token (silent guest fallback).
-        if ($session === null || $session['reseller_id'] !== $resellerId) {
+        if ($session === null || $session['affiliate_id'] !== $affiliateId) {
             return null;
         }
 
         return Membership::query()
-            ->where('reseller_id', $resellerId)
+            ->where('affiliate_id', $affiliateId)
             ->where('email', $session['email'])
             ->where('status', MembershipStatus::Active)
             ->where('expires_at', '>=', now())

@@ -76,8 +76,8 @@ class VoucherRedeemConcurrencyTest extends TestCase
         $successes = array_filter($outcomes, fn ($r) => $r === 'success');
         $failures = array_filter($outcomes, fn ($r) => str_starts_with($r, 'failed:'));
 
-        $this->assertCount(1, $successes, 'Expected exactly one success, got: ' . json_encode($outcomes));
-        $this->assertCount(1, $failures, 'Expected exactly one failure, got: ' . json_encode($outcomes));
+        $this->assertCount(1, $successes, 'Expected exactly one success, got: '.json_encode($outcomes));
+        $this->assertCount(1, $failures, 'Expected exactly one failure, got: '.json_encode($outcomes));
 
         $this->assertSame(300, $voucher->fresh()->remaining);
     }
@@ -85,7 +85,7 @@ class VoucherRedeemConcurrencyTest extends TestCase
     private function order(string $orderNumber): Order
     {
         return Order::query()->create([
-            'reseller_id' => $this->primaryReseller()->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => $orderNumber,
             'customer_email' => 'race@example.com',
             'player_id' => '123456',
@@ -95,7 +95,7 @@ class VoucherRedeemConcurrencyTest extends TestCase
             'transaction_fee' => 0,
             'final_amount' => 1000,
             'platform_profit' => 100,
-            'reseller_profit' => 0,
+            'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Pending->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ]);

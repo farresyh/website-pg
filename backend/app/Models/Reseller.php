@@ -2,21 +2,24 @@
 
 namespace App\Models;
 
+use App\Services\Auth\AccountOwnerType;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * PRD §8: a branded storefront owner. Every storefront — ours and
- * third-party — is a row here, treated uniformly (ADR-061, superseding
- * ADR-013's magic-string discriminator). Our own brands carry `is_owned`;
- * exactly one of those is `is_primary` (the console/job/migration
- * fallback tenant, never deletable). No `balance` column: balance is
- * always derived from LedgerEntry (ADR-002).
+ * ADR-072/073: a prepaid-wallet wholesale buyer — the Reseller API
+ * (ADR-074) and Reseller Bot (ADR-075) channels' shared account shape.
+ * Distinct from `Affiliate` (whitelabel storefront partner): this entity
+ * only ever spends against a deposited balance, never earns. No
+ * `balance` column — always derived from `LedgerEntry` (ADR-002), owner
+ * type `LedgerOwnerType::ResellerWallet`.
  *
- * Soft-deletes since ADR-058 58b (RES-6): an `orders.reseller_id` FK
- * points here and that history must outlive a "deleted" reseller.
+ * `is_active` (ADR-072 decision 9) is the account-level order-placement
+ * kill switch; it does not freeze the wallet balance itself. Soft-delete
+ * mirrors `Affiliate`'s own precedent (order history, once PR-D lands,
+ * must outlive a "deleted" reseller).
  */
 class Reseller extends Model
 {
@@ -27,87 +30,41 @@ class Reseller extends Model
         'contact_name',
         'email',
         'phone',
-        'markup_pct',
-        'max_markup_pct',
-        'domains',
-        'status',
-        'is_owned',
-        'is_primary',
-        'membership_enabled',
+        'reseller_tier_id',
+        'is_active',
         'notes',
-        'bank_name',
-        'bank_account_no',
-        'bank_account_holder',
     ];
 
     protected $casts = [
-        'markup_pct' => 'decimal:2',
-        'max_markup_pct' => 'decimal:2',
-        'domains' => 'array',
-        'is_owned' => 'boolean',
-        // Stored as `1` on the single primary row and `NULL` on every
-        // other reseller (portable nullable-unique — see the
-        // add_ownership_flags_to_resellers_table migration). The cast
-        // makes reads a clean bool; no write path may ever persist
-        // `false`/`0` here or it collides with the real primary.
-        'is_primary' => 'boolean',
-        'membership_enabled' => 'boolean',
+        'is_active' => 'boolean',
     ];
 
-    public function orders(): HasMany
+    public function tier(): BelongsTo
     {
-        return $this->hasMany(Order::class);
+        return $this->belongsTo(ResellerTier::class, 'reseller_tier_id');
     }
 
+    /** ADR-074 decision 1: this account's Reseller API credentials. */
+    public function apiKeys(): HasMany
+    {
+        return $this->hasMany(ResellerApiKey::class);
+    }
+
+    /** ADR-075 decision 2: this account's linked Reseller Bot WhatsApp groups. */
+    public function whatsAppGroups(): HasMany
+    {
+        return $this->hasMany(ResellerWhatsAppGroup::class);
+    }
+
+    /**
+     * PR-G: this account's portal login user(s) — `affiliate_users` rows
+     * with `owner_type = 'reseller'`. Mirrors `Affiliate::users()`'s own
+     * scoped `hasMany` (no Eloquent morphTo, see `AffiliateUser`'s own
+     * doc comment for why).
+     */
     public function users(): HasMany
     {
-        return $this->hasMany(ResellerUser::class);
-    }
-
-    /** ADR-056: one subscription row per reseller (its `reseller_id` is unique). */
-    public function subscription(): HasOne
-    {
-        return $this->hasOne(ResellerSubscription::class);
-    }
-
-    /** ADR-058 58b (RES-3): append-only wholesale-tier assignment history. */
-    public function tierChanges(): HasMany
-    {
-        return $this->hasMany(ResellerTierChange::class);
-    }
-
-    /**
-     * ADR-061: the single fallback tenant for any context with no `Host`
-     * to resolve a brand from — console commands, queue jobs, migrations,
-     * and admin screens not yet made brand-aware. Exactly one row carries
-     * `is_primary` (DB-enforced), so `sole()` is correct: it throws on 0
-     * (environment never seeded — a loud, actionable failure) or >1 (the
-     * nullable-unique index was bypassed) rather than silently creating or
-     * picking a row the way the old `platformOwner()` firstOrCreate did.
-     *
-     * ADR-028 decision 9 / ADR-061: this is the one place every "resolve
-     * the platform's own storefront" call site points at. ADR-060 replaces
-     * these calls with `Host` resolution in the storefront-config and
-     * pricing paths; `primary()` stays only for the non-`Host` contexts
-     * above.
-     */
-    public static function primary(): self
-    {
-        return static::query()->where('is_primary', true)->sole();
-    }
-
-    /**
-     * ADR-061 decision 4: consumer Membership (ADR-027) is live for a
-     * storefront only when BOTH the global master kill-switch
-     * (`PlatformSettings.membership_enabled` — flipped off everywhere
-     * during an incident) AND this brand's own `membership_enabled` are
-     * true. Callers that already hold the settings row pass it in to avoid
-     * a second lookup.
-     */
-    public function membershipEnabledEffective(?PlatformSettings $settings = null): bool
-    {
-        $global = ($settings ?? PlatformSettings::current())->membership_enabled;
-
-        return $this->membership_enabled && $global;
+        return $this->hasMany(AffiliateUser::class, 'owner_id')
+            ->where('owner_type', AccountOwnerType::Reseller->value);
     }
 }

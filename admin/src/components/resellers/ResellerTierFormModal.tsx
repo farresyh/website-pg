@@ -28,7 +28,6 @@ interface Props {
 
 function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
   const [name, setName] = useState(editing?.name ?? "");
-  const [feeRm, setFeeRm] = useState(editing ? String(editing.monthly_fee_sen / 100) : "");
   const [markup, setMarkup] = useState(editing?.markup_percent ?? "");
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [sortOrder, setSortOrder] = useState(String(editing?.sort_order ?? 0));
@@ -39,18 +38,15 @@ function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
     e.preventDefault();
     setError(null);
 
-    const feeSen = Math.round(parseFloat(feeRm) * 100);
     const markupPct = parseFloat(markup);
     const sort = parseInt(sortOrder, 10);
 
-    if (!Number.isFinite(feeSen) || feeSen < 0) return setError("Enter a valid monthly fee.");
     if (!Number.isFinite(markupPct) || markupPct < 0) return setError("Enter a valid markup %.");
 
     setSubmitting(true);
     try {
       await onSubmit({
         name,
-        monthly_fee_sen: feeSen,
         markup_percent: markupPct,
         is_active: isActive,
         sort_order: Number.isFinite(sort) ? sort : 0,
@@ -74,11 +70,7 @@ function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
           <Label htmlFor="tier_name">Name</Label>
           <Input id="tier_name" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <Label htmlFor="tier_fee">Monthly fee (RM)</Label>
-            <Input id="tier_fee" value={feeRm} onChange={(e) => setFeeRm(e.target.value)} placeholder="49.00" />
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="tier_markup">Markup % over cost</Label>
             <Input id="tier_markup" value={markup} onChange={(e) => setMarkup(e.target.value)} placeholder="5" />
@@ -114,7 +106,7 @@ export default function ResellerTierFormModal({ isOpen, onClose, onSubmit, editi
         <DialogPositioner>
           <DialogPopup className="w-full max-w-lg">
             <DialogHeader>
-              <DialogTitle>{editing ? `Edit ${editing.name}` : "Add Wholesale Tier"}</DialogTitle>
+              <DialogTitle>{editing ? `Edit ${editing.name}` : "Add Wallet Tier"}</DialogTitle>
               <DialogHeaderActions>
                 <DialogClose aria-label="Close">
                   <CloseIcon className="h-5 w-5" />
