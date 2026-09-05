@@ -104,7 +104,9 @@ class AffiliateImpersonationController extends Controller
             'session_id' => $session->id,
             'token' => $newToken->plainTextToken,
             'acting_as' => $target->only(['id', 'name', 'email']),
-            'portal_url' => rtrim((string) config('services.affiliate_portal.url'), '/'),
+            // Deliberately 'reseller_portal' — see AffiliateInviteService's
+            // own comment on this same config-key gotcha.
+            'portal_url' => rtrim((string) config('services.reseller_portal.url'), '/'),
             'expires_at' => $expiresAt,
         ], 201);
     }
