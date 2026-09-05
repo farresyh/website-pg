@@ -9,8 +9,11 @@
  * PR-D added order-placing logic; PR-E (ADR-074) added the "API Keys"
  * row action (`ResellerApiKeysModal`, issue/revoke); PR-F (ADR-075)
  * added "WhatsApp Groups" (`ResellerWhatsAppGroupsModal`, link/unlink
- * against the platform-wide pending list). No portal login yet (PR-G)
- * — see the ADR-072..075 phasing note.
+ * against the platform-wide pending list); PR-G added "Portal Users"
+ * (`ResellerPortalUsersModal`, admin-triggered set-password invite —
+ * registration itself stays admin-created, no self-serve signup, PR-G
+ * planning addendum decision 1). This closes the ADR-072..075 family —
+ * see the phasing note in `docs/adr.md`.
  */
 
 import { useEffect, useState } from "react";
@@ -61,6 +64,7 @@ import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal"
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
 import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
+import ResellerPortalUsersModal from "@/components/resellers/ResellerPortalUsersModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -88,6 +92,7 @@ export default function ResellersPage() {
   const [walletTarget, setWalletTarget] = useState<ResellerRow | null>(null);
   const [apiKeysTarget, setApiKeysTarget] = useState<ResellerRow | null>(null);
   const [whatsAppGroupsTarget, setWhatsAppGroupsTarget] = useState<ResellerRow | null>(null);
+  const [portalUsersTarget, setPortalUsersTarget] = useState<ResellerRow | null>(null);
 
   function refresh(t: string) {
     return Promise.all([listResellers(t), listResellerTiers(t)])
@@ -217,6 +222,9 @@ export default function ResellersPage() {
                             <Button size="small" variant="outlined" onClick={() => setWhatsAppGroupsTarget(r)}>
                               WhatsApp Groups
                             </Button>
+                            <Button size="small" variant="outlined" onClick={() => setPortalUsersTarget(r)}>
+                              Portal Users
+                            </Button>
                             <Button size="small" variant="outlined" onClick={() => { setEditing(r); setFormOpen(true); }}>
                               Edit
                             </Button>
@@ -339,6 +347,15 @@ export default function ResellersPage() {
           onClose={() => setWhatsAppGroupsTarget(null)}
           token={token}
           reseller={whatsAppGroupsTarget}
+        />
+      )}
+
+      {portalUsersTarget && (
+        <ResellerPortalUsersModal
+          isOpen={portalUsersTarget !== null}
+          onClose={() => setPortalUsersTarget(null)}
+          token={token}
+          reseller={portalUsersTarget}
         />
       )}
 
