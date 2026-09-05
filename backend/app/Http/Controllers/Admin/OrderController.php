@@ -10,12 +10,15 @@ use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\ResellerBotOrderNotification;
 use App\Models\Voucher;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -259,7 +262,7 @@ class OrderController extends Controller
      * leaves the platform, this is an internal-credit reversal back
      * into a balance we fully control.
      */
-    public function refundToWallet(Request $request, Order $order, LedgerService $ledger): JsonResponse
+    public function refundToWallet(Request $request, Order $order, LedgerService $ledger, OpenWaClient $openWa): JsonResponse
     {
         if ($order->is_test) {
             abort(404);
@@ -302,6 +305,23 @@ class OrderController extends Controller
             'amount_sen' => $order->final_amount,
             'admin_user_id' => $request->user()?->id,
         ]);
+
+        // ADR-076 decision 6: this action deliberately never touches
+        // payment_status/delivery_status, so it's invisible to
+        // SendResellerBotOrderNotification's OrderStatusUpdated listener
+        // — the only explicit, non-event-driven notify call in that
+        // design. Guarded by refund_notified_at so a repeat request
+        // (already rejected above by alreadyRefundedToWallet(), but
+        // defensive here too) can never double-send.
+        $notification = ResellerBotOrderNotification::query()
+            ->where('order_id', $order->id)
+            ->whereNull('refund_notified_at')
+            ->first();
+
+        if ($notification !== null) {
+            $openWa->sendText($notification->whatsapp_group_id, ResellerBotReplyFormatter::refundNotice($order));
+            $notification->update(['refund_notified_at' => now()]);
+        }
 
         return $this->orderDetailResponse($order->fresh());
     }
