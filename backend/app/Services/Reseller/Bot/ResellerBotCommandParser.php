@@ -10,6 +10,10 @@ namespace App\Services\Reseller\Bot;
  * (balance). Space-separated, case-insensitive on the command word
  * itself; whitespace-collapsing so `.order  MLMY-14   123` still parses.
  *
+ * ADR-076 decisions 7-9 add v2's `.trackorder {order_number}`,
+ * `.checkid {code} {playerId} [{serverId}]` (same shape as `.order`,
+ * minus a product code), and the argument-less `.info`.
+ *
  * Pure text-in, DTO-out — no DB/service call here, so it's trivially
  * unit-testable without a database.
  */
@@ -35,11 +39,27 @@ final class ResellerBotCommandParser
 
             '.baki' => new ResellerBotCommand(ResellerBotCommandType::Balance, $raw),
 
+            '.info' => new ResellerBotCommand(ResellerBotCommandType::Info, $raw),
+
             '.order' => isset($parts[1], $parts[2])
                 ? new ResellerBotCommand(
                     ResellerBotCommandType::Order,
                     $raw,
                     productCode: strtoupper($parts[1]),
+                    playerId: $parts[2],
+                    serverId: $parts[3] ?? null,
+                )
+                : new ResellerBotCommand(ResellerBotCommandType::Unrecognized, $raw),
+
+            '.trackorder' => isset($parts[1])
+                ? new ResellerBotCommand(ResellerBotCommandType::TrackOrder, $raw, orderNumber: strtoupper($parts[1]))
+                : new ResellerBotCommand(ResellerBotCommandType::Unrecognized, $raw),
+
+            '.checkid' => isset($parts[1], $parts[2])
+                ? new ResellerBotCommand(
+                    ResellerBotCommandType::CheckId,
+                    $raw,
+                    gameCode: strtoupper($parts[1]),
                     playerId: $parts[2],
                     serverId: $parts[3] ?? null,
                 )

@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Events\OrderStatusUpdated;
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Listeners\Reseller\SendResellerBotOrderNotification;
 use App\Models\BackupRun;
 use App\Models\Order;
 use App\Models\PriceSyncRun;
@@ -322,6 +324,11 @@ class AppServiceProvider extends ServiceProvider
         // `admin_users` row rather than one static config address.
         Event::listen(BackupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleBackupHasFailed']);
         Event::listen(CleanupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleCleanupHasFailed']);
+        // ADR-076 decision 5 — message 2 of the Bot channel's two-stage
+        // order messaging. `broadcast()` (OrderObserver) dispatches
+        // through the normal event dispatcher too, so this listener
+        // fires alongside the Reverb broadcast, not instead of it.
+        Event::listen(OrderStatusUpdated::class, [SendResellerBotOrderNotification::class, 'handle']);
 
         // ADR-047 decision 1 — broadcasts OrderStatusUpdated whenever
         // payment_status/delivery_status actually changes, replacing

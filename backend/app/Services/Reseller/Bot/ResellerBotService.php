@@ -3,11 +3,16 @@
 namespace App\Services\Reseller\Bot;
 
 use App\Models\Game;
-use App\Models\Package;
+use App\Models\Order;
+use App\Models\PlayerValidation;
 use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
+use App\Models\ResellerBotOrderNotification;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\OpenWa\OpenWaClient;
+use App\Services\PlayerValidation\PlayerValidatorRegistry;
+use App\Services\PlayerValidation\ProviderUnavailableException;
+use App\Services\PlayerValidation\UnsupportedPlayerValidatorException;
 use App\Services\Pricing\PricingService;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\ResellerCatalogService;
@@ -28,6 +33,13 @@ use Illuminate\Support\Str;
  * to the same `ResellerCatalogService`/`ResellerOrderPlacementService`/
  * `ResellerWalletService` seams the Reseller API (PR-E) already calls —
  * this channel adds no new money/catalog logic of its own.
+ *
+ * ADR-076 adds `.trackorder`/`.checkid`/`.info` and the two-stage order
+ * lifecycle (message 1 here at placement; message 2 is
+ * `SendResellerBotOrderNotification`, a separate `OrderStatusUpdated`
+ * listener — this class only creates the `ResellerBotOrderNotification`
+ * row that listener needs). All reply copy lives in
+ * `ResellerBotReplyFormatter`, not inline here.
  */
 final class ResellerBotService
 {
@@ -38,6 +50,7 @@ final class ResellerBotService
         private readonly PricingService $pricing,
         private readonly ResellerOrderPlacementService $placement,
         private readonly ResellerWalletService $wallet,
+        private readonly PlayerValidatorRegistry $validators,
         private readonly OpenWaClient $openWa,
     ) {}
 
@@ -69,11 +82,25 @@ final class ResellerBotService
 
         $command = $this->parser->parse($rawText);
 
+        // ADR-076 decision 8 — a separate, stricter limit for `.checkid`
+        // specifically: every other command here is a plain DB read,
+        // this one can call a paid external provider (Moogold/
+        // AcidGameShop/Nexone) per invocation.
+        if ($command->type === ResellerBotCommandType::CheckId
+            && ! RateLimiter::attempt("reseller-bot-checkid:{$reseller->id}", 10, fn () => true, 60)) {
+            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan semakan ID. Sila cuba sebentar lagi.');
+
+            return;
+        }
+
         $reply = match ($command->type) {
             ResellerBotCommandType::ListGames => $this->handleListGames(),
             ResellerBotCommandType::ListGamePackages => $this->handleListGamePackages($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::Order => $this->handleOrder($reseller, $command, $whatsappGroupId, $whatsappMessageId),
             ResellerBotCommandType::Balance => $this->handleBalance($reseller),
+            ResellerBotCommandType::TrackOrder => $this->handleTrackOrder($reseller, $command, $whatsappGroupId),
+            ResellerBotCommandType::CheckId => $this->handleCheckId($reseller, $command, $whatsappGroupId),
+            ResellerBotCommandType::Info => ResellerBotReplyFormatter::commandList(),
             ResellerBotCommandType::Unrecognized => $this->handleUnrecognized($reseller, $command, $whatsappGroupId),
         };
 
@@ -84,11 +111,7 @@ final class ResellerBotService
     {
         $this->logFailure($reseller, $groupId, $command->raw, 'unrecognized_command');
 
-        return "Arahan tidak dikenali.\n\n"
-            .".listharga - senarai semua game\n"
-            .".list {kod} - senarai package & harga, contoh: .list MLMY\n"
-            .".order {kod} {playerId} [{serverId}] - buat order\n"
-            .'.baki - semak baki wallet';
+        return ResellerBotReplyFormatter::unrecognized();
     }
 
     private function handleListGames(): string
@@ -103,22 +126,23 @@ final class ResellerBotService
             return 'Tiada game tersedia buat masa ini.';
         }
 
-        $lines = $games->map(fn (Game $game) => "{$game->reseller_code} - {$game->name}")->implode("\n");
-
-        return "Senarai game:\n{$lines}\n\nGuna .list {kod} untuk harga, contoh: .list {$games->first()->reseller_code}";
+        return ResellerBotReplyFormatter::listGames($games);
     }
 
     private function handleListGamePackages(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
     {
         $gameCode = (string) $command->gameCode;
+        $game = Game::query()->where('reseller_code', $gameCode)->first();
 
-        if (! Game::query()->where('reseller_code', $gameCode)->exists()) {
+        if ($game === null) {
             $this->logFailure($reseller, $groupId, $command->raw, 'unknown_game_code');
 
             return "Kod game '{$gameCode}' tidak dijumpai. Guna .listharga untuk senarai kod yang sah.";
         }
 
         $prefix = $gameCode.'-';
+        // Already sorted ascending by denomination (ADR-076 decision 1,
+        // `Package::cheapestActivePerGame()`) — no re-sort needed here.
         $items = $this->catalog->listAvailable()->filter(fn (array $row) => str_starts_with($row['code'], $prefix));
 
         if ($items->isEmpty()) {
@@ -128,20 +152,14 @@ final class ResellerBotService
         }
 
         $tier = $reseller->tier;
-        $lines = $items->map(function (array $row) use ($tier) {
-            /** @var Package $package */
-            $package = $row['package'];
-            $pricing = $this->pricing->calculateForAffiliate(
-                $package->cost_price,
-                $package->standard_selling_price,
-                (float) $tier->markup_percent,
-                0.0,
-            );
+        $sellingPriceSen = fn ($package) => $this->pricing->calculateForAffiliate(
+            $package->cost_price,
+            $package->standard_selling_price,
+            (float) $tier->markup_percent,
+            0.0,
+        )->sellingPrice;
 
-            return "{$row['code']} - {$package->name} - RM".self::formatSen($pricing->sellingPrice);
-        })->implode("\n");
-
-        return "Senarai package {$gameCode}:\n{$lines}\n\nGuna .order {kod} {playerId} [{serverId}] untuk order.";
+        return ResellerBotReplyFormatter::listPackages($game, $items, $sellingPriceSen);
     }
 
     private function handleOrder(Reseller $reseller, ResellerBotCommand $command, string $groupId, string $whatsappMessageId): string
@@ -191,12 +209,92 @@ final class ResellerBotService
             return 'Baki wallet tidak mencukupi.';
         }
 
-        return "Order berjaya! No. Order: {$order->order_number}\nHarga: RM".self::formatSen($order->selling_price)."\nStatus akan dikemaskini sebentar lagi.";
+        // ADR-076 decision 4 — capture the exact originating group now,
+        // at placement time, so message 2 (SendResellerBotOrderNotification)
+        // knows where to reply once delivery resolves. `updateOrCreate`
+        // rather than `create`: `placeOrder()`'s own idempotency check
+        // above means this is normally a fresh order, but a redelivered
+        // webhook resolving to the same existing order must not throw on
+        // the table's `order_id` uniqueness.
+        ResellerBotOrderNotification::query()->updateOrCreate(
+            ['order_id' => $order->id],
+            ['whatsapp_group_id' => $groupId],
+        );
+
+        return ResellerBotReplyFormatter::orderPlaced($order);
+    }
+
+    private function handleTrackOrder(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
+    {
+        $order = Order::query()->where('order_number', (string) $command->orderNumber)->first();
+
+        // ADR-076 decision 7 — a wrong order number and a real order
+        // belonging to a different Reseller return the identical reply,
+        // deliberately: this command must never confirm another
+        // reseller's order number exists.
+        if ($order === null || $order->wallet_reseller_id !== $reseller->id) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'order_not_found_or_not_owned');
+
+            return ResellerBotReplyFormatter::orderNotFound();
+        }
+
+        return ResellerBotReplyFormatter::trackOrder($order);
+    }
+
+    private function handleCheckId(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
+    {
+        $gameCode = (string) $command->gameCode;
+        $game = Game::query()->where('reseller_code', $gameCode)->first();
+
+        if ($game === null) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'unknown_game_code');
+
+            return "Kod game '{$gameCode}' tidak dijumpai. Guna .listharga untuk senarai kod yang sah.";
+        }
+
+        if (! $game->player_validator_enabled || $game->player_validator_profile_id === null) {
+            return ResellerBotReplyFormatter::checkIdUnsupported();
+        }
+
+        $profile = $game->playerValidatorProfile()->firstOrFail();
+
+        try {
+            $result = $this->validators->resolve($profile->key)->validate((string) $command->playerId, $command->serverId);
+        } catch (UnsupportedPlayerValidatorException|ProviderUnavailableException) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'player_validator_unavailable');
+
+            return ResellerBotReplyFormatter::checkIdUnavailable();
+        }
+
+        // Same audit trail every other validation attempt writes to
+        // (`PlayerValidationController::record()`) — kept intentionally
+        // simple here (no region/redirect resolution, decision 8's own
+        // "purely identity-confirmation" framing): a reseller's
+        // `.checkid` is a quick sanity check, not a checkout-blocking
+        // gate.
+        PlayerValidation::query()->create([
+            'game_id' => $game->id,
+            'player_id' => (string) $command->playerId,
+            'server_id' => $command->serverId,
+            'status' => $result->valid ? 'valid' : 'invalid',
+            'country_code' => $result->countryCode,
+            'nickname' => $result->nickname,
+            'provider' => $result->provider,
+            'validated_at' => now(),
+        ]);
+
+        if (! $result->valid) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'invalid_player_id');
+
+            return ResellerBotReplyFormatter::checkIdInvalid();
+        }
+
+        return ResellerBotReplyFormatter::checkIdValid($result);
     }
 
     private function handleBalance(Reseller $reseller): string
     {
-        return 'Baki wallet anda: RM'.self::formatSen($this->wallet->balance($reseller));
+        return ResellerBotReplyFormatter::balance($this->wallet->balance($reseller));
     }
 
     private function logFailure(Reseller $reseller, string $groupId, string $raw, string $reason): void
@@ -209,10 +307,5 @@ final class ResellerBotService
         ]);
 
         Log::info('Reseller Bot command failed', ['reseller_id' => $reseller->id, 'reason' => $reason]);
-    }
-
-    private static function formatSen(int $sen): string
-    {
-        return number_format($sen / 100, 2);
     }
 }

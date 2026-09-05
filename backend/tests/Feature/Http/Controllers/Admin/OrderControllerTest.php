@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Reseller;
+use App\Models\ResellerBotOrderNotification;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\Ledger\LedgerOwnerType;
@@ -767,5 +768,49 @@ class OrderControllerTest extends TestCase
         $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertUnprocessable();
 
         $this->assertSame(945, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
+    /**
+     * ADR-076 decision 6 — refundToWallet() never touches
+     * payment_status/delivery_status, so it's invisible to
+     * SendResellerBotOrderNotification's OrderStatusUpdated listener;
+     * this action must notify explicitly instead, guarded by
+     * refund_notified_at so a repeat call (already rejected above)
+     * can never double-send.
+     */
+    public function test_refund_to_wallet_marks_the_bot_order_notification_as_refund_notified(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+        ResellerBotOrderNotification::query()->create([
+            'order_id' => $order->id, 'whatsapp_group_id' => 'g1@g.us',
+        ]);
+
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+
+        $this->assertDatabaseHas('reseller_bot_order_notifications', ['order_id' => $order->id]);
+        $this->assertNotNull(
+            ResellerBotOrderNotification::query()->where('order_id', $order->id)->first()->refund_notified_at,
+        );
+    }
+
+    public function test_refund_to_wallet_does_nothing_when_the_order_has_no_bot_notification_row(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+
+        // A wallet order placed via the Reseller API (not the Bot) has
+        // no whatsapp_group_id to notify — must not throw.
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
     }
 }

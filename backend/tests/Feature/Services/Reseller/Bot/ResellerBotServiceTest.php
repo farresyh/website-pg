@@ -5,6 +5,8 @@ namespace Tests\Feature\Services\Reseller\Bot;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\PlayerValidation;
+use App\Models\PlayerValidatorProfile;
 use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
 use App\Models\ResellerTier;
@@ -13,9 +15,12 @@ use App\Models\ResellerWhatsAppPendingLink;
 use App\Models\Supplier;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\PlayerValidation\PlayerValidationResult;
+use App\Services\PlayerValidation\PlayerValidator;
 use App\Services\Reseller\Bot\ResellerBotService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
 /**
@@ -193,5 +198,152 @@ class ResellerBotServiceTest extends TestCase
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1');
 
         $this->assertSame(0, ResellerWhatsAppPendingLink::query()->count());
+    }
+
+    public function test_order_creates_a_bot_order_notification_row_for_message_2(): void
+    {
+        Queue::fake();
+        $this->makePackage(costPrice: 1000, resellerCode: 'MLMY');
+        $this->makeLinkedReseller(walletBalance: 10000);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+
+        $order = Order::query()->firstOrFail();
+        $this->assertDatabaseHas('reseller_bot_order_notifications', [
+            'order_id' => $order->id,
+            'whatsapp_group_id' => self::GROUP_ID,
+            'last_notified_delivery_status' => null,
+        ]);
+    }
+
+    public function test_info_command_runs_without_error(): void
+    {
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.info', 'msg-1');
+
+        $this->assertSame(0, ResellerBotCommandLog::query()->count());
+    }
+
+    public function test_trackorder_finds_the_resellers_own_order(): void
+    {
+        Queue::fake();
+        $this->makePackage(costPrice: 1000, resellerCode: 'MLMY');
+        $this->makeLinkedReseller(walletBalance: 10000);
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        $order = Order::query()->firstOrFail();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, ".trackorder {$order->order_number}", 'msg-2');
+
+        $this->assertSame(0, ResellerBotCommandLog::query()->where('failure_reason', 'order_not_found_or_not_owned')->count());
+    }
+
+    public function test_trackorder_rejects_a_wrong_order_number(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-DOESNOTEXIST', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'order_not_found_or_not_owned',
+        ]);
+    }
+
+    public function test_trackorder_rejects_an_order_belonging_to_a_different_reseller(): void
+    {
+        Queue::fake();
+        $this->makePackage(costPrice: 1000, resellerCode: 'MLMY');
+        $this->makeLinkedReseller(walletBalance: 10000);
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        $order = Order::query()->firstOrFail();
+
+        // A second reseller, linked to a different group, tries to
+        // track the first reseller's order number.
+        $tier = ResellerTier::query()->create(['name' => 'Silver', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 2]);
+        $otherReseller = Reseller::query()->create(['business_name' => 'Other', 'reseller_tier_id' => $tier->id, 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $otherReseller->id);
+        ResellerWhatsAppGroup::query()->create(['reseller_id' => $otherReseller->id, 'whatsapp_group_id' => 'g2@g.us', 'is_active' => true]);
+
+        app(ResellerBotService::class)->handle('g2@g.us', ".trackorder {$order->order_number}", 'msg-2');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $otherReseller->id,
+            'failure_reason' => 'order_not_found_or_not_owned',
+        ]);
+    }
+
+    public function test_checkid_reports_unsupported_when_game_has_no_validator_profile(): void
+    {
+        $this->makePackage(resellerCode: 'MLMY');
+        $this->makeLinkedReseller();
+
+        // No crash/log-as-failure expected — checkIdUnsupported() is a
+        // plain informational reply, not a logged failure.
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1');
+
+        $this->assertSame(0, ResellerBotCommandLog::query()->count());
+    }
+
+    public function test_checkid_with_unknown_game_code_is_rejected_and_logged(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid NOPE 51049607', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'unknown_game_code',
+        ]);
+    }
+
+    public function test_checkid_records_a_valid_result_via_the_shared_validator_registry(): void
+    {
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::valid('mlbb', 'TestNick', 'MY');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $game = $this->makePackage(resellerCode: 'MLMY')->game;
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1');
+
+        $this->assertDatabaseHas('player_validations', [
+            'game_id' => $game->id, 'player_id' => '51049607', 'status' => 'valid', 'nickname' => 'TestNick',
+        ]);
+    }
+
+    public function test_checkid_is_rate_limited_more_strictly_than_other_commands(): void
+    {
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::valid('mlbb', 'TestNick', 'MY');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $game = $this->makePackage(resellerCode: 'MLMY')->game;
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $reseller = $this->makeLinkedReseller();
+        RateLimiter::clear("reseller-bot-checkid:{$reseller->id}");
+
+        // 11 calls, decision 8's limit is 10/min — the 11th must be
+        // blocked before ever reaching the validator, so only 10
+        // `player_validations` rows should ever get written.
+        for ($i = 0; $i < 11; $i++) {
+            app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607', "msg-{$i}");
+        }
+
+        $this->assertSame(10, PlayerValidation::query()->count());
     }
 }
