@@ -17,19 +17,24 @@ class OpenWaWebhookControllerTest extends TestCase
         parent::setUp();
         config([
             'services.openwa.webhook_secret' => 'test-secret',
-            'services.openwa.webhook_signature_header' => 'X-Webhook-Signature',
+            'services.openwa.webhook_signature_header' => 'X-OpenWA-Signature',
             'services.openwa.webhook_signature_algo' => 'sha256',
         ]);
     }
 
+    /**
+     * Real format confirmed against docs.open-wa.org, 2026-09-05:
+     * `sha256=<hex>` — an `{algo}=` prefix before the digest, not a bare
+     * hex string.
+     */
     private function signedPost(array $payload): TestResponse
     {
         $body = json_encode($payload);
-        $signature = hash_hmac('sha256', $body, 'test-secret');
+        $signature = 'sha256='.hash_hmac('sha256', $body, 'test-secret');
 
         return $this->call('POST', '/api/webhooks/openwa', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
-            'HTTP_X_WEBHOOK_SIGNATURE' => $signature,
+            'HTTP_X_OPENWA_SIGNATURE' => $signature,
         ], $body);
     }
 
@@ -46,8 +51,27 @@ class OpenWaWebhookControllerTest extends TestCase
     {
         $response = $this->call('POST', '/api/webhooks/openwa', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
-            'HTTP_X_WEBHOOK_SIGNATURE' => 'wrong',
+            'HTTP_X_OPENWA_SIGNATURE' => 'sha256=wrong',
         ], json_encode(['event' => 'session.status']));
+
+        $response->assertStatus(401);
+    }
+
+    /**
+     * Regression guard for the real bug found live: a signature missing
+     * the `{algo}=` prefix (the shape this codebase originally, wrongly,
+     * assumed) must still be rejected, not silently accepted as if the
+     * prefix were optional.
+     */
+    public function test_rejects_a_signature_missing_the_algo_prefix(): void
+    {
+        $body = json_encode(['event' => 'session.status']);
+        $bareHex = hash_hmac('sha256', $body, 'test-secret');
+
+        $response = $this->call('POST', '/api/webhooks/openwa', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_OPENWA_SIGNATURE' => $bareHex,
+        ], $body);
 
         $response->assertStatus(401);
     }

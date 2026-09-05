@@ -310,17 +310,19 @@ return [
     // at all) — recorded here only as a comment: baileys first (PR-F
     // build addendum decision 1), whatsapp-web.js later at the
     // founder's own manual review, no automated switch trigger.
-    // `webhook_signature_header`/`_algo` are a best-guess default —
-    // OpenWA's own docs don't publish the exact header/algorithm the
-    // way Digiflazz's do — same "confirmed once the real account exists"
-    // posture `digiflazz.customer_no_separator` above already carries;
-    // correct at actual OpenWA provisioning time, not assumed here.
+    // `webhook_signature_header`/`_algo` confirmed against docs.open-wa.org
+    // at actual OpenWA provisioning time, 2026-09-05 (was a best-guess
+    // before then, per the same "confirmed once the real account exists"
+    // posture `digiflazz.customer_no_separator` above still carries for
+    // its own still-unconfirmed field). Real header is `X-OpenWA-Signature`
+    // and the value carries an `{algo}=` prefix before the hex digest
+    // (`OpenWaWebhookController` builds that same prefix when comparing).
     'openwa' => [
         'base_url' => env('OPENWA_BASE_URL', 'http://127.0.0.1:2785'),
         'session_id' => env('OPENWA_SESSION_ID'),
         'api_key' => env('OPENWA_API_KEY'),
         'webhook_secret' => env('OPENWA_WEBHOOK_SECRET'),
-        'webhook_signature_header' => env('OPENWA_WEBHOOK_SIGNATURE_HEADER', 'X-Webhook-Signature'),
+        'webhook_signature_header' => env('OPENWA_WEBHOOK_SIGNATURE_HEADER', 'X-OpenWA-Signature'),
         'webhook_signature_algo' => env('OPENWA_WEBHOOK_SIGNATURE_ALGO', 'sha256'),
         'timeout' => (int) env('OPENWA_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('OPENWA_CONNECT_TIMEOUT_SECONDS', 5),
