@@ -17,6 +17,12 @@ use Illuminate\Contracts\Auth\PasswordBrokerFactory;
  * flow and the "resend invite" action call it, delivery via Plunk
  * (still the same pending sender-domain verification as consumer OTP,
  * ADR-027).
+ *
+ * ADR-072 decision 5 / PR-G planning addendum decision 1: generalized to
+ * any `affiliate_users` owner kind — a `Reseller` (wallet) account's
+ * admin-triggered invite (Admin\ResellerController::storeUser()) reuses
+ * this exact seam, not a forked copy. `AffiliateUser::ownerBusinessName()`
+ * is the one place the owner_type branch lives.
  */
 final class AffiliateInviteService
 {
@@ -40,13 +46,13 @@ final class AffiliateInviteService
     public function sendInvite(AffiliateUser $user): void
     {
         $link = $this->createInviteLink($user);
-        $business = $user->affiliate?->business_name ?? 'your affiliate account';
+        $business = $user->ownerBusinessName() ?? 'your account';
 
         $this->mailer->send(
             $user->email,
-            'Set your affiliate portal password',
+            'Set your portal password',
             "Hi {$user->name},\n\n"
-            ."An account has been created for you to manage {$business} on the affiliate portal. "
+            ."An account has been created for you to manage {$business} on the partner portal. "
             ."Set your password to activate it:\n\n{$link}\n\n"
             ."This link expires in 24 hours. If you weren't expecting this, ignore this email.",
         );

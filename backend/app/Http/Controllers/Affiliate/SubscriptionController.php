@@ -19,7 +19,7 @@ class SubscriptionController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        $affiliate = $request->user()->affiliate;
+        $affiliate = $request->user()->affiliateOwner();
         $subscription = $affiliate->subscription()->with('tier')->first();
 
         return response()->json([

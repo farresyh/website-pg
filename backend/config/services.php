@@ -268,6 +268,20 @@ return [
         'expire_after_hours' => (int) env('MEMBERSHIP_RECONCILIATION_EXPIRE_AFTER_HOURS', 24),
     ],
 
+    // ADR-073 decision 3(a) / PR-G planning addendum decision 9 — the
+    // self-serve wallet-top-up equivalent of payment_reconciliation
+    // above. Unlike a membership attempt (soft expire_after_hours), a
+    // WalletTopupAttempt already carries its own hard 30-minute
+    // expires_at (decision 8) — this command's own "expire" branch acts
+    // on that column directly, no separate expire-after config needed.
+    // pending_after_minutes is shorter than payment_reconciliation's own
+    // 30 (a top-up's whole window is only 30 minutes) — long enough
+    // that a webhook genuinely just hasn't arrived yet isn't mistaken
+    // for stuck.
+    'wallet_topup_reconciliation' => [
+        'pending_after_minutes' => (int) env('WALLET_TOPUP_RECONCILIATION_PENDING_AFTER_MINUTES', 5),
+    ],
+
     // ADR-026 (ORD-10) — 15 minutes comfortably exceeds FulfillOrderJob's
     // own worst-case retry-exhaustion window (HTTP-layer + job-layer
     // retries combined), so anything still stuck past this point is

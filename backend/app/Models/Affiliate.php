@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Auth\AccountOwnerType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -59,9 +60,17 @@ class Affiliate extends Model
         return $this->hasMany(Order::class);
     }
 
+    /**
+     * ADR-072 decision 5 / PR-G: `affiliate_users` is polymorphic now
+     * (`owner_type`/`owner_id`, no more a plain `affiliate_id` FK) — a
+     * scoped `hasMany` (matching this codebase's existing "no Eloquent
+     * morphTo" idiom, see AffiliateUser's own doc comment) rather than
+     * Eloquent's `morphMany()`.
+     */
     public function users(): HasMany
     {
-        return $this->hasMany(AffiliateUser::class);
+        return $this->hasMany(AffiliateUser::class, 'owner_id')
+            ->where('owner_type', AccountOwnerType::Affiliate->value);
     }
 
     /** ADR-056: one subscription row per affiliate (its `affiliate_id` is unique). */

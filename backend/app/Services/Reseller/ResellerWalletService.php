@@ -4,6 +4,7 @@ namespace App\Services\Reseller;
 
 use App\Models\LedgerEntry;
 use App\Models\Reseller;
+use App\Models\WalletTopupAttempt;
 use App\Models\WalletTopupReceipt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -18,17 +19,14 @@ use Illuminate\Support\Facades\Storage;
  * `ledger_entries` has no `reseller_id` column; every read here filters
  * `owner_type`/`owner_id` explicitly against the `Reseller` passed in.
  *
- * PR-C scope only: `manualCredit()` (decision 3b — admin-mediated
- * top-up, the only funding path that exists before a `Reseller` has any
- * identity of its own to self-serve with, see this ADR's own build
- * addendum). The self-serve CHIP top-up (decision 3a) is deferred to
- * build alongside whichever PR first gives a `Reseller` an entry point
- * to trigger it from (PR-G's portal Wallet screen, most likely) — this
- * service's `manualCredit()` already writes the same `wallet_topup`
- * ledger type that path will reuse, so nothing here needs reshaping when
- * it lands. `wallet_debit` (PR-D) and `wallet_refund` (PR-D's
- * retry-then-refund terminal action) are the other two decision-2 entry
- * types — neither is written from this service yet.
+ * PR-C shipped `manualCredit()` (decision 3b — admin-mediated top-up).
+ * PR-G adds `completeTopup()` (decision 3a — the self-serve CHIP path's
+ * own webhook-driven credit, `ChipWebhookController`'s third fallback
+ * branch) — both write the same `wallet_topup` ledger type, so reporting
+ * never has a gap regardless of path. `wallet_debit` (PR-D) and
+ * `wallet_refund` (PR-D's retry-then-refund terminal action) are the
+ * other two decision-2 entry types — neither is written from this
+ * service.
  */
 final class ResellerWalletService
 {
@@ -127,5 +125,35 @@ final class ResellerWalletService
     public function download(WalletTopupReceipt $receipt)
     {
         return Storage::disk($receipt->disk)->download($receipt->path, $receipt->original_name);
+    }
+
+    /**
+     * ADR-073 decision 3(a) / PR-G planning addendum decision 11: a
+     * paid `WalletTopupAttempt` credits the wallet exactly once — the
+     * `wallet_topup` ledger entry references the attempt itself
+     * (`reference_type = 'wallet_topup_attempt'`), and repeating this
+     * call for an already-`paid` attempt is a clean no-op, same posture
+     * `MembershipSubscriptionService::completePaidAttempt()` and the
+     * Order webhook branch already take against a duplicate CHIP
+     * delivery.
+     */
+    public function completeTopup(WalletTopupAttempt $attempt): void
+    {
+        if ($attempt->status === WalletTopupAttemptStatus::Paid) {
+            return;
+        }
+
+        DB::transaction(function () use ($attempt) {
+            $this->ledger->credit(
+                LedgerOwnerType::ResellerWallet,
+                $attempt->reseller_id,
+                $attempt->amount_sen,
+                'wallet_topup',
+                referenceType: 'wallet_topup_attempt',
+                referenceId: $attempt->id,
+            );
+
+            $attempt->update(['status' => WalletTopupAttemptStatus::Paid->value]);
+        });
     }
 }

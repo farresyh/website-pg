@@ -66,6 +66,10 @@ use App\Http\Controllers\PlayerValidationController;
 use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceController;
 use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
 use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
+use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKeyController;
+use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
+use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
+use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
@@ -234,30 +238,63 @@ Route::prefix('affiliate')->group(function () {
 
     // `auth:affiliate` rejects any token whose tokenable is not a
     // affiliate_users model; `affiliate.context` then activates ADR-057's
-    // tenant scope from the authenticated user's affiliate_id.
-    Route::middleware(['auth:affiliate', 'affiliate.context'])->group(function () {
+    // tenant scope from the authenticated user's owner_id.
+    //
+    // ADR-072 decision 4 / PR-G: `account.type:affiliate` is the
+    // mandatory backend gate on every route below — a Reseller (wallet)
+    // account's token can authenticate `auth:affiliate` (same guard,
+    // decision 6) but must never reach an Affiliate-only endpoint like
+    // Withdrawal/Subscription. `/logout` and `/me` are shared by both
+    // account types (PR-G planning addendum decision 6) so stay outside
+    // this gate.
+    Route::middleware(['auth:affiliate'])->group(function () {
         Route::post('/logout', [AffiliateAuthController::class, 'logout']);
         Route::get('/me', [AffiliateAuthController::class, 'me']);
 
-        // ADR-059 (59a) — affiliate portal read layer. Every route here
-        // is scoped to the authenticated affiliate_user's own tenant by
-        // `affiliate.context`; money reads go through
-        // AffiliateEarningsService (decision 5).
-        Route::get('/dashboard', [AffiliateDashboardController::class, 'show']);
-        Route::get('/orders', [AffiliateOrderController::class, 'index']);
-        Route::get('/orders/{orderNumber}', [AffiliateOrderController::class, 'show']);
-        Route::get('/earnings', [AffiliateEarningsController::class, 'index']);
-        Route::get('/subscription', [AffiliateSubscriptionController::class, 'show']);
+        Route::middleware(['account.type:affiliate', 'affiliate.context'])->group(function () {
+            // ADR-059 (59a) — affiliate portal read layer. Every route here
+            // is scoped to the authenticated affiliate_user's own tenant by
+            // `affiliate.context`; money reads go through
+            // AffiliateEarningsService (decision 5).
+            Route::get('/dashboard', [AffiliateDashboardController::class, 'show']);
+            Route::get('/orders', [AffiliateOrderController::class, 'index']);
+            Route::get('/orders/{orderNumber}', [AffiliateOrderController::class, 'show']);
+            Route::get('/earnings', [AffiliateEarningsController::class, 'index']);
+            Route::get('/subscription', [AffiliateSubscriptionController::class, 'show']);
 
-        // ADR-059 (59c) — write surface: profile bank details + WTH-1..5
-        // request side (approval stays admin) + the portal "Exit
-        // impersonation" close.
-        Route::get('/profile', [AffiliateProfileController::class, 'show']);
-        Route::put('/profile', [AffiliateProfileController::class, 'update']);
-        Route::get('/withdrawals', [AffiliateWithdrawalController::class, 'index']);
-        Route::post('/withdrawals', [AffiliateWithdrawalController::class, 'store']);
-        Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end']);
+            // ADR-059 (59c) — write surface: profile bank details + WTH-1..5
+            // request side (approval stays admin) + the portal "Exit
+            // impersonation" close.
+            Route::get('/profile', [AffiliateProfileController::class, 'show']);
+            Route::put('/profile', [AffiliateProfileController::class, 'update']);
+            Route::get('/withdrawals', [AffiliateWithdrawalController::class, 'index']);
+            Route::post('/withdrawals', [AffiliateWithdrawalController::class, 'store']);
+            Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end']);
+        });
     });
+});
+
+// ADR-072/073 PR-G — the Reseller (wallet) portal's own screens, on the
+// SAME `affiliate` guard/login endpoint as above (decision 6) —
+// `account.type:reseller` is the only new gate, layered on after auth,
+// never a parallel auth mechanism. Scope is view + top-up + history
+// only (planning addendum decision 2) — order *placement* stays
+// exclusively the API (PR-E)/Bot (PR-F) channels.
+Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:reseller'])->group(function () {
+    Route::get('/wallet', [ResellerPortalWalletController::class, 'show']);
+    Route::post('/wallet/topup', [ResellerPortalWalletController::class, 'topup']);
+
+    Route::get('/orders', [ResellerPortalOrderController::class, 'index']);
+    Route::get('/orders/{orderNumber}', [ResellerPortalOrderController::class, 'show']);
+
+    Route::get('/profile', [ResellerPortalProfileController::class, 'show']);
+
+    // Full self-service (planning addendum decision 7) — capped at 5
+    // active keys. Admin retains the same capability in parallel
+    // (`/admin/resellers/{reseller}/api-keys*`), not removed.
+    Route::get('/api-keys', [ResellerPortalApiKeyController::class, 'index']);
+    Route::post('/api-keys', [ResellerPortalApiKeyController::class, 'store']);
+    Route::delete('/api-keys/{api_key}', [ResellerPortalApiKeyController::class, 'destroy']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -552,6 +589,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
             Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
             Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+
+            // PR-G — this account's portal login (ADR-072 decision 5),
+            // mirrors AffiliateController's own staff-login actions.
+            Route::post('/{reseller}/users', [ResellerController::class, 'storeUser']);
+            Route::post('/{reseller}/users/{affiliateUser}/resend-invite', [ResellerController::class, 'resendInvite']);
 
             // ADR-073 decision 3(b) (PR-C) — admin manual-credit. Self-serve
             // CHIP top-up (decision 3a) deferred to whichever PR first gives

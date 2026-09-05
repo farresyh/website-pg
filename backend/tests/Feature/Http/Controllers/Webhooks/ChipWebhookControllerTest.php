@@ -9,11 +9,17 @@ use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Models\Supplier;
+use App\Models\WalletTopupAttempt;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Reseller\ResellerWalletService;
+use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
@@ -372,5 +378,95 @@ class ChipWebhookControllerTest extends TestCase
         $response->assertOk();
         $this->assertSame(PaymentStatus::Paid, $order->fresh()->payment_status);
         $this->assertSame(MembershipCheckoutAttemptStatus::Pending, MembershipCheckoutAttempt::query()->firstOrFail()->status);
+    }
+
+    // --- ADR-073 decision 3(a) / PR-G: the self-serve wallet-top-up branch ---
+
+    private function pendingWalletTopupAttempt(array $overrides = []): WalletTopupAttempt
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+
+        return WalletTopupAttempt::query()->create(array_merge([
+            'reseller_id' => $reseller->id,
+            'reference' => 'WT-WEBHOOKTEST',
+            'amount_sen' => 5000,
+            'total_charged_sen' => 5100,
+            'channel_code' => 'fpx',
+            'status' => WalletTopupAttemptStatus::Pending->value,
+            'chip_payment_ref' => 'chip-purchase-wt-1',
+            'expires_at' => now()->addMinutes(30),
+        ], $overrides));
+    }
+
+    public function test_a_paid_wallet_topup_callback_credits_the_wallet_and_marks_the_attempt_paid(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $attempt = $this->pendingWalletTopupAttempt();
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-wt-1',
+            'reference' => 'WT-WEBHOOKTEST',
+            'status' => 'paid',
+            'purchase' => ['total' => $attempt->total_charged_sen],
+        ], $privateKey);
+
+        $response->assertOk();
+        $this->assertSame(WalletTopupAttemptStatus::Paid, $attempt->fresh()->status);
+        $this->assertSame(5000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $attempt->reseller_id));
+    }
+
+    public function test_a_repeat_wallet_topup_callback_is_acknowledged_without_double_crediting(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $attempt = $this->pendingWalletTopupAttempt();
+        app(ResellerWalletService::class)->completeTopup($attempt);
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-wt-1',
+            'reference' => 'WT-WEBHOOKTEST',
+            'status' => 'paid',
+            'purchase' => ['total' => $attempt->total_charged_sen],
+        ], $privateKey);
+
+        $response->assertOk()->assertJson(['message' => 'already processed']);
+        $this->assertSame(5000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $attempt->reseller_id));
+    }
+
+    public function test_a_wallet_topup_callback_with_the_wrong_amount_is_rejected_409(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $attempt = $this->pendingWalletTopupAttempt();
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-wt-1',
+            'reference' => 'WT-WEBHOOKTEST',
+            'status' => 'paid',
+            'purchase' => ['total' => 1],
+        ], $privateKey);
+
+        $response->assertStatus(409);
+        $this->assertSame(WalletTopupAttemptStatus::Pending, $attempt->fresh()->status);
+        $this->assertSame(0, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $attempt->reseller_id));
+    }
+
+    public function test_a_failed_wallet_topup_callback_marks_the_attempt_failed(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $attempt = $this->pendingWalletTopupAttempt();
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.payment_failure',
+            'id' => 'chip-purchase-wt-1',
+            'reference' => 'WT-WEBHOOKTEST',
+            'status' => 'error',
+            'purchase' => ['total' => $attempt->total_charged_sen],
+        ], $privateKey);
+
+        $response->assertOk();
+        $this->assertSame(WalletTopupAttemptStatus::Failed, $attempt->fresh()->status);
     }
 }

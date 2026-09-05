@@ -20,7 +20,7 @@ class DashboardController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        $affiliate = $request->user()->affiliate;
+        $affiliate = $request->user()->affiliateOwner();
 
         return response()->json($this->earnings->dashboardStats($affiliate));
     }

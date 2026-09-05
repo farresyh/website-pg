@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\Affiliate;
 use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateUser;
+use App\Models\Reseller;
 use App\Services\Affiliate\AffiliateInviteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -12,7 +13,9 @@ use Tests\TestCase;
 
 /**
  * ADR-058 (58a): affiliate-portal auth on the separate `affiliate` Sanctum
- * guard.
+ * guard. ADR-072 decision 5 / PR-G: this exact same endpoint also
+ * authenticates a `Reseller` (wallet) portal account (owner_type =
+ * 'reseller') — see the `reseller_*` tests at the bottom of this file.
  */
 class AffiliateAuthControllerTest extends TestCase
 {
@@ -34,7 +37,8 @@ class AffiliateAuthControllerTest extends TestCase
         unset($overrides['affiliate']);
 
         return AffiliateUser::query()->create(array_merge([
-            'affiliate_id' => $affiliate->id,
+            'owner_type' => 'affiliate',
+            'owner_id' => $affiliate->id,
             'name' => 'Affiliate Staff',
             'email' => 'staff@acme.test',
             'password' => Hash::make('secret-password'),
@@ -52,7 +56,9 @@ class AffiliateAuthControllerTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJsonStructure(['token', 'affiliate_user' => ['id', 'affiliate_id', 'name', 'email'], 'affiliate' => ['id', 'business_name', 'status']]);
+        $response->assertJsonStructure(['token', 'affiliate_user' => ['id', 'owner_type', 'owner_id', 'name', 'email'], 'affiliate' => ['id', 'business_name', 'status']]);
+        $response->assertJsonPath('affiliate_user.owner_type', 'affiliate');
+        $response->assertJsonPath('reseller', null);
         $response->assertJsonMissingPath('affiliate_user.password');
         $this->assertNotNull($user->fresh()->last_login_at);
     }
@@ -104,7 +110,7 @@ class AffiliateAuthControllerTest extends TestCase
         $this->withToken($token)->getJson('/api/affiliate/me')
             ->assertOk()
             ->assertJsonPath('affiliate_user.id', $user->id)
-            ->assertJsonPath('affiliate.id', $user->affiliate_id);
+            ->assertJsonPath('affiliate.id', $user->owner_id);
     }
 
     public function test_an_admin_token_cannot_authenticate_a_affiliate_route(): void
@@ -176,5 +182,57 @@ class AffiliateAuthControllerTest extends TestCase
         $link = app(AffiliateInviteService::class)->createInviteLink($user);
 
         $this->assertStringStartsWith('https://portal.example.com/set-password?', $link);
+    }
+
+    // --- ADR-072 decision 5 / PR-G: a Reseller (wallet) account, same endpoint. ---
+
+    private function reseller(array $overrides = []): Reseller
+    {
+        return Reseller::query()->create(array_merge([
+            'business_name' => 'Wallet Reseller',
+            'is_active' => true,
+        ], $overrides));
+    }
+
+    private function resellerUser(array $overrides = []): AffiliateUser
+    {
+        $reseller = $overrides['reseller'] ?? $this->reseller();
+        unset($overrides['reseller']);
+
+        return AffiliateUser::query()->create(array_merge([
+            'owner_type' => 'reseller',
+            'owner_id' => $reseller->id,
+            'name' => 'Reseller Staff',
+            'email' => 'staff@wallet-reseller.test',
+            'password' => Hash::make('secret-password'),
+            'is_active' => true,
+        ], $overrides));
+    }
+
+    public function test_login_authenticates_a_reseller_wallet_account_through_the_same_endpoint(): void
+    {
+        $user = $this->resellerUser();
+
+        $response = $this->postJson('/api/affiliate/login', [
+            'email' => $user->email,
+            'password' => 'secret-password',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('affiliate_user.owner_type', 'reseller');
+        $response->assertJsonPath('affiliate', null);
+        $response->assertJsonPath('reseller.business_name', 'Wallet Reseller');
+    }
+
+    public function test_me_returns_the_reseller_context_for_a_reseller_owned_account(): void
+    {
+        $user = $this->resellerUser();
+        $token = $user->createToken('affiliate')->plainTextToken;
+
+        $this->withToken($token)->getJson('/api/affiliate/me')
+            ->assertOk()
+            ->assertJsonPath('affiliate', null)
+            ->assertJsonPath('reseller.id', $user->owner_id)
+            ->assertJsonPath('impersonation', null);
     }
 }
