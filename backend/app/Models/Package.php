@@ -101,6 +101,16 @@ class Package extends Model
      * but keeping the storefront's own proven code path untouched
      * avoids any behavior change to that live screen.
      *
+     * ADR-076 decision 1: the final display *order* of the returned
+     * Collection, however, is not a cheapest-pick concern and has no
+     * reason to differ from the storefront's — mirrors
+     * `dedupByDenomination()`'s own final `sortBy` exactly (ascending
+     * `denomination`, packages with neither key last by `name`) so the
+     * Reseller API/Bot channels list packages in the same order a
+     * customer sees them, instead of DB-fetch order (the bug this
+     * decision fixes — `groupBy()` on a Collection preserves
+     * first-appearance order, not numeric order).
+     *
      * @return Collection<int, self>
      */
     public static function cheapestActivePerGame(int $gameId): Collection
@@ -116,6 +126,11 @@ class Package extends Model
         return $neither
             ->concat($cheapestPerDenomination->values())
             ->concat($cheapestPerCatalogCode->values())
+            ->sortBy([
+                fn (self $a, self $b) => ($a->denomination === null ? 1 : 0) <=> ($b->denomination === null ? 1 : 0),
+                fn (self $a, self $b) => $a->denomination <=> $b->denomination,
+                fn (self $a, self $b) => strcmp($a->name, $b->name),
+            ])
             ->values();
     }
 

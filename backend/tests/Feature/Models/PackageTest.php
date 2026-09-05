@@ -5,6 +5,7 @@ namespace Tests\Feature\Models;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -93,7 +94,7 @@ class PackageTest extends TestCase
             'supplier_package_ref' => '31478',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         $supplier->delete();
     }
@@ -198,6 +199,40 @@ class PackageTest extends TestCase
         $this->assertTrue($winners->contains(fn (Package $p) => $p->is($cheap14)));
         $this->assertTrue($winners->contains(fn (Package $p) => $p->is($cheapPass)));
         $this->assertTrue($winners->contains(fn (Package $p) => $p->is($uncurated)));
+    }
+
+    public function test_cheapest_active_per_game_sorts_ascending_by_denomination_with_uncurated_last(): void
+    {
+        // ADR-076 decision 1 — this is the exact bug found live-testing
+        // the Reseller Bot: creation order here is deliberately NOT
+        // ascending, to prove the returned Collection's order comes
+        // from an explicit sort, not DB-fetch/groupBy first-appearance
+        // order.
+        $game = $this->game();
+        $supplier = $this->supplier();
+        $d1084 = Package::query()->create([
+            'game_id' => $game->id, 'name' => '1084 Diamond', 'denomination' => 1084,
+            'cost_price' => 7000, 'standard_selling_price' => 7500, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'a',
+        ]);
+        $d112 = Package::query()->create([
+            'game_id' => $game->id, 'name' => '112 Diamond', 'denomination' => 112,
+            'cost_price' => 700, 'standard_selling_price' => 800, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'b',
+        ]);
+        $d14 = Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 90, 'standard_selling_price' => 150, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'c',
+        ]);
+        $uncurated = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Uncurated bundle', 'denomination' => null, 'catalog_code' => null,
+            'cost_price' => 999, 'standard_selling_price' => 1099, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'd',
+        ]);
+
+        $winners = Package::cheapestActivePerGame($game->id)->values();
+
+        $this->assertSame(
+            [$d14->id, $d112->id, $d1084->id, $uncurated->id],
+            $winners->map(fn (Package $p) => $p->id)->all(),
+        );
     }
 
     public function test_cheapest_active_per_game_ignores_inactive_packages(): void
