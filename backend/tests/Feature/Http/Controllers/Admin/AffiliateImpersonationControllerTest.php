@@ -53,6 +53,11 @@ class AffiliateImpersonationControllerTest extends TestCase
 
         $response->assertCreated();
         $response->assertJsonStructure(['session_id', 'token', 'acting_as' => ['id', 'email'], 'portal_url', 'expires_at']);
+        // Regression guard: `portal_url` must be an absolute URL, never a
+        // bare '' from a config key the app doesn't actually read — found
+        // live in production, 2026-09-05 (same bug as AffiliateInviteService's
+        // own regression test).
+        $this->assertMatchesRegularExpression('#^https?://#', $response->json('portal_url'));
 
         $this->assertDatabaseHas('affiliate_impersonation_sessions', [
             'affiliate_id' => $r->id,
