@@ -13,5 +13,6 @@ final class ResellerBotCommand
         public readonly ?string $playerId = null,
         public readonly ?string $serverId = null,
         public readonly ?string $orderNumber = null,
+        public readonly ?string $amount = null,
     ) {}
 }

@@ -92,4 +92,19 @@ class ResellerBotCommandParserTest extends TestCase
 
         $this->assertSame(ResellerBotCommandType::Unrecognized, $command->type);
     }
+
+    public function test_parses_topupbaki_with_an_amount(): void
+    {
+        $command = $this->parser->parse('.topupbaki 50');
+
+        $this->assertSame(ResellerBotCommandType::TopupBaki, $command->type);
+        $this->assertSame('50', $command->amount);
+    }
+
+    public function test_bare_topupbaki_with_no_amount_is_unrecognized(): void
+    {
+        $command = $this->parser->parse('.topupbaki');
+
+        $this->assertSame(ResellerBotCommandType::Unrecognized, $command->type);
+    }
 }

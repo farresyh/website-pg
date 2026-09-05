@@ -5,6 +5,7 @@ namespace Tests\Feature\Services\Reseller\Bot;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\PaymentMethod;
 use App\Models\PlayerRegionMapping;
 use App\Models\PlayerValidation;
 use App\Models\PlayerValidatorProfile;
@@ -14,14 +15,22 @@ use App\Models\ResellerTier;
 use App\Models\ResellerWhatsAppGroup;
 use App\Models\ResellerWhatsAppPendingLink;
 use App\Models\Supplier;
+use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Payment\PaymentGateway;
+use App\Services\Payment\PaymentRequest;
+use App\Services\Payment\PaymentResponse;
+use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\PlayerValidation\PlayerValidator;
 use App\Services\Reseller\Bot\ResellerBotService;
+use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -65,6 +74,54 @@ class ResellerBotServiceTest extends TestCase
         ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => self::GROUP_ID, 'is_active' => true]);
 
         return $reseller;
+    }
+
+    private function activeFpx(): PaymentMethod
+    {
+        return PaymentMethod::query()->create([
+            'channel_code' => 'fpx',
+            'label' => 'Online Banking (FPX)',
+            'category' => 'fpx',
+            'gateway' => 'chip',
+            'is_active' => true,
+            'percentage_rate' => 0.0,
+            'flat_fee_sen' => 100,
+        ]);
+    }
+
+    private function bindGateway(bool $succeeds = true): void
+    {
+        $gateway = new class($succeeds) implements PaymentGateway
+        {
+            public function __construct(private readonly bool $succeeds) {}
+
+            public function createPayment(PaymentRequest $request): PaymentResponse
+            {
+                return $this->succeeds
+                    ? PaymentResponse::success([
+                        'payment_request_id' => 'pr-'.$request->referenceId,
+                        'actions' => [['type' => 'REDIRECT', 'value' => 'https://gate.chip-in.asia/p/'.$request->referenceId]],
+                    ])
+                    : PaymentResponse::failure('API_ERROR', 'gateway said no');
+            }
+
+            public function getPayment(string $paymentRequestId): PaymentResponse
+            {
+                return PaymentResponse::success(['payment_request_id' => $paymentRequestId], status: null);
+            }
+
+            public function verifyWebhookSignature(Request $request): bool
+            {
+                throw new RuntimeException('not used');
+            }
+
+            public function parseWebhookEvent(array $payload): PaymentWebhookEvent
+            {
+                throw new RuntimeException('not used');
+            }
+        };
+
+        $this->app->bind('payment-gateway.chip', fn () => $gateway);
     }
 
     public function test_a_message_from_an_unlinked_group_creates_a_pending_link(): void
@@ -379,6 +436,108 @@ class ResellerBotServiceTest extends TestCase
         $this->assertDatabaseHas('player_validations', [
             'game_id' => $mlmy->id, 'player_id' => '51049607', 'status' => 'valid',
         ]);
+    }
+
+    // --- ADR-076 PR-H: .topupbaki ---
+
+    public function test_topupbaki_creates_a_pending_attempt_and_a_bot_topup_row(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+
+        $attempt = WalletTopupAttempt::query()->firstOrFail();
+        $this->assertSame(5000, $attempt->amount_sen);
+        $this->assertSame(WalletTopupAttemptStatus::Pending, $attempt->status);
+        $this->assertDatabaseHas('reseller_bot_wallet_topups', [
+            'wallet_topup_attempt_id' => $attempt->id,
+            'reseller_id' => $reseller->id,
+            'whatsapp_group_id' => self::GROUP_ID,
+            'notified_at' => null,
+        ]);
+    }
+
+    public function test_topupbaki_below_the_minimum_is_rejected_without_a_gateway_call(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 5', 'msg-1');
+
+        $this->assertSame(0, WalletTopupAttempt::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'topup_below_minimum',
+        ]);
+    }
+
+    public function test_topupbaki_with_a_non_numeric_amount_is_rejected(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki lima', 'msg-1');
+
+        $this->assertSame(0, WalletTopupAttempt::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'topup_invalid_amount',
+        ]);
+    }
+
+    public function test_topupbaki_hands_back_the_existing_link_when_one_is_already_pending(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+        // A second request while the first is still pending — decision 3:
+        // reply with the existing attempt's link, no new attempt created.
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 80', 'msg-2');
+
+        $this->assertSame(1, WalletTopupAttempt::query()->count());
+    }
+
+    public function test_topupbaki_is_unavailable_when_no_payment_method_is_active(): void
+    {
+        $this->bindGateway();
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+
+        $this->assertSame(0, WalletTopupAttempt::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'topup_no_active_payment_method',
+        ]);
+    }
+
+    public function test_topupbaki_is_rate_limited_at_5_per_minute(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $reseller = $this->makeLinkedReseller();
+        RateLimiter::clear("reseller-bot-topupbaki:{$reseller->id}");
+
+        // 6 calls, decision 4's limit is 5/min. Each successful call would
+        // otherwise reuse the same pending attempt (decision 3), so the
+        // rate-limit assertion keys off the command log instead: the 6th
+        // must be blocked before it reaches the handler.
+        for ($i = 0; $i < 6; $i++) {
+            app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 5', "msg-{$i}");
+        }
+
+        // 5 got through to the handler (each logged 'topup_below_minimum'),
+        // the 6th was rate-limited before the handler ran.
+        $this->assertSame(5, ResellerBotCommandLog::query()
+            ->where('reseller_id', $reseller->id)
+            ->where('failure_reason', 'topup_below_minimum')
+            ->count());
     }
 
     public function test_checkid_is_rate_limited_more_strictly_than_other_commands(): void

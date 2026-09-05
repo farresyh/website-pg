@@ -15,5 +15,6 @@ enum ResellerBotCommandType
     case TrackOrder;       // .trackorder {order_number}
     case CheckId;          // .checkid {reseller_code} {playerId} [{serverId}]
     case Info;             // .info
+    case TopupBaki;        // .topupbaki {amount} — ADR-076 PR-H
     case Unrecognized;
 }
