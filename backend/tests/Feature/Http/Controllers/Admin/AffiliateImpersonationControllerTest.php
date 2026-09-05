@@ -41,7 +41,8 @@ class AffiliateImpersonationControllerTest extends TestCase
         $admin = $this->actAsSuperAdmin();
         $r = $this->affiliate();
         $user = AffiliateUser::query()->create([
-            'affiliate_id' => $r->id,
+            'owner_type' => 'affiliate',
+            'owner_id' => $r->id,
             'name' => 'Staff',
             'email' => 'staff@acme.test',
             'password' => Hash::make('x'),
@@ -78,7 +79,7 @@ class AffiliateImpersonationControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $r = $this->affiliate(['status' => 'inactive']);
         AffiliateUser::query()->create([
-            'affiliate_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
+            'owner_type' => 'affiliate', 'owner_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
             'password' => Hash::make('x'), 'is_active' => true,
         ]);
 
@@ -90,7 +91,7 @@ class AffiliateImpersonationControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $r = $this->affiliate();
         AffiliateUser::query()->create([
-            'affiliate_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
+            'owner_type' => 'affiliate', 'owner_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
             'password' => Hash::make('x'), 'is_active' => true,
         ]);
 
@@ -108,7 +109,7 @@ class AffiliateImpersonationControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $r = $this->affiliate();
         AffiliateUser::query()->create([
-            'affiliate_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
+            'owner_type' => 'affiliate', 'owner_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
             'password' => Hash::make('x'), 'is_active' => true,
         ]);
         $sessionId = $this->postJson("/api/affiliates/{$r->id}/impersonate")->json('session_id');
@@ -125,7 +126,7 @@ class AffiliateImpersonationControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $r = $this->affiliate();
         AffiliateUser::query()->create([
-            'affiliate_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
+            'owner_type' => 'affiliate', 'owner_id' => $r->id, 'name' => 'S', 'email' => 's@acme.test',
             'password' => Hash::make('x'), 'is_active' => true,
         ]);
         $this->postJson("/api/affiliates/{$r->id}/impersonate");

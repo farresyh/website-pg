@@ -33,7 +33,7 @@ class WithdrawalController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $affiliate = $request->user()->affiliate;
+        $affiliate = $request->user()->affiliateOwner();
 
         $withdrawals = Withdrawal::query()
             ->where('owner_type', LedgerOwnerType::Affiliate->value)
@@ -65,7 +65,7 @@ class WithdrawalController extends Controller
 
     public function store(CreateAffiliateWithdrawalRequest $request): JsonResponse
     {
-        $affiliate = $request->user()->affiliate;
+        $affiliate = $request->user()->affiliateOwner();
         $data = $request->validated();
 
         $bankName = $data['bank_name'] ?? $affiliate->bank_name;

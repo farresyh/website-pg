@@ -7,6 +7,7 @@ use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateUser;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Support\CurrentAffiliate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -69,7 +70,8 @@ class SetAffiliateContextTest extends TestCase
         $this->orderFor($tenantB);
 
         $user = AffiliateUser::query()->create([
-            'affiliate_id' => $tenantA->id,
+            'owner_type' => 'affiliate',
+            'owner_id' => $tenantA->id,
             'name' => 'Staff',
             'email' => 'staff@a.test',
             'password' => 'x',
@@ -98,10 +100,35 @@ class SetAffiliateContextTest extends TestCase
         $this->middleware()->handle($this->requestFor($admin), fn () => response('ok'));
     }
 
+    /**
+     * ADR-072 decision 5 / PR-G: a `reseller`-owned affiliate_users row
+     * has no meaning under this tenant scope — reject it rather than
+     * silently no-op-activating.
+     */
+    public function test_it_rejects_a_reseller_owned_account(): void
+    {
+        $reseller = Reseller::query()->create([
+            'business_name' => 'Wallet Reseller', 'is_active' => true,
+        ]);
+
+        $user = AffiliateUser::query()->create([
+            'owner_type' => 'reseller',
+            'owner_id' => $reseller->id,
+            'name' => 'Reseller Staff',
+            'email' => 'reseller-staff@a.test',
+            'password' => 'x',
+            'is_active' => true,
+        ]);
+
+        $this->expectException(HttpException::class);
+        $this->middleware()->handle($this->requestFor($user), fn () => response('ok'));
+    }
+
     public function test_it_rejects_a_deactivated_affiliate_user(): void
     {
         $user = AffiliateUser::query()->create([
-            'affiliate_id' => $this->affiliate('Tenant A')->id,
+            'owner_type' => 'affiliate',
+            'owner_id' => $this->affiliate('Tenant A')->id,
             'name' => 'Staff',
             'email' => 'staff@a.test',
             'password' => 'x',
@@ -115,7 +142,8 @@ class SetAffiliateContextTest extends TestCase
     public function test_it_deactivates_the_context_even_when_the_next_handler_throws(): void
     {
         $user = AffiliateUser::query()->create([
-            'affiliate_id' => $this->affiliate('Tenant A')->id,
+            'owner_type' => 'affiliate',
+            'owner_id' => $this->affiliate('Tenant A')->id,
             'name' => 'Staff',
             'email' => 'staff@a.test',
             'password' => 'x',

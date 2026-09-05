@@ -26,6 +26,10 @@ const LEDGER_TYPE_LABELS: Record<string, string> = {
   withdrawal: "Withdrawal",
   reseller_tier_fee: "Wholesale-tier fee",
   adjustment: "Adjustment",
+  // ADR-073 — a Reseller (wallet) account's own ledger entry types.
+  wallet_topup: "Top-up",
+  wallet_debit: "Order",
+  wallet_refund: "Refund",
 };
 
 export function ledgerTypeLabel(type: string): string {

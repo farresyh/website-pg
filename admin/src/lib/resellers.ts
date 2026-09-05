@@ -6,8 +6,9 @@ import { apiFetch, apiUpload, ApiError } from "@/lib/api-client";
  * CRUD (ADR-073 decision 1). All endpoints are super_admin-only on the
  * backend. Distinct from `Affiliate` (@/lib/affiliates) — a `Reseller`
  * only ever spends against a deposited wallet balance, never earns. No
- * order-placing logic yet (PR-D), no API key issuance yet (PR-E), no
- * portal login yet (PR-G).
+ * order-placing logic yet (PR-D). API key issuance (PR-E) and portal
+ * login (PR-G) shipped since — see the `ResellerApiKey`/`ResellerUserRow`
+ * sections below.
  */
 
 export interface ResellerRow {
@@ -219,6 +220,42 @@ export function updateResellerWhatsAppGroupStatus(token: string, resellerId: num
     method: "PATCH",
     token,
     body: { is_active: isActive },
+  });
+}
+
+/**
+ * PR-G: this Reseller's own portal login(s) (ADR-072 decision 5). Mirrors
+ * `AffiliateUserRow`/`addAffiliateUser`/`resendAffiliateInvite` (@/lib/
+ * affiliates) exactly — same `AffiliateUser` table underneath, distinguished
+ * by `owner_type='reseller'`. `getResellerDetail()` is the one fetch that
+ * carries `users` (the plain `ResellerRow` from `listResellers()` doesn't
+ * eager-load it, per `Admin\ResellerController::index()`).
+ */
+export interface ResellerUserRow {
+  id: number;
+  name: string;
+  email: string;
+  is_active: boolean;
+  last_login_at: string | null;
+  invite_pending: boolean;
+}
+
+export function getResellerDetail(token: string, id: number) {
+  return apiFetch<ResellerRow & { users: ResellerUserRow[] }>(`/api/resellers/${id}`, { token });
+}
+
+export function addResellerUser(token: string, id: number, values: { name: string; email: string }) {
+  return apiFetch<ResellerRow & { users: ResellerUserRow[] }>(`/api/resellers/${id}/users`, {
+    method: "POST",
+    token,
+    body: values,
+  });
+}
+
+export function resendResellerUserInvite(token: string, id: number, userId: number) {
+  return apiFetch<{ message: string }>(`/api/resellers/${id}/users/${userId}/resend-invite`, {
+    method: "POST",
+    token,
   });
 }
 

@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
 use App\Http\Requests\Admin\StoreResellerRequest;
+use App\Http\Requests\Admin\StoreResellerUserRequest;
 use App\Http\Requests\Admin\UpdateResellerRequest;
 use App\Http\Requests\Admin\UpdateResellerStatusRequest;
+use App\Models\AffiliateUser;
 use App\Models\Reseller;
+use App\Services\Affiliate\AffiliateInviteService;
+use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Http\JsonResponse;
@@ -18,14 +22,20 @@ use Illuminate\Validation\ValidationException;
 /**
  * ADR-072/073 PR-B: super_admin-only Reseller (prepaid-wallet) account
  * management — register account, assign tier, activate/deactivate.
- * Admin-only; no order-placing logic yet (PR-D), no API key issuance yet
- * (PR-E), no portal login (PR-G). Wallet balance is always derived from
- * the ledger (ADR-002) — there is no balance column.
+ * Wallet balance is always derived from the ledger (ADR-002) — there is
+ * no balance column.
+ *
+ * PR-G: `storeUser()`/`resendInvite()` add this account's portal login
+ * (ADR-072 decision 5) — reuses `AffiliateInviteService` (generalized
+ * for `owner_type`), same shape `Admin\AffiliateController`'s own
+ * staff-login actions already use. Registration itself stays
+ * admin-created, no self-serve signup (PR-G planning addendum decision 1).
  */
 class ResellerController extends Controller
 {
     public function __construct(
         private readonly LedgerService $ledger,
+        private readonly AffiliateInviteService $invites,
     ) {}
 
     public function index(): JsonResponse
@@ -44,7 +54,7 @@ class ResellerController extends Controller
 
     public function show(Reseller $reseller): JsonResponse
     {
-        $reseller->load(['tier' => fn ($q) => $q->withTrashed()]);
+        $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users']);
 
         return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
@@ -151,6 +161,53 @@ class ResellerController extends Controller
     }
 
     /**
+     * PR-G: add a portal login for this Reseller account. Mirrors
+     * `AffiliateController::storeUser()` exactly — null password, the
+     * new user gets the set-password invite.
+     */
+    public function storeUser(StoreResellerUserRequest $request, Reseller $reseller): JsonResponse
+    {
+        $data = $request->validated();
+
+        DB::transaction(function () use ($data, $reseller) {
+            $user = AffiliateUser::query()->create([
+                'owner_type' => AccountOwnerType::Reseller->value,
+                'owner_id' => $reseller->id,
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => null,
+                'is_active' => true,
+            ]);
+
+            $this->invites->sendInvite($user);
+        });
+
+        return response()->json($this->rowShape(
+            $reseller->fresh(['tier' => fn ($q) => $q->withTrashed(), 'users']),
+            $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id),
+        ));
+    }
+
+    /** Re-send the set-password invite for a portal user who hasn't accepted yet. */
+    public function resendInvite(Reseller $reseller, AffiliateUser $affiliateUser): JsonResponse
+    {
+        abort_unless(
+            $affiliateUser->owner_type === AccountOwnerType::Reseller && $affiliateUser->owner_id === $reseller->id,
+            404,
+        );
+
+        if ($affiliateUser->password !== null) {
+            throw ValidationException::withMessages([
+                'user' => ['This user has already set their password.'],
+            ]);
+        }
+
+        $this->invites->sendInvite($affiliateUser);
+
+        return response()->json(['message' => 'Invite re-sent.']);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function rowShape(Reseller $reseller, int $walletBalanceSen): array
@@ -168,6 +225,16 @@ class ResellerController extends Controller
             'notes' => $reseller->notes,
             'deleted_at' => $reseller->deleted_at,
             'wallet_balance_sen' => $walletBalanceSen,
+            'users' => $reseller->relationLoaded('users')
+                ? $reseller->users->map(fn (AffiliateUser $u) => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'email' => $u->email,
+                    'is_active' => $u->is_active,
+                    'last_login_at' => $u->last_login_at,
+                    'invite_pending' => $u->password === null,
+                ])->all()
+                : [],
         ];
     }
 }

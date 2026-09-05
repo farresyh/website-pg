@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
@@ -40,6 +41,11 @@ return Application::configure(basePath: dirname(__DIR__))
             // authenticated affiliate_user. Always paired with
             // `auth:affiliate` on affiliate-portal routes.
             'affiliate.context' => SetAffiliateContext::class,
+            // ADR-072 decision 4 / PR-G: the owner_type gate —
+            // `account.type:affiliate` / `account.type:reseller` — on
+            // every `affiliate`-guard route (both the existing Affiliate
+            // portal and the new Reseller wallet portal).
+            'account.type' => EnsureAccountType::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -58,6 +58,17 @@ Schedule::call(fn () => Artisan::call('app:reconcile-pending-deliveries'))
     ->name('delivery-reconciliation')
     ->withoutOverlapping();
 
+// ADR-073 decision 3(a) / PR-G planning addendum decision 9 — same
+// 15-min cadence as payment-reconciliation above (not membership's own
+// daily one): a WalletTopupAttempt's whole window is only 30 minutes
+// (decision 8), so a coarser cadence would risk recovering a genuinely
+// paid top-up hours late. See ReconcilePendingWalletTopupsCommand's own
+// docblock.
+Schedule::command('app:reconcile-pending-wallet-topups')
+    ->cron('*/15 * * * *')
+    ->name('wallet-topup-reconciliation')
+    ->withoutOverlapping();
+
 // ADR-021 — same inert-until-real-cron pattern as above. Prunes
 // player_validations PII past its retention window — see
 // PrunePlayerValidationsCommand's own docblock.

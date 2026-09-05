@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Auth\AccountOwnerType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -53,5 +54,17 @@ class Reseller extends Model
     public function whatsAppGroups(): HasMany
     {
         return $this->hasMany(ResellerWhatsAppGroup::class);
+    }
+
+    /**
+     * PR-G: this account's portal login user(s) — `affiliate_users` rows
+     * with `owner_type = 'reseller'`. Mirrors `Affiliate::users()`'s own
+     * scoped `hasMany` (no Eloquent morphTo, see `AffiliateUser`'s own
+     * doc comment for why).
+     */
+    public function users(): HasMany
+    {
+        return $this->hasMany(AffiliateUser::class, 'owner_id')
+            ->where('owner_type', AccountOwnerType::Reseller->value);
     }
 }

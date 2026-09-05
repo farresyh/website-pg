@@ -3,11 +3,13 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\AffiliateUser;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -121,5 +123,63 @@ class ResellerControllerTest extends TestCase
 
         $this->deleteJson("/api/resellers/{$reseller->id}")->assertUnprocessable();
         $this->assertDatabaseHas('resellers', ['id' => $reseller->id, 'deleted_at' => null]);
+    }
+
+    /**
+     * PR-G: this account's portal login (ADR-072 decision 5) — mirrors
+     * AffiliateControllerTest::test_add_user_and_resend_invite() exactly,
+     * against the Reseller (wallet) side of the same generalized
+     * AffiliateInviteService seam.
+     */
+    public function test_store_user_and_resend_invite(): void
+    {
+        Http::fake();
+        $this->actAsSuperAdmin();
+        $reseller = Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+
+        $response = $this->postJson("/api/resellers/{$reseller->id}/users", [
+            'name' => 'Reseller Staff',
+            'email' => 'staff@wallet-reseller.test',
+        ]);
+        $response->assertOk();
+        $response->assertJsonPath('users.0.email', 'staff@wallet-reseller.test');
+        $response->assertJsonPath('users.0.invite_pending', true);
+
+        $user = AffiliateUser::query()->where('email', 'staff@wallet-reseller.test')->firstOrFail();
+        $this->assertSame('reseller', $user->owner_type->value);
+        $this->assertSame($reseller->id, $user->owner_id);
+        $this->assertNull($user->password);
+
+        $this->postJson("/api/resellers/{$reseller->id}/users/{$user->id}/resend-invite")->assertOk();
+        Http::assertSentCount(2);
+    }
+
+    public function test_resend_invite_rejects_a_user_belonging_to_another_reseller(): void
+    {
+        Http::fake();
+        $this->actAsSuperAdmin();
+        $mine = Reseller::query()->create(['business_name' => 'Mine', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $mine->id);
+        $other = Reseller::query()->create(['business_name' => 'Other', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $other->id);
+
+        $this->postJson("/api/resellers/{$other->id}/users", ['name' => 'S', 'email' => 's@other.test']);
+        $otherUser = AffiliateUser::query()->where('email', 's@other.test')->firstOrFail();
+
+        $this->postJson("/api/resellers/{$mine->id}/users/{$otherUser->id}/resend-invite")->assertNotFound();
+    }
+
+    public function test_resend_invite_rejects_a_user_who_already_set_their_password(): void
+    {
+        Http::fake();
+        $this->actAsSuperAdmin();
+        $reseller = Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+        $this->postJson("/api/resellers/{$reseller->id}/users", ['name' => 'S', 'email' => 's@acme.test']);
+        $user = AffiliateUser::query()->where('email', 's@acme.test')->firstOrFail();
+        $user->update(['password' => 'already-set']);
+
+        $this->postJson("/api/resellers/{$reseller->id}/users/{$user->id}/resend-invite")->assertUnprocessable();
     }
 }

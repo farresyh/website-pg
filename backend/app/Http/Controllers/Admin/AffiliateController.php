@@ -16,6 +16,7 @@ use App\Models\AffiliateUser;
 use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Affiliate\AffiliateSubscriptionService;
 use App\Services\Affiliate\AffiliateTierFeeService;
+use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Withdrawal\WithdrawalStatus;
@@ -102,7 +103,8 @@ class AffiliateController extends Controller
             ]);
 
             $user = AffiliateUser::query()->create([
-                'affiliate_id' => $affiliate->id,
+                'owner_type' => AccountOwnerType::Affiliate->value,
+                'owner_id' => $affiliate->id,
                 'name' => $data['user_name'],
                 'email' => $data['user_email'],
                 'password' => null,
@@ -231,7 +233,8 @@ class AffiliateController extends Controller
 
         DB::transaction(function () use ($data, $affiliate) {
             $user = AffiliateUser::query()->create([
-                'affiliate_id' => $affiliate->id,
+                'owner_type' => AccountOwnerType::Affiliate->value,
+                'owner_id' => $affiliate->id,
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password' => null,
@@ -247,7 +250,10 @@ class AffiliateController extends Controller
     /** Re-send the set-password invite for a user who hasn't accepted yet. */
     public function resendInvite(Affiliate $affiliate, AffiliateUser $affiliateUser): JsonResponse
     {
-        abort_unless($affiliateUser->affiliate_id === $affiliate->id, 404);
+        abort_unless(
+            $affiliateUser->owner_type === AccountOwnerType::Affiliate && $affiliateUser->owner_id === $affiliate->id,
+            404,
+        );
 
         if ($affiliateUser->password !== null) {
             throw ValidationException::withMessages([

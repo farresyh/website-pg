@@ -43,7 +43,11 @@ export default function ImpersonatePage() {
         setClientSession({
           token: payload.token,
           affiliate_user_id: payload.affiliate_user.id,
-          affiliate_id: payload.affiliate_user.affiliate_id,
+          // ADR-072/PR-G decision 10: impersonation only ever mints a
+          // token for an Affiliate portal user — never a Reseller
+          // (wallet) account.
+          owner_type: payload.affiliate_user.owner_type,
+          owner_id: payload.affiliate_user.owner_id,
           name: payload.affiliate_user.name,
           email: payload.affiliate_user.email,
           business_name: payload.affiliate?.business_name ?? "",

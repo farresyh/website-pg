@@ -17,7 +17,7 @@ class ProfileController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        $affiliate = $request->user()->affiliate;
+        $affiliate = $request->user()->affiliateOwner();
 
         return response()->json([
             'business_name' => $affiliate->business_name,
@@ -32,7 +32,7 @@ class ProfileController extends Controller
 
     public function update(UpdateAffiliateProfileRequest $request): JsonResponse
     {
-        $affiliate = $request->user()->affiliate;
+        $affiliate = $request->user()->affiliateOwner();
         $affiliate->update($request->validated());
 
         return $this->show($request);

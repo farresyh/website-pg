@@ -29,7 +29,8 @@ class AffiliateImpersonationPortalTest extends TestCase
     private function affiliateUser(Affiliate $affiliate): AffiliateUser
     {
         return AffiliateUser::query()->create([
-            'affiliate_id' => $affiliate->id,
+            'owner_type' => 'affiliate',
+            'owner_id' => $affiliate->id,
             'name' => 'Staff',
             'email' => 'staff@acme.test',
             'password' => Hash::make('secret-password'),

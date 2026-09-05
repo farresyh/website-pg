@@ -20,7 +20,7 @@ class EarningsController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $affiliate = $request->user()->affiliate;
+        $affiliate = $request->user()->affiliateOwner();
 
         $perPage = (int) $request->integer('per_page', 20);
         $perPage = max(1, min($perPage, 100));

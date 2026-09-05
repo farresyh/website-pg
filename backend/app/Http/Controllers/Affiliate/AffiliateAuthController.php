@@ -58,14 +58,21 @@ class AffiliateAuthController extends Controller
 
         Log::info('Affiliate login succeeded', [
             'affiliate_user_id' => $user->id,
-            'affiliate_id' => $user->affiliate_id,
+            'owner_type' => $user->owner_type->value,
+            'owner_id' => $user->owner_id,
             'ip' => $request->ip(),
         ]);
 
         return response()->json([
             'token' => $user->createToken('affiliate')->plainTextToken,
-            'affiliate_user' => $user->only(['id', 'affiliate_id', 'name', 'email']),
-            'affiliate' => $user->affiliate?->only(['id', 'business_name', 'status']),
+            'affiliate_user' => $user->only(['id', 'owner_type', 'owner_id', 'name', 'email']),
+            // ADR-072 decision 5 / PR-G: a Reseller (wallet) portal
+            // account logs in through this exact same endpoint (PR-G
+            // planning addendum decision 6) — 'affiliate' is only
+            // populated for an owner_type=affiliate row, 'reseller' only
+            // for owner_type=reseller, never both.
+            'affiliate' => $user->affiliateOwner()?->only(['id', 'business_name', 'status']),
+            'reseller' => $user->resellerOwner()?->only(['id', 'business_name', 'is_active']),
         ]);
     }
 
@@ -108,12 +115,17 @@ class AffiliateAuthController extends Controller
         $user = $request->user();
 
         return response()->json([
-            'affiliate_user' => $user->only(['id', 'affiliate_id', 'name', 'email', 'last_login_at']),
-            'affiliate' => $user->affiliate?->only(['id', 'business_name', 'status']),
+            'affiliate_user' => $user->only(['id', 'owner_type', 'owner_id', 'name', 'email', 'last_login_at']),
+            'affiliate' => $user->affiliateOwner()?->only(['id', 'business_name', 'status']),
+            'reseller' => $user->resellerOwner()?->only(['id', 'business_name', 'is_active']),
             // ADR-058 RES-4 / ADR-059 59c: non-null only when this token
             // was minted for an admin impersonation session (ability
             // `impersonate`) and that session is still open. Drives the
             // portal's persistent "Impersonating … — acting as …" banner.
+            // ADR-072/PR-G decision 10: impersonation is not extended to
+            // Reseller — this is always null for an owner_type=reseller
+            // session (no AffiliateImpersonationSession row can exist
+            // for one).
             'impersonation' => $this->impersonationContext($request),
         ]);
     }
