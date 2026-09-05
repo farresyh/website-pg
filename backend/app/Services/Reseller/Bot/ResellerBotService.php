@@ -4,6 +4,7 @@ namespace App\Services\Reseller\Bot;
 
 use App\Models\Game;
 use App\Models\Order;
+use App\Models\PlayerRegionMapping;
 use App\Models\PlayerValidation;
 use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
@@ -266,17 +267,37 @@ final class ResellerBotService
             return ResellerBotReplyFormatter::checkIdUnavailable();
         }
 
+        // ADR-076 decision 8's own "skip region resolution" was revised
+        // after live-testing: `.checkid mlid <a Malaysian player's id>`
+        // replied "valid, MY" — technically true (the id resolves) but
+        // misleading, since that player can't be topped up through the
+        // Indonesia game code. The region check mirrors
+        // `PlayerValidationController::resolveState()`: if the player's
+        // country maps (in `player_region_mappings`, admin-curated per
+        // profile) to a *different* game than the one whose `reseller_code`
+        // was used, tell the reseller which code to use instead. Degrades
+        // gracefully to the plain "valid + country" reply when no mapping
+        // row exists (data not set up) — no worse than before.
+        $wrongRegionGame = null;
+        if ($result->valid && $result->countryCode !== null) {
+            $mapping = PlayerRegionMapping::query()
+                ->where('player_validator_profile_id', $profile->id)
+                ->where('country_code', $result->countryCode)
+                ->with('game:id,name,reseller_code')
+                ->first();
+
+            if ($mapping !== null && $mapping->game_id !== $game->id) {
+                $wrongRegionGame = $mapping->game;
+            }
+        }
+
         // Same audit trail every other validation attempt writes to
-        // (`PlayerValidationController::record()`) — kept intentionally
-        // simple here (no region/redirect resolution, decision 8's own
-        // "purely identity-confirmation" framing): a reseller's
-        // `.checkid` is a quick sanity check, not a checkout-blocking
-        // gate.
+        // (`PlayerValidationController::record()`).
         PlayerValidation::query()->create([
             'game_id' => $game->id,
             'player_id' => (string) $command->playerId,
             'server_id' => $command->serverId,
-            'status' => $result->valid ? 'valid' : 'invalid',
+            'status' => $this->checkIdStatus($result->valid, $wrongRegionGame),
             'country_code' => $result->countryCode,
             'nickname' => $result->nickname,
             'provider' => $result->provider,
@@ -289,7 +310,20 @@ final class ResellerBotService
             return ResellerBotReplyFormatter::checkIdInvalid();
         }
 
+        if ($wrongRegionGame !== null) {
+            return ResellerBotReplyFormatter::checkIdWrongRegion($result, $wrongRegionGame);
+        }
+
         return ResellerBotReplyFormatter::checkIdValid($result);
+    }
+
+    private function checkIdStatus(bool $valid, ?Game $wrongRegionGame): string
+    {
+        if (! $valid) {
+            return 'invalid';
+        }
+
+        return $wrongRegionGame !== null ? 'wrong_region' : 'valid';
     }
 
     private function handleBalance(Reseller $reseller): string

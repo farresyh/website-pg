@@ -5,6 +5,7 @@ namespace Tests\Feature\Services\Reseller\Bot;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\PlayerRegionMapping;
 use App\Models\PlayerValidation;
 use App\Models\PlayerValidatorProfile;
 use App\Models\Reseller;
@@ -317,6 +318,66 @@ class ResellerBotServiceTest extends TestCase
 
         $this->assertDatabaseHas('player_validations', [
             'game_id' => $game->id, 'player_id' => '51049607', 'status' => 'valid', 'nickname' => 'TestNick',
+        ]);
+    }
+
+    public function test_checkid_flags_a_player_whose_region_maps_to_a_different_game_code(): void
+    {
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::valid('mlbb', 'TestNick', 'MY');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $mlmy = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'ml-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $mlid = Game::query()->create([
+            'name' => 'Mobile Legends Indonesia', 'slug' => 'ml-id', 'reseller_code' => 'MLID', 'is_active' => true,
+            'player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id,
+        ]);
+        // The player's real country (MY) maps to the MLMY game, not MLID.
+        PlayerRegionMapping::query()->create([
+            'player_validator_profile_id' => $profile->id, 'country_code' => 'MY',
+            'country_name' => 'Malaysia', 'game_id' => $mlmy->id,
+        ]);
+        $this->makeLinkedReseller();
+
+        // `.checkid MLID` on a Malaysian player — must land as wrong_region,
+        // not a plain "valid".
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLID 51049607 2005', 'msg-1');
+
+        $this->assertDatabaseHas('player_validations', [
+            'game_id' => $mlid->id, 'player_id' => '51049607', 'status' => 'wrong_region',
+        ]);
+    }
+
+    public function test_checkid_stays_valid_when_the_region_maps_to_the_same_game_code(): void
+    {
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::valid('mlbb', 'TestNick', 'MY');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $mlmy = $this->makePackage(resellerCode: 'MLMY')->game;
+        $mlmy->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        PlayerRegionMapping::query()->create([
+            'player_validator_profile_id' => $profile->id, 'country_code' => 'MY',
+            'country_name' => 'Malaysia', 'game_id' => $mlmy->id,
+        ]);
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1');
+
+        $this->assertDatabaseHas('player_validations', [
+            'game_id' => $mlmy->id, 'player_id' => '51049607', 'status' => 'valid',
         ]);
     }
 

@@ -131,6 +131,17 @@ final class ResellerBotReplyFormatter
         );
     }
 
+    public static function checkIdWrongRegion(PlayerValidationResult $result, Game $correctGame): string
+    {
+        return self::wrap(
+            "⚠️ ID SAH — REGION LAIN\n\n"
+            .'Nama   : '.($result->nickname ?? '-')."\n"
+            .'Negara : '.$result->countryCode."\n\n"
+            ."Player ini untuk {$correctGame->name}.\n"
+            ."Guna kod {$correctGame->reseller_code} untuk .list / .order."
+        );
+    }
+
     public static function checkIdInvalid(): string
     {
         return '❌ ID tidak sah atau tidak dijumpai.';
