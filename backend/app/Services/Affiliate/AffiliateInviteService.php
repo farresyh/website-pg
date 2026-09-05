@@ -35,7 +35,14 @@ final class AffiliateInviteService
     {
         $token = $this->brokers->broker('affiliate_users')->createToken($user);
 
-        $base = rtrim((string) config('services.affiliate_portal.url'), '/');
+        // Deliberately still 'reseller_portal' (config/services.php), not
+        // 'affiliate_portal' — ADR-072 PR-A's own judgment call kept this
+        // config key/env var name as-is (the portal app is shared by both
+        // Affiliate and Reseller-wallet accounts). Getting this wrong here
+        // fails silently: config() returns null, (string) casts it to '',
+        // and the invite link becomes a bare relative path with no host —
+        // exactly the bug a real production invite email surfaced.
+        $base = rtrim((string) config('services.reseller_portal.url'), '/');
 
         return $base.'/set-password?'.http_build_query([
             'token' => $token,

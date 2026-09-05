@@ -176,12 +176,31 @@ class AffiliateAuthControllerTest extends TestCase
 
     public function test_invite_link_points_at_the_configured_affiliate_portal_origin(): void
     {
-        config(['services.affiliate_portal.url' => 'https://portal.example.com']);
+        // Real config key is 'reseller_portal' (ADR-072 PR-A's own judgment
+        // call — the shared portal app, not the Affiliate entity) — this
+        // test previously asserted against a config key ('affiliate_portal')
+        // the app never actually reads, silently masking a real bug (the
+        // code fell through to an empty base and produced a bare relative
+        // link) instead of catching it. Found live in production, 2026-09-05.
+        config(['services.reseller_portal.url' => 'https://portal.example.com']);
         $user = $this->affiliateUser(['password' => null]);
 
         $link = app(AffiliateInviteService::class)->createInviteLink($user);
 
         $this->assertStringStartsWith('https://portal.example.com/set-password?', $link);
+    }
+
+    public function test_invite_link_is_never_a_bare_relative_path(): void
+    {
+        // Regression guard for the same bug: whatever the configured portal
+        // origin is, the link must always carry a scheme/host, not just
+        // '/set-password?...' — a relative path with no way for an email
+        // client to resolve it.
+        $user = $this->affiliateUser(['password' => null]);
+
+        $link = app(AffiliateInviteService::class)->createInviteLink($user);
+
+        $this->assertMatchesRegularExpression('#^https?://#', $link);
     }
 
     // --- ADR-072 decision 5 / PR-G: a Reseller (wallet) account, same endpoint. ---
