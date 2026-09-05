@@ -16,7 +16,13 @@ export function proxy(request: NextRequest) {
   // `/impersonate` is an entry point like `/login` — it arrives with no
   // gate cookie yet (the admin opens it with a token in the URL hash)
   // and sets its own session.
-  const isEntryPoint = pathname === "/login" || pathname === "/impersonate";
+  // `/set-password` arrives from an emailed invite link with no gate
+  // cookie yet — it is an entry point like `/login` (ADR-058 set-password
+  // addendum).
+  const isEntryPoint =
+    pathname === "/login" ||
+    pathname === "/impersonate" ||
+    pathname === "/set-password";
 
   if (!hasSession && !isEntryPoint) {
     return NextResponse.redirect(new URL("/login", request.url));

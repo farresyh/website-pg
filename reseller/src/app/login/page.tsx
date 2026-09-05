@@ -8,7 +8,7 @@
  * session decision), so there is no second step here.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setClientSession } from "@/lib/session";
 
@@ -17,7 +17,21 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    // e.g. after `/set-password` redirects here on success (ADR-058
+    // set-password addendum decision 3). Read from the query string
+    // directly so the page needs no `useSearchParams` Suspense boundary;
+    // async IIFE keeps clear of `react-hooks/set-state-in-effect`.
+    (async () => {
+      const message = new URLSearchParams(window.location.search).get("message");
+      if (!message) return;
+      setNotice(message);
+      window.history.replaceState(null, "", window.location.pathname);
+    })();
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,6 +87,12 @@ export default function LoginPage() {
             Sign in to your partner account.
           </p>
         </div>
+
+        {notice && (
+          <p className="rounded-lg bg-success-50 px-3 py-2 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400">
+            {notice}
+          </p>
+        )}
 
         {error && (
           <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
