@@ -8,12 +8,24 @@ import { clearClientSession, getClientSession } from "@/lib/session";
 import { useTheme } from "@/context/ThemeContext";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 
-const NAV = [
+const AFFILIATE_NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/orders", label: "Orders" },
   { href: "/earnings", label: "Earnings" },
   { href: "/withdrawal", label: "Withdrawal" },
   { href: "/subscription", label: "Subscription" },
+  { href: "/profile", label: "Profile" },
+];
+
+// ADR-072 decision 5 / PR-G: a Reseller (wallet) portal account never
+// sees Earnings/Subscription/Withdrawal (it only ever spends, never
+// earns) — Wallet + API Keys replace them. An Affiliate never sees
+// Wallet/API-Keys, the reverse of the same rule.
+const RESELLER_NAV = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/orders", label: "Orders" },
+  { href: "/wallet", label: "Wallet" },
+  { href: "/api-keys", label: "API Keys" },
   { href: "/profile", label: "Profile" },
 ];
 
@@ -23,6 +35,7 @@ export default function PortalShell({ children }: { children: React.ReactNode })
   const session = useClientSession();
   const { theme, toggleTheme } = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
+  const NAV = session?.owner_type === "reseller" ? RESELLER_NAV : AFFILIATE_NAV;
 
   async function handleLogout() {
     setLoggingOut(true);

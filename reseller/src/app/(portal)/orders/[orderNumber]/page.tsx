@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getClientSession } from "@/lib/session";
+import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getOrder, type OrderDetail } from "@/lib/portal";
 import {
@@ -28,14 +29,16 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function OrderDetailPage() {
   const params = useParams<{ orderNumber: string }>();
+  const session = useClientSession();
+  const ownerType = session?.owner_type ?? "affiliate";
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const session = getClientSession();
-    if (!session || !params.orderNumber) return;
+    const current = getClientSession();
+    if (!current || !params.orderNumber) return;
 
-    getOrder(session.token, params.orderNumber)
+    getOrder(current.token, ownerType, params.orderNumber)
       .then(setOrder)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) {
@@ -44,7 +47,7 @@ export default function OrderDetailPage() {
           setError(err instanceof ApiError ? err.message : "Could not load the order.");
         }
       });
-  }, [params.orderNumber]);
+  }, [params.orderNumber, ownerType]);
 
   return (
     <div>
@@ -70,7 +73,9 @@ export default function OrderDetailPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Panel title="Order">
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              <Row label="Reference" value={order.reference_number ?? "—"} />
+              {ownerType === "affiliate" && (
+                <Row label="Reference" value={order.reference_number ?? "—"} />
+              )}
               <Row label="Game" value={order.game?.name ?? "—"} />
               <Row label="Package" value={order.package_name ?? "—"} />
               <Row label="Player ID" value={order.player_id ?? "—"} />
@@ -91,8 +96,12 @@ export default function OrderDetailPage() {
                   </StatusTag>
                 }
               />
-              <Row label="Payment method" value={order.payment_method ?? "—"} />
-              <Row label="Paid at" value={formatDateTime(order.paid_at)} />
+              {ownerType === "affiliate" && (
+                <Row label="Payment method" value={order.payment_method ?? "—"} />
+              )}
+              {ownerType === "affiliate" && (
+                <Row label="Paid at" value={formatDateTime(order.paid_at ?? null)} />
+              )}
               <Row label="Delivered at" value={formatDateTime(order.delivered_at)} />
             </div>
           </Panel>
@@ -100,30 +109,36 @@ export default function OrderDetailPage() {
           <div className="space-y-6">
             <Panel title="Money">
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                <Row label="Customer paid" value={formatRm(order.final_amount)} />
-                <Row
-                  label="Voucher discount"
-                  value={formatRm(order.voucher_discount)}
-                />
-                <Row label="Transaction fee" value={formatRm(order.transaction_fee)} />
-                <Row
-                  label="Your markup"
-                  value={`${order.affiliate_markup_pct}%`}
-                />
-                <Row
-                  label="Your margin"
-                  value={formatRm(order.affiliate_profit)}
-                />
+                <Row label="Total" value={formatRm(order.final_amount)} />
+                {ownerType === "affiliate" && (
+                  <>
+                    <Row
+                      label="Voucher discount"
+                      value={formatRm(order.voucher_discount ?? 0)}
+                    />
+                    <Row label="Transaction fee" value={formatRm(order.transaction_fee ?? 0)} />
+                    <Row
+                      label="Your markup"
+                      value={`${order.affiliate_markup_pct ?? 0}%`}
+                    />
+                    <Row
+                      label="Your margin"
+                      value={formatRm(order.affiliate_profit ?? 0)}
+                    />
+                  </>
+                )}
               </div>
             </Panel>
 
-            <Panel title="Customer">
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                <Row label="Email" value={order.customer_email ?? "—"} />
-                <Row label="Name" value={order.customer_name ?? "—"} />
-                <Row label="Phone" value={order.customer_phone ?? "—"} />
-              </div>
-            </Panel>
+            {ownerType === "affiliate" && (
+              <Panel title="Customer">
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  <Row label="Email" value={order.customer_email ?? "—"} />
+                  <Row label="Name" value={order.customer_name ?? "—"} />
+                  <Row label="Phone" value={order.customer_phone ?? "—"} />
+                </div>
+              </Panel>
+            )}
           </div>
         </div>
       )}
