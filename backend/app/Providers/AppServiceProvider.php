@@ -47,6 +47,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Intervention\Image\ImageManager;
 use Spatie\Backup\Events\BackupHasFailed;
 use Spatie\Backup\Events\CleanupHasFailed;
 
@@ -301,6 +302,12 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(PlayerValidatorRegistry::class);
+
+        // ADR-060 PR-6 — the GD-driver image manager ImageIngestService
+        // uses to re-encode affiliate logo/hero uploads to WebP. GD (not
+        // Imagick) matches the gallery's existing footprint; swap here if
+        // Imagick's quantizer is ever wanted.
+        $this->app->singleton(ImageManager::class, fn () => ImageManager::gd());
 
         // ADR-007 / FRAUD-4
         $this->app->bind(CheckoutVelocityGuard::class, function () {

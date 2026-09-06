@@ -33,7 +33,7 @@ export default async function SiteFooter() {
         <div className="mb-8 grid gap-8 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <Link href="/" className="flex items-center gap-2">
-              <Logo size={32} />
+              <Logo size={32} src={branding.logoUrl} alt={branding.storeName} />
               <span className="font-display text-lg font-bold tracking-tight">{branding.storeName}</span>
             </Link>
             {branding.description && (

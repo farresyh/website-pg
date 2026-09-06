@@ -12,6 +12,14 @@ class HeroSlideControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // ADR-060 PR-6: the public listing is `Host`-brand-resolved and
+        // falls back to `Affiliate::primary()` with no header.
+        $this->primaryAffiliate();
+    }
+
     private function actingAsAdmin(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));

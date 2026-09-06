@@ -70,6 +70,10 @@ class BrandingController extends Controller
                 return [
                     'store_name' => $storeName,
                     'description' => $branding?->description,
+                    // ADR-060 PR-6: derived from `logo_path` via the
+                    // gallery disk — a plain string URL or null, safe to
+                    // cache (no object-corruption concern).
+                    'logo_url' => $branding?->logo_url,
                     'support_email' => $branding?->support_email,
                     'support_phone' => $branding?->support_phone,
                     'telegram_contact_link' => $branding?->telegram_contact_link,

@@ -15,6 +15,15 @@ class HeroSlideControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // ADR-060 PR-6: the listing is `Host`-brand-resolved; with no
+        // header it resolves to `Affiliate::primary()`, and a brand with
+        // no own slides falls back to these null-`affiliate_id` rows.
+        $this->primaryAffiliate();
+    }
+
     private function make(array $overrides = []): HeroSlide
     {
         return HeroSlide::query()->create(array_merge([
@@ -103,7 +112,10 @@ class HeroSlideControllerTest extends TestCase
 
         // Forces a genuine unserialize() of what's actually stored,
         // not whatever object graph still lives in this process's memory.
-        $cached = Cache::store('database')->get('catalog.public.hero_slides');
+        // ADR-060 PR-6: the cache key is per resolved brand.
+        $cached = Cache::store('database')->get(
+            'catalog.public.hero_slides.brand.'.$this->primaryAffiliate()->id,
+        );
         $this->assertIsArray($cached);
         $this->assertSame('Cached Slide', $cached[0]['title']);
 

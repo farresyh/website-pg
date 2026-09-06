@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Affiliate;
 
+use App\Http\Controllers\Affiliate\Concerns\AssertsAffiliateWritable;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Affiliate\StoreAffiliateDomainRequest;
 use App\Models\AffiliateDomain;
@@ -29,6 +30,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class DomainController extends Controller
 {
+    use AssertsAffiliateWritable;
+
     public function __construct(private readonly AffiliateDomainService $domains) {}
 
     public function index(Request $request): JsonResponse
@@ -113,11 +116,6 @@ class DomainController extends Controller
         }
 
         return response()->noContent();
-    }
-
-    private function assertWritable(object $affiliate): void
-    {
-        abort_if($affiliate->status !== 'active', 403, 'Your account is not active.');
     }
 
     /**
