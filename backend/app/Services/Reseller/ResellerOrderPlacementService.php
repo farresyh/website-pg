@@ -8,12 +8,11 @@ use App\Models\Order;
 use App\Models\Reseller;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
-use App\Services\Order\DeliveryStatus;
-use App\Services\Order\OrderNumberService;
+use App\Services\Order\DuplicateOrderException;
+use App\Services\Order\OrderDraft;
+use App\Services\Order\OrderFactory;
 use App\Services\Order\PaymentStatus;
-use App\Services\Pricing\PricingBasis;
-use App\Services\Pricing\PricingService;
-use Illuminate\Database\QueryException;
+use App\Services\Pricing\OrderPricingResolver;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -29,8 +28,8 @@ final class ResellerOrderPlacementService
 {
     public function __construct(
         private readonly LedgerService $ledger,
-        private readonly PricingService $pricing,
-        private readonly OrderNumberService $orderNumbers,
+        private readonly OrderPricingResolver $pricingResolver,
+        private readonly OrderFactory $orderFactory,
     ) {}
 
     /**
@@ -42,13 +41,12 @@ final class ResellerOrderPlacementService
      * `after_commit => false` — the same race `CheckoutService::
      * settleWithVoucher()` already avoids).
      *
-     * Pricing reuses `PricingService::calculateForAffiliate()` with
-     * `affiliateMarkupPct = 0.0` — the exact "wholesale base = cost ×
-     * (1 + tierMarkupPct/100), no markup layered on top" shape ADR-073
-     * decision 1 calls for (its own "same math as ADR-056 decision 2"),
-     * and `affiliateMarkupPct = 0` makes `affiliateProfit` come back 0
-     * for free — decision 6's "no reseller_profit line" is satisfied by
-     * construction, not a branch to remember.
+     * Pricing goes through `OrderPricingResolver::resolveResellerWallet()`
+     * (ADR-060 PR-4b — the same seam the storefront checkout uses, so the
+     * three inline `calculateForAffiliate(…, 0.0)` copies in this channel
+     * are gone): wholesale base `cost × (1 + tier%)`, no affiliate margin,
+     * `affiliateProfit = 0` by construction (ADR-073 decision 6), and the
+     * tier markup snapshotted onto `orders.wholesale_markup_pct`.
      */
     public function placeOrder(Reseller $reseller, ResellerOrderPlacementRequest $request): Order
     {
@@ -66,45 +64,34 @@ final class ResellerOrderPlacementService
         }
 
         $tier = $reseller->tier;
-        $pricing = $this->pricing->calculateForAffiliate(
+        $pricing = $this->pricingResolver->resolveResellerWallet(
             $request->costPriceSen,
             $request->standardSellingPriceSen,
             (float) $tier->markup_percent,
-            0.0,
         );
 
         $primaryAffiliateId = Affiliate::primary()->id;
 
         try {
             $order = DB::transaction(function () use ($reseller, $request, $pricing, $primaryAffiliateId) {
-                $order = Order::query()->create([
-                    'order_number' => $this->orderNumbers->generate(),
-                    'checkout_idempotency_key' => $request->idempotencyKey,
-                    'customer_email' => $reseller->email ?? "wallet+reseller-{$reseller->id}@pekangame.internal",
-                    'customer_name' => $reseller->business_name,
-                    'customer_phone' => $reseller->phone,
-                    'player_id' => $request->playerId,
-                    'server_id' => $request->serverId,
-                    'game_id' => $request->gameId,
-                    'package_id' => $request->packageId,
-                    'supplier_id' => $request->supplierId,
-                    'supplier_product_ref' => $request->supplierProductRef,
-                    'affiliate_id' => $primaryAffiliateId,
-                    'wallet_reseller_id' => $reseller->id,
-                    'pricing_basis' => PricingBasis::ResellerWallet->value,
-                    'cost_price' => $pricing->costPrice,
-                    'standard_selling_price' => $pricing->standardSellingPrice,
-                    'selling_price' => $pricing->sellingPrice,
-                    'voucher_discount' => 0,
-                    'transaction_fee' => 0,
-                    'final_amount' => $pricing->sellingPrice,
-                    'platform_profit' => $pricing->platformProfit,
-                    'affiliate_profit' => $pricing->affiliateProfit,
-                    'payment_status' => PaymentStatus::Paid->value,
-                    'paid_at' => now(),
-                    'delivery_status' => DeliveryStatus::NotStarted->value,
-                    'payment_method' => 'wallet',
-                ]);
+                $order = $this->orderFactory->create(new OrderDraft(
+                    pricing: $pricing,
+                    idempotencyKey: $request->idempotencyKey,
+                    customerEmail: $reseller->email ?? "wallet+reseller-{$reseller->id}@pekangame.internal",
+                    customerName: $reseller->business_name,
+                    customerPhone: $reseller->phone,
+                    playerId: $request->playerId,
+                    serverId: $request->serverId,
+                    affiliateId: $primaryAffiliateId,
+                    paymentStatus: PaymentStatus::Paid,
+                    paidAt: now(),
+                    paymentMethod: 'wallet',
+                    gameId: $request->gameId,
+                    packageId: $request->packageId,
+                    supplierId: $request->supplierId,
+                    supplierProductRef: $request->supplierProductRef,
+                    walletResellerId: $reseller->id,
+                ));
 
                 // ADR-073 decision 4: debit AFTER the Order exists (not
                 // before, as the decision's prose ordering literally
@@ -119,7 +106,7 @@ final class ResellerOrderPlacementService
                 $this->ledger->debit(
                     LedgerOwnerType::ResellerWallet,
                     $reseller->id,
-                    $pricing->sellingPrice,
+                    $pricing->sellingPriceSen,
                     'wallet_debit',
                     referenceType: 'order',
                     referenceId: $order->id,
@@ -127,16 +114,14 @@ final class ResellerOrderPlacementService
 
                 return $order;
             });
-        } catch (QueryException $e) {
-            if ($this->isUniqueConstraintViolation($e)) {
-                // Lost a genuine race — a concurrent request with the
-                // same idempotency key won the INSERT between our lookup
-                // above and now. Same no-op-replay outcome as finding it
-                // up front, never a second debit.
-                return Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->firstOrFail();
-            }
-
-            throw $e;
+        } catch (DuplicateOrderException) {
+            // Lost a genuine race — a concurrent request with the same
+            // idempotency key won the INSERT between our lookup above and
+            // now (OrderFactory maps the unique-constraint violation to
+            // this). Same no-op-replay outcome as finding it up front,
+            // never a second debit — the transaction rolled back before
+            // `debit()` ran.
+            return Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->firstOrFail();
         }
 
         // ADR-073 decision 4: dispatched only after the transaction above
@@ -147,11 +132,5 @@ final class ResellerOrderPlacementService
         FulfillOrderJob::dispatch($order->fresh());
 
         return $order->fresh();
-    }
-
-    /** Mirrors CheckoutService::isUniqueConstraintViolation()'s own check. */
-    private function isUniqueConstraintViolation(QueryException $e): bool
-    {
-        return $e->getCode() === '23000';
     }
 }

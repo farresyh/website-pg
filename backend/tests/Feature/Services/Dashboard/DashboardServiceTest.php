@@ -116,6 +116,7 @@ class DashboardServiceTest extends TestCase
 
         Voucher::query()->create([
             'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
             'code' => 'PATHB-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'amount' => 500,
@@ -126,6 +127,7 @@ class DashboardServiceTest extends TestCase
 
         Voucher::query()->create([
             'order_id' => null,
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'PATHA-'.uniqid(),
             'customer_email' => 'promo@example.com',
             'amount' => 2000,
@@ -146,6 +148,7 @@ class DashboardServiceTest extends TestCase
 
         Voucher::query()->create([
             'order_id' => $testOrder->id,
+            'affiliate_id' => $testOrder->affiliate_id,
             'code' => 'TESTVCH-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'amount' => 500,

@@ -6,22 +6,20 @@ use App\Jobs\FulfillOrderJob;
 use App\Models\Membership;
 use App\Models\Order;
 use App\Services\Membership\MembershipQuotaService;
-use App\Services\Order\DeliveryStatus;
-use App\Services\Order\OrderNumberService;
+use App\Services\Order\DuplicateOrderException;
+use App\Services\Order\OrderDraft;
+use App\Services\Order\OrderFactory;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Pricing\CheckoutTotal;
 use App\Services\Pricing\CheckoutTotalService;
-use App\Services\Pricing\MembershipPricingService;
+use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Pricing\PaymentMethodFeeConfig;
-use App\Services\Pricing\PricingBasis;
-use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
 use App\Services\Voucher\VoucherService;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -35,11 +33,10 @@ use Illuminate\Support\Facades\Log;
 final class CheckoutService
 {
     public function __construct(
-        private readonly PricingService $pricing,
+        private readonly OrderPricingResolver $pricingResolver,
         private readonly CheckoutTotalService $checkoutTotal,
-        private readonly OrderNumberService $orderNumbers,
+        private readonly OrderFactory $orderFactory,
         private readonly VoucherService $vouchers,
-        private readonly MembershipPricingService $membershipPricing,
         private readonly MembershipQuotaService $membershipQuota,
     ) {}
 
@@ -64,33 +61,32 @@ final class CheckoutService
      */
     public function initiate(CheckoutRequest $request, PaymentGateway $gateway): Order
     {
-        $pricing = $this->pricing->calculate(
+        $pricing = $this->pricingResolver->resolveStorefront(
             $request->costPriceSen,
             $request->standardSellingPriceSen,
+            $request->packageMarkupPercent,
             $request->affiliateMarkupPct,
+            $request->tierMarkupPct,
+            $request->membershipId,
         );
-
-        $member = $this->resolveMemberPricing($request);
 
         // ADR-068 decision 16: a logged-in member's order is attributed
         // to their OTP-verified membership email, never a contact address
         // typed into checkout — identity is not trusted from the client
         // (the ORD-9 principle). Resolved from the membership id alone, so
-        // an out-of-quota member (standard-priced fallback, $member ===
-        // null) still gets their email bound. Name and phone stay as
-        // typed — a member legitimately tops up for other people.
+        // an out-of-quota member (standard-priced fallback,
+        // $pricing->membershipId === null) still gets their email bound.
+        // Name and phone stay as typed — a member legitimately tops up for
+        // other people.
         $customerEmail = $this->resolveMemberEmail($request->membershipId) ?? $request->customerEmail;
 
-        $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
-        $platformProfit = $member !== null ? $member->memberPriceSen - $request->costPriceSen : $pricing->platformProfit;
-        $affiliateProfit = $member !== null ? 0 : $pricing->affiliateProfit;
-
         [$voucherPreview, $total, $fullyCoveredByVoucher] = $this->computeTotal(
-            $sellingPriceForOrder,
+            $pricing->sellingPriceSen,
             $request->voucherCode,
             $customerEmail,
             $request->customerPhone,
             $request->paymentFeeConfig,
+            $request->affiliateId,
         );
 
         // ADR-019 idempotency finding: the checkout path never relies on
@@ -109,49 +105,35 @@ final class CheckoutService
         // fast at the INSERT rather than ever reaching the gateway a
         // second time.
         try {
-            $order = Order::query()->create([
-                'order_number' => $this->orderNumbers->generate(),
-                'checkout_idempotency_key' => $request->idempotencyKey,
-                'customer_email' => $customerEmail,
-                'customer_name' => $request->customerName,
-                'customer_phone' => $request->customerPhone,
-                'player_id' => $request->playerId,
-                'server_id' => $request->serverId,
-                'game_id' => $request->gameId,
-                'package_id' => $request->packageId,
-                'supplier_id' => $request->supplierId,
-                'supplier_product_ref' => $request->supplierProductRef,
-                'affiliate_id' => $request->affiliateId,
-                'voucher_id' => $voucherPreview?->voucherId,
-                'pricing_basis' => $member !== null ? PricingBasis::Member->value : PricingBasis::Standard->value,
-                'membership_id' => $member?->membershipId,
-                'member_discount_percent' => $member?->discountPercent,
-                'normal_selling_price' => $member !== null ? $pricing->sellingPrice : null,
-                'cost_price' => $pricing->costPrice,
-                'standard_selling_price' => $pricing->standardSellingPrice,
-                'affiliate_markup_pct' => $request->affiliateMarkupPct,
-                'selling_price' => $sellingPriceForOrder,
-                'voucher_discount' => $total->voucherDiscount,
-                'transaction_fee' => $fullyCoveredByVoucher ? 0 : $total->transactionFee,
-                'final_amount' => $fullyCoveredByVoucher ? 0 : $total->finalAmount,
-                'platform_profit' => $platformProfit,
-                'affiliate_profit' => $affiliateProfit,
-                'payment_status' => $fullyCoveredByVoucher ? PaymentStatus::Paid->value : PaymentStatus::Pending->value,
-                'paid_at' => $fullyCoveredByVoucher ? now() : null,
-                'delivery_status' => DeliveryStatus::NotStarted->value,
-                'payment_method' => $request->paymentMethod,
-                'payment_gateway' => $request->paymentGateway,
-                'channel_code' => $request->channelCode,
-            ]);
-        } catch (QueryException $e) {
-            if ($this->isUniqueConstraintViolation($e)) {
-                throw new DuplicateCheckoutAttemptException(
-                    "Duplicate checkout attempt for idempotency key {$request->idempotencyKey}",
-                    previous: $e,
-                );
-            }
-
-            throw $e;
+            $order = $this->orderFactory->create(new OrderDraft(
+                pricing: $pricing,
+                idempotencyKey: $request->idempotencyKey,
+                customerEmail: $customerEmail,
+                customerName: $request->customerName,
+                customerPhone: $request->customerPhone,
+                playerId: $request->playerId,
+                serverId: $request->serverId,
+                affiliateId: $request->affiliateId,
+                paymentStatus: $fullyCoveredByVoucher ? PaymentStatus::Paid : PaymentStatus::Pending,
+                paidAt: $fullyCoveredByVoucher ? now() : null,
+                paymentMethod: $request->paymentMethod,
+                gameId: $request->gameId,
+                packageId: $request->packageId,
+                supplierId: $request->supplierId,
+                supplierProductRef: $request->supplierProductRef,
+                voucherId: $voucherPreview?->voucherId,
+                voucherDiscountSen: $total->voucherDiscount,
+                transactionFeeSen: $fullyCoveredByVoucher ? 0 : $total->transactionFee,
+                finalAmountSen: $fullyCoveredByVoucher ? 0 : $total->finalAmount,
+                affiliateMarkupPct: $request->affiliateMarkupPct,
+                paymentGateway: $request->paymentGateway,
+                channelCode: $request->channelCode,
+            ));
+        } catch (DuplicateOrderException $e) {
+            throw new DuplicateCheckoutAttemptException(
+                "Duplicate checkout attempt for idempotency key {$request->idempotencyKey}",
+                previous: $e,
+            );
         }
 
         if ($fullyCoveredByVoucher) {
@@ -201,6 +183,7 @@ final class CheckoutService
                 $order->voucher_discount,
                 $order->customer_email,
                 $order->customer_phone,
+                $order->affiliate_id,
             );
         } catch (InvalidVoucherException $e) {
             $this->logAcceptedVoucherRedemptionRace($order, $e);
@@ -276,6 +259,7 @@ final class CheckoutService
                     $order->voucher_discount,
                     $order->customer_email,
                     $order->customer_phone,
+                    $order->affiliate_id,
                 );
             } catch (InvalidVoucherException $e) {
                 $this->logAcceptedVoucherRedemptionRace($order, $e);
@@ -311,37 +295,9 @@ final class CheckoutService
     }
 
     /**
-     * MySQL/sqlite both surface a unique-constraint violation as
-     * SQLSTATE 23000 — narrow enough to not accidentally swallow an
-     * unrelated QueryException (e.g. a real connection failure).
-     */
-    private function isUniqueConstraintViolation(QueryException $e): bool
-    {
-        return $e->getCode() === '23000';
-    }
-
-    /**
-     * ADR-027 Phase 6 (its 2026-08-29 continued addendum, decisions
-     * 4/5/11): an unlocked read, deciding which price to charge — never
-     * the locked commit (that's decrementMembershipQuotaIfApplicable()
-     * below, at the same trust point VoucherService::redeem() already
-     * uses). Returns null (standard pricing applies) for three reasons
-     * treated identically, matching this codebase's "one generic
-     * outcome, don't let the caller distinguish why" discipline
-     * (VoucherService::assertUsable()'s own precedent): no membership
-     * resolved at all, the membership's plan somehow missing (defensive
-     * only — restrictOnDelete makes this unreachable in practice), or
-     * quota insufficient for this order (the confirmed 2026-08-29
-     * fallback — checkout is never blocked over it).
-     */
-    private function resolveMemberPricing(CheckoutRequest $request): ?MemberPricingResolution
-    {
-        return $this->resolveMemberPricingFor($request->membershipId, $request->costPriceSen, $request->packageMarkupPercent);
-    }
-
-    /**
      * ADR-068 decision 16 — the membership's own OTP-verified email,
-     * looked up independently of member *pricing*. `CheckoutController::
+     * looked up independently of member *pricing* (that decision lives in
+     * OrderPricingResolver now). `CheckoutController::
      * resolveMembershipId()` only ever returns an id for an Active,
      * unexpired membership on this brand, so a non-null id here is a
      * genuine logged-in member; a lapsed/absent session leaves the
@@ -354,40 +310,6 @@ final class CheckoutService
         }
 
         return Membership::query()->whereKey($membershipId)->value('email');
-    }
-
-    /**
-     * The actual lookup behind resolveMemberPricing() above, pulled out
-     * so previewTotal() (bug fix, 2026-08-30 — the storefront's
-     * pre-payment totals never included the real member discount or
-     * transaction fee) can resolve the identical pricing without going
-     * through a full CheckoutRequest, which carries order-creation-only
-     * fields (player_id, idempotency_key, ...) a preview has no use for.
-     */
-    private function resolveMemberPricingFor(?int $membershipId, int $costPriceSen, float $packageMarkupPercent): ?MemberPricingResolution
-    {
-        if ($membershipId === null) {
-            return null;
-        }
-
-        $membership = Membership::query()->with('membershipPlan')->find($membershipId);
-
-        if ($membership === null || $membership->membershipPlan === null) {
-            return null;
-        }
-
-        $discountPercent = (float) $membership->membershipPlan->discount_percent;
-        $memberPriceSen = $this->membershipPricing->calculateMemberPrice(
-            $costPriceSen,
-            $packageMarkupPercent,
-            $discountPercent,
-        );
-
-        if ($memberPriceSen > $membership->quota_remaining_sen) {
-            return null;
-        }
-
-        return new MemberPricingResolution($membership->id, $memberPriceSen, $discountPercent);
     }
 
     /**
@@ -404,6 +326,7 @@ final class CheckoutService
         string $customerEmail,
         ?string $customerPhone,
         PaymentMethodFeeConfig $paymentFeeConfig,
+        ?int $affiliateId = null,
     ): array {
         // ADR-024 decision #3: resolved server-side from the voucher's
         // own stored code/remaining/ownership — never a client-
@@ -411,8 +334,10 @@ final class CheckoutService
         // never locks or mutates — the real, locked spend happens
         // later, in requestPayment()/settleWithVoucher() below,
         // matching decision #1's exact timing.
+        // ADR-060 PR-4d: $affiliateId is the Host-resolved storefront
+        // brand — a voucher issued on another brand is rejected here.
         $voucherPreview = $voucherCode !== null
-            ? $this->vouchers->preview($voucherCode, $customerEmail, $customerPhone, $sellingPriceForOrder)
+            ? $this->vouchers->preview($voucherCode, $customerEmail, $customerPhone, $sellingPriceForOrder, $affiliateId)
             : null;
 
         $total = $this->checkoutTotal->calculate(
@@ -452,23 +377,30 @@ final class CheckoutService
         ?string $voucherCode,
         string $customerEmail,
         ?string $customerPhone,
+        ?float $tierMarkupPct = null,
+        ?int $affiliateId = null,
     ): CheckoutTotalPreview {
-        $pricing = $this->pricing->calculate($costPriceSen, $standardSellingPriceSen, $affiliateMarkupPct);
-
-        $member = $this->resolveMemberPricingFor($membershipId, $costPriceSen, $packageMarkupPercent);
-        $sellingPriceForOrder = $member !== null ? $member->memberPriceSen : $pricing->sellingPrice;
+        $pricing = $this->pricingResolver->resolveStorefront(
+            $costPriceSen,
+            $standardSellingPriceSen,
+            $packageMarkupPercent,
+            $affiliateMarkupPct,
+            $tierMarkupPct,
+            $membershipId,
+        );
 
         [, $total, $fullyCoveredByVoucher] = $this->computeTotal(
-            $sellingPriceForOrder,
+            $pricing->sellingPriceSen,
             $voucherCode,
             $customerEmail,
             $customerPhone,
             $paymentFeeConfig,
+            $affiliateId,
         );
 
         return new CheckoutTotalPreview(
-            sellingPriceSen: $sellingPriceForOrder,
-            memberDiscountPercent: $member?->discountPercent,
+            sellingPriceSen: $pricing->sellingPriceSen,
+            memberDiscountPercent: $pricing->memberDiscountPercent,
             voucherDiscountSen: $total->voucherDiscount,
             transactionFeeSen: $fullyCoveredByVoucher ? 0 : $total->transactionFee,
             finalAmountSen: $fullyCoveredByVoucher ? 0 : $total->finalAmount,

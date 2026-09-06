@@ -372,6 +372,64 @@ class OrderResendServiceTest extends TestCase
         $this->assertSame(0, $order->fresh()->affiliate_profit);
     }
 
+    /**
+     * ADR-060 PR-4b: a reseller-wallet order's resend recomputes profit
+     * at the order's own frozen `wholesale_markup_pct` (the tier rate),
+     * not the standard retail chain — the latent bug this PR fixes.
+     */
+    public function test_resend_of_a_reseller_wallet_order_recomputes_at_the_frozen_tier_rate(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
+        $swap = $this->package($game, $supplier, [
+            'name' => '210 Diamonds', 'supplier_package_ref' => 'D',
+            'cost_price' => 1000, 'standard_selling_price' => 1500,
+        ]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'reseller-wallet',
+            'wholesale_markup_pct' => 20.00,
+            'affiliate_markup_pct' => 0,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, null, 'Admin');
+
+        // wholesale base = 1000 * 1.20 = 1200; platformProfit = 1200 - 1000 = 200.
+        // NOT the standard chain (1500 - 1000 = 500) the pre-PR-4b `else`
+        // branch produced.
+        $this->assertSame(200, $order->fresh()->platform_profit);
+        $this->assertSame(0, $order->fresh()->affiliate_profit);
+    }
+
+    /**
+     * ADR-060 PR-4b: an affiliate-basis order (PR-4c wires these) resends
+     * at frozen `wholesale_markup_pct` + frozen `affiliate_markup_pct`.
+     */
+    public function test_resend_of_an_affiliate_basis_order_recomputes_at_frozen_wholesale_and_affiliate_markup(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
+        $swap = $this->package($game, $supplier, [
+            'name' => '210 Diamonds', 'supplier_package_ref' => 'D',
+            'cost_price' => 1000, 'standard_selling_price' => 1500,
+        ]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'affiliate',
+            'wholesale_markup_pct' => 20.00,
+            'affiliate_markup_pct' => 10.00,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, null, 'Admin');
+
+        // wholesale base = 1000 * 1.20 = 1200; platformProfit = 200;
+        // affiliateProfit = 1200 * 10% = 120.
+        $this->assertSame(200, $order->fresh()->platform_profit);
+        $this->assertSame(120, $order->fresh()->affiliate_profit);
+    }
+
     public function test_does_not_credit_the_ledger_when_the_resend_fails(): void
     {
         $supplier = $this->supplier();

@@ -17,23 +17,36 @@ import { CloseIcon } from "@/icons";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SimpleSelect } from "@/components/ui/select";
 import type { CreateVoucherValues } from "@/lib/vouchers";
+
+/** ADR-060 PR-4d: the storefront brands a voucher can be scoped to. */
+export interface VoucherBrandOption {
+  id: number;
+  business_name: string;
+  is_primary: boolean;
+}
 
 interface CreateVoucherModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (values: CreateVoucherValues) => Promise<void>;
+  brands: VoucherBrandOption[];
 }
 
 /**
  * Renders as a child of <Modal>, which unmounts while closed — same
  * fresh-mount-per-open reasoning as AdminUserFormFields / WithdrawalRequestFields.
  */
-function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps, "isOpen">) {
+function CreateVoucherFields({ onClose, onSubmit, brands }: Omit<CreateVoucherModalProps, "isOpen">) {
   const [customerEmail, setCustomerEmail] = useState("");
   const [amountRm, setAmountRm] = useState("");
   const [reason, setReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  // Default to the primary brand (ADR-060 PR-4d decision 5).
+  const [affiliateId, setAffiliateId] = useState(
+    String(brands.find((b) => b.is_primary)?.id ?? brands[0]?.id ?? ""),
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // ADR-035: one key per modal open, reused across every resubmit of
@@ -56,6 +69,11 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
       return;
     }
 
+    if (!affiliateId) {
+      setError("Select a brand.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       await onSubmit({
@@ -64,6 +82,7 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
         reason,
         expires_at: expiresAt || null,
         idempotency_key: idempotencyKeyRef.current!,
+        affiliate_id: Number(affiliateId),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -86,6 +105,20 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {brands.length > 1 && (
+          <div>
+            <Label htmlFor="voucher_brand">Brand</Label>
+            <SimpleSelect
+              id="voucher_brand"
+              options={brands.map((b) => ({ value: String(b.id), label: b.business_name }))}
+              value={affiliateId}
+              onChange={setAffiliateId}
+            />
+            <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+              The voucher is redeemable only on this brand&apos;s storefront.
+            </p>
+          </div>
+        )}
         <div>
           <Label htmlFor="customer_email">Customer Email</Label>
           <Input id="customer_email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} required />
@@ -116,7 +149,7 @@ function CreateVoucherFields({ onClose, onSubmit }: Omit<CreateVoucherModalProps
   );
 }
 
-export default function CreateVoucherModal({ isOpen, onClose, onSubmit }: CreateVoucherModalProps) {
+export default function CreateVoucherModal({ isOpen, onClose, onSubmit, brands }: CreateVoucherModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -132,7 +165,7 @@ export default function CreateVoucherModal({ isOpen, onClose, onSubmit }: Create
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <CreateVoucherFields onClose={onClose} onSubmit={onSubmit} />}
+              {isOpen && <CreateVoucherFields onClose={onClose} onSubmit={onSubmit} brands={brands} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

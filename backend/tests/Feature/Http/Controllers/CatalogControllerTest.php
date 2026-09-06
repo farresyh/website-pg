@@ -4,11 +4,16 @@ namespace Tests\Feature\Http\Controllers;
 
 use App\Models\AdminUser;
 use App\Models\Affiliate;
+use App\Models\AffiliateDomain;
+use App\Models\AffiliateMembershipTier;
+use App\Models\AffiliateSubscription;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Affiliate\AffiliateSubscriptionStatus;
 use App\Services\Membership\MembershipSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -169,6 +174,47 @@ class CatalogControllerTest extends TestCase
         $response->assertOk();
         // 300 + 10% = 330.
         $this->assertSame(330, $response->json()[0]['selling_price_sen']);
+    }
+
+    /**
+     * ADR-060 PR-4c: the catalog prices per `X-Storefront-Host` brand —
+     * a third-party affiliate's storefront shows its own wholesale-tier
+     * + margin price; the header-less primary storefront is unchanged.
+     */
+    public function test_packages_are_priced_per_storefront_brand(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 1000, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Acme Resell', 'markup_pct' => 10, 'status' => 'active',
+        ]);
+        $tier = AffiliateMembershipTier::query()->create([
+            'name' => 'Silver', 'monthly_fee_sen' => 5000, 'markup_percent' => 20, 'is_active' => true, 'sort_order' => 1,
+        ]);
+        AffiliateSubscription::query()->create([
+            'affiliate_id' => $affiliate->id, 'affiliate_membership_tier_id' => $tier->id,
+            'status' => AffiliateSubscriptionStatus::Active->value,
+            'current_period_started_at' => now(), 'next_charge_at' => now()->addDays(30),
+        ]);
+        AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id, 'hostname' => 'shop.acme.com',
+            'status' => AffiliateDomainStatus::Active, 'is_primary' => true,
+        ]);
+
+        // Brand: wholesale base round(1000 * 1.20) = 1200, + 10% margin = 1320.
+        $this->getJson('/api/catalog/games/free-fire-global/packages', ['X-Storefront-Host' => 'shop.acme.com'])
+            ->assertOk()
+            ->assertJsonPath('0.selling_price_sen', 1320);
+
+        // Primary storefront (no header): standard 1200, markup_pct 0 — unchanged.
+        $this->getJson('/api/catalog/games/free-fire-global/packages')
+            ->assertOk()
+            ->assertJsonPath('0.selling_price_sen', 1200);
     }
 
     /**
@@ -596,6 +642,7 @@ class CatalogControllerTest extends TestCase
     public function test_index_survives_a_real_database_cache_round_trip(): void
     {
         config(['cache.default' => 'database']);
+        $brandId = Affiliate::primary()->id;
         Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
 
         $first = $this->getJson('/api/catalog/games');
@@ -603,7 +650,8 @@ class CatalogControllerTest extends TestCase
         $this->assertSame('Free Fire Global', $first->json()[0]['name']);
         $this->assertIsString($first->json()[0]['created_at']);
 
-        $cached = Cache::store('database')->get('catalog.public.games.index');
+        // ADR-060 PR-4c: the index listing is cached per storefront brand.
+        $cached = Cache::store('database')->get("catalog.public.games.index.brand.{$brandId}");
         $this->assertIsString($cached[0]['created_at']);
 
         $second = $this->getJson('/api/catalog/games');

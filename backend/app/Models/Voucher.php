@@ -11,6 +11,7 @@ class Voucher extends Model
 {
     protected $fillable = [
         'order_id',
+        'affiliate_id',
         'code',
         'idempotency_key',
         'customer_email',
@@ -50,6 +51,19 @@ class Voucher extends Model
     public function sourceOrder(): BelongsTo
     {
         return $this->belongsTo(Order::class, 'order_id');
+    }
+
+    /**
+     * ADR-060 PR-4d, decision 5 — the storefront brand this voucher
+     * belongs to. It is redeemable only on this brand's storefront
+     * (`VoucherService::assertUsable()`). Not `BelongsToAffiliate`:
+     * the admin Vouchers list is deliberately cross-brand, and guest
+     * checkout redeems with no affiliate session — every scope is an
+     * explicit `where`, same posture as `Membership` (ADR-061 PR-B).
+     */
+    public function affiliate(): BelongsTo
+    {
+        return $this->belongsTo(Affiliate::class);
     }
 
     /**

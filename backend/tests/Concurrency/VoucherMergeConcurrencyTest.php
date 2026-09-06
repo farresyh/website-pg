@@ -88,6 +88,7 @@ class VoucherMergeConcurrencyTest extends TestCase
     private function voucher(string $code, int $remaining): Voucher
     {
         return Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => $code,
             'customer_email' => 'merge-race@example.com',
             'amount' => $remaining,

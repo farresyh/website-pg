@@ -174,6 +174,7 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
         $this->bindFakeGateway('error');
 
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-RECONCILE-VOUCHER',
             'customer_email' => 'buyer@example.com',
             'amount' => 500,

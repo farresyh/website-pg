@@ -10,6 +10,7 @@ use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\OrderFactory;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
@@ -18,6 +19,7 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\MembershipPricingService;
+use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\VoucherService;
@@ -34,11 +36,10 @@ class CheckoutServiceTest extends TestCase
     private function service(): CheckoutService
     {
         return new CheckoutService(
-            new PricingService,
+            new OrderPricingResolver(new PricingService, new MembershipPricingService),
             new CheckoutTotalService,
-            new OrderNumberService,
+            new OrderFactory(new OrderNumberService),
             new VoucherService(new LedgerService),
-            new MembershipPricingService,
             new MembershipQuotaService,
         );
     }

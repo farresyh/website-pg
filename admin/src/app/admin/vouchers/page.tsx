@@ -40,7 +40,8 @@ import {
   revokeVoucher,
   mergeVouchers,
 } from "@/lib/vouchers";
-import CreateVoucherModal from "@/components/vouchers/CreateVoucherModal";
+import { listAffiliates } from "@/lib/affiliates";
+import CreateVoucherModal, { type VoucherBrandOption } from "@/components/vouchers/CreateVoucherModal";
 import MergeVouchersModal from "@/components/vouchers/MergeVouchersModal";
 
 const STAT_CARDS: { key: keyof VoucherIndexResponse["stats"]; label: string }[] = [
@@ -89,6 +90,7 @@ export default function VouchersPage() {
   const session = useClientSession();
 
   const [data, setData] = useState<VoucherIndexResponse | null>(null);
+  const [brands, setBrands] = useState<VoucherBrandOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
@@ -121,6 +123,20 @@ export default function VouchersPage() {
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load vouchers.");
+      });
+
+    // ADR-060 PR-4d: brand list for the Create-Voucher picker. Only
+    // active, non-deleted brands are scopable targets.
+    listAffiliates(s.token)
+      .then((res) => {
+        setBrands(
+          res.affiliates
+            .filter((a) => a.status === "active" && a.deleted_at === null)
+            .map((a) => ({ id: a.id, business_name: a.business_name, is_primary: a.is_primary })),
+        );
+      })
+      .catch(() => {
+        /* the modal falls back to an empty picker; create will 422 until brands load */
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -221,6 +237,10 @@ export default function VouchersPage() {
             <div>
               <p className="text-theme-xs text-gray-500 dark:text-gray-400">Status</p>
               <Tag severity={statusSeverity[voucher.status]}>{voucher.status}</Tag>
+            </div>
+            <div>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Brand</p>
+              <p className="text-theme-sm text-gray-800 dark:text-white/90">{voucher.affiliate?.business_name ?? "—"}</p>
             </div>
             <div>
               <p className="text-theme-xs text-gray-500 dark:text-gray-400">Customer Email</p>
@@ -393,6 +413,7 @@ export default function VouchersPage() {
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">{null}</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Code</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Brand</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Remaining</DataTableTHeadCell>
@@ -428,6 +449,7 @@ export default function VouchersPage() {
                             <span className="ml-2 text-theme-xs text-gray-400">order #{v.order_id}</span>
                           )}
                         </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{v.affiliate?.business_name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{v.customer_email}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.amount)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.remaining)}</DataTableCell>
@@ -467,7 +489,7 @@ export default function VouchersPage() {
         </div>
       </div>
 
-      <CreateVoucherModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreate} />
+      <CreateVoucherModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreate} brands={brands} />
       <MergeVouchersModal
         isOpen={isMergeModalOpen}
         vouchers={data?.vouchers.filter((v) => selectedIds.includes(v.id)) ?? []}

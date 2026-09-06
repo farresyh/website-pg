@@ -4,7 +4,7 @@ namespace App\Http\Controllers\ResellerApi;
 
 use App\Models\Package;
 use App\Models\Reseller;
-use App\Services\Pricing\PricingService;
+use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Reseller\ResellerCatalogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +20,7 @@ class CatalogController extends Controller
 {
     public function __construct(
         private readonly ResellerCatalogService $catalog,
-        private readonly PricingService $pricing,
+        private readonly OrderPricingResolver $pricingResolver,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -32,28 +32,31 @@ class CatalogController extends Controller
         }
 
         $items = $this->catalog->listAvailable()
-            ->map(fn (array $row) => self::publicListing($row['code'], $row['package'], $reseller, $this->pricing))
+            ->map(fn (array $row) => self::publicListing($row['code'], $row['package'], $reseller, $this->pricingResolver))
             ->values();
 
         return response()->json(['items' => $items]);
     }
 
     /**
+     * ADR-060 PR-4b: prices through `OrderPricingResolver::resolveResellerWallet()`
+     * — the same seam `ResellerOrderPlacementService` charges through, so
+     * the quoted price and the debited price share one code path.
+     *
      * @return array<string, mixed>
      */
-    private static function publicListing(string $code, Package $package, Reseller $reseller, PricingService $pricing): array
+    private static function publicListing(string $code, Package $package, Reseller $reseller, OrderPricingResolver $pricingResolver): array
     {
-        $tierPricing = $pricing->calculateForAffiliate(
+        $tierPricing = $pricingResolver->resolveResellerWallet(
             $package->cost_price,
             $package->standard_selling_price,
             (float) $reseller->tier->markup_percent,
-            0.0,
         );
 
         return [
             'code' => $code,
             'name' => $package->name,
-            'price_sen' => $tierPricing->sellingPrice,
+            'price_sen' => $tierPricing->sellingPriceSen,
         ];
     }
 }

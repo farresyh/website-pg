@@ -49,6 +49,11 @@ export CACHE_STORE=database
 # artisan serve` process, not per-request-forked PHP-FPM workers.
 export CATALOG_PACKAGES_CACHE_STORE=array
 export SESSION_DRIVER=array
+# ADR-060 PR-3: the storefront (served at :3001 here) sends its own host
+# in `X-Storefront-Host`; `ResolveStorefrontBrand` treats a configured
+# primary host as the primary brand with no `affiliate_domains` row. The
+# Playwright storefront is `localhost` (see e2e/tests/constants.ts).
+export STOREFRONT_PRIMARY_HOSTS=localhost
 
 rm -f "$DB_DATABASE"
 touch "$DB_DATABASE"

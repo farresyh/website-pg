@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Http\Requests\Checkout\PreviewCheckoutTotalRequest;
-use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\Order;
@@ -25,6 +24,7 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use App\Services\Voucher\InvalidVoucherException;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -59,6 +59,7 @@ class CheckoutController extends Controller
         private readonly BlacklistService $blacklist,
         private readonly CheckoutVelocityGuard $velocityGuard,
         private readonly MembershipSessionTokenService $membershipSessionTokens,
+        private readonly StorefrontBrand $storefrontBrand,
     ) {}
 
     public function store(CreateCheckoutRequest $request): JsonResponse
@@ -133,11 +134,15 @@ class CheckoutController extends Controller
 
         $this->assertNotBlacklisted($data['player_id'], $data['customer_email'], $data['customer_phone'] ?? null, $request->ip());
 
-        // ADR-061: the platform's own storefront is the primary Affiliate
-        // (ADR-060 will resolve this per `Host` once storefronts are
-        // multi-tenant). Membership needs BOTH the global kill-switch and
-        // this brand's own toggle (ADR-061 decision 4).
-        $affiliate = Affiliate::primary();
+        // ADR-060 PR-4c: the storefront brand this request belongs to,
+        // resolved from `X-Storefront-Host` by the `storefront.brand`
+        // middleware (falls back to `Affiliate::primary()` for the primary
+        // storefront / a header-less caller). The order — and therefore
+        // the ledger profit split at fulfilment — is attributed to this
+        // brand, priced against its own wholesale tier + markup.
+        // Membership needs BOTH the global kill-switch and this brand's
+        // own toggle (ADR-061 decision 4).
+        $affiliate = $this->storefrontBrand->get();
         $membershipId = $affiliate->membershipEnabledEffective($platformSettings)
             ? $this->resolveMembershipId($request, $affiliate->id)
             : null;
@@ -153,6 +158,7 @@ class CheckoutController extends Controller
                 standardSellingPriceSen: $package->standard_selling_price,
                 packageMarkupPercent: (float) $package->markup_percent,
                 affiliateMarkupPct: (float) $affiliate->markup_pct,
+                tierMarkupPct: $affiliate->wholesaleTierMarkupPct(),
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,
                 paymentGateway: $paymentMethod->gateway,
@@ -232,7 +238,7 @@ class CheckoutController extends Controller
             ]);
         }
 
-        $affiliate = Affiliate::primary();
+        $affiliate = $this->storefrontBrand->get();
         $platformSettings = PlatformSettings::current();
         $membershipId = $affiliate->membershipEnabledEffective($platformSettings)
             ? $this->resolveMembershipId($request, $affiliate->id)
@@ -244,6 +250,8 @@ class CheckoutController extends Controller
                 standardSellingPriceSen: $package->standard_selling_price,
                 packageMarkupPercent: (float) $package->markup_percent,
                 affiliateMarkupPct: (float) $affiliate->markup_pct,
+                tierMarkupPct: $affiliate->wholesaleTierMarkupPct(),
+                affiliateId: $affiliate->id,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 membershipId: $membershipId,
                 voucherCode: $data['voucher_code'] ?? null,

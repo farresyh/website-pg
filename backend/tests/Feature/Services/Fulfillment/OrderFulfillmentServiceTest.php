@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services\Fulfillment;
 
+use App\Models\Affiliate;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
@@ -275,6 +276,32 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
+     * ADR-060 PR-4c: an `affiliate`-basis order (a real third-party
+     * branded storefront sale) splits its frozen profit between the
+     * Platform (wholesale − cost) and the affiliate's OWN ledger account
+     * (their margin) — `creditProfit()` books the affiliate credit to
+     * `owner_id = order.affiliate_id`, not the primary.
+     */
+    public function test_fulfill_credits_a_third_party_affiliates_own_ledger_account(): void
+    {
+        $brand = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 10]);
+        $order = $this->paidOrder([
+            'affiliate_id' => $brand->id,
+            'pricing_basis' => 'affiliate',
+            'platform_profit' => 200,
+            'affiliate_profit' => 120,
+            'wholesale_markup_pct' => 20,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($order);
+
+        $this->assertSame(200, (int) LedgerEntry::query()
+            ->where('owner_type', 'platform')->where('owner_id', null)->sum('amount'));
+        $this->assertSame(120, (int) LedgerEntry::query()
+            ->where('owner_type', 'affiliate')->where('owner_id', $brand->id)->sum('amount'));
+    }
+
+    /**
      * ADR-032: an async supplier's Pending response is neither a
      * clean delivery nor a failure — no ledger credit, no voucher
      * commit, order parked in Pending until finalizePendingDelivery()
@@ -379,6 +406,7 @@ class OrderFulfillmentServiceTest extends TestCase
     public function test_fulfill_commits_a_reserved_voucher_redemption_on_delivery(): void
     {
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-TESTCOMMIT',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,
@@ -528,6 +556,7 @@ class OrderFulfillmentServiceTest extends TestCase
     public function test_finalize_pending_delivery_commits_a_reserved_voucher_redemption_on_success(): void
     {
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-TESTPENDINGCOMMIT',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,
