@@ -245,6 +245,45 @@ return [
         ))),
     ],
 
+    /*
+     * ADR-060 (2026-09-06 "domain lifecycle" addendum, section B/C + J):
+     * one `storefront/` Vercel project, many attached custom domains
+     * (Pro plan — $0 per domain). `VercelDomainService` uses these to
+     * call `projectsAddProjectDomain` / `…GetProjectDomain` /
+     * `…VerifyProjectDomain` / `…RemoveProjectDomain`; Vercel issues and
+     * auto-renews the per-domain certificate.
+     *
+     *  - `token` is scoped to the storefront project only (Vercel has no
+     *    finer "Domains only" scope). Sits inert in Forge `.env` since
+     *    2026-09-07 (wizard step J); this config key is what activates it.
+     *  - `connect_cname` is the affiliate-facing CNAME target — a
+     *    PLATFORM-owned alias (`connect.pekangame.space`, a DNS-only
+     *    CNAME in our Cloudflare zone pointing at the project's Vercel
+     *    target). The portal shows the affiliate THIS, never the raw
+     *    Vercel target — provider opacity (addendum section C). A chained
+     *    CNAME (`shop.acme.com` → `connect.pekangame.space` → Vercel)
+     *    verifies fine.
+     *  - `apex_a_record` is the ONLY case that leaks a provider signal:
+     *    an apex domain on a DNS host with no ALIAS/flattening. `www.` /
+     *    `shop.` is the recommended path and stays fully opaque.
+     *  - Every value unset (local dev, CI, tests) ⇒ `VercelDomainService`
+     *    is bound to a no-op fake (AppServiceProvider) — the lifecycle
+     *    logic is still exercised, no network call is made.
+     */
+    'vercel' => [
+        'token' => env('VERCEL_API_TOKEN'),
+        'team_id' => env('VERCEL_TEAM_ID'),
+        'storefront_project_id' => env('VERCEL_STOREFRONT_PROJECT_ID'),
+        'base_url' => env('VERCEL_BASE_URL', 'https://api.vercel.com'),
+        'connect_cname' => env('VERCEL_CONNECT_CNAME', 'connect.pekangame.space'),
+        'apex_a_record' => env('VERCEL_APEX_A_RECORD', '76.76.21.21'),
+        'timeout' => (int) env('VERCEL_TIMEOUT_SECONDS', 10),
+        'connect_timeout' => (int) env('VERCEL_CONNECT_TIMEOUT_SECONDS', 5),
+        // Stuck-`pending` domains older than this are torn down by
+        // `app:sync-affiliate-domain-status` (addendum section G).
+        'stuck_pending_days' => (int) env('VERCEL_STUCK_PENDING_DAYS', 14),
+    ],
+
     // ADR-058 (58a) — canonical origin of the reseller portal (ADR-059),
     // used to build the absolute set-password invite link
     // (AffiliateInviteService). Distinct deploy target from the storefront.
