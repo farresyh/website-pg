@@ -274,6 +274,7 @@ function SlideForm({
             <input
               value={form.primary_cta_label}
               onChange={(e) => set("primary_cta_label", e.target.value)}
+              required
               className={inputClass}
             />
           </Field>
@@ -282,6 +283,7 @@ function SlideForm({
               value={form.primary_cta_href}
               onChange={(e) => set("primary_cta_href", e.target.value)}
               placeholder="/order/mobile-legends"
+              required
               className={inputClass}
             />
           </Field>
