@@ -34,6 +34,7 @@ use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Support\CurrentAffiliate;
+use App\Support\StorefrontBrand;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
@@ -76,6 +77,12 @@ class AppServiceProvider extends ServiceProvider
         // the next. Populated by the affiliate-guard middleware (ADR-058);
         // inert (no tenant context) everywhere else.
         $this->app->scoped(CurrentAffiliate::class);
+
+        // ADR-060 (2026-09-06 addendum): the resolved storefront brand for
+        // a public `Host`-routed request. Same `scoped` reasoning — set
+        // once by ResolveStorefrontBrand middleware, lazily falls back to
+        // Affiliate::primary() everywhere it was not set.
+        $this->app->scoped(StorefrontBrand::class);
 
         // ADR-023 decision #6: the real checkout->fulfillment pipeline
         // runs against a real, separately-booted server process during

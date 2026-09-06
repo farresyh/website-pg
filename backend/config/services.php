@@ -231,6 +231,18 @@ return [
     // CheckoutService::requestPayment().
     'storefront' => [
         'url' => explode(',', env('STOREFRONT_URL', 'http://localhost:3001'))[0],
+
+        // ADR-060 (2026-09-06 addendum): the primary affiliate's own
+        // storefront hostname(s), comma-separated, lower-case, no scheme
+        // or port (e.g. `pekangame.space,www.pekangame.space`). Seeded
+        // into `affiliate_domains` by the create-table migration so the
+        // `Host` resolver treats our own brand exactly like any other.
+        // Empty locally / in CI — the resolver falls back to
+        // `Affiliate::primary()` whenever `X-Storefront-Host` is absent.
+        'primary_hosts' => array_values(array_filter(array_map(
+            fn ($h) => strtolower(trim($h)),
+            explode(',', (string) env('STOREFRONT_PRIMARY_HOSTS', '')),
+        ))),
     ],
 
     // ADR-058 (58a) — canonical origin of the reseller portal (ADR-059),

@@ -7,6 +7,7 @@ use App\Models\AffiliateBranding;
 use App\Models\AffiliateFooterSettings;
 use App\Models\Game;
 use App\Services\Cache\NextRevalidation;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Mews\Purifier\Facades\Purifier;
@@ -15,8 +16,9 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * ADR-028 + its 2026-08-22 addendum: public, guest-callable storefront
  * branding/footer/legal content — same no-auth reasoning as
- * CatalogController/HeroSlideController (ADR-011). Public call site #5
- * for Affiliate::primary() — see that method's doc comment.
+ * CatalogController/HeroSlideController (ADR-011). The brand is resolved
+ * per `Host` via `storefront.brand` middleware (ADR-060); `StorefrontBrand`
+ * falls back to `Affiliate::primary()` when no `X-Storefront-Host` is set.
  */
 class BrandingController extends Controller
 {
@@ -28,9 +30,11 @@ class BrandingController extends Controller
         'about-us' => 'about_us_content',
     ];
 
+    public function __construct(private readonly StorefrontBrand $brand) {}
+
     public function show(): JsonResponse
     {
-        $affiliate = Affiliate::primary();
+        $affiliate = $this->brand->get();
 
         $payload = Cache::remember(
             "catalog.public.branding.{$affiliate->id}",
@@ -92,6 +96,9 @@ class BrandingController extends Controller
             throw new NotFoundHttpException;
         }
 
+        // ADR-060 addendum: footer + legal content stays admin-only and
+        // central — every brand renders the primary's legal text (the
+        // `{store_name}` substitution against the resolved brand is PR-6).
         $affiliate = Affiliate::primary();
         $column = self::LEGAL_PAGES[$page];
 
