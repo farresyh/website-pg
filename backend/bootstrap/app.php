@@ -27,13 +27,52 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Production runs behind the droplet's host nginx → the compose
-        // `nginx` service → php-fpm (docker-compose.prod.yml, ADR-020).
-        // Trust the forwarded headers so url()/$request->secure()/the
-        // session cookie `secure` flag reflect the real https edge —
-        // nothing else can reach php-fpm (DO Cloud Firewall + the
-        // compose-internal network).
-        $middleware->trustProxies(at: '*');
+        // Production is Laravel Forge (native nginx → php-fpm, ADR-066) with
+        // Cloudflare proxying `api.pekangame.space` (ADR-020 decision 8 /
+        // the 2026-09-06 Cloudflare cutover). The immediate peer nginx sees
+        // is a Cloudflare edge IP, so trust exactly Cloudflare's published
+        // ranges (plus loopback for local health checks) — NOT `*`, which
+        // would let any caller spoof `X-Forwarded-For` and defeat the
+        // per-IP rate limiters, the FRAUD-4 checkout velocity guard, and
+        // the auth/impersonation audit logs. Cloudflare always appends the
+        // true connecting IP as the right-most `X-Forwarded-For` entry, so
+        // Symfony's right-to-left walk past trusted proxies lands on the
+        // real client; `$request->ip()`/`secure()`/`getHost()` are then
+        // correct everywhere with no per-call-site change.
+        //
+        // Ranges from https://www.cloudflare.com/ips/ (fetched 2026-09-06).
+        // Cloudflare changes these rarely; re-check on any real-IP anomaly.
+        $middleware->trustProxies(at: [
+            '127.0.0.1',
+            '::1',
+            // Cloudflare IPv4
+            '173.245.48.0/20',
+            '103.21.244.0/22',
+            '103.22.200.0/22',
+            '103.31.4.0/22',
+            '141.101.64.0/18',
+            '108.162.192.0/18',
+            '190.93.240.0/20',
+            '188.114.96.0/20',
+            '197.234.240.0/22',
+            '198.41.128.0/17',
+            '162.158.0.0/15',
+            '104.16.0.0/13',
+            '104.24.0.0/14',
+            '172.64.0.0/13',
+            '131.0.72.0/22',
+            // Cloudflare IPv6
+            '2400:cb00::/32',
+            '2606:4700::/32',
+            '2803:f800::/32',
+            '2405:b500::/32',
+            '2405:8100::/32',
+            '2a06:98c0::/29',
+            '2c0f:f248::/32',
+        ], headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_HOST
+            | Request::HEADER_X_FORWARDED_PORT
+            | Request::HEADER_X_FORWARDED_PROTO);
 
         $middleware->alias([
             'admin.role' => EnsureAdminRole::class,
