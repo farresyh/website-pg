@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\Supplier;
+use App\Models\Voucher;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Affiliate\AffiliateSubscriptionStatus;
 use App\Services\Payment\PaymentGateway;
@@ -242,5 +243,40 @@ class AffiliateStorefrontCheckoutTest extends TestCase
             ->assertNotFound();
 
         $this->assertSame(0, Order::query()->count());
+    }
+
+    /**
+     * ADR-060 PR-4d, decision 5: a voucher issued on the affiliate brand
+     * is not redeemable on the primary storefront (no header) — the
+     * checkout rejects it exactly like an ownership mismatch.
+     */
+    public function test_a_voucher_from_another_brand_is_rejected_at_checkout(): void
+    {
+        $brand = $this->affiliateBrand();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        // Partial-cover — the acme checkout stays Pending at the gateway
+        // (no fulfilment), keeping this test to the brand check alone.
+        $voucher = Voucher::query()->create([
+            'affiliate_id' => $brand->id,
+            'code' => 'VC-BRANDSCOPED',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        // No X-Storefront-Host → primary storefront; the brand-A voucher is invalid here.
+        $this->postJson('/api/checkout', [...$this->payload($game, $package), 'voucher_code' => $voucher->code])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('voucher_code');
+
+        // Same voucher on its own brand's storefront works.
+        $this->postJson(
+            '/api/checkout',
+            [...$this->payload($game, $package), 'voucher_code' => $voucher->code],
+            ['X-Storefront-Host' => 'shop.acme.com'],
+        )->assertCreated();
     }
 }

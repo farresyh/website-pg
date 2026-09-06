@@ -50,6 +50,7 @@ class VoucherPreviewControllerTest extends TestCase
     {
         ['game' => $game, 'package' => $package] = $this->gameAndPackage(); // selling_price = 500
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-PREVIEW-CTRL',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,
@@ -78,6 +79,7 @@ class VoucherPreviewControllerTest extends TestCase
     {
         ['game' => $game, 'package' => $package] = $this->gameAndPackage();
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-PREVIEW-CTRL-2',
             'customer_email' => 'owner@example.com',
             'amount' => 1000,
@@ -126,6 +128,7 @@ class VoucherPreviewControllerTest extends TestCase
         ]);
 
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $affiliate->id,
             'code' => 'KRS-BRAND-PREVIEW', 'customer_email' => 'buyer@example.com',
             'amount' => 300, 'remaining' => 300, 'status' => 'active', 'reason' => 'test',
         ]);

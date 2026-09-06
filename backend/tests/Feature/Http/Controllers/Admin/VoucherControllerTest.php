@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Order;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
@@ -44,6 +45,7 @@ class VoucherControllerTest extends TestCase
 
         $response = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 5_000,
             'reason' => 'Goodwill credit',
             'idempotency_key' => (string) Str::uuid(),
@@ -56,12 +58,53 @@ class VoucherControllerTest extends TestCase
         $this->assertSame(-5_000, app(LedgerService::class)->balance('platform', null));
     }
 
+    /**
+     * ADR-060 PR-4d, decision 5: the brand picker is required, and the
+     * created voucher is scoped to it.
+     */
+    public function test_create_requires_a_brand_and_scopes_the_voucher_to_it(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $brand = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 5, 'status' => 'active']);
+
+        $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'amount' => 1_000,
+            'reason' => 'no brand',
+            'idempotency_key' => (string) Str::uuid(),
+        ])->assertJsonValidationErrors('affiliate_id');
+
+        $response = $this->postJson('/api/vouchers', [
+            'customer_email' => 'customer@example.com',
+            'affiliate_id' => $brand->id,
+            'amount' => 1_000,
+            'reason' => 'Goodwill credit',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('vouchers', ['code' => $response->json('code'), 'affiliate_id' => $brand->id]);
+    }
+
+    public function test_a_compensation_voucher_inherits_the_orders_brand(): void
+    {
+        $brand = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 5, 'status' => 'active']);
+        $order = $this->makeOrder(['affiliate_id' => $brand->id]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('vouchers', ['order_id' => $order->id, 'affiliate_id' => $brand->id]);
+    }
+
     public function test_regular_admin_cannot_create_a_voucher_at_or_above_threshold(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
 
         $response = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 50_000,
             'reason' => 'Large goodwill credit',
             'idempotency_key' => (string) Str::uuid(),
@@ -77,6 +120,7 @@ class VoucherControllerTest extends TestCase
 
         $response = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000_001,
             'reason' => 'Fat-fingered amount',
             'idempotency_key' => (string) Str::uuid(),
@@ -93,6 +137,7 @@ class VoucherControllerTest extends TestCase
 
         $response = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 50_000,
             'reason' => 'Large goodwill credit',
             'idempotency_key' => (string) Str::uuid(),
@@ -107,6 +152,7 @@ class VoucherControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
         $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000,
             'reason' => 'Test',
             'idempotency_key' => (string) Str::uuid(),
@@ -141,6 +187,7 @@ class VoucherControllerTest extends TestCase
     public function test_issuing_a_voucher_also_restores_a_different_voucher_this_order_had_spent(): void
     {
         $originalVoucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-ORIGINAL',
             'customer_email' => 'buyer@example.com',
             'amount' => 500,
@@ -199,6 +246,7 @@ class VoucherControllerTest extends TestCase
     {
         $order = $this->makeOrder(['delivery_status' => DeliveryStatus::Delivered->value]);
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-SHOW-TEST',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,
@@ -230,6 +278,7 @@ class VoucherControllerTest extends TestCase
     {
         $admin = AdminUser::factory()->create(['role' => 'admin']);
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-TEST0001',
             'customer_email' => 'customer@example.com',
             'amount' => 1_000,
@@ -249,6 +298,7 @@ class VoucherControllerTest extends TestCase
     {
         $admin = AdminUser::factory()->create(['role' => 'admin']);
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-TEST0002',
             'customer_email' => 'customer@example.com',
             'amount' => 1_000,
@@ -276,6 +326,7 @@ class VoucherControllerTest extends TestCase
 
         $response = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000,
             'reason' => 'Goodwill credit',
         ]);
@@ -297,6 +348,7 @@ class VoucherControllerTest extends TestCase
 
         $first = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000,
             'reason' => 'Goodwill credit',
             'idempotency_key' => $key,
@@ -305,6 +357,7 @@ class VoucherControllerTest extends TestCase
 
         $second = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000,
             'reason' => 'Goodwill credit',
             'idempotency_key' => $key,
@@ -322,6 +375,7 @@ class VoucherControllerTest extends TestCase
 
         $first = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000,
             'reason' => 'Goodwill credit',
             'idempotency_key' => (string) Str::uuid(),
@@ -330,6 +384,7 @@ class VoucherControllerTest extends TestCase
 
         $second = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000,
             'reason' => 'Goodwill credit (unrelated, same customer)',
             'idempotency_key' => (string) Str::uuid(),
@@ -345,6 +400,7 @@ class VoucherControllerTest extends TestCase
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
         Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-EXISTING',
             'idempotency_key' => 'shared-key',
             'customer_email' => 'someone-else@example.com',
@@ -356,6 +412,7 @@ class VoucherControllerTest extends TestCase
 
         $response = $this->postJson('/api/vouchers', [
             'customer_email' => 'customer@example.com',
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'amount' => 1_000,
             'reason' => 'Goodwill credit',
             'idempotency_key' => 'shared-key',
@@ -369,6 +426,7 @@ class VoucherControllerTest extends TestCase
     private function makeVoucher(array $overrides = []): Voucher
     {
         return Voucher::query()->create(array_merge([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-'.Str::upper(Str::random(8)),
             'customer_email' => 'customer@example.com',
             'amount' => 1_000,
@@ -455,6 +513,27 @@ class VoucherControllerTest extends TestCase
         $response->assertUnprocessable();
         $a->refresh();
         $this->assertSame('active', $a->status);
+    }
+
+    /**
+     * ADR-060 PR-4d, decision 5: a merge can only combine vouchers of
+     * one storefront brand.
+     */
+    public function test_rejects_merging_vouchers_from_different_brands(): void
+    {
+        $otherBrand = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 5]);
+        $a = $this->makeVoucher();
+        $b = $this->makeVoucher(['affiliate_id' => $otherBrand->id]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id],
+            'reason' => 'Attempted cross-brand merge',
+        ]);
+
+        $response->assertUnprocessable();
+        $this->assertSame('active', $a->fresh()->status);
+        $this->assertSame('active', $b->fresh()->status);
     }
 
     public function test_rejects_merging_a_non_active_voucher(): void

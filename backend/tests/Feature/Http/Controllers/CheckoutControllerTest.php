@@ -740,6 +740,7 @@ class CheckoutControllerTest extends TestCase
     private function voucher(array $overrides = []): Voucher
     {
         return Voucher::query()->create(array_merge([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-CHECKOUT-TEST',
             'customer_email' => 'buyer@example.com',
             'customer_phone' => null,
