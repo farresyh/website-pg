@@ -4,8 +4,35 @@
  * Explicitly a placeholder: drop a real exported asset into
  * `storefront/public/` and swap this out. Never hotlink a design-tool
  * asset URL here (those expire).
+ *
+ * ADR-060 PR-6: when the `Host`-resolved brand has uploaded its own
+ * logo, `src` is that image (served from the backend `/storage` host).
+ * A plain `<img>`, not `next/image` — a ~34px brand mark gains nothing
+ * from the optimizer and this sidesteps the per-brand `remotePatterns`
+ * question entirely. Falls back to the placeholder mark when unset.
  */
-export default function Logo({ size = 32 }: { size?: number }) {
+export default function Logo({
+  size = 32,
+  src = null,
+  alt = "",
+}: {
+  size?: number;
+  src?: string | null;
+  alt?: string;
+}) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={alt}
+        width={size}
+        height={size}
+        style={{ width: size, height: size, objectFit: "contain" }}
+      />
+    );
+  }
+
   return (
     <svg
       width={size}

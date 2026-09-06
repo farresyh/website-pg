@@ -19,14 +19,14 @@ import { useSiteConfig } from "@/context/SiteConfigContext";
  */
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
-  const { membershipEnabled } = useSiteConfig();
+  const { membershipEnabled, branding } = useSiteConfig();
 
   return (
     <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-4 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
-          <Logo size={34} />
-          <span className="font-display text-xl font-bold leading-none tracking-tight">PEKANGAME</span>
+          <Logo size={34} src={branding.logoUrl} alt={branding.storeName} />
+          <span className="font-display text-xl font-bold uppercase leading-none tracking-tight">{branding.storeName}</span>
         </Link>
 
         <div className="hidden max-w-[420px] flex-1 items-center gap-2 rounded-full border-2 border-ink bg-surface-container-lowest px-4 py-2 focus-within:border-secondary lg:flex">
