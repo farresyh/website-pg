@@ -28,7 +28,6 @@ export interface AffiliateRow {
   phone: string | null;
   markup_pct: string;
   max_markup_pct: string | null;
-  domains: string[];
   status: AffiliateStatus;
   notes: string | null;
   is_owned: boolean;
@@ -58,8 +57,23 @@ export interface AffiliateTierChangeRow {
   created_at: string;
 }
 
+export type AffiliateDomainStatus = "pending" | "active" | "failed" | "suspended";
+
+export interface AffiliateDomainRow {
+  id: number;
+  hostname: string;
+  status: AffiliateDomainStatus;
+  is_primary: boolean;
+  provider: string;
+  provider_managed: boolean;
+  last_checked_at: string | null;
+  verified_at: string | null;
+  last_error: string | null;
+}
+
 export interface AffiliateDetail {
   affiliate: AffiliateRow;
+  domains: AffiliateDomainRow[];
   users: AffiliateUserRow[];
   tier_changes: AffiliateTierChangeRow[];
 }
@@ -81,7 +95,6 @@ export interface CreateAffiliateValues {
   phone: string | null;
   markup_pct: number;
   max_markup_pct: number | null;
-  domains: string[];
   notes: string | null;
   is_owned: boolean;
   membership_enabled: boolean;
@@ -143,6 +156,22 @@ export function updateAffiliateStatus(token: string, id: number, status: Affilia
 
 export function deleteAffiliate(token: string, id: number) {
   return apiFetch<{ message: string }>(`/api/affiliates/${id}`, { method: "DELETE", token });
+}
+
+/** ADR-060 PR-5 — admin break-glass: force a provider re-check of one custom domain. */
+export function recheckAffiliateDomain(token: string, id: number, domainId: number) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/domains/${domainId}/recheck`, {
+    method: "POST",
+    token,
+  });
+}
+
+/** ADR-060 PR-5 — admin break-glass: detach + remove one custom domain (abuse / affiliate request). */
+export function removeAffiliateDomain(token: string, id: number, domainId: number) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/domains/${domainId}`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export function assignAffiliateTier(token: string, id: number, tierId: number, note: string | null) {

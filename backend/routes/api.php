@@ -250,6 +250,12 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1,redirect-hit');
     Route::get('/seo/scripts', [SeoController::class, 'scripts']);
     Route::get('/seo/robots', [SeoController::class, 'robots']);
+
+    // ADR-060 PR-5 — the storefront `proxy.ts` hits this once per Host to
+    // decide whether to serve the brand or the hard "store unavailable"
+    // page. `storefront.brand` returns 200 for a primary / known-active
+    // host and a coded 404 for an unknown / suspended one.
+    Route::get('/storefront-status', fn () => response()->json(['ok' => true]));
 });
 
 // ADR-058 (58a) — affiliate portal auth, on the separate `affiliate`

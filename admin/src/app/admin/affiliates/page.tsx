@@ -141,7 +141,6 @@ export default function AffiliatesPage() {
       phone: values.phone,
       markup_pct: values.markup_pct,
       max_markup_pct: values.max_markup_pct,
-      domains: values.domains,
       notes: values.notes,
       is_owned: values.is_owned,
       membership_enabled: values.membership_enabled,
@@ -198,7 +197,6 @@ export default function AffiliatesPage() {
                     <DataTableTHeadCell className={TH}>Tier</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Earnings</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Orders</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Domains</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -227,7 +225,6 @@ export default function AffiliatesPage() {
                         </DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.earnings_balance_sen)}</DataTableCell>
                         <DataTableCell className={TD}>{r.orders_count}</DataTableCell>
-                        <DataTableCell className={TD}>{r.domains.length > 0 ? r.domains.join(", ") : "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <Tag severity={r.status === "active" ? "success" : "secondary"}>{r.status}</Tag>
                         </DataTableCell>
