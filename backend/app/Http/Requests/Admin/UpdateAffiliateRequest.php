@@ -36,8 +36,6 @@ class UpdateAffiliateRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:30'],
             'markup_pct' => ['required', 'numeric', 'min:0', 'max:999.99'],
             'max_markup_pct' => ['nullable', 'numeric', 'min:0', 'max:999.99', 'gte:markup_pct'],
-            'domains' => ['nullable', 'array'],
-            'domains.*' => ['string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'is_owned' => ['sometimes', 'boolean'],
             'membership_enabled' => ['sometimes', 'boolean'],

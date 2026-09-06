@@ -12,6 +12,9 @@ use App\Models\Supplier;
 use App\Observers\BackupRunObserver;
 use App\Observers\OrderObserver;
 use App\Observers\PriceSyncRunObserver;
+use App\Services\Affiliate\Domain\AffiliateDomainProvider;
+use App\Services\Affiliate\Domain\NullDomainProvider;
+use App\Services\Affiliate\Domain\VercelDomainProvider;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\PlunkMailer;
@@ -231,6 +234,30 @@ class AppServiceProvider extends ServiceProvider
                 apiKey: (string) $config['api_key'],
                 fromEmail: $config['from_email'],
                 fromName: $config['from_name'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
+
+        // ADR-060 (2026-09-06 "domain lifecycle" addendum, section B) —
+        // the one seam to the frontend host that serves an affiliate
+        // custom domain's certificate + routing. Bound to the real
+        // Vercel implementation only when `services.vercel` is fully
+        // configured (Forge prod); everywhere else (local dev, CI, the
+        // fast/e2e suites) it's the no-op NullDomainProvider so the whole
+        // lifecycle runs without a network call.
+        $this->app->bind(AffiliateDomainProvider::class, function () {
+            $config = config('services.vercel');
+
+            if (empty($config['token']) || empty($config['team_id']) || empty($config['storefront_project_id'])) {
+                return new NullDomainProvider;
+            }
+
+            return new VercelDomainProvider(
+                token: (string) $config['token'],
+                teamId: (string) $config['team_id'],
+                projectId: (string) $config['storefront_project_id'],
+                baseUrl: $config['base_url'],
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
             );

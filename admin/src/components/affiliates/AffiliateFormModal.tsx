@@ -27,7 +27,6 @@ export interface AffiliateFormSubmitValues {
   phone: string | null;
   markup_pct: number;
   max_markup_pct: number | null;
-  domains: string[];
   notes: string | null;
   is_owned: boolean;
   membership_enabled: boolean;
@@ -44,17 +43,6 @@ interface Props {
   tiers: AffiliateTier[];
 }
 
-function toLines(domains: string[]): string {
-  return domains.join("\n");
-}
-
-function fromLines(text: string): string[] {
-  return text
-    .split(/[\n,]/)
-    .map((d) => d.trim())
-    .filter(Boolean);
-}
-
 function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
   const isEditing = editing !== null;
 
@@ -64,7 +52,6 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
   const [phone, setPhone] = useState(editing?.phone ?? "");
   const [markupPct, setMarkupPct] = useState(editing?.markup_pct ?? "0");
   const [maxMarkupPct, setMaxMarkupPct] = useState(editing?.max_markup_pct ?? "");
-  const [domainsText, setDomainsText] = useState(toLines(editing?.domains ?? []));
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [isOwned, setIsOwned] = useState(editing?.is_owned ?? false);
   const [membershipEnabled, setMembershipEnabled] = useState(editing?.membership_enabled ?? false);
@@ -99,7 +86,6 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
         phone: phone || null,
         markup_pct: markup,
         max_markup_pct: maxMarkup,
-        domains: fromLines(domainsText),
         notes: notes || null,
         is_owned: isOwned,
         // A third-party affiliate can never carry consumer Membership
@@ -158,21 +144,6 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
             <Label htmlFor="max_markup_pct">Max markup % (ceiling)</Label>
             <Input id="max_markup_pct" value={maxMarkupPct} onChange={(e) => setMaxMarkupPct(e.target.value)} hint="Leave blank for no ceiling." />
           </div>
-        </div>
-
-        <div>
-          <Label htmlFor="domains">Domains</Label>
-          <textarea
-            id="domains"
-            value={domainsText}
-            onChange={(e) => setDomainsText(e.target.value)}
-            rows={2}
-            placeholder="shop.example.com"
-            className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm dark:border-gray-700"
-          />
-          <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
-            One per line. Cloudflare custom-hostname routing is wired in ADR-060 — this only stores the names for now.
-          </p>
         </div>
 
         <div>

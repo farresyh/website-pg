@@ -9,7 +9,7 @@ import PanelSidebar, { type PanelNavSection } from "@/layout/PanelSidebar";
 import PortalHeader from "@/layout/PortalHeader";
 import Backdrop from "@/layout/Backdrop";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
-import { GridIcon, ListIcon, DollarLineIcon, TrendUpIcon, BoxLineIcon, UserCircleIcon, KeyIcon } from "@/icons";
+import { GridIcon, ListIcon, DollarLineIcon, TrendUpIcon, BoxLineIcon, UserCircleIcon, KeyIcon, GlobeIcon } from "@/icons";
 
 const AFFILIATE_SECTIONS: PanelNavSection[] = [
   {
@@ -20,6 +20,7 @@ const AFFILIATE_SECTIONS: PanelNavSection[] = [
       { kind: "link", name: "Earnings", href: "/earnings", icon: <TrendUpIcon /> },
       { kind: "link", name: "Withdrawal", href: "/withdrawal", icon: <DollarLineIcon /> },
       { kind: "link", name: "Subscription", href: "/subscription", icon: <BoxLineIcon /> },
+      { kind: "link", name: "Domains", href: "/domains", icon: <GlobeIcon /> },
       { kind: "link", name: "Profile", href: "/profile", icon: <UserCircleIcon /> },
     ],
   },

@@ -255,3 +255,59 @@ export function endImpersonation(token: string) {
     token,
   });
 }
+
+/**
+ * ADR-060 PR-5 — the affiliate's branded-storefront custom domains.
+ * Provider-opaque: the backend already sanitised every string, the UI
+ * just renders `dns.cname_target` (a platform alias) and any extra
+ * `verification` records. Never names a hosting provider.
+ */
+export type AffiliateDomainStatus = "pending" | "active" | "failed" | "suspended";
+
+export interface AffiliateDomainRow {
+  id: number;
+  hostname: string;
+  status: AffiliateDomainStatus;
+  is_primary: boolean;
+  verification: { type: string; domain: string; value: string }[];
+  last_checked_at: string | null;
+  verified_at: string | null;
+  last_error: string | null;
+}
+
+export interface DomainsResponse {
+  domains: AffiliateDomainRow[];
+  max_domains: number;
+  writable: boolean;
+  dns: { cname_target: string; apex_a_record: string };
+}
+
+export function getDomains(token: string) {
+  return apiFetch<DomainsResponse>("/api/affiliate/domains", { token });
+}
+
+export function addDomain(token: string, hostname: string) {
+  return apiFetch<AffiliateDomainRow>("/api/affiliate/domains", {
+    method: "POST",
+    token,
+    body: { hostname },
+  });
+}
+
+export function recheckDomain(token: string, id: number) {
+  return apiFetch<AffiliateDomainRow>(`/api/affiliate/domains/${id}/recheck`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function setPrimaryDomain(token: string, id: number) {
+  return apiFetch<AffiliateDomainRow>(`/api/affiliate/domains/${id}/primary`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function removeDomain(token: string, id: number) {
+  return apiFetch<void>(`/api/affiliate/domains/${id}`, { method: "DELETE", token });
+}

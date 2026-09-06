@@ -2701,6 +2701,35 @@ Order: **4a → 4b → 4c → 4d.** Each is independently reviewable; the money-
 
 ---
 
+**PR-5 build addendum — custom-domain lifecycle (Vercel-native), built 2026-09-07.** Shipped as one PR (`feature/adr-060-pr-5-domains`) in four commits — a CI-tuning commit + 5a backend / 5b portal / 5c admin+storefront — to hold down the private-repo Actions-minute burn (~135 runs/7d) that fewer, larger PRs reduce. The CI commit is its own small addendum below.
+
+- **The seam is an `AffiliateDomainProvider` interface**, not the concrete `VercelDomainService` the ADR body names — `VercelDomainProvider` for prod, `NullDomainProvider` bound whenever `services.vercel.{token,team_id,storefront_project_id}` is unset (local dev / CI / the fast + e2e suites run the whole lifecycle with **no network call**; a real custom-domain end-to-end is verified against production + the founder's reserved domain). `services.vercel.*` in `config/services.php` reads the vars the PR-5 infra wizard already parked in Forge `.env`; `connect_cname` (`connect.pekangame.space`) is the affiliate-facing CNAME target and the raw Vercel target never leaves the server.
+- **`VercelDomainProvider`** → `POST /v10/projects/{id}/domains`, `GET`/`POST …/verify`/`DELETE /v9/…`; `?teamId=`. Every failure is re-thrown as a `DomainProviderException` with an **affiliate-safe, provider-un-named** message (`alreadyInUse` is the one specially-handled case); the raw Vercel error goes to the log only. `ConnectionException` → the same generic exception.
+- **`AffiliateDomainService`** — the deep module and **single writer** of `affiliate_domains`. `add` (normalise + `assertHostnameAllowed` denylist [`*.pekangame.space`, `connect_cname`, `primary_hosts`] + 5-domain cap + global-unique `hostname` + provider attach with **row rollback on failure**), `recheck` (`pending→active` with auto-primary; `active→failed` on `missing` with **primary fail-over**), `remove`, `setPrimary` (active only), `suspendAll`/`resumeAll` (RES-5), `removeAllForDelete` (RES-6), `tearDownStuckPending`. Every provider-side step **skips a null-`provider_ref` row** (the primary's config-seeded hostnames).
+- **Portal** — `/api/affiliate/domains` (index/store/recheck/primary/destroy) + `reseller/` **Domains** screen: CNAME instructions (provider never named), add form (disabled at cap / when the account is inactive), per-row status + hint + `last_error`, Check-now / Set-primary / Remove. A **lapsed subscription keeps full domain management** (domain ≠ subscription); a **deactivated** affiliate's screen is read-only (`assertWritable` 403).
+- **Admin** — `AffiliateDetailModal` "Custom domains" section (list + **Force re-check** / **Remove**, no add path); RES-5 `updateStatus` suspends/resumes domains; RES-6 `destroy` tears them down at the provider **first** (a provider failure aborts the delete). The free-text `affiliates.domains` textarea + table column are gone.
+- **`affiliates.domains` JSON column dropped** (`2026_09_07_040000`) — replaced by the `affiliate_domains` table in PR-2, last readers removed here. Ran against the local dev DB.
+- **`app:sync-affiliate-domain-status`** daily (routes/console.php, same inert-until-real-cron pattern) — polls `pending`/`failed` provider-managed rows, tears down rows **stuck `pending` past 14 days** (`services.vercel.stuck_pending_days`), sends **day-3 / day-7** Plunk DNS reminders (best-effort; a missed cron day just skips that day's reminder — no `reminder_sent_at` column).
+- **Storefront hard 404** — `proxy.ts` checks each `Host` against `GET /api/catalog/storefront-status` (cached per host, 60s) and **rewrites an unrecognised custom domain to a static `/store-unavailable` page** rather than the degraded fallback storefront; `ResolveStorefrontBrand`'s unknown-host 404 now carries `{code: "unknown_storefront_host"}` so the proxy can tell it from any other 404. A network blip keeps serving.
+
+**Deviations from the 2026-09-06 addendum, recorded:**
+- **RES-6 hard-deletes the domain rows** (addendum G says "soft-delete with the affiliate") — `AffiliateDomain` has no `SoftDeletes` and a hard delete frees the globally-unique `hostname` for re-use, which RES-6's earnings-zero precondition makes safe.
+- The seam name (`AffiliateDomainProvider` interface, not `VercelDomainService`) — so the no-op local/CI binding is clean; the provider-neutral `provider` column already anticipated a swap.
+
+**Tests:** `AffiliateDomainServiceTest` (16), `AffiliateDomainControllerTest` (7), `VercelDomainProviderTest` (6, `Http::fake`), `SyncAffiliateDomainStatusCommandTest` (4), `Admin\AffiliateControllerTest` +4, `ResolveStorefrontBrandTest` +2. Fast suite **1573 green**; admin + storefront + reseller tsc/eslint/build clean; Pint clean.
+
+**Still open after PR-5:** PR-6 (portal storefront-config editors — branding / logo / hero slides / GA-FB-TikTok pixel / `markup_pct` + live preview / `affiliate_game` catalog toggle). `.env.example` still owes `STOREFRONT_PRIMARY_HOSTS=` + now `VERCEL_*` (outside agent write scope). Founder's real reserved domain = the e2e custom-hostname/SSL verification, once PR-6 lands.
+
+---
+
+**CI-minute tuning addendum (ADR-066), 2026-09-07.** Private repo, billed Actions minutes: ~135 workflow runs over 7 days was burning ~1900 min/mo, driven by run *count* (7 parallel jobs, each rounded up to the minute) not run size. Two `ci.yml` changes, both safe today because `staging`/`main` have **no branch protection or rulesets** (a skipped workflow can't wedge a never-reported required check):
+- **`concurrency: { group: per-PR, cancel-in-progress: pull_request only }`** — a newer commit on a PR cancels the older in-flight run (double runs were visible in history). A `push:main` run is never cancelled (deploy must finish).
+- **`pull_request.paths-ignore: ['docs/**', '**/*.md']`** — a docs-only PR no longer runs the full matrix; `push:main` stays unfiltered so a docs merge still fires `deploy` (a harmless no-op rebuild).
+
+`cancel-in-progress` means a superseded commit never gets its own green check — acceptable. Revisit both if branch protection is ever turned on (would need the "skipped = success" dummy-job pattern or `dorny/paths-filter` in-job).
+
+---
+
 ### Phasing note (ADR-056..060)
 
 One grilled design, split into five sequenced ADRs so each ships as its own PR to `staging`:
@@ -2712,7 +2741,7 @@ One grilled design, split into five sequenced ADRs so each ships as its own PR t
 | 3 | **ADR-058** Reseller auth (58a) + admin Reseller Management (58b) — ✅ built 2026-08-30 | ADR-057 | none |
 | 3b | **ADR-061** Abolish platform-owner special-case — ✅ PR-A merged 2026-08-30 (#33); PR-B merged 2026-08-31 (#34) | ADR-058 | none |
 | 4 | **ADR-059** Reseller portal (`reseller/` app) — ✅ **59a + 59b + 59c (Withdrawal + Profile + Impersonation) built 2026-08-31**; storefront-config editors re-scoped to ADR-060 | ADR-057, ADR-058, ADR-061 | none |
-| 5 | **ADR-060** Multi-tenant branded storefront + custom domains (Vercel-native, ~~Cloudflare for SaaS~~) — ⬜ **unblocked, next build** (owns the portal's storefront-settings / catalog / domain screens; domain lifecycle fully grilled 2026-09-06 — see the addendum; 6-PR split there) | ADR-056..059 | ~~`ADR-020` + `ADR-037`~~ **met — Cloudflare cutover done 2026-09-06** |
+| 5 | **ADR-060** Multi-tenant branded storefront + custom domains (Vercel-native, ~~Cloudflare for SaaS~~) — 🔨 **PR-1…4d shipped to prod 2026-09-07 (#124); PR-5 custom-domain lifecycle built 2026-09-07 (`feature/adr-060-pr-5-domains`, → staging)**; **PR-6** (portal storefront-config editors) is the last piece | ADR-056..059 | ~~`ADR-020` + `ADR-037`~~ **met — Cloudflare cutover done 2026-09-06** |
 
 Build order: 056 → 057 → 058 → **061** → 059 → (production deployment) → 060. **ADR-061** was slotted in after ADR-058 shipped — it lands before 059/060 because both assume "every storefront is a `Reseller`, no special platform-owner path," which is only true once 061's refactor is done.
 

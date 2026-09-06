@@ -29,6 +29,7 @@ use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Affiliate\AffiliateAuthController;
 use App\Http\Controllers\Affiliate\DashboardController as AffiliateDashboardController;
+use App\Http\Controllers\Affiliate\DomainController as AffiliateDomainController;
 use App\Http\Controllers\Affiliate\EarningsController as AffiliateEarningsController;
 use App\Http\Controllers\Affiliate\ImpersonationController as AffiliateImpersonationEndController;
 use App\Http\Controllers\Affiliate\OrderController as AffiliateOrderController;
@@ -249,6 +250,12 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1,redirect-hit');
     Route::get('/seo/scripts', [SeoController::class, 'scripts']);
     Route::get('/seo/robots', [SeoController::class, 'robots']);
+
+    // ADR-060 PR-5 — the storefront `proxy.ts` hits this once per Host to
+    // decide whether to serve the brand or the hard "store unavailable"
+    // page. `storefront.brand` returns 200 for a primary / known-active
+    // host and a coded 404 for an unknown / suspended one.
+    Route::get('/storefront-status', fn () => response()->json(['ok' => true]));
 });
 
 // ADR-058 (58a) — affiliate portal auth, on the separate `affiliate`
@@ -293,6 +300,14 @@ Route::prefix('affiliate')->group(function () {
             Route::get('/withdrawals', [AffiliateWithdrawalController::class, 'index']);
             Route::post('/withdrawals', [AffiliateWithdrawalController::class, 'store']);
             Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end']);
+
+            // ADR-060 PR-5 — self-serve custom-domain management (branded
+            // storefront). Provider-opaque (addendum section C).
+            Route::get('/domains', [AffiliateDomainController::class, 'index']);
+            Route::post('/domains', [AffiliateDomainController::class, 'store']);
+            Route::post('/domains/{domain}/recheck', [AffiliateDomainController::class, 'recheck']);
+            Route::post('/domains/{domain}/primary', [AffiliateDomainController::class, 'setPrimary']);
+            Route::delete('/domains/{domain}', [AffiliateDomainController::class, 'destroy']);
         });
     });
 });
@@ -585,6 +600,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
             // RES-4 impersonation.
             Route::post('/{affiliate}/impersonate', [AffiliateImpersonationController::class, 'store']);
+
+            // ADR-060 PR-5 — custom-domain break-glass. Read-only list is
+            // folded into `show`; the single write path is affiliate
+            // self-serve (or the founder via RES-4 impersonation). No
+            // add-domain form here (addendum section F).
+            Route::post('/{affiliate}/domains/{affiliateDomain}/recheck', [AffiliateController::class, 'recheckDomain']);
+            Route::delete('/{affiliate}/domains/{affiliateDomain}', [AffiliateController::class, 'removeDomain']);
         });
 
         Route::get('/affiliate-impersonation-sessions', [AffiliateImpersonationController::class, 'index']);
