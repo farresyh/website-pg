@@ -68,8 +68,18 @@ final class OrderResendService
         // member formula instead — live cost_price (things a resync
         // can change), but the order's own frozen member_discount_percent
         // (never a live tier lookup), exactly mirroring how the standard
-        // chain above already treats affiliate_markup_pct as frozen off
+        // chain below already treats affiliate_markup_pct as frozen off
         // the order while only cost_price is re-fetched live.
+        //
+        // ADR-060 PR-4b: every non-member basis — Standard, Affiliate and
+        // ResellerWallet — recomputes through the supplier-cost chain
+        // (`calculateForAffiliate`). The frozen `wholesale_markup_pct` is
+        // null for a plain Standard order (so `calculateForAffiliate`
+        // delegates to `calculate` — byte-identical to the pre-PR-4b
+        // code) and the snapshotted tier markup for an Affiliate or
+        // ResellerWallet order. This closes the gap where a resent
+        // reseller-wallet order recomputed profit at standard retail
+        // instead of its tier rate (a latent bug, live before this PR).
         if ($order->pricing_basis === PricingBasis::Member) {
             $liveMemberPrice = $this->membershipPricing->calculateMemberPrice(
                 $liveCostPrice,
@@ -79,7 +89,12 @@ final class OrderResendService
             $platformProfit = $liveMemberPrice - $liveCostPrice;
             $affiliateProfit = 0;
         } else {
-            $breakdown = $this->pricing->calculate($liveCostPrice, $liveStandardSellingPrice, (float) $order->affiliate_markup_pct);
+            $breakdown = $this->pricing->calculateForAffiliate(
+                $liveCostPrice,
+                $liveStandardSellingPrice,
+                $order->wholesale_markup_pct !== null ? (float) $order->wholesale_markup_pct : null,
+                (float) $order->affiliate_markup_pct,
+            );
             $platformProfit = $breakdown->platformProfit;
             $affiliateProfit = $breakdown->affiliateProfit;
         }
