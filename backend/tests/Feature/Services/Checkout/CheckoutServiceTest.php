@@ -16,6 +16,7 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
+use App\Services\Pricing\CheckoutPricingResolver;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PaymentMethodFeeConfig;
@@ -34,11 +35,10 @@ class CheckoutServiceTest extends TestCase
     private function service(): CheckoutService
     {
         return new CheckoutService(
-            new PricingService,
+            new CheckoutPricingResolver(new PricingService, new MembershipPricingService),
             new CheckoutTotalService,
             new OrderNumberService,
             new VoucherService(new LedgerService),
-            new MembershipPricingService,
             new MembershipQuotaService,
         );
     }

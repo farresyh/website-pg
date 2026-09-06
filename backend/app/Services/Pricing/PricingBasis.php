@@ -12,10 +12,17 @@ namespace App\Services\Pricing;
  *
  * ADR-073 decision 4: a `Reseller` (wallet) order stamps `ResellerWallet`
  * — priced via `reseller_tiers.markup_percent`, distinct from both.
+ *
+ * ADR-060 decision 5: a third-party affiliate storefront order priced
+ * against an active wholesale tier stamps `Affiliate` — wholesale base
+ * `cost x (1 + tier.markup_percent)` plus the affiliate's own margin. An
+ * affiliate whose tier has lapsed falls back to `Standard` (ADR-060
+ * 2026-09-05 addendum, decision 3), never its own basis.
  */
 enum PricingBasis: string
 {
     case Standard = 'standard';
     case Member = 'member';
     case ResellerWallet = 'reseller-wallet';
+    case Affiliate = 'affiliate';
 }
