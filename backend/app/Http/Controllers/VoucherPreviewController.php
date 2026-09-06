@@ -67,6 +67,7 @@ class VoucherPreviewController extends Controller
                 $data['customer_email'],
                 $data['customer_phone'] ?? null,
                 $pricingBreakdown->sellingPrice,
+                $brand->id,
             );
         } catch (InvalidVoucherException) {
             throw ValidationException::withMessages([

@@ -251,6 +251,7 @@ class CheckoutController extends Controller
                 packageMarkupPercent: (float) $package->markup_percent,
                 affiliateMarkupPct: (float) $affiliate->markup_pct,
                 tierMarkupPct: $affiliate->wholesaleTierMarkupPct(),
+                affiliateId: $affiliate->id,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 membershipId: $membershipId,
                 voucherCode: $data['voucher_code'] ?? null,
