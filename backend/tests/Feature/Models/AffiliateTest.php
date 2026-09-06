@@ -3,7 +3,10 @@
 namespace Tests\Feature\Models;
 
 use App\Models\Affiliate;
+use App\Models\AffiliateMembershipTier;
+use App\Models\AffiliateSubscription;
 use App\Models\PlatformSettings;
+use App\Services\Affiliate\AffiliateSubscriptionStatus;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,6 +63,44 @@ class AffiliateTest extends TestCase
         // colliding. Every read path treats it as falsy or casts (bool).
         $this->assertNull($affiliate->fresh()->getRawOriginal('is_primary'));
         $this->assertFalse((bool) $affiliate->is_primary);
+    }
+
+    /**
+     * ADR-060 PR-4 decision 6: `wholesaleTierMarkupPct()` is the one
+     * resolver of "does this brand price at its wholesale tier, or fall
+     * back to standard". Active + Grace grant the tier rate; Lapsed and
+     * "no subscription" return null (→ standard chain).
+     */
+    public function test_wholesale_tier_markup_pct_by_subscription_state(): void
+    {
+        $tier = AffiliateMembershipTier::query()->create([
+            'name' => 'Silver', 'monthly_fee_sen' => 5000, 'markup_percent' => 7.5,
+            'is_active' => true, 'sort_order' => 1,
+        ]);
+
+        foreach ([
+            AffiliateSubscriptionStatus::Active->value => 7.5,
+            AffiliateSubscriptionStatus::Grace->value => 7.5,
+            AffiliateSubscriptionStatus::Lapsed->value => null,
+        ] as $status => $expected) {
+            $affiliate = Affiliate::query()->create(['business_name' => "Brand {$status}", 'markup_pct' => 5]);
+            AffiliateSubscription::query()->create([
+                'affiliate_id' => $affiliate->id,
+                'affiliate_membership_tier_id' => $tier->id,
+                'status' => $status,
+                'current_period_started_at' => now(),
+                'next_charge_at' => now()->addDays(30),
+            ]);
+
+            $this->assertSame($expected, $affiliate->fresh()->wholesaleTierMarkupPct(), $status);
+        }
+    }
+
+    public function test_wholesale_tier_markup_pct_is_null_with_no_subscription(): void
+    {
+        $affiliate = $this->primaryAffiliate();
+
+        $this->assertNull($affiliate->wholesaleTierMarkupPct());
     }
 
     public function test_membership_enabled_effective_is_the_and_of_both_switches(): void
