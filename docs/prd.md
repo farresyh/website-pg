@@ -1662,11 +1662,12 @@ No **storefront** nav link added in this session — the kill switch stays off, 
 
 Native View Transitions (decision 8) stay deferred — React 19.2 in this repo has no `ViewTransition` export. Cloudflare API edge-cache (decision 14) is RUM-gated.
 
-**➡️ NEXT SESSION STARTS HERE (2026-09-07 pointer).** ADR-060 PR-1…4d are in production (PR #124); PR-5 + PR-6 are built on `staging`. **ADR-060 is code-complete.** Remaining, roughly in order:
+**➡️ NEXT SESSION STARTS HERE (2026-09-07 pointer).** ADR-060 PR-1…6 all released to production (PR #124 then **PR #128** `staging`→`main`). Founder added a real custom affiliate domain **`fixfastapp.com`** — renders, but **3 live issues found, root-caused, fixes deferred** (see [[project_adr060_postdeploy_issues.md]] — the memory carries full root-cause detail):
 
-1. **Release ADR-060 PR-5 + PR-6 to production** — a `staging`→`main` `--no-ff` release PR (both are inert until custom domains exist / an affiliate uses the portal, so low-risk). Migrations `2026_09_07_040000` (drop `affiliates.domains`) + `2026_09_07_050000` (PR-6 schema) run on deploy.
-2. **ADR-060 e2e** — founder's real reserved domain → add it in the portal Domains screen → custom-hostname + SSL verify end-to-end, then configure that brand's storefront via the new Storefront screen.
-3. **`.env.example`** owes `STOREFRONT_PRIMARY_HOSTS=` + `VERCEL_*` + `GALLERY_DISK=` — founder `.env`/repo task (outside agent write scope).
+1. **ADR-060 custom-domain CORS gap (BLOCKER for the feature being usable).** An affiliate storefront on a custom domain can render (SSR) but **client-side MLBB validation + checkout both fail** ("couldn't reach checkout / validation") — `backend/config/cors.php` `allowed_origins` doesn't include custom affiliate domains. Fix: an origin callback checking `affiliate_domains WHERE status='active'` (safe — `supports_credentials:false`, guest API). PR-2/PR-5 never updated CORS.
+2. **Storefront-change propagation is 1-5s + needs multiple hard-refreshes** — the Vercel/Next layer, NOT our DB: `revalidateTag(CATALOG_TAG,"max")` is stale-while-revalidate (first hit stale, second fresh) + `PurgeNextCatalogCache` is queued + its `ShouldBeUnique(10s)` drops rapid successive purges. Fix candidates: `catalogCache.revalidate: 60` → `false` in `storefront/src/lib/cache.ts`; relax `ShouldBeUnique`.
+3. **ADR-060 e2e still owed** — the custom-hostname/SSL flow is verified (`fixfastapp.com` live) but blocked from real end-to-end use by issue 1.
+4. **`.env.example`** owes `STOREFRONT_PRIMARY_HOSTS=` + `VERCEL_*` + `GALLERY_DISK=` — founder `.env`/repo task (outside agent write scope).
 4. **`PaymentMethodController::test()` probe returns a spurious HTTP 400 for `fpx`** — non-blocking, real checkout works. Send a fuller probe payload or drop the action.
 5. **DuitNow QR + FPX B2B1** — separate later phases (`fpx_b2b1` / `duitnow_qr` rows seeded inactive; DuitNow QR still needs the hosted-page-vs-raw-QR render check, ADR-022 2026-09-01 decision 5).
 6. **`MYSQL_ATTR_SSL_CA` hardening** — founder `.env` task only, skipped at launch; the link is already VPC-private + TLS.
