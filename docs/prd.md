@@ -1662,17 +1662,18 @@ No **storefront** nav link added in this session — the kill switch stays off, 
 
 Native View Transitions (decision 8) stay deferred — React 19.2 in this repo has no `ViewTransition` export. Cloudflare API edge-cache (decision 14) is RUM-gated.
 
-**➡️ NEXT SESSION STARTS HERE (2026-09-07 pointer).** ADR-060 PR-1…4d are in production (PR #124); PR-5 + PR-6 are built on `staging`. **ADR-060 is code-complete.** Remaining, roughly in order:
+**➡️ NEXT SESSION STARTS HERE (2026-09-07 pointer).** ADR-060 PR-1…6 all released to production (PR #124 then **PR #128** `staging`→`main`). Founder pointed a real custom affiliate domain **`fixfastapp.com`** at the storefront (as an `is_owned` brand) — it renders, but **live issues found, root-caused, fixes deferred** (full detail in the [[project_adr060_postdeploy_issues]] memory):
 
-1. **Release ADR-060 PR-5 + PR-6 to production** — a `staging`→`main` `--no-ff` release PR (both are inert until custom domains exist / an affiliate uses the portal, so low-risk). Migrations `2026_09_07_040000` (drop `affiliates.domains`) + `2026_09_07_050000` (PR-6 schema) run on deploy.
-2. **ADR-060 e2e** — founder's real reserved domain → add it in the portal Domains screen → custom-hostname + SSL verify end-to-end, then configure that brand's storefront via the new Storefront screen.
-3. **`.env.example`** owes `STOREFRONT_PRIMARY_HOSTS=` + `VERCEL_*` + `GALLERY_DISK=` — founder `.env`/repo task (outside agent write scope).
-4. **`PaymentMethodController::test()` probe returns a spurious HTTP 400 for `fpx`** — non-blocking, real checkout works. Send a fuller probe payload or drop the action.
-5. **DuitNow QR + FPX B2B1** — separate later phases (`fpx_b2b1` / `duitnow_qr` rows seeded inactive; DuitNow QR still needs the hosted-page-vs-raw-QR render check, ADR-022 2026-09-01 decision 5).
-6. **`MYSQL_ATTR_SSL_CA` hardening** — founder `.env` task only, skipped at launch; the link is already VPC-private + TLS.
-7. **Supplier funding (Digiflazz + Gamevion, Rp 0)** — founder's deliberate hold, not a task to chase; revisit when the founder is ready to take real commercial orders.
-8. **Real PekanGame logo asset + hero artwork** — the storefront placeholder mark is still in place; affiliate logos now upload via the portal but the primary's is still the SVG placeholder.
-9. **Cloudflare R2 storage** — its own future ADR ([[project_cloudflare_r2_storage_backlog]]); PR-6's `ImageIngestService` + `GALLERY_DISK` config make it a config + one-off data migration. Fold in gallery→WebP + gallery-delete referential safety.
+1. **ADR-060 custom-domain CORS gap — THE blocker, one bug with many symptoms.** `backend/config/cors.php` `allowed_origins` is static (`ADMIN_URL`/`STOREFRONT_URL`/`RESELLER_PORTAL_URL`) and doesn't cover custom affiliate domains. SSR reads render (no CORS), but **every `"use client"` call fails**: MLBB/player validation, checkout + preview-totals, `/membership` email-OTP ("takboleh send code"), the member dashboard/subscribe, `/track-order` ("Something went wrong — try again in a moment"), and the personalized packages fetch (so **neither standard nor member price shows**). Fix: a closure in `allowed_origins` checking the request `Origin` against `affiliate_domains WHERE status='active'` (+ configured URLs + `STOREFRONT_PRIMARY_HOSTS`) — safe, `supports_credentials:false`, guest API (ADR-011). **One fix clears all of the above.** Secondary (config, not a bug): a fresh `is_owned` affiliate has `membership_enabled = false` (default) — the founder must tick it in `/admin` for member pricing + the `/membership` link to appear ("own brand" ≠ auto membership parity, by ADR-061).
+2. **Storefront-change propagation is 1-5s + needs multiple hard-refreshes** — the Vercel/Next layer, NOT our DB: `revalidateTag(CATALOG_TAG,"max")` is stale-while-revalidate (first hit stale, second fresh) + `PurgeNextCatalogCache` is queued + its `ShouldBeUnique(10s)` drops rapid successive purges. Fix candidates: `catalogCache.revalidate: 60` → `false` in `storefront/src/lib/cache.ts`; relax `ShouldBeUnique`.
+3. **ADR-060 e2e still owed** — the custom-hostname/SSL flow is verified (`fixfastapp.com` live) but blocked from real end-to-end use by issue 1.
+4. **`.env.example`** owes `STOREFRONT_PRIMARY_HOSTS=` + `VERCEL_*` + `GALLERY_DISK=` — founder `.env`/repo task (outside agent write scope).
+5. **`PaymentMethodController::test()` probe returns a spurious HTTP 400 for `fpx`** — non-blocking, real checkout works. Send a fuller probe payload or drop the action.
+6. **DuitNow QR + FPX B2B1** — separate later phases (`fpx_b2b1` / `duitnow_qr` rows seeded inactive; DuitNow QR still needs the hosted-page-vs-raw-QR render check, ADR-022 2026-09-01 decision 5).
+7. **`MYSQL_ATTR_SSL_CA` hardening** — founder `.env` task only, skipped at launch; the link is already VPC-private + TLS.
+8. **Supplier funding (Digiflazz + Gamevion, Rp 0)** — founder's deliberate hold, not a task to chase; revisit when the founder is ready to take real commercial orders.
+9. **Real PekanGame logo asset + hero artwork** — the storefront placeholder mark is still in place; affiliate logos now upload via the portal but the primary's is still the SVG placeholder.
+10. **Cloudflare R2 storage** — its own future ADR ([[project_cloudflare_r2_storage_backlog]]); PR-6's `ImageIngestService` + `GALLERY_DISK` config make it a config + one-off data migration. Fold in gallery→WebP + gallery-delete referential safety.
 
 *(Closed since the last pointer: ADR-060 PR-1…4d shipped to `staging` then released to production via PR #124; PR-5 (`feature/adr-060-pr-5-domains`) + PR-6 (`feature/adr-060-pr-6-storefront-config`) both built to `staging` — ADR-060 code-complete.)*
 
