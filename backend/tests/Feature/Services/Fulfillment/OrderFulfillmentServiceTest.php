@@ -406,6 +406,7 @@ class OrderFulfillmentServiceTest extends TestCase
     public function test_fulfill_commits_a_reserved_voucher_redemption_on_delivery(): void
     {
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-TESTCOMMIT',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,
@@ -555,6 +556,7 @@ class OrderFulfillmentServiceTest extends TestCase
     public function test_finalize_pending_delivery_commits_a_reserved_voucher_redemption_on_success(): void
     {
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'VC-TESTPENDINGCOMMIT',
             'customer_email' => 'buyer@example.com',
             'amount' => 1000,

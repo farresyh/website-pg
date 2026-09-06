@@ -38,7 +38,10 @@ class VoucherController extends Controller
 
     public function index(): JsonResponse
     {
-        $vouchers = Voucher::query()->orderBy('created_at', 'desc')->get();
+        $vouchers = Voucher::query()
+            ->with('affiliate:id,business_name')
+            ->orderBy('created_at', 'desc')
+            ->get();
 
         return response()->json([
             'stats' => [
@@ -73,6 +76,7 @@ class VoucherController extends Controller
     public function show(Voucher $voucher): JsonResponse
     {
         $voucher->load([
+            'affiliate:id,business_name',
             'redemptions.order:id,order_number',
             'sourceOrder:id,order_number',
             // ADR-036 decision 6 — a merged voucher's real provenance:
@@ -141,6 +145,9 @@ class VoucherController extends Controller
                 expiresAt: $data['expires_at'] ?? null,
                 createdBy: $admin->id,
                 approvedBy: $data['amount'] >= $threshold ? $admin->id : null,
+                // ADR-060 PR-4d: the brand this promo voucher is scoped to —
+                // a required picker on the form, defaulting to the primary.
+                affiliateId: $data['affiliate_id'],
                 idempotencyKey: $data['idempotency_key'],
             );
         } catch (UniqueConstraintViolationException) {
@@ -222,6 +229,9 @@ class VoucherController extends Controller
                     expiresAt: null,
                     createdBy: $request->user()->id,
                     approvedBy: null,
+                    // ADR-060 PR-4d: a compensation voucher inherits the
+                    // brand of the order it refunds (decision 5).
+                    affiliateId: $order->affiliate_id,
                     orderId: $order->id,
                 );
             });

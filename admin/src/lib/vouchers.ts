@@ -5,6 +5,10 @@ export type VoucherStatus = "active" | "exhausted" | "expired" | "revoked" | "me
 export interface Voucher {
   id: number;
   order_id: number | null;
+  // ADR-060 PR-4d: the storefront brand this voucher is scoped to —
+  // redeemable only on that brand.
+  affiliate_id: number;
+  affiliate?: { id: number; business_name: string } | null;
   code: string;
   customer_email: string;
   amount: number;
@@ -84,6 +88,8 @@ export interface CreateVoucherValues {
   reason: string;
   expires_at?: string | null;
   idempotency_key: string;
+  // ADR-060 PR-4d: required — the brand this voucher is redeemable on.
+  affiliate_id: number;
 }
 
 export function listVouchers(token: string) {

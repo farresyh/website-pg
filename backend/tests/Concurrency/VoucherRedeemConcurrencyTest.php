@@ -31,6 +31,7 @@ class VoucherRedeemConcurrencyTest extends TestCase
     public function test_only_one_of_two_simultaneous_redemptions_from_two_orders_succeeds_when_combined_amount_exceeds_remaining(): void
     {
         $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-RACE-1',
             'customer_email' => 'race@example.com',
             'amount' => 1000,

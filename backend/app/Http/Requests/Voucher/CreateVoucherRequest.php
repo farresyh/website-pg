@@ -22,6 +22,10 @@ class CreateVoucherRequest extends FormRequest
     {
         return [
             'customer_email' => ['required', 'email'],
+            // ADR-060 PR-4d, decision 5: a promo voucher is scoped to one
+            // storefront brand and redeemable only there. Required — the
+            // CreateVoucherModal picker defaults it to the primary brand.
+            'affiliate_id' => ['required', 'integer', 'exists:affiliates,id'],
             // Ceiling added 2026-08-14 (fresh audit) — a Super Admin fat-
             // fingering an extra digit had no floor/ceiling sanity check
             // the way markup_percent already got one; RM 10,000 comfortably

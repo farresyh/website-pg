@@ -86,6 +86,7 @@ final class CheckoutService
             $customerEmail,
             $request->customerPhone,
             $request->paymentFeeConfig,
+            $request->affiliateId,
         );
 
         // ADR-019 idempotency finding: the checkout path never relies on
@@ -182,6 +183,7 @@ final class CheckoutService
                 $order->voucher_discount,
                 $order->customer_email,
                 $order->customer_phone,
+                $order->affiliate_id,
             );
         } catch (InvalidVoucherException $e) {
             $this->logAcceptedVoucherRedemptionRace($order, $e);
@@ -257,6 +259,7 @@ final class CheckoutService
                     $order->voucher_discount,
                     $order->customer_email,
                     $order->customer_phone,
+                    $order->affiliate_id,
                 );
             } catch (InvalidVoucherException $e) {
                 $this->logAcceptedVoucherRedemptionRace($order, $e);
@@ -323,6 +326,7 @@ final class CheckoutService
         string $customerEmail,
         ?string $customerPhone,
         PaymentMethodFeeConfig $paymentFeeConfig,
+        ?int $affiliateId = null,
     ): array {
         // ADR-024 decision #3: resolved server-side from the voucher's
         // own stored code/remaining/ownership — never a client-
@@ -330,8 +334,10 @@ final class CheckoutService
         // never locks or mutates — the real, locked spend happens
         // later, in requestPayment()/settleWithVoucher() below,
         // matching decision #1's exact timing.
+        // ADR-060 PR-4d: $affiliateId is the Host-resolved storefront
+        // brand — a voucher issued on another brand is rejected here.
         $voucherPreview = $voucherCode !== null
-            ? $this->vouchers->preview($voucherCode, $customerEmail, $customerPhone, $sellingPriceForOrder)
+            ? $this->vouchers->preview($voucherCode, $customerEmail, $customerPhone, $sellingPriceForOrder, $affiliateId)
             : null;
 
         $total = $this->checkoutTotal->calculate(
@@ -372,6 +378,7 @@ final class CheckoutService
         string $customerEmail,
         ?string $customerPhone,
         ?float $tierMarkupPct = null,
+        ?int $affiliateId = null,
     ): CheckoutTotalPreview {
         $pricing = $this->pricingResolver->resolveStorefront(
             $costPriceSen,
@@ -388,6 +395,7 @@ final class CheckoutService
             $customerEmail,
             $customerPhone,
             $paymentFeeConfig,
+            $affiliateId,
         );
 
         return new CheckoutTotalPreview(

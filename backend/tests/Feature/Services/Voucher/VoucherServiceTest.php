@@ -3,6 +3,7 @@
 namespace Tests\Feature\Services\Voucher;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Order;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
@@ -27,6 +28,7 @@ class VoucherServiceTest extends TestCase
     private function voucher(array $overrides = []): Voucher
     {
         return Voucher::query()->create(array_merge([
+            'affiliate_id' => $this->primaryAffiliate()->id,
             'code' => 'KRS-TEST-'.uniqid(),
             'customer_email' => 'a@example.com',
             'customer_phone' => null,
@@ -72,6 +74,7 @@ class VoucherServiceTest extends TestCase
             expiresAt: null,
             createdBy: $admin->id,
             approvedBy: null,
+            affiliateId: $this->primaryAffiliate()->id,
         );
 
         $this->assertSame(5_000, $voucher->amount);
@@ -125,6 +128,51 @@ class VoucherServiceTest extends TestCase
         $this->expectExceptionMessage('This voucher code is not valid for this order.');
 
         app(VoucherService::class)->preview('KRS-DOES-NOT-EXIST', 'a@example.com', null, 1000);
+    }
+
+    /**
+     * ADR-060 PR-4d, decision 5: a voucher issued on one storefront
+     * brand is not previewable/redeemable on another — rejected through
+     * the same generic message as an ownership mismatch.
+     */
+    public function test_preview_rejects_a_voucher_from_another_brand(): void
+    {
+        $otherBrand = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 5]);
+        $this->voucher(['code' => 'KRS-BRAND-A', 'affiliate_id' => $otherBrand->id]);
+
+        // Same code, wrong (primary) brand.
+        $this->expectException(InvalidVoucherException::class);
+        $this->expectExceptionMessage('This voucher code is not valid for this order.');
+
+        app(VoucherService::class)->preview('KRS-BRAND-A', 'a@example.com', null, 1000, $this->primaryAffiliate()->id);
+    }
+
+    public function test_preview_accepts_a_voucher_matching_the_resolved_brand(): void
+    {
+        $brand = $this->primaryAffiliate();
+        $this->voucher(['code' => 'KRS-BRAND-OK', 'affiliate_id' => $brand->id, 'remaining' => 400]);
+
+        $preview = app(VoucherService::class)->preview('KRS-BRAND-OK', 'a@example.com', null, 1000, $brand->id);
+
+        $this->assertSame(400, $preview->discountSen);
+    }
+
+    public function test_redeem_rejects_a_voucher_from_another_brand(): void
+    {
+        $otherBrand = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 5]);
+        $voucher = $this->voucher(['code' => 'KRS-BRAND-B', 'affiliate_id' => $otherBrand->id]);
+        $order = $this->order();
+
+        try {
+            app(VoucherService::class)->redeem($voucher->id, $order->id, 200, 'a@example.com', null, $this->primaryAffiliate()->id);
+            $this->fail('Expected InvalidVoucherException');
+        } catch (InvalidVoucherException) {
+            // expected — the brand check fired inside the lock.
+        }
+
+        // Nothing spent, no redemption row (the transaction rolled back).
+        $this->assertSame(1000, $voucher->fresh()->remaining);
+        $this->assertDatabaseCount('voucher_redemptions', 0);
     }
 
     public function test_redeem_decreases_remaining_and_creates_a_reserved_redemption(): void

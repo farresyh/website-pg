@@ -326,6 +326,7 @@ class OrderControllerTest extends TestCase
         ]);
         Voucher::query()->create([
             'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
             'code' => 'KRS-GUARD-TEST',
             'customer_email' => 'buyer@example.com',
             'amount' => 500,
@@ -415,6 +416,7 @@ class OrderControllerTest extends TestCase
         ]);
         Voucher::query()->create([
             'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
             'code' => 'KRS-GUARD-TEST-2',
             'customer_email' => 'buyer@example.com',
             'amount' => 500,
@@ -522,6 +524,7 @@ class OrderControllerTest extends TestCase
         $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'payment_status' => PaymentStatus::Paid->value]);
         Voucher::query()->create([
             'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
             'code' => 'VC-TESTCODE',
             'customer_email' => $order->customer_email,
             'amount' => 1000,
@@ -669,6 +672,7 @@ class OrderControllerTest extends TestCase
         ]);
         Voucher::query()->create([
             'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
             'code' => 'KRS-GUARD-TEST-2',
             'customer_email' => 'buyer@example.com',
             'amount' => 500,

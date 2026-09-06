@@ -18,6 +18,15 @@ use Illuminate\Support\Str;
  * restore() never write a `ledger_entries` row themselves; they only
  * move bookkeeping about which part of that already-booked liability
  * is currently spent.
+ *
+ * ADR-060 PR-4d, decision 5: every voucher carries an `affiliate_id`
+ * (the storefront brand it was issued on) and is redeemable only on
+ * that brand — issue() records it, preview()/redeem() take the
+ * `Host`-resolved brand and reject a foreign-brand code, merge()
+ * refuses to combine across brands. The liability itself always sits
+ * on Platform regardless of the brand (issue()'s debit is unchanged) —
+ * "which ledger absorbs a voucher on a reseller sale" is settled:
+ * Platform does, always.
  */
 final class VoucherService
 {
@@ -40,13 +49,15 @@ final class VoucherService
         ?string $expiresAt,
         int $createdBy,
         ?int $approvedBy,
+        int $affiliateId,
         ?int $orderId = null,
         ?string $customerPhone = null,
         ?string $idempotencyKey = null,
     ): Voucher {
-        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $orderId, $idempotencyKey) {
+        return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $affiliateId, $orderId, $idempotencyKey) {
             $voucher = Voucher::query()->create([
                 'order_id' => $orderId,
+                'affiliate_id' => $affiliateId,
                 'code' => $this->generateCode(),
                 'idempotency_key' => $idempotencyKey,
                 'customer_email' => $customerEmail,
@@ -97,11 +108,13 @@ final class VoucherService
             }
 
             $this->assertSameCustomer($vouchers);
+            $this->assertSameBrand($vouchers);
 
             $reference = $vouchers->first();
             $totalRemaining = (int) $vouchers->sum('remaining');
 
             $target = Voucher::query()->create([
+                'affiliate_id' => $reference->affiliate_id,
                 'code' => $this->generateCode(),
                 'customer_email' => $reference->customer_email,
                 'customer_phone' => $reference->customer_phone,
@@ -153,6 +166,22 @@ final class VoucherService
         }
     }
 
+    /**
+     * ADR-060 PR-4d, decision 5: a voucher is brand-scoped, so a merge
+     * can only ever combine vouchers of one storefront brand — the
+     * merged code inherits that brand and stays redeemable only there.
+     */
+    private function assertSameBrand(Collection $vouchers): void
+    {
+        $reference = $vouchers->first();
+
+        foreach ($vouchers as $voucher) {
+            if ($voucher->affiliate_id !== $reference->affiliate_id) {
+                throw new InvalidVoucherException('Selected vouchers do not all belong to the same storefront brand.');
+            }
+        }
+    }
+
     private function generateCode(): string
     {
         do {
@@ -177,9 +206,9 @@ final class VoucherService
      * (foundation-security.md §4): a fraudster probing codes must never
      * be able to tell "wrong owner" from "doesn't exist" apart.
      */
-    public function preview(string $code, string $customerEmail, ?string $customerPhone, int $sellingPriceSen): VoucherPreview
+    public function preview(string $code, string $customerEmail, ?string $customerPhone, int $sellingPriceSen, ?int $affiliateId = null): VoucherPreview
     {
-        $voucher = $this->findUsableVoucher($code, $customerEmail, $customerPhone);
+        $voucher = $this->findUsableVoucher($code, $customerEmail, $customerPhone, $affiliateId);
 
         $discount = min($voucher->remaining, $sellingPriceSen);
 
@@ -201,17 +230,17 @@ final class VoucherService
      * pattern VoucherController::storeFromOrder() already established
      * for the same reason.
      */
-    public function redeem(int $voucherId, int $orderId, int $amount, string $customerEmail, ?string $customerPhone): void
+    public function redeem(int $voucherId, int $orderId, int $amount, string $customerEmail, ?string $customerPhone, ?int $affiliateId = null): void
     {
         if (VoucherRedemption::query()->where('order_id', $orderId)->exists()) {
             return;
         }
 
         try {
-            DB::transaction(function () use ($voucherId, $orderId, $amount, $customerEmail, $customerPhone) {
+            DB::transaction(function () use ($voucherId, $orderId, $amount, $customerEmail, $customerPhone, $affiliateId) {
                 $voucher = Voucher::query()->lockForUpdate()->findOrFail($voucherId);
 
-                $this->assertUsable($voucher, $customerEmail, $customerPhone);
+                $this->assertUsable($voucher, $customerEmail, $customerPhone, $affiliateId);
 
                 if ($voucher->remaining < $amount) {
                     throw new InvalidVoucherException(
@@ -303,7 +332,7 @@ final class VoucherService
         });
     }
 
-    private function findUsableVoucher(string $code, string $customerEmail, ?string $customerPhone): Voucher
+    private function findUsableVoucher(string $code, string $customerEmail, ?string $customerPhone, ?int $affiliateId = null): Voucher
     {
         $voucher = Voucher::query()->where('code', $code)->first();
 
@@ -311,7 +340,7 @@ final class VoucherService
             throw new InvalidVoucherException('This voucher code is not valid for this order.');
         }
 
-        $this->assertUsable($voucher, $customerEmail, $customerPhone);
+        $this->assertUsable($voucher, $customerEmail, $customerPhone, $affiliateId);
 
         return $voucher;
     }
@@ -322,12 +351,24 @@ final class VoucherService
      * checkout's own customer_email OR (if the voucher has one)
      * customer_phone. A single identical, generic message covers every
      * failure reason — see preview()'s own doc comment for why.
+     *
+     * ADR-060 PR-4d, decision 5 — and it is scoped to the storefront
+     * brand it was issued on: `$affiliateId` is the `Host`-resolved
+     * brand of the checkout using it. A voucher from another brand is
+     * rejected through the same generic message (a probe must not learn
+     * "wrong brand" any more than "wrong owner"). `$affiliateId` is null
+     * only for non-storefront callers (dev/test commands) — the brand
+     * check is skipped there, exactly as before this PR.
      */
-    private function assertUsable(Voucher $voucher, string $customerEmail, ?string $customerPhone): void
+    private function assertUsable(Voucher $voucher, string $customerEmail, ?string $customerPhone, ?int $affiliateId = null): void
     {
         $genericMessage = 'This voucher code is not valid for this order.';
 
         if ($voucher->status !== 'active') {
+            throw new InvalidVoucherException($genericMessage);
+        }
+
+        if ($affiliateId !== null && $voucher->affiliate_id !== $affiliateId) {
             throw new InvalidVoucherException($genericMessage);
         }
 
