@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Affiliate;
+use App\Models\AffiliateGame;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
@@ -62,6 +63,7 @@ class CatalogController extends Controller
             self::CACHE_TTL_SECONDS,
             fn () => Game::query()
                 ->where('is_active', true)
+                ->whereNotIn('id', $this->hiddenGameIds())
                 ->with(['packages' => fn ($query) => $query->where('is_active', true)])
                 ->orderBy('name')
                 ->get()
@@ -108,7 +110,10 @@ class CatalogController extends Controller
         $memberPlan = $membershipEnabled ? $this->resolveMemberPlan($request, $affiliate->id) : null;
 
         $packages = Cache::store(config('cache.catalog_packages_store'))
-            ->tags(['catalog.packages', "catalog.packages.game.{$game->id}"])
+            // ADR-060 PR-6: the per-brand tag lets an affiliate's markup
+            // change flush only its own brand's package prices, never the
+            // whole catalog.
+            ->tags(['catalog.packages', "catalog.packages.game.{$game->id}", "catalog.packages.brand.{$affiliate->id}"])
             ->remember(
                 self::packagesCacheKey($game->id, $memberPlan?->id, $affiliate->id),
                 self::CACHE_TTL_SECONDS,
@@ -174,7 +179,34 @@ class CatalogController extends Controller
 
     private function findActiveGame(string $slug): ?Game
     {
-        return Game::query()->where('slug', $slug)->where('is_active', true)->first();
+        return Game::query()
+            ->where('slug', $slug)
+            ->where('is_active', true)
+            ->whereNotIn('id', $this->hiddenGameIds())
+            ->first();
+    }
+
+    /**
+     * ADR-060 PR-6: game ids the `Host`-resolved brand has explicitly
+     * turned off (`affiliate_game.is_visible = false`). Absent row =
+     * visible, so this is the whole exclusion set. Memoised per request.
+     * The primary brand has no such rows — its storefront always shows
+     * the full catalog.
+     *
+     * @var list<int>|null
+     */
+    private ?array $hiddenGameIds = null;
+
+    /**
+     * @return list<int>
+     */
+    private function hiddenGameIds(): array
+    {
+        return $this->hiddenGameIds ??= AffiliateGame::query()
+            ->where('affiliate_id', $this->storefrontBrand->get()->id)
+            ->where('is_visible', false)
+            ->pluck('game_id')
+            ->all();
     }
 
     /**
@@ -372,11 +404,19 @@ class CatalogController extends Controller
      * The default `database` cache store has no tag support, so a single
      * price/game edit clears every brand's entry by looping the ids —
      * a handful of `forget()`s on a rare admin write, not a hot path.
+     *
+     * ADR-060 PR-6: a per-brand config change (an affiliate's catalog
+     * toggle, markup, or branding save) knows its own brand id and
+     * passes it — only that brand's entry is cleared, not all of them.
      */
-    public static function forgetIndexCache(): void
+    public static function forgetIndexCache(?int $brandId = null): void
     {
-        foreach (Affiliate::withTrashed()->pluck('id') as $brandId) {
-            Cache::forget(self::indexCacheKey($brandId));
+        $ids = $brandId !== null
+            ? [$brandId]
+            : Affiliate::withTrashed()->pluck('id')->all();
+
+        foreach ($ids as $id) {
+            Cache::forget(self::indexCacheKey($id));
         }
         NextRevalidation::purge();
     }
@@ -416,6 +456,20 @@ class CatalogController extends Controller
     {
         Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->flush();
         NextRevalidation::purge();
+    }
+
+    /**
+     * ADR-060 PR-6: an affiliate's own `markup_pct` change re-prices
+     * every package on THEIR storefront and nothing else — flush only
+     * this brand's per-brand tag (+ its index entry), never the whole
+     * `catalog.packages` tag.
+     */
+    public static function forgetCacheForBrand(int $brandId): void
+    {
+        Cache::store(config('cache.catalog_packages_store'))
+            ->tags(["catalog.packages.brand.{$brandId}"])
+            ->flush();
+        self::forgetIndexCache($brandId);
     }
 
     private static function indexCacheKey(int $brandId): string
