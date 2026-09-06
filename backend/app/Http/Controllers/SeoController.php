@@ -8,6 +8,7 @@ use App\Models\CrawlerRule;
 use App\Models\Redirect;
 use App\Models\SeoScript;
 use App\Services\Cache\NextRevalidation;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -18,15 +19,21 @@ use Illuminate\Support\Facades\Cache;
  * middleware.ts's in-memory cache (decision 9), scripts for layout
  * injection (addendum 2 decision 13), crawler rules for app/robots.ts
  * (addendum 2 decision 14). Same no-auth reasoning as BrandingController
- * (ADR-011) — another public call site for Affiliate::primary().
+ * (ADR-011). Brand resolved per `Host` (ADR-060, `storefront.brand`
+ * middleware); the per-cache-key `{affiliate->id}` already isolates
+ * brands. Merging the primary's admin-central meta templates with a
+ * third-party brand's own pixel IDs (ADR-060 addendum) is PR-6 — PR-2
+ * just resolves the right row.
  */
 class SeoController extends Controller
 {
     private const CACHE_TTL_SECONDS = 60;
 
+    public function __construct(private readonly StorefrontBrand $brand) {}
+
     public function settings(): JsonResponse
     {
-        $affiliate = Affiliate::primary();
+        $affiliate = $this->brand->get();
 
         $payload = Cache::remember(
             "catalog.public.seo.{$affiliate->id}",
@@ -60,7 +67,7 @@ class SeoController extends Controller
      */
     public function redirects(): JsonResponse
     {
-        $affiliate = Affiliate::primary();
+        $affiliate = $this->brand->get();
 
         $payload = Cache::remember(
             "catalog.public.redirects.{$affiliate->id}",
@@ -82,7 +89,7 @@ class SeoController extends Controller
      */
     public function recordRedirectHit(Request $request): JsonResponse
     {
-        $affiliate = Affiliate::primary();
+        $affiliate = $this->brand->get();
         $fromPath = (string) $request->input('from_path');
 
         Redirect::query()
@@ -95,7 +102,7 @@ class SeoController extends Controller
 
     public function scripts(): JsonResponse
     {
-        $affiliate = Affiliate::primary();
+        $affiliate = $this->brand->get();
 
         $payload = Cache::remember(
             "catalog.public.seo_scripts.{$affiliate->id}",
@@ -124,6 +131,10 @@ class SeoController extends Controller
      */
     public function robots(): JsonResponse
     {
+        // Crawler rules are platform-central (`CrawlerRule` is not
+        // brand-scoped) and this cache key is global — kept on the
+        // primary, not the resolved brand, so one brand's robots request
+        // can't poison another's cached disallow list.
         $affiliate = Affiliate::primary();
 
         $payload = Cache::remember(

@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\ResolveStorefrontBrand;
 use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -85,6 +86,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // every `affiliate`-guard route (both the existing Affiliate
             // portal and the new Reseller wallet portal).
             'account.type' => EnsureAccountType::class,
+            // ADR-060 (2026-09-06 addendum): resolves the storefront brand
+            // from `X-Storefront-Host` on the public storefront routes.
+            // Inert without the header (falls back to Affiliate::primary()).
+            'storefront.brand' => ResolveStorefrontBrand::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

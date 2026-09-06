@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Membership\SubscribeRequest;
-use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Order;
@@ -11,6 +10,7 @@ use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Membership\MembershipSubscriptionException;
 use App\Services\Membership\MembershipSubscriptionService;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -33,6 +33,7 @@ class MembershipController extends Controller
     public function __construct(
         private readonly MembershipSessionTokenService $sessionTokens,
         private readonly MembershipSubscriptionService $subscriptions,
+        private readonly StorefrontBrand $brand,
     ) {}
 
     /**
@@ -52,7 +53,7 @@ class MembershipController extends Controller
      */
     public function plans(): JsonResponse
     {
-        $enabled = Affiliate::primary()->membershipEnabledEffective();
+        $enabled = $this->brand->get()->membershipEnabledEffective();
 
         if (! $enabled) {
             return response()->json([]);
@@ -121,7 +122,7 @@ class MembershipController extends Controller
             return response()->json(['message' => 'Invalid or expired session.'], 401);
         }
 
-        if (! Affiliate::primary()->membershipEnabledEffective()) {
+        if (! $this->brand->get()->membershipEnabledEffective()) {
             return response()->json(['message' => 'Membership is not available.'], 403);
         }
 
@@ -170,7 +171,7 @@ class MembershipController extends Controller
             return response()->json(['message' => 'Invalid or expired session.'], 401);
         }
 
-        if (! Affiliate::primary()->membershipEnabledEffective()) {
+        if (! $this->brand->get()->membershipEnabledEffective()) {
             return response()->json(['message' => 'Membership is not available.'], 403);
         }
 
@@ -216,9 +217,10 @@ class MembershipController extends Controller
 
     /**
      * ADR-061 decision 5: a session token is only honoured on the brand
-     * it was issued for. The storefront brand is `Affiliate::primary()`
-     * today (`Host`-resolved in ADR-060); a token from another brand
-     * resolves to `null` here, exactly like an expired one.
+     * it was issued for. The storefront brand is resolved per `Host`
+     * (ADR-060, `storefront.brand` middleware; `Affiliate::primary()` when
+     * no `X-Storefront-Host`); a token from another brand resolves to
+     * `null` here, exactly like an expired one.
      *
      * @return array{affiliate_id: int, email: string}|null
      */
@@ -227,7 +229,7 @@ class MembershipController extends Controller
         $token = $request->bearerToken();
         $session = $token !== null ? $this->sessionTokens->resolve($token) : null;
 
-        if ($session === null || $session['affiliate_id'] !== Affiliate::primary()->id) {
+        if ($session === null || $session['affiliate_id'] !== $this->brand->get()->id) {
             return null;
         }
 

@@ -166,27 +166,32 @@ Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])-
 // `verify` gets a plain IP throttle same shape as checkout/validate
 // -player; OtpService's own 5-attempt lockout is the real brute-force
 // defense for a submitted code.
-Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
-Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
-// ADR-055 decision 3: the upsell card's tier data — public (no session
-// token), returns [] when the kill switch is off. Deliberately separate
-// from the admin-only membership-plans prefix (same controller family,
-// different gate — this route is on the public MembershipController).
-Route::get('/membership/plans', [MembershipController::class, 'plans']);
+// ADR-060 (2026-09-06 addendum): every membership route resolves the
+// storefront brand — the session-token brand check (MembershipController)
+// compares against the resolved brand, not always the primary.
+Route::middleware('storefront.brand')->group(function () {
+    Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
+    Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
+    // ADR-055 decision 3: the upsell card's tier data — public (no session
+    // token), returns [] when the kill switch is off. Deliberately separate
+    // from the admin-only membership-plans prefix (same controller family,
+    // different gate — this route is on the public MembershipController).
+    Route::get('/membership/plans', [MembershipController::class, 'plans']);
 
-// Decisions 13/24/25 — the /membership dashboard's data. Auth is the
-// session token (Authorization: Bearer), not auth:sanctum — resolved
-// inside the controller itself, same reasoning as the OTP routes above.
-Route::get('/membership/me', [MembershipController::class, 'me']);
+    // Decisions 13/24/25 — the /membership dashboard's data. Auth is the
+    // session token (Authorization: Bearer), not auth:sanctum — resolved
+    // inside the controller itself, same reasoning as the OTP routes above.
+    Route::get('/membership/me', [MembershipController::class, 'me']);
 
-// ADR-068 — self-serve subscription payment. Both session-token gated
-// inside the controller. `subscribe` carries the `membership-subscribe`
-// limiter (registered in AppServiceProvider — keyed on the bearer
-// token, one bucket per member session, so a shared NAT can't starve
-// other members).
-Route::get('/membership/subscribe-options', [MembershipController::class, 'subscribeOptions']);
-Route::post('/membership/subscribe', [MembershipController::class, 'subscribe'])
-    ->middleware('throttle:membership-subscribe');
+    // ADR-068 — self-serve subscription payment. Both session-token gated
+    // inside the controller. `subscribe` carries the `membership-subscribe`
+    // limiter (registered in AppServiceProvider — keyed on the bearer
+    // token, one bucket per member session, so a shared NAT can't starve
+    // other members).
+    Route::get('/membership/subscribe-options', [MembershipController::class, 'subscribeOptions']);
+    Route::post('/membership/subscribe', [MembershipController::class, 'subscribe'])
+        ->middleware('throttle:membership-subscribe');
+});
 
 // Public game/package catalog (ADR-011) — the storefront's real data
 // source, replacing storefront/src/lib/placeholder-data.ts (docs/prd.md
@@ -196,7 +201,13 @@ Route::post('/membership/subscribe', [MembershipController::class, 'subscribe'])
 // different auth rules, and public lookup is by slug, not id. No
 // throttle: unlike checkout/validate-player this hits no third-party
 // API and isn't money-moving, just a normal public read listing.
-Route::prefix('catalog')->group(function () {
+//
+// ADR-060 (2026-09-06 addendum) — PR-2: `storefront.brand` resolves the
+// brand from `X-Storefront-Host` for branding / SEO here (per-brand
+// catalog visibility + pricing is PR-3/PR-4). Inert without the header
+// (falls back to Affiliate::primary()); a header for an unknown/inactive
+// host 404s before the controller (decision 2).
+Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::get('/games', [CatalogController::class, 'index']);
     Route::get('/games/{slug}', [CatalogController::class, 'show']);
     Route::get('/games/{slug}/packages', [CatalogController::class, 'packages']);

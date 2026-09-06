@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Membership\SendOtpRequest;
 use App\Http\Requests\Membership\VerifyOtpRequest;
-use App\Models\Affiliate;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\OtpService;
 use App\Services\Membership\PlunkMailer;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -18,9 +18,10 @@ use Illuminate\Http\JsonResponse;
  * CheckoutController/CatalogController.
  *
  * ADR-061 decision 5: OTP identity is per-brand. The storefront brand
- * is resolved server-side (`Affiliate::primary()` today, `Host` in
- * ADR-060) — never from a request field — and both the issued code and
- * the session token are scoped to it.
+ * is resolved server-side per `Host` (ADR-060, `storefront.brand`
+ * middleware; `Affiliate::primary()` with no `X-Storefront-Host`) —
+ * never from a request field — and both the issued code and the session
+ * token are scoped to it.
  */
 class MembershipOtpController extends Controller
 {
@@ -28,12 +29,13 @@ class MembershipOtpController extends Controller
         private readonly OtpService $otp,
         private readonly PlunkMailer $mailer,
         private readonly MembershipSessionTokenService $sessionTokens,
+        private readonly StorefrontBrand $brand,
     ) {}
 
     public function send(SendOtpRequest $request): JsonResponse
     {
         $email = $request->validated('email');
-        $code = $this->otp->generate(Affiliate::primary()->id, $email);
+        $code = $this->otp->generate($this->brand->get()->id, $email);
         $this->mailer->sendOtpEmail($email, $code);
 
         return response()->json(['message' => 'Verification code sent.']);
@@ -48,7 +50,7 @@ class MembershipOtpController extends Controller
     {
         $email = $request->validated('email');
         $code = $request->validated('code');
-        $affiliateId = Affiliate::primary()->id;
+        $affiliateId = $this->brand->get()->id;
 
         if (! $this->otp->verify($affiliateId, $email, $code)) {
             return response()->json(['message' => 'That code is invalid or has expired.'], 422);
