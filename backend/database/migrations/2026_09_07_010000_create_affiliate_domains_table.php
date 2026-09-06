@@ -59,8 +59,11 @@ return new class extends Migration
         });
 
         $primaryId = DB::table('affiliates')->where('is_primary', true)->value('id');
+        // Normalise the same way ResolveStorefrontBrand normalises the
+        // incoming header: lower-case, trimmed, any `:port` stripped — so
+        // a value like `localhost:3001` still matches `localhost`.
         $hosts = array_filter(array_map(
-            fn ($h) => strtolower(trim($h)),
+            fn ($h) => explode(':', strtolower(trim($h)), 2)[0],
             explode(',', (string) env('STOREFRONT_PRIMARY_HOSTS', '')),
         ));
 
