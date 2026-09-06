@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, apiUpload } from "@/lib/api-client";
 
 /**
  * ADR-059 59a read layer. Mirrors
@@ -310,4 +310,221 @@ export function setPrimaryDomain(token: string, id: number) {
 
 export function removeDomain(token: string, id: number) {
   return apiFetch<void>(`/api/affiliate/domains/${id}`, { method: "DELETE", token });
+}
+
+/**
+ * ADR-060 PR-6 — the portal "Storefront" screen (Branding / Hero /
+ * Catalog / Pricing tabs). Every write is `assertWritable`-gated on the
+ * backend; each response carries `writable` so the UI degrades to
+ * read-only for a deactivated affiliate. Money math (the markup preview)
+ * is computed server-side and only rendered here (foundation-security.md).
+ */
+
+export interface StorefrontBrandingResponse {
+  branding: {
+    store_name: string;
+    description: string | null;
+    logo_url: string | null;
+    support_email: string | null;
+    support_phone: string | null;
+    telegram_contact_link: string | null;
+    social_links: Record<string, string> | null;
+  };
+  seo: {
+    ga_measurement_id: string | null;
+    fb_pixel_id: string | null;
+    tiktok_pixel_id: string | null;
+  };
+  writable: boolean;
+}
+
+export function getStorefrontBranding(token: string) {
+  return apiFetch<StorefrontBrandingResponse>("/api/affiliate/storefront/branding", { token });
+}
+
+export function updateStorefrontBranding(
+  token: string,
+  body: {
+    store_name: string;
+    description?: string | null;
+    support_email?: string | null;
+    support_phone?: string | null;
+    telegram_contact_link?: string | null;
+    social_links?: Record<string, string>;
+  },
+) {
+  return apiFetch<StorefrontBrandingResponse>("/api/affiliate/storefront/branding", {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
+export function updateStorefrontSeo(
+  token: string,
+  body: { ga_measurement_id?: string | null; fb_pixel_id?: string | null; tiktok_pixel_id?: string | null },
+) {
+  return apiFetch<{ ga_measurement_id: string | null; fb_pixel_id: string | null; tiktok_pixel_id: string | null }>(
+    "/api/affiliate/storefront/seo",
+    { method: "PUT", token, body },
+  );
+}
+
+export function uploadStorefrontLogo(token: string, file: File) {
+  const form = new FormData();
+  form.append("image", file);
+  return apiUpload<StorefrontBrandingResponse>("/api/affiliate/storefront/branding/logo", form, { token });
+}
+
+export function deleteStorefrontLogo(token: string) {
+  return apiFetch<StorefrontBrandingResponse>("/api/affiliate/storefront/branding/logo", {
+    method: "DELETE",
+    token,
+  });
+}
+
+export interface StorefrontHeroSlide {
+  id: number;
+  eyebrow: string | null;
+  title: string;
+  description: string | null;
+  image_url: string | null;
+  price_from_sen: number | null;
+  primary_cta_label: string | null;
+  primary_cta_href: string | null;
+  secondary_cta_label: string | null;
+  secondary_cta_href: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface StorefrontHeroSlidesResponse {
+  slides: StorefrontHeroSlide[];
+  max_slides: number;
+  writable: boolean;
+}
+
+export interface HeroSlideInput {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  price_from_sen?: number | null;
+  primary_cta_label?: string;
+  primary_cta_href?: string;
+  secondary_cta_label?: string;
+  secondary_cta_href?: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+function heroFormData(input: HeroSlideInput, image: File | null): FormData {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null) form.append(key, String(value));
+  }
+  // The backend `boolean` rule needs a literal "1"/"0", not "true".
+  form.set("is_active", input.is_active ? "1" : "0");
+  if (image) form.append("image", image);
+  return form;
+}
+
+export function getStorefrontHeroSlides(token: string) {
+  return apiFetch<StorefrontHeroSlidesResponse>("/api/affiliate/storefront/hero-slides", { token });
+}
+
+export function createStorefrontHeroSlide(token: string, input: HeroSlideInput, image: File) {
+  return apiUpload<StorefrontHeroSlide>(
+    "/api/affiliate/storefront/hero-slides",
+    heroFormData(input, image),
+    { token },
+  );
+}
+
+export function updateStorefrontHeroSlide(
+  token: string,
+  id: number,
+  input: HeroSlideInput,
+  image: File | null,
+) {
+  const form = heroFormData(input, image);
+  form.append("_method", "PUT"); // Laravel method spoofing — multipart can't be a real PUT
+  return apiUpload<StorefrontHeroSlide>(`/api/affiliate/storefront/hero-slides/${id}`, form, { token });
+}
+
+export function setStorefrontHeroSlideStatus(token: string, id: number, isActive: boolean) {
+  return apiFetch<StorefrontHeroSlide>(`/api/affiliate/storefront/hero-slides/${id}/status`, {
+    method: "PATCH",
+    token,
+    body: { is_active: isActive },
+  });
+}
+
+export function deleteStorefrontHeroSlide(token: string, id: number) {
+  return apiFetch<void>(`/api/affiliate/storefront/hero-slides/${id}`, { method: "DELETE", token });
+}
+
+export interface StorefrontGame {
+  id: number;
+  name: string;
+  slug: string;
+  category: string | null;
+  is_visible: boolean;
+}
+
+export interface StorefrontGamesResponse {
+  games: StorefrontGame[];
+  writable: boolean;
+}
+
+export function getStorefrontGames(token: string, search = "") {
+  const query = search ? `?search=${encodeURIComponent(search)}` : "";
+  return apiFetch<StorefrontGamesResponse>(`/api/affiliate/storefront/games${query}`, { token });
+}
+
+export function setStorefrontGameVisibility(token: string, gameId: number, isVisible: boolean) {
+  return apiFetch<StorefrontGamesResponse>(`/api/affiliate/storefront/games/${gameId}`, {
+    method: "PUT",
+    token,
+    body: { is_visible: isVisible },
+  });
+}
+
+export interface StorefrontPricing {
+  markup_pct: number;
+  effective_markup_pct: number;
+  max_markup_pct: number;
+  wholesale_rate_active: boolean;
+}
+
+export interface MarkupPreviewRow {
+  game_name: string | null;
+  package_name: string;
+  customer_price_sen: number;
+  your_margin_sen: number;
+}
+
+export interface MarkupPreview {
+  markup_pct: number;
+  rows: MarkupPreviewRow[];
+  wholesale_rate_active: boolean;
+}
+
+export function getStorefrontPricing(token: string) {
+  return apiFetch<StorefrontPricing>("/api/affiliate/storefront/pricing", { token });
+}
+
+export function updateStorefrontMarkup(token: string, markupPct: number) {
+  return apiFetch<StorefrontPricing>("/api/affiliate/storefront/pricing", {
+    method: "PUT",
+    token,
+    body: { markup_pct: markupPct },
+  });
+}
+
+export function previewStorefrontMarkup(token: string, markupPct: number) {
+  return apiFetch<MarkupPreview>("/api/affiliate/storefront/pricing/preview", {
+    method: "POST",
+    token,
+    body: { markup_pct: markupPct },
+  });
 }
