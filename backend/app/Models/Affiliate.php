@@ -94,6 +94,24 @@ class Affiliate extends Model
         return $this->hasMany(AffiliateTierChange::class);
     }
 
+    /** ADR-060 PR-6: append-only `markup_pct` change history (Q17). */
+    public function markupChanges(): HasMany
+    {
+        return $this->hasMany(AffiliateMarkupChange::class);
+    }
+
+    /** ADR-060 PR-6: per-brand catalog visibility rows (absent = visible). */
+    public function gameVisibilities(): HasMany
+    {
+        return $this->hasMany(AffiliateGame::class);
+    }
+
+    /** ADR-060 PR-6: this brand's own hero slides (null-`affiliate_id` slides are global). */
+    public function heroSlides(): HasMany
+    {
+        return $this->hasMany(HeroSlide::class);
+    }
+
     /**
      * ADR-061: the single fallback tenant for any context with no `Host`
      * to resolve a brand from — console commands, queue jobs, migrations,

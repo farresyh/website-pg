@@ -2,15 +2,28 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAffiliate;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class HeroSlide extends Model
 {
+    /**
+     * ADR-060 PR-6: null `affiliate_id` = the global / primary slide set
+     * (edited in `/admin/hero-slides`); a set `affiliate_id` = a brand's
+     * own slide, edited self-serve in the affiliate portal.
+     * `BelongsToAffiliate` scopes the portal path to the current tenant
+     * and no-ops for the guest storefront + admin paths (AffiliateScope).
+     */
+    use BelongsToAffiliate;
+
     protected $fillable = [
+        'affiliate_id',
         'eyebrow',
         'title',
         'description',
         'image_url',
+        'image_path',
         'price_from_sen',
         'primary_cta_label',
         'primary_cta_href',
@@ -29,6 +42,22 @@ class HeroSlide extends Model
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
     ];
+
+    /**
+     * ADR-060 PR-6: the URL the storefront renders. An affiliate upload
+     * is stored as a disk path (`image_path`) so the file can be cleaned
+     * up and the URL base can move (a future R2 cutover) without a data
+     * migration; the URL is derived here at read time. Admin's rows keep
+     * a pasted absolute `image_url` and no `image_path`.
+     */
+    public function resolvedImageUrl(): ?string
+    {
+        if ($this->image_path !== null) {
+            return Storage::disk(config('filesystems.gallery_disk'))->url($this->image_path);
+        }
+
+        return $this->image_url;
+    }
 
     /**
      * Live per the schedule window (nullable bounds = no restriction
