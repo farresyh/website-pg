@@ -62,6 +62,7 @@ final class OrderFactory
                 'cost_price' => $draft->pricing->costPriceSen,
                 'standard_selling_price' => $draft->pricing->standardSellingPriceSen,
                 'affiliate_markup_pct' => $draft->affiliateMarkupPct,
+                'wholesale_markup_pct' => $draft->pricing->wholesaleMarkupPct,
                 'selling_price' => $draft->pricing->sellingPriceSen,
                 'voucher_discount' => $draft->voucherDiscountSen,
                 'transaction_fee' => $draft->transactionFeeSen,

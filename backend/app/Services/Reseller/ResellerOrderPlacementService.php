@@ -12,9 +12,7 @@ use App\Services\Order\DuplicateOrderException;
 use App\Services\Order\OrderDraft;
 use App\Services\Order\OrderFactory;
 use App\Services\Order\PaymentStatus;
-use App\Services\Pricing\PricingBasis;
-use App\Services\Pricing\PricingResolution;
-use App\Services\Pricing\PricingService;
+use App\Services\Pricing\OrderPricingResolver;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,7 +28,7 @@ final class ResellerOrderPlacementService
 {
     public function __construct(
         private readonly LedgerService $ledger,
-        private readonly PricingService $pricing,
+        private readonly OrderPricingResolver $pricingResolver,
         private readonly OrderFactory $orderFactory,
     ) {}
 
@@ -43,13 +41,12 @@ final class ResellerOrderPlacementService
      * `after_commit => false` — the same race `CheckoutService::
      * settleWithVoucher()` already avoids).
      *
-     * Pricing reuses `PricingService::calculateForAffiliate()` with
-     * `affiliateMarkupPct = 0.0` — the exact "wholesale base = cost ×
-     * (1 + tierMarkupPct/100), no markup layered on top" shape ADR-073
-     * decision 1 calls for (its own "same math as ADR-056 decision 2"),
-     * and `affiliateMarkupPct = 0` makes `affiliateProfit` come back 0
-     * for free — decision 6's "no reseller_profit line" is satisfied by
-     * construction, not a branch to remember.
+     * Pricing goes through `OrderPricingResolver::resolveResellerWallet()`
+     * (ADR-060 PR-4b — the same seam the storefront checkout uses, so the
+     * three inline `calculateForAffiliate(…, 0.0)` copies in this channel
+     * are gone): wholesale base `cost × (1 + tier%)`, no affiliate margin,
+     * `affiliateProfit = 0` by construction (ADR-073 decision 6), and the
+     * tier markup snapshotted onto `orders.wholesale_markup_pct`.
      */
     public function placeOrder(Reseller $reseller, ResellerOrderPlacementRequest $request): Order
     {
@@ -67,25 +64,10 @@ final class ResellerOrderPlacementService
         }
 
         $tier = $reseller->tier;
-        $breakdown = $this->pricing->calculateForAffiliate(
+        $pricing = $this->pricingResolver->resolveResellerWallet(
             $request->costPriceSen,
             $request->standardSellingPriceSen,
             (float) $tier->markup_percent,
-            0.0,
-        );
-
-        // ADR-060 PR-4a: the wallet channel now produces the same
-        // PricingResolution VO the storefront checkout does, so both feed
-        // the one OrderFactory seam. PR-4b moves this construction into
-        // OrderPricingResolver::resolveResellerWallet(); for now it is a
-        // direct wrap of the PricingBreakdown, byte-identical to before.
-        $pricing = new PricingResolution(
-            costPriceSen: $breakdown->costPrice,
-            standardSellingPriceSen: $breakdown->standardSellingPrice,
-            sellingPriceSen: $breakdown->sellingPrice,
-            platformProfitSen: $breakdown->platformProfit,
-            affiliateProfitSen: $breakdown->affiliateProfit,
-            basis: PricingBasis::ResellerWallet,
         );
 
         $primaryAffiliateId = Affiliate::primary()->id;

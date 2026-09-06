@@ -17,7 +17,7 @@ use App\Services\OpenWa\OpenWaClient;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
 use App\Services\PlayerValidation\UnsupportedPlayerValidatorException;
-use App\Services\Pricing\PricingService;
+use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
@@ -56,7 +56,7 @@ final class ResellerBotService
         private readonly ResellerWhatsAppGroupService $groups,
         private readonly ResellerBotCommandParser $parser,
         private readonly ResellerCatalogService $catalog,
-        private readonly PricingService $pricing,
+        private readonly OrderPricingResolver $pricingResolver,
         private readonly ResellerOrderPlacementService $placement,
         private readonly ResellerWalletService $wallet,
         private readonly ResellerWalletTopupService $topups,
@@ -175,12 +175,14 @@ final class ResellerBotService
         }
 
         $tier = $reseller->tier;
-        $sellingPriceSen = fn ($package) => $this->pricing->calculateForAffiliate(
+        // ADR-060 PR-4b: the same seam ResellerOrderPlacementService
+        // charges through, so the listed price can never drift from the
+        // debited price.
+        $sellingPriceSen = fn ($package) => $this->pricingResolver->resolveResellerWallet(
             $package->cost_price,
             $package->standard_selling_price,
             (float) $tier->markup_percent,
-            0.0,
-        )->sellingPrice;
+        )->sellingPriceSen;
 
         return ResellerBotReplyFormatter::listPackages($game, $items, $sellingPriceSen);
     }

@@ -13,9 +13,9 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
-use App\Services\Pricing\CheckoutPricingResolver;
 use App\Services\Pricing\CheckoutTotal;
 use App\Services\Pricing\CheckoutTotalService;
+use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
@@ -33,7 +33,7 @@ use Illuminate\Support\Facades\Log;
 final class CheckoutService
 {
     public function __construct(
-        private readonly CheckoutPricingResolver $pricingResolver,
+        private readonly OrderPricingResolver $pricingResolver,
         private readonly CheckoutTotalService $checkoutTotal,
         private readonly OrderFactory $orderFactory,
         private readonly VoucherService $vouchers,
@@ -61,7 +61,7 @@ final class CheckoutService
      */
     public function initiate(CheckoutRequest $request, PaymentGateway $gateway): Order
     {
-        $pricing = $this->pricingResolver->resolve(
+        $pricing = $this->pricingResolver->resolveStorefront(
             $request->costPriceSen,
             $request->standardSellingPriceSen,
             $request->packageMarkupPercent,
@@ -294,7 +294,7 @@ final class CheckoutService
     /**
      * ADR-068 decision 16 — the membership's own OTP-verified email,
      * looked up independently of member *pricing* (that decision lives in
-     * CheckoutPricingResolver now). `CheckoutController::
+     * OrderPricingResolver now). `CheckoutController::
      * resolveMembershipId()` only ever returns an id for an Active,
      * unexpired membership on this brand, so a non-null id here is a
      * genuine logged-in member; a lapsed/absent session leaves the
@@ -373,7 +373,7 @@ final class CheckoutService
         ?string $customerPhone,
         ?float $tierMarkupPct = null,
     ): CheckoutTotalPreview {
-        $pricing = $this->pricingResolver->resolve(
+        $pricing = $this->pricingResolver->resolveStorefront(
             $costPriceSen,
             $standardSellingPriceSen,
             $packageMarkupPercent,

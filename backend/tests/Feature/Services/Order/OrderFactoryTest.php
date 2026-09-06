@@ -128,6 +128,30 @@ class OrderFactoryTest extends TestCase
         $this->assertSame(930, $order->selling_price);
     }
 
+    public function test_snapshots_wholesale_markup_pct_from_the_resolution(): void
+    {
+        $order = $this->factory()->create($this->draft([
+            'pricing' => new PricingResolution(
+                costPriceSen: 1000,
+                standardSellingPriceSen: 1500,
+                sellingPriceSen: 1320,
+                platformProfitSen: 200,
+                affiliateProfitSen: 120,
+                basis: PricingBasis::Affiliate,
+                wholesaleMarkupPct: 20.0,
+            ),
+        ]));
+
+        $this->assertSame('20.00', (string) $order->wholesale_markup_pct);
+    }
+
+    public function test_leaves_wholesale_markup_pct_null_for_a_standard_order(): void
+    {
+        $order = $this->factory()->create($this->draft());
+
+        $this->assertNull($order->wholesale_markup_pct);
+    }
+
     public function test_throws_a_duplicate_order_exception_on_a_repeated_idempotency_key(): void
     {
         $this->factory()->create($this->draft(['idempotencyKey' => 'dupe']));
