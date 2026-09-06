@@ -28,7 +28,7 @@ class SeoController extends Controller
         $affiliate = $request->user()->affiliateOwner();
         $this->assertWritable($affiliate);
 
-        $settings = AffiliateSeoSettings::query()->firstOrNew(['affiliate_id' => $affiliate->id]);
+        $settings = AffiliateSeoSettings::withoutAffiliateScope()->firstOrNew(['affiliate_id' => $affiliate->id]);
         // Empty string → NULL, so a cleared field is genuinely unset
         // rather than an empty pixel snippet on the storefront.
         foreach ($request->validated() as $key => $value) {
@@ -43,7 +43,8 @@ class SeoController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        $settings = AffiliateSeoSettings::query()->first();
+        $affiliate = $request->user()->affiliateOwner();
+        $settings = AffiliateSeoSettings::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
 
         return response()->json([
             'ga_measurement_id' => $settings?->ga_measurement_id,

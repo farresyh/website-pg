@@ -84,7 +84,7 @@ class PricingController extends Controller
         $markup = round((float) $request->validated('markup_pct'), 2);
         $tierPct = $affiliate->wholesaleTierMarkupPct();
 
-        $rows = $this->sampleBands($this->visiblePackages())
+        $rows = $this->sampleBands($this->visiblePackages($affiliate->id))
             ->map(function (Package $package) use ($tierPct, $markup) {
                 $breakdown = $this->pricing->calculateForAffiliate(
                     $package->cost_price,
@@ -130,14 +130,18 @@ class PricingController extends Controller
 
     /**
      * Active packages of the brand's currently-visible games, cheapest
-     * first. `AffiliateGame` is `BelongsToAffiliate`-scoped, so the
-     * hidden-id lookup is already this tenant's.
+     * first. The hidden-game lookup is filtered by the acting affiliate
+     * id explicitly (`withoutAffiliateScope`), matching the rest of the
+     * portal controllers.
      *
      * @return Collection<int, Package>
      */
-    private function visiblePackages(): Collection
+    private function visiblePackages(int $affiliateId): Collection
     {
-        $hiddenGameIds = AffiliateGame::query()->where('is_visible', false)->pluck('game_id');
+        $hiddenGameIds = AffiliateGame::withoutAffiliateScope()
+            ->where('affiliate_id', $affiliateId)
+            ->where('is_visible', false)
+            ->pluck('game_id');
 
         return Package::query()
             ->where('is_active', true)

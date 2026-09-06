@@ -9,6 +9,7 @@ use App\Http\Requests\Affiliate\Storefront\SaveHeroSlideRequest;
 use App\Http\Requests\Affiliate\Storefront\UpdateHeroSlideStatusRequest;
 use App\Models\HeroSlide;
 use App\Services\Media\ImageIngestService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -20,9 +21,11 @@ use Symfony\Component\HttpFoundation\Response;
  * slides (null `affiliate_id`, edited in `/admin/hero-slides`) are the
  * fallback when this brand has zero active slides.
  *
- * Every query is `BelongsToAffiliate`-scoped, so route-model binding on
- * `{heroSlide}` 404s a slide that isn't this tenant's (including any
- * global slide) with no explicit ownership check.
+ * `{heroSlide}` is checked explicitly against the acting tenant on
+ * every by-id action: `SubstituteBindings` runs before `affiliate.context`
+ * in the pipeline, so the `BelongsToAffiliate` scope is not yet active
+ * when the route model resolves (same reason `DomainController` checks
+ * by hand).
  */
 class HeroSlideController extends Controller
 {
@@ -40,7 +43,7 @@ class HeroSlideController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
 
-        $slides = HeroSlide::query()
+        $slides = $this->ownSlides($affiliate->id)
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get()
@@ -58,7 +61,7 @@ class HeroSlideController extends Controller
         $affiliate = $request->user()->affiliateOwner();
         $this->assertWritable($affiliate);
 
-        if (HeroSlide::query()->count() >= self::MAX_SLIDES) {
+        if ($this->ownSlides($affiliate->id)->count() >= self::MAX_SLIDES) {
             return response()->json([
                 'message' => 'You can have at most '.self::MAX_SLIDES.' hero slides. Remove one first.',
             ], 422);
@@ -84,6 +87,7 @@ class HeroSlideController extends Controller
     public function update(SaveHeroSlideRequest $request, HeroSlide $heroSlide): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
+        $this->assertOwned($heroSlide, $affiliate);
         $this->assertWritable($affiliate);
 
         $slide = $heroSlide->fill($this->textFields($request));
@@ -109,7 +113,9 @@ class HeroSlideController extends Controller
 
     public function updateStatus(UpdateHeroSlideStatusRequest $request, HeroSlide $heroSlide): JsonResponse
     {
-        $this->assertWritable($request->user()->affiliateOwner());
+        $affiliate = $request->user()->affiliateOwner();
+        $this->assertOwned($heroSlide, $affiliate);
+        $this->assertWritable($affiliate);
 
         $heroSlide->update(['is_active' => $request->boolean('is_active')]);
         PublicHeroSlideController::forgetCache($heroSlide->affiliate_id);
@@ -119,7 +125,9 @@ class HeroSlideController extends Controller
 
     public function destroy(Request $request, HeroSlide $heroSlide): Response
     {
-        $this->assertWritable($request->user()->affiliateOwner());
+        $affiliate = $request->user()->affiliateOwner();
+        $this->assertOwned($heroSlide, $affiliate);
+        $this->assertWritable($affiliate);
 
         $affiliateId = $heroSlide->affiliate_id;
         $this->images->delete($heroSlide->image_path);
@@ -127,6 +135,17 @@ class HeroSlideController extends Controller
         PublicHeroSlideController::forgetCache($affiliateId);
 
         return response()->noContent();
+    }
+
+    private function assertOwned(HeroSlide $slide, object $affiliate): void
+    {
+        abort_unless($slide->affiliate_id === $affiliate->id, 404);
+    }
+
+    /** This affiliate's own slides, scoped by id (not the global scope). */
+    private function ownSlides(int $affiliateId): Builder
+    {
+        return HeroSlide::withoutAffiliateScope()->where('affiliate_id', $affiliateId);
     }
 
     /**

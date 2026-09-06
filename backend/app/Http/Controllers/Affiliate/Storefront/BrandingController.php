@@ -26,8 +26,10 @@ use Illuminate\Http\Request;
  * each controller owns one model, mirroring the admin
  * `Settings\*` / `Admin\SeoController` split.
  *
- * Both models are `BelongsToAffiliate`; under the affiliate guard every
- * query here is already scoped to the acting tenant (`AffiliateScope`).
+ * Both models are `BelongsToAffiliate`, but every query here filters by
+ * `affiliateOwner()->id` explicitly (`withoutAffiliateScope()`) rather
+ * than leaning on the global scope — the same by-hand tenant scoping the
+ * rest of the portal controllers use (`DomainController`/`ProfileController`).
  */
 class BrandingController extends Controller
 {
@@ -41,8 +43,8 @@ class BrandingController extends Controller
     public function show(Request $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $branding = AffiliateBranding::query()->first();
-        $seo = AffiliateSeoSettings::query()->first();
+        $branding = AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
+        $seo = AffiliateSeoSettings::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
 
         return response()->json([
             'branding' => [
@@ -68,8 +70,17 @@ class BrandingController extends Controller
         $affiliate = $request->user()->affiliateOwner();
         $this->assertWritable($affiliate);
 
-        $branding = AffiliateBranding::query()->firstOrNew(['affiliate_id' => $affiliate->id]);
-        $branding->fill($request->validated());
+        $data = $request->validated();
+        // Drop blank social entries so the storefront renders only the
+        // links the affiliate actually filled in (a direct API caller
+        // won't have done the frontend's own filtering).
+        $data['social_links'] = array_filter(
+            $data['social_links'] ?? [],
+            fn ($value) => is_string($value) && trim($value) !== '',
+        );
+
+        $branding = AffiliateBranding::withoutAffiliateScope()->firstOrNew(['affiliate_id' => $affiliate->id]);
+        $branding->fill($data);
         $branding->save();
 
         $this->flushBrandCaches($affiliate->id);
@@ -89,7 +100,7 @@ class BrandingController extends Controller
             self::LOGO_MAX_EDGE,
         );
 
-        $branding = AffiliateBranding::query()->firstOrNew(['affiliate_id' => $affiliate->id]);
+        $branding = AffiliateBranding::withoutAffiliateScope()->firstOrNew(['affiliate_id' => $affiliate->id]);
         // A logo upload before the identity form is ever saved must not
         // write a NULL store_name (it is NOT NULL on the table).
         $branding->store_name ??= $affiliate->business_name;
@@ -106,7 +117,7 @@ class BrandingController extends Controller
         $affiliate = $request->user()->affiliateOwner();
         $this->assertWritable($affiliate);
 
-        $branding = AffiliateBranding::query()->first();
+        $branding = AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
 
         if ($branding?->logo_path !== null) {
             $this->images->delete($branding->logo_path);

@@ -10,15 +10,18 @@ use App\Models\AffiliateGame;
 use App\Models\Game;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * ADR-060 PR-6 — the Catalog tab. Every active platform game is visible
  * on a brand's storefront by default; the affiliate turns one fully off
  * (ADR-059 decision 3 — no per-package granularity, no admin approval).
  *
- * `affiliate_game` is `BelongsToAffiliate`; a row's absence means
- * visible, so this controller only ever writes a row for a game the
- * affiliate has an explicit opinion on.
+ * `affiliate_game` rows are filtered by the acting affiliate's id
+ * explicitly (`withoutAffiliateScope()`), not via the `BelongsToAffiliate`
+ * global scope — the portal controllers in this codebase all scope by
+ * hand off `affiliateOwner()` (see `DomainController`/`ProfileController`).
+ * A row's absence means visible.
  */
 class StorefrontGameController extends Controller
 {
@@ -34,7 +37,7 @@ class StorefrontGameController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'slug', 'category']);
 
-        $hidden = AffiliateGame::query()->where('is_visible', false)->pluck('game_id')->flip();
+        $hidden = $this->hiddenGameIds($affiliate->id)->flip();
 
         return response()->json([
             'games' => $games->map(fn (Game $g) => [
@@ -56,13 +59,13 @@ class StorefrontGameController extends Controller
 
         $isVisible = $request->boolean('is_visible');
 
-        if (! $isVisible && $this->wouldHideLastVisibleGame($game->id)) {
+        if (! $isVisible && $this->wouldHideLastVisibleGame($affiliate->id, $game->id)) {
             return response()->json([
                 'message' => 'At least one game must stay visible on your storefront.',
             ], 422);
         }
 
-        AffiliateGame::query()->updateOrCreate(
+        AffiliateGame::withoutAffiliateScope()->updateOrCreate(
             ['affiliate_id' => $affiliate->id, 'game_id' => $game->id],
             ['is_visible' => $isVisible],
         );
@@ -79,12 +82,22 @@ class StorefrontGameController extends Controller
      * visible active game — turning it off would leave the storefront
      * with nothing to sell (planning addendum Q8).
      */
-    private function wouldHideLastVisibleGame(int $gameId): bool
+    private function wouldHideLastVisibleGame(int $affiliateId, int $gameId): bool
     {
         $activeIds = Game::query()->where('is_active', true)->pluck('id');
-        $hiddenIds = AffiliateGame::query()->where('is_visible', false)->pluck('game_id');
-        $visibleIds = $activeIds->diff($hiddenIds);
+        $visibleIds = $activeIds->diff($this->hiddenGameIds($affiliateId));
 
         return $visibleIds->contains($gameId) && $visibleIds->count() <= 1;
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    private function hiddenGameIds(int $affiliateId): Collection
+    {
+        return AffiliateGame::withoutAffiliateScope()
+            ->where('affiliate_id', $affiliateId)
+            ->where('is_visible', false)
+            ->pluck('game_id');
     }
 }

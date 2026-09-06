@@ -36,8 +36,11 @@ class SaveHeroSlideRequest extends FormRequest
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
             'price_from_sen' => ['nullable', 'integer', 'min:0'],
-            'primary_cta_label' => ['nullable', 'string', 'max:255'],
-            'primary_cta_href' => ['nullable', 'string', 'max:2048'],
+            // The `hero_slides` table has NOT NULL CTA columns and a
+            // slide with no working button is a dead banner — required,
+            // same as the admin form.
+            'primary_cta_label' => ['required', 'string', 'max:255'],
+            'primary_cta_href' => ['required', 'string', 'max:2048'],
             'secondary_cta_label' => ['nullable', 'string', 'max:255'],
             'secondary_cta_href' => ['nullable', 'string', 'max:2048'],
             'is_active' => ['required', 'boolean'],
