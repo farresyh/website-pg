@@ -78,6 +78,30 @@ class ResolveStorefrontBrandTest extends TestCase
             ->assertJsonPath('store_name', 'Acme Store');
     }
 
+    public function test_a_configured_primary_host_resolves_to_the_primary_with_no_domain_row(): void
+    {
+        config(['services.storefront.primary_hosts' => ['pekangame.space', 'www.pekangame.space']]);
+        $this->brandWithDomain('shop.acme.com'); // a different, unrelated brand
+
+        $this->getJson('/api/catalog/branding', ['X-Storefront-Host' => 'www.pekangame.space'])
+            ->assertOk()
+            ->assertJsonPath('store_name', 'PekanGame');
+
+        // No affiliate_domains row exists for either primary host.
+        $this->assertDatabaseMissing('affiliate_domains', ['hostname' => 'pekangame.space']);
+    }
+
+    public function test_a_configured_primary_host_wins_over_a_domain_row_of_the_same_name(): void
+    {
+        config(['services.storefront.primary_hosts' => ['localhost']]);
+        // even if somehow a row exists, the config short-circuit runs first
+        $this->brandWithDomain('localhost');
+
+        $this->getJson('/api/catalog/branding', ['X-Storefront-Host' => 'localhost'])
+            ->assertOk()
+            ->assertJsonPath('store_name', 'PekanGame');
+    }
+
     public function test_the_host_header_is_lower_cased_and_port_stripped(): void
     {
         $this->brandWithDomain('shop.acme.com');
