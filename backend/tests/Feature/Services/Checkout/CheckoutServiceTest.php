@@ -10,6 +10,7 @@ use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\OrderFactory;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
@@ -37,7 +38,7 @@ class CheckoutServiceTest extends TestCase
         return new CheckoutService(
             new CheckoutPricingResolver(new PricingService, new MembershipPricingService),
             new CheckoutTotalService,
-            new OrderNumberService,
+            new OrderFactory(new OrderNumberService),
             new VoucherService(new LedgerService),
             new MembershipQuotaService,
         );

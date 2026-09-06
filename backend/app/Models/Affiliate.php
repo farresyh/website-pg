@@ -106,6 +106,35 @@ class Affiliate extends Model
     }
 
     /**
+     * ADR-060 PR-4 (2026-09-06 grill addendum, decision 6): the one place
+     * a storefront's wholesale-tier markup is resolved for pricing.
+     * Returns the subscribed tier's `markup_percent` when the subscription
+     * currently grants the wholesale rate — `active` OR `grace` (ADR-056:
+     * grace ≠ lapsed, a few days' billing lag must not re-price a real
+     * brand) — and null when the tier has lapsed or there is no
+     * subscription at all. Null is exactly what `OrderPricingResolver` /
+     * `PricingService::calculateForAffiliate()` already treat as "fall
+     * back to the standard guest chain".
+     *
+     * Consumed by the catalog, checkout, checkout-preview and
+     * voucher-preview paths once ADR-060 PR-4c wires per-`Host` pricing.
+     * Needs `subscription.tier` loaded — `ResolveStorefrontBrand` already
+     * eager-loads it.
+     */
+    public function wholesaleTierMarkupPct(): ?float
+    {
+        $subscription = $this->subscription;
+
+        if ($subscription === null
+            || ! $subscription->grantsWholesaleRate()
+            || $subscription->tier === null) {
+            return null;
+        }
+
+        return (float) $subscription->tier->markup_percent;
+    }
+
+    /**
      * ADR-061 decision 4: consumer Membership (ADR-027) is live for a
      * storefront only when BOTH the global master kill-switch
      * (`PlatformSettings.membership_enabled` — flipped off everywhere

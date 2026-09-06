@@ -6,8 +6,9 @@ use App\Jobs\FulfillOrderJob;
 use App\Models\Membership;
 use App\Models\Order;
 use App\Services\Membership\MembershipQuotaService;
-use App\Services\Order\DeliveryStatus;
-use App\Services\Order\OrderNumberService;
+use App\Services\Order\DuplicateOrderException;
+use App\Services\Order\OrderDraft;
+use App\Services\Order\OrderFactory;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
@@ -19,7 +20,6 @@ use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
 use App\Services\Voucher\VoucherService;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -35,7 +35,7 @@ final class CheckoutService
     public function __construct(
         private readonly CheckoutPricingResolver $pricingResolver,
         private readonly CheckoutTotalService $checkoutTotal,
-        private readonly OrderNumberService $orderNumbers,
+        private readonly OrderFactory $orderFactory,
         private readonly VoucherService $vouchers,
         private readonly MembershipQuotaService $membershipQuota,
     ) {}
@@ -104,49 +104,35 @@ final class CheckoutService
         // fast at the INSERT rather than ever reaching the gateway a
         // second time.
         try {
-            $order = Order::query()->create([
-                'order_number' => $this->orderNumbers->generate(),
-                'checkout_idempotency_key' => $request->idempotencyKey,
-                'customer_email' => $customerEmail,
-                'customer_name' => $request->customerName,
-                'customer_phone' => $request->customerPhone,
-                'player_id' => $request->playerId,
-                'server_id' => $request->serverId,
-                'game_id' => $request->gameId,
-                'package_id' => $request->packageId,
-                'supplier_id' => $request->supplierId,
-                'supplier_product_ref' => $request->supplierProductRef,
-                'affiliate_id' => $request->affiliateId,
-                'voucher_id' => $voucherPreview?->voucherId,
-                'pricing_basis' => $pricing->basis->value,
-                'membership_id' => $pricing->membershipId,
-                'member_discount_percent' => $pricing->memberDiscountPercent,
-                'normal_selling_price' => $pricing->normalSellingPriceSen,
-                'cost_price' => $pricing->costPriceSen,
-                'standard_selling_price' => $pricing->standardSellingPriceSen,
-                'affiliate_markup_pct' => $request->affiliateMarkupPct,
-                'selling_price' => $pricing->sellingPriceSen,
-                'voucher_discount' => $total->voucherDiscount,
-                'transaction_fee' => $fullyCoveredByVoucher ? 0 : $total->transactionFee,
-                'final_amount' => $fullyCoveredByVoucher ? 0 : $total->finalAmount,
-                'platform_profit' => $pricing->platformProfitSen,
-                'affiliate_profit' => $pricing->affiliateProfitSen,
-                'payment_status' => $fullyCoveredByVoucher ? PaymentStatus::Paid->value : PaymentStatus::Pending->value,
-                'paid_at' => $fullyCoveredByVoucher ? now() : null,
-                'delivery_status' => DeliveryStatus::NotStarted->value,
-                'payment_method' => $request->paymentMethod,
-                'payment_gateway' => $request->paymentGateway,
-                'channel_code' => $request->channelCode,
-            ]);
-        } catch (QueryException $e) {
-            if ($this->isUniqueConstraintViolation($e)) {
-                throw new DuplicateCheckoutAttemptException(
-                    "Duplicate checkout attempt for idempotency key {$request->idempotencyKey}",
-                    previous: $e,
-                );
-            }
-
-            throw $e;
+            $order = $this->orderFactory->create(new OrderDraft(
+                pricing: $pricing,
+                idempotencyKey: $request->idempotencyKey,
+                customerEmail: $customerEmail,
+                customerName: $request->customerName,
+                customerPhone: $request->customerPhone,
+                playerId: $request->playerId,
+                serverId: $request->serverId,
+                affiliateId: $request->affiliateId,
+                paymentStatus: $fullyCoveredByVoucher ? PaymentStatus::Paid : PaymentStatus::Pending,
+                paidAt: $fullyCoveredByVoucher ? now() : null,
+                paymentMethod: $request->paymentMethod,
+                gameId: $request->gameId,
+                packageId: $request->packageId,
+                supplierId: $request->supplierId,
+                supplierProductRef: $request->supplierProductRef,
+                voucherId: $voucherPreview?->voucherId,
+                voucherDiscountSen: $total->voucherDiscount,
+                transactionFeeSen: $fullyCoveredByVoucher ? 0 : $total->transactionFee,
+                finalAmountSen: $fullyCoveredByVoucher ? 0 : $total->finalAmount,
+                affiliateMarkupPct: $request->affiliateMarkupPct,
+                paymentGateway: $request->paymentGateway,
+                channelCode: $request->channelCode,
+            ));
+        } catch (DuplicateOrderException $e) {
+            throw new DuplicateCheckoutAttemptException(
+                "Duplicate checkout attempt for idempotency key {$request->idempotencyKey}",
+                previous: $e,
+            );
         }
 
         if ($fullyCoveredByVoucher) {
@@ -303,16 +289,6 @@ final class CheckoutService
             'voucher_id' => $order->voucher_id,
             'error' => $e->getMessage(),
         ]);
-    }
-
-    /**
-     * MySQL/sqlite both surface a unique-constraint violation as
-     * SQLSTATE 23000 — narrow enough to not accidentally swallow an
-     * unrelated QueryException (e.g. a real connection failure).
-     */
-    private function isUniqueConstraintViolation(QueryException $e): bool
-    {
-        return $e->getCode() === '23000';
     }
 
     /**
