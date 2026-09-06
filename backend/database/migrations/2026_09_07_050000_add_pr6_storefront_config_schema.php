@@ -91,9 +91,13 @@ return new class extends Migration
         });
 
         Schema::table('hero_slides', function (Blueprint $table) {
+            // MySQL refuses to drop an index a foreign key still needs —
+            // drop the FK first, then its standalone index, then the
+            // columns (sqlite does not enforce this, so the fast suite
+            // never caught the wrong order).
+            $table->dropForeign(['affiliate_id']);
             $table->dropIndex('hero_slides_affiliate_id_index');
-            $table->dropConstrainedForeignId('affiliate_id');
-            $table->dropColumn('image_path');
+            $table->dropColumn(['affiliate_id', 'image_path']);
         });
 
         Schema::dropIfExists('affiliate_game');
