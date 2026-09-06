@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -19,21 +18,19 @@ return new class extends Migration
      *    section D).
      *  - `provider` / `provider_ref` describe the frontend host that
      *    actually serves the certificate + routing (Vercel — addendum
-     *    section B). `provider_ref` is NULL for the seeded rows that
-     *    represent the primary affiliate's own domain(s): those are the
-     *    platform's real zone, not customer domains, and every
-     *    provider-side lifecycle step (PR-5) skips a null-`provider_ref`
-     *    row (addendum section I).
+     *    section B). `provider_ref` is NULL for a row that is not a
+     *    provider-managed custom domain (an `is_owned` brand pointed at a
+     *    hostname configured elsewhere); every provider-side lifecycle
+     *    step (PR-5) skips a null-`provider_ref` row (addendum section I).
      *  - `verification` holds the TXT-challenge payload when the provider
      *    needs an explicit ownership proof (rare — only when the hostname
      *    is already attached elsewhere on the provider).
      *
-     * The primary affiliate's own hostnames are seeded here from
-     * `STOREFRONT_PRIMARY_HOSTS` (comma-separated) so the `Host` resolver
-     * has one code path for every brand including ours. Empty in tests /
-     * CI / local dev with nothing configured — the resolver falls back
-     * to `Affiliate::primary()` whenever the `X-Storefront-Host` header
-     * is absent, so that is harmless.
+     * The primary affiliate's own hostnames are NOT rows here — they are
+     * deploy config (`STOREFRONT_PRIMARY_HOSTS`, resolved by
+     * ResolveStorefrontBrand before it ever queries this table). "Our own
+     * infra hostnames are config; customer domains are data" (PR-3
+     * addendum). This table only ever holds non-primary brands' domains.
      */
     public function up(): void
     {
@@ -57,32 +54,6 @@ return new class extends Migration
             // of its own on MySQL.
             $table->index('affiliate_id', 'affiliate_domains_affiliate_id_index');
         });
-
-        $primaryId = DB::table('affiliates')->where('is_primary', true)->value('id');
-        // Normalise the same way ResolveStorefrontBrand normalises the
-        // incoming header: lower-case, trimmed, any `:port` stripped — so
-        // a value like `localhost:3001` still matches `localhost`.
-        $hosts = array_filter(array_map(
-            fn ($h) => explode(':', strtolower(trim($h)), 2)[0],
-            explode(',', (string) env('STOREFRONT_PRIMARY_HOSTS', '')),
-        ));
-
-        if ($primaryId !== null && $hosts !== []) {
-            $now = now();
-            foreach (array_values(array_unique($hosts)) as $i => $hostname) {
-                DB::table('affiliate_domains')->insert([
-                    'affiliate_id' => $primaryId,
-                    'hostname' => $hostname,
-                    'is_primary' => $i === 0,
-                    'status' => 'active',
-                    'provider' => 'vercel',
-                    'provider_ref' => null,
-                    'verified_at' => $now,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]);
-            }
-        }
     }
 
     public function down(): void

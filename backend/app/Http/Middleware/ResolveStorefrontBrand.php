@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Support\StorefrontBrand;
@@ -27,15 +28,22 @@ use Symfony\Component\HttpFoundation\Response;
  * margin for no attacker gain. A future hardening (signed header / trust
  * only the Vercel egress) can tighten this without touching the resolver.
  *
- *  - no header            → nothing set; `StorefrontBrand::get()` lazily
- *                           falls back to `Affiliate::primary()`. Covers
- *                           the primary storefront when it sends no
- *                           header, plus every non-storefront caller.
- *  - header, active row    → that brand (with `subscription.tier` eager
- *                           loaded for checkout pricing).
- *  - header, unknown/……    → 404. Never serve one brand's storefront
- *                           under an unrecognised or suspended host
- *                           (addendum section D / decision 2).
+ *  - no header                    → nothing set; `StorefrontBrand::get()`
+ *                                   lazily falls back to `Affiliate::primary()`
+ *                                   (non-storefront callers, console, tests).
+ *  - header in `primary_hosts`     → `Affiliate::primary()`, no DB lookup.
+ *                                   Our own apex/`www` (and `localhost` in
+ *                                   dev / E2E) are deploy config
+ *                                   (`STOREFRONT_PRIMARY_HOSTS`), never rows
+ *                                   in `affiliate_domains` — "our infra
+ *                                   hostnames are config; customer domains
+ *                                   are data" (PR-3 addendum).
+ *  - header, active `affiliate_domains` row → that brand (with
+ *                                   `subscription.tier` eager-loaded for
+ *                                   PR-4 pricing).
+ *  - header, unknown / suspended / deactivated / soft-deleted → 404. Never
+ *                                   serve one brand's storefront under an
+ *                                   unrecognised host (decision 2).
  */
 class ResolveStorefrontBrand
 {
@@ -53,6 +61,13 @@ class ResolveStorefrontBrand
         $host = $this->normalise($request->header('X-Storefront-Host'));
 
         if ($host === null) {
+            return $next($request);
+        }
+
+        // The primary brand's own hostnames are deploy config, not rows.
+        if (in_array($host, config('services.storefront.primary_hosts'), true)) {
+            $this->brand->set(Affiliate::primary());
+
             return $next($request);
         }
 
