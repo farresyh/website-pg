@@ -2601,6 +2601,18 @@ Pure build from here, once the Cloudflare cutover lands — no further grilling 
 
 **J. Infra prerequisite (a `/wizard`-shaped founder step, before PR-5, not a code PR):** issue a Vercel API token (Domains scope, storefront project only) into Forge `.env`; create the `connect.pekangame.space` DNS-only CNAME in the platform Cloudflare zone pointing at the storefront project's Vercel CNAME target; confirm the storefront project's team is on the Vercel Pro plan.
 
+**J — executed 2026-09-07 (founder-guided wizard, `adr-060-pr5-infra-wizard.sh`, not committed).** All seven stages done:
+- **Vercel plan:** `jw-brothers` team confirmed on **Pro** (custom domains → $0 each, no cap).
+- **`services.vercel.*` credentials now in Forge `.env`** on the `api.pekangame.space` site (saved, **not deployed** — `config('services.vercel')` doesn't exist until PR-5 adds it, so the vars sit inert):
+  - `VERCEL_TEAM_ID=team_i9p6dY1gacYi2zjKEtI5dFe3`
+  - `VERCEL_STOREFRONT_PROJECT_ID=prj_N74U7lD8c8sDkhrorZ1UtPBXPpru`
+  - `VERCEL_API_TOKEN` — token `pekangame-pr5-domains`, **scoped to the `pekangame-storefront` project only** (Vercel's Tokens UI offers a project scope but no per-capability "Domains only" scope, and only one project per token — project-scope is the tightest useful setting and all of PR-5's API calls act on that one project), no expiration. Value never entered the build chat; pasted straight into Forge.
+- **Vercel per-project CNAME target:** `8d121092727576af.vercel-dns-016.com` (Vercel now hands out a project-unique target, not the generic `cname.vercel-dns.com`). PR-5's `VercelDomainService` / portal Domain screen should read this from config, not hardcode it — a project move would change it.
+- **Cloudflare:** `connect.pekangame.space` → `8d121092727576af.vercel-dns-016.com`, **DNS-only (grey)**, in the `pekangame.space` zone. Verified resolving: `connect.pekangame.space` → target → `216.150.16.193` / `216.150.1.193` (Vercel anycast), no Cloudflare proxy IP in the chain.
+- **PR-5 env keys pinned** (so `config/services.php` and the wizard agree): `VERCEL_API_TOKEN`, `VERCEL_TEAM_ID`, `VERCEL_STOREFRONT_PROJECT_ID` → `services.vercel.{token, team_id, storefront_project_id}`. The affiliate-facing CNAME target `connect.pekangame.space` is itself config too (`services.vercel.connect_cname` or similar) — not the raw Vercel target, which stays server-side.
+
+**PR-5 is now unblocked.**
+
 **PR split (supersedes the loose "storefront-config editors" framing above):** PR-1 `PricingResolution` VO extraction (+ `PricingBasis::Affiliate`, pure refactor) — ✅ **done 2026-09-06 (PR #116)**: `CheckoutPricingResolver` + `PricingResolution` in `app/Services/Pricing/`, `CheckoutService::initiate()`/`previewTotal()` now consume it, `tierMarkupPct` threads through `CheckoutRequest` nullable (null until PR-2), `MemberPricingResolution` deleted. → PR-2 backend `Host` resolution + `affiliate_domains` table + cross-tenant tests — ✅ **done 2026-09-06 (PR #117)**, see the "PR-2 build addendum" below → PR-3 `storefront/` per-`Host` brand render — ✅ **done 2026-09-06 (PR #118)**, see the "PR-3 build addendum" below → PR-4 checkout ledger-split wiring + end-to-end proof (money-critical) → PR-5 `VercelDomainService` + admin break-glass controls + portal Domain screen (self-serve wizard, provider-opaque) → PR-6 portal storefront-config editors (branding / logo / hero slides / GA-FB-TikTok pixel / `markup_pct` + live preview / `affiliate_game` catalog toggle).
 
 Pure build from here — no further grilling needed.
