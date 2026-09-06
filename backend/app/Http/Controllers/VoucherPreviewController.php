@@ -3,12 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Voucher\PreviewVoucherRequest;
-use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Package;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
@@ -22,15 +22,17 @@ use Illuminate\Validation\ValidationException;
  * an accurate new total before the customer commits to anything.
  *
  * sellingPrice is recomputed here the same way CheckoutController
- * does — from the stored Package/Affiliate rows via PricingService,
- * never trusted from the client (ORD-9) — so the discount preview is
- * as real as the final checkout's own number, not a client-side guess.
+ * does — from the stored Package rows against the `Host`-resolved
+ * storefront brand's wholesale tier + markup (ADR-060 PR-4c), never
+ * trusted from the client (ORD-9) — so the discount preview is as real
+ * as the final checkout's own number, not a client-side guess.
  */
 class VoucherPreviewController extends Controller
 {
     public function __construct(
         private readonly PricingService $pricing,
         private readonly VoucherService $vouchers,
+        private readonly StorefrontBrand $storefrontBrand,
     ) {}
 
     public function store(PreviewVoucherRequest $request): JsonResponse
@@ -46,12 +48,17 @@ class VoucherPreviewController extends Controller
             ]);
         }
 
-        $affiliate = Affiliate::primary();
+        $brand = $this->storefrontBrand->get();
 
-        $pricingBreakdown = $this->pricing->calculate(
+        // Same wholesale-tier/markup basis CheckoutService prices the real
+        // order at — `calculateForAffiliate` with a null `tierMarkupPct`
+        // is byte-identical to the old `calculate()` for the primary /
+        // lapsed brand (ADR-060 PR-4b).
+        $pricingBreakdown = $this->pricing->calculateForAffiliate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $affiliate->markup_pct,
+            $brand->wholesaleTierMarkupPct(),
+            (float) $brand->markup_pct,
         );
 
         try {

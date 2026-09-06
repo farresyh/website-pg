@@ -116,7 +116,13 @@ Route::post('/client-errors', [ClientErrorController::class, 'store'])->middlewa
 // Game/Package config, never from this request's own body.
 // ADR-014: throttle:10,1 — 10/minute/IP, loose enough for a genuine
 // customer retrying a failed attempt, tight enough to blunt a flood.
-Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1,checkout');
+//
+// ADR-060 PR-4c: `storefront.brand` resolves the `X-Storefront-Host`
+// brand so checkout prices against THAT brand's wholesale tier +
+// markup and attributes the order (hence the ledger profit split) to
+// it. No header / a `primary_hosts` header → `Affiliate::primary()`,
+// byte-identical to before. An unknown/suspended host 404s here too.
+Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['throttle:10,1,checkout', 'storefront.brand']);
 
 // ADR-024 decision #1's "Apply" button — read-only preview, never
 // locks or spends a voucher's remaining balance (VoucherService::
@@ -125,7 +131,9 @@ Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('thro
 // abuse this rate limit exists to blunt, and the ownership-lock check
 // inside VoucherService::preview() already keeps a wrong guess from
 // revealing anything either way.
-Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware('throttle:10,1,voucher-preview');
+// ADR-060 PR-4c: `storefront.brand` — the discount preview prices the
+// package against the `Host`-resolved brand, same as the real checkout.
+Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware(['throttle:10,1,voucher-preview', 'storefront.brand']);
 
 // Bug fix, 2026-08-30: read-only Package Price/Transaction Fee/Voucher
 // Discount/Total breakdown, fetched by the storefront's Order Summary
@@ -135,7 +143,9 @@ Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->mi
 // telemetry (no gateway call, no guessable secret, unlike a voucher
 // code), debounced client-side, but still worth a limit since it's a
 // public unauthenticated endpoint doing real DB work.
-Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware('throttle:30,1,checkout-preview-totals');
+// ADR-060 PR-4c: `storefront.brand` — the summary total must match what
+// the real checkout charges for this brand (anti-divergence).
+Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware(['throttle:30,1,checkout-preview-totals', 'storefront.brand']);
 
 // Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
 // as checkout above) — backend half of the Player-ID Validation
@@ -202,11 +212,13 @@ Route::middleware('storefront.brand')->group(function () {
 // throttle: unlike checkout/validate-player this hits no third-party
 // API and isn't money-moving, just a normal public read listing.
 //
-// ADR-060 (2026-09-06 addendum) — PR-2: `storefront.brand` resolves the
-// brand from `X-Storefront-Host` for branding / SEO here (per-brand
-// catalog visibility + pricing is PR-3/PR-4). Inert without the header
-// (falls back to Affiliate::primary()); a header for an unknown/inactive
-// host 404s before the controller (decision 2).
+// ADR-060 (2026-09-06 addendum) — `storefront.brand` resolves the brand
+// from `X-Storefront-Host`: branding / SEO (PR-2) and, since PR-4c, the
+// per-brand `selling_price_sen` / `price_from_sen` in the catalog
+// listings (priced against the brand's wholesale tier + markup, cached
+// per brand). Inert without the header (falls back to Affiliate::primary());
+// a header for an unknown/inactive host 404s before the controller
+// (decision 2).
 Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::get('/games', [CatalogController::class, 'index']);
     Route::get('/games/{slug}', [CatalogController::class, 'show']);

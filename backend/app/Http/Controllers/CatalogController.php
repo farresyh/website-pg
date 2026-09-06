@@ -12,6 +12,7 @@ use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -47,12 +48,17 @@ class CatalogController extends Controller
         private readonly PricingService $pricing,
         private readonly MembershipPricingService $membershipPricing,
         private readonly MembershipSessionTokenService $membershipSessionTokens,
+        private readonly StorefrontBrand $storefrontBrand,
     ) {}
 
     public function index(): JsonResponse
     {
+        // ADR-060 PR-4c: `price_from_sen` is priced against the
+        // `Host`-resolved brand's wholesale tier + markup, so the whole
+        // listing is cached per brand. The primary brand keeps its own
+        // id-keyed entry — one code path, no bare-key special case.
         $games = Cache::remember(
-            'catalog.public.games.index',
+            self::indexCacheKey($this->storefrontBrand->get()->id),
             self::CACHE_TTL_SECONDS,
             fn () => Game::query()
                 ->where('is_active', true)
@@ -87,8 +93,9 @@ class CatalogController extends Controller
 
         // ADR-061 decision 4: Membership is live only when the global
         // kill-switch AND this storefront's own toggle are both on.
-        // ADR-060 resolves the brand per `Host`; today it is the primary.
-        $affiliate = Affiliate::primary();
+        // ADR-060 PR-4c: the brand is resolved per `Host` — its own
+        // wholesale tier + markup drive `selling_price_sen` below.
+        $affiliate = $this->storefrontBrand->get();
         $membershipEnabled = $affiliate->membershipEnabledEffective();
 
         // Resolved once per request, outside the cache closure below —
@@ -103,7 +110,7 @@ class CatalogController extends Controller
         $packages = Cache::store(config('cache.catalog_packages_store'))
             ->tags(['catalog.packages', "catalog.packages.game.{$game->id}"])
             ->remember(
-                self::packagesCacheKey($game->id, $memberPlan?->id),
+                self::packagesCacheKey($game->id, $memberPlan?->id, $affiliate->id),
                 self::CACHE_TTL_SECONDS,
                 function () use ($game, $membershipEnabled, $memberPlan) {
                     // The caller's own tier when this request carried a
@@ -330,14 +337,22 @@ class CatalogController extends Controller
             ->first();
     }
 
+    /**
+     * ADR-060 PR-4c: the customer-facing price for the `Host`-resolved
+     * storefront brand. `calculateForAffiliate` with a null
+     * `wholesaleTierMarkupPct()` (primary brand / lapsed tier) is
+     * byte-identical to the old `calculate()` — the primary storefront's
+     * listing does not shift by a sen (ADR-060 PR-4b).
+     */
     private function sellingPriceSen(Package $package): int
     {
-        $affiliate = Affiliate::primary();
+        $brand = $this->storefrontBrand->get();
 
-        return $this->pricing->calculate(
+        return $this->pricing->calculateForAffiliate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $affiliate->markup_pct,
+            $brand->wholesaleTierMarkupPct(),
+            (float) $brand->markup_pct,
         )->sellingPrice;
     }
 
@@ -351,10 +366,18 @@ class CatalogController extends Controller
      *
      * ADR-071 PR2: these choke points also purge the storefront's
      * Next.js `catalog` Data-Cache tag (`NextRevalidation::purge()`).
+     *
+     * ADR-060 PR-4c: the index listing is cached per storefront brand
+     * (`price_from_sen` varies by the brand's wholesale tier + markup).
+     * The default `database` cache store has no tag support, so a single
+     * price/game edit clears every brand's entry by looping the ids —
+     * a handful of `forget()`s on a rare admin write, not a hot path.
      */
     public static function forgetIndexCache(): void
     {
-        Cache::forget('catalog.public.games.index');
+        foreach (Affiliate::withTrashed()->pluck('id') as $brandId) {
+            Cache::forget(self::indexCacheKey($brandId));
+        }
         NextRevalidation::purge();
     }
 
@@ -373,13 +396,15 @@ class CatalogController extends Controller
         // the whole per-game tag rather than a single forget(key) call,
         // so every cached variant for this game is covered, not just
         // the anonymous one.
+        // The per-game tag covers every brand's entry at once — brand is
+        // in the cache KEY, not the tag set, so one flush per game still
+        // reaches all of them (ADR-060 PR-4c).
         Cache::store(config('cache.catalog_packages_store'))
             ->tags(["catalog.packages.game.{$gameId}"])
             ->flush();
         // A package price/status change also changes the index's
         // per-game price_from_sen — the index cache must go too.
-        Cache::forget('catalog.public.games.index');
-        NextRevalidation::purge();
+        self::forgetIndexCache();
     }
 
     /**
@@ -393,10 +418,15 @@ class CatalogController extends Controller
         NextRevalidation::purge();
     }
 
-    private static function packagesCacheKey(int $gameId, ?int $membershipPlanId = null): string
+    private static function indexCacheKey(int $brandId): string
     {
-        return $membershipPlanId !== null
-            ? "catalog.public.games.{$gameId}.packages.tier.{$membershipPlanId}"
-            : "catalog.public.games.{$gameId}.packages";
+        return "catalog.public.games.index.brand.{$brandId}";
+    }
+
+    private static function packagesCacheKey(int $gameId, ?int $membershipPlanId, int $brandId): string
+    {
+        $key = "catalog.public.games.{$gameId}.brand.{$brandId}.packages";
+
+        return $membershipPlanId !== null ? "{$key}.tier.{$membershipPlanId}" : $key;
     }
 }
