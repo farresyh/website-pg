@@ -23,6 +23,9 @@ final class CheckoutRequest
         public readonly int $standardSellingPriceSen,
         public readonly float $packageMarkupPercent,
         public readonly float $affiliateMarkupPct,
+        // ADR-060 PR-2 will pass the `Host`-resolved affiliate's active
+        // wholesale-tier markup here; null (the default) means no
+        // affiliate / a lapsed tier, priced exactly as before this seam.
         public readonly PaymentMethodFeeConfig $paymentFeeConfig,
         public readonly string $paymentMethod,
         public readonly string $paymentGateway,
@@ -36,5 +39,6 @@ final class CheckoutRequest
         public readonly ?int $supplierId = null,
         public readonly ?int $affiliateId = null,
         public readonly ?int $membershipId = null,
+        public readonly ?float $tierMarkupPct = null,
     ) {}
 }
