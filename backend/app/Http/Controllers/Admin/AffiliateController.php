@@ -10,12 +10,15 @@ use App\Http\Requests\Admin\StoreAffiliateUserRequest;
 use App\Http\Requests\Admin\UpdateAffiliateRequest;
 use App\Http\Requests\Admin\UpdateAffiliateStatusRequest;
 use App\Models\Affiliate;
+use App\Models\AffiliateDomain;
 use App\Models\AffiliateImpersonationSession;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateUser;
 use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Affiliate\AffiliateSubscriptionService;
 use App\Services\Affiliate\AffiliateTierFeeService;
+use App\Services\Affiliate\Domain\AffiliateDomainService;
+use App\Services\Affiliate\Domain\DomainProviderException;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -43,6 +46,7 @@ class AffiliateController extends Controller
         private readonly AffiliateSubscriptionService $subscriptions,
         private readonly AffiliateInviteService $invites,
         private readonly AffiliateTierFeeService $tierFees,
+        private readonly AffiliateDomainService $domains,
     ) {}
 
     /**
@@ -95,7 +99,6 @@ class AffiliateController extends Controller
                 'phone' => $data['phone'] ?? null,
                 'markup_pct' => $data['markup_pct'],
                 'max_markup_pct' => $data['max_markup_pct'] ?? null,
-                'domains' => $data['domains'] ?? null,
                 'status' => 'active',
                 'is_owned' => $isOwned,
                 'membership_enabled' => $membershipEnabled,
@@ -153,7 +156,6 @@ class AffiliateController extends Controller
             'phone' => $data['phone'] ?? null,
             'markup_pct' => $data['markup_pct'],
             'max_markup_pct' => $data['max_markup_pct'] ?? null,
-            'domains' => $data['domains'] ?? null,
             'is_owned' => $isOwned,
             'membership_enabled' => $membershipEnabled,
             'notes' => $data['notes'] ?? null,
@@ -266,6 +268,42 @@ class AffiliateController extends Controller
         return response()->json(['message' => 'Invite re-sent.']);
     }
 
+    /**
+     * ADR-060 addendum section F: admin break-glass — force a provider
+     * re-check of one custom domain (for a stuck row or a support
+     * ticket). There is deliberately no admin add-domain path.
+     */
+    public function recheckDomain(Affiliate $affiliate, AffiliateDomain $affiliateDomain): JsonResponse
+    {
+        abort_unless($affiliateDomain->affiliate_id === $affiliate->id, 404);
+
+        try {
+            $this->domains->recheck($affiliateDomain);
+        } catch (DomainProviderException $e) {
+            throw ValidationException::withMessages(['domain' => [$e->getMessage()]]);
+        }
+
+        return response()->json($this->detailShape($affiliate->fresh()));
+    }
+
+    /**
+     * ADR-060 addendum section F: admin break-glass — remove one custom
+     * domain (abuse, or an affiliate request). Detaches at the provider
+     * and deletes the row; primary fails over if needed.
+     */
+    public function removeDomain(Affiliate $affiliate, AffiliateDomain $affiliateDomain): JsonResponse
+    {
+        abort_unless($affiliateDomain->affiliate_id === $affiliate->id, 404);
+
+        try {
+            $this->domains->remove($affiliateDomain);
+        } catch (DomainProviderException $e) {
+            throw ValidationException::withMessages(['domain' => [$e->getMessage()]]);
+        }
+
+        return response()->json($this->detailShape($affiliate->fresh()));
+    }
+
     /** RES-5: activate / deactivate. Deactivating ends any live impersonation. */
     public function updateStatus(UpdateAffiliateStatusRequest $request, Affiliate $affiliate): JsonResponse
     {
@@ -274,6 +312,14 @@ class AffiliateController extends Controller
 
         if ($status === 'inactive') {
             $this->endImpersonationSessions($affiliate, 'affiliate_deactivated');
+            // ADR-060 addendum section G: deactivate ⇒ every custom
+            // domain → `suspended`, the storefront then 503s that host.
+            // The provider domain stays attached for a fast reactivate.
+            $this->domains->suspendAll($affiliate);
+        } else {
+            // Reactivate ⇒ suspended domains return to pending and are
+            // re-checked (DNS is usually still valid).
+            $this->domains->resumeAll($affiliate);
         }
 
         Log::info('Affiliate status changed', [
@@ -288,8 +334,9 @@ class AffiliateController extends Controller
     /**
      * RES-6: soft-delete only, and only when there is nothing owed — the
      * earnings balance is exactly zero and no withdrawal is pending or
-     * approved-but-uncompleted. The Cloudflare custom-hostname teardown
-     * is ADR-060, not wired here.
+     * approved-but-uncompleted. Every custom domain is torn down at the
+     * hosting provider first (ADR-060 addendum section G); a provider
+     * failure aborts the delete so it is never left half-done.
      *
      * ADR-061 decision 8: the primary affiliate is the console/job/migration
      * fallback tenant and can never be deleted. A non-primary `is_owned`
@@ -320,6 +367,14 @@ class AffiliateController extends Controller
         if ($hasOpenWithdrawal) {
             throw ValidationException::withMessages([
                 'affiliate' => ['This affiliate has a pending or approved withdrawal. Complete or reject it before deleting.'],
+            ]);
+        }
+
+        try {
+            $this->domains->removeAllForDelete($affiliate);
+        } catch (DomainProviderException $e) {
+            throw ValidationException::withMessages([
+                'affiliate' => ['A custom domain could not be removed from the hosting provider ('.$e->getMessage().'). Try again, or contact support.'],
             ]);
         }
 
@@ -355,6 +410,7 @@ class AffiliateController extends Controller
     {
         $affiliate->load([
             'users',
+            'customDomains',
             'tierChanges.admin:id,name',
             'subscription.tier' => fn ($q) => $q->withTrashed(),
             'tierChanges.fromTier' => fn ($q) => $q->withTrashed(),
@@ -364,6 +420,19 @@ class AffiliateController extends Controller
 
         return [
             'affiliate' => $this->rowShape($affiliate, $this->ledger->balance(LedgerOwnerType::Affiliate, $affiliate->id)),
+            'domains' => $affiliate->customDomains
+                ->sortByDesc('is_primary')->values()
+                ->map(fn (AffiliateDomain $d) => [
+                    'id' => $d->id,
+                    'hostname' => $d->hostname,
+                    'status' => $d->status->value,
+                    'is_primary' => $d->is_primary,
+                    'provider' => $d->provider,
+                    'provider_managed' => $d->provider_ref !== null,
+                    'last_checked_at' => $d->last_checked_at?->toIso8601String(),
+                    'verified_at' => $d->verified_at?->toIso8601String(),
+                    'last_error' => $d->last_error,
+                ])->all(),
             'users' => $affiliate->users->map(fn (AffiliateUser $u) => [
                 'id' => $u->id,
                 'name' => $u->name,
@@ -398,7 +467,6 @@ class AffiliateController extends Controller
             'phone' => $affiliate->phone,
             'markup_pct' => $affiliate->markup_pct,
             'max_markup_pct' => $affiliate->max_markup_pct,
-            'domains' => $affiliate->domains ?? [],
             'status' => $affiliate->status,
             'notes' => $affiliate->notes,
             'is_owned' => (bool) $affiliate->is_owned,

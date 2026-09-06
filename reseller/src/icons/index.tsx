@@ -100,6 +100,19 @@ export const TrendUpIcon = (props: IconProps) => (
   </svg>
 );
 
+/** New — the affiliate Domains nav item (ADR-060 PR-5). Same single-stroke, rounded-join style. */
+export const GlobeIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17ZM3.5 12h17M12 3.5c2.5 2.3 3.75 5.3 3.75 8.5S14.5 18.2 12 20.5M12 3.5C9.5 5.8 8.25 8.8 8.25 12S9.5 18.2 12 20.5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 /** New — no admin nav item needed a key glyph before. Same single-stroke, rounded-join style as TrendUp/ChartLine. */
 export const KeyIcon = (props: IconProps) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
@@ -111,5 +124,18 @@ export const KeyIcon = (props: IconProps) => (
       strokeLinejoin="round"
     />
     <path d="M11.75 8.25h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+/** ADR-060 PR-6 — the "Storefront" nav item (branding / hero / catalog / pricing). */
+export const StorefrontIcon = (props: IconProps) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M4 9.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5M3.5 9.5 5 4.5h14l1.5 5M3.5 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0M9.5 20v-5h5v5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );

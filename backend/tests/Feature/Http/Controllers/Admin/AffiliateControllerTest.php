@@ -7,13 +7,16 @@ use App\Models\Affiliate;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateUser;
 use App\Models\Withdrawal;
+use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Affiliate\AffiliateSubscriptionService;
 use App\Services\Affiliate\AffiliateSubscriptionStatus;
+use App\Services\Affiliate\Domain\AffiliateDomainProvider;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
+use Tests\Support\FakeAffiliateDomainProvider;
 use Tests\TestCase;
 
 /**
@@ -100,7 +103,6 @@ class AffiliateControllerTest extends TestCase
             'email' => 'shop@example.com',
             'markup_pct' => 8,
             'max_markup_pct' => 20,
-            'domains' => ['shop.example.com'],
             'tier_id' => $tier->id,
             'user_name' => 'Jane Doe',
             'user_email' => 'jane@example.com',
@@ -361,5 +363,94 @@ class AffiliateControllerTest extends TestCase
 
         $this->postJson("/api/affiliates/{$r->id}/users/{$user->id}/resend-invite")->assertOk();
         Http::assertSentCount(2);
+    }
+
+    // --- ADR-060 PR-5: custom-domain break-glass + RES-5/RES-6 hooks ---
+
+    private function fakeDomains(): FakeAffiliateDomainProvider
+    {
+        $fake = new FakeAffiliateDomainProvider;
+        $this->app->instance(AffiliateDomainProvider::class, $fake);
+
+        return $fake;
+    }
+
+    public function test_show_lists_custom_domains(): void
+    {
+        $this->fakeDomains();
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate();
+        $affiliate->customDomains()->create([
+            'hostname' => 'shop.acme.com',
+            'status' => AffiliateDomainStatus::Active,
+            'provider' => 'vercel',
+            'provider_ref' => 'shop.acme.com',
+            'is_primary' => true,
+        ]);
+
+        $this->getJson("/api/affiliates/{$affiliate->id}")
+            ->assertOk()
+            ->assertJsonPath('domains.0.hostname', 'shop.acme.com')
+            ->assertJsonPath('domains.0.provider_managed', true);
+    }
+
+    public function test_deactivating_an_affiliate_suspends_its_domains(): void
+    {
+        $this->fakeDomains();
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate();
+        $domain = $affiliate->customDomains()->create([
+            'hostname' => 'shop.acme.com',
+            'status' => AffiliateDomainStatus::Active,
+            'provider' => 'vercel',
+            'provider_ref' => 'shop.acme.com',
+            'is_primary' => true,
+        ]);
+
+        $this->patchJson("/api/affiliates/{$affiliate->id}/status", ['status' => 'inactive'])->assertOk();
+
+        $this->assertSame(
+            AffiliateDomainStatus::Suspended,
+            $domain->fresh()->status,
+        );
+    }
+
+    public function test_deleting_an_affiliate_tears_down_its_domains(): void
+    {
+        $fake = $this->fakeDomains();
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate();
+        $affiliate->customDomains()->create([
+            'hostname' => 'shop.acme.com',
+            'status' => AffiliateDomainStatus::Active,
+            'provider' => 'vercel',
+            'provider_ref' => 'shop.acme.com',
+        ]);
+
+        $this->deleteJson("/api/affiliates/{$affiliate->id}")->assertOk();
+
+        $this->assertSame(1, $fake->opCount('detach'));
+        $this->assertSame(0, $affiliate->customDomains()->count());
+    }
+
+    public function test_admin_can_force_recheck_and_remove_a_domain(): void
+    {
+        $fake = $this->fakeDomains();
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate();
+        $domain = $affiliate->customDomains()->create([
+            'hostname' => 'shop.acme.com',
+            'status' => AffiliateDomainStatus::Pending,
+            'provider' => 'vercel',
+            'provider_ref' => 'shop.acme.com',
+        ]);
+        $fake->markVerified('shop.acme.com');
+
+        $this->postJson("/api/affiliates/{$affiliate->id}/domains/{$domain->id}/recheck")
+            ->assertOk()
+            ->assertJsonPath('domains.0.status', 'active');
+
+        $this->deleteJson("/api/affiliates/{$affiliate->id}/domains/{$domain->id}")->assertOk();
+        $this->assertDatabaseMissing('affiliate_domains', ['id' => $domain->id]);
     }
 }

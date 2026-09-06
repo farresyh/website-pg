@@ -26,8 +26,11 @@ import {
   chargeAffiliateTierFee,
   impersonateAffiliate,
   reactivateAffiliateSubscription,
+  recheckAffiliateDomain,
+  removeAffiliateDomain,
   resendAffiliateInvite,
   type AffiliateDetail,
+  type AffiliateDomainStatus,
   type AffiliateSubscriptionStatus,
   type AffiliateTier,
 } from "@/lib/affiliates";
@@ -46,6 +49,13 @@ const subStatusSeverity: Record<AffiliateSubscriptionStatus, "success" | "warn" 
   active: "success",
   grace: "warn",
   lapsed: "danger",
+};
+
+const domainStatusSeverity: Record<AffiliateDomainStatus, "success" | "warn" | "danger" | "secondary"> = {
+  active: "success",
+  pending: "warn",
+  failed: "danger",
+  suspended: "secondary",
 };
 
 function formatRm(sen: number | null | undefined): string {
@@ -265,6 +275,74 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
             {busy === "add-user" ? "Adding…" : "Add user"}
           </Button>
         </div>
+      </section>
+
+      {/* Custom domains — ADR-060 PR-5 break-glass. Read-only list + two
+          actions; the affiliate self-serves adds from their own portal. */}
+      <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+        <h3 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white/90">Custom domains</h3>
+        <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
+          Affiliates add and verify domains themselves in their portal. Use these controls only to
+          unstick a domain or remove one on request.
+        </p>
+        {detail.domains.length === 0 ? (
+          <p className="text-theme-xs text-gray-500 dark:text-gray-400">No custom domains.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+            {detail.domains.map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-theme-sm">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-800 dark:text-white/90">
+                    {d.hostname}
+                    {d.is_primary && <span className="ml-2 text-theme-xs text-brand-500">primary</span>}
+                  </p>
+                  <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                    Checked {formatDate(d.last_checked_at)}
+                    {d.last_error ? ` — ${d.last_error}` : ""}
+                    {!d.provider_managed ? " — platform-managed (config)" : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Tag severity={domainStatusSeverity[d.status]}>{d.status}</Tag>
+                  {d.provider_managed && (
+                    <>
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outlined"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          run(`domain-recheck-${d.id}`, async () => {
+                            const detail2 = await recheckAffiliateDomain(token, r.id, d.id);
+                            onChanged(detail2);
+                            setNotice(`Re-checked ${d.hostname}.`);
+                          })
+                        }
+                      >
+                        {busy === `domain-recheck-${d.id}` ? "…" : "Force re-check"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outlined"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          run(`domain-remove-${d.id}`, async () => {
+                            const detail2 = await removeAffiliateDomain(token, r.id, d.id);
+                            onChanged(detail2);
+                            setNotice(`Removed ${d.hostname}.`);
+                          })
+                        }
+                      >
+                        {busy === `domain-remove-${d.id}` ? "…" : "Remove"}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Impersonation */}

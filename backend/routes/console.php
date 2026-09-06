@@ -154,3 +154,14 @@ Schedule::command('app:refresh-supplier-balances')
     ->daily()
     ->name('supplier-balance-refresh')
     ->withoutOverlapping();
+
+// ADR-060 (2026-09-06 "domain lifecycle" addendum, section H) — same
+// inert-until-real-cron pattern. Polls the hosting provider for every
+// pending/failed affiliate custom domain, tears down domains stuck
+// pending past the 14-day TTL, and sends day-3 / day-7 DNS reminders.
+// The portal "Check now" button is the on-demand path; this is the
+// backstop. See SyncAffiliateDomainStatusCommand.
+Schedule::command('app:sync-affiliate-domain-status')
+    ->daily()
+    ->name('affiliate-domain-status-sync')
+    ->withoutOverlapping();

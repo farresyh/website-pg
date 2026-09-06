@@ -12,6 +12,9 @@ use App\Models\Supplier;
 use App\Observers\BackupRunObserver;
 use App\Observers\OrderObserver;
 use App\Observers\PriceSyncRunObserver;
+use App\Services\Affiliate\Domain\AffiliateDomainProvider;
+use App\Services\Affiliate\Domain\NullDomainProvider;
+use App\Services\Affiliate\Domain\VercelDomainProvider;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\PlunkMailer;
@@ -44,6 +47,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Intervention\Image\ImageManager;
 use Spatie\Backup\Events\BackupHasFailed;
 use Spatie\Backup\Events\CleanupHasFailed;
 
@@ -236,6 +240,30 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
+        // ADR-060 (2026-09-06 "domain lifecycle" addendum, section B) —
+        // the one seam to the frontend host that serves an affiliate
+        // custom domain's certificate + routing. Bound to the real
+        // Vercel implementation only when `services.vercel` is fully
+        // configured (Forge prod); everywhere else (local dev, CI, the
+        // fast/e2e suites) it's the no-op NullDomainProvider so the whole
+        // lifecycle runs without a network call.
+        $this->app->bind(AffiliateDomainProvider::class, function () {
+            $config = config('services.vercel');
+
+            if (empty($config['token']) || empty($config['team_id']) || empty($config['storefront_project_id'])) {
+                return new NullDomainProvider;
+            }
+
+            return new VercelDomainProvider(
+                token: (string) $config['token'],
+                teamId: (string) $config['team_id'],
+                projectId: (string) $config['storefront_project_id'],
+                baseUrl: $config['base_url'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
+
         // ADR-075 / PR-F build addendum — the Reseller Bot channel's
         // one seam to the self-hosted OpenWA gateway.
         $this->app->bind(OpenWaClient::class, function () {
@@ -274,6 +302,12 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(PlayerValidatorRegistry::class);
+
+        // ADR-060 PR-6 — the GD-driver image manager ImageIngestService
+        // uses to re-encode affiliate logo/hero uploads to WebP. GD (not
+        // Imagick) matches the gallery's existing footprint; swap here if
+        // Imagick's quantizer is ever wanted.
+        $this->app->singleton(ImageManager::class, fn () => ImageManager::gd());
 
         // ADR-007 / FRAUD-4
         $this->app->bind(CheckoutVelocityGuard::class, function () {

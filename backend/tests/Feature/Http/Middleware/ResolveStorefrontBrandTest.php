@@ -119,6 +119,22 @@ class ResolveStorefrontBrandTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_an_unknown_host_404_carries_the_coded_body(): void
+    {
+        $this->getJson('/api/catalog/storefront-status', ['X-Storefront-Host' => 'not-a-brand.example'])
+            ->assertNotFound()
+            ->assertJsonPath('code', 'unknown_storefront_host');
+    }
+
+    public function test_storefront_status_is_ok_for_a_known_host(): void
+    {
+        $this->brandWithDomain('shop.acme.com');
+
+        $this->getJson('/api/catalog/storefront-status', ['X-Storefront-Host' => 'shop.acme.com'])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+    }
+
     public function test_a_pending_domain_404s(): void
     {
         $this->brandWithDomain('shop.acme.com', domainOverrides: ['status' => AffiliateDomainStatus::Pending]);

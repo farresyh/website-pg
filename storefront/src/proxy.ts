@@ -25,6 +25,41 @@ interface RedirectRule {
 let cachedRules: Map<string, RedirectRule> | null = null;
 let cachedAt = 0;
 
+/**
+ * ADR-060 PR-5 — a custom domain that is not attached to any active
+ * affiliate (never verified, suspended, removed) must show a hard "store
+ * unavailable" page, never the fallback storefront. `ResolveStorefrontBrand`
+ * on the backend answers `/api/catalog/storefront-status` with a coded
+ * 404 for such a host; this caches that verdict per host so it costs one
+ * request per host per minute, not one per page.
+ */
+const hostStatus = new Map<string, { known: boolean; at: number }>();
+
+async function isKnownHost(host: string): Promise<boolean> {
+  const cached = hostStatus.get(host);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return cached.known;
+  }
+
+  let known = true;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/catalog/storefront-status`, {
+      headers: { Accept: "application/json", "X-Storefront-Host": host },
+    });
+    // Only a *coded* 404 is a definitive "unknown host". A network blip
+    // or any other status keeps serving (degrade gracefully).
+    if (res.status === 404) {
+      const body = await res.json().catch(() => null);
+      known = body?.code !== "unknown_storefront_host";
+    }
+  } catch {
+    known = true;
+  }
+
+  hostStatus.set(host, { known, at: Date.now() });
+  return known;
+}
+
 async function getRedirectRules(): Promise<Map<string, RedirectRule>> {
   const now = Date.now();
   if (cachedRules && now - cachedAt < CACHE_TTL_MS) {
@@ -60,6 +95,17 @@ function recordHit(fromPath: string): void {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // ADR-060 PR-5 — an unrecognised custom domain gets the hard
+  // "store unavailable" page, not the fallback storefront. Skipped for
+  // the page itself (avoid a rewrite loop).
+  if (pathname !== "/store-unavailable") {
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+    if (host && !(await isKnownHost(host))) {
+      return NextResponse.rewrite(new URL("/store-unavailable", request.url));
+    }
+  }
+
   const rules = await getRedirectRules();
   const rule = rules.get(pathname);
 
