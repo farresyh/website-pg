@@ -6,7 +6,7 @@ import { CATALOG_TAG } from "@/lib/cache";
  * branding / hero / payment mutation (Laravel `NextRevalidation::purge()`,
  * dispatched next to every `forgetCache()`), purging the `catalog` tag
  * so a price or content change shows on the storefront within seconds
- * rather than waiting out the 60s Data-Cache TTL. The TTL stays as the
+ * rather than waiting out the 30s Data-Cache TTL. The TTL stays as the
  * backstop if this call is ever missed.
  *
  * Auth is a shared secret header, mirroring how the backend's own
@@ -24,11 +24,15 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // Next 16: the second arg is required. `"max"` = stale-while-
-  // revalidate — the next visitor to a page with this tag is served the
-  // old value once while the fresh one fetches in the background, then
-  // everyone sees fresh. `updateTag` (blocking revalidate) is Server-
-  // Action-only and can't be used from a Route Handler like this.
-  revalidateTag(CATALOG_TAG, "max");
+  // ADR-077 PR-3 decision 9: no `"max"` (stale-while-revalidate) — that
+  // was the "must refresh 2–3 times" root (first post-purge request
+  // served stale, only *triggers* a background regen). `{ expire: 0 }`
+  // expires the tag immediately, so the next request is a blocking
+  // cache-miss and comes back fresh. Per the Next 16 revalidateTag docs
+  // this is the sanctioned pattern for an external webhook that needs
+  // immediate expiration; the bare `revalidateTag(tag)` form is
+  // deprecated (works only with TS errors suppressed) and `updateTag`'s
+  // blocking mode is Server-Action-only, unreachable from a Route Handler.
+  revalidateTag(CATALOG_TAG, { expire: 0 });
   return Response.json({ revalidated: true, tag: CATALOG_TAG, now: Date.now() });
 }

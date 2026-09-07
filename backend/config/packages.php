@@ -13,10 +13,12 @@ return [
     'default_markup_percent' => (float) env('PACKAGE_DEFAULT_MARKUP_PERCENT', 15),
 
     // ADR-015 decision #6: env-configurable so the Schedule::call()
-    // entry in routes/console.php activates for free the moment a
-    // real OS cron exists on a deployed host — this project currently
-    // runs on local Herd only, so this value is inert for now.
-    'price_sync_interval_minutes' => (int) env('PRICE_SYNC_INTERVAL_MINUTES', 10),
+    // entry in routes/console.php picks up the cadence from env. Live on
+    // the Forge box's OS cron. ADR-077 PR-3 decision 6 dropped the
+    // default 10 -> 60: supplier catalogue prices don't move on a
+    // 10-minute timescale, and Price Propagation stays manually
+    // triggerable from the Price Sync Center for an urgent change.
+    'price_sync_interval_minutes' => (int) env('PRICE_SYNC_INTERVAL_MINUTES', 60),
 
     // ADR-025 decision #3: symmetric swing tolerance on a supplier's
     // incoming cost_price before PackagePriceSyncService::propagatePrice()

@@ -97,6 +97,7 @@ return [
     */
 
     'waits' => [
+        'redis:revalidation' => 60,
         'redis:orders' => 60,
         'redis:price-sync' => 300,
         'redis:backups' => 300,
@@ -237,6 +238,18 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        'supervisor-revalidation' => [
+            'connection' => 'redis',
+            'queue' => ['revalidation'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
         'supervisor-backups' => [
             'connection' => 'redis',
             'queue' => ['backups'],
@@ -272,6 +285,7 @@ return [
         'production' => [
             'supervisor-orders' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
+            'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
         ],
@@ -279,6 +293,7 @@ return [
         'local' => [
             'supervisor-orders' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
+            'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
         ],

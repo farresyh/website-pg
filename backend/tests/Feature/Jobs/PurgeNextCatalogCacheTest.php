@@ -104,6 +104,29 @@ class PurgeNextCatalogCacheTest extends TestCase
         Queue::assertPushed(PurgeNextCatalogCache::class, 1);
     }
 
+    public function test_job_runs_on_its_own_revalidation_queue(): void
+    {
+        // ADR-077 PR-3 decision 7 — off `default`, onto a dedicated
+        // `revalidation` queue + supervisor so a Price Sync run can never
+        // head-of-line-block a storefront cache purge.
+        config([
+            'services.next.revalidate_url' => 'https://store.example/api/revalidate',
+            'services.next.revalidate_secret' => 'shhh',
+        ]);
+        Queue::fake();
+
+        NextRevalidation::purge();
+
+        Queue::assertPushedOn('revalidation', PurgeNextCatalogCache::class);
+    }
+
+    public function test_unique_window_is_five_seconds(): void
+    {
+        // ADR-077 PR-3 decision 7 — dropped 10 -> 5 so two edits a few
+        // seconds apart each still get a timely purge.
+        $this->assertSame(5, (new PurgeNextCatalogCache)->uniqueFor);
+    }
+
     public function test_a_burst_of_forget_cache_calls_collapses_to_one_purge(): void
     {
         // ShouldBeUnique: a price sync touching hundreds of rows, or a

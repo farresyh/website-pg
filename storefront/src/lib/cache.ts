@@ -4,11 +4,14 @@ import { unstable_rethrow } from "next/navigation";
  * ADR-071 PR1 — the storefront's read-mostly catalog/SEO/branding data
  * is cached in Next's Data Cache under one coarse `catalog` tag.
  *
- * The 60s TTL is an interim freshness floor. PR2 wires a Laravel →
- * `POST /api/revalidate` webhook that purges this tag on every catalog/
- * SEO/branding/hero/payment mutation — mirroring the backend's own
- * `forgetCache()` discipline one layer up — after which staleness is
- * near-zero and the TTL is just a backstop.
+ * Freshness comes from the Laravel → `POST /api/revalidate` webhook
+ * (PR2) that purges this tag on every catalog/SEO/branding/hero/payment
+ * mutation — mirroring the backend's own `forgetCache()` discipline one
+ * layer up. ADR-077 PR-3 decision 9 switched that purge from SWR
+ * (`"max"`) to immediate expiry (`{ expire: 0 }`) so the next request
+ * after a purge is a blocking cache-miss and comes back fresh (was
+ * "must refresh 2–3 times"); this 30s TTL (was 60s) is now purely a
+ * failure backstop for a webhook that never arrived.
  *
  * ADR-060 PR-3: the `X-Storefront-Host` header + `__brand` query param
  * (lib/api-client.ts) partition every cached read per brand; the coarse
@@ -27,7 +30,7 @@ import { unstable_rethrow } from "next/navigation";
 export const CATALOG_TAG = "catalog";
 
 export const catalogCache: { revalidate: number; tags: string[] } = {
-  revalidate: 60,
+  revalidate: 30,
   tags: [CATALOG_TAG],
 };
 
