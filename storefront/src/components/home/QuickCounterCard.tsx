@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import Image from "next/image";
 import { ArrowRight, GameController } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
@@ -18,18 +17,12 @@ const MAX_TILES = 6;
  */
 export default function QuickCounterCard({ games }: { games: Game[] }) {
   const router = useRouter();
-  const [selected, setSelected] = useState("");
 
   const pinned = QUICK_COUNTER_SLUGS.map((slug) => games.find((g) => g.slug === slug)).filter(
     (g): g is Game => Boolean(g),
   );
   const seen = new Set(pinned.map((g) => g.slug));
   const tiles = [...pinned, ...games.filter((g) => !seen.has(g.slug))].slice(0, MAX_TILES);
-
-  function startTopUp() {
-    if (!selected) return;
-    router.push(`/order/${selected}`);
-  }
 
   return (
     <div className="flex h-full flex-col rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
@@ -46,37 +39,29 @@ export default function QuickCounterCard({ games }: { games: Game[] }) {
             Select Game
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {tiles.map((g) => {
-              const active = selected === g.slug;
-              return (
-                <button
-                  key={g.slug}
-                  type="button"
-                  onClick={() => setSelected(g.slug)}
-                  aria-pressed={active}
-                  className={`flex min-h-11 flex-col items-center justify-start gap-1.5 rounded-md border-2 p-2 text-center transition-colors ${
-                    active
-                      ? "border-primary bg-primary-fixed"
-                      : "border-ink bg-surface-container-lowest hover:bg-surface-container-low"
-                  }`}
-                >
-                  <span className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 border-ink bg-surface-container">
-                    {g.imageUrl ? (
-                      <Image src={g.imageUrl} alt="" fill className="object-cover" sizes="44px" />
-                    ) : (
-                      <GameController size={20} weight="fill" className="text-ink" />
-                    )}
-                  </span>
-                  <span className="line-clamp-2 font-display text-[10px] font-bold leading-tight">{g.name}</span>
-                </button>
-              );
-            })}
+            {tiles.map((g) => (
+              <button
+                key={g.slug}
+                type="button"
+                onClick={() => router.push(`/order/${g.slug}`)}
+                className="flex min-h-11 flex-col items-center justify-start gap-1.5 rounded-md border-2 border-ink bg-surface-container-lowest p-2 text-center transition-all neo-hover hover:border-primary hover:bg-surface-container-low cursor-pointer"
+              >
+                <span className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 border-ink bg-surface-container">
+                  {g.imageUrl ? (
+                    <Image src={g.imageUrl} alt="" fill className="object-cover" sizes="44px" />
+                  ) : (
+                    <GameController size={20} weight="fill" className="text-ink" />
+                  )}
+                </span>
+                <span className="line-clamp-2 font-display text-[10px] font-bold leading-tight">{g.name}</span>
+              </button>
+            ))}
           </div>
         </>
       )}
 
-      <Button onClick={startTopUp} className="mt-auto w-full">
-        Start Top Up
+      <Button href="/#popular-picks" variant="outline" className="mt-auto w-full">
+        View All Games
         <ArrowRight size={16} weight="bold" />
       </Button>
     </div>

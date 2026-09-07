@@ -25,6 +25,7 @@ import PackageGrid from "@/components/order/PackageGrid";
 import OrderSummarySidebar from "@/components/order/OrderSummarySidebar";
 import MembershipPromoCard from "@/components/order/MembershipPromoCard";
 import ReviewModal from "@/components/order/ReviewModal";
+import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
 
 const CHANNEL_GROUPS: { key: "fpx" | "ewallet" | "card"; label: string }[] = [
   { key: "fpx", label: "Online Banking (FPX)" },
@@ -187,11 +188,21 @@ export default function OrderForm({
   const [voucherCode, setVoucherCode] = useState<string | null>(null);
 
   // useCallback so the memoized OrderSummarySidebar isn't re-rendered
-  // just because OrderForm re-rendered (ADR-071 PR2). Every dependency
-  // is a stable ref / setState.
+  // just because OrderForm re-rendered (ADR-071 PR2).
   const openReview = useCallback(() => {
     idempotencyKeyRef.current = crypto.randomUUID();
     setVoucherCode(null);
+    try {
+      const saved = localStorage.getItem("pg_guest_contact");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.email && typeof parsed.email === "string") setCustomerEmail((prev) => prev || parsed.email);
+        if (parsed.name && typeof parsed.name === "string") setCustomerName((prev) => prev || parsed.name);
+        if (parsed.phone && typeof parsed.phone === "string") setCustomerPhone((prev) => prev || parsed.phone);
+      }
+    } catch {
+      // safe fallback
+    }
     setReviewOpen(true);
   }, []);
 
@@ -420,13 +431,18 @@ export default function OrderForm({
                       key={channel.channelCode}
                       type="button"
                       onClick={() => setChannelCode(channel.channelCode)}
-                      className={`min-h-11 rounded-md border-2 px-3.5 text-[13px] font-semibold transition-all ${
+                      className={`inline-flex min-h-11 items-center gap-2.5 rounded-md border-2 px-3.5 py-2 text-[13px] font-semibold transition-all ${
                         channelCode === channel.channelCode
                           ? "border-primary bg-primary-fixed neo-sm"
                           : "border-ink bg-surface-container-lowest hover:bg-surface-container-low"
                       }`}
                     >
-                      {channel.label}
+                      <PaymentChannelIcon
+                        channelCode={channel.channelCode}
+                        category={channel.category}
+                        className="h-4.5 w-auto shrink-0"
+                      />
+                      <span>{channel.label}</span>
                     </button>
                   ))}
                 </div>
