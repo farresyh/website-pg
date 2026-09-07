@@ -25,12 +25,17 @@ use Illuminate\Support\Facades\DB;
  * listener) — see the migration's own doc comment.
  *
  * Queued (`ShouldQueue`) on the same `orders` queue `OrderStatusUpdated`
- * itself broadcasts on — small/fast, doesn't meaningfully delay that
- * queue, and keeps `OrderObserver`'s `DB::afterCommit()` closure from
- * ever blocking on an outbound OpenWA HTTP call.
+ * itself broadcasts on (`$queue` below — a queued listener with no queue
+ * set otherwise lands on `default`; see ADR-077 PR-3's note on the
+ * missing `supervisor-default`) — small/fast, doesn't meaningfully delay
+ * that queue, and keeps `OrderObserver`'s `DB::afterCommit()` closure
+ * from ever blocking on an outbound OpenWA HTTP call.
  */
 final class SendResellerBotOrderNotification implements ShouldQueue
 {
+    /** @var string Match OrderStatusUpdated::broadcastQueue() — the order lifecycle's own queue. */
+    public $queue = 'orders';
+
     public function __construct(private readonly OpenWaClient $openWa) {}
 
     public function handle(OrderStatusUpdated $event): void
