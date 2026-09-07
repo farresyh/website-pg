@@ -299,7 +299,10 @@ class SupplierController extends Controller
         }
 
         $query->where('is_active', true);
+        
+        $clone = clone $query;
         $packageIds = (clone $query)->pluck('id');
+        $gameIds = $clone->distinct()->pluck('game_id')->all();
 
         DB::transaction(function () use ($query, $packageIds, $request) {
             $query->update(['is_active' => false, 'deactivated_reason' => 'supplier_issue', 'deactivated_at' => now()]);
@@ -317,6 +320,13 @@ class SupplierController extends Controller
                 DeactivationLog::query()->insert($rows);
             }
         });
+
+        foreach ($gameIds as $gId) {
+            \App\Http\Controllers\GameController::forgetPackagesCache($gId, false);
+        }
+        if ($gameIds !== []) {
+            \App\Http\Controllers\GameController::forgetIndexCache();
+        }
 
         return response()->json(['updated' => $packageIds->count()]);
     }

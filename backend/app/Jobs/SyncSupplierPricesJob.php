@@ -139,7 +139,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
         $affectedGameIds = array_unique($affectedGameIds);
 
         foreach ($affectedGameIds as $gameId) {
-            GameController::forgetPackagesCache($gameId);
+            GameController::forgetPackagesCache($gameId, false);
         }
 
         if ($affectedGameIds !== []) {

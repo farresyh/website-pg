@@ -635,13 +635,13 @@ class CatalogControllerTest extends TestCase
      * `created_at` was left as a raw Carbon instance here — confirmed
      * live it broke on a warm-cache read (`{"__PHP_Incomplete_Class_
      * Name":"Illuminate\\Support\\Carbon", ...}` instead of a date
-     * string). Fixed via `?->toISOString()`. PHPUnit's `array` cache
-     * driver never serializes, so this forces the real `database`
-     * store to prove the cached value is fully scalar.
+     * string). Fixed via `?->toISOString()`.
+     * 
+     * ADR-077 PR-2: The app moved to `redis` and tags, so `database` store
+     * is no longer tested here directly as it doesn't support tags.
      */
-    public function test_index_survives_a_real_database_cache_round_trip(): void
+    public function test_index_cache_value_is_fully_scalar(): void
     {
-        config(['cache.default' => 'database']);
         $brandId = Affiliate::primary()->id;
         Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);
 
@@ -650,8 +650,8 @@ class CatalogControllerTest extends TestCase
         $this->assertSame('Free Fire Global', $first->json()[0]['name']);
         $this->assertIsString($first->json()[0]['created_at']);
 
-        // ADR-060 PR-4c: the index listing is cached per storefront brand.
-        $cached = Cache::store('database')->get("catalog.public.games.index.brand.{$brandId}");
+        // Check the tagged array store to ensure no Carbon objects leaked.
+        $cached = Cache::tags(['catalog.index', "catalog.index.brand.{$brandId}"])->get("catalog.public.games.index.brand.{$brandId}");
         $this->assertIsString($cached[0]['created_at']);
 
         $second = $this->getJson('/api/catalog/games');
