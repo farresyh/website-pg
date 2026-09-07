@@ -13,6 +13,7 @@ use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
+use App\Services\Reseller\ResellerCatalogService;
 use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,7 +60,7 @@ class CatalogController extends Controller
         // listing is cached per brand. The primary brand keeps its own
         // id-keyed entry — one code path, no bare-key special case.
         $brandId = $this->storefrontBrand->get()->id;
-        
+
         $games = Cache::tags(['catalog.index', "catalog.index.brand.{$brandId}"])->remember(
             self::indexCacheKey($brandId),
             self::CACHE_TTL_SECONDS,
@@ -418,6 +419,17 @@ class CatalogController extends Controller
         } else {
             Cache::tags(['catalog.index'])->flush();
         }
+
+        // ADR-077 PR-5: the reseller API/Bot "price list"
+        // (ResellerCatalogService::listAvailable(), 60s cache) is
+        // brand- and tier-independent — one global key — but it shows the
+        // same packages this index does, so it goes stale on the same
+        // writes. Every catalog write path (package edit, game edit,
+        // price sync, supplier bulk-deactivate) already funnels through
+        // here, so this one forget covers all of them; the brand id is
+        // irrelevant to it.
+        Cache::forget(ResellerCatalogService::CACHE_KEY);
+
         NextRevalidation::purge();
     }
 
@@ -442,7 +454,7 @@ class CatalogController extends Controller
         Cache::store(config('cache.catalog_packages_store'))
             ->tags(["catalog.packages.game.{$gameId}"])
             ->flush();
-        
+
         if ($withIndex) {
             // A package price/status change also changes the index's
             // per-game price_from_sen — the index cache must go too.
