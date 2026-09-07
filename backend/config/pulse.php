@@ -80,8 +80,16 @@ return [
     |
     */
 
+    // ADR-077 decision 13: default to `redis`, not `storage`. `storage`
+    // has each recorder write on request termination — on the same MySQL
+    // box decision 1 is trying to unload. `redis` offloads the write to a
+    // Redis stream (DB 2, config/database.php `pulse` connection) that
+    // `php artisan pulse:work` drains into the `pulse_*` tables out of
+    // band. `pulse:work` MUST be running (a Forge daemon in production, a
+    // `composer run dev` pane locally) or recorded data stops reaching
+    // the dashboard — there is no fallback to inline writes.
     'ingest' => [
-        'driver' => env('PULSE_INGEST_DRIVER', 'storage'),
+        'driver' => env('PULSE_INGEST_DRIVER', 'redis'),
 
         'buffer' => env('PULSE_INGEST_BUFFER', 5_000),
 
@@ -91,7 +99,7 @@ return [
         ],
 
         'redis' => [
-            'connection' => env('PULSE_REDIS_CONNECTION'),
+            'connection' => env('PULSE_REDIS_CONNECTION', 'pulse'),
             'chunk' => 1000,
         ],
     ],
@@ -212,7 +220,9 @@ return [
         Recorders\SlowQueries::class => [
             'enabled' => env('PULSE_SLOW_QUERIES_ENABLED', true),
             'sample_rate' => env('PULSE_SLOW_QUERIES_SAMPLE_RATE', 1),
-            'threshold' => env('PULSE_SLOW_QUERIES_THRESHOLD', 1000),
+            // ADR-077 decision 13: 1000ms was blind to the 200–900ms
+            // queries and the N+1s that matter at scale.
+            'threshold' => env('PULSE_SLOW_QUERIES_THRESHOLD', 200),
             'location' => env('PULSE_SLOW_QUERIES_LOCATION', true),
             'max_query_length' => env('PULSE_SLOW_QUERIES_MAX_QUERY_LENGTH'),
             'ignore' => [
@@ -224,7 +234,8 @@ return [
         Recorders\SlowRequests::class => [
             'enabled' => env('PULSE_SLOW_REQUESTS_ENABLED', true),
             'sample_rate' => env('PULSE_SLOW_REQUESTS_SAMPLE_RATE', 1),
-            'threshold' => env('PULSE_SLOW_REQUESTS_THRESHOLD', 1000),
+            // ADR-077 decision 13: lowered from 1000ms.
+            'threshold' => env('PULSE_SLOW_REQUESTS_THRESHOLD', 500),
             'ignore' => [
                 '#^/'.env('PULSE_PATH', 'pulse').'$#', // Pulse dashboard...
                 '#^/telescope#', // Telescope dashboard...
