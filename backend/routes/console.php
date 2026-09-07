@@ -99,6 +99,15 @@ Schedule::call(fn () => Artisan::call('app:prune-reseller-bot-command-logs'))
     ->name('reseller-bot-command-log-pruning')
     ->withoutOverlapping();
 
+// ADR-077 decision 3 — the `database` cache store has no lazy-sweep for
+// keys that expire without being read again. No-op on the redis-primary
+// production path (ADR-077 decision 1); keeps the `cache` table from
+// bloating in any environment left on CACHE_STORE=database.
+Schedule::command('app:prune-stale-cache')
+    ->daily()
+    ->name('stale-cache-pruning')
+    ->withoutOverlapping();
+
 // ADR-039 decision 2 — same inert-until-real-cron pattern as above.
 // `--triggered-by=system` distinguishes this from the manual "Backup
 // Now" admin action, both of which go through the same

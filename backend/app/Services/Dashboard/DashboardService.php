@@ -154,11 +154,12 @@ final class DashboardService
             // from this screen's usual "no live ping" posture only in
             // that it's push- not poll-driven: the last-known
             // session.status webhook event, cache-backed, never a live
-            // call to OpenWA itself. Null = no event has ever arrived
-            // (not yet provisioned/linked), distinct from a known
+            // call to OpenWA itself. Null = no event in the last hour
+            // (not yet provisioned/linked, or nothing heard — the key
+            // carries a 1h TTL since ADR-077), distinct from a known
             // 'disconnected' state.
             'openwa_session' => $openWaSession,
-            'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping). Null means no event has ever arrived, not confirmed healthy.',
+            'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping), 1h TTL. Null means no event in the last hour, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
                 'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending older than {$pendingStaleMinutes} minutes (both thresholds from the same delivery_reconciliation config ReconcilePendingDeliveriesCommand itself uses — DELIVERY_RECONCILIATION_STALE_AFTER_MINUTES/PENDING_STALE_MINUTES). Excludes is_test orders.",

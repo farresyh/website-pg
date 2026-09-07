@@ -18,7 +18,17 @@ return [
     |
     */
 
-    'default' => env('CACHE_STORE', 'database'),
+    // ADR-077 decision 1 (2026-09-07): cut from `database` to `redis`.
+    // Reverses the app-wide-store half of ADR-014/019 — that choice
+    // predated Redis in this stack (ADR-048 brought it in for the queue).
+    // Production Pulse showed the `database` `cache` table was the single
+    // biggest latency source: a 52-second `select * from cache where key
+    // in (?)` under row-lock contention, cascading into every path that
+    // touches cache (hero-slide/branding endpoints, Horizon worker boot,
+    // even `Affiliate::primary()`). Redis has no table locks, microsecond
+    // reads, and native tag support. `SESSION_DRIVER` stays `database` —
+    // a separate concern, unaffected. Rollback is a one-line env flip.
+    'default' => env('CACHE_STORE', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -103,7 +113,11 @@ return [
         'redis' => [
             'driver' => 'redis',
             'connection' => env('REDIS_CACHE_CONNECTION', 'cache'),
-            'lock_connection' => env('REDIS_CACHE_LOCK_CONNECTION', 'default'),
+            // ADR-077 decision 2: cache locks land on the `cache` connection
+            // (Redis DB 1), not `default` (DB 0, the queue). Keeps cache-key
+            // churn — and the lock keys it spawns — out of the queue DB, so a
+            // cache-lock flood can never crowd queued-job data.
+            'lock_connection' => env('REDIS_CACHE_LOCK_CONNECTION', 'cache'),
         ],
 
         'dynamodb' => [
