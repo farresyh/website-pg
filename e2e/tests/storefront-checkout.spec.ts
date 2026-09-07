@@ -38,7 +38,7 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   await page.locator("#reviewEmail").fill("e2e-checkout@example.com");
   await page.locator("#reviewName").fill("E2E Checkout Tester");
   await page.locator("#reviewPhone").fill("0123456789");
-  await page.getByRole("checkbox").check();
+  await page.getByRole("checkbox", { name: /I agree to the Terms/i }).check();
 
   // Routed through page.route(), not page.waitForResponse() — the app
   // calls window.location.assign(redirectUrl) as soon as its own
