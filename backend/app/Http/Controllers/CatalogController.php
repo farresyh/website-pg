@@ -284,6 +284,8 @@ class CatalogController extends Controller
             'id' => $package->id,
             'name' => $package->name,
             'selling_price_sen' => $this->sellingPriceSen($package),
+            'has_denomination' => $package->denomination !== null,
+            'has_catalog_code' => $package->catalog_code !== null,
         ];
 
         if ($anchorPlan !== null) {

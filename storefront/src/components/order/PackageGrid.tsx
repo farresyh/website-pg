@@ -21,20 +21,68 @@ const COLLAPSED_COUNT = 12;
  * `onSelect`) don't change with any of that, so the grid should sit
  * still. Targets INP < 200ms on a package tap.
  */
+type TabType = "all" | "direct" | "pass";
+
 function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
+  const [activeTab, setActiveTab] = useState<TabType>("all");
   const [expanded, setExpanded] = useState(false);
 
-  const collapsible = packages.length > COLLAPSED_COUNT + 3;
-  let shown = packages;
+  const hasPassPackages = packages.some((p) => p.hasCatalogCode || /pass|bundle|membership/i.test(p.name));
+  const hasDirectPackages = packages.some((p) => p.hasDenomination || (!p.hasCatalogCode && !/pass|bundle|membership/i.test(p.name)));
+
+  const filteredPackages = packages.filter((pkg) => {
+    const isPass = pkg.hasCatalogCode || /pass|bundle|membership/i.test(pkg.name);
+    if (activeTab === "pass") return isPass;
+    if (activeTab === "direct") return !isPass;
+    return true;
+  });
+
+  const collapsible = filteredPackages.length > COLLAPSED_COUNT + 3;
+  let shown = filteredPackages;
   if (collapsible && !expanded) {
-    shown = packages.slice(0, COLLAPSED_COUNT);
-    const selected = packages.find((p) => p.id === selectedId);
+    shown = filteredPackages.slice(0, COLLAPSED_COUNT);
+    const selected = filteredPackages.find((p) => p.id === selectedId);
     if (selected && !shown.includes(selected)) shown = [...shown, selected];
   }
-  const hiddenCount = packages.length - shown.length;
+  const hiddenCount = filteredPackages.length - shown.length;
+
+  const tabs: { id: TabType; label: string; count: number }[] = [
+    { id: "all", label: "All", count: packages.length },
+    ...(hasDirectPackages
+      ? [{ id: "direct" as const, label: "Direct Top Up", count: packages.filter((p) => !(p.hasCatalogCode || /pass|bundle|membership/i.test(p.name))).length }]
+      : []),
+    ...(hasPassPackages
+      ? [{ id: "pass" as const, label: "Pass", count: packages.filter((p) => p.hasCatalogCode || /pass|bundle|membership/i.test(p.name)).length }]
+      : []),
+  ];
 
   return (
     <div>
+      {tabs.length > 2 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {tabs.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setExpanded(false);
+                }}
+                className={`min-h-9 rounded-md border-2 px-3 py-1 font-display text-[12px] font-bold uppercase tracking-wide transition-all ${
+                  active
+                    ? "border-primary bg-primary text-on-primary neo-sm"
+                    : "border-ink bg-surface-container-lowest text-on-surface hover:bg-surface-container-low"
+                }`}
+              >
+                {tab.label} <span className="opacity-75">({tab.count})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
         {shown.map((pkg) => {
           const selected = pkg.id === selectedId;
@@ -101,7 +149,7 @@ function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
           onClick={() => setExpanded((v) => !v)}
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border-2 border-ink bg-surface-container-lowest py-2.5 font-display text-[12px] font-bold uppercase tracking-wide neo-sm hover:bg-surface-container-low"
         >
-          {expanded ? "Show fewer" : `Show all ${packages.length} packages`}
+          {expanded ? "Show fewer" : `Show all ${filteredPackages.length} packages`}
           <CaretDown size={13} weight="bold" className={expanded ? "rotate-180 transition-transform" : "transition-transform"} />
         </button>
       )}

@@ -49,9 +49,6 @@ export default function SiteHeader() {
               Membership
             </Link>
           )}
-          <Link href="/track-order" className="pb-0.5 hover:text-primary">
-            Track Order
-          </Link>
         </nav>
 
         <Button href="/track-order" size="sm" variant="primary" className="shrink-0">

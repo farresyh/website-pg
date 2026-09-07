@@ -159,6 +159,33 @@ class CatalogControllerTest extends TestCase
         }
     }
 
+    public function test_packages_exposes_has_denomination_and_has_catalog_code_flags(): void
+    {
+        $supplier = $this->makeSupplier();
+        $game = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb', 'is_active' => true]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A1', 'is_active' => true,
+            'denomination' => 86, 'catalog_code' => null,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Weekly Pass', 'cost_price' => 700, 'standard_selling_price' => 800,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A2', 'is_active' => true,
+            'denomination' => null, 'catalog_code' => 'WP01',
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mlbb/packages');
+
+        $response->assertOk();
+        $packages = collect($response->json())->keyBy('name');
+
+        $this->assertTrue($packages['86 Diamonds']['has_denomination']);
+        $this->assertFalse($packages['86 Diamonds']['has_catalog_code']);
+
+        $this->assertFalse($packages['Weekly Pass']['has_denomination']);
+        $this->assertTrue($packages['Weekly Pass']['has_catalog_code']);
+    }
+
     public function test_packages_applies_affiliate_markup_to_the_selling_price(): void
     {
         $this->primaryAffiliate()->update(['markup_pct' => 10]);
@@ -636,7 +663,7 @@ class CatalogControllerTest extends TestCase
      * live it broke on a warm-cache read (`{"__PHP_Incomplete_Class_
      * Name":"Illuminate\\Support\\Carbon", ...}` instead of a date
      * string). Fixed via `?->toISOString()`.
-     * 
+     *
      * ADR-077 PR-2: The app moved to `redis` and tags, so `database` store
      * is no longer tested here directly as it doesn't support tags.
      */

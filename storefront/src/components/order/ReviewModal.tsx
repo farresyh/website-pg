@@ -75,11 +75,32 @@ export default function ReviewModal({
   onVoucherChange,
 }: ReviewModalProps) {
   const [tcChecked, setTcChecked] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const [voucherCode, setVoucherCode] = useState("");
   const [applying, setApplying] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; result: VoucherPreviewResult } | null>(null);
+
+  function handleConfirmWithRemember() {
+    try {
+      if (rememberMe) {
+        localStorage.setItem(
+          "pg_guest_contact",
+          JSON.stringify({
+            name: customerName,
+            email: customerEmail,
+            phone: customerPhone,
+          }),
+        );
+      } else {
+        localStorage.removeItem("pg_guest_contact");
+      }
+    } catch {
+      // safe fallback if storage blocked
+    }
+    onConfirm();
+  }
 
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -282,7 +303,20 @@ export default function ReviewModal({
               className={inputClass}
               required
             />
+            <p className="mt-1.5 text-[11.5px] text-on-surface-variant">
+              Required for FPX banking verification &amp; instant WhatsApp delivery receipt.
+            </p>
           </div>
+
+          <label className="flex cursor-pointer items-center gap-2 pt-1 text-[12px] text-on-surface-variant">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4 rounded accent-primary"
+            />
+            <span>Remember contact details for faster checkout</span>
+          </label>
         </div>
 
         <hr className="mb-5 border-t-2 border-ink" />
@@ -368,7 +402,7 @@ export default function ReviewModal({
           {!tcChecked && (
             <p className="mb-2 text-center text-[12px] text-on-surface-variant">Tick the box above to continue.</p>
           )}
-          <Button onClick={onConfirm} disabled={!canConfirm} className="w-full justify-center">
+          <Button onClick={handleConfirmWithRemember} disabled={!canConfirm} className="w-full justify-center">
             {submitting
               ? "Processing…"
               : payableRm === 0
