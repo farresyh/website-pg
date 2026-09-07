@@ -97,6 +97,7 @@ return [
     */
 
     'waits' => [
+        'redis:revalidation' => 60,
         'redis:orders' => 60,
         'redis:price-sync' => 300,
         'redis:backups' => 300,
@@ -237,6 +238,18 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        'supervisor-revalidation' => [
+            'connection' => 'redis',
+            'queue' => ['revalidation'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
         'supervisor-backups' => [
             'connection' => 'redis',
             'queue' => ['backups'],
@@ -266,21 +279,45 @@ return [
             'timeout' => 30,
             'nice' => 0,
         ],
+        // The catch-all. Every job/listener above names its own queue via
+        // onQueue()/broadcastQueue()/$queue, but a class that forgets to
+        // (SendMembershipReceiptJob did — its receipt emails silently had
+        // no worker in production until this was added; found during
+        // ADR-077 PR-3) lands on 'default', and so do Laravel's own
+        // framework jobs and any package job. Without this supervisor
+        // those sit unprocessed forever with no error. tries=3/timeout=60
+        // mirror supervisor-orders — the safe general default.
+        'supervisor-default' => [
+            'connection' => 'redis',
+            'queue' => ['default'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
         'production' => [
             'supervisor-orders' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
+            'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
+            'supervisor-default' => ['maxProcesses' => 1],
         ],
 
         'local' => [
             'supervisor-orders' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
+            'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
+            'supervisor-default' => ['maxProcesses' => 1],
         ],
     ],
 

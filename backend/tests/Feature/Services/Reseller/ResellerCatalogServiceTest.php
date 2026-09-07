@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Services\Reseller;
 
+use App\Http\Controllers\CatalogController;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Reseller\ResellerCatalogService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -157,5 +159,54 @@ class ResellerCatalogServiceTest extends TestCase
         ]);
 
         $this->assertCount(0, app(ResellerCatalogService::class)->listAvailable());
+    }
+
+    /** ADR-077 PR-5 (decision 10): the shaped listing is cached for 60s. */
+    public function test_list_available_is_cached_and_invalidated_at_the_catalog_choke_point(): void
+    {
+        $game = $this->game();
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 400, 'standard_selling_price' => 500,
+            'supplier_id' => $this->supplier()->id, 'supplier_package_ref' => 'A',
+        ]);
+
+        $service = app(ResellerCatalogService::class);
+        $this->assertCount(1, $service->listAvailable());
+
+        // A raw DB insert bypasses every cache-invalidation hook.
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '28 Diamond', 'denomination' => 28,
+            'cost_price' => 800, 'standard_selling_price' => 900,
+            'supplier_id' => Supplier::query()->first()->id, 'supplier_package_ref' => 'B',
+        ]);
+        $this->assertCount(1, $service->listAvailable(), 'still the cached listing');
+
+        CatalogController::forgetIndexCache();
+        $this->assertCount(2, $service->listAvailable(), 'rebuilt after the choke-point flush');
+    }
+
+    /** ADR-077 PR-5: the per-game N+1 is gone — query count no longer scales with game count. */
+    public function test_list_available_query_count_is_bounded(): void
+    {
+        $supplier = $this->supplier();
+
+        foreach (['MLMY', 'FFMY', 'PBMY', 'CODMY'] as $i => $code) {
+            $game = $this->game(['name' => "Game {$code}", 'slug' => "game-{$code}", 'reseller_code' => $code]);
+            Package::query()->create([
+                'game_id' => $game->id, 'name' => "{$code} pack", 'denomination' => 10 + $i,
+                'cost_price' => 400, 'standard_selling_price' => 500,
+                'supplier_id' => $supplier->id, 'supplier_package_ref' => "R{$i}",
+            ]);
+        }
+
+        CatalogController::forgetIndexCache();
+        DB::enableQueryLog();
+        $items = app(ResellerCatalogService::class)->listAvailable();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertCount(4, $items);
+        $this->assertLessThanOrEqual(2, $count, "expected 2 queries (games + packages), got {$count}");
     }
 }

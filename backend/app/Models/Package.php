@@ -115,8 +115,24 @@ class Package extends Model
      */
     public static function cheapestActivePerGame(int $gameId): Collection
     {
-        $packages = static::query()->where('game_id', $gameId)->where('is_active', true)->get();
+        return self::dedupeActivePerGame(
+            static::query()->where('game_id', $gameId)->where('is_active', true)->get()
+        );
+    }
 
+    /**
+     * The post-query half of `cheapestActivePerGame()` — the partition /
+     * cheapest-per-group / display-sort rules, over an already-fetched
+     * collection of that one game's active packages. Split out so a bulk
+     * caller (`ResellerCatalogService::listAvailable()`, ADR-077 PR-5)
+     * can fetch every game's packages in one `whereIn` query and dedupe
+     * each group in PHP, instead of one query per game.
+     *
+     * @param  Collection<int, self>  $packages  one game's active packages
+     * @return Collection<int, self>
+     */
+    public static function dedupeActivePerGame(Collection $packages): Collection
+    {
         [$withDenomination, $rest] = $packages->partition(fn (self $p) => $p->denomination !== null);
         [$withCatalogCode, $neither] = $rest->partition(fn (self $p) => $p->catalog_code !== null);
 

@@ -58,8 +58,15 @@ final class ReportService
 
     public function summary(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $totalSales = (int) $this->scopedOrders($from, $toExclusive, $affiliateId)->sum('final_amount');
-        $ordersCount = $this->scopedOrders($from, $toExclusive, $affiliateId)->count();
+        // One pass for the two aggregates (was a separate ->sum() and
+        // ->count()); the latest-order row can't fold into a GROUP-less
+        // aggregate, so it stays its own query — two, down from three.
+        $totals = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->selectRaw('COALESCE(SUM(final_amount), 0) as total_sales, COUNT(*) as orders_count')
+            ->first();
+        $totalSales = (int) $totals->total_sales;
+        $ordersCount = (int) $totals->orders_count;
+
         $latest = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->orderByDesc('paid_at')
             ->first(['order_number', 'paid_at', 'customer_email', 'final_amount']);

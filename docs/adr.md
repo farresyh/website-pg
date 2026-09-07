@@ -4025,7 +4025,7 @@ Two background audits plus a live read of Laravel Pulse (`/pulse`, 7-day window,
     - `ledger_entries` → `(type, reference_type, reference_id)`
     - `orders` → `(delivery_status, updated_at)`
     - `orders` → `customer_email`
-    - `orders` → replace the single-column `affiliate_id` index with `(affiliate_id, created_at)`
+    - `orders` → replace the single-column `affiliate_id` index with `(affiliate_id, created_at)` — **PR-4 build note (2026-09-07): pulled from PR-4 and deferred to the Reports restructure ADR.** On MySQL the only `affiliate_id` index is the FK-support index; adding the composite makes InnoDB drop it as redundant, leaving the composite as the FK's sole support, so `down()` (and the concurrency suite's `DatabaseMigrations` rollback) then fails `1553 Cannot drop index … needed in a foreign key constraint`. A safe swap = drop + re-add the FK on the `orders` money table (row re-validation lock) for a filesort that only bites past thousands of orders per affiliate. Not worth it as a drive-by; folded into the ADR that already owns the affiliate reporting dimension.
     - `supplier_products` → `(supplier_id, group_label)`
     - `supplier_request_logs` → `created_at`
 12. **`ReportService::summary()` collapse only** — its three separate `scopedOrders(...)` passes (sum, count, first) become one `selectRaw('SUM(final_amount) …, COUNT(*) …')` + the single `latest` query. **The grouped-SQL rewrite of the seven PHP-aggregation methods is explicitly deferred** to the planned Reports restructure ADR (which will also add the Membership/Reseller breakdown dimensions) — so the timezone-bucketing and the double-count-safe profit rollup are grilled once, in the ADR that owns Reports. The `ledger_entries` index (decision 11) removes the acute pain in the meantime.
@@ -4037,9 +4037,9 @@ Two background audits plus a live read of Laravel Pulse (`/pulse`, 7-day window,
 
 - **PR-1 — Redis cutover + eviction + Pulse** (decisions 1, 2, 3, 13). `CACHE_STORE=redis`, the `Cache::forever`→TTL change, `REDIS_CACHE_LOCK_CONNECTION`, the scheduled `cache:prune-stale`, the Pulse env. Ships with a `/wizard` runbook for the founder-only steps (Redis `maxmemory`/`maxmemory-policy` on the Forge box, the new `PULSE_*` and `CACHE_STORE` env, `PRICE_SYNC_INTERVAL_MINUTES=60`).
 - **PR-2 — invalidation correctness** (decisions 4, 5, 8). The tag migration for the per-brand keys, the two observers, the `SupplierController` explicit call, the `SyncSupplierPricesJob` fan-out fix.
-- **PR-3 — propagation freshness** (decisions 6, 7, 9). Price Sync cadence, the `revalidation` queue + supervisor, `uniqueFor` 10→5, the `"max"` drop + `catalogCache.revalidate` 60→30.
-- **PR-4 — indexes + Report collapse** (decisions 11, 12).
-- **PR-5 — reseller catalog** (decision 10).
+- **PR-3 — propagation freshness** (decisions 6, 7, 9). Price Sync cadence, the `revalidation` queue + supervisor, `uniqueFor` 10→5, the `"max"` drop + `catalogCache.revalidate` 60→30. **Built 2026-09-07 (PR #135 → `staging`).** Surfaced a latent prod bug — no `supervisor-default` in `config/horizon.php`, so `SendMembershipReceiptJob` and `SendResellerBotOrderNotification` had no worker — fixed on `fix/horizon-default-supervisor` and folded into this ADR's `staging`→`main` release (new `supervisor-default`, listener pinned to `orders`, `HorizonQueueCoverageTest`). The separate Horizon supervisor-*timeout* concern (price sync's 46s slowest run vs the 60s budget) stays backlog.
+- **PR-4 — indexes + Report collapse** (decisions 11, 12). **Built 2026-09-07 (PR #136 → `staging`).** `orders(affiliate_id, created_at)` pulled — see decision 11's build note.
+- **PR-5 — reseller catalog** (decision 10). **Built 2026-09-07 (`feature/adr-077-pr-5-reseller-catalog` → `staging`).** Two queries total + `Cache::remember('reseller.catalog.available', 60)`; `Package::dedupeActivePerGame(Collection)` extracted from `cheapestActivePerGame()` for the bulk path; the cached value is a plain array and `listAvailable()` rehydrates `Package` rows from it, so the two channel callers + the Bot reply formatter + their tests are untouched (a full move to plain arrays would churn two money-path pricing callers for no gain). Invalidated by one `Cache::forget()` in `CatalogController::forgetIndexCache()`.
 
 **Rationale:**
 
