@@ -4112,7 +4112,7 @@ ADR-060 PR-1…PR-6 shipped to production 2026-09-06/07 and the founder attached
 
 ## ADR-079: Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official SVG Logos, Denomination-vs-Pass Package Tabs, and Guest Checkout Convenience
 
-**Status:** Accepted (design) — 2026-09-08, grilled with the founder. Ships on `feature/adr-079-storefront-polish`.
+**Status:** Shipped — 2026-09-08, commit `52af736` on `feature/adr-079-storefront-polish`.
 
 **Context:**
 Following the storefront visual redesign (ADR-063/ADR-064) and production deployment on `pekangame.space`, a comprehensive UI/UX audit identified conversion friction and design gaps:
@@ -4161,4 +4161,10 @@ Following the storefront visual redesign (ADR-063/ADR-064) and production deploy
 - Backend `CatalogController::publicPackage()` gains two lightweight boolean keys; update `CatalogPackageWireSchema` in storefront Zod types.
 - Ensure `localStorage` access is wrapped in `try/catch` and guarded against SSR hydration mismatch.
 - Keep `docs/prd.md` §14 and §15 updated upon shipping.
+
+### Shipped Addendum (2026-09-08)
+Shipped in full on `feature/adr-079-storefront-polish`:
+- **Backend:** `CatalogController::publicPackage()` exposes `has_denomination` & `has_catalog_code`. Full test suite passing (1,610/1,610 green; `CatalogControllerTest` coverage added).
+- **Storefront:** `ProductHeaderCard` artwork rendering, `SiteHeader` nav link cleanup, `PaymentMethodsSection` & `SiteFooter` dynamic channels with `PaymentIcons` SVG badges, `PackageGrid` 3 tabs with collapse toggle, `ReviewModal` client-side `localStorage` contact persistence + reassuring copy + mandatory T&C, `QuickCounterCard` 1-click navigation, `OrderStatusTracker` 1-click order-number copy + contextual WhatsApp assistance. Clean `tsc`, `lint`, and `build` (Turbopack).
+
 
