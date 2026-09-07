@@ -58,8 +58,10 @@ class CatalogController extends Controller
         // `Host`-resolved brand's wholesale tier + markup, so the whole
         // listing is cached per brand. The primary brand keeps its own
         // id-keyed entry — one code path, no bare-key special case.
-        $games = Cache::remember(
-            self::indexCacheKey($this->storefrontBrand->get()->id),
+        $brandId = $this->storefrontBrand->get()->id;
+        
+        $games = Cache::tags(['catalog.index', "catalog.index.brand.{$brandId}"])->remember(
+            self::indexCacheKey($brandId),
             self::CACHE_TTL_SECONDS,
             fn () => Game::query()
                 ->where('is_active', true)
@@ -411,17 +413,15 @@ class CatalogController extends Controller
      */
     public static function forgetIndexCache(?int $brandId = null): void
     {
-        $ids = $brandId !== null
-            ? [$brandId]
-            : Affiliate::withTrashed()->pluck('id')->all();
-
-        foreach ($ids as $id) {
-            Cache::forget(self::indexCacheKey($id));
+        if ($brandId !== null) {
+            Cache::tags(["catalog.index.brand.{$brandId}"])->flush();
+        } else {
+            Cache::tags(['catalog.index'])->flush();
         }
         NextRevalidation::purge();
     }
 
-    public static function forgetPackagesCache(int $gameId): void
+    public static function forgetPackagesCache(int $gameId, bool $withIndex = true): void
     {
         // ADR-027's 2026-08-29 addendum, decision 18: this cache moved to
         // its own scoped, tagged store (config('cache.catalog_packages_store'))
@@ -442,9 +442,12 @@ class CatalogController extends Controller
         Cache::store(config('cache.catalog_packages_store'))
             ->tags(["catalog.packages.game.{$gameId}"])
             ->flush();
-        // A package price/status change also changes the index's
-        // per-game price_from_sen — the index cache must go too.
-        self::forgetIndexCache();
+        
+        if ($withIndex) {
+            // A package price/status change also changes the index's
+            // per-game price_from_sen — the index cache must go too.
+            self::forgetIndexCache();
+        }
     }
 
     /**

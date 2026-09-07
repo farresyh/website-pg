@@ -379,6 +379,8 @@ class AppServiceProvider extends ServiceProvider
         Order::observe(OrderObserver::class);
         PriceSyncRun::observe(PriceSyncRunObserver::class);
         BackupRun::observe(BackupRunObserver::class);
+        \App\Models\AffiliateSubscription::observe(\App\Observers\AffiliateSubscriptionObserver::class);
+        \App\Models\AffiliateMembershipTier::observe(\App\Observers\AffiliateMembershipTierObserver::class);
 
         // ADR-048 addendum: same `web`-session/super_admin gate as
         // HorizonServiceProvider::gate() — Pulse doesn't generate its own

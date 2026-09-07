@@ -194,7 +194,11 @@ finish() {
 # Forge in a browser). The Forge site is "api.pekangame.space". Adjust the
 # SITE_PATH / PHP_BIN below if your Forge setup differs.
 
-SITE_PATH="/home/forge/api.pekangame.space/current"
+# The repo is checked out at /home/forge/api.pekangame.space/ and the
+# Laravel app is its backend/ subdir. Forge zero-downtime deploy is OFF,
+# so there is NO current/ symlink. This path must match the existing
+# `horizon` daemon's Directory field in Forge exactly.
+SITE_PATH="/home/forge/api.pekangame.space/backend"
 PHP_BIN="php8.4"
 ENV_FILE="backend/.env.example"
 
@@ -205,19 +209,21 @@ banner "ADR-077 PR-1 — Redis cache cutover (Forge + .env.example)"
 # ── Stage 1 ──────────────────────────────────────────────────────────────
 stage "Redis — memory cap + eviction policy"
 say "volatile-lru evicts ONLY keys with a TTL, so a cache-key flood can"
-say "never evict queued-job data (DB 0 has no TTLs). This is a redis.conf"
-say "edit + restart — it is NOT delivered by the PR code."
+say "never evict queued-job data (DB 0 has no TTLs). NOT delivered by the"
+say "PR code — a live Redis config change."
 warn "If Redis is left on the default 'noeviction', a full Redis REJECTS new"
 warn "cache writes (they throw) instead of evicting — worse than today. Do"
 warn "not skip the verify step."
-step "SSH to the Forge box:  ssh forge@api.pekangame.space"
-step "Edit /etc/redis/redis.conf (sudo) and set exactly these two lines:"
-note "    maxmemory 512mb"
-note "    maxmemory-policy volatile-lru"
-step "Restart:  sudo systemctl restart redis-server"
-step "Verify — both commands must echo the new values:"
+step "ssh pekangame-prod   (user 'forge', box 157.245.203.250)"
+say  "  — or Forge → server → Commands, one command per run."
+step "Set it live and persist it to redis.conf (no restart, no downtime):"
+note "    redis-cli CONFIG SET maxmemory 536870912"
+note "    redis-cli CONFIG SET maxmemory-policy volatile-lru"
+note "    redis-cli CONFIG REWRITE"
+say  "  Each returns OK. If NOAUTH: prepend  -a \"\$(grep ^REDIS_PASSWORD /home/forge/api.pekangame.space/backend/.env | cut -d= -f2)\""
+step "Verify — both must echo the new values:"
 note "    redis-cli CONFIG GET maxmemory-policy   # => volatile-lru"
-note "    redis-cli CONFIG GET maxmemory           # => 536870912"
+note "    redis-cli CONFIG GET maxmemory          # => 536870912"
 confirm "Both verify commands returned the new values?" || {
   warn "Fix Redis before continuing — the rest of this cutover depends on it."
   exit 1
@@ -237,6 +243,11 @@ note "    PULSE_SLOW_QUERIES_THRESHOLD=200"
 note "    PULSE_SLOW_REQUESTS_THRESHOLD=500"
 step "Leave SESSION_DRIVER=database untouched (sessions are a separate concern)."
 step "Leave PRICE_SYNC_INTERVAL_MINUTES alone — the 10→60 change is PR-3, not this PR."
+warn "PULSE_INGEST_DRIVER=redis + PULSE_REDIS_CONNECTION=pulse reference a"
+warn "connection that only exists in THIS PR's code. If prod has not deployed"
+warn "it yet, set ONLY CACHE_STORE=redis + REDIS_PULSE_DB now, and add the"
+warn "four PULSE_* lines in stage 6 AFTER the deploy — otherwise pulse:work"
+warn "throws 'Redis connection [pulse] not configured'."
 step "Save. Do NOT deploy yet — stages 3 and 4 change the deploy first."
 pause "Saved the Environment panel?"
 
