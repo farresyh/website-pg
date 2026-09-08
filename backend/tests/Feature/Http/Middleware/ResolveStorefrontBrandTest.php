@@ -6,6 +6,7 @@ use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateDomain;
 use App\Models\AffiliateSeoSettings;
+use App\Models\PlatformSettings;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -191,7 +192,10 @@ class ResolveStorefrontBrandTest extends TestCase
 
     public function test_membership_otp_is_issued_for_the_resolved_brand(): void
     {
-        [$acme] = $this->brandWithDomain('shop.acme.com');
+        // ADR-080 decision 2: OTP send is gated on
+        // `membershipEnabledEffective()` — enable it for this brand.
+        [$acme] = $this->brandWithDomain('shop.acme.com', affiliateOverrides: ['is_owned' => true, 'membership_enabled' => true]);
+        PlatformSettings::current()->update(['membership_enabled' => true]);
 
         $this->postJson(
             '/api/membership/otp/send',

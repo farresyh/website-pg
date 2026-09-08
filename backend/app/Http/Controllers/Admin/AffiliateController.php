@@ -22,6 +22,7 @@ use App\Services\Affiliate\Domain\DomainProviderException;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Membership\MembershipStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +59,7 @@ class AffiliateController extends Controller
         $affiliates = Affiliate::query()
             ->with(['subscription.tier' => fn ($q) => $q->withTrashed()])
             ->withCount('orders')
+            ->withCount(['memberships as active_membership_count' => fn ($q) => $q->where('status', MembershipStatus::Active)])
             ->orderBy('business_name')
             ->get();
 
@@ -417,6 +419,7 @@ class AffiliateController extends Controller
             'tierChanges.toTier' => fn ($q) => $q->withTrashed(),
         ]);
         $affiliate->loadCount('orders');
+        $affiliate->loadCount(['memberships as active_membership_count' => fn ($q) => $q->where('status', MembershipStatus::Active)]);
 
         return [
             'affiliate' => $this->rowShape($affiliate, $this->ledger->balance(LedgerOwnerType::Affiliate, $affiliate->id)),
@@ -472,6 +475,9 @@ class AffiliateController extends Controller
             'is_owned' => (bool) $affiliate->is_owned,
             'is_primary' => (bool) $affiliate->is_primary,
             'membership_enabled' => (bool) $affiliate->membership_enabled,
+            // ADR-080 decision 4: the admin form warns before Membership
+            // is turned off on a brand that still has active members.
+            'active_membership_count' => (int) ($affiliate->active_membership_count ?? 0),
             'deleted_at' => $affiliate->deleted_at,
             'orders_count' => $affiliate->orders_count ?? 0,
             'earnings_balance_sen' => $earningsBalanceSen,

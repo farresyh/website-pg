@@ -116,6 +116,21 @@ class MembershipSubscriptionControllerTest extends TestCase
         ], ['Authorization' => "Bearer {$token}"])->assertForbidden();
     }
 
+    public function test_subscribe_is_403_when_the_brand_membership_toggle_is_off(): void
+    {
+        // ADR-080 decision 1: per-brand gate, not only the global switch.
+        $this->primaryAffiliate()->update(['membership_enabled' => false]);
+        $token = $this->tokenFor('member@example.com');
+
+        $this->postJson('/api/membership/subscribe', [
+            'membership_plan_id' => $this->tier('Tier 2')->id,
+            'payment_method' => 'fpx',
+            'idempotency_key' => 'idem-gate',
+        ], ['Authorization' => "Bearer {$token}"])->assertForbidden();
+
+        $this->assertDatabaseCount('membership_checkout_attempts', 0);
+    }
+
     public function test_subscribe_creates_an_attempt_and_returns_the_checkout_url_and_server_computed_total(): void
     {
         $token = $this->tokenFor('member@example.com');
@@ -202,6 +217,16 @@ class MembershipSubscriptionControllerTest extends TestCase
     }
 
     // --- subscribe-options ---
+
+    public function test_subscribe_options_is_403_when_membership_is_disabled_for_the_brand(): void
+    {
+        $this->primaryAffiliate()->update(['membership_enabled' => false]);
+        $token = $this->tokenFor('member@example.com');
+
+        $this->getJson('/api/membership/subscribe-options', ['Authorization' => "Bearer {$token}"])
+            ->assertForbidden()
+            ->assertJson(['message' => 'Membership is not available.']);
+    }
 
     public function test_subscribe_options_lists_every_tier_as_subscribe_for_a_member_with_no_membership(): void
     {

@@ -116,14 +116,13 @@ class MembershipController extends Controller
      */
     public function subscribeOptions(Request $request): JsonResponse
     {
+        // ADR-080 decision 1: the brand's Membership gate is now the
+        // `membership.enabled` route middleware (403 before this runs),
+        // not an inline check here.
         $session = $this->resolveSession($request);
 
         if ($session === null) {
             return response()->json(['message' => 'Invalid or expired session.'], 401);
-        }
-
-        if (! $this->brand->get()->membershipEnabledEffective()) {
-            return response()->json(['message' => 'Membership is not available.'], 403);
         }
 
         $current = Membership::query()
@@ -165,14 +164,12 @@ class MembershipController extends Controller
      */
     public function subscribe(SubscribeRequest $request): JsonResponse
     {
+        // ADR-080 decision 1: the brand's Membership gate is the
+        // `membership.enabled` route middleware (403 before this runs).
         $session = $this->resolveSession($request);
 
         if ($session === null) {
             return response()->json(['message' => 'Invalid or expired session.'], 401);
-        }
-
-        if (! $this->brand->get()->membershipEnabledEffective()) {
-            return response()->json(['message' => 'Membership is not available.'], 403);
         }
 
         try {
