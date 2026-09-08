@@ -17,12 +17,14 @@ export default function TestimonialsSection({ reviews = [] }: TestimonialsSectio
           rating: r.rating,
           quote: r.comment,
           gameName: r.game_name ?? null,
+          packageName: r.package_name ?? null,
         }))
       : TESTIMONIALS.map((t) => ({
           name: t.name,
           rating: t.rating,
           quote: t.quote,
           gameName: null,
+          packageName: null,
         }));
 
   // Duplicate the array for a seamless, continuous infinite marquee loop
@@ -48,19 +50,21 @@ export default function TestimonialsSection({ reviews = [] }: TestimonialsSectio
           {loopItems.map((t, idx) => (
             <div
               key={`${t.name}-${idx}`}
-              className="flex w-[300px] sm:w-[350px] shrink-0 flex-col justify-between rounded-lg border-2 border-ink bg-surface-container-lowest p-5 neo transition-transform hover:-translate-y-0.5"
+              className="flex w-[320px] sm:w-[380px] shrink-0 flex-col justify-between rounded-lg border-2 border-ink bg-surface-container-lowest p-5 neo transition-transform hover:-translate-y-0.5"
             >
               <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex gap-0.5 text-tertiary">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex shrink-0 gap-0.5 text-tertiary">
                     {Array.from({ length: Math.min(Math.max(t.rating, 1), 5) }).map((_, i) => (
                       <Star key={i} size={15} weight="fill" />
                     ))}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    {t.gameName && (
-                      <span className="rounded border border-ink/20 bg-surface-container px-1.5 py-0.5 text-[10px] font-bold text-on-surface-variant">
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {(t.gameName || t.packageName) && (
+                      <span className="rounded border border-ink/20 bg-surface-container px-2 py-0.5 text-[10px] font-bold text-on-surface-variant max-w-[200px] truncate">
                         {t.gameName}
+                        {t.gameName && t.packageName && " • "}
+                        {t.packageName}
                       </span>
                     )}
                     <Badge tone="info">

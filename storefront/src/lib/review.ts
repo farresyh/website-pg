@@ -30,6 +30,7 @@ const PublicReviewWireSchema = z.object({
   rating: z.number(),
   comment: z.string(),
   game_name: z.string().nullable().optional(),
+  package_name: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
 });
 

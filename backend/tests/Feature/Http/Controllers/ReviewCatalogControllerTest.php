@@ -43,7 +43,28 @@ class ReviewCatalogControllerTest extends TestCase
             'is_active' => true,
         ]);
 
-        $order1 = $this->order(['customer_name' => 'Siti Nurhaliza', 'game_id' => $game->id]);
+        $supplier = \App\Models\Supplier::query()->create([
+            'name' => 'Gamevion',
+            'slug' => 'gamevion',
+            'api_config' => [],
+            'currency' => 'MYR',
+        ]);
+
+        $package = \App\Models\Package::query()->create([
+            'game_id' => $game->id,
+            'supplier_id' => $supplier->id,
+            'supplier_package_ref' => 'REF-86',
+            'name' => '86 Diamonds',
+            'cost_price' => 500,
+            'standard_selling_price' => 600,
+            'is_active' => true,
+        ]);
+
+        $order1 = $this->order([
+            'customer_name' => 'Siti Nurhaliza',
+            'game_id' => $game->id,
+            'package_id' => $package->id,
+        ]);
         $order2 = $this->order(['customer_name' => 'John Doe', 'game_id' => $game->id]);
         $order3 = $this->order(['customer_name' => 'Ali Baba', 'game_id' => $game->id]);
 
@@ -80,6 +101,7 @@ class ReviewCatalogControllerTest extends TestCase
             'rating' => 5,
             'comment' => 'Sangat laju dan mantap!',
             'game_name' => 'Mobile Legends',
+            'package_name' => '86 Diamonds',
         ]);
     }
 }

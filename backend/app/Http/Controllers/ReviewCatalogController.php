@@ -27,17 +27,23 @@ class ReviewCatalogController extends Controller
                 return Review::query()
                     ->where('status', ReviewStatus::Approved->value)
                     ->whereNotNull('comment')
-                    ->where('comment', '!=', '')
-                    ->with(['order:id,customer_name,game_id', 'order.game:id,name'])
+                    ->with([
+                        'order:id,customer_name,customer_email,game_id,package_id',
+                        'order.game:id,name',
+                        'order.package:id,name',
+                    ])
                     ->orderByDesc('created_at')
                     ->take(12)
                     ->get()
                     ->map(fn (Review $r) => [
                         'id' => $r->id,
-                        'name' => ContactMask::name($r->order?->customer_name) ?? 'Verified Customer',
+                        'name' => ContactMask::name($r->order?->customer_name)
+                            ?? ContactMask::email($r->order?->customer_email)
+                            ?? 'Verified Customer',
                         'rating' => $r->rating,
                         'comment' => $r->comment,
                         'game_name' => $r->order?->game?->name,
+                        'package_name' => $r->order?->package?->name,
                         'created_at' => $r->created_at?->toIso8601String(),
                     ])
                     ->all();
