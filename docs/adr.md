@@ -4132,6 +4132,16 @@ Shipped as decision 2 specified, with the propagation hook covering PR-1's CORS 
 - **Deploy prerequisite:** `NEXT_PUBLIC_PRIMARY_HOSTS` must be set on the storefront's Vercel project (pair of the backend's `STOREFRONT_PRIMARY_HOSTS`, set in Forge 2026-09-06). Safe to ship before it is set — an unset value just means the primary storefront falls through to the (harmless, always-`known`) backend host check, a perf regression only, never a breakage.
 - Tests: `AffiliateDomainServiceTest` gains "a state change busts the CORS cache and purges the storefront" + "recheck with no state change does not propagate". Full fast suite 1619/1619; storefront `tsc` / lint / build clean.
 
+### PR-3 build addendum (2026-09-08) — admin `is_owned` warning + root route
+
+**Decision 3 — `is_owned` membership signposting.** `admin/src/components/affiliates/AffiliateFormModal.tsx` already had the `is_owned` block with the "Enable consumer Membership" checkbox inline. Added: when `is_owned` is on **and** `membership_enabled` is off, an inline amber note — *"this storefront shows standard pricing only — member prices and the `/membership` section stay hidden, even with the global membership switch on (ADR-061 makes Membership a per-brand opt-in)"*. Default stays `false`; `fixfastapp.com` left as-is. No other change.
+
+**Decision 4 — root route.** New invokable `App\Http\Controllers\ApiRootController` returning `response()->json(['service' => 'PekanGame API', 'status' => 'ok'])`. `routes/web.php` `GET /` points at it; `resources/views/welcome.blade.php` deleted. `ExampleTest` now asserts the JSON contract instead of "200 HTML". `HealthController` (the DB+queue probe at `/api/health`) is untouched — this route depends on nothing.
+
+- **Correction to the decision's premise:** `php artisan route:cache` does **not** currently throw on this Laravel version — a closure `GET /` route serialises fine via `Laravel\SerializableClosure` (verified locally before and after the change). The `RouteNotFoundException` from `welcome.blade.php`'s guarded `route('login')` path on bot traffic is the real, reproduced motivation; removing the Blade view also removes the only closure/`route()` call from `routes/web.php`, so the change still stands on cleanliness grounds — just not because `route:cache` was broken.
+- Nothing depends on `GET /` returning HTML: the DO uptime check + Forge health probe target `/up` (framework health route) and `/api/health`; a JSON 200 satisfies a plain reachability probe too.
+- `php artisan route:cache` run clean locally; CI's existing steps cover it on deploy.
+
 ---
 
 ## ADR-079: Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official SVG Logos, Denomination-vs-Pass Package Tabs, and Guest Checkout Convenience
