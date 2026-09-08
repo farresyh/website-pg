@@ -51,6 +51,7 @@ class BrandingController extends Controller
                 'store_name' => $branding?->store_name ?? $affiliate->business_name,
                 'description' => $branding?->description,
                 'logo_url' => $branding?->logo_url,
+                'theme_preset' => $branding?->theme_preset ?? 'default',
                 'support_email' => $branding?->support_email,
                 'support_phone' => $branding?->support_phone,
                 'telegram_contact_link' => $branding?->telegram_contact_link,

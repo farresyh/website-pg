@@ -74,6 +74,7 @@ class BrandingController extends Controller
                     // gallery disk — a plain string URL or null, safe to
                     // cache (no object-corruption concern).
                     'logo_url' => $branding?->logo_url,
+                    'theme_preset' => $branding?->theme_preset ?? 'default',
                     'support_email' => $branding?->support_email,
                     'support_phone' => $branding?->support_phone,
                     'telegram_contact_link' => $branding?->telegram_contact_link,
