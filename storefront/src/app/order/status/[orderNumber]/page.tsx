@@ -2,14 +2,15 @@ import type { Metadata } from "next";
 import SiteFooter from "@/components/layout/SiteFooter";
 import OrderStatusTracker from "@/components/order/OrderStatusTracker";
 import FaqSection from "@/components/home/FaqSection";
+import { getBranding } from "@/lib/branding";
 
 interface OrderStatusPageProps {
   params: Promise<{ orderNumber: string }>;
 }
 
 export async function generateMetadata({ params }: OrderStatusPageProps): Promise<Metadata> {
-  const { orderNumber } = await params;
-  return { title: `Order ${orderNumber} — PekanGame` };
+  const [{ orderNumber }, branding] = await Promise.all([params, getBranding()]);
+  return { title: `Order ${orderNumber} — ${branding.storeName}` };
 }
 
 /**

@@ -144,4 +144,40 @@ class BrandingControllerTest extends TestCase
         $response->assertOk();
         $this->assertNull($response->json('content'));
     }
+
+    public function test_legal_substitutes_resolved_affiliate_store_name_when_x_storefront_host_is_provided(): void
+    {
+        $primary = $this->primaryAffiliate();
+        AffiliateBranding::query()->create([
+            'affiliate_id' => $primary->id,
+            'store_name' => 'PekanGame',
+        ]);
+        AffiliateFooterSettings::query()->create([
+            'affiliate_id' => $primary->id,
+            'terms_content' => '<p>Welcome to {store_name}</p>',
+        ]);
+
+        $affiliate = \App\Models\Affiliate::query()->create([
+            'business_name' => 'FixFast',
+            'is_primary' => false,
+            'status' => 'active',
+            'markup_pct' => 0,
+        ]);
+        AffiliateBranding::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'store_name' => 'FixFast',
+        ]);
+        \App\Models\AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'hostname' => 'fixfastapp.com',
+            'status' => \App\Services\Affiliate\AffiliateDomainStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Storefront-Host' => 'fixfastapp.com'])
+            ->getJson('/api/catalog/legal/terms');
+
+        $response->assertOk();
+        $this->assertStringContainsString('Welcome to FixFast', $response->json('content'));
+        $this->assertStringNotContainsString('PekanGame', $response->json('content'));
+    }
 }

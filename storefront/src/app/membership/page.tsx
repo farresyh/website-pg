@@ -2,10 +2,14 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import SiteFooter from "@/components/layout/SiteFooter";
 import MembershipClient from "@/components/order/MembershipClient";
+import { getBranding } from "@/lib/branding";
 
-export const metadata: Metadata = {
-  title: "Membership — PekanGame",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await getBranding();
+  return {
+    title: `Membership — ${branding.storeName}`,
+  };
+}
 
 // ADR-071 PR1: no `force-dynamic`. The per-member state (verified
 // session, dashboard data) lives entirely in the `"use client"`
