@@ -2511,6 +2511,8 @@ Decision 2's "59c = storefront settings + catalog toggle + live preview" assumed
 
 **Deploy addendum — 2026-09-02.** The whole `reseller/` app (59a/b/c) is **live in production** as the `pekangame-reseller` Vercel project at **`reseller.pekangame.space`** — see [ADR-066](#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)'s cutover addendum. `NEXT_PUBLIC_API_URL=https://api.pekangame.space`, `NEXT_PUBLIC_PRIMEUI_LICENSE_KEY` set. Realtime pieces that depend on Reverb are inert (Reverb deferred at launch) but the portal has no Reverb dependency.
 
+**Privacy fix — 2026-09-08 (`fix/portal-hide-platform-markup`, PR to `staging`).** The Subscription screen was rendering `subscription.tier.markup_percent` ("Wholesale markup", `Affiliate\SubscriptionController::show`) and the Reseller-wallet Profile screen was rendering `tier.markup_percent` ("Markup over cost", `ResellerPortal\ProfileController::show`). Decision 2 only ever pinned "current tier, fee, next charge date, …" — the tier's `markup_percent` is **the platform's margin over its own true cost**, confidential, and showing it tells a third-party affiliate/reseller exactly how much the platform marks up on them. Both fields removed from the two API responses and both rows removed from the portal; the frontends keep the tier **name** + the fee the affiliate/reseller actually pays. `ProfileControllerTest` / `AffiliatePortalReadTest` now assert the field is absent. (`Affiliate\OrderController`'s `affiliate_markup_pct` and the Pricing tab's `markup_pct`/`max_markup_pct` stay — those are the affiliate's **own** retail margin + the ceiling set for them, not the platform's cost structure.)
+
 ---
 
 ## ADR-060: Multi-tenant branded storefront + custom-domain infrastructure (Cloudflare for SaaS)
@@ -4200,5 +4202,85 @@ Following the storefront visual redesign (ADR-063/ADR-064) and production deploy
 Shipped in full on `feature/adr-079-storefront-polish`:
 - **Backend:** `CatalogController::publicPackage()` exposes `has_denomination` & `has_catalog_code`. Full test suite passing (1,610/1,610 green; `CatalogControllerTest` coverage added).
 - **Storefront:** `ProductHeaderCard` artwork rendering, `SiteHeader` nav link cleanup, `PaymentMethodsSection` & `SiteFooter` dynamic channels with `PaymentIcons` SVG badges, `PackageGrid` 3 tabs with collapse toggle, `ReviewModal` client-side `localStorage` contact persistence + reassuring copy + mandatory T&C, `QuickCounterCard` 1-click navigation, `OrderStatusTracker` 1-click order-number copy + contextual WhatsApp assistance. Clean `tsc`, `lint`, and `build` (Turbopack).
+
+---
+
+## ADR-080: Membership × per-brand — close the `/membership` surface consistently on a membership-disabled brand
+
+**Status:** Accepted (design) — 2026-09-09, grilled with the founder over eleven decisions via `/mattpocock-skills:grilling`, then a stress-test pass before this entry was written. This is ADR-061's lineage — the per-brand Membership opt-in (ADR-061 decision 4/5) whose gate turned out to be applied inconsistently once a real membership-disabled brand went live — not new Membership scope. Same "gaps found after a feature went live in production, fixed as a follow-up ADR" shape as ADR-078 (to ADR-060) and ADR-077's own post-live addenda. Implemented in one PR on the same branch (`feature/adr-080-membership-per-brand-gate`).
+
+**Context:**
+
+ADR-061 decision 4/5 made consumer Membership a per-brand opt-in: `Affiliate::membershipEnabledEffective()` returns `membership_enabled` (this brand's own toggle) `&&` `PlatformSettings.membership_enabled` (the global incident kill-switch). ADR-078 PR-3 then forced `membership_enabled` to follow `is_owned` in the admin form (`membership_enabled: isOwned && membershipEnabled`) and added an inline note for the owned-but-off case.
+
+The founder found live in production 2026-09-08 (after ADR-078 release PR #144 deployed clean, with `fixfastapp.com`'s custom domain confirmed working): untick `fixfastapp` from "Our own brand" — which forces `membership_enabled` false — then visit `fixfastapp.com/membership` directly. **The membership page still renders, and you can send + verify an OTP and log in.** The nav link is hidden, but the direct URL works.
+
+Root cause, triaged then verified against current code this session — the `membershipEnabledEffective()` gate is applied inconsistently across the `/membership` surface:
+
+| Surface | Gated on `membershipEnabledEffective()`? |
+| --- | --- |
+| `MembershipController::plans()` | ✅ returns `[]` |
+| `MembershipController::subscribeOptions()` | ✅ 403 (inline) |
+| `MembershipController::subscribe()` | ✅ 403 (inline) |
+| member pricing at checkout (`CheckoutController::resolveMembershipId`) | ✅ gated + `where affiliate_id` scoped |
+| member pricing on the catalog display (`CatalogController` line ~104) | ✅ gated |
+| `MembershipOtpController::send()` | ❌ **not gated** — issues an OTP code |
+| `MembershipOtpController::verify()` | ❌ **not gated** — mints a 30-day session token |
+| `MembershipController::me()` | ❌ **not gated** — returns membership state + order history |
+| storefront `/membership` route (`page.tsx`) | ❌ static shell, renders regardless |
+
+So on a membership-disabled brand a visitor cannot get member pricing, cannot subscribe, and cannot renew — **but can still authenticate a membership session and view the dashboard.** Low blast radius (a disabled brand has no real members), but the surface is not fully closed, and there is no defined behaviour for the adjacent scenarios (a brand turned off while it has active members; the subscribe→disable→webhook race; orphan rows on `fixfastapp`).
+
+Two triage claims from the 2026-09-08 memo turned out **already resolved** and are out of scope:
+- **Admin brand visibility** — `admin/src/components/membership/MembersSection.tsx` already has a Brand column (`m.brand_name`) and a brand filter (shipped in ADR-068 PR-3, commit `7a2b7b0`, 2026-09-03). The memo checked `page.tsx`, which was split; the table moved.
+- **Member-pricing brand-scoping** — both the checkout path (`CheckoutController::resolveMembershipId`, `where affiliate_id = $affiliateId` + `membershipEnabledEffective()` gate) and the display path (`CatalogController`) are already brand-scoped and gated. This was the gap that needed ADR-060 PR-4d for vouchers; Membership already had it.
+
+**Decision:**
+
+1. **Gate by surface type, not by which toggle is off.** `membershipEnabledEffective()` collapses the per-brand toggle and the global kill-switch into one boolean and the code cannot tell them apart — and it does not need to. The split that matters is **sales/write surface vs. read-only self-view**:
+   - **Sales/write** — OTP `send()` + `verify()`, `subscribe-options`, `subscribe`, member pricing at checkout and on the catalog — hard-gated on `membershipEnabledEffective()`. (All already gated except the two OTP endpoints.)
+   - **`me()` (read-only self-view)** — **stays reachable** for any still-valid session token. A member on a now-disabled brand cannot renew, upgrade, or get member pricing, but can still see "your membership expires X, quota Y, order history". Nothing is reset; nobody is locked out of their own record.
+   - This is automatically correct for both a permanent per-brand disable and a temporary global incident kill-switch, with no new column. During a global incident, existing members still see their own status; nobody new can start.
+
+2. **OTP `send()` + `verify()` — hard-gate, full stop, no carve-out.** Both return `403 {"message":"Membership is not available."}` (same shape the `subscribe` inline check already returns) when `!membershipEnabledEffective()`. Rejected: a carve-out that allows `verify()` when an Active membership already exists for `(brand, email)` — it adds a per-email branch to a money-adjacent auth path for an edge case (a real member on a disabled brand whose 30-day token lapsed) that barely exists. A member locked out this way is handled by the admin, who has the full members registry and `record-payment`. Consequence: on a disabled brand, `verify()` never runs, so a session token is only ever minted on an enabled brand — which tightens decision 1's read-only path to "whoever still holds a token from when the brand was enabled".
+
+3. **Storefront `/membership` `page.tsx` → `notFound()` (404) when membership is not enabled for the brand.** The page (a server component) calls `listPlans()` itself — already `revalidate`-cached by the layout's own call, so it is a cache hit, not a backend round-trip — and calls `notFound()` when the list is empty. Rejected: a "dashboard-only mode" inside `MembershipClient` that suppresses the OTP form + subscribe UI but still renders the dashboard for a token-holder. `MembershipClient` already derives five states (email step / otp step / dashboard / post-payment poll / timeout); a sixth "disabled-brand" mode is a permanent branch every future change to that component has to remember, and for whitelabel affiliate brands **membership-off is the default and common state** — those brands would all serve a live `/membership` route rendering a component that calls `/api/membership/me` for nothing. The apparent contradiction with decision 1 is theoretical: decision 1's real value is the **backend** `me()` staying up (token-holders, `reconcile`/receipt/post-payment-poll during the decision 5 race, admin tooling), not a storefront UI path. The one genuinely painful case — an owned brand with real paying members that is then deliberately disabled — is a one-time migration (decision 4's notice + manual refund), not a permanent partial-UI mode maintained forever.
+
+4. **Disabling Membership on a brand that has Active members: admin warning + count, confirm-to-proceed. No refund tooling, no grandfather.** The affiliate create/edit form (`AffiliateFormModal`) shows a confirm-warning with the Active-member count when a save would move `membership_enabled` from `true` to `false` **and** that count is `> 0`. The warning must catch **both** paths to a false save: unticking the "Enable consumer Membership" checkbox, and unticking "Our own brand" (which silently forces `membership_enabled: isOwned && membershipEnabled` → false). It does not hard-block — the founder confirms and proceeds; handling any pro-rata refund is then a fully manual, off-system decision. Rejected: a "Refund & deactivate" button that reverses the `membership_fee` ledger entry pro-rata, and an auto-grandfather that keeps existing memberships priced and quota-live until `expires_at`. Both were judged over-engineering — the founder's explicit position is that deliberately removing Membership from a brand is "near-impossible" in practice, and auto-grandfather would re-introduce the exact "membership live on a disabled brand" complexity decisions 1–3 removed.
+
+5. **The subscribe → disable → webhook race: honor the payment.** `ChipWebhookController::handleMembershipAttempt()` → `MembershipSubscriptionService::completePaidAttempt()` → `MembershipFeeService::recordFeePaid()` does **not** re-check `membershipEnabledEffective()`, and neither does `app:reconcile-pending-membership-payments` (same seam — so the two paths stay consistent for free). A member who clicked "pay" while the brand was still enabled, then had the brand disabled in the seconds before the CHIP webhook landed, gets their membership created normally; it then becomes one of decision 4's "Active member on a disabled brand" (warned, left to expire). Rejected: re-checking at webhook time and either auto-refunding (needs a CHIP refund pipeline that exists for nothing else) or failing the attempt with no refund (takes the member's money for nothing). `MembershipController::subscribe()` stays gated (decision 2), so no **new** attempt can start on a disabled brand — only an already-pending one can settle. **Added:** `completePaidAttempt()` logs a `Log::warning` when it completes an attempt whose brand is no longer `membershipEnabledEffective()`, so the rare race is visible in logs rather than silent.
+
+6. **The global `PlatformSettings.membership_enabled` toggle gets no member-count warning.** Only the per-brand affiliate form (decision 4) warns. The global toggle is incident kill-switch tooling — speed matters, the effect is reversible, and `me()` stays up (decision 1) so members are not cut off from their own records. A cross-brand "N active members" count on that toggle is scope creep for a lever that is meant to be flipped fast in an incident.
+
+7. **`fixfastapp.com` cleanup is a one-off data operation, not code.** After merge, the founder runs a check query on production (`SELECT status, count(*) FROM memberships WHERE affiliate_id = <fixfastapp> GROUP BY status;` and the same for `membership_checkout_attempts`). If the rows are test data only (no real Active member), a manual `DELETE` on the production console, recorded in this ADR's build addendum. If there is a real Active member (not expected), it is left alone per decision 4. No migration, no cleanup command — the additive-migrate and `migrate:fresh` gotchas in AGENTS.md make a data-mutating migration the wrong tool for a single brand's stray rows. OTP codes (short TTL) and session tokens (30-day rolling, and decision 2 stops new ones) age out on their own.
+
+8. **Reports brand dimension is deferred to the Reports restructure.** Membership fee revenue by brand ties into the one-overhaul-not-per-tab-patches position in the `reports-restructure-backlog` memo; a line is added there, nothing is built here.
+
+**Implementation shape:**
+
+- **Backend — `App\Http\Middleware\EnsureBrandMembershipEnabled`.** Resolves the storefront brand (the `storefront.brand` group middleware has already run) and returns `403 {"message":"Membership is not available."}` when `!membershipEnabledEffective()`. Applied to `POST /membership/otp/send`, `POST /membership/otp/verify`, `GET /membership/subscribe-options`, `POST /membership/subscribe` — **before** each route's `throttle:*` middleware, so a disabled brand's requests fail fast and do not consume a rate-limit bucket. **Not** applied to `GET /membership/plans` (returns `[]` by its own logic) or `GET /membership/me` (decision 1). The inline `membershipEnabledEffective()` checks in `MembershipController::subscribe()` and `subscribeOptions()` are removed — the middleware is now the single gate, and `plans()` / `me()` being outside it is visible at the route definition rather than buried in a controller body.
+- **Backend — `active_membership_count`** added via `withCount(['memberships' => fn ($q) => $q->where('status', MembershipStatus::Active->value)])` on the affiliate resource in `Admin\AffiliateController`'s list and show responses.
+- **Backend — `MembershipSubscriptionService::completePaidAttempt()`** gains the decision-5 `Log::warning`.
+- **Storefront — `src/app/membership/page.tsx`** calls `listPlans()` and `notFound()` on an empty list.
+- **Admin — `AffiliateFormModal`** gains the decision-4 confirm-warning keyed on `editing?.membership_enabled === true && !(isOwned && membershipEnabled) && active_membership_count > 0`.
+
+**Rationale:**
+
+- The gate inconsistency is a straight miss — ADR-061 gated the pricing and subscribe paths and simply never gated the OTP endpoints or the storefront route. Recording it as an ADR rather than a silent fix is worth it because the **shape** of the fix (one middleware as the single gate, with `plans()` and `me()` as deliberate, route-visible exceptions) is a decision a future reader adding a `/membership` endpoint needs to see — the default should be "in the gate unless there is a reason not to be".
+- Keeping `me()` reachable is the one non-obvious call: it means "membership disabled" is not the same as "membership data gone", which matters for a temporary incident kill-switch and for not locking a paying member out of their own expiry/quota/history.
+- The `notFound()` over a partial-UI mode, and the warning-only over refund tooling, are both the deliberate "good enough, less to maintain" call for events that are rare (a brand losing membership) and, where they do happen, better handled as a one-time manual migration than as permanent machinery.
+- Honoring the race payment is the only customer-fair option that does not require a refund pipeline built for nothing else.
+
+**Consequence to track:**
+
+- **`EnsureBrandMembershipEnabled` runs on every OTP/subscribe request** — it only reads `membershipEnabledEffective()`, which is `PlatformSettings::current()` (already cached) plus the already-resolved `Affiliate`; confirm it adds no query beyond what the controllers already do.
+- **`me()` is now the only `/membership` surface reachable on a disabled brand** — if a future change makes `me()` do something write-shaped (e.g. lazily flip a lapsed membership to `expired`), that change must move `me()` back behind the gate or gate that specific side effect.
+- **`E2ESeeder` / the E2E primary brand must keep `membership_enabled = true`** with the global switch on, or the new middleware 403s `membership-subscribe.spec.ts`. The suite passing today means it is set; a future seeder change could regress it silently.
+- **The admin warning depends on `active_membership_count` staying on the affiliate payload** — a future trim of that response would silently disable the warning (fail-open). A test asserts the count is present and the warning renders.
+- **`docs/prd.md` §14 build-log + §15 status (Membership row)** — update on ship; ADR-061's per-brand-opt-in line should note "surface fully gated as of ADR-080".
+- **`reports-restructure-backlog`** — add the "membership fee revenue by brand" line.
+- **Global kill-switch behaviour is now asymmetric** — flipping `PlatformSettings.membership_enabled` off stops all sales surfaces everywhere but leaves every member's `me()` readable. That is intended (decision 1/6); a future operator expecting "off means fully dark" should find this decision.
+
+**Delivery:** one PR, `feature/adr-080-membership-per-brand-gate` off `staging` — backend + storefront + admin together (tightly coupled, small). Backend feature tests: the four gated endpoints 403 on a disabled brand, `me()` still 200s, the middleware ordering vs `throttle`, `completePaidAttempt` logs on a disabled brand, `active_membership_count` present. No new E2E (a disabled-brand E2E needs a multi-brand seed for one assertion; the feature tests cover the gate). `fixfastapp` cleanup is a manual post-merge step, recorded here as a build addendum.
 
 

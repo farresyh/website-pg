@@ -26,7 +26,10 @@ class SubscriptionController extends Controller
             'subscription' => $subscription === null ? null : [
                 'tier_name' => $subscription->tier->name,
                 'monthly_fee_sen' => (int) $subscription->tier->monthly_fee_sen,
-                'wholesale_markup_percent' => (float) $subscription->tier->markup_percent,
+                // The tier's `markup_percent` is the platform's wholesale
+                // margin over its true cost — never exposed to the
+                // affiliate (founder call 2026-09-08). They see the tier
+                // name + the fee they pay, not our cost structure.
                 'status' => $subscription->status->value,
                 'current_period_started_at' => $subscription->current_period_started_at?->toIso8601String(),
                 'next_charge_at' => $subscription->next_charge_at?->toIso8601String(),

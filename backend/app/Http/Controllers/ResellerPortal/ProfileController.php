@@ -26,8 +26,10 @@ class ProfileController extends Controller
             'contact_name' => $reseller->contact_name,
             'email' => $reseller->email,
             'phone' => $reseller->phone,
+            // Tier NAME only — the tier's `markup_percent` is the
+            // platform's margin over its true cost and is never shown to
+            // the reseller (founder call 2026-09-08).
             'tier_name' => $reseller->tier?->name,
-            'markup_percent' => $reseller->tier?->markup_percent,
             'is_active' => (bool) $reseller->is_active,
         ]);
     }

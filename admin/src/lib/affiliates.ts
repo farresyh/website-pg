@@ -33,6 +33,8 @@ export interface AffiliateRow {
   is_owned: boolean;
   is_primary: boolean;
   membership_enabled: boolean;
+  /** ADR-080 decision 4: active consumer memberships on this brand — the form warns before Membership is turned off while this is > 0. */
+  active_membership_count: number;
   deleted_at: string | null;
   orders_count: number;
   earnings_balance_sen: number;

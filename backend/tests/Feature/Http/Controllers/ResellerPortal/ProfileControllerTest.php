@@ -33,6 +33,8 @@ class ProfileControllerTest extends TestCase
             ->assertJsonPath('business_name', 'Wallet Reseller')
             ->assertJsonPath('contact_name', 'Ah Kow')
             ->assertJsonPath('tier_name', 'Gold')
-            ->assertJsonPath('markup_percent', '5.00');
+            // The tier's markup_percent is the platform's margin over
+            // cost — private, never exposed to the reseller.
+            ->assertJsonMissingPath('markup_percent');
     }
 }

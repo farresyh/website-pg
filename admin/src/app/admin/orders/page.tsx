@@ -21,7 +21,7 @@
  * a later pass.
  */
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DataTable,
@@ -134,8 +134,61 @@ function OrdersPageInner() {
     }
   }
 
+  const pollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    return () => {
+      pollTimersRef.current.forEach(clearTimeout);
+    };
+  }, []);
+
   function handleResent() {
-    setResendMessage("Resend queued — refresh in a moment to see the outcome and the new Delivery Logs entry.");
+    if (!session || !selected) return;
+    setResendMessage("Resend queued — waiting for delivery outcome...");
+
+    pollTimersRef.current.forEach(clearTimeout);
+    pollTimersRef.current = [];
+
+    const orderId = selected.id;
+    const initialAttemptsCount = selected.resend_attempts?.length ?? 0;
+    const initialDeliveryStatus = selected.delivery_status;
+
+    const delays = [1500, 3500, 6000, 9000];
+    let resolved = false;
+
+    delays.forEach((delay, index) => {
+      const timer = setTimeout(async () => {
+        if (resolved) return;
+        try {
+          const fresh = await getOrder(session.token, orderId);
+          const hasNewAttempt = (fresh.resend_attempts?.length ?? 0) > initialAttemptsCount;
+          const statusChanged = fresh.delivery_status !== initialDeliveryStatus;
+
+          if (hasNewAttempt || statusChanged) {
+            resolved = true;
+            setSelected(fresh);
+            // Refresh orders table in background
+            listOrders(session.token, { status, search: search || undefined, page: pageNumber })
+              .then(setPage)
+              .catch(() => {});
+
+            if (fresh.delivery_status === "delivered") {
+              setResendMessage("Resend delivered successfully! Delivery logs updated.");
+            } else if (fresh.delivery_status === "failed") {
+              setResendMessage("Resend attempt finished (delivery failed) — see latest Delivery Logs entry below.");
+            } else {
+              setResendMessage("Resend processed — delivery logs and order status updated.");
+            }
+          } else if (index === delays.length - 1) {
+            setSelected(fresh);
+            setResendMessage("Resend is still processing in background. You can refresh again in a moment.");
+          }
+        } catch {
+          // Silent ignore during background poll
+        }
+      }, delay);
+      pollTimersRef.current.push(timer);
+    });
   }
 
   function handleVoucherIssued(voucher: Voucher) {
@@ -285,8 +338,8 @@ function OrdersPageInner() {
 
         <OrderDetailCards order={selected} />
 
-        {/* ADR-017 decision #4: every resend attempt, not just the latest supplier_response. */}
-        <DeliveryLogsTable attempts={selected.resend_attempts} />
+        {/* ADR-017 decision #4: chronological delivery history (initial + resends) */}
+        <DeliveryLogsTable order={selected} attempts={selected.resend_attempts} />
       </div>
 
       {session && (

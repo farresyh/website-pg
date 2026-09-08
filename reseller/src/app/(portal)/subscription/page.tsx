@@ -84,10 +84,6 @@ export default function SubscriptionPage() {
               />
               <Row label="Monthly fee" value={formatRm(sub.monthly_fee_sen)} />
               <Row
-                label="Wholesale markup"
-                value={`${sub.wholesale_markup_percent}%`}
-              />
-              <Row
                 label="Period started"
                 value={formatDate(sub.current_period_started_at)}
               />

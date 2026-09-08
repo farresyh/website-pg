@@ -3,12 +3,14 @@
 use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureBrandMembershipEnabled;
 use App\Http\Middleware\ResolveStorefrontBrand;
 use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -99,7 +101,22 @@ return Application::configure(basePath: dirname(__DIR__))
             // from `X-Storefront-Host` on the public storefront routes.
             // Inert without the header (falls back to Affiliate::primary()).
             'storefront.brand' => ResolveStorefrontBrand::class,
+            // ADR-080 decision 1/2: the single 403 gate for the
+            // /membership sales & write surface (OTP send/verify,
+            // subscribe-options, subscribe). `plans` and `me` are
+            // deliberately outside it.
+            'membership.enabled' => EnsureBrandMembershipEnabled::class,
         ]);
+
+        // ADR-080: `ThrottleRequests` sits in the framework's default
+        // middleware-priority list, so without this a route's
+        // `['membership.enabled', 'throttle:*']` array can still run the
+        // limiter first — a disabled brand's requests would then burn a
+        // rate-limit bucket before the 403. Pin the gate ahead of it.
+        $middleware->prependToPriorityList(
+            before: ThrottleRequests::class,
+            prepend: EnsureBrandMembershipEnabled::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -90,7 +90,6 @@ export interface EarningsResponse {
 export interface SubscriptionResponse {
   subscription:
     | (SubscriptionSnapshot & {
-        wholesale_markup_percent: number;
         current_period_started_at: string | null;
       })
     | null;

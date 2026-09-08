@@ -102,17 +102,18 @@ class BrandingController extends Controller
 
         // ADR-060 addendum: footer + legal content stays admin-only and
         // central — every brand renders the primary's legal text (the
-        // `{store_name}` substitution against the resolved brand is PR-6).
-        $affiliate = Affiliate::primary();
+        // `{store_name}` substitution against the resolved brand).
+        $resolvedBrand = $this->brand->get();
+        $primary = Affiliate::query()->where('is_primary', true)->first() ?? $resolvedBrand;
         $column = self::LEGAL_PAGES[$page];
 
         $payload = Cache::remember(
-            "catalog.public.branding.{$affiliate->id}.legal.{$page}",
+            "catalog.public.branding.{$resolvedBrand->id}.legal.{$page}",
             self::CACHE_TTL_SECONDS,
-            function () use ($affiliate, $column) {
-                $branding = AffiliateBranding::query()->where('affiliate_id', $affiliate->id)->first();
-                $footer = AffiliateFooterSettings::query()->where('affiliate_id', $affiliate->id)->first();
-                $storeName = $branding?->store_name ?? $affiliate->business_name;
+            function () use ($resolvedBrand, $primary, $column) {
+                $branding = AffiliateBranding::query()->where('affiliate_id', $resolvedBrand->id)->first();
+                $footer = AffiliateFooterSettings::query()->where('affiliate_id', $primary->id)->first();
+                $storeName = $branding?->store_name ?? $resolvedBrand->business_name;
                 $content = $footer?->{$column};
 
                 return [
@@ -140,6 +141,17 @@ class BrandingController extends Controller
         foreach (array_keys(self::LEGAL_PAGES) as $page) {
             Cache::forget("catalog.public.branding.{$affiliateId}.legal.{$page}");
         }
+
+        $primary = Affiliate::query()->where('is_primary', true)->first();
+        if ($primary && $affiliateId === $primary->id) {
+            $otherAffiliates = Affiliate::query()->where('id', '!=', $primary->id)->pluck('id');
+            foreach ($otherAffiliates as $otherId) {
+                foreach (array_keys(self::LEGAL_PAGES) as $page) {
+                    Cache::forget("catalog.public.branding.{$otherId}.legal.{$page}");
+                }
+            }
+        }
+
         NextRevalidation::purge(); // ADR-071 PR2
     }
 }

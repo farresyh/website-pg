@@ -1,9 +1,9 @@
-import { Lightning, ShieldCheck, Stack, ChatCircleDots } from "@phosphor-icons/react/dist/ssr";
+import { Lightning, ShieldCheck, Crown, ChatCircleDots } from "@phosphor-icons/react/dist/ssr";
 
 const REASONS = [
   { icon: Lightning, title: "Fast Process", description: "Automatic top-up within 3 minutes" },
   { icon: ShieldCheck, title: "Secure Payment", description: "Transactions protected with SSL encryption" },
-  { icon: Stack, title: "Wide Product Range", description: "Over 200 games and digital products" },
+  { icon: Crown, title: "Cheaper With Membership", description: "Subscribe to enjoy special discounted rates across all games with no hidden fees." },
   { icon: ChatCircleDots, title: "Customer Support", description: "Friendly support via WhatsApp & email, 24/7" },
 ];
 
