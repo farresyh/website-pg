@@ -4122,6 +4122,16 @@ Decision 1's sketched mechanism (bind a custom `Fruitcake\Cors\CorsService` whos
 - Coverage: `tests/Feature/Http/CorsConfigTest.php` — active-domain `Origin` gets `Access-Control-Allow-Origin` (preflight + actual request), unknown origin gets none, pending/suspended/failed rows get none, the list caches and flushes, `Access-Control-Allow-Credentials` never appears. Full fast suite 1617/1617.
 - The ADR-078 doc text and decision 1 keep the "rebound `CorsService`" language for the historical record; this addendum is the authority on what shipped.
 
+### PR-2 build addendum (2026-09-08) — proxy staleness
+
+Shipped as decision 2 specified, with the propagation hook covering PR-1's CORS cache too.
+
+- **`storefront/src/proxy.ts`:** `CACHE_TTL_MS` `60_000` → `15_000` (both the redirect-rule cache and the per-host verdict cache). New `PRIMARY_HOSTS` set from `NEXT_PUBLIC_PRIMARY_HOSTS` (comma-separated, lower-case) — `isKnownHost()` returns `true` for a primary host with **no backend call** (port stripped before matching, for local dev), so only a third-party custom domain hits `/api/catalog/storefront-status`.
+- **`App\Services\Affiliate\Domain\AffiliateDomainService`:** new private `propagateChange()` — `ActiveCustomDomainOrigins::flush()` (PR-1's CORS list) **and** `NextRevalidation::purge()` (the storefront Next.js Data Cache). Called from `add()`, `remove()`, `setPrimary()`, `suspendAll()`, `removeAllForDelete()`, `tearDownStuckPending()` unconditionally, and from `recheck()` **only when `status` or `is_primary` actually moved** (so the daily `app:sync-affiliate-domain-status` loop doesn't purge the storefront catalog once per domain per day for no reason). `resumeAll()` propagates via its inner `recheck()` calls.
+- No cross-Vercel-instance invalidation for the `proxy.ts` module cache — 15s is the floor, as decision 2 accepted.
+- **Deploy prerequisite:** `NEXT_PUBLIC_PRIMARY_HOSTS` must be set on the storefront's Vercel project (pair of the backend's `STOREFRONT_PRIMARY_HOSTS`, set in Forge 2026-09-06). Safe to ship before it is set — an unset value just means the primary storefront falls through to the (harmless, always-`known`) backend host check, a perf regression only, never a breakage.
+- Tests: `AffiliateDomainServiceTest` gains "a state change busts the CORS cache and purges the storefront" + "recheck with no state change does not propagate". Full fast suite 1619/1619; storefront `tsc` / lint / build clean.
+
 ---
 
 ## ADR-079: Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official SVG Logos, Denomination-vs-Pass Package Tabs, and Guest Checkout Convenience

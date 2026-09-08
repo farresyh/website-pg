@@ -5,6 +5,8 @@ namespace App\Services\Affiliate\Domain;
 use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Cache\NextRevalidation;
+use App\Services\Cors\ActiveCustomDomainOrigins;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -30,7 +32,10 @@ class AffiliateDomainService
     /** Addendum section D: a hard per-affiliate cap. */
     public const MAX_DOMAINS = 5;
 
-    public function __construct(private readonly AffiliateDomainProvider $provider) {}
+    public function __construct(
+        private readonly AffiliateDomainProvider $provider,
+        private readonly ActiveCustomDomainOrigins $corsOrigins,
+    ) {}
 
     /**
      * Portal self-serve add (addendum section D). Creates the row,
@@ -81,6 +86,7 @@ class AffiliateDomainService
         }
 
         $this->applyState($domain, $state);
+        $this->propagateChange();
 
         return $domain->refresh();
     }
@@ -112,7 +118,12 @@ class AffiliateDomainService
             throw $e;
         }
 
+        $before = [$domain->status, $domain->is_primary];
         $this->applyState($domain, $state);
+
+        if ([$domain->status, $domain->is_primary] !== $before) {
+            $this->propagateChange();
+        }
 
         return $domain->refresh();
     }
@@ -138,6 +149,8 @@ class AffiliateDomainService
         if ($wasPrimary && $affiliate !== null) {
             $this->failoverPrimary($affiliate);
         }
+
+        $this->propagateChange();
     }
 
     /**
@@ -159,6 +172,8 @@ class AffiliateDomainService
 
             $domain->forceFill(['is_primary' => true])->save();
         });
+
+        $this->propagateChange();
     }
 
     /**
@@ -172,6 +187,8 @@ class AffiliateDomainService
         $affiliate->customDomains()
             ->whereNotNull('provider_ref')
             ->update(['is_primary' => false, 'status' => AffiliateDomainStatus::Suspended]);
+
+        $this->propagateChange();
     }
 
     /**
@@ -218,6 +235,8 @@ class AffiliateDomainService
         }
 
         $affiliate->customDomains()->forceDelete();
+
+        $this->propagateChange();
     }
 
     /**
@@ -249,6 +268,26 @@ class AffiliateDomainService
         if ($affiliate !== null) {
             $this->failoverPrimary($affiliate);
         }
+
+        $this->propagateChange();
+    }
+
+    /**
+     * ADR-078 PR-2: a domain state change must reach two caches the
+     * 60s/15s TTLs would otherwise carry stale for up to a minute —
+     * this backend's active-origin CORS allow-list (ADR-078 PR-1) and
+     * the storefront's Next.js Data Cache (a suspended/removed host must
+     * stop resolving its brand; a just-verified one must start). Both
+     * are best-effort: `NextRevalidation::purge()` is a no-op when the
+     * revalidate webhook is unconfigured and a deduplicated queued job
+     * otherwise; the cache forget is a single store delete. On failure
+     * the TTLs are the backstop. No cross-Vercel-instance `proxy.ts`
+     * invalidation is attempted — its TTL (now 15s) is the floor.
+     */
+    private function propagateChange(): void
+    {
+        $this->corsOrigins->flush();
+        NextRevalidation::purge();
     }
 
     /**
