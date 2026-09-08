@@ -167,4 +167,41 @@ class SeoControllerTest extends TestCase
 
         $this->assertFalse(Cache::has('catalog.public.crawler_rules'));
     }
+
+    public function test_affiliate_seo_settings_inherits_primary_templates_with_brand_pixel_ids(): void
+    {
+        $primary = $this->primaryAffiliate();
+        AffiliateSeoSettings::query()->create([
+            'affiliate_id' => $primary->id,
+            'default_meta_title' => 'PekanGame — Top Up',
+            'meta_title_template' => 'Top Up {game_name} — {store_name}',
+            'meta_description_template' => 'Instant top-up at {store_name}',
+            'fb_pixel_id' => 'PRIMARY_FB_PIXEL',
+        ]);
+
+        $affiliate = \App\Models\Affiliate::query()->create([
+            'business_name' => 'FixFast',
+            'is_primary' => false,
+            'status' => 'active',
+            'markup_pct' => 0,
+        ]);
+        AffiliateSeoSettings::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'fb_pixel_id' => 'FIXFAST_FB_PIXEL',
+        ]);
+        \App\Models\AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'hostname' => 'fixfastapp.com',
+            'status' => \App\Services\Affiliate\AffiliateDomainStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Storefront-Host' => 'fixfastapp.com'])
+            ->getJson('/api/catalog/seo/settings');
+
+        $response->assertOk();
+        $this->assertSame('Top Up {game_name} — {store_name}', $response->json('meta_title_template'));
+        $this->assertSame('Instant top-up at {store_name}', $response->json('meta_description_template'));
+        $this->assertSame('PekanGame — Top Up', $response->json('default_meta_title'));
+        $this->assertSame('FIXFAST_FB_PIXEL', $response->json('fb_pixel_id'));
+    }
 }

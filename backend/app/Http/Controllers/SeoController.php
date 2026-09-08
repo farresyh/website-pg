@@ -39,20 +39,26 @@ class SeoController extends Controller
             "catalog.public.seo.{$affiliate->id}",
             self::CACHE_TTL_SECONDS,
             function () use ($affiliate) {
-                $settings = AffiliateSeoSettings::query()->where('affiliate_id', $affiliate->id)->first();
+                $primary = Affiliate::query()->where('is_primary', true)->first();
+                $primarySettings = $primary ? AffiliateSeoSettings::query()->where('affiliate_id', $primary->id)->first() : null;
+                $affiliateSettings = ($primary && $affiliate->id === $primary->id)
+                    ? $primarySettings
+                    : AffiliateSeoSettings::query()->where('affiliate_id', $affiliate->id)->first();
 
+                // ADR-060 addendum: pixel IDs are per-brand; meta templates,
+                // default meta, and schema toggles are admin-central on the primary.
                 return [
-                    'default_meta_title' => $settings?->default_meta_title,
-                    'default_meta_description' => $settings?->default_meta_description,
-                    'default_og_image' => $settings?->default_og_image,
-                    'meta_title_template' => $settings?->meta_title_template,
-                    'meta_description_template' => $settings?->meta_description_template,
-                    'ga_measurement_id' => $settings?->ga_measurement_id,
-                    'fb_pixel_id' => $settings?->fb_pixel_id,
-                    'tiktok_pixel_id' => $settings?->tiktok_pixel_id,
-                    'schema_organization_enabled' => $settings?->schema_organization_enabled ?? true,
-                    'schema_product_enabled' => $settings?->schema_product_enabled ?? true,
-                    'schema_breadcrumb_enabled' => $settings?->schema_breadcrumb_enabled ?? true,
+                    'default_meta_title' => $primarySettings?->default_meta_title,
+                    'default_meta_description' => $primarySettings?->default_meta_description,
+                    'default_og_image' => $primarySettings?->default_og_image,
+                    'meta_title_template' => $primarySettings?->meta_title_template,
+                    'meta_description_template' => $primarySettings?->meta_description_template,
+                    'ga_measurement_id' => $affiliateSettings?->ga_measurement_id,
+                    'fb_pixel_id' => $affiliateSettings?->fb_pixel_id,
+                    'tiktok_pixel_id' => $affiliateSettings?->tiktok_pixel_id,
+                    'schema_organization_enabled' => $primarySettings?->schema_organization_enabled ?? true,
+                    'schema_product_enabled' => $primarySettings?->schema_product_enabled ?? true,
+                    'schema_breadcrumb_enabled' => $primarySettings?->schema_breadcrumb_enabled ?? true,
                 ];
             },
         );
@@ -169,6 +175,15 @@ class SeoController extends Controller
         Cache::forget("catalog.public.seo.{$affiliateId}");
         Cache::forget("catalog.public.redirects.{$affiliateId}");
         Cache::forget("catalog.public.seo_scripts.{$affiliateId}");
+
+        $primary = Affiliate::query()->where('is_primary', true)->first();
+        if ($primary && $affiliateId === $primary->id) {
+            $otherAffiliates = Affiliate::query()->where('id', '!=', $primary->id)->pluck('id');
+            foreach ($otherAffiliates as $otherId) {
+                Cache::forget("catalog.public.seo.{$otherId}");
+            }
+        }
+
         NextRevalidation::purge(); // ADR-071 PR2 — robots.txt stays force-dynamic, not in the Next cache
     }
 

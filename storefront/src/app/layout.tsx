@@ -11,7 +11,7 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import BottomNav from "@/components/layout/BottomNav";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
-import { getSeoSettings, getSeoScripts } from "@/lib/seo";
+import { getSeoSettings, getSeoScripts, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 
 // ADR-071 PR1: `force-dynamic` removed. Branding/SEO reads now go
@@ -44,15 +44,23 @@ const jetbrainsMono = JetBrains_Mono({
 
 /**
  * ADR-029 decision 2/5: storefront-wide default meta, falling back to
- * the previous hardcoded copy when no reseller_seo_settings row (or
- * empty field) exists yet.
+ * the brand-aware copy when no reseller_seo_settings row (or empty field)
+ * exists yet. Resolves {store_name} token live against the resolved brand.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSeoSettings();
+  const [settings, branding] = await Promise.all([getSeoSettings(), getBranding()]);
+
+  const defaultTitle = settings.default_meta_title
+    ? renderTemplate(settings.default_meta_title, { store_name: branding.storeName })
+    : `${branding.storeName} — Top Up Games in Malaysia`;
+
+  const defaultDesc = settings.default_meta_description
+    ? renderTemplate(settings.default_meta_description, { store_name: branding.storeName })
+    : `Fast, secure game top-ups at ${branding.storeName}. Delivered in 3 minutes.`;
 
   return {
-    title: settings.default_meta_title || "PekanGame — Top Up Games in Malaysia",
-    description: settings.default_meta_description || "Fast, secure game top-ups. Delivered in 3 minutes.",
+    title: defaultTitle,
+    description: defaultDesc,
     openGraph: settings.default_og_image ? { images: [{ url: settings.default_og_image }] } : undefined,
   };
 }

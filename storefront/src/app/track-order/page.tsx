@@ -2,10 +2,14 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import SiteFooter from "@/components/layout/SiteFooter";
 import TrackOrderClient from "@/components/order/TrackOrderClient";
+import { getBranding } from "@/lib/branding";
 
-export const metadata: Metadata = {
-  title: "Track Order — PekanGame",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await getBranding();
+  return {
+    title: `Track Order — ${branding.storeName}`,
+  };
+}
 
 // ADR-071 PR1: no `force-dynamic`. The lookup itself is a `"use
 // client"` component (TrackOrderClient); SiteFooter's branding read is
