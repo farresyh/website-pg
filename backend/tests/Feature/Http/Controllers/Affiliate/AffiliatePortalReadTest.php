@@ -157,6 +157,9 @@ class AffiliatePortalReadTest extends TestCase
             ->assertOk()
             ->assertJsonPath('subscription.tier_name', 'Gold')
             ->assertJsonPath('subscription.status', 'grace')
+            // The tier's markup_percent is the platform's wholesale
+            // margin over cost — private, never exposed to the affiliate.
+            ->assertJsonMissingPath('subscription.wholesale_markup_percent')
             ->assertJsonCount(1, 'charge_history');
     }
 

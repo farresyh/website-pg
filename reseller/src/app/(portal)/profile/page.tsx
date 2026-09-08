@@ -69,10 +69,6 @@ function ResellerProfileView() {
             <Row label="Phone" value={profile.phone ?? "—"} />
             <Row label="Tier" value={profile.tier_name ?? "—"} />
             <Row
-              label="Markup over cost"
-              value={profile.markup_percent !== null ? `${profile.markup_percent}%` : "—"}
-            />
-            <Row
               label="Status"
               value={
                 <StatusTag severity={profile.is_active ? "success" : "danger"}>
