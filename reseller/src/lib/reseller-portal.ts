@@ -41,7 +41,6 @@ export interface ResellerProfile {
   email: string | null;
   phone: string | null;
   tier_name: string | null;
-  markup_percent: string | null;
   is_active: boolean;
 }
 
