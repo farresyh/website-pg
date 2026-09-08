@@ -42,6 +42,12 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Game</dt><dd>{order.game?.name ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Package</dt><dd>{order.package?.name ?? "—"}</dd></div>
+          <div className="flex justify-between">
+            <dt className="text-gray-500 dark:text-gray-400">Product Code (SKU)</dt>
+            <dd className="font-mono text-xs font-medium text-gray-700 dark:text-gray-300">
+              {order.supplier_product_ref ?? order.package?.supplier_package_ref ?? "—"}
+            </dd>
+          </div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Supplier</dt><dd>{order.supplier?.name ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500 dark:text-gray-400">Affiliate</dt><dd>{order.affiliate?.business_name ?? "—"}</dd></div>
           {/* ADR-074/075: only set for an order placed via the Reseller API/Bot channel — the platform's own primary affiliate above stays the storefront brand either way. */}

@@ -22,8 +22,11 @@ export interface OrderListItem {
   delivery_status: "not_started" | "processing" | "delivered" | "failed" | "needs_review" | "pending";
   payment_method: string | null;
   created_at: string;
+  paid_at?: string | null;
+  delivered_at?: string | null;
   game: { id: number; name: string } | null;
-  package: { id: number; name: string } | null;
+  package: { id: number; name: string; supplier_package_ref?: string; catalog_code?: string | null } | null;
+  supplier_product_ref?: string | null;
   // Which brand's storefront this order belongs to (always set — every
   // order has an affiliate, ADR-061) and, for a wallet order placed via
   // the Reseller API/Bot (ADR-074/075), which Reseller account placed
@@ -41,11 +44,12 @@ export interface OrderListItem {
  */
 export interface OrderResendAttempt {
   id: number;
-  package: { id: number; name: string } | null;
+  package: { id: number; name: string; supplier_package_ref?: string } | null;
   cost_price_sen: number;
   standard_selling_price_sen: number;
   price_diff_sen: number;
   outcome: "success" | "failed";
+  supplier_response?: Record<string, unknown> | null;
   note: string | null;
   triggered_by: string | null;
   created_at: string;
