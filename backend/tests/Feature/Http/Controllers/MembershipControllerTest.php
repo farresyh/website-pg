@@ -88,6 +88,42 @@ class MembershipControllerTest extends TestCase
         $this->assertSame($membership->id, $membership->id);
     }
 
+    /**
+     * ADR-080 decision 1: `me()` is the one /membership surface left
+     * un-gated — a member keeps a read-only view of their own membership
+     * and order history even after the brand's Membership toggle (or the
+     * global kill switch) goes off. Everything else 403s (covered in
+     * MembershipOtpControllerTest / MembershipSubscriptionControllerTest).
+     */
+    public function test_me_stays_reachable_when_the_brand_membership_toggle_is_off(): void
+    {
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'member@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 15000,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $token = $this->tokenFor('member@example.com');
+
+        $this->primaryAffiliate()->update(['membership_enabled' => false]);
+
+        $this->getJson('/api/membership/me', ['Authorization' => "Bearer {$token}"])
+            ->assertOk()
+            ->assertJsonPath('membership.tier_name', 'Tier 2');
+    }
+
+    public function test_me_stays_reachable_when_the_global_membership_switch_is_off(): void
+    {
+        $token = $this->tokenFor('member@example.com');
+        PlatformSettings::current()->update(['membership_enabled' => false]);
+
+        $this->getJson('/api/membership/me', ['Authorization' => "Bearer {$token}"])->assertOk();
+    }
+
     public function test_me_includes_order_history_matched_by_email(): void
     {
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);

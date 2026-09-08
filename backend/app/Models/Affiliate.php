@@ -59,6 +59,17 @@ class Affiliate extends Model
     }
 
     /**
+     * ADR-061 decision 5 / ADR-080 decision 4: consumer memberships that
+     * belong to this brand. Used for the admin `active_membership_count`
+     * that warns before Membership is turned off on a brand that still
+     * has active members.
+     */
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(Membership::class);
+    }
+
+    /**
      * ADR-060 (2026-09-06 "domain lifecycle" addendum): the custom
      * domains attached to this brand's storefront. Does NOT include the
      * primary affiliate's own hostnames — those are deploy config

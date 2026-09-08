@@ -185,9 +185,16 @@ Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])-
 // ADR-060 (2026-09-06 addendum): every membership route resolves the
 // storefront brand — the session-token brand check (MembershipController)
 // compares against the resolved brand, not always the primary.
+// ADR-080 decision 1/2: the sales & write surface (OTP send/verify,
+// subscribe-options, subscribe) is gated by `membership.enabled` —
+// listed BEFORE `throttle:*` so a disabled brand fails fast without
+// consuming a rate-limit bucket. `plans` (returns []) and `me` (a
+// member's read-only self-view) are deliberately left un-gated.
 Route::middleware('storefront.brand')->group(function () {
-    Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])->middleware('throttle:otp-request');
-    Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])->middleware('throttle:10,1,membership-verify');
+    Route::post('/membership/otp/send', [MembershipOtpController::class, 'send'])
+        ->middleware(['membership.enabled', 'throttle:otp-request']);
+    Route::post('/membership/otp/verify', [MembershipOtpController::class, 'verify'])
+        ->middleware(['membership.enabled', 'throttle:10,1,membership-verify']);
     // ADR-055 decision 3: the upsell card's tier data — public (no session
     // token), returns [] when the kill switch is off. Deliberately separate
     // from the admin-only membership-plans prefix (same controller family,
@@ -197,6 +204,10 @@ Route::middleware('storefront.brand')->group(function () {
     // Decisions 13/24/25 — the /membership dashboard's data. Auth is the
     // session token (Authorization: Bearer), not auth:sanctum — resolved
     // inside the controller itself, same reasoning as the OTP routes above.
+    // ADR-080 decision 1: intentionally NOT behind `membership.enabled` —
+    // an existing member keeps read-only visibility of their own
+    // membership state + order history even when the brand's Membership
+    // toggle (or the global kill switch) is off.
     Route::get('/membership/me', [MembershipController::class, 'me']);
 
     // ADR-068 — self-serve subscription payment. Both session-token gated
@@ -204,9 +215,10 @@ Route::middleware('storefront.brand')->group(function () {
     // limiter (registered in AppServiceProvider — keyed on the bearer
     // token, one bucket per member session, so a shared NAT can't starve
     // other members).
-    Route::get('/membership/subscribe-options', [MembershipController::class, 'subscribeOptions']);
+    Route::get('/membership/subscribe-options', [MembershipController::class, 'subscribeOptions'])
+        ->middleware('membership.enabled');
     Route::post('/membership/subscribe', [MembershipController::class, 'subscribe'])
-        ->middleware('throttle:membership-subscribe');
+        ->middleware(['membership.enabled', 'throttle:membership-subscribe']);
 });
 
 // Public game/package catalog (ADR-011) — the storefront's real data

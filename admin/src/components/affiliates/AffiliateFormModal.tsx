@@ -60,6 +60,17 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
   const [userEmail, setUserEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [acknowledgeDisable, setAcknowledgeDisable] = useState(false);
+
+  // ADR-080 decision 4: turning Membership off on a brand that still has
+  // active members cuts them off from renewing and from member pricing
+  // (their login and dashboard are gated too once their session lapses).
+  // Warn + require an explicit acknowledgement; do not hard-block. Catches
+  // both routes to a false save — unticking "Enable consumer Membership"
+  // and unticking "Our own brand" (which forces `isOwned && membershipEnabled`).
+  const activeMemberCount = editing?.active_membership_count ?? 0;
+  const willDisableMembershipWithMembers =
+    isEditing && (editing?.membership_enabled ?? false) && !(isOwned && membershipEnabled) && activeMemberCount > 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +85,10 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
     }
     if (maxMarkup !== null && (!Number.isFinite(maxMarkup) || maxMarkup < markup)) {
       setError("Max markup % must be a number no lower than markup %.");
+      return;
+    }
+    if (willDisableMembershipWithMembers && !acknowledgeDisable) {
+      setError(`Tick the acknowledgement below — ${activeMemberCount} active member${activeMemberCount === 1 ? "" : "s"} will lose access.`);
       return;
     }
 
@@ -187,6 +202,17 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
             <p className="mt-2 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/15 dark:text-warning-400">
               Until you tick the box above, this storefront shows standard pricing only — member prices and the <code>/membership</code> section stay hidden, even with the global membership switch on (ADR-061 makes Membership a per-brand opt-in).
             </p>
+          )}
+          {willDisableMembershipWithMembers && (
+            <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-theme-xs text-error-700 dark:bg-error-500/15 dark:text-error-400">
+              <p>
+                <strong>{activeMemberCount} active member{activeMemberCount === 1 ? "" : "s"}</strong> {activeMemberCount === 1 ? "belongs" : "belong"} to this brand. Turning Membership off stops them renewing and removes member pricing; once their session lapses they can no longer sign in to <code>/membership</code>. Existing memberships are left to expire — there is no automatic refund. Handle any refund manually.
+              </p>
+              <label className="mt-2 flex items-center gap-2 font-medium">
+                <input type="checkbox" checked={acknowledgeDisable} onChange={(e) => setAcknowledgeDisable(e.target.checked)} />
+                I understand — turn Membership off for this brand
+              </label>
+            </div>
           )}
         </div>
 

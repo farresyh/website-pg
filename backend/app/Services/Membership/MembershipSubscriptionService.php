@@ -110,6 +110,20 @@ final class MembershipSubscriptionService
      */
     public function completePaidAttempt(MembershipCheckoutAttempt $attempt): void
     {
+        // ADR-080 decision 5: the subscribe -> brand-disabled -> webhook
+        // race. The payment is honoured (the member paid in good faith
+        // while the brand was still enabled), so this does NOT re-check
+        // `membershipEnabledEffective()` — the resulting membership just
+        // becomes one of decision 4's "active member on a disabled
+        // brand". Log it so the rare race is visible, not silent.
+        if ($attempt->affiliate !== null && ! $attempt->affiliate->membershipEnabledEffective()) {
+            Log::warning('Completing a paid membership attempt on a brand whose Membership is no longer enabled', [
+                'subscription_number' => $attempt->subscription_number,
+                'affiliate_id' => $attempt->affiliate_id,
+                'email' => $attempt->email,
+            ]);
+        }
+
         $this->membershipFees->recordFeePaid(
             $attempt->affiliate_id,
             $attempt->email,

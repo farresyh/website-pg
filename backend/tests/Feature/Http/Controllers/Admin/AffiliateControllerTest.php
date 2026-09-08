@@ -6,6 +6,8 @@ use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateUser;
+use App\Models\Membership;
+use App\Models\MembershipPlan;
 use App\Models\Withdrawal;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Affiliate\AffiliateSubscriptionService;
@@ -89,6 +91,35 @@ class AffiliateControllerTest extends TestCase
         $response->assertJsonPath('affiliates.0.earnings_balance_sen', 12345);
         $response->assertJsonPath('affiliates.0.subscription.tier_name', 'Silver');
         $response->assertJsonPath('affiliates.0.subscription.status', 'active');
+    }
+
+    public function test_index_and_show_carry_the_active_membership_count(): void
+    {
+        // ADR-080 decision 4: the affiliate form warns before Membership
+        // is turned off on a brand that still has active members.
+        $this->actAsSuperAdmin();
+        $brand = $this->affiliate(['business_name' => 'Zeta Owned', 'is_owned' => true, 'membership_enabled' => true]);
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+
+        foreach (['active', 'active', 'expired'] as $i => $status) {
+            Membership::query()->create([
+                'affiliate_id' => $brand->id,
+                'email' => "m{$i}@example.com",
+                'membership_plan_id' => $plan->id,
+                'status' => $status,
+                'cycle_started_at' => now(),
+                'quota_remaining_sen' => 1000,
+                'expires_at' => now()->addDays(10),
+            ]);
+        }
+
+        $row = collect($this->getJson('/api/affiliates')->assertOk()->json('affiliates'))
+            ->firstWhere('id', $brand->id);
+        $this->assertSame(2, $row['active_membership_count']);
+
+        $this->getJson("/api/affiliates/{$brand->id}")
+            ->assertOk()
+            ->assertJsonPath('affiliate.active_membership_count', 2);
     }
 
     public function test_store_creates_affiliate_first_user_and_sends_invite(): void
