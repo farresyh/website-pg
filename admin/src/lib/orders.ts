@@ -61,16 +61,10 @@ export interface OrderDetail extends OrderListItem {
   cost_price: number;
   standard_selling_price: number;
   affiliate_markup_pct: string;
+  wholesale_markup_pct?: string | null;
   voucher_discount: number | null;
   affiliate_profit: number;
-  // ADR-027 Phase 6: pricing_basis="member" only when a session-
-  // recognized membership applied at checkout (quota-sufficient) —
-  // member_discount_percent/normal_selling_price/membership stay null
-  // otherwise. `membership.email` is the *member's* own identity
-  // (resolved from their session token) — can genuinely differ from
-  // `customer_email` above (the checkout contact form), e.g. a member
-  // checking out on someone else's behalf.
-  pricing_basis: "standard" | "member" | "reseller-wallet";
+  pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate";
   member_discount_percent: string | null;
   normal_selling_price: number | null;
   membership: { id: number; email: string; membership_plan: { name: string } } | null;
