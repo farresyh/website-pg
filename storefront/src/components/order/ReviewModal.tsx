@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
@@ -409,6 +410,18 @@ export default function ReviewModal({
                 ? "Confirm — Fully Covered by Voucher"
                 : `Confirm & Pay RM${payableRm.toFixed(2)}`}
           </Button>
+
+          <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-on-surface-variant">
+            <span>Secured via</span>
+            <Image
+              src="/images/chip/powered-by-chip-long.svg"
+              alt="Powered by CHIP"
+              width={100}
+              height={16}
+              className="h-3.5 w-auto object-contain"
+            />
+            <span>• Bank Negara Malaysia compliant</span>
+          </div>
         </div>
       </div>
     </div>
