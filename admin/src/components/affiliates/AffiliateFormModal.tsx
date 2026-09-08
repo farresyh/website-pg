@@ -183,6 +183,11 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
               <span className="text-theme-xs text-gray-400">(also needs the global membership switch on)</span>
             </label>
           )}
+          {isOwned && !membershipEnabled && (
+            <p className="mt-2 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/15 dark:text-warning-400">
+              Until you tick the box above, this storefront shows standard pricing only — member prices and the <code>/membership</code> section stay hidden, even with the global membership switch on (ADR-061 makes Membership a per-brand opt-in).
+            </p>
+          )}
         </div>
 
         {!isEditing && (
