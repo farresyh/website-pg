@@ -4108,6 +4108,20 @@ ADR-060 PR-1…PR-6 shipped to production 2026-09-06/07 and the founder attached
 - **Deleting `welcome.blade.php` and swapping the root route** — confirm nothing (a health check, an uptime monitor, a load balancer probe) depends on `GET /` returning 200 HTML; the JSON 200 should satisfy all of them, but check the DO uptime check and Forge's own.
 - **If `route:cache` was silently failing before** — enabling it may surface a latent route-definition problem (a duplicate name, a stale cache). Run `php artisan route:cache` locally as part of PR-3 and in CI to catch it before deploy.
 
+### PR-1 build addendum (2026-09-08) — mechanism changed from "rebound `CorsService`" to a prepended middleware
+
+Decision 1's sketched mechanism (bind a custom `Fruitcake\Cors\CorsService` whose `allowedOrigins` includes the DB-backed list) does not work against Laravel's own `HandleCors`:
+
+- `Illuminate\Http\Middleware\HandleCors::handle()` calls `$this->cors->setOptions($config['cors'])` **unconditionally on every request whose path matches `cors.paths`** — overwriting anything a rebound service pre-computed at bind time.
+- Overriding `setOptions()` to re-merge the dynamic origins there *does* survive that call, but `setOptions()` has no `Request`, so it cannot tell a real CORS request (has `Origin`) from a plain one — every `api/*` request would then do the (cached, but cache-missable) `affiliate_domains` read, including health checks and server-to-server calls. Two suites that make HTTP calls without migrating the DB (`ExampleTest`, `TrustedProxiesTest`) failed outright on the missing table.
+
+**Built instead:** `App\Http\Middleware\AllowActiveCustomDomainCors`, `prepend`ed to the global stack so it runs before `HandleCors`. It reads the `Origin` header; if present and not already a configured first-party origin, and it matches the active custom-domain list, it appends that one origin to `config('cors.allowed_origins')` for the request. `HandleCors` then reads the mutated config as normal. A request with no `Origin` does zero work and never touches the cache or DB.
+
+- `App\Services\Cors\ActiveCustomDomainOrigins` — `all()` returns `https://{hostname}` for every `AffiliateDomainStatus::Active` row (`withoutAffiliateScope()`), `Cache::remember`'d 60 s (Redis in prod, ADR-077); `flush()` busts it. **PR-2 wires `flush()` into `AffiliateDomainService` at every state change** (alongside the `NextRevalidation::purge()` call that PR is already adding) — until then the 60 s TTL is the only freshness bound, acceptable for domain onboarding.
+- `supports_credentials` stays `false` (untouched — the merge only ever *adds* an origin string).
+- Coverage: `tests/Feature/Http/CorsConfigTest.php` — active-domain `Origin` gets `Access-Control-Allow-Origin` (preflight + actual request), unknown origin gets none, pending/suspended/failed rows get none, the list caches and flushes, `Access-Control-Allow-Credentials` never appears. Full fast suite 1617/1617.
+- The ADR-078 doc text and decision 1 keep the "rebound `CorsService`" language for the historical record; this addendum is the authority on what shipped.
+
 ---
 
 ## ADR-079: Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official SVG Logos, Denomination-vs-Pass Package Tabs, and Guest Checkout Convenience
