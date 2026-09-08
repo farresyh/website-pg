@@ -222,7 +222,7 @@ export default function SandboxOrdersPage() {
           </div>
 
           <OrderDetailCards order={selected} />
-          <DeliveryLogsTable attempts={selected.resend_attempts} />
+          <DeliveryLogsTable order={selected} attempts={selected.resend_attempts} />
         </div>
 
         {session && (
