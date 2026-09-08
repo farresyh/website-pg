@@ -14,7 +14,31 @@ import type { NextRequest } from "next/server";
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
-const CACHE_TTL_MS = 60_000;
+
+/**
+ * ADR-078 decision 2 — 60s → 15s. Both the redirect-rule cache and the
+ * per-host verdict cache below tolerate a 15s lag (a newly added SEO
+ * redirect, a just-verified or just-suspended custom domain), and the
+ * extra backend call — one per 15s per Vercel Node instance — is
+ * negligible. The backend busts the Next.js Data Cache on every domain
+ * change (`AffiliateDomainService`), but there is no cross-instance
+ * invalidation for this module cache, so 15s is the floor.
+ */
+const CACHE_TTL_MS = 15_000;
+
+/**
+ * ADR-078 decision 2 — the primary storefront hostname(s). A request on
+ * one of these is a known host with no backend round-trip: only a
+ * third-party custom domain (ADR-060) needs `/api/catalog/storefront-status`.
+ * Comma-separated, lower-case, no scheme; must stay in sync with the
+ * backend's `STOREFRONT_PRIMARY_HOSTS`.
+ */
+const PRIMARY_HOSTS = new Set(
+  (process.env.NEXT_PUBLIC_PRIMARY_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
+);
 
 interface RedirectRule {
   from_path: string;
@@ -36,6 +60,13 @@ let cachedAt = 0;
 const hostStatus = new Map<string, { known: boolean; at: number }>();
 
 async function isKnownHost(host: string): Promise<boolean> {
+  // The primary storefront — the overwhelming majority of traffic —
+  // never needs the backend host check (ADR-078 decision 2). Strip any
+  // port before matching (local dev sends `host:3001`).
+  if (PRIMARY_HOSTS.has(host.toLowerCase().split(":")[0])) {
+    return true;
+  }
+
   const cached = hostStatus.get(host);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.known;
