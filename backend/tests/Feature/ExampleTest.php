@@ -2,18 +2,19 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
     /**
-     * A basic test example.
+     * The backend root (ADR-078 decision 4): a flat JSON identity, no
+     * Blade / no `route()` / no closure — so it can never throw
+     * `RouteNotFoundException` and never blocks `route:cache`.
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_the_root_returns_a_json_identity(): void
     {
-        $response = $this->get('/');
-
-        $response->assertStatus(200);
+        $this->get('/')
+            ->assertOk()
+            ->assertExactJson(['service' => 'PekanGame API', 'status' => 'ok']);
     }
 }

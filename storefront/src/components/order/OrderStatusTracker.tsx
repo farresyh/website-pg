@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, WhatsappLogo, GameController, User, CreditCard } from "@phosphor-icons/react/dist/ssr";
+import { Check, Copy, WhatsappLogo, GameController, User, CreditCard } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
 import { getEcho } from "@/lib/echo";
 import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
@@ -93,10 +93,15 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const watchStartedAt = useRef(0);
-  // ADR-053 decision 4 — closing without submitting only suppresses the
-  // popup for the rest of THIS page view; has_review (server-truth, not
-  // this flag) is what decides whether it shows again on a later visit.
   const [rateModalDismissed, setRateModalDismissed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!order?.order_number) return;
+    void navigator.clipboard?.writeText(order.order_number);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -214,7 +219,27 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
               <p className="text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">
                 Order Reference Number
               </p>
-              <p className="font-mono text-base font-bold text-primary">{order.order_number}</p>
+              <div className="mt-0.5 flex items-center gap-2">
+                <p className="font-mono text-base font-bold text-primary">{order.order_number}</p>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="inline-flex items-center gap-1 rounded border border-ink/40 bg-surface-container px-2 py-0.5 font-display text-[11px] font-bold text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+                  aria-label="Copy order reference number"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={12} weight="bold" className="text-success" />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} weight="bold" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
             <div className="flex gap-2">
               <StatusBadge type="payment" status={order.payment_status} />
@@ -291,11 +316,19 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           Contact our Customer Support team directly via WhatsApp for a manual check
           {hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
         </p>
-        {whatsappHref && (
-          <Button href={whatsappHref} className="justify-center">
-            <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
-          </Button>
-        )}
+        {whatsappHref && (() => {
+          const supportText = encodeURIComponent(
+            `Salam support PekanGame, saya perlukan bantuan untuk order ${order.order_number} (${order.game?.name ?? "Top Up"}).`
+          );
+          const contextualWhatsappHref = whatsappHref.includes("?")
+            ? `${whatsappHref}&text=${supportText}`
+            : `${whatsappHref}?text=${supportText}`;
+          return (
+            <Button href={contextualWhatsappHref} className="justify-center">
+              <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
+            </Button>
+          );
+        })()}
         {order.game && (
           <Button href={`/order/${order.game.slug}`} variant="outline" className="justify-center">
             Buy Again

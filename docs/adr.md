@@ -4107,3 +4107,98 @@ ADR-060 PR-1…PR-6 shipped to production 2026-09-06/07 and the founder attached
 - **`AffiliateDomainService::purge()` is a new backend→storefront coupling** — same failure mode as ADR-071's revalidate webhook: if it fails silently, staleness falls back to the (now 15 s) proxy TTL and the 30 s Data-Cache backstop. Greppable log line.
 - **Deleting `welcome.blade.php` and swapping the root route** — confirm nothing (a health check, an uptime monitor, a load balancer probe) depends on `GET /` returning 200 HTML; the JSON 200 should satisfy all of them, but check the DO uptime check and Forge's own.
 - **If `route:cache` was silently failing before** — enabling it may surface a latent route-definition problem (a duplicate name, a stale cache). Run `php artisan route:cache` locally as part of PR-3 and in CI to catch it before deploy.
+
+### PR-1 build addendum (2026-09-08) — mechanism changed from "rebound `CorsService`" to a prepended middleware
+
+Decision 1's sketched mechanism (bind a custom `Fruitcake\Cors\CorsService` whose `allowedOrigins` includes the DB-backed list) does not work against Laravel's own `HandleCors`:
+
+- `Illuminate\Http\Middleware\HandleCors::handle()` calls `$this->cors->setOptions($config['cors'])` **unconditionally on every request whose path matches `cors.paths`** — overwriting anything a rebound service pre-computed at bind time.
+- Overriding `setOptions()` to re-merge the dynamic origins there *does* survive that call, but `setOptions()` has no `Request`, so it cannot tell a real CORS request (has `Origin`) from a plain one — every `api/*` request would then do the (cached, but cache-missable) `affiliate_domains` read, including health checks and server-to-server calls. Two suites that make HTTP calls without migrating the DB (`ExampleTest`, `TrustedProxiesTest`) failed outright on the missing table.
+
+**Built instead:** `App\Http\Middleware\AllowActiveCustomDomainCors`, `prepend`ed to the global stack so it runs before `HandleCors`. It reads the `Origin` header; if present and not already a configured first-party origin, and it matches the active custom-domain list, it appends that one origin to `config('cors.allowed_origins')` for the request. `HandleCors` then reads the mutated config as normal. A request with no `Origin` does zero work and never touches the cache or DB.
+
+- `App\Services\Cors\ActiveCustomDomainOrigins` — `all()` returns `https://{hostname}` for every `AffiliateDomainStatus::Active` row (`withoutAffiliateScope()`), `Cache::remember`'d 60 s (Redis in prod, ADR-077); `flush()` busts it. **PR-2 wires `flush()` into `AffiliateDomainService` at every state change** (alongside the `NextRevalidation::purge()` call that PR is already adding) — until then the 60 s TTL is the only freshness bound, acceptable for domain onboarding.
+- `supports_credentials` stays `false` (untouched — the merge only ever *adds* an origin string).
+- Coverage: `tests/Feature/Http/CorsConfigTest.php` — active-domain `Origin` gets `Access-Control-Allow-Origin` (preflight + actual request), unknown origin gets none, pending/suspended/failed rows get none, the list caches and flushes, `Access-Control-Allow-Credentials` never appears. Full fast suite 1617/1617.
+- The ADR-078 doc text and decision 1 keep the "rebound `CorsService`" language for the historical record; this addendum is the authority on what shipped.
+
+### PR-2 build addendum (2026-09-08) — proxy staleness
+
+Shipped as decision 2 specified, with the propagation hook covering PR-1's CORS cache too.
+
+- **`storefront/src/proxy.ts`:** `CACHE_TTL_MS` `60_000` → `15_000` (both the redirect-rule cache and the per-host verdict cache). New `PRIMARY_HOSTS` set from `NEXT_PUBLIC_PRIMARY_HOSTS` (comma-separated, lower-case) — `isKnownHost()` returns `true` for a primary host with **no backend call** (port stripped before matching, for local dev), so only a third-party custom domain hits `/api/catalog/storefront-status`.
+- **`App\Services\Affiliate\Domain\AffiliateDomainService`:** new private `propagateChange()` — `ActiveCustomDomainOrigins::flush()` (PR-1's CORS list) **and** `NextRevalidation::purge()` (the storefront Next.js Data Cache). Called from `add()`, `remove()`, `setPrimary()`, `suspendAll()`, `removeAllForDelete()`, `tearDownStuckPending()` unconditionally, and from `recheck()` **only when `status` or `is_primary` actually moved** (so the daily `app:sync-affiliate-domain-status` loop doesn't purge the storefront catalog once per domain per day for no reason). `resumeAll()` propagates via its inner `recheck()` calls.
+- No cross-Vercel-instance invalidation for the `proxy.ts` module cache — 15s is the floor, as decision 2 accepted.
+- **Deploy prerequisite:** `NEXT_PUBLIC_PRIMARY_HOSTS` must be set on the storefront's Vercel project (pair of the backend's `STOREFRONT_PRIMARY_HOSTS`, set in Forge 2026-09-06). Safe to ship before it is set — an unset value just means the primary storefront falls through to the (harmless, always-`known`) backend host check, a perf regression only, never a breakage.
+- Tests: `AffiliateDomainServiceTest` gains "a state change busts the CORS cache and purges the storefront" + "recheck with no state change does not propagate". Full fast suite 1619/1619; storefront `tsc` / lint / build clean.
+
+### PR-3 build addendum (2026-09-08) — admin `is_owned` warning + root route
+
+**Decision 3 — `is_owned` membership signposting.** `admin/src/components/affiliates/AffiliateFormModal.tsx` already had the `is_owned` block with the "Enable consumer Membership" checkbox inline. Added: when `is_owned` is on **and** `membership_enabled` is off, an inline amber note — *"this storefront shows standard pricing only — member prices and the `/membership` section stay hidden, even with the global membership switch on (ADR-061 makes Membership a per-brand opt-in)"*. Default stays `false`; `fixfastapp.com` left as-is. No other change.
+
+**Decision 4 — root route.** New invokable `App\Http\Controllers\ApiRootController` returning `response()->json(['service' => 'PekanGame API', 'status' => 'ok'])`. `routes/web.php` `GET /` points at it; `resources/views/welcome.blade.php` deleted. `ExampleTest` now asserts the JSON contract instead of "200 HTML". `HealthController` (the DB+queue probe at `/api/health`) is untouched — this route depends on nothing.
+
+- **Correction to the decision's premise:** `php artisan route:cache` does **not** currently throw on this Laravel version — a closure `GET /` route serialises fine via `Laravel\SerializableClosure` (verified locally before and after the change). The `RouteNotFoundException` from `welcome.blade.php`'s guarded `route('login')` path on bot traffic is the real, reproduced motivation; removing the Blade view also removes the only closure/`route()` call from `routes/web.php`, so the change still stands on cleanliness grounds — just not because `route:cache` was broken.
+- Nothing depends on `GET /` returning HTML: the DO uptime check + Forge health probe target `/up` (framework health route) and `/api/health`; a JSON 200 satisfies a plain reachability probe too.
+- `php artisan route:cache` run clean locally; CI's existing steps cover it on deploy.
+
+---
+
+## ADR-079: Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official SVG Logos, Denomination-vs-Pass Package Tabs, and Guest Checkout Convenience
+
+**Status:** Shipped — 2026-09-08, commit `52af736` on `feature/adr-079-storefront-polish`.
+
+**Context:**
+Following the storefront visual redesign (ADR-063/ADR-064) and production deployment on `pekangame.space`, a comprehensive UI/UX audit identified conversion friction and design gaps:
+1. `ProductHeaderCard.tsx` on `/order/[slug]` hardcoded a 64×64px initial letter box (`game.name.charAt(0)`), completely ignoring `game.imageUrl` even when an image was uploaded in admin and returned by the public API.
+2. `SiteHeader.tsx` on desktop contained duplicate "Track Order" links side-by-side (one text link in `<nav>`, one primary `<Button>`).
+3. `PaymentMethodsSection.tsx` and `SiteFooter.tsx` consumed static mock arrays from `placeholder-data.ts` (showing TnG, GrabPay, Card) even when only FPX was active in the database. Furthermore, payment channels in checkout (Step 3) rendered as plain text buttons with no official brand logos, degrading buyer trust.
+4. Games with dozens of packages (e.g. Mobile Legends with 60+ packages) rendered a flat list. High-margin, highly sought-after recurring packages (Weekly Diamond Pass, Twilight Pass) were buried among numerical denominations.
+5. In `ReviewModal.tsx`, `customer_name` and `customer_phone` are strictly mandatory (CHIP payment gateway requires full name for FPX; Gamevion requires phone for automated fulfillment). However, guest users had to re-type these on every purchase.
+6. The homepage `QuickCounterCard` required selecting a tile and then clicking a separate button; 1-click direct navigation is faster and more intuitive.
+7. The order status tracker lacked a 1-click clipboard copy button for `order_number` and WhatsApp support links lacked pre-filled order context.
+
+**Decision:**
+
+1. **`ProductHeaderCard.tsx` artwork:** Render `game.imageUrl` inside the 64×64px rounded border frame (`neo-sm`) using `next/image`. Fall back to the stylized initial letter only when `imageUrl` is null.
+2. **Desktop Header cleanup:** Remove the duplicate `<Link href="/track-order">Track Order</Link>` from the desktop `<nav>`, keeping the primary CTA `<Button>Track Order</Button>` intact.
+3. **Dynamic Payment Methods & Official SVG Brand Logos:**
+   - Wire `PaymentMethodsSection` and `SiteFooter` to `listPaymentChannels()` so they display only active channels (`is_active = true`), matching the checkout behavior.
+   - Build a shared `PaymentChannelIcon` component in `storefront/src/components/icons/` with official, optimized SVGs for Malaysian payment brands (`chip_fpx` / FPX, `chip_touchngo` / Touch 'n Go eWallet, `chip_duitnow_qr` / DuitNow QR, `chip_grabpay` / GrabPay, and generic Card / Visa / Mastercard).
+   - In Step 3 (`OrderForm.tsx`), render these brand badges inside the channel selection tiles.
+4. **Denomination vs. Pass Package Tabs:**
+   - In backend `CatalogController::publicPackage()`, expose `has_denomination` (`$package->denomination !== null`) and `has_catalog_code` (`$package->catalog_code !== null`).
+   - In `storefront/src/components/order/PackageGrid.tsx`, implement a 3-tab filter:
+     - **"All"** (default) — all packages.
+     - **"Direct Top Up"** — packages where `hasDenomination === true`.
+     - **"Pass"** — packages where `hasCatalogCode === true`.
+   - The "Pass" tab is rendered only if at least one package has `hasCatalogCode === true`. The 12-item cut-off with "Show all" toggle is preserved for lengthy lists.
+5. **Guest Checkout Convenience & Security:**
+   - In `ReviewModal.tsx`, retain `customer_name`, `customer_email`, and `customer_phone` as mandatory fields to satisfy CHIP and Gamevion.
+   - Add a client-side "Remember my details" option using browser `localStorage` (zero server/database load). On subsequent checkouts, fields are prefilled automatically.
+   - Add reassuring micro-copy clarifying that name and phone are required for banking and WhatsApp delivery receipts.
+   - Retain the explicit manual Terms & Conditions tickbox per founder's instruction.
+6. **Quick Top-Up 1-Click Navigation:**
+   - Tapping a game tile in `QuickCounterCard.tsx` immediately routes to `/order/${game.slug}`, eliminating the secondary button click.
+7. **Order Status Polish:**
+   - In `OrderStatusTracker.tsx`, add a 1-click "Copy" button next to `order_number` with an immediate "Copied!" visual cue.
+   - Enhance the WhatsApp support link with pre-filled message text including the order number and game name.
+
+**Rationale:**
+- Displaying actual game artwork immediately establishes platform credibility and matches the founder's catalog updates.
+- Dynamic payment methods prevent storefront-gateway divergence, and official SVG logos provide high conversion trust for Malaysian gamers without admin upload overhead or asset distortion.
+- Differentiating between standard currency and passes/bundles organizes dense catalogs into immediate user intent without requiring complex database schema changes.
+- Client-side `localStorage` persistence creates a seamless "faster checkout" experience for repeat guests without touching backend database state.
+- Preserving the manual T&C tickbox maintains strict legal acknowledgment as requested by the founder.
+
+**Consequence to track:**
+- Backend `CatalogController::publicPackage()` gains two lightweight boolean keys; update `CatalogPackageWireSchema` in storefront Zod types.
+- Ensure `localStorage` access is wrapped in `try/catch` and guarded against SSR hydration mismatch.
+- Keep `docs/prd.md` §14 and §15 updated upon shipping.
+
+### Shipped Addendum (2026-09-08)
+Shipped in full on `feature/adr-079-storefront-polish`:
+- **Backend:** `CatalogController::publicPackage()` exposes `has_denomination` & `has_catalog_code`. Full test suite passing (1,610/1,610 green; `CatalogControllerTest` coverage added).
+- **Storefront:** `ProductHeaderCard` artwork rendering, `SiteHeader` nav link cleanup, `PaymentMethodsSection` & `SiteFooter` dynamic channels with `PaymentIcons` SVG badges, `PackageGrid` 3 tabs with collapse toggle, `ReviewModal` client-side `localStorage` contact persistence + reassuring copy + mandatory T&C, `QuickCounterCard` 1-click navigation, `OrderStatusTracker` 1-click order-number copy + contextual WhatsApp assistance. Clean `tsc`, `lint`, and `build` (Turbopack).
+
+

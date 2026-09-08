@@ -2,12 +2,16 @@
 
 namespace Tests\Feature\Affiliate;
 
+use App\Jobs\PurgeNextCatalogCache;
 use App\Models\Affiliate;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Affiliate\Domain\AffiliateDomainProvider;
 use App\Services\Affiliate\Domain\AffiliateDomainService;
 use App\Services\Affiliate\Domain\DomainProviderException;
+use App\Services\Cors\ActiveCustomDomainOrigins;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\FakeAffiliateDomainProvider;
 use Tests\TestCase;
@@ -233,5 +237,37 @@ class AffiliateDomainServiceTest extends TestCase
         $this->assertSame(AffiliateDomainStatus::Failed, $domain->status);
         $this->assertNull($domain->provider_ref);
         $this->assertSame(1, $this->provider->opCount('detach'));
+    }
+
+    public function test_a_state_change_busts_the_cors_cache_and_purges_the_storefront(): void
+    {
+        config([
+            'services.next.revalidate_url' => 'https://store.example/api/revalidate',
+            'services.next.revalidate_secret' => 'shhh',
+        ]);
+        Queue::fake();
+
+        $affiliate = $this->affiliate();
+        Cache::put(ActiveCustomDomainOrigins::CACHE_KEY, ['https://stale.example'], 60);
+
+        $this->provider->markVerified('shop.acme.com');
+        $this->service->add($affiliate, 'shop.acme.com');
+
+        $this->assertTrue(Cache::missing(ActiveCustomDomainOrigins::CACHE_KEY));
+        Queue::assertPushed(PurgeNextCatalogCache::class);
+    }
+
+    public function test_recheck_with_no_state_change_does_not_propagate(): void
+    {
+        $affiliate = $this->affiliate();
+        $this->provider->markVerified('shop.acme.com');
+        $domain = $this->service->add($affiliate, 'shop.acme.com');
+
+        Cache::put(ActiveCustomDomainOrigins::CACHE_KEY, ['https://cached.example'], 60);
+
+        // Still active, nothing moved — the cache survives.
+        $this->service->recheck($domain);
+
+        $this->assertTrue(Cache::has(ActiveCustomDomainOrigins::CACHE_KEY));
     }
 }

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Lightning } from "@phosphor-icons/react/dist/ssr";
 import type { Game } from "@/lib/catalog";
 
@@ -5,13 +6,17 @@ export default function ProductHeaderCard({ game }: { game: Game }) {
   return (
     <div className="mb-6 flex items-center gap-5 rounded-lg border-2 border-ink bg-surface-container-lowest p-5 neo">
       <div
-        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border-2 border-ink bg-surface-variant"
+        className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border-2 border-ink bg-surface-variant neo-sm"
         style={{
           backgroundImage:
             "repeating-linear-gradient(45deg, transparent, transparent 9px, rgb(25 25 47 / 0.05) 9px, rgb(25 25 47 / 0.05) 10px)",
         }}
       >
-        <span className="font-display text-2xl font-bold text-ink/70">{game.name.charAt(0).toUpperCase()}</span>
+        {game.imageUrl ? (
+          <Image src={game.imageUrl} alt={game.name} fill className="object-cover" sizes="64px" priority />
+        ) : (
+          <span className="font-display text-2xl font-bold text-ink/70">{game.name.charAt(0).toUpperCase()}</span>
+        )}
       </div>
       <div>
         <h1 className="font-display text-xl font-bold uppercase tracking-tight lg:text-2xl">{game.name}</h1>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\ResolveStorefrontBrand;
@@ -28,6 +29,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // ADR-078 decision 1: runs before the framework's HandleCors
+        // (prepended to the global stack) so it can add an active custom
+        // affiliate-domain (ADR-060) to `cors.allowed_origins` for this
+        // request. Gated on the `Origin` header — a non-CORS request does
+        // no work. See the middleware's own doc comment for why this is
+        // not a rebound CorsService.
+        $middleware->prepend(AllowActiveCustomDomainCors::class);
+
         // Production is Laravel Forge (native nginx → php-fpm, ADR-066) with
         // Cloudflare proxying `api.pekangame.space` (ADR-020 decision 8 /
         // the 2026-09-06 Cloudflare cutover). The immediate peer nginx sees

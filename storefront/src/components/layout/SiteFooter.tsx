@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, WhatsAppIcon } from "@/components/icons/SocialIcons";
+import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
 import Logo from "@/components/ui/Logo";
-import { PAYMENT_METHODS } from "@/lib/placeholder-data";
+import { listPaymentChannels } from "@/lib/payment-methods";
 import { getBranding } from "@/lib/branding";
 import { resolveWhatsappHref } from "@/lib/whatsapp";
 
@@ -19,9 +20,12 @@ const SOCIAL_ICONS = [
  * list. An async Server Component (not a page-level export) rendering
  * its own data is simpler here than prop-drilling branding through
  * every one of this component's 4 call sites.
+ *
+ * ADR-079: Payment channels are dynamically loaded via listPaymentChannels()
+ * to reflect real active gateways (is_active=true) with official SVG badges.
  */
 export default async function SiteFooter() {
-  const branding = await getBranding();
+  const [branding, paymentChannels] = await Promise.all([getBranding(), listPaymentChannels()]);
   const currentYear = new Date().getFullYear();
   // WhatsApp falls back to a wa.me link built from `support_phone` when
   // no explicit `social_links.whatsapp` URL is set (ADR-071 PR0).
@@ -99,13 +103,27 @@ export default async function SiteFooter() {
         </div>
 
         <div className="mb-5 border-t-2 border-ink pt-5">
-          <p className="mb-2.5 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">Local Payment Methods Available</p>
-          <div className="flex flex-wrap gap-2.5">
-            {PAYMENT_METHODS.map((method) => (
-              <span key={method} className="rounded-md border-2 border-ink bg-surface-container-lowest px-3.5 py-2 text-[12.5px] font-display font-bold">
-                {method}
-              </span>
-            ))}
+          <p className="mb-2.5 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
+            Available Payment Methods
+          </p>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {paymentChannels.length > 0 ? (
+              paymentChannels.map((channel) => (
+                <span
+                  key={channel.channelCode}
+                  className="inline-flex items-center gap-2 rounded-md border-2 border-ink bg-surface-container-lowest px-3 py-1.5 font-display text-[12px] font-bold neo-sm"
+                >
+                  <PaymentChannelIcon
+                    channelCode={channel.channelCode}
+                    category={channel.category}
+                    className="h-4 w-auto shrink-0"
+                  />
+                  <span>{channel.label}</span>
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-on-surface-variant">Online Banking (FPX)</span>
+            )}
           </div>
         </div>
 

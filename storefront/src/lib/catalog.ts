@@ -59,6 +59,8 @@ const CatalogPackageWireSchema = z.object({
    * correctly at Tier 1 — see CatalogController::publicPackage().
    */
   member_price_personalized: z.boolean().optional(),
+  has_denomination: z.boolean().optional(),
+  has_catalog_code: z.boolean().optional(),
 });
 
 type CatalogPackageWire = z.infer<typeof CatalogPackageWireSchema>;
@@ -96,6 +98,10 @@ export interface GamePackage {
   memberPriceRm?: number;
   /** True only when `memberPriceRm` is this specific customer's real tier price, safe to use as a payable total. */
   memberPricePersonalized?: boolean;
+  /** ADR-079: true when package has a numeric denomination (direct currency) */
+  hasDenomination?: boolean;
+  /** ADR-079: true when package has a catalog code (pass / bundle / special) */
+  hasCatalogCode?: boolean;
 }
 
 function toGame(wire: CatalogGameWire): Game {
@@ -131,6 +137,8 @@ function toPackage(wire: CatalogPackageWire): GamePackage {
     priceRm: wire.selling_price_sen / 100,
     memberPriceRm: wire.member_price_sen != null ? wire.member_price_sen / 100 : undefined,
     memberPricePersonalized: wire.member_price_personalized === true,
+    hasDenomination: wire.has_denomination === true,
+    hasCatalogCode: wire.has_catalog_code === true,
   };
 }
 

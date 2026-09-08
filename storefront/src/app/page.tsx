@@ -9,6 +9,7 @@ import FaqSection from "@/components/home/FaqSection";
 import SeoBlurb from "@/components/home/SeoBlurb";
 import { listGames } from "@/lib/catalog";
 import { listHeroSlides } from "@/lib/hero-slides";
+import { listPaymentChannels } from "@/lib/payment-methods";
 
 // ADR-071 PR1: `force-dynamic` removed — catalog/hero reads are cached
 // in Next's Data Cache (`catalogCache`), so this page is served from
@@ -18,7 +19,11 @@ import { listHeroSlides } from "@/lib/hero-slides";
 // (ORD-9), so a stale display is never a mischarge.
 
 export default async function HomePage() {
-  const [games, slides] = await Promise.all([listGames(), listHeroSlides()]);
+  const [games, slides, paymentChannels] = await Promise.all([
+    listGames(),
+    listHeroSlides(),
+    listPaymentChannels(),
+  ]);
 
   return (
     <>
@@ -27,7 +32,7 @@ export default async function HomePage() {
         <PopularPicksSection games={games} />
         <NewArrivalsSection games={games} />
         <WhyChooseUsSection />
-        <PaymentMethodsSection />
+        <PaymentMethodsSection channels={paymentChannels} />
         <TestimonialsSection />
         <FaqSection />
         <SeoBlurb />
