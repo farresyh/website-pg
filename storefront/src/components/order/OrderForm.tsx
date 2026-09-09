@@ -208,6 +208,11 @@ export default function OrderForm({
     setReviewOpen(true);
   }, []);
 
+  // Stable identity so ReviewModal's focus-trap effect (keyed on `open`)
+  // isn't handed a fresh `onClose` on every keystroke in its contact
+  // fields — see the effect's own comment in ReviewModal.
+  const closeReview = useCallback(() => setReviewOpen(false), []);
+
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
   const selectedChannel = paymentChannels.find((c) => c.channelCode === channelCode) ?? null;
 
@@ -519,7 +524,7 @@ export default function OrderForm({
       {selectedPackage && selectedChannel && (
         <ReviewModal
           open={reviewOpen}
-          onClose={() => setReviewOpen(false)}
+          onClose={closeReview}
           game={game}
           pkg={selectedPackage}
           preview={preview}

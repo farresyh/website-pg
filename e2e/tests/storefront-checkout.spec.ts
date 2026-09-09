@@ -35,7 +35,12 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
 
   await page.getByRole("button", { name: /Review & Pay/ }).click();
 
-  await page.locator("#reviewEmail").fill("e2e-checkout@example.com");
+  // Typed char-by-char, not .fill(): every keystroke re-renders OrderForm
+  // (contact state lives there), and a regression where ReviewModal's
+  // focus-trap effect re-runs on each render would yank focus out of the
+  // field after the first character. The assertion catches that.
+  await page.locator("#reviewEmail").pressSequentially("e2e-checkout@example.com");
+  await expect(page.locator("#reviewEmail")).toHaveValue("e2e-checkout@example.com");
   await page.locator("#reviewName").fill("E2E Checkout Tester");
   await page.locator("#reviewPhone").fill("0123456789");
   await page.getByRole("checkbox", { name: /I agree to the Terms/i }).check();
