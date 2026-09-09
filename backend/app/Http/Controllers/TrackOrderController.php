@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Support\ContactMask;
+use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -31,13 +32,17 @@ use Illuminate\Http\JsonResponse;
  */
 class TrackOrderController extends Controller
 {
-    public function show(string $orderNumber): JsonResponse
+    public function show(string $orderNumber, StorefrontBrand $brand): JsonResponse
     {
         $order = Order::query()
+            ->forStorefrontBrand($brand->get())
             ->with(['game:id,name,slug', 'package:id,name', 'review:id,order_id'])
             ->where('order_number', $orderNumber)
             ->first();
 
+        // Same 404 body whether the number is unknown or belongs to
+        // another brand's storefront — never confirm an order exists
+        // under a storefront it wasn't placed on.
         if ($order === null) {
             return response()->json(['message' => 'No order found with that order number.'], 404);
         }

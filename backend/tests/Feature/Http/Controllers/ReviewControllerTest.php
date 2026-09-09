@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\Affiliate;
+use App\Models\AffiliateDomain;
 use App\Models\Order;
 use App\Models\Review;
+use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Review\ReviewStatus;
@@ -101,8 +104,11 @@ class ReviewControllerTest extends TestCase
 
     public function test_returns_404_for_an_unknown_order_number(): void
     {
+        $this->primaryAffiliate();
+
         $this->postJson('/api/orders/KRS-DOES-NOT-EXIST/review', ['rating' => 5])
-            ->assertNotFound();
+            ->assertNotFound()
+            ->assertJson(['message' => 'No order found with that order number.']);
     }
 
     public function test_does_not_require_authentication(): void
@@ -110,5 +116,31 @@ class ReviewControllerTest extends TestCase
         $order = $this->order(['order_number' => 'KRS-REV6']);
 
         $this->postJson("/api/orders/{$order->order_number}/review", ['rating' => 5])->assertCreated();
+    }
+
+    public function test_cannot_review_an_order_placed_on_another_brands_storefront(): void
+    {
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Acme Resell',
+            'markup_pct' => 10,
+            'status' => 'active',
+        ]);
+        AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'hostname' => 'shop.acme.com',
+            'status' => AffiliateDomainStatus::Active,
+            'is_primary' => true,
+        ]);
+        $order = $this->order(['order_number' => 'KRS-ACME-REV', 'affiliate_id' => $affiliate->id]);
+
+        // Submitted against the primary storefront (no header) — must 404,
+        // and no review is written.
+        $this->postJson("/api/orders/{$order->order_number}/review", ['rating' => 5])
+            ->assertNotFound();
+        $this->assertDatabaseCount('reviews', 0);
+
+        // Same order, its own storefront — allowed.
+        $this->postJson("/api/orders/{$order->order_number}/review", ['rating' => 5], ['X-Storefront-Host' => 'shop.acme.com'])
+            ->assertCreated();
     }
 }
