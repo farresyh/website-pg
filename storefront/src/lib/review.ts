@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * ADR-053 — POST /api/orders/{orderNumber}/review (ReviewController).
@@ -21,4 +22,28 @@ export async function submitReview(orderNumber: string, rating: number, comment?
     body: { rating, comment: comment || undefined },
   });
   return parseResponse(SubmitReviewResultSchema, raw, "SubmitReviewResult", path);
+}
+
+const PublicReviewWireSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  rating: z.number(),
+  comment: z.string(),
+  game_name: z.string().nullable().optional(),
+  package_name: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+});
+
+export type PublicReview = z.infer<typeof PublicReviewWireSchema>;
+
+export async function listApprovedReviews(): Promise<PublicReview[]> {
+  const path = "/api/catalog/reviews";
+  return safeRead(
+    "listApprovedReviews",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      return parseResponse(z.array(PublicReviewWireSchema), raw, "PublicReview[]", path);
+    },
+    [],
+  );
 }

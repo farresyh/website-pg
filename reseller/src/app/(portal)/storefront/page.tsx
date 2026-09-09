@@ -12,12 +12,14 @@
 import { useState } from "react";
 import { PageHeader } from "@/components/ui";
 import BrandingTab from "@/components/storefront/BrandingTab";
+import ThemeTab from "@/components/storefront/ThemeTab";
 import HeroTab from "@/components/storefront/HeroTab";
 import CatalogTab from "@/components/storefront/CatalogTab";
 import PricingTab from "@/components/storefront/PricingTab";
 
 const TABS = [
   { key: "branding", label: "Branding" },
+  { key: "theme", label: "Theme & Colors" },
   { key: "hero", label: "Hero" },
   { key: "catalog", label: "Catalog" },
   { key: "pricing", label: "Pricing" },
@@ -71,6 +73,7 @@ export default function StorefrontPage() {
       </div>
 
       {tab === "branding" && <BrandingTab />}
+      {tab === "theme" && <ThemeTab />}
       {tab === "hero" && <HeroTab />}
       {tab === "catalog" && <CatalogTab />}
       {tab === "pricing" && <PricingTab />}

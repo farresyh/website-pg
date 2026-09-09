@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { ArrowRight, Check } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
 import { getSubscribeOptions, subscribe, type SubscribeOptions, type SubscribePlan } from "@/lib/membership";
 import { listPaymentChannels, type PaymentChannel } from "@/lib/payment-methods";
+import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
 import Button from "@/components/ui/Button";
 
 const CTA_LABEL: Record<SubscribePlan["relation"], string> = {
@@ -213,23 +215,44 @@ export default function MembershipSubscribe({ token }: { token: string }) {
               {channels.map((channel) => (
                 <label
                   key={channel.channelCode}
-                  className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-md border-2 border-ink px-3.5 ${
+                  className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-md border-2 border-ink px-3.5 ${
                     channelCode === channel.channelCode ? "bg-primary-fixed" : "bg-surface-container-lowest"
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="membershipChannel"
-                    value={channel.channelCode}
-                    checked={channelCode === channel.channelCode}
-                    onChange={() => setChannelCode(channel.channelCode)}
-                    className="accent-ink"
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="membershipChannel"
+                      value={channel.channelCode}
+                      checked={channelCode === channel.channelCode}
+                      onChange={() => setChannelCode(channel.channelCode)}
+                      className="accent-ink"
+                    />
+                    <span className="text-sm font-medium">{channel.label}</span>
+                  </div>
+                  <PaymentChannelIcon
+                    channelCode={channel.channelCode}
+                    category={channel.category}
+                    className="h-4.5 w-auto shrink-0"
                   />
-                  <span className="text-sm font-medium">{channel.label}</span>
                 </label>
               ))}
             </div>
           )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border-2 border-ink/15 bg-surface-container p-2.5 text-xs text-on-surface-variant">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-on-surface">Secured via</span>
+              <Image
+                src="/images/chip/powered-by-chip-long.svg"
+                alt="Powered by CHIP"
+                width={110}
+                height={16}
+                className="h-3.5 w-auto object-contain"
+              />
+            </div>
+            <span className="text-[11px] text-on-surface-variant">Bank Negara Malaysia Compliant</span>
+          </div>
 
           <p className="text-xs text-outline">
             RM{selectedPlan.feeRm.toFixed(2)}/month, plus the payment provider&apos;s fee shown at checkout.

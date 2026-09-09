@@ -1,8 +1,7 @@
 import Link from "next/link";
+import Image from "next/image";
 import { FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, WhatsAppIcon } from "@/components/icons/SocialIcons";
-import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
 import Logo from "@/components/ui/Logo";
-import { listPaymentChannels } from "@/lib/payment-methods";
 import { getBranding } from "@/lib/branding";
 import { resolveWhatsappHref } from "@/lib/whatsapp";
 
@@ -25,7 +24,7 @@ const SOCIAL_ICONS = [
  * to reflect real active gateways (is_active=true) with official SVG badges.
  */
 export default async function SiteFooter() {
-  const [branding, paymentChannels] = await Promise.all([getBranding(), listPaymentChannels()]);
+  const branding = await getBranding();
   const currentYear = new Date().getFullYear();
   // WhatsApp falls back to a wa.me link built from `support_phone` when
   // no explicit `social_links.whatsapp` URL is set (ADR-071 PR0).
@@ -103,27 +102,65 @@ export default async function SiteFooter() {
         </div>
 
         <div className="mb-5 border-t-2 border-ink pt-5">
-          <p className="mb-2.5 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
-            Available Payment Methods
-          </p>
-          <div className="flex flex-wrap items-center gap-2.5">
-            {paymentChannels.length > 0 ? (
-              paymentChannels.map((channel) => (
-                <span
-                  key={channel.channelCode}
-                  className="inline-flex items-center gap-2 rounded-md border-2 border-ink bg-surface-container-lowest px-3 py-1.5 font-display text-[12px] font-bold neo-sm"
-                >
-                  <PaymentChannelIcon
-                    channelCode={channel.channelCode}
-                    category={channel.category}
-                    className="h-4 w-auto shrink-0"
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="mb-2.5 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
+                Payment Partners &amp; Methods
+              </p>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex h-9 items-center justify-center rounded-md border-2 border-ink bg-white px-2.5 py-1 neo-sm">
+                  <Image
+                    src="/images/chip/online-banking.svg"
+                    alt="Online Banking (FPX)"
+                    width={100}
+                    height={22}
+                    className="h-5 w-auto object-contain"
                   />
-                  <span>{channel.label}</span>
-                </span>
-              ))
-            ) : (
-              <span className="text-xs text-on-surface-variant">Online Banking (FPX)</span>
-            )}
+                </div>
+                <div className="flex h-9 items-center justify-center rounded-md border-2 border-ink bg-white px-2.5 py-1 neo-sm">
+                  <Image
+                    src="/images/chip/duitnow-qr.svg"
+                    alt="DuitNow QR"
+                    width={85}
+                    height={22}
+                    className="h-5 w-auto object-contain"
+                  />
+                </div>
+                <div className="flex h-9 items-center justify-center rounded-md border-2 border-ink bg-white px-2.5 py-1 neo-sm">
+                  <Image
+                    src="/images/chip/e-wallets.svg"
+                    alt="E-Wallets (TNG, GrabPay, ShopeePay)"
+                    width={105}
+                    height={22}
+                    className="h-5 w-auto object-contain"
+                  />
+                </div>
+                <div className="flex h-9 items-center justify-center rounded-md border-2 border-ink bg-white px-2.5 py-1 neo-sm">
+                  <Image
+                    src="/images/chip/card.svg"
+                    alt="Debit & Credit Card (Visa, Mastercard)"
+                    width={80}
+                    height={22}
+                    className="h-5 w-auto object-contain"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5 pt-2 lg:items-end lg:pt-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[11.5px] font-semibold text-on-surface-variant">Secured &amp; Powered by</span>
+                <Image
+                  src="/images/chip/powered-by-chip-long.svg"
+                  alt="Powered by CHIP"
+                  width={150}
+                  height={20}
+                  className="h-4.5 w-auto object-contain"
+                />
+              </div>
+              <p className="text-[11px] text-on-surface-variant">
+                Licensed &amp; compliant with Bank Negara Malaysia standards
+              </p>
+            </div>
           </div>
         </div>
 

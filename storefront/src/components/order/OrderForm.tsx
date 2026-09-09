@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -27,10 +28,11 @@ import MembershipPromoCard from "@/components/order/MembershipPromoCard";
 import ReviewModal from "@/components/order/ReviewModal";
 import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
 
-const CHANNEL_GROUPS: { key: "fpx" | "ewallet" | "card"; label: string }[] = [
+const CHANNEL_GROUPS: { key: string; label: string }[] = [
   { key: "fpx", label: "Online Banking (FPX)" },
+  { key: "duitnow_qr", label: "DuitNow QR" },
   { key: "ewallet", label: "e-Wallet" },
-  { key: "card", label: "Card" },
+  { key: "card", label: "Debit & Credit Card" },
 ];
 
 interface OrderFormProps {
@@ -420,7 +422,12 @@ export default function OrderForm({
 
         <StepCard number={3} title="Choose Payment Method" locked={!step2Complete} lockHint="Choose a package first">
           {CHANNEL_GROUPS.map((group) => {
-            const channels = paymentChannels.filter((c) => c.category === group.key);
+            const channels = paymentChannels.filter(
+              (c) =>
+                c.category.toLowerCase() === group.key ||
+                (group.key === "duitnow_qr" &&
+                  (c.category.toLowerCase() === "duitnow_qr" || c.channelCode.toLowerCase().includes("duitnow"))),
+            );
             if (channels.length === 0) return null;
             return (
               <div key={group.key} className="mb-3.5 last:mb-0">
@@ -449,6 +456,20 @@ export default function OrderForm({
               </div>
             );
           })}
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border-2 border-ink/15 bg-surface-container p-2.5 text-xs text-on-surface-variant">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-on-surface">Secured &amp; Powered by</span>
+              <Image
+                src="/images/chip/powered-by-chip-long.svg"
+                alt="Powered by CHIP"
+                width={130}
+                height={18}
+                className="h-4 w-auto object-contain"
+              />
+            </div>
+            <span className="text-[11px] text-on-surface-variant">BNM Compliant • 256-bit SSL</span>
+          </div>
         </StepCard>
       </div>
 

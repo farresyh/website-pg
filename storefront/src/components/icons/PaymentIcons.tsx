@@ -27,9 +27,13 @@ export function TouchNGoIcon(props: SVGProps<SVGSVGElement>) {
 
 export function DuitNowIcon(props: SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 64 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="DuitNow QR" {...props}>
-      <rect width="64" height="24" rx="4" fill="#ED0080" />
-      <text x="32" y="16" fill="#FFFFFF" fontFamily="sans-serif" fontWeight="900" fontSize="11" textAnchor="middle">
+    <svg viewBox="0 0 72 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="DuitNow QR" {...props}>
+      <rect width="72" height="24" rx="4" fill="#ED0080" />
+      <g transform="translate(6, 4) scale(0.14)">
+        <path d="m63.8742 0c-22.1519 0-40.1096 17.9577-40.1096 40.1097v40.1095h40.1096c22.1521 0 40.1098-17.9576 40.1098-40.1095 0-22.152-17.9577-40.1097-40.1098-40.1097z" fill="#FFFFFF" />
+        <path d="m63.8753 17.9219c-12.2544 0-22.1888 9.9343-22.1888 22.1888v22.1889h22.1888c12.2549 0 22.1891-9.9342 22.1891-22.1889 0-12.2545-9.9342-22.1888-22.1891-22.1888zm0 32.1003h-9.9112v-9.9115c0-5.4739 4.4374-9.9114 9.9112-9.9114 5.4743 0 9.9117 4.4375 9.9117 9.9114 0 5.4741-4.4374 9.9115-9.9117 9.9115z" fill="#ED0080" />
+      </g>
+      <text x="44" y="16.5" fill="#FFFFFF" fontFamily="sans-serif" fontWeight="900" fontSize="10.5" textAnchor="middle">
         DuitNow
       </text>
     </svg>
@@ -75,7 +79,7 @@ export function PaymentChannelIcon({
   if (code.includes("touchngo") || code.includes("tng")) {
     return <TouchNGoIcon className={className} />;
   }
-  if (code.includes("duitnow")) {
+  if (code.includes("duitnow") || cat.includes("duitnow") || cat === "dnqr") {
     return <DuitNowIcon className={className} />;
   }
   if (code.includes("grab")) {
