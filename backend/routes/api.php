@@ -76,6 +76,7 @@ use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKey
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
+use App\Http\Controllers\ReviewCatalogController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\TrackOrderController;
@@ -241,6 +242,7 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::get('/games', [CatalogController::class, 'index']);
     Route::get('/games/{slug}', [CatalogController::class, 'show']);
     Route::get('/games/{slug}/packages', [CatalogController::class, 'packages']);
+    Route::get('/games/{slug}/reviews', [ReviewCatalogController::class, 'gameReviews']);
 
     // Hero Banner (docs/prd.md §14/§15 backlog) — no secret-field
     // concern here (no cost/margin data on this model), grouped under
@@ -251,6 +253,9 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     // channel listing, replacing the storefront's hardcoded
     // PLACEHOLDER_PAYMENT_CHANNELS.
     Route::get('/payment-methods', [PaymentMethodCatalogController::class, 'index']);
+
+    // Public approved reviews for storefront homepage
+    Route::get('/reviews', [ReviewCatalogController::class, 'index']);
 
     // ADR-028 + its 2026-08-22 addendum — branding/footer/legal
     // content, replacing SiteFooter.tsx's hardcoded FOOTER_COLUMNS/

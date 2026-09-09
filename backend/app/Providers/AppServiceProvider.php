@@ -5,10 +5,14 @@ namespace App\Providers;
 use App\Events\OrderStatusUpdated;
 use App\Listeners\Backup\LogAndAlertBackupFailure;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
+use App\Models\AffiliateMembershipTier;
+use App\Models\AffiliateSubscription;
 use App\Models\BackupRun;
 use App\Models\Order;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Observers\AffiliateMembershipTierObserver;
+use App\Observers\AffiliateSubscriptionObserver;
 use App\Observers\BackupRunObserver;
 use App\Observers\OrderObserver;
 use App\Observers\PriceSyncRunObserver;
@@ -379,8 +383,8 @@ class AppServiceProvider extends ServiceProvider
         Order::observe(OrderObserver::class);
         PriceSyncRun::observe(PriceSyncRunObserver::class);
         BackupRun::observe(BackupRunObserver::class);
-        \App\Models\AffiliateSubscription::observe(\App\Observers\AffiliateSubscriptionObserver::class);
-        \App\Models\AffiliateMembershipTier::observe(\App\Observers\AffiliateMembershipTierObserver::class);
+        AffiliateSubscription::observe(AffiliateSubscriptionObserver::class);
+        AffiliateMembershipTier::observe(AffiliateMembershipTierObserver::class);
 
         // ADR-048 addendum: same `web`-session/super_admin gate as
         // HorizonServiceProvider::gate() — Pulse doesn't generate its own
@@ -396,7 +400,15 @@ class AppServiceProvider extends ServiceProvider
         // Scramble's own `api_path` scoping already confines what it
         // documents to `api/reseller/*` — no admin/internal route shape
         // is ever exposed through it.
-        Gate::define('viewApiDocs', fn () => true);
+        //
+        // The `$user = null` parameter is load-bearing, not decoration:
+        // Scramble's `RestrictedDocsAccess` calls `Gate::allows('viewApiDocs')`
+        // with no authenticated user, and Laravel's `callbackAllowsGuests()`
+        // returns false for a zero-parameter closure (`! isset($parameters[0])`),
+        // so `fn () => true` would 403 every guest — the exact opposite of
+        // "public". A nullable/defaulted first param opts the gate into
+        // guest evaluation. Same shape as the `viewPulse` gate above.
+        Gate::define('viewApiDocs', fn ($user = null) => true);
 
         // ADR-074 decision 1: every documented operation requires the
         // Reseller API's bearer credential (EnsureResellerApiKey) —

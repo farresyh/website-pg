@@ -23,6 +23,7 @@ class AffiliateBranding extends Model
     protected $fillable = [
         'affiliate_id',
         'store_name',
+        'theme_preset',
         'description',
         'logo_path',
         'support_email',

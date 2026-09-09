@@ -6,10 +6,11 @@ import SiteFooter from "@/components/layout/SiteFooter";
 import MemberAwareOrderForm from "@/components/order/MemberAwareOrderForm";
 import OrderFormSkeleton from "@/components/skeletons/OrderFormSkeleton";
 import ProductHeaderCard from "@/components/order/ProductHeaderCard";
-import TrustStrip from "@/components/order/TrustStrip";
+import GameReviewsSection from "@/components/order/GameReviewsSection";
 import { getGame, getGamePackages } from "@/lib/catalog";
 import { listPaymentChannels } from "@/lib/payment-methods";
 import { listPlans } from "@/lib/membership";
+import { getGameReviews } from "@/lib/review";
 import { getBranding } from "@/lib/branding";
 import { getSeoSettings, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
@@ -54,12 +55,13 @@ export default async function OrderPage({ params }: OrderPageProps) {
   // SSR variant (OrderForm re-fetches personalized once a membership
   // token is known). ADR-055 decision 7: plans server-side, not a
   // client round trip — `[]` when the membership kill switch is off.
-  const [game, settings, packages, paymentChannels, membershipPlans] = await Promise.all([
+  const [game, settings, packages, paymentChannels, membershipPlans, gameReviews] = await Promise.all([
     getGame(slug),
     getSeoSettings(),
     getGamePackages(slug),
     listPaymentChannels(),
     listPlans(),
+    getGameReviews(slug),
   ]);
   if (!game) notFound();
 
@@ -126,7 +128,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
           </Suspense>
         </div>
 
-        <TrustStrip />
+        <GameReviewsSection gameName={game.name} data={gameReviews} />
       </main>
       <SiteFooter />
     </>

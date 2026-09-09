@@ -324,6 +324,7 @@ export interface StorefrontBrandingResponse {
     store_name: string;
     description: string | null;
     logo_url: string | null;
+    theme_preset?: string | null;
     support_email: string | null;
     support_phone: string | null;
     telegram_contact_link: string | null;
@@ -345,6 +346,7 @@ export function updateStorefrontBranding(
   token: string,
   body: {
     store_name: string;
+    theme_preset?: string | null;
     description?: string | null;
     support_email?: string | null;
     support_phone?: string | null;

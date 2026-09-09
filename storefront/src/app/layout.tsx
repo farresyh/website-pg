@@ -13,6 +13,7 @@ import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
 import { getSeoSettings, getSeoScripts, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
+import { getThemePreset, generateThemeCss } from "@/lib/theme-presets";
 
 // ADR-071 PR1: `force-dynamic` removed. Branding/SEO reads now go
 // through Next's Data Cache (`lib/cache.ts` `catalogCache` — 60s
@@ -78,6 +79,9 @@ export default async function RootLayout({
   ]);
   const membershipEnabled = plans.length > 0;
 
+  const themePreset = getThemePreset(branding.themePreset);
+  const themeCss = generateThemeCss(themePreset);
+
   const headScripts = scripts.filter((s) => s.location === "head").sort((a, b) => a.priority - b.priority);
   const bodyEndScripts = scripts.filter((s) => s.location === "body_end").sort((a, b) => a.priority - b.priority);
 
@@ -96,6 +100,9 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
+        {themeCss && (
+          <style id="pg-theme-preset" dangerouslySetInnerHTML={{ __html: themeCss }} />
+        )}
         {organizationJsonLd && (
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }} />
         )}

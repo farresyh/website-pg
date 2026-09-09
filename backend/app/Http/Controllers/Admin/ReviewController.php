@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ReviewCatalogController;
 use App\Models\Review;
 use App\Services\Review\ReviewStatus;
 use Illuminate\Http\JsonResponse;
@@ -65,6 +66,8 @@ class ReviewController extends Controller
     public function approve(Review $review): JsonResponse
     {
         $review->update(['status' => ReviewStatus::Approved->value]);
+        $review->loadMissing('order:id,affiliate_id,game_id');
+        ReviewCatalogController::forgetCache($review->order?->affiliate_id, $review->order?->game_id);
 
         return response()->json($review->load(['order:id,order_number,customer_email,game_id,package_id', 'order.game:id,name', 'order.package:id,name']));
     }
@@ -72,6 +75,8 @@ class ReviewController extends Controller
     public function reject(Review $review): JsonResponse
     {
         $review->update(['status' => ReviewStatus::Rejected->value]);
+        $review->loadMissing('order:id,affiliate_id,game_id');
+        ReviewCatalogController::forgetCache($review->order?->affiliate_id, $review->order?->game_id);
 
         return response()->json($review->load(['order:id,order_number,customer_email,game_id,package_id', 'order.game:id,name', 'order.package:id,name']));
     }
@@ -85,6 +90,7 @@ class ReviewController extends Controller
     public function bulkApprove(): JsonResponse
     {
         $count = Review::query()->where('status', ReviewStatus::Pending->value)->update(['status' => ReviewStatus::Approved->value]);
+        ReviewCatalogController::forgetCache();
 
         return response()->json(['approved_count' => $count]);
     }

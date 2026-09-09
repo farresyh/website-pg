@@ -14,14 +14,23 @@ change to those paths with the same care the existing code already does.
 
 | Path | What | Notes |
 | --- | --- | --- |
-| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, Redis-driver queue (Horizon, ADR-048) + `database`-driver cache (see ADR-014/019) |
-| `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery |
-| `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011) |
+| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, Redis-driver queue (Horizon, ADR-048) + Redis-driver cache (ADR-077, reverses ADR-014/019's `database` driver) |
+| `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery, Affiliates, Resellers |
+| `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
+| `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
 | `docs/` | `prd.md` (spec + build-status log), `adr.md` (decision log), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
 
-`admin/` and `storefront/` each carry their own `CLAUDE.md`/`AGENTS.md` — a
-Next.js-version warning specific to that app. This file covers the whole repo;
-`backend/CLAUDE.md` adds Laravel-specific conventions on top of it.
+> **Terminology (ADR-072, 2026-09-04):** the old whitelabel "Reseller" was
+> renamed **Affiliate**; "Reseller" now means a prepaid-wallet account with
+> three order channels (portal, REST API — ADR-074, WhatsApp bot — ADR-075).
+> ADR titles/bodies written before ADR-072 that say "Reseller" mean today's
+> "Affiliate". See PRD §13 Glossary.
+
+`admin/`, `storefront/`, and `reseller/` each carry their own
+`CLAUDE.md`/`AGENTS.md` — `admin/` and `storefront/` are just the auto-generated
+Next.js-version banner; `reseller/` adds portal-specific conventions. This file
+covers the whole repo; `backend/CLAUDE.md` adds Laravel-specific conventions on
+top of it.
 
 ## Working Conventions
 
@@ -40,16 +49,13 @@ Next.js-version warning specific to that app. This file covers the whole repo;
 - **New business terms get pinned before they leak into code** as ad-hoc
   naming — use `/mattpocock-skills:domain-modeling` (see PRD §13 Glossary for
   the terms already pinned: ledger, reference_number vs order_number, etc.).
-- **Admin UI components migrate to PrimeReact (Tailwind mode) opportunistically, per ADR-038.**
-  If you open a file in `admin/` that still uses a hand-rolled TailAdmin
-  primitive (`Table`, `Modal`, `Dropdown`/`DropdownItem`, `Badge`, `Button`,
-  or a basic form input from `components/form`) for work unrelated to this
-  migration, swap it for the PrimeReact-Tailwind equivalent as part of that
-  same change — don't leave it for a dedicated migration pass. Never force a
-  migration on an already-tested, live screen just to swap its component
-  library; the trigger is always "already touching this file for another
-  reason." `RichTextEditor` is exempt (no PrimeReact equivalent exists). See
-  `docs/prd.md`'s PrimeReact Migration Tracker for per-screen status.
+- **Admin/reseller UI is PrimeReact (Tailwind mode), per ADR-038.** The
+  opportunistic migration off hand-rolled TailAdmin primitives (`Table`,
+  `Modal`, `Dropdown`, `Badge`, `Button`, `components/form` inputs) **completed
+  2026-08-29** — those source files are deleted. Build new screens with the
+  PrimeReact-Tailwind components and the shared `globals.css` design tokens.
+  `RichTextEditor` is the one hand-rolled primitive that stays (no PrimeReact
+  equivalent). See `docs/prd.md`'s PrimeReact Migration Tracker for the history.
 - **Money is never trusted from the client.** Price, cost, and profit are
   always computed server-side from stored `Package`/`Game` data at the moment
   of use — see ORD-9 in `docs/prd.md` and `PricingService`. If you find
@@ -116,7 +122,8 @@ or a one-line fix doesn't need it.
 ## Build & Test
 
 ```bash
-# All three at once (backend + admin + storefront, labeled/interleaved output, single Ctrl+C stops all)
+# All four at once (backend + admin + storefront + reseller, labeled/interleaved output, single Ctrl+C stops all)
+# Also starts local Redis and seeds/installs reseller/ on first run.
 ./scripts/dev.sh
 
 # Backend
@@ -125,9 +132,10 @@ cd backend && composer run dev        # serve + horizon + pail + vite, all toget
 cd backend && php artisan test        # fast suite (sqlite, no Docker)
 cd backend && docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurrency/locking proofs, needs real MySQL
 
-# Admin / Storefront (run separately, each has its own dev server)
-cd admin && npm run dev               # or: npm run build && npm run lint
-cd storefront && npm run dev
+# Admin / Storefront / Reseller portal (run separately, each has its own dev server)
+cd admin && npm run dev               # :3000 — or: npm run build && npm run lint
+cd storefront && npm run dev          # :3001
+cd reseller && npm run dev            # :3002 (ADR-059; see reseller/AGENTS.md)
 
 # E2E (ADR-023) — the golden-path tests (checkout->payment->order status;
 # admin login->Resend Delivery; admin login->Issue Voucher; admin->Mark

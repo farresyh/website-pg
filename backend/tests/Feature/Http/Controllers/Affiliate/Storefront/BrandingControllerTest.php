@@ -47,14 +47,18 @@ class BrandingControllerTest extends TestCase
 
         $this->withToken($this->tokenFor($affiliate))->putJson('/api/affiliate/storefront/branding', [
             'store_name' => 'Acme Games',
+            'theme_preset' => 'bumblebee',
             'description' => 'Fast top-ups',
             'support_email' => 'help@acme.test',
             'social_links' => ['facebook' => 'https://fb.com/acme', 'instagram' => ''],
-        ])->assertOk()->assertJsonPath('branding.store_name', 'Acme Games');
+        ])->assertOk()
+            ->assertJsonPath('branding.store_name', 'Acme Games')
+            ->assertJsonPath('branding.theme_preset', 'bumblebee');
 
         $this->assertDatabaseHas('affiliate_branding', [
             'affiliate_id' => $affiliate->id,
             'store_name' => 'Acme Games',
+            'theme_preset' => 'bumblebee',
         ]);
         // Empty social entries are dropped, not stored blank.
         $this->assertSame(
