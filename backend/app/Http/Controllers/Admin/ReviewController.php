@@ -66,7 +66,8 @@ class ReviewController extends Controller
     public function approve(Review $review): JsonResponse
     {
         $review->update(['status' => ReviewStatus::Approved->value]);
-        ReviewCatalogController::forgetCache();
+        $review->loadMissing('order:id,affiliate_id,game_id');
+        ReviewCatalogController::forgetCache($review->order?->affiliate_id, $review->order?->game_id);
 
         return response()->json($review->load(['order:id,order_number,customer_email,game_id,package_id', 'order.game:id,name', 'order.package:id,name']));
     }
@@ -74,7 +75,8 @@ class ReviewController extends Controller
     public function reject(Review $review): JsonResponse
     {
         $review->update(['status' => ReviewStatus::Rejected->value]);
-        ReviewCatalogController::forgetCache();
+        $review->loadMissing('order:id,affiliate_id,game_id');
+        ReviewCatalogController::forgetCache($review->order?->affiliate_id, $review->order?->game_id);
 
         return response()->json($review->load(['order:id,order_number,customer_email,game_id,package_id', 'order.game:id,name', 'order.package:id,name']));
     }
