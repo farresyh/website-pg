@@ -88,7 +88,8 @@ function isTerminal(order: TrackedOrder): boolean {
 }
 
 export default function OrderStatusTracker({ orderNumber }: { orderNumber: string }) {
-  const { whatsappHref } = useSiteConfig();
+  const { whatsappHref, branding } = useSiteConfig();
+  const storeName = branding.storeName;
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -318,14 +319,14 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         </p>
         {whatsappHref && (() => {
           const supportText = encodeURIComponent(
-            `Salam support PekanGame, saya perlukan bantuan untuk order ${order.order_number} (${order.game?.name ?? "Top Up"}).`
+            `Salam support ${storeName}, saya perlukan bantuan untuk order ${order.order_number} (${order.game?.name ?? "Top Up"}).`
           );
           const contextualWhatsappHref = whatsappHref.includes("?")
             ? `${whatsappHref}&text=${supportText}`
             : `${whatsappHref}?text=${supportText}`;
           return (
             <Button href={contextualWhatsappHref} className="justify-center">
-              <WhatsappLogo size={16} weight="fill" /> Contact PekanGame Support
+              <WhatsappLogo size={16} weight="fill" /> Contact {storeName} Support
             </Button>
           );
         })()}
