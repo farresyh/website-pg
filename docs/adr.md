@@ -4388,6 +4388,8 @@ Key operational realities and limitations surfaced:
 2. **Current Supplier Balance Limitation:** Currently, `Supplier.balance` is a single mutable column periodically overwritten by API responses (DASH-2). It lacks an append-only ledger tracking deposits, order fulfillments, refunds, and adjustments.
 3. **Gateway Settlement Reconciliation:** Retail payments collected via CHIP (FPX / DuitNow QR) incur MDR fees and settle on T+1/T+2 cycles into the corporate bank account. Without an automated settlement reconciliation engine, net bank receipts cannot be easily verified against order revenue.
 4. **Corporate Bank Statement as the Ground Truth:** For Malaysian corporate tax audits, the official monthly bank statement (Maybank2E / CIMB BizChannel) is the definitive proof of cash flow. A solo founder cannot manually reconcile hundreds or thousands of transactions each month without high administrative overhead.
+5. **Multi-Director Capital & Investor Governance (Sdn Bhd Structure):** The company operates with three directors/shareholders: Luqman (40%, initial capital investor providing ~RM 40k upfront and future capital injections), Wheng (30%, sweat equity/operations), and Farres (30%, sweat equity/tech). Injections by Luqman must be strictly booked as **Shareholder Advances / Director's Loans** (non-revenue liabilities), NOT paid-up capital (to prevent equity dilution of the 40:30:30 structure) and NOT retail sales (to prevent LHDN 24% tax on injected capital). Repayments must be tracked as tax-free loan repayments.
+6. **Marketing Budget Caps & Thin-Margin Discipline:** In game top-up, gross margins are slim (3%–8%). Uncontrolled digital ad spend (Meta, TikTok) or influencer sponsorships can silently turn gross profit into net operating loss. The system requires hard monthly budget caps, early-warning burn alerts, and automated ROAS (Return on Ad Spend) attribution.
 
 **Decision:**
 
@@ -4411,29 +4413,36 @@ Key operational realities and limitations surfaced:
    - Background Horizon job polls CHIP's Settlement/Payout API to ingest settlement batches (`payout_amount`, `gross_amount`, `fee_deducted`, `settled_at`, `payout_reference`).
    - Admin panel provides a CSV upload fallback to backfill or manually import settlement statements when API access is disrupted.
 
-5. **Operating Expenses (OPEX) with LHDN Tax Taxonomy:**
-   - Dedicated `expenses` table for non-inventory operational overhead (server hosting, domains, SaaS tools, marketing/ads, bank/payment fees).
-   - Enforced categorization enum with an `is_tax_deductible` boolean flag, enabling one-click generation of LHDN-compliant tax computation summaries (separating allowable business deductions from non-deductible items like Director's Drawings).
+5. **Operating Expenses (OPEX) with LHDN Tax Taxonomy & Marketing Budget Caps:**
+   - Dedicated `expenses` table for non-inventory operational overhead, enforcing categories: `HOSTING_INFRASTRUCTURE`, `SOFTWARE_TOOLS`, `FINANCE_BANK_FEES`, `MARKETING_PAID_ADS`, `MARKETING_INFLUENCER_KOL`, `MARKETING_PROMOTIONS`, and non-deductible `DIRECTOR_DRAWINGS`.
+   - Dedicated `marketing_budgets` table tracking monthly budget ceilings, burn progress (e.g. 85% threshold warning), and computing live ROAS against `ReportService` order revenue.
 
-6. **Monthly Bank Statement Reconciliation Engine:**
+6. **Shareholder Capital & Investor Loan Tracking (`capital_injections` & `capital_repayments`):**
+   - Dedicated `capital_injections` table records capital provided by shareholders/directors (Luqman, etc.) tagged by intended allocation (Supplier Rolling Fund, Marketing, Emergency Reserve).
+   - Legally classified as **Shareholder Advances (Liabilities)**, guaranteeing zero LHDN tax exposure upon receipt, zero equity dilution of the 40:30:30 agreement, and tax-free principal repayment tracked via `capital_repayments`.
+   - Dedicated read-only **Investor Dashboard** view providing real-time transparency of capital deployment (Cash in Bank vs. Supplier Balances vs. Ad Spend).
+
+7. **Monthly Bank Statement Reconciliation Engine:**
    - Ingestion: Native CSV parser tailored for Malaysian corporate banking formats (Maybank2E, CIMB BizChannel, RHB Reflex) as primary; Vision LLM (Gemini Flash) extraction as secondary for PDF statements.
-   - Smart Matching Engine: Matches statement rows using exact amount + $\pm 3$ business-day window + merchant keyword filters (`CHIP IN`, `WISE PAYMENTS`, `VERCEL`, etc.).
+   - Smart Matching Engine: Matches statement rows using exact amount + $\pm 3$ business-day window + merchant keyword filters (`CHIP IN`, `WISE PAYMENTS`, `VERCEL`, `LUQMAN`, etc.).
    - Line Item State Machine: `unmatched` → `matched` / `manually_matched` / `categorized_new` / `ignored` → statement reaches `reconciled` (Zero Variance).
 
-7. **Storage & AI Privacy Boundaries:**
-   - Financial attachments (Wise receipts, bank statements, tax invoices) are strictly stored on the `private` filesystem disk (`storage/app/private/accounting/`), guarded by `auth:admin` + `role:super_admin` with temporary signed stream access. Never exposed via public asset URLs.
+8. **Storage & AI Privacy Boundaries:**
+   - Financial attachments (Wise receipts, bank statements, tax invoices, shareholder proof) are strictly stored on the `private` filesystem disk (`storage/app/private/accounting/`), guarded by `auth:admin` + `role:super_admin` with temporary signed stream access. Never exposed via public asset URLs.
    - **Human-in-the-Loop AI Model:** Multimodal AI (Gemini Flash) extracts dates, amounts, reference IDs, and tax categories from uploaded receipts to pre-fill draft forms. No financial ledger entry is written without explicit human founder confirmation.
 
-8. **Four-PR Phased Build Split:**
+9. **Four-PR Phased Build Split:**
    - **PR-1 (Supplier Balance & Funding Ledger):** Schema (`supplier_funding_batches`, `supplier_ledger_entries`), multi-currency support (MYR/IDR), FIFO consumption hook on `OrderFulfillmentService`, and Admin Supplier Funding UI.
-   - **PR-2 (OPEX & CHIP Settlement Engine):** Schema (`expenses`, `payment_settlements`), LHDN tax taxonomy, CHIP settlement sync, Net Profit (P&L) calculations integrated into financial reporting.
+   - **PR-2 (OPEX, Marketing Budgets, Capital Injections & CHIP Settlements):** Schema (`expenses`, `marketing_budgets`, `capital_injections`, `capital_repayments`, `payment_settlements`), LHDN tax taxonomy, CHIP settlement sync, ROAS tracking, and Net Profit (P&L) calculations integrated into financial reporting.
    - **PR-3 (Monthly Bank Reconciliation Engine):** Schema (`bank_statements`, `bank_statement_lines`), Malaysian banking CSV parsers, matching engine, reconciliation review screen.
-   - **PR-4 (Agentic AI Layer & Tax Export):** Multimodal receipt parsing, AI suggestion engine for unmatched bank lines, and LHDN-ready P&L/Tax PDF export.
+   - **PR-4 (Agentic AI Layer & Investor Dashboard):** Multimodal receipt parsing, AI suggestion engine for unmatched bank lines, Investor capital position screen, and LHDN-ready P&L/Tax PDF export.
 
 **Rationale:**
 
 - Separating the supplier ledger from the retail/customer `ledger_entries` table prevents schema bloat and currency contamination while preserving the existing integrity of partner profit splits.
 - FIFO valuation provides the gold standard for compliance under Malaysian tax law (LHDN) and financial audit standards, eliminating arbitrary FX rate approximations.
+- Capital injection tracking establishes institutional-grade trust between Luqman (investor) and the operational founders (Wheng & Farres) without equity distortion or tax penalties.
+- Marketing budgeting prevents ad-spend leakage in a thin-margin e-commerce environment.
 - Bank statement reconciliation ensures the system does not operate in a digital vacuum; it anchors digital transactions directly to physical cash flow in the company's bank account.
 - Storing receipts securely and enforcing human verification over AI-extracted figures eliminates hallucination risk while reducing administrative data-entry workload by over 90%.
 
@@ -4441,5 +4450,6 @@ Key operational realities and limitations surfaced:
 
 - `OrderFulfillmentService::fulfill()` will be extended in PR-1 to trigger supplier ledger FIFO deduction within the existing fulfillment database transaction. Concurrency tests (real MySQL) must prove that concurrent order deliveries lock and deplete batches accurately without race conditions.
 - Gamevion balance is in MYR, Digiflazz in IDR — adapter normalizers must supply the correct currency code when reporting costs.
+- Bank statement parser must handle both Maybank2E (tab/comma-delimited) and CIMB BizChannel CSV exports without brittle column index assumptions.
 - Private disk storage configuration must be added to `config/filesystems.php` and verified in Forge production deployment.
 - Update `docs/prd.md` §14 and §15 to reflect ADR-083's accepted design status and future build sequence.
