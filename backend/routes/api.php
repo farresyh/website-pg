@@ -242,6 +242,7 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::get('/games', [CatalogController::class, 'index']);
     Route::get('/games/{slug}', [CatalogController::class, 'show']);
     Route::get('/games/{slug}/packages', [CatalogController::class, 'packages']);
+    Route::get('/games/{slug}/reviews', [ReviewCatalogController::class, 'gameReviews']);
 
     // Hero Banner (docs/prd.md §14/§15 backlog) — no secret-field
     // concern here (no cost/margin data on this model), grouped under

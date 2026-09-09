@@ -47,3 +47,34 @@ export async function listApprovedReviews(): Promise<PublicReview[]> {
     [],
   );
 }
+
+const GameReviewItemWireSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  rating: z.number(),
+  comment: z.string(),
+  package_name: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+});
+
+export type GameReviewItem = z.infer<typeof GameReviewItemWireSchema>;
+
+const GameReviewsWireSchema = z.object({
+  average_rating: z.number(),
+  review_count: z.number(),
+  reviews: z.array(GameReviewItemWireSchema),
+});
+
+export type GameReviewsResult = z.infer<typeof GameReviewsWireSchema>;
+
+export async function getGameReviews(slug: string): Promise<GameReviewsResult> {
+  const path = `/api/catalog/games/${encodeURIComponent(slug)}/reviews`;
+  return safeRead(
+    `getGameReviews:${slug}`,
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      return parseResponse(GameReviewsWireSchema, raw, "GameReviewsResult", path);
+    },
+    { average_rating: 0, review_count: 0, reviews: [] },
+  );
+}
