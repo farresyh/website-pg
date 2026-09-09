@@ -429,6 +429,11 @@ export default function OrderForm({
                   (c.category.toLowerCase() === "duitnow_qr" || c.channelCode.toLowerCase().includes("duitnow"))),
             );
             if (channels.length === 0) return null;
+            // One channel in the group → the tile is its brand mark
+            // alone (the group heading above already names the method,
+            // and the mark carries the wordmark). Several channels →
+            // keep the text so they stay tellable apart.
+            const soloChannel = channels.length === 1;
             return (
               <div key={group.key} className="mb-3.5 last:mb-0">
                 <p className="mb-2 font-display text-[11px] font-bold tracking-wide text-on-surface-variant uppercase">{group.label}</p>
@@ -447,9 +452,9 @@ export default function OrderForm({
                       <PaymentChannelIcon
                         channelCode={channel.channelCode}
                         category={channel.category}
-                        className="h-4.5 w-auto shrink-0"
+                        className={soloChannel ? "h-7 w-auto shrink-0" : "h-4.5 w-auto shrink-0"}
                       />
-                      <span>{channel.label}</span>
+                      <span className={soloChannel ? "sr-only" : undefined}>{channel.label}</span>
                     </button>
                   ))}
                 </div>
