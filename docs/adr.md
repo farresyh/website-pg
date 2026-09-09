@@ -3489,9 +3489,9 @@ This addendum is open to challenge at review like any decision — the prefix to
 
 ---
 
-## ADR-070: RESERVED — supplier-deposit / FX-history ledger (not yet designed)
+## ADR-070: RESERVED — supplier-deposit / FX-history ledger → subsumed by ADR-083
 
-**Status:** Reserved, not designed. Split out from ADR-069 as a future ADR; ADR-071 skipped the number to hold it. When the supplier-deposit / FX-history ledger is grilled, it becomes ADR-070. Nothing is built under this number.
+**Status:** Reserved, never designed under this number. Split out from ADR-069 as a future ADR; ADR-071 skipped the number to hold it. **The supplier-deposit / FX-history ledger was grilled 2026-09-10 and recorded as [ADR-083](#adr-083-internal-accounting--financial-reconciliation--supplier-funding-ledger-chip-settlement-reconciliation-and-a-monthly-accounting-summary-for-an-external-saas)** (`supplier_transfers` + `supplier_ledger_entries`, foreign-currency append-only, no FIFO), not renumbered back to 70. Nothing is built under this number.
 
 ---
 
@@ -4375,4 +4375,69 @@ This ADR documents the shipped design, records the grill decisions, and lists th
 
 ---
 
+## ADR-083: Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS
 
+**Status:** Accepted (design) — first drafted with the founder 2026-09-09; **fully re-grilled and materially reshaped 2026-09-10** (`/mattpocock-skills:grilling`, 6 rounds / 26 questions) after a stress-test against the codebase and the live CHIP / supplier APIs. The first draft (a self-contained corporate accounting system: per-order FIFO COGS, a polled "CHIP Settlement/Payout API", `expenses` / `marketing_budgets` / `capital_injections` / `capital_repayments` tables, a Malaysian-bank-statement reconciliation engine, Gemini-Vision receipt parsing, a bespoke Investor Dashboard, a 4-PR build) was found to be **over-scoped for a solo-run pre-launch business and built on two facts that do not hold** — see Context §1–2. This entry is the reshaped design. Design-only, zero code modified. Scheduled for 2 PRs. **This fills in ADR-070 (RESERVED).**
+
+**Context:**
+
+PekanGame is a Sdn Bhd with three working directors — Luqman (40%, provides the initial ~RM 40k and future capital), Wheng (30%, operations), Farres (30%, tech). It is not yet commercially live (the one remaining gate is funding the two suppliers). As it scales toward RM 100k–500k monthly GMV it needs LHDN audit-ready books, but it has **no in-house or retained accountant** — Farres keeps the books; a tax agent and auditor are engaged only at year-end (statutory audited accounts + Form C). The operative need is narrow and concrete: **every money-moving transaction must be captured in an immutable, exportable record so the year-end professional's job is cheap and the founder never reconstructs figures from memory or a spreadsheet.**
+
+Two facts the first draft got wrong:
+
+1. **There is no CHIP Settlement/Payout API.** CHIP Collect exposes `POST /purchases/`, purchase-status `GET`, and a per-purchase `success_callback` webhook — nothing for settlement batches, payout history, balance, or fees. CHIP settles net (after MDR) to the corporate bank on a T+1/T+2 cycle and provides settlement data only as a **downloadable `.xlsx`** from its dashboard: a "Summary" sheet (date range, total amount / fee / net) plus one sheet per acquirer listing each transaction — `Transaction ID` (the CHIP purchase UUID, already persisted by us as `orders.payment_ref` / `wallet_topup_attempts.chip_payment_ref`), `Reference` (our `order_number`), `Amount`, `Fee` (the real per-transaction MDR), `Net Amount`, `Settled On (MYT)`, and customer fields. Reconciliation is a file-ingest-and-match problem, not an API poll.
+2. **Per-order supplier cost is already available at real value — no FX estimation or FIFO needed.** The Digiflazz transaction response carries `data.price` (actual IDR charged) and its webhook carries `data.buyer_last_saldo`; the Gamevion transaction response carries `data.price` (MYR). `orders.cost_price` (integer sen MYR, snapshotted at price-sync time from the ADR-033 indicative-rate conversion) already drives `platform_profit` / `affiliate_profit` in `ledger_entries` and cannot be changed retroactively without corrupting the retail ledger. A second, delivery-time FIFO COGS figure would permanently disagree with it, and a per-order FIFO batch-consumption lock inside `OrderFulfillmentService::fulfill()` would serialize every delivery on the oldest funding-batch row — a scaling bottleneck for no benefit.
+3. **The general ledger, OPEX, capital, tax filing, e-Invoicing and bank reconciliation are all solved better by an off-the-shelf Malaysian accounting SaaS** (Bukku, Financio, AutoCount Cloud — MyInvois-native, SST-aware, with bank feeds and audit trails). Rebuilding any of that inside a money-critical Laravel app is a permanent maintenance liability for a solo tech founder and a tax-misstatement risk on every bug.
+
+Existing state this builds on: `Supplier.balance` is a single `decimal:2` column overwritten by API responses (DASH-2 / ADR-069); `ledger_entries` is the append-only single-entry balance record for retail profit, affiliate earnings and reseller wallets (ADR-002 / ADR-073); `app:refresh-supplier-balances` (ADR-069 PR-3) already polls every supplier's `checkBalance()` daily.
+
+**Decision:**
+
+1. **The platform is the operational sub-ledger of record; an external accounting SaaS holds the statutory books.** Farres selects the SaaS (Bukku is the leading candidate: cloud-native, open API, MyInvois-native). The platform never pushes per-transaction data to it. It produces a **Monthly Accounting Summary** (decision 8) that Farres enters as a single journal each month; all non-operational entries (rent, tools, ad spend, Luqman's director loan, director drawings, fixed assets, bank charges) Farres records directly in the SaaS. At year-end the professional audits the SaaS books and spot-checks the platform's Transaction Register. There is **no `AccountingSyncService` API integration** in this ADR — a programmatic push is a separate future decision with its own failure / idempotency / period-cutoff contract.
+
+2. **Dedicated supplier funding ledger, foreign-currency and append-only, isolated from `ledger_entries`:**
+   - `supplier_transfers` — one row per capital transfer into a supplier account: `supplier_id`, `source_channel` (`wise` / `airwallex` / `bank`), `amount_myr_sent` (what left our bank, integer sen), `fee_myr` (integer sen), `currency`, `amount_foreign_received` (`decimal(18,4)`, what landed at the supplier), `effective_rate` (derived), `receipt_url` (private disk), `reference_no`.
+   - `supplier_ledger_entries` — append-only, **foreign currency only** (`decimal(18,4)`), no `UPDATE` / `DELETE` (enforced at the model layer — a `saving` / `deleting` guard that throws on a persisted row). Types: `TOPUP` (+, from `supplier_transfers.amount_foreign_received`), `ORDER_DRAWDOWN` (−, the supplier's actual per-order charge), `REFUND` (+, a failed-after-charge order), `MANUAL_ADJUSTMENT` (±, mandatory audit reason).
+   - Multi-currency native: Gamevion in MYR, Digiflazz in IDR, any future USD/other supplier with no migration. MYR values are never stored on `supplier_ledger_entries` — they are derived at reporting time (decision 5).
+
+3. **`ORDER_DRAWDOWN` and `REFUND` are captured from supplier responses, never from inside the fulfillment transaction.** The Digiflazz webhook (`data.price` / `buyer_last_saldo`) and the Gamevion synchronous transaction response (`data.price`) write the drawdown entry; a failed `Gagal` callback writes the refund (falling back to `MANUAL_ADJUSTMENT` if the supplier does not report the restored amount). `OrderFulfillmentService::fulfill()`'s transaction is **not touched** — the reconcile poll remains the backstop for a missed webhook, exactly as it already is for delivery finalization.
+
+4. **`orders.cost_price` stays the single source of truth for COGS and profit.** No FIFO, no delivery-time revaluation. The retail ledger is unchanged.
+
+5. **Monthly FX / inventory variance is a single derived figure, not a per-order one.** At month close the platform computes `Σ orders.cost_price` (delivered that month) minus `Σ (foreign drawn that month × weighted-average rate of that supplier's transfers)`. This variance — the gap between the indicative FX rate baked into pricing (ADR-033) and the real blended cost of funds — is one line in the Monthly Accounting Summary and tells the founder whether the ADR-033 pricing buffer is set correctly.
+
+6. **Supplier discrepancy / drift policy (kept from the first draft — it was sound):** `app:refresh-supplier-balances` is extended to compare each supplier's polled API balance against `SUM(supplier_ledger_entries)` in that supplier's currency. On a variance beyond a per-supplier configured threshold it raises a `Log::warning` and an amber chip on `/admin` System Health. The ledger is **never** auto-mutated to match third-party drift; rectification is an explicit `MANUAL_ADJUSTMENT` with a reason.
+
+7. **CHIP settlement reconciliation by `.xlsx` ingest (no API):** a `payment_settlements` table (keyed on the file's settlement date / range: `expected_gross`, `expected_fee`, `expected_net`, `actual_bank_amount` nullable, `status` `pending` / `matched` / `variance`, `variance_note`) plus an admin "CHIP Settlements" screen. Between settlements the expected net is `Σ (total_charged_sen − transaction_fee)` over every CHIP inflow in the window — retail orders, membership subscriptions and reseller wallet top-ups alike (voucher-paid and reseller-wallet orders that never touched CHIP are excluded from the expectation but stay in the Register). Farres uploads CHIP's settlement `.xlsx`; a parser (`openspout/openspout`, iterating every non-"Summary" sheet, keyed on **column names not indices**) matches each row to our record by `Transaction ID` ↔ `payment_ref` with `Reference` ↔ `order_number` as the cross-check, and produces an exception list: our-record-paid-but-not-settled, settled-but-unmatched, and per-day `Σ CHIP net` vs `Σ expected` vs the manually-entered bank figure. The file's per-transaction `Fee` column is the real CHIP MDR — the "payment processing gain/(loss)" line in the summary is `Σ transaction_fee charged − Σ CHIP Fee actual`.
+
+8. **Monthly Accounting Summary screen** — read-only admin, one period at a time, listing the journal lines Farres copies into the SaaS: Sales revenue (`Σ selling_price` delivered), Membership revenue, COGS (`Σ cost_price` delivered), Payment processing net gain/(loss), Supplier prepaid — top-up (`Σ amount_myr_sent + fee_myr`), Supplier prepaid — FX variance true-up (decision 5), Affiliate commission expense (`Σ affiliate_profit` accrued), Voucher liability issued. Reseller wallet movements and affiliate withdrawal payouts are entered by Farres directly from bank / portal data, not from this screen.
+
+9. **Transaction Register** — read-only admin screen plus CSV export, one row per money-moving event (every order with gross / fee / cost / net / supplier / currency, every `supplier_transfers` row, every `REFUND`, every voucher issuance). This is the "nothing is ever lost" artifact the year-end professional works from.
+
+10. **Storage & privacy:** financial attachments (transfer receipts, later any statement) live only on the `private` filesystem disk (`storage/app/private/accounting/`), behind `auth:admin` + `role:super_admin` with temporary signed streaming, never a public URL.
+
+11. **Explicitly out of scope, by deliberate decision:**
+    - **LHDN e-Invoicing / MyInvois** — its own future ADR; the chosen SaaS performs the submission, not our code. Named here so it is not silently forgotten.
+    - **OPEX categorisation, marketing budgets / caps / burn alerts, ROAS attribution** — SaaS + founder discipline; ROAS, if ever wanted, is a separate ADR (it joins our revenue data to SaaS spend data).
+    - **Shareholder capital / director loans (`capital_injections` / `capital_repayments`) and an Investor Dashboard** — booked in the SaaS as director loans; Luqman gets read-only SaaS access or Farres's monthly export. The platform does not model equity, capital or drawings.
+    - **A bank-statement reconciliation engine and any LLM / Gemini receipt or statement parsing** — the SaaS's bank feed and reconciliation do this natively and audit-ready; a bespoke parser plus a brand-new multimodal-AI dependency (with a prompt-injection surface on uploaded PDFs) is rejected.
+    - **FIFO / weighted-average per-order COGS** — see decision 4.
+
+**Rationale:**
+
+- The business's real constraint is bookkeeping *capture and hand-off*, not in-house financial reporting. Building only the two things no external tool can know — the supplier funding position (our transfers, our per-order drawdowns, in foreign currency) and the CHIP settlement match (our purchase IDs against CHIP's file) — and buying everything else is the smallest correct system.
+- Keeping `orders.cost_price` as the sole COGS figure preserves the integrity of every existing profit split and avoids a permanent two-numbers-that-never-agree reconciliation burden. The monthly variance line captures the real-vs-indicative FX gap without per-order machinery.
+- Foreign-currency-only, append-only `supplier_ledger_entries` mirrors a supplier account for exactly what it is — a prepaid balance in that supplier's currency — and makes the drift check against `checkBalance()` an exact comparison.
+- Capturing drawdowns from the webhook / response path rather than inside `fulfill()` keeps the money-critical fulfillment seam untouched and avoids a hot-row lock.
+- Reconciling CHIP by file matches how CHIP actually works; the `.xlsx` already carries the real per-transaction MDR, so no fee schedule needs maintaining.
+
+**Consequence to track:**
+
+- **PR-1 (build now, before the first supplier is funded):** `supplier_transfers` + `supplier_ledger_entries` (append-only, model-enforced), the "Record Supplier Transfer" admin UI (receipt upload to `private` disk), `ORDER_DRAWDOWN` / `REFUND` capture in `DigiflazzWebhookController` + the Gamevion response path, the drift-check extension to `app:refresh-supplier-balances` + System Health chip, and the Transaction Register screen + CSV export. **No change to `OrderFulfillmentService`.**
+- **PR-2 (build once real orders flow):** `payment_settlements` + the "CHIP Settlements" `.xlsx` ingest / match screen (`openspout/openspout` added to `backend/composer.json` — no spreadsheet library today), the Monthly Accounting Summary screen, and the FX-variance calculation.
+- **Pre-PR-2 verification (the ADR-033 lesson — a third-party format has bitten this project twice):** obtain a real settlement `.xlsx` from the **PekanGame** CHIP account (the sample reviewed during this grill was from another of the founder's accounts) and confirm the column set holds across acquirers (FPX, DuitNow QR, card) before writing the parser. Parser keys on column names, tolerates missing optional columns, and iterates all non-"Summary" sheets.
+- If a `Gagal` callback does not report the restored supplier saldo, `REFUND` falls back to `MANUAL_ADJUSTMENT` — watch whether this is frequent enough to need dedicated handling.
+- `Supplier.balance` stays as the API-refreshed cache other code already reads (ADR-069); a derived `supplierLedgerBalance()` accessor is added alongside — no migration, no retirement.
+- Forge production: verify the daily automated MySQL backup is enabled and that the server backup includes `storage/app/private`. The `private` disk must be configured in `config/filesystems.php` and verified on the box.
+- Foreign amounts are `decimal(18,4)` throughout; MYR stays integer sen (ADR-002). Never assume integer-sen for a foreign currency.
+- Update `docs/prd.md` §14 and §15 to reflect this reshaped design; update the ADR-070 RESERVED stub to point here.
