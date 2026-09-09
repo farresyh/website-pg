@@ -4388,8 +4388,9 @@ Key operational realities and limitations surfaced:
 2. **Current Supplier Balance Limitation:** Currently, `Supplier.balance` is a single mutable column periodically overwritten by API responses (DASH-2). It lacks an append-only ledger tracking deposits, order fulfillments, refunds, and adjustments.
 3. **Gateway Settlement Reconciliation:** Retail payments collected via CHIP (FPX / DuitNow QR) incur MDR fees and settle on T+1/T+2 cycles into the corporate bank account. Without an automated settlement reconciliation engine, net bank receipts cannot be easily verified against order revenue.
 4. **Corporate Bank Statement as the Ground Truth:** For Malaysian corporate tax audits, the official monthly bank statement (Maybank2E / CIMB BizChannel) is the definitive proof of cash flow. A solo founder cannot manually reconcile hundreds or thousands of transactions each month without high administrative overhead.
-5. **Multi-Director Capital & Investor Governance (Sdn Bhd Structure):** The company operates with three directors/shareholders: Luqman (40%, initial capital investor providing ~RM 40k upfront and future capital injections), Wheng (30%, sweat equity/operations), and Farres (30%, sweat equity/tech). Injections by Luqman must be strictly booked as **Shareholder Advances / Director's Loans** (non-revenue liabilities), NOT paid-up capital (to prevent equity dilution of the 40:30:30 structure) and NOT retail sales (to prevent LHDN 24% tax on injected capital). Repayments must be tracked as tax-free loan repayments.
+5. **Multi-Director Working Partnership & Investor Governance (Sdn Bhd Structure):** The company operates with three active working directors/shareholders: Luqman (40%, initial capital investor providing ~RM 40k upfront and future capital injections, plus active operational sweat equity), Wheng (30%, sweat equity/operations), and Farres (30%, sweat equity/tech). Injections by Luqman must be strictly booked as **Shareholder Advances / Director's Loans** (non-revenue liabilities), NOT paid-up capital (to prevent equity dilution of the 40:30:30 structure) and NOT retail sales (to prevent LHDN 24% tax on injected capital). Repayments must be tracked as tax-free loan repayments.
 6. **Marketing Budget Caps & Thin-Margin Discipline:** In game top-up, gross margins are slim (3%–8%). Uncontrolled digital ad spend (Meta, TikTok) or influencer sponsorships can silently turn gross profit into net operating loss. The system requires hard monthly budget caps, early-warning burn alerts, and automated ROAS (Return on Ad Spend) attribution.
+7. **Bootstrapped Working Capital Compounding & Profit Reinvestment Policy:** To survive the T+1/T+2 gateway cash conversion cycle on an initial ~RM 20k supplier rolling fund, all three directors agree to forgo full salaries for the initial 6 months (zero or subsistence allowance only). Net profits are retained and compounded directly into the **Supplier Working Capital Pool** and emergency reserve to scale order capacity towards RM 100k–RM 500k/mo. The system must measure and surface this compounding progress.
 
 **Decision:**
 
@@ -4417,10 +4418,14 @@ Key operational realities and limitations surfaced:
    - Dedicated `expenses` table for non-inventory operational overhead, enforcing categories: `HOSTING_INFRASTRUCTURE`, `SOFTWARE_TOOLS`, `FINANCE_BANK_FEES`, `MARKETING_PAID_ADS`, `MARKETING_INFLUENCER_KOL`, `MARKETING_PROMOTIONS`, and non-deductible `DIRECTOR_DRAWINGS`.
    - Dedicated `marketing_budgets` table tracking monthly budget ceilings, burn progress (e.g. 85% threshold warning), and computing live ROAS against `ReportService` order revenue.
 
-6. **Shareholder Capital & Investor Loan Tracking (`capital_injections` & `capital_repayments`):**
+6. **Shareholder Capital, Retained Earnings Compounding & Investor Dashboard (`capital_injections` & `capital_repayments`):**
    - Dedicated `capital_injections` table records capital provided by shareholders/directors (Luqman, etc.) tagged by intended allocation (Supplier Rolling Fund, Marketing, Emergency Reserve).
    - Legally classified as **Shareholder Advances (Liabilities)**, guaranteeing zero LHDN tax exposure upon receipt, zero equity dilution of the 40:30:30 agreement, and tax-free principal repayment tracked via `capital_repayments`.
-   - Dedicated read-only **Investor Dashboard** view providing real-time transparency of capital deployment (Cash in Bank vs. Supplier Balances vs. Ad Spend).
+   - **Retained Earnings Compounding Policy:** For the initial 6 months, net profits default to expanding working capital capacity rather than payroll/dividend distribution.
+   - **Capital Runway & Capacity Metric:** Financial dashboard computes and displays:
+     $$\text{Capital Runway (Days)} = \frac{\text{Supplier Balances} + \text{In-Flight CHIP Settlement}}{\text{Trailing 7-Day Average Daily COGS}}$$
+     Alerting directors when buffer drops below 3 days of order velocity.
+   - Dedicated read-only **Investor Dashboard** view providing real-time transparency of capital deployment (Cash in Bank vs. Supplier Balances vs. Ad Spend vs. Compounded Retained Earnings).
 
 7. **Monthly Bank Statement Reconciliation Engine:**
    - Ingestion: Native CSV parser tailored for Malaysian corporate banking formats (Maybank2E, CIMB BizChannel, RHB Reflex) as primary; Vision LLM (Gemini Flash) extraction as secondary for PDF statements.
