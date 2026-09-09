@@ -1,8 +1,13 @@
 # Payment Gateway Research — CHIP vs HitPay (2026-07-30)
 
-**Purpose:** input to a follow-up ADR on whether to swap away from Xendit (ADR-001) or run a
-second gateway concurrently through the existing `PaymentGatewayFactory` /
-`payment_methods.gateway` seam (ADR-001 addendum, 2026-07-25).
+> **OUTCOME (historical):** This fed **ADR-022** — CHIP was chosen, added alongside Xendit,
+> then made the **sole gateway 2026-09-01** (Xendit removed entirely, code archived). CHIP FPX
+> has been live in production with real money since 2026-09-03. This file is kept as the
+> primary-source rate/API research that informed that call; it is **not an open question**.
+
+**Purpose (as written 2026-07-30):** input to a follow-up ADR on whether to swap away from
+Xendit (ADR-001) or run a second gateway concurrently through the existing
+`PaymentGatewayFactory` / `payment_methods.gateway` seam (ADR-001 addendum, 2026-07-25).
 
 **Method:** every claim below is cited to a primary source — the gateway's own docs site, its own
 published rate card, or its own OpenAPI spec. Secondary sources (aggregator comparisons, third-party

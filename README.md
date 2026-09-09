@@ -1,10 +1,12 @@
 # PekanGame
 
 A guest-checkout storefront for topping up game credits (MLBB and others),
-with an admin panel for catalog/order/withdrawal management, a reseller portal
-(resellers get their own branded storefront and an earnings ledger), and a
-middleware layer that syncs prices and validates player IDs against upstream
-suppliers.
+with an admin panel for catalog/order/withdrawal management, a partner portal
+serving two account types — **Affiliates** (whitelabel storefront owners with
+their own branding, custom domain, and earnings ledger — ADR-060) and
+**Resellers** (prepaid-wallet accounts that order via portal, REST API, or a
+WhatsApp bot — ADR-072–076) — and a middleware layer that syncs prices and
+validates player IDs against upstream suppliers.
 
 Money moves through this system for real: checkout payments, ledger-tracked
 balances, admin withdrawals, and store-credit vouchers. If you're new here,
@@ -16,10 +18,10 @@ behind them, not left implicit.
 
 | App | Tech | Purpose |
 | --- | --- | --- |
-| `backend/` | Laravel 13 (PHP 8.3), MySQL | API for storefront, admin, reseller portal, and middleware — checkout, orders, ledger, suppliers, payments |
-| `admin/` | Next.js 16 + React 19 + Tailwind v4 | Internal admin panel — games/packages, orders, withdrawals, vouchers, resellers, Price Sync Center, gallery |
-| `storefront/` | Next.js 16 + React 19 + Tailwind v4 | Public storefront — catalog, guest checkout, order tracking |
-| `reseller/` | Next.js 16 + React 19 + Tailwind v4 | Reseller portal — a reseller's own orders, earnings ledger, withdrawals, wholesale-tier subscription (ADR-058/059) |
+| `backend/` | Laravel 13 (PHP 8.3), MySQL | API for storefront, admin, partner portal, and middleware — checkout, orders, ledger, suppliers, payments |
+| `admin/` | Next.js 16 + React 19 + Tailwind v4 | Internal admin panel — games/packages, orders, withdrawals, vouchers, affiliates, resellers, Price Sync Center, gallery |
+| `storefront/` | Next.js 16 + React 19 + Tailwind v4 | Public storefront — catalog, guest checkout, order tracking. Also renders every Affiliate whitelabel brand per `Host`/custom domain (ADR-060) |
+| `reseller/` | Next.js 16 + React 19 + Tailwind v4 | Partner portal — one app, two account types: Affiliate (earnings ledger, withdrawals, wholesale tier, storefront config, custom domain — ADR-058/059/060) and Reseller (prepaid wallet, API keys, bot — ADR-072–076) |
 
 Auth is bearer-token (Laravel Sanctum) end to end — there's no session-cookie
 auth and no CSRF surface between the frontends and the API (see ADR-009 and

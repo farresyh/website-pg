@@ -8,7 +8,7 @@ Immutable record of foundation decisions made before any code was written. Each 
 
 ## ADR-001 (D1): Payment gateway — Xendit
 
-**Status:** Accepted — 2026-07-23. **The xenPlatform clause is superseded by [ADR-059](#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config) decision 6 — dropped entirely, not deferred (see the OWNED addendum below).** Xendit-as-a-gateway is still current; ADR-022 later added CHIP alongside it.
+**Status:** Accepted — 2026-07-23. **FULLY SUPERSEDED.** (1) The xenPlatform clause was dropped entirely by [ADR-059](#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config) decision 6 (not deferred — see the OWNED addendum below). (2) Xendit-as-the-gateway was replaced by [ADR-022](#adr-022-payment-gateway-abstraction--chip-as-a-second-gateway) — CHIP added alongside 2026-08, then **Xendit removed entirely 2026-09-01** (ADR-022's CHIP-only addendum; code archived to `archive/xendit-gateway` + tag `xendit-archive-2026-09-01`). CHIP is the sole gateway, live in production with real money since 2026-09-03.
 
 **Decision:** MVP uses Xendit's standard Invoice/Payment API only (single merchant account, platform collects 100% of payment). **xenPlatform** (sub-account fund-splitting) is deferred to Phase 2.
 
@@ -1519,7 +1519,7 @@ Two other directions were considered and rejected this session before landing on
 
 ---
 
-## ADR-037: Staging/production git branch model + staging environment infra (branch model built 2026-08-26; staging infra still not built)
+## ADR-037: Staging/production git branch model + staging environment infra (branch model built + in live use 2026-08-26; a separately-deployed staging environment deliberately deferred per the 2026-09-01 addendum — "there is no staging server" is now the accepted model, see root AGENTS.md)
 
 **Status:** Accepted — grilled 2026-08-25. **Branch model (decisions 1-3, 12, 13) is built and in live use**, confirmed 2026-08-26: `AGENTS.md`'s Branch Workflow section exists, and the same session cut `fix/voucher-path-a-idempotency-guard` off `staging`, merged PR #1 into `staging` via a real `--no-ff` merge commit (`git log --pretty=format:"%H %P"` confirmed two parents), then cut `feature/voucher-merge` off a freshly-pulled `staging` for the next piece of work — the model working end-to-end for real, not just documented. **Decisions 4-11 (the actual staging deploy pipeline, shared-droplet Compose stack, `staging.<domain>` subdomain, CI `push:staging` trigger) remain unbuilt** — only decision 6's port-parameterization prerequisite has shipped so far (see Consequence to track below).
 
@@ -2174,7 +2174,7 @@ Investigation before grilling found the shape already mostly dictated by existin
 3. **Trigger UI: a popup modal, not an inline card, driven by a single derived condition — `order.delivery_status === 'delivered' && !order.has_review`.** Lives inside the existing `OrderStatusTracker.tsx` (shared by both `/order/status/[orderNumber]` and `/track-order`, per this codebase's existing "one component, two entry points" precedent) — fires identically whether the transition arrives live (Reverb push) or the page loads directly into an already-delivered order (initial poll), since both paths write into the same `order` state already. `TrackedOrder` (and `OrderStatusUpdated`'s broadcast payload) gains a new `has_review: boolean` field to drive this.
 4. **No client-side dismiss-forever state.** Closing the modal without submitting does not set a cookie/`localStorage` flag — the modal reappears on any later visit to either entry point (same order_number) as long as `has_review` is still `false`. This is deliberately server-truth-only: once a real review lands, `has_review` flips server-side and the modal never shows again for that order, from any device/browser — no client state to keep in sync.
 5. **Data model: `Review` reads `game`/`package` live via its `Order` relation, never duplicates/snapshots those columns.** `rating` (1-5, required), `comment` (nullable — REV-5's "with comment only" filter presumes some reviews have none), `status` (`pending` default / `approved` / `rejected`).
-6. **No public display anywhere.** Approved reviews stay purely an internal admin moderation view, matching REV-1..5's own literal spec (which never mentions public display) — `TestimonialsSection`'s static content is untouched, a deliberately separate concern. Extending to a public/Testimonials-replacing display is left to a future, dedicated ADR once real review volume exists to justify the design work, not bundled in here.
+6. **No public display anywhere.** ~~Approved reviews stay purely an internal admin moderation view~~ — **SUPERSEDED by [ADR-082](#adr-082-public-facing-review-display--homepage-marquee--per-game-reviews-on-the-product-page) (2026-09-09):** approved reviews are now shown publicly (homepage marquee + per-game product-page section), `approved == public` with no separate flag. The "future dedicated ADR once real review volume exists" this decision called for is ADR-082. Original reasoning (kept for history): matching REV-1..5's own literal spec (which never mentions public display) — `TestimonialsSection`'s static content is untouched, a deliberately separate concern.
 7. **`average_rating` (REV-1's stat) is scoped to `status=approved` only** — a rejected/spam review shouldn't skew the one quality signal this admin-only feature produces.
 
 **Rationale:** Decision 3 is the load-bearing call — it gets a real-time, no-nag-when-already-reviewed prompt essentially for free by recognizing `OrderStatusTracker.tsx` already unifies both delivery-status update sources into one piece of state, rather than building new polling/broadcast plumbing specific to this feature. Decision 4 keeps the "have they reviewed yet" question server-authoritative rather than device-local, which is both simpler (no client storage to manage) and more correct (a customer who dismisses on their phone and later opens `/track-order` on a laptop still gets prompted exactly once more, until they actually submit). Decision 6 keeps this ADR's scope to what REV-1..5 literally asks for — bundling a public-display redesign in here would conflate two separately-sized decisions.
@@ -2268,7 +2268,7 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 
 ## ADR-056: Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored wholesale rate, tier fee from earnings
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, six rounds, before any code touched — the design tree covered premise, scope boundary, transaction channel, money model, auth, domain routing, and phasing)
+**Status:** BUILT + LIVE (wholesale tiers + subscription state machine shipped; entity renamed `Reseller`→`Affiliate` in ADR-072). Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, six rounds, before any code touched — the design tree covered premise, scope boundary, transaction channel, money model, auth, domain routing, and phasing)
 
 **Context:**
 - `ADR-027`'s 2026-08-29 continued addendum (decisions 8–16) settled the *shape* of reseller wholesale pricing — a paid `reseller_membership_tiers` subscription, cost-anchored, fully decoupled from consumer VIP Membership — but recorded it design-only and "fully re-arguable at build time." This ADR is that re-argument plus the build spec, split across ADR-056..060 (see the phasing note at the end).
@@ -2349,9 +2349,9 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 
 ---
 
-## ADR-058: Reseller authentication + admin Reseller Management (RES-1..6)
+## ADR-058: Reseller authentication + admin Reseller Management (RES-1..6) — BUILT + LIVE (guard later renamed `reseller`→`affiliate` by ADR-072)
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+**Status:** BUILT + LIVE (58a/58b, merged + deployed; the `reseller` guard was renamed `affiliate` in ADR-072). Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
 
 **Context:**
 - No non-admin authentication exists anywhere. `config/auth.php` has one guard (`web`, session, `admin_users` provider); `admin_users.role` is `super_admin | admin`; `admin/` uses Sanctum bearer tokens against that.
@@ -2421,9 +2421,9 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 
 ---
 
-## ADR-059: Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config
+## ADR-059: Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config — BUILT + LIVE at `reseller.pekangame.space` (entity later renamed `Reseller`→`Affiliate` by ADR-072; the app now also serves wallet `Reseller` accounts)
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+**Status:** BUILT + LIVE (59a/59b/59c shipped; portal live at `reseller.pekangame.space` since 2026-09-02). Per ADR-072 the `reseller/` app now serves both `Affiliate` (this ADR's entity, renamed) and wallet `Reseller` accounts. Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
 
 **Context:**
 - The founder wants a dedicated reseller dashboard, separate from both `admin/` and `storefront/`.
@@ -2477,7 +2477,7 @@ Decision 2's "59c = storefront settings + catalog toggle + live preview" assumed
 - **59c ships the useful-now slice:** **Withdrawal** (a reseller has a real `('reseller', id)` earnings balance credited on every order since ADR-061 — a payout request is genuinely usable) + a **Profile** screen to store bank details on `resellers` (prefills the withdrawal form) + **Impersonation** entry (`/impersonate?token=` route consuming the ADR-058 RES-4 token, the admin side opening it, the persistent "Impersonating {reseller} — acting as {admin}" banner). Portal nav → 6 items (Dashboard / Orders / Earnings / Subscription / Withdrawal / Profile).
 - **ADR-060 absorbs the storefront-config editors** — they take effect only once ADR-060 builds the per-`Host` branded storefront that reads them: the branding text editor (store name / description / support contacts / social links) **plus SEO pixel IDs (GA / FB / TikTok)** — the founder's answer: *pixel IDs are the only SEO field a reseller controls; meta templates / OG image / schema toggles stay admin-central via `{store_name}` substitution*; the `markup_pct` editor + live `PricingService::calculateForReseller()` preview; the `reseller_game` (or `reseller_disabled_games`) catalog on/off table + screen. Logo upload (a new `reseller_branding` column) and per-reseller hero slides (`hero_slides.reseller_id`) are open ADR-060 grilling questions, not assumed.
 - **Footer & legal content stay admin-only, central.** `reseller_footer_settings` (footer text, `terms_content` / `privacy_content` / `about_us_content`, `footer_game_ids`) is edited only in `/admin`; every brand's storefront renders that one source with `{store_name}` substituted for the brand name (the substitution `BrandingController::substitute()` already does). **This supersedes the part of `ADR-028` / `ADR-029` that anticipated a reseller editing its own footer/legal rows** — legal text carries platform liability and the founder wants it centrally controlled. The per-`reseller_id` rows on those tables stay (schema unchanged); only the primary's row is authored, and ADR-060's `Host` resolution can fall back to it.
-- **Reseller theme system stays deferred** to its own future ADR (unchanged — PRD §5 / §6.15).
+- **Reseller theme system stays deferred** to its own future ADR (unchanged — PRD §5 / §6.15). **Resolved 2026-09-09 as [ADR-081](#adr-081-affiliate-storefront-theme-presets--a-curated-fixed-set-not-the-thm-1-4-custom-theme-system):** a curated fixed-preset picker (colour tokens only), NOT the THM-1..4 custom system.
 
 **Build addendum — 59a shipped 2026-08-31** (`feature/adr-059a-reseller-portal-backend`). The read layer + the `LedgerOwnerType` enum. No `reseller/` app yet (59b), no write endpoints (59c).
 
@@ -2515,9 +2515,9 @@ Decision 2's "59c = storefront settings + catalog toggle + live preview" assumed
 
 ---
 
-## ADR-060: Multi-tenant branded storefront + custom-domain infrastructure (Cloudflare for SaaS)
+## ADR-060: Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-native custom domains, NOT Cloudflare for SaaS)
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056). ~~Blocked on `ADR-020` production deployment + `ADR-037` staging infra.~~ **Unblocked 2026-09-02 — production is live on Laravel Forge ([ADR-066](#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)).** ~~This is now the next reseller build.~~ **2026-09-05: fully grilled (logo/hero-slides/domain-transfer-timing all resolved, see the addendum below); sequenced after the Cloudflare DNS transfer + real-client-IP fix so this ADR's custom-hostname code lands on clean infra. 2026-09-06: that Cloudflare cutover is DONE + verified ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)'s "Cutover executed" section — NS on Cloudflare, `api` proxied with Origin CA + Full (Strict) + Authenticated Origin Pulls, origin locked, `trustProxies` fix in prod). This ADR is now fully unblocked and is the next reseller build.** Verification against production + local `Host` mocking (no deployed staging env exists, `ADR-037` is branch-workflow only) plus one real domain the founder has set aside specifically for end-to-end custom-hostname/SSL verification. **2026-09-06: Cloudflare cutover done ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)) — this ADR is unblocked and is the next build. Same session, a scoped domain-lifecycle grill reversed decision 3 (Cloudflare for SaaS → Vercel-native custom domains) and fully pinned the `affiliate_domains` schema, the self-serve onboarding flow, provider opacity in the portal, and every CF/provider hostname lifecycle transition — see the "domain lifecycle fully specified" build addendum below, which also carries the 6-PR build split.**
+**Status:** BUILT + LIVE IN PRODUCTION. PR-1…PR-4d released to prod 2026-09-07 (PR #124); PR-5 + PR-6 released to prod 2026-09-08 (PR #128); custom-domain gaps found post-live → [ADR-078](#adr-078-custom-domain-storefront-gaps--dynamic-cors-edge-cache-staleness-membership-toggle-visibility), whose PR-1..3 **also released to prod 2026-09-09** (PR #149, merge `d18838f`). Founder confirmed 2026-09-09: a real affiliate custom domain registered + end-to-end verified. **Decision 3's "Cloudflare for SaaS" was reversed 2026-09-06 to Vercel-native custom domains** (`affiliate_domains` table, `AffiliateDomainProvider` seam, self-serve onboarding, provider opacity) — the title/decision-3 text below is kept for history per this log's own rule; read the "domain lifecycle fully specified" addendum for the current design. Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056). ~~Blocked on `ADR-020` production deployment + `ADR-037` staging infra.~~ **Unblocked 2026-09-02 — production is live on Laravel Forge ([ADR-066](#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)).** ~~This is now the next reseller build.~~ **2026-09-05: fully grilled (logo/hero-slides/domain-transfer-timing all resolved, see the addendum below); sequenced after the Cloudflare DNS transfer + real-client-IP fix so this ADR's custom-hostname code lands on clean infra. 2026-09-06: that Cloudflare cutover is DONE + verified ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)'s "Cutover executed" section — NS on Cloudflare, `api` proxied with Origin CA + Full (Strict) + Authenticated Origin Pulls, origin locked, `trustProxies` fix in prod). This ADR is now fully unblocked and is the next reseller build.** Verification against production + local `Host` mocking (no deployed staging env exists, `ADR-037` is branch-workflow only) plus one real domain the founder has set aside specifically for end-to-end custom-hostname/SSL verification. **2026-09-06: Cloudflare cutover done ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)) — this ADR is unblocked and is the next build. Same session, a scoped domain-lifecycle grill reversed decision 3 (Cloudflare for SaaS → Vercel-native custom domains) and fully pinned the `affiliate_domains` schema, the self-serve onboarding flow, provider opacity in the portal, and every CF/provider hostname lifecycle transition — see the "domain lifecycle fully specified" build addendum below, which also carries the 6-PR build split.**
 
 > **Post-live gaps → ADR-078 (2026-09-07):** once PR-1…PR-6 shipped and a real custom affiliate domain was attached, three gaps surfaced that PR-5's checklist did not cover — CORS (`config/cors.php` `allowed_origins` never learned about custom domains, so every client-side call from one fails), `proxy.ts` 60-second module-cache staleness for redirects and host verdicts, and the `is_owned` `membership_enabled` default not being signposted in the admin form. ADR-078 fixes all three. The CORS gap in particular belongs on PR-5's checklist retroactively.
 
@@ -2550,7 +2550,7 @@ Decision 2's "59c = storefront settings + catalog toggle + live preview" assumed
 - **The portal branding editor** — store name / description / support email+phone / social links on `reseller_branding`, **plus GA / FB / TikTok pixel IDs on `reseller_seo_settings`** (founder 2026-08-31: pixel IDs are the *only* SEO field a reseller controls; meta title/description templates, OG image, and schema toggles stay admin-authored and use `{store_name}` substitution). Footer text + legal pages (`terms_content` / `privacy_content` / `about_us_content`) + `footer_game_ids` stay **admin-only** — this **supersedes the part of `ADR-028` / `ADR-029` that anticipated a reseller editing its own footer/legal rows**; every brand renders the primary's footer with `{store_name}` substituted.
 - **The `markup_pct` editor + live `PricingService::calculateForReseller()` preview** (ADR-059 decision 4) — lands with the checkout wiring in decision 5, so preview and charge share one path.
 - **The Domain screen** (decision 4) — Cloudflare custom-hostname status + the CNAME / DCV records for the reseller to set.
-- ~~Open grilling questions for this ADR: a logo upload... and per-reseller hero slides...~~ **Resolved 2026-09-05, see the addendum below.** The reseller **theme system** (colours / typography — PRD §6.15 THM-1..4) stays out, its own future ADR.
+- ~~Open grilling questions for this ADR: a logo upload... and per-reseller hero slides...~~ **Resolved 2026-09-05, see the addendum below.** The reseller **theme system** (colours / typography — PRD §6.15 THM-1..4) stays out, its own future ADR. **That ADR is [ADR-081](#adr-081-affiliate-storefront-theme-presets--a-curated-fixed-set-not-the-thm-1-4-custom-theme-system) (2026-09-09) — shipped as a curated fixed-preset picker; THM-1/3/4 dropped, not built.**
 
 **Consequence to track:**
 - ~~Hard-blocked on `ADR-020` (droplet + SSH deploy) and `ADR-037` (staging infra).~~ **Unblocked 2026-09-02 — production is live ([ADR-066](#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)).** ~~Remaining prerequisites: the domain moving to Cloudflare, or an interim Forge Let's Encrypt path.~~ **2026-09-05: interim path rejected, founder's own call — the Cloudflare transfer happens first. 2026-09-06: DONE + verified (see [ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)'s "Cutover executed" section). This ADR's code PR is unblocked.** `storefront/` no longer builds with `output: "standalone"` (removed in ADR-066 — Vercel doesn't use it), so decision 1's "one Dockerized `storefront/` app" is now "one Vercel `storefront/` project" — the `Host`-resolution logic is identical, only the hosting shape changed.
@@ -2959,7 +2959,7 @@ This addendum is open to challenge at review like any decision — the prefix to
 - The storefront ships **one hardcoded visual world**: `storefront/src/app/globals.css` `@theme` tokens (dark forest-green — `--color-bg: #04140e`, `--color-brand: #007400`), Bebas Neue + Source Sans 3 fonts (`layout.tsx`, `next/font/google`), a CSS-approximated diamond logo. This palette was "extracted from the real Kedai Runcit Soloz brand assets" (ADR-028) — it is now anti-reference.
 - The founder produced a Stitch design set (`~/Downloads/stitch_fixfast_brand_evolution/`, 6 desktop screens + `DESIGN.md`) and a neo-brutalist design-system poster as the direction. Both are **reference, not spec** — the founder wants the card layouts, colours, and structure "as close as possible" to the Stitch screens, with craft latitude to improve.
 - The founder's stated intent (grilling Q13/Q14): the Stitch "Digital Architect" palette is the poster's hard neo-brutalism **deliberately softened** ("nampak terlalu sharp, jadikan lebih smooth"). Ship **light** for PekanGame v1 (the original brief; all 6 Stitch screens are light), but the founder also wants dark available later per-tenant.
-- Per-tenant theming (PRD §6.15 THM-1..4) is explicitly a **separate future ADR**, not this one. The reseller "theme system" stays out (ADR-059 / ADR-060 notes).
+- Per-tenant theming (PRD §6.15 THM-1..4) is explicitly a **separate future ADR**, not this one. The reseller "theme system" stays out (ADR-059 / ADR-060 notes). **→ [ADR-081](#adr-081-affiliate-storefront-theme-presets--a-curated-fixed-set-not-the-thm-1-4-custom-theme-system) (2026-09-09): curated fixed-preset picker shipped; full custom theming (THM-1/3/4) dropped.**
 - Stack: Next.js 16 / React 19 / Tailwind **v4** (CSS `@theme`, no `tailwind.config.js`). Icons: `@phosphor-icons/react` already a dependency. `next/image` already used (`ProductCard`, `HeroSlider`).
 
 **Decision:**
@@ -3489,6 +3489,12 @@ This addendum is open to challenge at review like any decision — the prefix to
 
 ---
 
+## ADR-070: RESERVED — supplier-deposit / FX-history ledger (not yet designed)
+
+**Status:** Reserved, not designed. Split out from ADR-069 as a future ADR; ADR-071 skipped the number to hold it. When the supplier-deposit / FX-history ledger is grilled, it becomes ADR-070. Nothing is built under this number.
+
+---
+
 ## ADR-071: Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes
 
 **Status:** Accepted — 2026-09-03 (grilled with the founder over four rounds via `/mattpocock-skills:grilling` before any code was written; this entry is that shared understanding). Built across PR0–PR3 off `staging`.
@@ -3577,7 +3583,7 @@ The founder reports that the storefront's purchase flow feels laggy and "stuck" 
 
 ## ADR-072: Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture
 
-**Status:** Accepted (design) — 2026-09-04, grilled with the founder over six rounds via `/mattpocock-skills:grilling` before any code was written. First of a four-ADR family (072-075) from one grilled design, split by natural boundary — same convention as ADR-056..061. No code changes in this ADR; the "Build addendum" sections land as each PR in the phasing note (end of ADR-075) ships.
+**Status:** BUILT + LIVE + PROD-VERIFIED end-to-end 2026-09-06 (the whole 072..076 family — rename, wallet, API channel, Bot channel — is code-complete and verified against real OpenWA + real CHIP; release PR #110). Original: Accepted (design) — 2026-09-04, grilled with the founder over six rounds via `/mattpocock-skills:grilling` before any code was written. First of a four-ADR family (072-075) from one grilled design, split by natural boundary — same convention as ADR-056..061. The "Build addendum" sections land as each PR in the phasing note (end of ADR-075) ships.
 
 **Context:**
 - ADR-056..061 built a single `Reseller` model shaped entirely around one business relationship: a whitelabel storefront partner who subscribes to a paid wholesale tier, sets their own markup, and earns margin credited to a ledger account after each sale. ADR-060 (branded storefront + Cloudflare custom domains) is designed against this same shape and remains unbuilt.
@@ -4207,7 +4213,7 @@ Shipped in full on `feature/adr-079-storefront-polish`:
 
 ## ADR-080: Membership × per-brand — close the `/membership` surface consistently on a membership-disabled brand
 
-**Status:** Accepted (design) — 2026-09-09, grilled with the founder over eleven decisions via `/mattpocock-skills:grilling`, then a stress-test pass before this entry was written. This is ADR-061's lineage — the per-brand Membership opt-in (ADR-061 decision 4/5) whose gate turned out to be applied inconsistently once a real membership-disabled brand went live — not new Membership scope. Same "gaps found after a feature went live in production, fixed as a follow-up ADR" shape as ADR-078 (to ADR-060) and ADR-077's own post-live addenda. Implemented in one PR on the same branch (`feature/adr-080-membership-per-brand-gate`).
+**Status:** BUILT + LIVE IN PRODUCTION 2026-09-09 (PR #148 → `staging`, release PR #149 → `main` `d18838f`; deploy green, prod probes 200). Original: Accepted (design) — 2026-09-09, grilled with the founder over eleven decisions via `/mattpocock-skills:grilling`, then a stress-test pass before this entry was written. This is ADR-061's lineage — the per-brand Membership opt-in (ADR-061 decision 4/5) whose gate turned out to be applied inconsistently once a real membership-disabled brand went live — not new Membership scope. Same "gaps found after a feature went live in production, fixed as a follow-up ADR" shape as ADR-078 (to ADR-060) and ADR-077's own post-live addenda. Implemented in one PR on the same branch (`feature/adr-080-membership-per-brand-gate`).
 
 **Context:**
 
@@ -4282,5 +4288,91 @@ Two triage claims from the 2026-09-08 memo turned out **already resolved** and a
 - **Global kill-switch behaviour is now asymmetric** — flipping `PlatformSettings.membership_enabled` off stops all sales surfaces everywhere but leaves every member's `me()` readable. That is intended (decision 1/6); a future operator expecting "off means fully dark" should find this decision.
 
 **Delivery:** one PR, `feature/adr-080-membership-per-brand-gate` off `staging` — backend + storefront + admin together (tightly coupled, small). Backend feature tests: the four gated endpoints 403 on a disabled brand, `me()` still 200s, the middleware ordering vs `throttle`, `completePaidAttempt` logs on a disabled brand, `active_membership_count` present. No new E2E (a disabled-brand E2E needs a multi-brand seed for one assertion; the feature tests cover the gate). `fixfastapp` cleanup is a manual post-merge step, recorded here as a build addendum.
+
+---
+
+## ADR-081: Affiliate storefront theme presets — a curated fixed set, NOT the THM-1..4 custom theme system
+
+**Status:** Accepted — retroactively documented + grilled 2026-09-09; **shipped 2026-09-09 (PR #150) ahead of this ADR (process slip, noted below).** BUILT + on `staging`.
+
+**Context:**
+
+PRD §6.15 (THM-1..4) and ADR-059/ADR-060 both parked a "reseller theme system" as explicitly out of scope — "its own future ADR". THM-1..4 as written meant a fairly heavy feature: a custom colour + typography picker per brand, a per-reseller theme-permissions table (THM-3), and admin bulk theme-assignment (THM-4).
+
+PR #150 (commit `2278d9e`, 2026-09-09) shipped a much smaller thing, without an ADR: `affiliate_branding.theme_preset` (string column, default `'default'`), a fixed library of five presets (`default` / `bumblebee` / `redgiants` / `emerald` / `cobalt`) defined in `theme-presets.ts` (one copy in `reseller/src/lib/`, one in `storefront/src/lib/`), a portal "Theme" tab (`reseller/src/components/storefront/ThemeTab.tsx`) with a live preview, and a `<style id="pg-theme-preset">:root{ --color-*: … }</style>` block injected server-side in `storefront/src/app/layout.tsx` that overrides only the Material-3 **colour** tokens (skipped entirely for `default`). Structure — the neo-brutalist 2px ink strokes, hard shadows, type scale (ADR-063) — is untouched by a preset. The write path validates `theme_preset` against `in:default,bumblebee,redgiants,emerald,cobalt` in `UpdateBrandingRequest`.
+
+This ADR documents that shipped design, and the grill confirmed its scope ceiling.
+
+**Decision:**
+
+1. **The curated fixed-preset picker IS the answer to "reseller theme system", and it is the permanent shape — not an interim step toward full custom theming.** An affiliate picks one of a small, hand-designed set. The preset overrides colour tokens only; every brand keeps the same structural design language.
+
+2. **THM-1's custom colour/typography picker, THM-3's per-reseller theme-permissions table, and THM-4's admin bulk theme-assignment are dropped, not deferred.** They can be re-argued if a real, sized demand appears — but "we might want it" is not that. Rationale: a fixed set keeps every whitelabel storefront on-brand and legible, carries zero design-QA/support burden per tenant, and needs no colour-contrast validation tooling or per-tenant preview infrastructure.
+
+3. **The platform's own primary / `is_owned` brand may select a non-`default` preset.** The column exists on its `affiliate_branding` row and the injection path already handles it; a seasonal/campaign re-skin of the main storefront with no deploy is a feature, not a risk (the token values are a fixed server-controlled map keyed by a validated enum — no injection surface).
+
+4. **Adding a preset is a deliberate, code-reviewed change** (new entry in the preset map + a design pass on the palette), not a runtime/admin operation. There is no preset CRUD.
+
+**Rationale:**
+
+- The shipped feature is genuinely useful and genuinely small — it gives a real affiliate a sense of ownership over their storefront without opening the door to unreadable colour combinations, broken contrast, or a support queue of "my store looks wrong".
+- Keeping structure fixed and only swapping colour tokens means a preset can never break layout — the failure modes of a full theme system don't exist here.
+- The process slip (code shipped before the ADR) is logged honestly; the grill after the fact reached the same place the design would have, so nothing is being retrofitted to match code.
+
+**Consequence to track:**
+
+- **The preset definition is duplicated in three places:** `reseller/src/lib/theme-presets.ts`, `storefront/src/lib/theme-presets.ts` (full token maps), and the `in:` rule in `UpdateBrandingRequest` (the ID list). A 6th preset means editing three files with no compile-time link between them. **Follow-up (`fix/storefront-review-scoping` batch or its own):** derive the `in:` rule from a single PHP array of keys (kills the 3rd copy) and add a test asserting the two TS files' keys match that array. The real fix — a backend `GET /api/catalog/theme-presets` endpoint both frontends consume — is only worth it at preset #6+.
+- **Dark mode is still a separate future ADR** (per §6.15 and ADR-063's "light-only v1" note). Presets today define light `:root` tokens only. **When that ADR is opened it MUST add a `tokensDark` variant per preset** — dark mode is not allowed to collapse every brand back onto one identity. Pin this as a hard requirement on that future ADR, not a nice-to-have.
+- **No contrast/accessibility gate on preset palettes** — they are hand-checked at authoring time. If presets ever become numerous or externally contributed, add an automated contrast check.
+- Keep `docs/prd.md` §6.15 (THM rows) and §15 current — this ADR closes THM-1/3/4 as "dropped".
+
+---
+
+## ADR-082: Public-facing review display — homepage marquee + per-game reviews on the product page
+
+**Status:** Accepted — retroactively documented + grilled 2026-09-09; **shipped 2026-09-09 (PRs #150/#151) ahead of this ADR (process slip, noted below).** BUILT + on `staging`, with two known gaps scheduled for a follow-up fix branch.
+
+**Context:**
+
+[ADR-053](#adr-053-reviews-rev-1-5--guest-order-linked-submission-via-a-real-time-delivery-status-trigger-admin-only-moderation) decision 6 was explicit: "**No public display anywhere.** Approved reviews stay purely an internal admin moderation view … Extending to a public/Testimonials-replacing display is left to a future, dedicated ADR once real review volume exists".
+
+PRs #150 and #151 (2026-09-09) shipped exactly that, without an ADR:
+- **`GET /api/reviews`** (`ReviewCatalogController::index`) — the 12 latest approved reviews with `comment` non-null, customer name masked via `App\Support\ContactMask` (name → email → `"Verified Customer"`), 60s cache. Consumed by the homepage `TestimonialsSection` as an infinite marquee (PR #150).
+- **`GET /api/catalog/games/{slug}/reviews`** (`ReviewCatalogController::gameReviews`) — for one game, tenant-scoped (`whereHas('order', affiliate_id = current brand`, `orWhereNull` for the primary): `average_rating`, `review_count`, and the 3 latest commented approved reviews. Consumed by `GameReviewsSection` on the `/order/[slug]` product page, replacing the old static `TrustStrip` (PR #151).
+- Admin `ReviewController::approve/reject` now call `ReviewCatalogController::forgetCache(affiliateId, gameId)` so moderation changes propagate.
+
+This ADR documents the shipped design, records the grill decisions, and lists the gaps the grill surfaced.
+
+**Decision:**
+
+1. **`approved` now means `public`.** There is no separate `is_public` / `is_featured` flag. The existing admin moderation (super_admin/admin approve/reject, ADR-053) is the sole gate — approval IS publication. At current volume a two-step "approve then feature" workflow is pure overhead.
+
+2. **This reverses ADR-053 decision 6.** ADR-053's "no public display" and "its own future ADR" are superseded by this ADR. On the 2026-09-09 deploy, every already-approved review (moderated under a "will only ever be seen internally" expectation) became publicly visible. Accepted, given low pre-launch volume — but see the founder-owed corpus scan below.
+
+3. **The homepage marquee (`GET /api/reviews`) must be tenant-scoped**, the same way the per-game endpoint already is — an affiliate's branded storefront shows reviews from *that brand's* customers (+ null-affiliate for the primary), never a cross-brand pool. **Gap: shipped un-scoped (global latest 12).** Fix in the follow-up branch.
+
+4. **No placeholder fallback.** When a brand/game has no approved reviews, the section renders nothing (the per-game `GameReviewsSection` already does this). The homepage marquee must do the same. **Gap: PR #150 falls back to fake `TESTIMONIALS` placeholder data under a "Real feedback from verified buyers" heading** — misleading on a money-handling storefront. Fix in the follow-up branch: drop the fallback, delete `placeholder-data.ts`'s `TESTIMONIALS`, and delete the now-unused `TrustStrip` component (the founder's call: a generic trust strip is pointless noise now).
+
+5. **Customer identity is masked** via `ContactMask` on every public surface, consistent with ADR-065. No raw name/email/phone, no `order_number`, no internal financial fields — the narrow-response discipline of `backend/AGENTS.md` applies.
+
+6. **The public review endpoints share the same throttle/caching posture as the rest of the public catalog group** (`/api/catalog/*`) — 60s cache, no per-endpoint rate limit. The per-game cache key space is bounded (brands × games); the homepage key becomes bounded once decision 3 lands.
+
+**Rationale:**
+
+- Real, moderated customer reviews on the storefront are a straightforward conversion lever, and ADR-053 always anticipated this step — it just wanted volume first and an ADR. Volume is still thin but the founder judged the feature worth shipping now; this ADR back-fills the missing decision record.
+- `approved == public` with no extra flag is the right call *at this scale* — the moderator already reads every review. The consequence list flags when to revisit.
+- Per-brand scoping is not optional: a cross-brand marquee leaks one brand's sales proof to a competitor's storefront and shows a customer of brand X testimonials from brand Y they've never heard of.
+- The placeholder-under-a-"verified"-heading gap is a genuine misrepresentation risk on a platform that moves real money — hence a scheduled fix, not a "maybe later".
+
+**Consequence to track:**
+
+- **Founder-owed, one-off:** scan the existing approved-review corpus once for anything not appropriate for public display (reviews approved under the old "internal only" assumption). Same shape as the `fixfastapp` orphan-row cleanup in ADR-080. Low effort at current volume.
+- **Two shipped gaps → `fix/storefront-review-scoping` (follow-up branch, cut after the doc-audit PR merges):** (a) tenant-scope `GET /api/reviews` per resolved brand + null-for-primary, using the same `StorefrontBrand` resolution as `gameReviews`, and update `forgetCache()` to invalidate the brand's homepage key; (b) drop the homepage placeholder fallback, delete `TESTIMONIALS` + `TrustStrip`, auto-hide the marquee when empty.
+- **SEO `AggregateRating` / `Review` JSON-LD** on the product page (from the new `average_rating` / `review_count`) is **backlog**, not this ADR's scope — fold into the next SEO-module change (ADR-042). Star ratings in the SERP are high-value for a top-up storefront.
+- **Revisit `is_public` as a separate flag** if review volume grows enough that a moderator can't reasonably keep every approved review public-worthy, or if a specific approved-but-not-public-appropriate case appears.
+- **`GameReviewsSection` replaced `TrustStrip` on the product page** — a game with zero approved reviews now has nothing in that slot. Deliberate (decision 4): the founder considers a generic trust strip pointless. New games / new affiliate stores therefore have a bare product page until their first review lands.
+- Keep `docs/prd.md` §14/§15 (Reviews row) and ADR-053's decision-6 pointer current with this reversal.
+
+---
 
 

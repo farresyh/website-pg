@@ -8,17 +8,31 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# reseller/ — Reseller Portal (ADR-059)
+# reseller/ — Partner Portal (ADR-059, ADR-072)
 
-The third Next.js app, alongside `admin/` and `storefront/`. A reseller
-signs in here to see their own storefront's orders, earnings ledger,
-withdrawal history, and wholesale-tier subscription — and (59c) to edit
-their branding/SEO/footer, markup, and catalog, and request payouts.
+The fourth Next.js app, alongside `admin/` and `storefront/` (runs on
+`:3002`). **One app, two account types** since ADR-072:
 
-- **Auth is the `reseller` Sanctum guard** (backend `config/auth.php`,
-  ADR-058 58a) — a completely separate guard from `admin/`'s. This app
-  physically cannot render an admin screen; that separation is the point
-  (ADR-059 decision 1).
+- **Affiliate** — a whitelabel storefront owner. Nav: Dashboard / Orders /
+  Earnings / Withdrawals / Storefront config / Subscription / Domain. Earns a
+  margin per order into an earnings ledger, requests manual payouts, runs a
+  branded `Host`-resolved storefront (ADR-060) on a custom domain. *This is
+  the entity ADR-058/059 originally called "Reseller".*
+- **Reseller** — a prepaid-wallet, spend-only account (ADR-072/073). Nav:
+  Dashboard / Orders / Wallet / API Keys / Profile. Tops up the wallet via
+  CHIP, spends it placing orders through three channels: this portal, the
+  REST API (per-tenant keys — ADR-074, docs at `/docs/api`), and a WhatsApp
+  bot (OpenWA — ADR-075). Never earns.
+
+The account type is **backend-enforced by `EnsureAccountType`** on every
+reseller-guard endpoint, not just a hidden nav tab.
+
+- **Auth is the `affiliate` Sanctum guard** (backend `config/auth.php`) —
+  renamed from `reseller` in ADR-072. `affiliate_users.owner_type`/`owner_id`
+  is polymorphic: both an `Affiliate` and a wallet `Reseller` log in through
+  the same `/api/affiliate/login`. A completely separate guard from
+  `admin/`'s — this app physically cannot render an admin screen (ADR-059
+  decision 1).
 - **Same browser-calls-Laravel-directly model as `admin/`** (ADR-009):
   the bearer token lives in `sessionStorage` (`lib/session.ts`), a
   presence-only httpOnly cookie drives `proxy.ts`'s optimistic redirect
@@ -29,9 +43,6 @@ their branding/SEO/footer, markup, and catalog, and request payouts.
   PrimeReact-Tailwind (ADR-038) with the shared `globals.css` design
   tokens. `admin/` is the up-to-date reference for every Next.js 16
   pattern this app needs.
-- **Read-only in 59b.** Dashboard / Orders / Earnings / Subscription only.
-  The write surface (storefront settings, catalog toggle, withdrawal
-  request) and the impersonation banner land in 59c.
 
 ## Env
 

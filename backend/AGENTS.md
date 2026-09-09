@@ -16,12 +16,14 @@ Laravel-specific, loaded only when working inside `backend/`.
 - **No cash refunds, ever** (ADR-004) — a failed/refundable order becomes a
   store-credit `Voucher`, not a reversed payment.
 - **Supplier and payment integrations are behind adapters** —
-  `SupplierAdapter` (`GamevionAdapter` is the one real implementation) and
-  `PaymentGateway` (`ChipGateway` is the one real implementation since
-  ADR-022's 2026-09-01 addendum removed Xendit; still resolved per-channel
-  via `PaymentGatewayFactory`, which stays for a future multi-region
-  gateway). Add a new supplier/gateway by implementing the interface, not
-  by branching inside a controller or service.
+  `SupplierAdapter` (`GamevionAdapter` and `DigiflazzAdapter` are the two
+  real, production-wired implementations — ADR-030/067; resolved per-order
+  by `supplier_id` via `SupplierAdapterFactory`, ADR-031) and `PaymentGateway`
+  (`ChipGateway` is the one real implementation since ADR-022's 2026-09-01
+  addendum removed Xendit; still resolved per-channel via
+  `PaymentGatewayFactory`, which stays for a future multi-region gateway).
+  Add a new supplier/gateway by implementing the interface, not by branching
+  inside a controller or service.
 - **Money-critical concurrency is lock-guarded, proven with real
   subprocess tests** — see `LedgerService::withdraw()`,
   `VoucherService::redeem()`, `OrderFulfillmentService::fulfill()`, all
@@ -47,11 +49,12 @@ Laravel-specific, loaded only when working inside `backend/`.
   at checkout (`payment_method`/`selling_price`/`voucher_discount`/
   `transaction_fee`), per ADR-065. `standard_selling_price` / profit /
   `payment_ref` are still never exposed there.
-- **`Cache::remember()` values must be plain arrays, never a raw
-  Eloquent Model/Collection or an un-cast `Carbon` instance** — the
-  `database` cache driver silently corrupts nested objects on the next read.
-  Call `->toArray()` / `?->toISOString()` before caching. Full story: ADR-014's
-  addendum in `docs/adr.md`.
+- **`Cache::remember()` values should be plain arrays, not a raw Eloquent
+  Model/Collection or an un-cast `Carbon` instance** — call `->toArray()` /
+  `?->toISOString()` before caching. The cache driver is Redis since ADR-077
+  (was `database`), which does *not* corrupt nested objects, so this is now
+  belt-and-braces / portability discipline rather than load-bearing — but keep
+  following it. Full story: ADR-014's addendum + ADR-077 in `docs/adr.md`.
 - **Every mutating route gets a `Http\Requests\*` FormRequest** — structural
   validation (types, `exists:`) lives in the FormRequest; cross-field/DB-
   dependent business rules live in the controller. Don't validate via
@@ -61,7 +64,7 @@ Laravel-specific, loaded only when working inside `backend/`.
 ## Build & Test
 
 ```bash
-composer run dev                                          # serve + queue:listen + pail + vite together
+composer run dev                                          # serve + horizon + pail + vite together (needs local Redis — ADR-048)
 php artisan test                                           # fast suite (sqlite, no Docker)
 docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurrency suite, needs real MySQL
 php artisan app:chip-smoke-test                             # hits the real CHIP API (test-mode key; no separate sandbox URL)
