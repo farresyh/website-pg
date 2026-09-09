@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Review;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Review\ReviewStatus;
+use App\Support\StorefrontBrand;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
@@ -22,10 +23,15 @@ use Illuminate\Validation\ValidationException;
  */
 class ReviewController extends Controller
 {
-    public function store(StoreReviewRequest $request, string $orderNumber): JsonResponse
+    public function store(StoreReviewRequest $request, string $orderNumber, StorefrontBrand $brand): JsonResponse
     {
-        $order = Order::query()->where('order_number', $orderNumber)->first();
+        $order = Order::query()
+            ->forStorefrontBrand($brand->get())
+            ->where('order_number', $orderNumber)
+            ->first();
 
+        // Same 404 whether unknown or another brand's — a review can only
+        // be left on the storefront the order was placed on (ADR-060).
         if ($order === null) {
             return response()->json(['message' => 'No order found with that order number.'], 404);
         }

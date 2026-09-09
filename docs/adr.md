@@ -2815,6 +2815,16 @@ Pure build from here — planning addendum agreed, no open frontier.
 
 ---
 
+### Addendum — public proof-of-ownership lookups are brand-scoped (2026-09-10, `fix/storefront-tenant-scope-tracking`)
+
+The two public `order_number`-as-proof-of-ownership routes (`GET /api/track-order/{n}`, ADR-011; `POST /api/orders/{n}/review`, ADR-053) shipped **without** the `storefront.brand` middleware, and their controllers looked up the order by `order_number` alone. Consequence: an order number placed on one affiliate's storefront resolved on *any* other's — leaking the buyer's game, masked contact, order status, and that brand's own retail `selling_price` across the tenant boundary. Not an enumeration hole (the number is ~62-bit CSPRNG), but a real cross-brand leak for anyone who *has* another brand's number (a forwarded screenshot, an operator testing).
+
+Fix: both routes get `storefront.brand`; both controllers scope through the new `Order::scopeForStorefrontBrand(Affiliate $brand)` (primary brand also matches `affiliate_id IS NULL` legacy rows, mirroring `ReviewCatalogController::gameReviews()`). A cross-brand hit returns the **same 404** as an unknown number — never confirm an order exists under a storefront it wasn't placed on.
+
+**Deliberately still open:** the realtime `order.{order_number}` broadcast channel (`OrderStatusUpdated`) stays a public, unscoped channel — its payload is already the masked `customerSafePayload`, the order number is the proof-of-ownership token, and brand-scoping it needs a private channel + auth callback. Tracked as a follow-up, not a blocker. Also unchanged: the storefront support card's contact details are the *brand's* (`useSiteConfig().whatsappHref`) — a separate cosmetic fix (`fix/storefront-brand-polish`) de-hardcodes the "PekanGame" strings in the message body.
+
+---
+
 ### Phasing note (ADR-056..060)
 
 One grilled design, split into five sequenced ADRs so each ships as its own PR to `staging`:

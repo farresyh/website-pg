@@ -7,6 +7,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
 use Database\Factories\OrderFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -163,5 +164,30 @@ class Order extends Model
     public function review(): HasOne
     {
         return $this->hasOne(Review::class);
+    }
+
+    /**
+     * Scope a public storefront proof-of-ownership lookup (track-order,
+     * review submission — ADR-011 / ADR-053) to the brand whose
+     * storefront the request came in on (ADR-060 `X-Storefront-Host` →
+     * `StorefrontBrand`). Without this an order number placed on one
+     * affiliate's storefront resolves on any other's — a cross-tenant
+     * leak of the buyer's game / masked contact / that brand's retail
+     * price.
+     *
+     * An order placed on the primary brand's own storefront may carry
+     * `affiliate_id = null` (legacy) or the primary affiliate's id;
+     * a third-party affiliate sees only rows tagged with its own id.
+     * Same shape as `ReviewCatalogController::gameReviews()`.
+     */
+    public function scopeForStorefrontBrand(Builder $query, Affiliate $brand): Builder
+    {
+        return $query->where(function (Builder $q) use ($brand) {
+            $q->where('affiliate_id', $brand->id);
+
+            if ($brand->is_primary) {
+                $q->orWhereNull('affiliate_id');
+            }
+        });
     }
 }
