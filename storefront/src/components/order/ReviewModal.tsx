@@ -105,6 +105,17 @@ export default function ReviewModal({
 
   const sheetRef = useRef<HTMLDivElement>(null);
 
+  // The focus-trap effect below must run only on open/close — never
+  // because a callback prop changed identity. `onClose` is read through
+  // a ref so an unmemoized parent callback (OrderForm re-renders on every
+  // keystroke in the contact fields) can't retrigger the effect, which
+  // would call `sheetRef.current?.focus()` again and yank focus out of
+  // the input the user is typing in.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   // ADR-071 PR3 — this is the last checkpoint before money moves, so it
   // gets real dialog discipline: body scroll lock, Esc to close, focus
   // moved into the sheet and trapped within it, focus restored on close.
@@ -128,7 +139,7 @@ export default function ReviewModal({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -152,7 +163,7 @@ export default function ReviewModal({
       document.body.style.overflow = prevBodyOverflow;
       previouslyFocused?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
