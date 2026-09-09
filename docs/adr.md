@@ -4375,4 +4375,71 @@ This ADR documents the shipped design, records the grill decisions, and lists th
 
 ---
 
+## ADR-083: Internal Accounting & Financial Reconciliation System — Supplier Balance Ledger, CHIP Settlements, OPEX Tracking, and AI-Assisted Bank Reconciliation
 
+**Status:** Accepted (design) — 2026-09-09 (grilled with the founder via `/mattpocock-skills:grilling`). Design-only, zero code modified. Scheduled for implementation across 4 PRs.
+
+**Context:**
+
+As PekanGame scales towards RM 100k – RM 500k monthly GMV (RM 1.2M – RM 6M annually), the business transitions into a high-turnover corporate entity requiring strict financial reporting, LHDN (Inland Revenue Board of Malaysia) audit readiness, e-Invoicing compliance, and foreign-exchange (FX) cost tracking.
+
+Key operational realities and limitations surfaced:
+1. **Supplier Pre-funding vs. COGS:** Transfers to suppliers (e.g. Wise transfers to Digiflazz in Indonesia in IDR, or local transfers to Gamevion in MYR) represent **Prepaid Inventory / Supplier Deposits (Current Assets)**, not immediate period expenses. COGS is realized only when orders are successfully delivered. Tracking this in manual spreadsheets creates timing mismatches, risk of untracked leakage, and fails to maintain an immutable audit trail.
+2. **Current Supplier Balance Limitation:** Currently, `Supplier.balance` is a single mutable column periodically overwritten by API responses (DASH-2). It lacks an append-only ledger tracking deposits, order fulfillments, refunds, and adjustments.
+3. **Gateway Settlement Reconciliation:** Retail payments collected via CHIP (FPX / DuitNow QR) incur MDR fees and settle on T+1/T+2 cycles into the corporate bank account. Without an automated settlement reconciliation engine, net bank receipts cannot be easily verified against order revenue.
+4. **Corporate Bank Statement as the Ground Truth:** For Malaysian corporate tax audits, the official monthly bank statement (Maybank2E / CIMB BizChannel) is the definitive proof of cash flow. A solo founder cannot manually reconcile hundreds or thousands of transactions each month without high administrative overhead.
+
+**Decision:**
+
+1. **Dedicated Supplier Balance Ledger (`supplier_funding_batches` and `supplier_ledger_entries`), isolated from `ledger_entries`:**
+   - Retail sales, affiliate commissions, and reseller wallets continue to live in `ledger_entries` (integer sen MYR, per ADR-002/073).
+   - Supplier balances are modeled via dedicated tables:
+     - `supplier_funding_batches`: Records incoming capital batches (supplier_id, source_channel e.g. Wise/Airwallex/Bank, amount_myr, fee_myr, currency, amount_foreign, exchange_rate, receipt_url, reference_no, remaining_foreign_amount).
+     - `supplier_ledger_entries`: Append-only, row-locked ledger recording per-supplier movements (`SUPPLIER_TOPUP`, `ORDER_FULFILLMENT`, `SUPPLIER_REFUND`, `MANUAL_ADJUSTMENT`) with dual-currency amounts (foreign currency and batch-derived MYR COGS).
+   - Multi-currency native from day one: Gamevion operates in MYR; Digiflazz operates in IDR; schema allows future USD/other suppliers without migration.
+
+2. **FIFO (First-In, First-Out) Inventory & COGS Valuation:**
+   - When an order completes delivery, COGS is drawn against the oldest unexhausted `supplier_funding_batches` row for that supplier (FIFO per MFRS 102).
+   - Once Batch A's foreign balance is fully depleted, remaining order cost rolls seamlessly into Batch B at Batch B's effective exchange rate. This guarantees deterministic, auditable MYR COGS for every single delivered order.
+
+3. **Supplier Discrepancy & Drift Policy:**
+   - The system periodically polls the supplier's external API balance and computes variance against `SUM(supplier_ledger_entries)`.
+   - The system **NEVER auto-mutates the ledger** to match third-party API drift silently.
+   - If drift occurs, a `discrepancy_alert` is raised. Rectification requires an explicit admin `MANUAL_ADJUSTMENT` ledger entry with a mandatory audit reason.
+
+4. **CHIP Settlement Ingestion (Hybrid Model):**
+   - Background Horizon job polls CHIP's Settlement/Payout API to ingest settlement batches (`payout_amount`, `gross_amount`, `fee_deducted`, `settled_at`, `payout_reference`).
+   - Admin panel provides a CSV upload fallback to backfill or manually import settlement statements when API access is disrupted.
+
+5. **Operating Expenses (OPEX) with LHDN Tax Taxonomy:**
+   - Dedicated `expenses` table for non-inventory operational overhead (server hosting, domains, SaaS tools, marketing/ads, bank/payment fees).
+   - Enforced categorization enum with an `is_tax_deductible` boolean flag, enabling one-click generation of LHDN-compliant tax computation summaries (separating allowable business deductions from non-deductible items like Director's Drawings).
+
+6. **Monthly Bank Statement Reconciliation Engine:**
+   - Ingestion: Native CSV parser tailored for Malaysian corporate banking formats (Maybank2E, CIMB BizChannel, RHB Reflex) as primary; Vision LLM (Gemini Flash) extraction as secondary for PDF statements.
+   - Smart Matching Engine: Matches statement rows using exact amount + $\pm 3$ business-day window + merchant keyword filters (`CHIP IN`, `WISE PAYMENTS`, `VERCEL`, etc.).
+   - Line Item State Machine: `unmatched` → `matched` / `manually_matched` / `categorized_new` / `ignored` → statement reaches `reconciled` (Zero Variance).
+
+7. **Storage & AI Privacy Boundaries:**
+   - Financial attachments (Wise receipts, bank statements, tax invoices) are strictly stored on the `private` filesystem disk (`storage/app/private/accounting/`), guarded by `auth:admin` + `role:super_admin` with temporary signed stream access. Never exposed via public asset URLs.
+   - **Human-in-the-Loop AI Model:** Multimodal AI (Gemini Flash) extracts dates, amounts, reference IDs, and tax categories from uploaded receipts to pre-fill draft forms. No financial ledger entry is written without explicit human founder confirmation.
+
+8. **Four-PR Phased Build Split:**
+   - **PR-1 (Supplier Balance & Funding Ledger):** Schema (`supplier_funding_batches`, `supplier_ledger_entries`), multi-currency support (MYR/IDR), FIFO consumption hook on `OrderFulfillmentService`, and Admin Supplier Funding UI.
+   - **PR-2 (OPEX & CHIP Settlement Engine):** Schema (`expenses`, `payment_settlements`), LHDN tax taxonomy, CHIP settlement sync, Net Profit (P&L) calculations integrated into financial reporting.
+   - **PR-3 (Monthly Bank Reconciliation Engine):** Schema (`bank_statements`, `bank_statement_lines`), Malaysian banking CSV parsers, matching engine, reconciliation review screen.
+   - **PR-4 (Agentic AI Layer & Tax Export):** Multimodal receipt parsing, AI suggestion engine for unmatched bank lines, and LHDN-ready P&L/Tax PDF export.
+
+**Rationale:**
+
+- Separating the supplier ledger from the retail/customer `ledger_entries` table prevents schema bloat and currency contamination while preserving the existing integrity of partner profit splits.
+- FIFO valuation provides the gold standard for compliance under Malaysian tax law (LHDN) and financial audit standards, eliminating arbitrary FX rate approximations.
+- Bank statement reconciliation ensures the system does not operate in a digital vacuum; it anchors digital transactions directly to physical cash flow in the company's bank account.
+- Storing receipts securely and enforcing human verification over AI-extracted figures eliminates hallucination risk while reducing administrative data-entry workload by over 90%.
+
+**Consequence to track:**
+
+- `OrderFulfillmentService::fulfill()` will be extended in PR-1 to trigger supplier ledger FIFO deduction within the existing fulfillment database transaction. Concurrency tests (real MySQL) must prove that concurrent order deliveries lock and deplete batches accurately without race conditions.
+- Gamevion balance is in MYR, Digiflazz in IDR — adapter normalizers must supply the correct currency code when reporting costs.
+- Private disk storage configuration must be added to `config/filesystems.php` and verified in Forge production deployment.
+- Update `docs/prd.md` §14 and §15 to reflect ADR-083's accepted design status and future build sequence.
