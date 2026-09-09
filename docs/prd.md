@@ -469,22 +469,24 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 | Service | Function | Notes |
 | --- | --- | --- |
-| **Xendit** | Online payment processing — international channels + cards (FPX/e-wallets now routed to CHIP where cheaper, ADR-022) | Payment Request API v3, single merchant account, platform collects 100% of payment. Webhook signature verification mandatory (PAY-1). **xenPlatform dropped entirely** (ADR-059 decision 6) — the ledger splits reseller money, not the gateway. |
-| **CHIP** | Malaysia-local payment processing (FPX, DuitNow) — cheaper flat fee than Xendit for local channels (ADR-022) | Resolved per-channel via `PaymentGatewayFactory`. RSA webhook signature verification. `app:chip-smoke-test` written; stays inactive until CHIP merchant approval + a live smoke-test pass. |
-| **Supplier API(s)** | Game credit catalog, price feeds, player validation (where supported), order creation/fulfillment | **Confirmed via direct research to vary significantly per supplier**: different auth schemes (static Bearer+API-key vs. others), inconsistent response envelopes, validation-endpoint availability differs per game (not just per supplier), idempotency support varies (e.g. Gamevion's `referenceNumber` + `409 Duplicate` pattern). All access goes through the Adapter layer (6.21) — never assume any of the above is uniform across suppliers. |
-| **Google Analytics (GA4)** | Website analytics and conversion tracking | Measurement ID from Settings. |
-| **Facebook Pixel** | Ad conversion tracking and retargeting | Pixel ID from Settings. |
-| **TikTok Pixel** | Ad conversion tracking | Pixel ID from Settings. |
-| **Telegram Bot** | Admin notifications for new orders, failures, withdrawal requests, tripped circuit breakers | Configurable token and chat ID from Settings. |
-| **Email Service** | Transactional emails (order confirmation, delivery notification, failure/voucher alerts) | SMTP or API-based. Templates configurable. |
-| **[Additional Suppliers]** | Future supplier integrations | Standard Adapter pattern for onboarding — enforced from MVP, not Phase 2 (ADR-006). |
+| **CHIP** | **Sole payment gateway** — Malaysia-local (FPX live; DuitNow QR / `fpx_b2b1` seeded inactive). Also membership subscription + reseller wallet top-up checkout | 🟢 **LIVE in production since 2026-09-03** (live keys, `fpx` channel active, RM1.00 flat fee) — real money proven end-to-end (order `PG-PYAYMRYNUYV0`). Per-purchase `success_callback` (not a portal webhook), RSA signature verification with key-rotation re-fetch. Still resolved via `PaymentGatewayFactory` for a future multi-region 2nd gateway. `app:chip-smoke-test`. ADR-022 (+ 2026-09-01 CHIP-only addendum), ADR-068. |
+| **~~Xendit~~** | ~~International payment processing~~ | **Removed entirely 2026-09-01** (ADR-022 addendum). Code archived to branch `archive/xendit-gateway` + tag `xendit-archive-2026-09-01`. International acceptance is gone, not dormant — its own grilled ADR if cross-border selling becomes real. xenPlatform was never adopted (ADR-059 decision 6 — the ledger splits partner money, not the gateway). |
+| **Gamevion** | Supplier — game credit catalog, price feed, player validation, order creation/fulfillment | First real `SupplierAdapter`. Static Bearer + API-key, `referenceNumber` + `409 Duplicate` idempotency, per-purchase `callback_url`. Sandbox via `GAMEVION_SANDBOX=true`. ADR-006/040. |
+| **Digiflazz** | Second supplier — Indonesian H2H aggregator (486 game SKUs + data SKUs) | Prod key wired 2026-09-02. IDR→MYR FX conversion at the sync boundary (ADR-033). Inbound `POST /api/webhooks/digiflazz` (HMAC-SHA1 `X-Hub-Signature` + IP allowlist). **`checkBalance` = Rp 0 — must be funded before live orders.** ADR-030/067/069. |
+| **Supplier API(s) — general** | The Adapter contract all suppliers implement | Confirmed to vary significantly per supplier (auth, response envelopes, validation availability per-game, idempotency). All access goes through the Adapter layer (§6.21), resolved per-order by `supplier_id` (`SupplierAdapterFactory`, ADR-031). Onboarding a new supplier = a new adapter, enforced from MVP (ADR-006). |
+| **OpenWA** | WhatsApp gateway for the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki` command set) | Self-hosted OpenWA session. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`). Provisioned + prod-verified end-to-end 2026-09-05/06. ADR-075/076. |
+| **Plunk** | Transactional email — order confirmation/delivery/failure-voucher, membership OTP + receipts, partner-portal invites | API-based (`PLUNK_API_KEY`). Replaced the generic "SMTP or API" placeholder. ADR-027/068. |
+| **Laravel Reverb** | Realtime broadcasting — order-status push, replaces application-level polling on the customer buy-flow | Self-hosted WebSocket server + Echo client. ADR-047, ADR-071 PR4. |
+| **Vercel** | Custom-domain provisioning for Affiliate whitelabel storefronts | `AffiliateDomainProvider` seam (Vercel / no-op). `affiliate_domains` table, self-serve onboarding, provider opacity in the portal. ADR-060 (reverses decision 3's Cloudflare-for-SaaS), ADR-078. |
+| **Google Analytics (GA4) / Facebook Pixel / TikTok Pixel** | Website analytics + ad conversion tracking | IDs from Settings (per-brand for Affiliates). |
+| **Telegram Bot** | Admin notifications — new orders, failures, withdrawal requests, tripped circuit breakers | Configurable token + chat ID from Settings. |
 
 ---
 
 # 11. Proposed Features / Future Phases
 
-- **Reseller Self-Service Platform.** *In active build* — pricing/tiers + tenant isolation + auth + admin management shipped (ADR-056/057/058/061); remaining: the reseller portal app (ADR-059) and branded custom-domain storefronts (ADR-060). Not "future" any more — tracked in §15's Resellers row.
-- **API / H2H "pull supply" channel.** A reseller pulling supply for their own off-platform site (the true Gamevion-mirror) — needs a prepaid deposit wallet + top-up flow. Deliberately deferred to its own future ADR (ADR-056 decision 7); nothing in the current batch builds it.
+- **~~Affiliate Self-Service Platform.~~** ✅ **Shipped.** Wholesale pricing/tiers + tenant isolation + auth + admin management + portal app + branded custom-domain storefronts all live (ADR-056–061, ADR-078). Tracked in §15's Affiliates row.
+- **~~API / H2H "pull supply" channel.~~** ✅ **Shipped as the `Reseller` (prepaid wallet) system.** A partner pulling supply for their own off-platform site — prepaid deposit wallet + CHIP top-up + REST API keys (ADR-074) + WhatsApp bot (ADR-075). Tracked in §15's Reseller wallet row.
 - **Automated Customer Support Chatbot.** Integrate a chatbot (Telegram/WhatsApp) for order tracking, player ID lookup, and basic troubleshooting.
 - **Mobile Native Apps.** React Native or Flutter apps for the customer storefront experience.
 - **Loyalty & Rewards Program.** Points system for customers based on order frequency/value.
@@ -501,9 +503,9 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 **Resolved during Withdrawal/Voucher implementation (2026-07-24):** maker-checker thresholds — Withdrawal (WTH-5) is RM 2,000, `WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`; Voucher (VCH-6) is RM 500, `VOUCHER_MAKER_CHECKER_THRESHOLD_SEN`, and turned out to be a **different maker-checker mechanism**, not the same one at a different amount — see VCH-6's row in §6.11 and `foundation-security.md` §1 for why. ~~xenPlatform sub-account type is OWNED, not MANAGED~~ — moot: xenPlatform dropped entirely ([ADR-059](./adr.md)).
 
-**Resolved during the reseller batch grilling (2026-08-30, ADR-056..061):** reseller pricing model (paid wholesale tiers, cost-anchored — ADR-056); tenant isolation mechanism (`BelongsToReseller` + global scope — ADR-057); reseller auth (separate `reseller` guard — ADR-058); reseller domains use **custom domains only, no subdomains**, TLS via Cloudflare for SaaS (ADR-060); money model — platform collects all retail centrally, ledger splits, no xenPlatform (ADR-059); the platform owner stops being a special case — every storefront is a `Reseller` (ADR-061).
+**Resolved during the reseller batch grilling (2026-08-30, ADR-056..061):** wholesale pricing model (paid tiers, cost-anchored — ADR-056); tenant isolation mechanism (`BelongsToReseller` + global scope — ADR-057); partner auth (separate `affiliate` guard — ADR-058, guard renamed from `reseller` in ADR-072); partner domains use **custom domains only, no subdomains** (ADR-060 — TLS/provisioning is **Vercel-native custom domains**, not Cloudflare for SaaS; decision 3 was reversed 2026-09-06); money model — platform collects all retail centrally, ledger splits, no xenPlatform (ADR-059); the platform owner stops being a special case — every storefront is an `Affiliate` row (ADR-061, entity renamed from `Reseller` in ADR-072).
 
-**Resolved during Database Backups build (2026-08-26):** backup storage target — `BACKUP_DISK`-configurable, defaults to local disk; the local-disk single-point-of-failure risk is explicitly tracked as a known gap, not an oversight (ADR-039, `adr.md:1384`).
+**Resolved during Database Backups build (2026-08-26):** backup storage target — `BACKUP_DISK`-configurable, defaults to local disk; the local-disk single-point-of-failure risk is explicitly tracked as a known gap, not an oversight (ADR-039).
 
 **Still open:**
 
@@ -511,8 +513,9 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - What is the SLA for supplier APIs? Should there be alerts if response time exceeds threshold (ties into circuit-breaker tuning)?
 - Per-supplier, per-game audit: which games/suppliers actually support pre-payment validation vs. order-time-only? Needs to be catalogued during supplier onboarding, not assumed.
 - Blacklist data source: internal chargeback history only, or also manually curated from known fraud reports? Needs a policy for false-positive appeal.
-- MFA for `reseller_users` — deferred with the same reasoning as the admin MFA gap (ADR-058 consequence note); resolve before the reseller portal's withdrawal screen goes live (ADR-059).
-- Multi-region payment routing (Malaysia → CHIP, other countries → Xendit, auto by country) — founder want, not yet designed or ADR'd.
+- MFA for `affiliate_users` (was `reseller_users`) — deferred with the same reasoning as the admin MFA gap (ADR-058 consequence note); resolve before the partner portal's withdrawal screen carries meaningful balances.
+- Multi-region payment routing (Malaysia → CHIP, other countries → a 2nd gateway, auto by country) — founder want. **Superseded for now** by the CHIP-only cutover (ADR-022, 2026-09-01): the `PaymentGatewayFactory` seam is kept, but a real 2nd gateway is only revisited when cross-border selling is real. Xendit (the original candidate) is deleted.
+- Public-facing review display — added ad-hoc in PR #150/#151 (2026-09-09); retro-documented in ADR-082 (see §14).
 
 ---
 

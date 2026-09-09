@@ -8,7 +8,7 @@ Immutable record of foundation decisions made before any code was written. Each 
 
 ## ADR-001 (D1): Payment gateway — Xendit
 
-**Status:** Accepted — 2026-07-23. **The xenPlatform clause is superseded by [ADR-059](#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config) decision 6 — dropped entirely, not deferred (see the OWNED addendum below).** Xendit-as-a-gateway is still current; ADR-022 later added CHIP alongside it.
+**Status:** Accepted — 2026-07-23. **FULLY SUPERSEDED.** (1) The xenPlatform clause was dropped entirely by [ADR-059](#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config) decision 6 (not deferred — see the OWNED addendum below). (2) Xendit-as-the-gateway was replaced by [ADR-022](#adr-022-payment-gateway-abstraction--chip-as-a-second-gateway) — CHIP added alongside 2026-08, then **Xendit removed entirely 2026-09-01** (ADR-022's CHIP-only addendum; code archived to `archive/xendit-gateway` + tag `xendit-archive-2026-09-01`). CHIP is the sole gateway, live in production with real money since 2026-09-03.
 
 **Decision:** MVP uses Xendit's standard Invoice/Payment API only (single merchant account, platform collects 100% of payment). **xenPlatform** (sub-account fund-splitting) is deferred to Phase 2.
 
@@ -1519,7 +1519,7 @@ Two other directions were considered and rejected this session before landing on
 
 ---
 
-## ADR-037: Staging/production git branch model + staging environment infra (branch model built 2026-08-26; staging infra still not built)
+## ADR-037: Staging/production git branch model + staging environment infra (branch model built + in live use 2026-08-26; a separately-deployed staging environment deliberately deferred per the 2026-09-01 addendum — "there is no staging server" is now the accepted model, see root AGENTS.md)
 
 **Status:** Accepted — grilled 2026-08-25. **Branch model (decisions 1-3, 12, 13) is built and in live use**, confirmed 2026-08-26: `AGENTS.md`'s Branch Workflow section exists, and the same session cut `fix/voucher-path-a-idempotency-guard` off `staging`, merged PR #1 into `staging` via a real `--no-ff` merge commit (`git log --pretty=format:"%H %P"` confirmed two parents), then cut `feature/voucher-merge` off a freshly-pulled `staging` for the next piece of work — the model working end-to-end for real, not just documented. **Decisions 4-11 (the actual staging deploy pipeline, shared-droplet Compose stack, `staging.<domain>` subdomain, CI `push:staging` trigger) remain unbuilt** — only decision 6's port-parameterization prerequisite has shipped so far (see Consequence to track below).
 
@@ -2268,7 +2268,7 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 
 ## ADR-056: Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored wholesale rate, tier fee from earnings
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, six rounds, before any code touched — the design tree covered premise, scope boundary, transaction channel, money model, auth, domain routing, and phasing)
+**Status:** BUILT + LIVE (wholesale tiers + subscription state machine shipped; entity renamed `Reseller`→`Affiliate` in ADR-072). Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, six rounds, before any code touched — the design tree covered premise, scope boundary, transaction channel, money model, auth, domain routing, and phasing)
 
 **Context:**
 - `ADR-027`'s 2026-08-29 continued addendum (decisions 8–16) settled the *shape* of reseller wholesale pricing — a paid `reseller_membership_tiers` subscription, cost-anchored, fully decoupled from consumer VIP Membership — but recorded it design-only and "fully re-arguable at build time." This ADR is that re-argument plus the build spec, split across ADR-056..060 (see the phasing note at the end).
@@ -2349,9 +2349,9 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 
 ---
 
-## ADR-058: Reseller authentication + admin Reseller Management (RES-1..6)
+## ADR-058: Reseller authentication + admin Reseller Management (RES-1..6) — BUILT + LIVE (guard later renamed `reseller`→`affiliate` by ADR-072)
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+**Status:** BUILT + LIVE (58a/58b, merged + deployed; the `reseller` guard was renamed `affiliate` in ADR-072). Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
 
 **Context:**
 - No non-admin authentication exists anywhere. `config/auth.php` has one guard (`web`, session, `admin_users` provider); `admin_users.role` is `super_admin | admin`; `admin/` uses Sanctum bearer tokens against that.
@@ -2421,9 +2421,9 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 
 ---
 
-## ADR-059: Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config
+## ADR-059: Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config — BUILT + LIVE at `reseller.pekangame.space` (entity later renamed `Reseller`→`Affiliate` by ADR-072; the app now also serves wallet `Reseller` accounts)
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
+**Status:** BUILT + LIVE (59a/59b/59c shipped; portal live at `reseller.pekangame.space` since 2026-09-02). Per ADR-072 the `reseller/` app now serves both `Affiliate` (this ADR's entity, renamed) and wallet `Reseller` accounts. Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
 
 **Context:**
 - The founder wants a dedicated reseller dashboard, separate from both `admin/` and `storefront/`.
@@ -2515,9 +2515,9 @@ Decision 2's "59c = storefront settings + catalog toggle + live preview" assumed
 
 ---
 
-## ADR-060: Multi-tenant branded storefront + custom-domain infrastructure (Cloudflare for SaaS)
+## ADR-060: Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-native custom domains, NOT Cloudflare for SaaS)
 
-**Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056). ~~Blocked on `ADR-020` production deployment + `ADR-037` staging infra.~~ **Unblocked 2026-09-02 — production is live on Laravel Forge ([ADR-066](#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)).** ~~This is now the next reseller build.~~ **2026-09-05: fully grilled (logo/hero-slides/domain-transfer-timing all resolved, see the addendum below); sequenced after the Cloudflare DNS transfer + real-client-IP fix so this ADR's custom-hostname code lands on clean infra. 2026-09-06: that Cloudflare cutover is DONE + verified ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)'s "Cutover executed" section — NS on Cloudflare, `api` proxied with Origin CA + Full (Strict) + Authenticated Origin Pulls, origin locked, `trustProxies` fix in prod). This ADR is now fully unblocked and is the next reseller build.** Verification against production + local `Host` mocking (no deployed staging env exists, `ADR-037` is branch-workflow only) plus one real domain the founder has set aside specifically for end-to-end custom-hostname/SSL verification. **2026-09-06: Cloudflare cutover done ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)) — this ADR is unblocked and is the next build. Same session, a scoped domain-lifecycle grill reversed decision 3 (Cloudflare for SaaS → Vercel-native custom domains) and fully pinned the `affiliate_domains` schema, the self-serve onboarding flow, provider opacity in the portal, and every CF/provider hostname lifecycle transition — see the "domain lifecycle fully specified" build addendum below, which also carries the 6-PR build split.**
+**Status:** BUILT + LIVE. PR-1…PR-6 released to production/staging by 2026-09-07; custom-domain gaps found post-live → [ADR-078](#adr-078-custom-domain-storefront-gaps--dynamic-cors-edge-cache-staleness-membership-toggle-visibility) (PR-1..3, staging 2026-09-08). **Decision 3's "Cloudflare for SaaS" was reversed 2026-09-06 to Vercel-native custom domains** (`affiliate_domains` table, `AffiliateDomainProvider` seam, self-serve onboarding, provider opacity) — the title/decision-3 text below is kept for history per this log's own rule; read the "domain lifecycle fully specified" addendum for the current design. Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056). ~~Blocked on `ADR-020` production deployment + `ADR-037` staging infra.~~ **Unblocked 2026-09-02 — production is live on Laravel Forge ([ADR-066](#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)).** ~~This is now the next reseller build.~~ **2026-09-05: fully grilled (logo/hero-slides/domain-transfer-timing all resolved, see the addendum below); sequenced after the Cloudflare DNS transfer + real-client-IP fix so this ADR's custom-hostname code lands on clean infra. 2026-09-06: that Cloudflare cutover is DONE + verified ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)'s "Cutover executed" section — NS on Cloudflare, `api` proxied with Origin CA + Full (Strict) + Authenticated Origin Pulls, origin locked, `trustProxies` fix in prod). This ADR is now fully unblocked and is the next reseller build.** Verification against production + local `Host` mocking (no deployed staging env exists, `ADR-037` is branch-workflow only) plus one real domain the founder has set aside specifically for end-to-end custom-hostname/SSL verification. **2026-09-06: Cloudflare cutover done ([ADR-020](#adr-020-production-host--digitalocean-basic-droplet--managed-mysql-docker-compose-cloudflare-fronted-phase-1-built-2026-07-30--deploy-mechanism-superseded-by-adr-066)) — this ADR is unblocked and is the next build. Same session, a scoped domain-lifecycle grill reversed decision 3 (Cloudflare for SaaS → Vercel-native custom domains) and fully pinned the `affiliate_domains` schema, the self-serve onboarding flow, provider opacity in the portal, and every CF/provider hostname lifecycle transition — see the "domain lifecycle fully specified" build addendum below, which also carries the 6-PR build split.**
 
 > **Post-live gaps → ADR-078 (2026-09-07):** once PR-1…PR-6 shipped and a real custom affiliate domain was attached, three gaps surfaced that PR-5's checklist did not cover — CORS (`config/cors.php` `allowed_origins` never learned about custom domains, so every client-side call from one fails), `proxy.ts` 60-second module-cache staleness for redirects and host verdicts, and the `is_owned` `membership_enabled` default not being signposted in the admin form. ADR-078 fixes all three. The CORS gap in particular belongs on PR-5's checklist retroactively.
 
@@ -3489,6 +3489,12 @@ This addendum is open to challenge at review like any decision — the prefix to
 
 ---
 
+## ADR-070: RESERVED — supplier-deposit / FX-history ledger (not yet designed)
+
+**Status:** Reserved, not designed. Split out from ADR-069 as a future ADR; ADR-071 skipped the number to hold it. When the supplier-deposit / FX-history ledger is grilled, it becomes ADR-070. Nothing is built under this number.
+
+---
+
 ## ADR-071: Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes
 
 **Status:** Accepted — 2026-09-03 (grilled with the founder over four rounds via `/mattpocock-skills:grilling` before any code was written; this entry is that shared understanding). Built across PR0–PR3 off `staging`.
@@ -3577,7 +3583,7 @@ The founder reports that the storefront's purchase flow feels laggy and "stuck" 
 
 ## ADR-072: Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture
 
-**Status:** Accepted (design) — 2026-09-04, grilled with the founder over six rounds via `/mattpocock-skills:grilling` before any code was written. First of a four-ADR family (072-075) from one grilled design, split by natural boundary — same convention as ADR-056..061. No code changes in this ADR; the "Build addendum" sections land as each PR in the phasing note (end of ADR-075) ships.
+**Status:** BUILT + LIVE + PROD-VERIFIED end-to-end 2026-09-06 (the whole 072..076 family — rename, wallet, API channel, Bot channel — is code-complete and verified against real OpenWA + real CHIP; release PR #110). Original: Accepted (design) — 2026-09-04, grilled with the founder over six rounds via `/mattpocock-skills:grilling` before any code was written. First of a four-ADR family (072-075) from one grilled design, split by natural boundary — same convention as ADR-056..061. The "Build addendum" sections land as each PR in the phasing note (end of ADR-075) ships.
 
 **Context:**
 - ADR-056..061 built a single `Reseller` model shaped entirely around one business relationship: a whitelabel storefront partner who subscribes to a paid wholesale tier, sets their own markup, and earns margin credited to a ledger account after each sale. ADR-060 (branded storefront + Cloudflare custom domains) is designed against this same shape and remains unbuilt.
