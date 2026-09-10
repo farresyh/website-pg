@@ -87,9 +87,46 @@ class OrderControllerTest extends TestCase
         $first = $this->postJson('/api/reseller/v1/orders', $payload, $this->authHeaders($key));
         $second = $this->postJson('/api/reseller/v1/orders', $payload, $this->authHeaders($key));
 
-        $second->assertCreated();
+        // ADR-084 PR-1 decision 5 — fresh 201, exact replay 200 + header.
+        $first->assertCreated();
+        $first->assertHeaderMissing('Idempotent-Replayed');
+        $second->assertOk();
+        $second->assertHeader('Idempotent-Replayed', 'true');
         $this->assertSame($first->json('order_number'), $second->json('order_number'));
         $this->assertSame(1, Order::query()->count());
+        $this->assertSame(10000 - 1100, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
+    public function test_409s_when_the_same_key_is_reused_with_a_different_payload(): void
+    {
+        Queue::fake();
+        $this->makePackage();
+        [$reseller, $key] = $this->makeFundedReseller();
+
+        $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLMY-14', 'player_id' => 'alice', 'idempotency_key' => 'reused-key',
+        ], $this->authHeaders($key))->assertCreated();
+
+        $conflict = $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLMY-14', 'player_id' => 'bob', 'idempotency_key' => 'reused-key',
+        ], $this->authHeaders($key));
+
+        $conflict->assertStatus(409);
+        $conflict->assertJsonPath('error', 'IDEMPOTENCY_KEY_CONFLICT');
+        $this->assertSame(1, Order::query()->count());
+        $this->assertSame(10000 - 1100, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
+    public function test_a_missing_required_field_is_a_validation_failed_envelope(): void
+    {
+        [, $key] = $this->makeFundedReseller();
+
+        $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLMY-14', 'idempotency_key' => 'missing-player-id',
+        ], $this->authHeaders($key))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'VALIDATION_FAILED')
+            ->assertJsonPath('details.player_id.0', fn ($m) => is_string($m));
     }
 
     /** No manual pre-check in the controller for this — proves the NoResellerTierAssignedException path (thrown by placeOrder() itself) is actually wired to a 422, not just theoretically reachable. */
@@ -105,7 +142,7 @@ class OrderControllerTest extends TestCase
             'product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => 'no-tier-test',
         ], $this->authHeaders($key));
 
-        $response->assertStatus(422);
+        $response->assertStatus(422)->assertJsonPath('error', 'NO_TIER_ASSIGNED');
         $this->assertSame(0, Order::query()->count());
     }
 
@@ -117,7 +154,7 @@ class OrderControllerTest extends TestCase
             'product_code' => 'NOPE-14', 'player_id' => '1', 'idempotency_key' => 'unknown-code-test',
         ], $this->authHeaders($key));
 
-        $response->assertStatus(422);
+        $response->assertStatus(422)->assertJsonPath('error', 'UNKNOWN_PRODUCT_CODE');
     }
 
     public function test_422s_on_insufficient_balance(): void
@@ -129,7 +166,7 @@ class OrderControllerTest extends TestCase
             'product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => 'insufficient-balance-test',
         ], $this->authHeaders($key));
 
-        $response->assertStatus(422);
+        $response->assertStatus(422)->assertJsonPath('error', 'INSUFFICIENT_BALANCE');
         $this->assertSame(0, Order::query()->count());
     }
 
@@ -162,13 +199,13 @@ class OrderControllerTest extends TestCase
         [$intruder, $intruderKey] = $this->makeFundedReseller();
         $response = $this->getJson("/api/reseller/v1/orders/{$orderNumber}", $this->authHeaders($intruderKey));
 
-        $response->assertNotFound();
+        $response->assertNotFound()->assertJsonPath('error', 'ORDER_NOT_FOUND');
     }
 
     public function test_store_requires_a_valid_api_key(): void
     {
         $this->postJson('/api/reseller/v1/orders', [
             'product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => 'no-auth-test',
-        ])->assertUnauthorized();
+        ])->assertUnauthorized()->assertJsonPath('error', 'MISSING_API_KEY');
     }
 }

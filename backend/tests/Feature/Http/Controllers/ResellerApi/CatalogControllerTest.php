@@ -11,7 +11,7 @@ use App\Services\Reseller\ResellerApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** ADR-074 decision 3: GET /api/reseller/v1/catalog. */
+/** ADR-074 decision 3 + ADR-084 PR-1: GET /api/reseller/v1/catalog. */
 class CatalogControllerTest extends TestCase
 {
     use RefreshDatabase;
@@ -30,74 +30,89 @@ class CatalogControllerTest extends TestCase
         return ['Authorization' => "Bearer {$key}"];
     }
 
-    public function test_lists_priced_packages_from_reseller_coded_games(): void
+    private function package(Game $game, string $name, int $denomination, int $cost, int $standard): void
     {
-        [$reseller, $key] = $this->makeReseller(markupPercent: 10);
-        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
-        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $supplier = Supplier::query()->firstOrCreate(
+            ['slug' => 'gamevion'],
+            ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
+        );
+
         Package::query()->create([
-            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
-            'cost_price' => 1000, 'standard_selling_price' => 1200,
-            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+            'game_id' => $game->id, 'name' => $name, 'denomination' => $denomination,
+            'cost_price' => $cost, 'standard_selling_price' => $standard,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'REF-'.$denomination, 'is_active' => true,
         ]);
+    }
+
+    public function test_groups_priced_packages_by_game(): void
+    {
+        [, $key] = $this->makeReseller(markupPercent: 10);
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $this->package($game, '14 Diamond', 14, 1000, 1200);
+        $this->package($game, '86 Diamond', 86, 5000, 6000);
 
         $response = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
 
         $response->assertOk();
-        $items = $response->json('items');
-        $this->assertCount(1, $items);
-        $this->assertSame('MLMY-14', $items[0]['code']);
-        $this->assertSame('14 Diamond', $items[0]['name']);
-        $this->assertSame(1100, $items[0]['price_sen']); // 1000 * 1.10
+        $response->assertExactJson(['games' => [[
+            'code' => 'MLMY',
+            'name' => 'Mobile Legends Malaysia',
+            'packages' => [
+                ['code' => 'MLMY-14', 'name' => '14 Diamond', 'price_sen' => 1100], // 1000 * 1.10
+                ['code' => 'MLMY-86', 'name' => '86 Diamond', 'price_sen' => 5500], // 5000 * 1.10
+            ],
+        ]]]);
     }
 
     public function test_excludes_games_without_a_reseller_code(): void
     {
-        [$reseller, $key] = $this->makeReseller();
-        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        [, $key] = $this->makeReseller();
         $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'ff', 'reseller_code' => null, 'is_active' => true]);
-        Package::query()->create([
-            'game_id' => $game->id, 'name' => '100 Diamonds', 'denomination' => 100,
-            'cost_price' => 500, 'standard_selling_price' => 600,
-            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
-        ]);
+        $this->package($game, '100 Diamonds', 100, 500, 600);
 
         $response = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
 
         $response->assertOk();
-        $this->assertCount(0, $response->json('items'));
+        $this->assertSame([], $response->json('games'));
     }
 
     public function test_never_leaks_cost_price_or_package_id(): void
     {
-        [$reseller, $key] = $this->makeReseller();
-        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        [, $key] = $this->makeReseller();
         $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
-        Package::query()->create([
-            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
-            'cost_price' => 1000, 'standard_selling_price' => 1200,
-            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
-        ]);
+        $this->package($game, '14 Diamond', 14, 1000, 1200);
 
-        $response = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
+        $body = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))->json();
 
-        $response->assertJsonMissingPath('items.0.id');
-        $response->assertJsonMissingPath('items.0.cost_price');
-        $response->assertJsonMissingPath('items.0.supplier_package_ref');
+        $encoded = json_encode($body);
+        $this->assertStringNotContainsString('cost_price', $encoded);
+        $this->assertStringNotContainsString('markup_percent', $encoded);
+        $this->assertStringNotContainsString('supplier_package_ref', $encoded);
+        $this->assertArrayNotHasKey('id', $body['games'][0]['packages'][0]);
     }
 
-    public function test_422s_when_reseller_has_no_tier_assigned(): void
+    public function test_422_no_tier_assigned_carries_the_stable_error_code(): void
     {
         $reseller = Reseller::query()->create(['business_name' => 'No Tier', 'is_active' => true]);
         $key = app(ResellerApiKeyService::class)->issue($reseller, 'Test key')['plainText'];
 
-        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))->assertStatus(422);
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'NO_TIER_ASSIGNED');
     }
 
-    public function test_requires_a_valid_api_key(): void
+    public function test_missing_key_carries_the_stable_error_code(): void
     {
-        $this->getJson('/api/reseller/v1/catalog')->assertUnauthorized();
-        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders('pgrk_not-real'))->assertUnauthorized();
+        $this->getJson('/api/reseller/v1/catalog')
+            ->assertUnauthorized()
+            ->assertJsonPath('error', 'MISSING_API_KEY');
+    }
+
+    public function test_invalid_key_carries_the_stable_error_code(): void
+    {
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders('pgrk_not-real'))
+            ->assertUnauthorized()
+            ->assertJsonPath('error', 'INVALID_API_KEY');
     }
 
     public function test_rejects_a_deactivated_reseller(): void
@@ -105,17 +120,19 @@ class CatalogControllerTest extends TestCase
         [$reseller, $key] = $this->makeReseller();
         $reseller->update(['is_active' => false]);
 
-        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))->assertForbidden();
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))
+            ->assertForbidden()
+            ->assertJsonPath('error', 'RESELLER_INACTIVE');
     }
 
     public function test_rejects_a_revoked_key(): void
     {
-        $tier = ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 10, 'is_active' => true, 'sort_order' => 1]);
-        $reseller = Reseller::query()->create(['business_name' => 'Acme', 'reseller_tier_id' => $tier->id, 'is_active' => true]);
+        [$reseller, $key] = $this->makeReseller();
         $service = app(ResellerApiKeyService::class);
-        $issued = $service->issue($reseller, 'Test key');
-        $service->revoke($issued['key']);
+        $service->revoke($reseller->apiKeys()->first());
 
-        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($issued['plainText']))->assertUnauthorized();
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))
+            ->assertUnauthorized()
+            ->assertJsonPath('error', 'INVALID_API_KEY');
     }
 }

@@ -223,7 +223,7 @@ final class ResellerBotService
                 gameId: $package->game_id,
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
-            ));
+            ))->order;
         } catch (ResellerInactiveException|NoResellerTierAssignedException $e) {
             $this->logFailure($reseller, $groupId, $command->raw, 'order_rejected: '.$e->getMessage());
 

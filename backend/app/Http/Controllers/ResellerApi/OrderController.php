@@ -2,33 +2,61 @@
 
 namespace App\Http\Controllers\ResellerApi;
 
+use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Http\Requests\ResellerApi\PlaceOrderRequest;
 use App\Models\Order;
 use App\Services\Ledger\InsufficientBalanceException;
+use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\ResellerCatalogService;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
+use Dedoc\Scramble\Attributes\Endpoint;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * ADR-074 decision 3: the Reseller API's order-create/status
- * endpoints — the concrete HTTP surface over ADR-073 decision 4's
- * internal contract. Every piece of actual money/order logic is
- * someone else's (`ResellerCatalogService` resolves the code,
- * `ResellerOrderPlacementService` resolves the tier price and places
- * the order) — this controller only orchestrates and shapes the
- * response.
+ * ADR-074 decision 3 + ADR-084 PR-1: the Reseller API's order
+ * create/status endpoints. All money/order logic is delegated
+ * (`ResellerCatalogService` resolves the code,
+ * `ResellerOrderPlacementService` resolves the tier price and places the
+ * order). This controller orchestrates, translates the service's
+ * channel-neutral exceptions into the stable `ResellerApiException`
+ * envelope, and shapes the reseller-safe response.
  */
 class OrderController extends Controller
 {
+    /** The `publicOrder()` shape, for the `#[Response]` examples. */
+    private const ORDER_EXAMPLE = [
+        'order_number' => 'PG-7QK2M9X4RJ',
+        'product_code' => 'MLMY-86',
+        'player_id' => '123456789',
+        'server_id' => '2201',
+        'price_sen' => 6300,
+        'payment_status' => 'paid',
+        'delivery_status' => 'delivered',
+        'created_at' => '2026-09-10T09:14:52+00:00',
+        'delivered_at' => '2026-09-10T09:15:07+00:00',
+    ];
+
     public function __construct(
         private readonly ResellerCatalogService $catalog,
         private readonly ResellerOrderPlacementService $placement,
     ) {}
 
+    #[Endpoint(
+        title: 'Place an order',
+        description: "Charges the caller's wallet at their tier price and queues fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict.",
+    )]
+    #[Response(status: 201, description: 'The order was placed.', examples: [self::ORDER_EXAMPLE])]
+    #[Response(status: 200, description: 'Idempotent replay — the original order (also carries `Idempotent-Replayed: true`).', examples: [self::ORDER_EXAMPLE])]
+    #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
+    #[Response(status: 403, description: '`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.', type: self::ERROR_SHAPE, examples: [self::ERROR_403])]
+    #[Response(status: 409, description: '`IDEMPOTENCY_KEY_CONFLICT` — the key was reused with a different payload.', type: self::ERROR_SHAPE, examples: [self::ERROR_409])]
+    #[Response(status: 422, description: '`VALIDATION_FAILED` (with `details`), `UNKNOWN_PRODUCT_CODE`, `NO_TIER_ASSIGNED` or `INSUFFICIENT_BALANCE`.', type: self::ERROR_SHAPE, examples: [self::ERROR_422])]
+    #[Response(status: 429, description: '`RATE_LIMITED` — retry after the `Retry-After` header.', type: self::ERROR_SHAPE, examples: [self::ERROR_429])]
     public function store(PlaceOrderRequest $request): JsonResponse
     {
         $reseller = $this->reseller($request);
@@ -36,24 +64,11 @@ class OrderController extends Controller
 
         $package = $this->catalog->resolveByCode($data['product_code']);
         if ($package === null) {
-            return response()->json(['message' => 'Unknown or currently unavailable product_code.'], 422);
+            throw ResellerApiException::unknownProductCode();
         }
 
-        // No separate reseller_tier_id null-check here — placeOrder()
-        // itself throws NoResellerTierAssignedException for that (caught
-        // below), a manual duplicate guard was removed as dead code
-        // during the live-verify walkthrough.
-        //
-        // ADR-073 decision 4's contract takes the RAW catalog cost/standard
-        // prices, not a pre-applied tier markup — ResellerOrderPlacementService
-        // resolves the reseller's own tier and runs
-        // PricingService::calculateForAffiliate() itself (same call this
-        // controller would otherwise make redundantly: costPrice/
-        // standardSellingPrice pass through that call unchanged, so
-        // calling it here first only to re-extract them back out was
-        // dead work — caught during the live-verify walkthrough).
         try {
-            $order = $this->placement->placeOrder($reseller, new ResellerOrderPlacementRequest(
+            $result = $this->placement->placeOrder($reseller, new ResellerOrderPlacementRequest(
                 playerId: $data['player_id'],
                 serverId: $data['server_id'] ?? null,
                 costPriceSen: $package->cost_price,
@@ -63,16 +78,38 @@ class OrderController extends Controller
                 gameId: $package->game_id,
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
+                payloadHash: self::payloadHash($data),
             ));
-        } catch (ResellerInactiveException|NoResellerTierAssignedException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (ResellerInactiveException) {
+            throw ResellerApiException::resellerInactive();
+        } catch (NoResellerTierAssignedException) {
+            throw ResellerApiException::noTierAssigned();
         } catch (InsufficientBalanceException) {
-            return response()->json(['message' => 'Insufficient wallet balance.'], 422);
+            throw ResellerApiException::insufficientBalance();
+        } catch (IdempotencyKeyPayloadMismatchException) {
+            throw ResellerApiException::idempotencyKeyConflict();
         }
 
-        return response()->json(self::publicOrder($order), 201);
+        // ADR-084 PR-1 decision 5: 201 for a fresh placement, 200 +
+        // `Idempotent-Replayed: true` for an exact replay.
+        $response = response()->json(self::publicOrder($result->order), $result->wasReplay ? 200 : 201);
+
+        if ($result->wasReplay) {
+            $response->header('Idempotent-Replayed', 'true');
+        }
+
+        return $response;
     }
 
+    #[Endpoint(
+        title: 'Get an order',
+        description: "The current status of one of the caller's own orders. Poll this as the fallback to the delivery webhook.",
+    )]
+    #[Response(status: 200, description: 'The order.', examples: [self::ORDER_EXAMPLE])]
+    #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
+    #[Response(status: 403, description: '`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.', type: self::ERROR_SHAPE, examples: [self::ERROR_403])]
+    #[Response(status: 404, description: '`ORDER_NOT_FOUND` — no order with that number belongs to the caller.', type: self::ERROR_SHAPE, examples: [self::ERROR_404])]
+    #[Response(status: 429, description: '`RATE_LIMITED` — retry after the `Retry-After` header.', type: self::ERROR_SHAPE, examples: [self::ERROR_429])]
     public function show(Request $request, string $orderNumber): JsonResponse
     {
         $reseller = $this->reseller($request);
@@ -83,17 +120,34 @@ class OrderController extends Controller
             ->first();
 
         if ($order === null) {
-            return response()->json(['message' => 'Order not found.'], 404);
+            throw ResellerApiException::orderNotFound();
         }
 
         return response()->json(self::publicOrder($order));
     }
 
     /**
+     * ADR-084 PR-1 decision 5: the idempotency payload hash covers the
+     * semantic order inputs only — not `idempotency_key` itself (that is
+     * the key), and not any transport noise. A stable field order so the
+     * same logical request always hashes identically.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private static function payloadHash(array $data): string
+    {
+        return hash('sha256', json_encode([
+            'product_code' => $data['product_code'],
+            'player_id' => $data['player_id'],
+            'server_id' => $data['server_id'] ?? null,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    /**
      * Narrow, reseller-safe shape — never `cost_price`/`platform_profit`
-     * (internal financial fields, `backend/AGENTS.md`'s own discipline),
-     * mirrors `TrackOrderController::customerSafePayload()`'s role for
-     * the storefront's own public order-status contract.
+     * or any other reseller-private field (ADR-084 decision 2). Mirrors
+     * `TrackOrderController::customerSafePayload()`'s role for the
+     * storefront's own public order-status contract.
      *
      * @return array<string, mixed>
      */
@@ -110,7 +164,7 @@ class OrderController extends Controller
             'product_code' => $productCode,
             'player_id' => $order->player_id,
             'server_id' => $order->server_id,
-            'price_sen' => $order->selling_price,
+            'price_sen' => (int) $order->selling_price,
             'payment_status' => $order->payment_status->value,
             'delivery_status' => $order->delivery_status->value,
             'created_at' => $order->created_at?->toIso8601String(),

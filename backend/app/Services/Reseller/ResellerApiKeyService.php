@@ -40,19 +40,22 @@ final class ResellerApiKeyService
 
     /**
      * Resolves a bearer token to its still-live `ResellerApiKey`,
-     * touching `last_used_at` on a hit. Null for an unknown or
-     * already-revoked key — the caller (`EnsureResellerApiKey`)
-     * doesn't need to distinguish the two, both reject the request
-     * the same way.
+     * stamping `last_used_at` (and `last_used_ip` when known — ADR-084
+     * PR-1 decision 6) on a hit. Null for an unknown or already-revoked
+     * key — the caller (`EnsureResellerApiKey`) doesn't need to
+     * distinguish the two, both reject the request the same way.
      */
-    public function resolve(string $plainText): ?ResellerApiKey
+    public function resolve(string $plainText, ?string $ip = null): ?ResellerApiKey
     {
         $key = ResellerApiKey::query()
             ->where('key_hash', $this->hash($plainText))
             ->whereNull('revoked_at')
             ->first();
 
-        $key?->update(['last_used_at' => now()]);
+        $key?->update(array_filter([
+            'last_used_at' => now(),
+            'last_used_ip' => $ip,
+        ], fn ($value) => $value !== null));
 
         return $key;
     }

@@ -42,6 +42,7 @@ final class OrderFactory
             return Order::query()->create([
                 'order_number' => $this->orderNumbers->generate(),
                 'checkout_idempotency_key' => $draft->idempotencyKey,
+                'reseller_api_idempotency_payload_hash' => $draft->resellerApiIdempotencyPayloadHash,
                 'is_test' => $draft->isTest,
                 'customer_email' => $draft->customerEmail,
                 'customer_name' => $draft->customerName,
