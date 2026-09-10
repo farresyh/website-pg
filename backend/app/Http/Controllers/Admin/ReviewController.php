@@ -89,8 +89,21 @@ class ReviewController extends Controller
      */
     public function bulkApprove(): JsonResponse
     {
+        // Capture which brands the about-to-be-approved reviews belong to
+        // BEFORE the update, so every affected storefront's homepage cache
+        // is busted — not just the primary's. `null` (a primary-brand
+        // order) is normalised to the primary id inside `forgetCache()`.
+        $affiliateIds = Review::query()
+            ->where('reviews.status', ReviewStatus::Pending->value)
+            ->join('orders', 'reviews.order_id', '=', 'orders.id')
+            ->distinct()
+            ->pluck('orders.affiliate_id');
+
         $count = Review::query()->where('status', ReviewStatus::Pending->value)->update(['status' => ReviewStatus::Approved->value]);
-        ReviewCatalogController::forgetCache();
+
+        foreach ($affiliateIds->push(null)->unique() as $affiliateId) {
+            ReviewCatalogController::forgetCache($affiliateId);
+        }
 
         return response()->json(['approved_count' => $count]);
     }
