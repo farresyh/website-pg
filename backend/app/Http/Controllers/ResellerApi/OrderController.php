@@ -13,6 +13,7 @@ use App\Services\Reseller\ResellerCatalogService;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
+use App\Support\ResellerOrderPayload;
 use Dedoc\Scramble\Attributes\Endpoint;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
@@ -190,30 +191,14 @@ class OrderController extends Controller
 
     /**
      * Narrow, reseller-safe shape — never `cost_price`/`platform_profit`
-     * or any other reseller-private field (ADR-084 decision 2). Mirrors
-     * `TrackOrderController::customerSafePayload()`'s role for the
-     * storefront's own public order-status contract.
+     * or any other reseller-private field (ADR-084 decision 2). Extracted
+     * to `App\Support\ResellerOrderPayload` in PR-3 so the delivery
+     * webhook body and this endpoint can never drift.
      *
      * @return array<string, mixed>
      */
     private static function publicOrder(Order $order): array
     {
-        $order->loadMissing(['game', 'package']);
-
-        $productCode = $order->game?->reseller_code !== null
-            ? $order->game->reseller_code.'-'.($order->package?->denomination ?? $order->package?->catalog_code)
-            : null;
-
-        return [
-            'order_number' => $order->order_number,
-            'product_code' => $productCode,
-            'player_id' => $order->player_id,
-            'server_id' => $order->server_id,
-            'price_sen' => (int) $order->selling_price,
-            'payment_status' => $order->payment_status->value,
-            'delivery_status' => $order->delivery_status->value,
-            'created_at' => $order->created_at?->toIso8601String(),
-            'delivered_at' => $order->delivered_at?->toIso8601String(),
-        ];
+        return ResellerOrderPayload::for($order);
     }
 }

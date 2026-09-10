@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Events\OrderStatusUpdated;
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Listeners\Reseller\DispatchResellerOrderWebhook;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
@@ -374,6 +375,12 @@ class AppServiceProvider extends ServiceProvider
         // through the normal event dispatcher too, so this listener
         // fires alongside the Reverb broadcast, not instead of it.
         Event::listen(OrderStatusUpdated::class, [SendResellerBotOrderNotification::class, 'handle']);
+        // ADR-084 PR-3 decision 4 — the wallet-order delivery webhook's
+        // `order.delivered` / `order.failed` fire from the same seam. Like
+        // the Bot listener above, this runs alongside the Reverb broadcast,
+        // not instead of it; `ResellerWebhookDispatcher` no-ops unless the
+        // order is wallet-owned and its reseller has an active endpoint.
+        Event::listen(OrderStatusUpdated::class, [DispatchResellerOrderWebhook::class, 'handle']);
 
         // ADR-047 decision 1 — broadcasts OrderStatusUpdated whenever
         // payment_status/delivery_status actually changes, replacing

@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\ResellerApiKeyController;
 use App\Http\Controllers\Admin\ResellerController;
 use App\Http\Controllers\Admin\ResellerTierController;
 use App\Http\Controllers\Admin\ResellerWalletController;
+use App\Http\Controllers\Admin\ResellerWebhookController;
 use App\Http\Controllers\Admin\ResellerWhatsAppGroupController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
@@ -76,6 +77,7 @@ use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKey
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
+use App\Http\Controllers\ResellerPortal\WebhookController as ResellerPortalWebhookController;
 use App\Http\Controllers\ReviewCatalogController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SeoController;
@@ -384,6 +386,17 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
     Route::get('/api-keys', [ResellerPortalApiKeyController::class, 'index']);
     Route::post('/api-keys', [ResellerPortalApiKeyController::class, 'store']);
     Route::delete('/api-keys/{api_key}', [ResellerPortalApiKeyController::class, 'destroy']);
+
+    // ADR-084 PR-3 decision 4/10 — the single delivery-webhook endpoint:
+    // URL + secret (shown once, rotatable), active toggle, dead-letter
+    // delivery log. Admin has the same capability for support
+    // (`/admin/resellers/{reseller}/webhook*`).
+    Route::get('/webhook', [ResellerPortalWebhookController::class, 'show']);
+    Route::post('/webhook', [ResellerPortalWebhookController::class, 'store']);
+    Route::post('/webhook/rotate-secret', [ResellerPortalWebhookController::class, 'rotateSecret']);
+    Route::patch('/webhook/status', [ResellerPortalWebhookController::class, 'updateStatus']);
+    Route::delete('/webhook', [ResellerPortalWebhookController::class, 'destroy']);
+    Route::get('/webhook/deliveries', [ResellerPortalWebhookController::class, 'deliveries']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -703,6 +716,16 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{reseller}/api-keys', [ResellerApiKeyController::class, 'index']);
             Route::post('/{reseller}/api-keys', [ResellerApiKeyController::class, 'store']);
             Route::delete('/{reseller}/api-keys/{api_key}', [ResellerApiKeyController::class, 'destroy']);
+
+            // ADR-084 PR-3 decision 10 — support-side view/set/rotate/
+            // disable of this Reseller's delivery webhook + its delivery
+            // log. The reseller self-manages the same from the portal.
+            Route::get('/{reseller}/webhook', [ResellerWebhookController::class, 'show']);
+            Route::post('/{reseller}/webhook', [ResellerWebhookController::class, 'store']);
+            Route::post('/{reseller}/webhook/rotate-secret', [ResellerWebhookController::class, 'rotateSecret']);
+            Route::patch('/{reseller}/webhook/status', [ResellerWebhookController::class, 'updateStatus']);
+            Route::delete('/{reseller}/webhook', [ResellerWebhookController::class, 'destroy']);
+            Route::get('/{reseller}/webhook/deliveries', [ResellerWebhookController::class, 'deliveries']);
 
             // ADR-075 / PR-F build addendum decision 3 — link/unlink a
             // WhatsApp group to this Reseller account. 'pending' (below,

@@ -18,6 +18,7 @@ import {
 } from "@/lib/reseller-portal";
 import { formatDateTime } from "@/lib/format";
 import { PageHeader, Panel, ErrorNote, EmptyRow } from "@/components/ui";
+import WebhookPanel from "./WebhookPanel";
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<ResellerApiKeyRow[] | null>(null);
@@ -178,6 +179,8 @@ export default function ApiKeysPage() {
           </div>
         </Panel>
       </div>
+
+      <WebhookPanel />
     </div>
   );
 }

@@ -19,6 +19,8 @@ use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
+use App\Services\Reseller\Webhook\ResellerWebhookDispatcher;
+use App\Services\Reseller\Webhook\ResellerWebhookEvent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -262,7 +264,7 @@ class OrderController extends Controller
      * leaves the platform, this is an internal-credit reversal back
      * into a balance we fully control.
      */
-    public function refundToWallet(Request $request, Order $order, LedgerService $ledger, OpenWaClient $openWa): JsonResponse
+    public function refundToWallet(Request $request, Order $order, LedgerService $ledger, OpenWaClient $openWa, ResellerWebhookDispatcher $webhooks): JsonResponse
     {
         if ($order->is_test) {
             abort(404);
@@ -322,6 +324,14 @@ class OrderController extends Controller
             $openWa->sendText($notification->whatsapp_group_id, ResellerBotReplyFormatter::refundNotice($order));
             $notification->update(['refund_notified_at' => now()]);
         }
+
+        // ADR-084 PR-3 decision 4: the API channel's counterpart to the
+        // Bot refund notice above — dispatched here, not via
+        // OrderStatusUpdated, because this action deliberately never
+        // touches delivery_status. No-op unless the reseller has an
+        // active webhook; the (order, 'order.refunded') uniqueness keeps a
+        // repeat request (already rejected above) from double-sending.
+        $webhooks->dispatch($order->fresh(), ResellerWebhookEvent::OrderRefunded);
 
         return $this->orderDetailResponse($order->fresh());
     }
