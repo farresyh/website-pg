@@ -425,6 +425,22 @@ class AppServiceProvider extends ServiceProvider
         // prompt for a key).
         Scramble::extendOpenApi(function (OpenApi $openApi) {
             $openApi->secure(SecurityScheme::http('bearer')->as('Reseller API key'));
+
+            // ADR-084 PR-4 wording pass: Scramble lifts the *class* docblock
+            // of every referenced enum / FormRequest into the public schema
+            // description. Shared money-critical classes (DeliveryStatus,
+            // PaymentStatus, PlaceOrderRequest) carry internal cross-references
+            // there — ADR/ORD/PR tags, "Supplier API", sibling class names —
+            // that must never reach docs.pekangame.space. Blank any component
+            // schema description that looks internal; the guide pages carry the
+            // real explanations.
+            foreach ($openApi->components->schemas as $schema) {
+                $description = $schema->type->description ?? '';
+
+                if ($description !== '' && preg_match('/\b(ADR-\d|ORD-\d|PR-[A-Z]?\d|Xendit|Supplier API|payment gateway|Create\w+Request)\b/', $description)) {
+                    $schema->type->setDescription('');
+                }
+            }
         });
 
         // ADR-027's 2026-08-29 addendum, decision 26: OTP requests are

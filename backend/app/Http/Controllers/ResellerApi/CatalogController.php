@@ -33,9 +33,9 @@ class CatalogController extends Controller
 
     #[Endpoint(
         title: 'List the catalogue',
-        description: "Every orderable product for the calling reseller, grouped by game. Each package's `price_sen` is the caller's own wallet-tier price in sen, markup already applied — never another tier's price, never cost. Order against `packages[].code` (`{game code}-{denomination}`).",
+        description: "Every orderable product for the calling reseller, grouped by game. Each package's `price_sen` is your own price for that package, in sen. Order against `packages[].code` (`{game code}-{denomination}`).",
     )]
-    #[Response(status: 200, description: 'The tier-priced catalogue.', examples: [[
+    #[Response(status: 200, description: 'Your priced catalogue.', examples: [[
         'games' => [[
             'code' => 'MLMY',
             'name' => 'Mobile Legends (Malaysia)',
@@ -47,8 +47,8 @@ class CatalogController extends Controller
     ]])]
     #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
     #[Response(status: 403, description: '`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.', type: self::ERROR_SHAPE, examples: [self::ERROR_403])]
-    #[Response(status: 422, description: '`NO_TIER_ASSIGNED` — no wallet tier is set on this account.', type: self::ERROR_SHAPE, examples: [[
-        'error' => 'NO_TIER_ASSIGNED', 'message' => 'This reseller account has no wallet tier assigned. Contact us to set one.',
+    #[Response(status: 422, description: '`NO_TIER_ASSIGNED` — this account has no pricing configured yet.', type: self::ERROR_SHAPE, examples: [[
+        'error' => 'NO_TIER_ASSIGNED', 'message' => 'This reseller account has no pricing configured yet. Contact PekanGame to set it up.',
     ]])]
     #[Response(status: 429, description: '`RATE_LIMITED` — retry after the `Retry-After` header.', type: self::ERROR_SHAPE, examples: [self::ERROR_429])]
     public function index(Request $request): JsonResponse

@@ -6,10 +6,13 @@ description: Bearer API keys — how to send them, rotate them, scope them to an
 Every request is authenticated with a single **bearer API key**:
 
 ```http
-GET /api/reseller/v1/balance HTTP/1.1
+GET /v1/balance HTTP/1.1
 Host: api.pekangame.space
 Authorization: Bearer pgrk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
+
+The full request URL is the [base URL](/introduction/#base-url) plus the path —
+`https://api.pekangame.space/api/reseller/v1/balance`.
 
 There is no request signing and no second secret. One strong opaque token is
 the whole credential — keep it server-side, never ship it in a browser or app.

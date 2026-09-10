@@ -58,7 +58,7 @@ return [
         /*
          * Description rendered on the home page of the API documentation (`/docs/api`).
          */
-        'description' => 'Order placement, order status, price list, and wallet balance for a Reseller (wallet) account. Every request needs a Bearer API key issued by PekanGame — Authorization: Bearer <key>.',
+        'description' => 'Order placement, order status, price list, and wallet balance for a PekanGame reseller account. Every request needs a Bearer API key issued by PekanGame — Authorization: Bearer <key>.',
     ],
 
     'ui' => [
@@ -136,8 +136,14 @@ return [
      *
      *    @see https://redocly.com/docs-legacy/api-reference-docs/specification-extensions/x-enum-descriptions
      * - false - Case descriptions are ignored.
+     *
+     * ADR-084 PR-4 wording pass: `false`. The only enums this spec exposes are
+     * `DeliveryStatus` / `PaymentStatus`, whose PHP case doc-comments carry
+     * internal cross-references (ADR numbers, supplier mechanics) that must not
+     * leak into the public docs. The values are self-explanatory and are
+     * documented on the "Your first order" page.
      */
-    'enum_cases_description_strategy' => 'description',
+    'enum_cases_description_strategy' => false,
 
     /**
      * Determines how Scramble stores the names of enum cases.
