@@ -2,24 +2,29 @@
 
 namespace App\Http\Middleware;
 
+use App\Exceptions\ResellerApi\ResellerApiException;
+use App\Models\ResellerApiKey;
 use App\Services\Reseller\ResellerApiKeyService;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
- * ADR-074 decision 1: the Reseller API channel's own auth boundary —
- * a bearer `reseller_api_keys` credential, deliberately not the
- * portal-login `reseller` Sanctum guard (see the ADR's own
- * rationale: "can I view my dashboard" and "can I spend real money
- * placing orders" must never share one credential).
+ * ADR-074 decision 1: the Reseller API channel's own auth boundary — a
+ * bearer `reseller_api_keys` credential, deliberately not the
+ * portal-login `reseller` Sanctum guard ("can I view my dashboard" and
+ * "can I spend real money placing orders" must never share one
+ * credential).
  *
- * On success, attaches the resolved `Reseller` to the request under
- * the `reseller` attribute — read it via `$request->attributes->
- * get('reseller')` (or the `ResellerApi\Controller` base method), the
- * same way `EnsureAdminRole` leaves `$request->user()` for
- * Sanctum-guarded routes to read.
+ * ADR-084 PR-1 decision 6: also enforces the optional per-key IP
+ * allowlist and records `last_used_ip`. An empty / null allowlist means
+ * "any IP" (opt-in) so a serverless or shared-infra reseller still works.
+ * Every rejection is a stable `ResellerApiException` envelope, not a bare
+ * `{message}`.
+ *
+ * On success, attaches the resolved `Reseller` to the request under the
+ * `reseller` attribute — read it via the `ResellerApi\Controller` base
+ * method.
  */
 class EnsureResellerApiKey
 {
@@ -32,21 +37,43 @@ class EnsureResellerApiKey
     {
         $token = $request->bearerToken();
         if ($token === null) {
-            throw new HttpException(401, 'Missing API key.');
+            throw ResellerApiException::missingApiKey();
         }
 
-        $key = $this->apiKeys->resolve($token);
+        // Resolves + stamps `last_used_at` / `last_used_ip` on a hit — the
+        // stamp lands even for a request that is then rejected on the IP
+        // allowlist below, which is exactly the anomaly signal a reseller
+        // watches the portal for.
+        $key = $this->apiKeys->resolve($token, $request->ip());
         if ($key === null) {
-            throw new HttpException(401, 'Invalid or revoked API key.');
+            throw ResellerApiException::invalidApiKey();
         }
 
         $reseller = $key->reseller;
         if ($reseller === null || ! $reseller->is_active) {
-            throw new HttpException(403, 'This reseller account is deactivated.');
+            throw ResellerApiException::resellerInactive();
+        }
+
+        if (! self::ipAllowed($key, $request->ip())) {
+            throw ResellerApiException::ipNotAllowed();
         }
 
         $request->attributes->set('reseller', $reseller);
 
         return $next($request);
+    }
+
+    /**
+     * @param  list<string>|null  $allowed  from `reseller_api_keys.allowed_ips`
+     */
+    private static function ipAllowed(ResellerApiKey $key, ?string $ip): bool
+    {
+        $allowed = $key->allowed_ips;
+
+        if ($allowed === null || $allowed === []) {
+            return true;
+        }
+
+        return $ip !== null && in_array($ip, $allowed, true);
     }
 }

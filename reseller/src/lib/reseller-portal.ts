@@ -51,7 +51,9 @@ export function getResellerProfile(token: string) {
 export interface ResellerApiKeyRow {
   id: number;
   name: string;
+  allowed_ips: string[];
   last_used_at: string | null;
+  last_used_ip: string | null;
   revoked_at: string | null;
   created_at: string | null;
 }
@@ -68,8 +70,75 @@ export function issueApiKey(token: string, name: string) {
   });
 }
 
+/** ADR-084 PR-4: replace one key's IP allowlist. An empty array = any IP (opt-in). */
+export function updateApiKeyAllowedIps(token: string, id: number, allowedIps: string[]) {
+  return apiFetch<ResellerApiKeyRow>(`/api/reseller-portal/api-keys/${id}`, {
+    method: "PATCH",
+    token,
+    body: { allowed_ips: allowedIps },
+  });
+}
+
 export function revokeApiKey(token: string, id: number) {
   return apiFetch<void>(`/api/reseller-portal/api-keys/${id}`, { method: "DELETE", token });
+}
+
+/**
+ * ADR-084 PR-3 decision 4/10: the single delivery-webhook endpoint —
+ * URL + secret (shown once, rotatable), active toggle, and the
+ * dead-letter delivery log.
+ */
+export interface ResellerWebhook {
+  url: string;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ResellerWebhookDelivery {
+  id: number;
+  event: string;
+  event_id: string;
+  order_number: string | null;
+  status: "pending" | "delivered" | "failed" | "exhausted";
+  attempts: number;
+  last_response_code: number | null;
+  next_retry_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export function getWebhook(token: string) {
+  return apiFetch<{ webhook: ResellerWebhook | null }>("/api/reseller-portal/webhook", { token });
+}
+
+/** `secret` is non-null ONLY when it was just generated (first time you set a URL). */
+export function setWebhook(token: string, url: string) {
+  return apiFetch<{ webhook: ResellerWebhook; secret: string | null }>("/api/reseller-portal/webhook", {
+    method: "POST",
+    token,
+    body: { url },
+  });
+}
+
+export function rotateWebhookSecret(token: string) {
+  return apiFetch<{ secret: string }>("/api/reseller-portal/webhook/rotate-secret", { method: "POST", token });
+}
+
+export function setWebhookActive(token: string, isActive: boolean) {
+  return apiFetch<{ webhook: ResellerWebhook }>("/api/reseller-portal/webhook/status", {
+    method: "PATCH",
+    token,
+    body: { is_active: isActive },
+  });
+}
+
+export function deleteWebhook(token: string) {
+  return apiFetch<void>("/api/reseller-portal/webhook", { method: "DELETE", token });
+}
+
+export function listWebhookDeliveries(token: string, page = 1) {
+  return apiFetch<Paginated<ResellerWebhookDelivery>>(`/api/reseller-portal/webhook/deliveries?page=${page}`, { token });
 }
 
 export interface PaymentChannel {

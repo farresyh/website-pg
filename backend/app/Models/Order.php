@@ -25,6 +25,7 @@ class Order extends Model
     protected $fillable = [
         'order_number',
         'checkout_idempotency_key',
+        'reseller_api_idempotency_payload_hash',
         'reference_number',
         'is_test',
         'customer_email',

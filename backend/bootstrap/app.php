@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
@@ -9,8 +10,12 @@ use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -122,4 +127,28 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        // ADR-084 PR-1 decision 3 — the Reseller API's uniform 4xx
+        // envelope: `{ error: <STABLE_CODE>, message, details? }`. Our own
+        // `ResellerApiException` renders everywhere; the framework
+        // exceptions it can't throw itself (validation, throttle, a bad
+        // route/method) are mapped only on the `api/reseller/*` path so no
+        // other API surface changes shape.
+        $exceptions->render(function (Throwable $e, Request $request) {
+            if ($e instanceof ResellerApiException) {
+                return $e->toResponse();
+            }
+
+            if (! $request->is('api/reseller/*')) {
+                return null;
+            }
+
+            return match (true) {
+                $e instanceof ValidationException => ResellerApiException::validationFailed($e->errors())->toResponse(),
+                $e instanceof ThrottleRequestsException => ResellerApiException::rateLimited()->toResponse()->withHeaders($e->getHeaders()),
+                $e instanceof MethodNotAllowedHttpException => ResellerApiException::methodNotAllowed()->toResponse(),
+                $e instanceof NotFoundHttpException => ResellerApiException::notFound()->toResponse(),
+                default => null,
+            };
+        });
     })->create();

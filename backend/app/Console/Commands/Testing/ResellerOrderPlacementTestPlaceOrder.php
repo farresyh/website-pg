@@ -74,7 +74,7 @@ class ResellerOrderPlacementTestPlaceOrder extends Command
         app()->bind("supplier-adapter.{$supplierSlug}", fn () => $adapter);
 
         try {
-            $order = $service->placeOrder($reseller, new ResellerOrderPlacementRequest(
+            $result = $service->placeOrder($reseller, new ResellerOrderPlacementRequest(
                 playerId: 'concurrency-test-player',
                 serverId: null,
                 costPriceSen: (int) $this->argument('costPriceSen'),
@@ -83,7 +83,7 @@ class ResellerOrderPlacementTestPlaceOrder extends Command
                 supplierProductRef: 'CONCURRENCY-TEST-REF',
                 supplierId: $supplierId,
             ));
-            file_put_contents($resultFile, 'success:'.$order->order_number);
+            file_put_contents($resultFile, 'success:'.$result->order->order_number);
         } catch (InsufficientBalanceException $e) {
             file_put_contents($resultFile, 'failed:'.$e->getMessage());
         }

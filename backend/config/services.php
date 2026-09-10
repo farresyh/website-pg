@@ -388,4 +388,11 @@ return [
         'command_log_retention_days' => (int) env('OPENWA_COMMAND_LOG_RETENTION_DAYS', 7),
     ],
 
+    // ADR-084 PR-4 decision 7 — the Starlight docs site. When set,
+    // `/docs/api` + `/docs/api.json` 301-redirect here (RedirectApiDocsToSite).
+    // Empty until the Vercel domain is verified — the Scramble UI stays live.
+    'docs_site' => [
+        'url' => env('DOCS_SITE_URL'),
+    ],
+
 ];

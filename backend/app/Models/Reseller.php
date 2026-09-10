@@ -6,6 +6,7 @@ use App\Services\Auth\AccountOwnerType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -54,6 +55,18 @@ class Reseller extends Model
     public function whatsAppGroups(): HasMany
     {
         return $this->hasMany(ResellerWhatsAppGroup::class);
+    }
+
+    /** ADR-084 PR-3 decision 4: this account's single delivery-webhook endpoint. */
+    public function webhook(): HasOne
+    {
+        return $this->hasOne(ResellerWebhook::class);
+    }
+
+    /** ADR-084 PR-3 decision 4: the (order, event) delivery log behind the portal's dead-letter view. */
+    public function webhookDeliveries(): HasMany
+    {
+        return $this->hasMany(ResellerWebhookDelivery::class);
     }
 
     /**

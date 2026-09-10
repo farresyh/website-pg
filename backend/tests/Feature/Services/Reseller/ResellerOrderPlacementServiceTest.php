@@ -10,6 +10,7 @@ use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Pricing\PricingBasis;
+use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
@@ -40,7 +41,7 @@ class ResellerOrderPlacementServiceTest extends TestCase
         return $reseller;
     }
 
-    private function request(string $idempotencyKey = 'test-key-1'): ResellerOrderPlacementRequest
+    private function request(string $idempotencyKey = 'test-key-1', ?string $payloadHash = null): ResellerOrderPlacementRequest
     {
         return new ResellerOrderPlacementRequest(
             playerId: '123456789',
@@ -48,6 +49,7 @@ class ResellerOrderPlacementServiceTest extends TestCase
             costPriceSen: 900,
             standardSellingPriceSen: 900,
             idempotencyKey: $idempotencyKey,
+            payloadHash: $payloadHash,
         );
     }
 
@@ -57,8 +59,10 @@ class ResellerOrderPlacementServiceTest extends TestCase
         $reseller = $this->makeReseller(markupPercent: 5);
         app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 10000, 'wallet_topup');
 
-        $order = app(ResellerOrderPlacementService::class)->placeOrder($reseller, $this->request());
+        $result = app(ResellerOrderPlacementService::class)->placeOrder($reseller, $this->request());
+        $order = $result->order;
 
+        $this->assertFalse($result->wasReplay);
         // 900 * 1.05 = 945
         $this->assertSame(945, $order->selling_price);
         $this->assertSame(945, $order->final_amount);
@@ -124,8 +128,38 @@ class ResellerOrderPlacementServiceTest extends TestCase
         $first = $service->placeOrder($reseller, $this->request('same-key'));
         $second = $service->placeOrder($reseller, $this->request('same-key'));
 
-        $this->assertSame($first->id, $second->id);
+        $this->assertFalse($first->wasReplay);
+        $this->assertTrue($second->wasReplay);
+        $this->assertSame($first->order->id, $second->order->id);
         $this->assertSame(1, Order::query()->count());
         $this->assertSame(10000 - 945, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
+    public function test_a_replay_with_a_different_payload_hash_is_a_conflict(): void
+    {
+        Queue::fake();
+        $reseller = $this->makeReseller();
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 10000, 'wallet_topup');
+
+        $service = app(ResellerOrderPlacementService::class);
+        $service->placeOrder($reseller, $this->request('shared-key', payloadHash: 'hash-of-request-a'));
+
+        $this->expectException(IdempotencyKeyPayloadMismatchException::class);
+        $service->placeOrder($reseller, $this->request('shared-key', payloadHash: 'hash-of-request-b'));
+    }
+
+    public function test_a_null_payload_hash_never_conflicts_on_replay(): void
+    {
+        Queue::fake();
+        $reseller = $this->makeReseller();
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 10000, 'wallet_topup');
+
+        $service = app(ResellerOrderPlacementService::class);
+        // First call stores a hash; the Bot-style replay passes none — no conflict.
+        $service->placeOrder($reseller, $this->request('bot-key', payloadHash: 'a-hash'));
+        $replay = $service->placeOrder($reseller, $this->request('bot-key', payloadHash: null));
+
+        $this->assertTrue($replay->wasReplay);
+        $this->assertSame(1, Order::query()->count());
     }
 }

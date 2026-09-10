@@ -17,11 +17,14 @@ class ResellerApiKey extends Model
         'reseller_id',
         'name',
         'key_hash',
+        'allowed_ips',
         'last_used_at',
+        'last_used_ip',
         'revoked_at',
     ];
 
     protected $casts = [
+        'allowed_ips' => 'array',
         'last_used_at' => 'datetime',
         'revoked_at' => 'datetime',
     ];

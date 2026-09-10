@@ -279,6 +279,25 @@ return [
             'timeout' => 30,
             'nice' => 0,
         ],
+        // ADR-084 PR-3 decision 4 — the reseller delivery webhook's own
+        // supervisor, same isolation reasoning as every queue above: a
+        // reseller endpoint that is slow, hanging, or 5xx-ing through its
+        // ~1-hour retry schedule must never sit in front of an order job.
+        // tries=5 matches DeliverResellerWebhook's own $tries (the job's
+        // backoff() spaces the attempts); timeout comfortably over the
+        // job's own 10s HTTP timeout + 5s connect timeout.
+        'supervisor-reseller-webhooks' => [
+            'connection' => 'redis',
+            'queue' => ['reseller-webhooks'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 5,
+            'timeout' => 30,
+            'nice' => 0,
+        ],
         // The catch-all. Every job/listener above names its own queue via
         // onQueue()/broadcastQueue()/$queue, but a class that forgets to
         // (SendMembershipReceiptJob did — its receipt emails silently had
@@ -308,6 +327,7 @@ return [
             'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
+            'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],
 
@@ -317,6 +337,7 @@ return [
             'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
+            'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],
     ],
