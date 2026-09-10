@@ -2,9 +2,14 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\Affiliate;
+use App\Models\AffiliateDomain;
 use App\Models\Game;
 use App\Models\Order;
+use App\Models\Package;
 use App\Models\Review;
+use App\Models\Supplier;
+use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Review\ReviewStatus;
@@ -43,14 +48,14 @@ class ReviewCatalogControllerTest extends TestCase
             'is_active' => true,
         ]);
 
-        $supplier = \App\Models\Supplier::query()->create([
+        $supplier = Supplier::query()->create([
             'name' => 'Gamevion',
             'slug' => 'gamevion',
             'api_config' => [],
             'currency' => 'MYR',
         ]);
 
-        $package = \App\Models\Package::query()->create([
+        $package = Package::query()->create([
             'game_id' => $game->id,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => 'REF-86',
@@ -105,6 +110,67 @@ class ReviewCatalogControllerTest extends TestCase
         ]);
     }
 
+    public function test_homepage_reviews_are_scoped_to_the_resolved_storefront_brand(): void
+    {
+        $game = Game::query()->create([
+            'name' => 'Mobile Legends',
+            'slug' => 'mobile-legends',
+            'is_active' => true,
+        ]);
+
+        $primaryAffiliate = $this->primaryAffiliate();
+
+        $affiliateB = Affiliate::query()->create([
+            'business_name' => 'Soloz Store',
+            'markup_pct' => 5,
+            'status' => 'active',
+        ]);
+        AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliateB->id,
+            'hostname' => 'solozstore.my',
+            'status' => AffiliateDomainStatus::Active,
+            'is_primary' => true,
+        ]);
+
+        // Primary-brand review
+        Review::query()->create([
+            'order_id' => $this->order([
+                'affiliate_id' => $primaryAffiliate->id,
+                'game_id' => $game->id,
+                'customer_name' => 'Buyer Primary',
+            ])->id,
+            'rating' => 5,
+            'comment' => 'Primary platform review',
+            'status' => ReviewStatus::Approved->value,
+        ]);
+
+        // Affiliate B review
+        Review::query()->create([
+            'order_id' => $this->order([
+                'affiliate_id' => $affiliateB->id,
+                'game_id' => $game->id,
+                'customer_name' => 'Buyer Soloz',
+            ])->id,
+            'rating' => 5,
+            'comment' => 'Soloz store review only',
+            'status' => ReviewStatus::Approved->value,
+        ]);
+
+        // No host -> primary: sees its own review only, never B's.
+        $primary = $this->getJson('/api/catalog/reviews');
+        $primary->assertOk();
+        $primary->assertJsonCount(1);
+        $primary->assertJsonFragment(['comment' => 'Primary platform review']);
+        $primary->assertJsonMissing(['comment' => 'Soloz store review only']);
+
+        // Affiliate host -> only B's review, never the primary's.
+        $brandB = $this->getJson('/api/catalog/reviews', ['X-Storefront-Host' => 'solozstore.my']);
+        $brandB->assertOk();
+        $brandB->assertJsonCount(1);
+        $brandB->assertJsonFragment(['comment' => 'Soloz store review only']);
+        $brandB->assertJsonMissing(['comment' => 'Primary platform review']);
+    }
+
     public function test_game_reviews_returns_scoped_reviews_and_aggregates(): void
     {
         $game = Game::query()->create([
@@ -113,14 +179,14 @@ class ReviewCatalogControllerTest extends TestCase
             'is_active' => true,
         ]);
 
-        $supplier = \App\Models\Supplier::query()->create([
+        $supplier = Supplier::query()->create([
             'name' => 'Supplier A',
             'slug' => 'supplier-a',
             'api_config' => [],
             'currency' => 'MYR',
         ]);
 
-        $package = \App\Models\Package::query()->create([
+        $package = Package::query()->create([
             'game_id' => $game->id,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => 'REF-VAL-1',
@@ -195,15 +261,15 @@ class ReviewCatalogControllerTest extends TestCase
 
         $primaryAffiliate = $this->primaryAffiliate();
 
-        $affiliateB = \App\Models\Affiliate::query()->create([
+        $affiliateB = Affiliate::query()->create([
             'business_name' => 'Soloz Store',
             'markup_pct' => 5,
             'status' => 'active',
         ]);
-        \App\Models\AffiliateDomain::query()->create([
+        AffiliateDomain::query()->create([
             'affiliate_id' => $affiliateB->id,
             'hostname' => 'solozstore.my',
-            'status' => \App\Services\Affiliate\AffiliateDomainStatus::Active,
+            'status' => AffiliateDomainStatus::Active,
             'is_primary' => true,
         ]);
 

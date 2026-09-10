@@ -166,14 +166,17 @@ Route::post('/games/{game}/validate-player', [PlayerValidationController::class,
 // same trust model as a courier tracking number. Read-only, but still
 // throttled — a bit looser than checkout/validate since it's not
 // hitting a third-party API, just blunting scraping/enumeration.
-Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware('throttle:20,1,track-order');
+// `storefront.brand` (ADR-060) scopes the lookup to the brand whose
+// storefront the request came in on — an order number is only valid on
+// the storefront it was placed on (see Order::scopeForStorefrontBrand).
+Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware(['throttle:20,1,track-order', 'storefront.brand']);
 
 // ADR-053 (REV-1..5) — public guest review submission, same
 // order_number-as-proof-of-ownership trust model as track-order above.
 // reviews.order_id's own unique index is the real one-per-order
 // guarantee; this throttle only blunts a flood, same convention as
 // checkout/validate-player.
-Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])->middleware('throttle:10,1,review');
+Route::post('/orders/{orderNumber}/review', [ReviewController::class, 'store'])->middleware(['throttle:10,1,review', 'storefront.brand']);
 
 // ADR-027's 2026-08-29 addendum, decisions 23/26/27 — membership
 // identity verification (email + OTP, no login/account). `send` uses

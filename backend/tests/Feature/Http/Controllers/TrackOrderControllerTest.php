@@ -3,11 +3,14 @@
 namespace Tests\Feature\Http\Controllers;
 
 use App\Events\OrderStatusUpdated;
+use App\Models\Affiliate;
+use App\Models\AffiliateDomain;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\Review;
 use App\Models\Supplier;
+use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,6 +136,10 @@ class TrackOrderControllerTest extends TestCase
 
     public function test_returns_404_for_an_unknown_order_number(): void
     {
+        // No header → StorefrontBrand falls back to Affiliate::primary(),
+        // which requires the row to exist (ADR-061).
+        $this->primaryAffiliate();
+
         $response = $this->getJson('/api/track-order/KRS-DOES-NOT-EXIST');
 
         $response->assertNotFound();
@@ -163,5 +170,53 @@ class TrackOrderControllerTest extends TestCase
         $this->getJson("/api/track-order/{$order->order_number}")
             ->assertOk()
             ->assertJsonPath('has_review', true);
+    }
+
+    private function affiliateWithDomain(string $hostname): Affiliate
+    {
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Acme Resell',
+            'markup_pct' => 10,
+            'status' => 'active',
+        ]);
+        AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'hostname' => $hostname,
+            'status' => AffiliateDomainStatus::Active,
+            'is_primary' => true,
+        ]);
+
+        return $affiliate;
+    }
+
+    public function test_an_affiliate_storefront_order_is_not_visible_on_the_primary_storefront(): void
+    {
+        $affiliate = $this->affiliateWithDomain('shop.acme.com');
+        $order = $this->order(['order_number' => 'KRS-ACME', 'affiliate_id' => $affiliate->id]);
+
+        // No header → primary brand. The order belongs to shop.acme.com.
+        $this->getJson("/api/track-order/{$order->order_number}")
+            ->assertNotFound()
+            ->assertJson(['message' => 'No order found with that order number.']);
+    }
+
+    public function test_an_affiliate_storefront_order_resolves_on_its_own_storefront(): void
+    {
+        $affiliate = $this->affiliateWithDomain('shop.acme.com');
+        $order = $this->order(['order_number' => 'KRS-ACME-OK', 'affiliate_id' => $affiliate->id]);
+
+        $this->getJson("/api/track-order/{$order->order_number}", ['X-Storefront-Host' => 'shop.acme.com'])
+            ->assertOk()
+            ->assertJsonPath('order_number', 'KRS-ACME-OK');
+    }
+
+    public function test_a_primary_storefront_order_is_not_visible_on_an_affiliate_storefront(): void
+    {
+        $this->affiliateWithDomain('shop.acme.com');
+        // order() defaults affiliate_id to the primary affiliate.
+        $order = $this->order(['order_number' => 'KRS-PRIMARY-ONLY']);
+
+        $this->getJson("/api/track-order/{$order->order_number}", ['X-Storefront-Host' => 'shop.acme.com'])
+            ->assertNotFound();
     }
 }

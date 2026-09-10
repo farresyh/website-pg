@@ -1,7 +1,6 @@
 import { Star, SealCheck } from "@phosphor-icons/react/dist/ssr";
 import SectionHeading from "@/components/home/SectionHeading";
 import Badge from "@/components/ui/Badge";
-import { TESTIMONIALS } from "@/lib/placeholder-data";
 import type { PublicReview } from "@/lib/review";
 
 interface TestimonialsSectionProps {
@@ -9,23 +8,19 @@ interface TestimonialsSectionProps {
 }
 
 export default function TestimonialsSection({ reviews = [] }: TestimonialsSectionProps) {
-  // Use real approved reviews if available, otherwise fall back to honest placeholders
-  const baseItems =
-    reviews.length > 0
-      ? reviews.map((r) => ({
-          name: r.name,
-          rating: r.rating,
-          quote: r.comment,
-          gameName: r.game_name ?? null,
-          packageName: r.package_name ?? null,
-        }))
-      : TESTIMONIALS.map((t) => ({
-          name: t.name,
-          rating: t.rating,
-          quote: t.quote,
-          gameName: null,
-          packageName: null,
-        }));
+  // Real approved reviews only — this brand has no verified feedback yet
+  // renders nothing rather than fabricated placeholder testimonials.
+  if (reviews.length === 0) {
+    return null;
+  }
+
+  const baseItems = reviews.map((r) => ({
+    name: r.name,
+    rating: r.rating,
+    quote: r.comment,
+    gameName: r.game_name ?? null,
+    packageName: r.package_name ?? null,
+  }));
 
   // Duplicate the array for a seamless, continuous infinite marquee loop
   const loopItems = [...baseItems, ...baseItems];

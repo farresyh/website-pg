@@ -2815,6 +2815,16 @@ Pure build from here — planning addendum agreed, no open frontier.
 
 ---
 
+### Addendum — public proof-of-ownership lookups are brand-scoped (2026-09-10, `fix/storefront-tenant-scope-tracking`)
+
+The two public `order_number`-as-proof-of-ownership routes (`GET /api/track-order/{n}`, ADR-011; `POST /api/orders/{n}/review`, ADR-053) shipped **without** the `storefront.brand` middleware, and their controllers looked up the order by `order_number` alone. Consequence: an order number placed on one affiliate's storefront resolved on *any* other's — leaking the buyer's game, masked contact, order status, and that brand's own retail `selling_price` across the tenant boundary. Not an enumeration hole (the number is ~62-bit CSPRNG), but a real cross-brand leak for anyone who *has* another brand's number (a forwarded screenshot, an operator testing).
+
+Fix: both routes get `storefront.brand`; both controllers scope through the new `Order::scopeForStorefrontBrand(Affiliate $brand)` (primary brand also matches `affiliate_id IS NULL` legacy rows, mirroring `ReviewCatalogController::gameReviews()`). A cross-brand hit returns the **same 404** as an unknown number — never confirm an order exists under a storefront it wasn't placed on.
+
+**Deliberately still open:** the realtime `order.{order_number}` broadcast channel (`OrderStatusUpdated`) stays a public, unscoped channel — its payload is already the masked `customerSafePayload`, the order number is the proof-of-ownership token, and brand-scoping it needs a private channel + auth callback. Tracked as a follow-up, not a blocker. Also unchanged: the storefront support card's contact details are the *brand's* (`useSiteConfig().whatsappHref`) — a separate cosmetic fix (`fix/storefront-brand-polish`) de-hardcodes the "PekanGame" strings in the message body.
+
+---
+
 ### Phasing note (ADR-056..060)
 
 One grilled design, split into five sequenced ADRs so each ships as its own PR to `staging`:
@@ -4367,7 +4377,7 @@ This ADR documents the shipped design, records the grill decisions, and lists th
 **Consequence to track:**
 
 - **Founder-owed, one-off:** scan the existing approved-review corpus once for anything not appropriate for public display (reviews approved under the old "internal only" assumption). Same shape as the `fixfastapp` orphan-row cleanup in ADR-080. Low effort at current volume.
-- **Two shipped gaps → `fix/storefront-review-scoping` (follow-up branch, cut after the doc-audit PR merges):** (a) tenant-scope `GET /api/reviews` per resolved brand + null-for-primary, using the same `StorefrontBrand` resolution as `gameReviews`, and update `forgetCache()` to invalidate the brand's homepage key; (b) drop the homepage placeholder fallback, delete `TESTIMONIALS` + `TrustStrip`, auto-hide the marquee when empty.
+- **Two shipped gaps → CLOSED on `fix/storefront-review-scoping` (2026-09-10):** (a) `GET /api/reviews` (`ReviewCatalogController::index`) now takes `StorefrontBrand`, scopes `whereHas('order', affiliate_id = brand)` + `orWhereNull` for the primary (same shape as `gameReviews`), and caches per-brand under `catalog.public.reviews.{affiliateId}`; `forgetCache()` normalises a null `affiliateId` → primary id and busts the per-brand homepage key (also fixing a latent miss where a primary-brand order's approve never busted its game-reviews key); `Admin\ReviewController::bulkApprove` collects the distinct affiliate ids of the pending set before the update and busts each. (b) `TestimonialsSection` returns `null` when the brand has zero approved reviews; `TESTIMONIALS` + `Testimonial` deleted from `placeholder-data.ts`; `TrustStrip.tsx` deleted (already unused since PR #151). `ReviewCatalogControllerTest` +1 (brand-scope: primary vs affiliate host). Full fast suite 1643/1643, storefront lint/tsc/build clean.
 - **SEO `AggregateRating` / `Review` JSON-LD** on the product page (from the new `average_rating` / `review_count`) is **backlog**, not this ADR's scope — fold into the next SEO-module change (ADR-042). Star ratings in the SERP are high-value for a top-up storefront.
 - **Revisit `is_public` as a separate flag** if review volume grows enough that a moderator can't reasonably keep every approved review public-worthy, or if a specific approved-but-not-public-appropriate case appears.
 - **`GameReviewsSection` replaced `TrustStrip` on the product page** — a game with zero approved reviews now has nothing in that slot. Deliberate (decision 4): the founder considers a generic trust strip pointless. New games / new affiliate stores therefore have a bare product page until their first review lands.
@@ -4441,3 +4451,89 @@ Existing state this builds on: `Supplier.balance` is a single `decimal:2` column
 - Forge production: verify the daily automated MySQL backup is enabled and that the server backup includes `storage/app/private`. The `private` disk must be configured in `config/filesystems.php` and verified on the box.
 - Foreign amounts are `decimal(18,4)` throughout; MYR stays integer sen (ADR-002). Never assume integer-sen for a foreign currency.
 - Update `docs/prd.md` §14 and §15 to reflect this reshaped design; update the ADR-070 RESERVED stub to point here.
+
+---
+
+## ADR-084: Reseller API — developer documentation site, plus the surface hardening that must land first
+
+**Status:** Accepted (design) — 2026-09-10, grilled with the founder (`/mattpocock-skills:grilling`, 4 rounds). Delivers ADR-074's own deferred consequence ("API documentation for the reseller-facing contract... tracked as its own task once the endpoint ships"). Extends ADR-074 decision 3; reverses nothing. Scheduled for 4 PRs.
+
+**Context:**
+
+The Reseller API (ADR-074, built PR-E, live in prod) is the first surface an external system integrates against. Its docs today are `dedoc/scramble`'s auto-generated OpenAPI reference at `/docs/api` (`viewApiDocs` gate fixed to be guest-reachable 2026-09-09, PR #153) — bare: no endpoint summaries or descriptions, no examples, `price_sen` typed as string in `/v1/catalog` but integer in the order responses, partial error coverage (`POST /v1/orders`'s 422 has no schema at all; no endpoint documents 401/403/429), and it is a *reference viewer*, not a docs *site* — there is nowhere for narrative guides (getting started, idempotency, webhook setup, an error catalog).
+
+The founder's benchmark, from consuming three vendor APIs: **CHIP** (`docs.chip-in.asia` — published OpenAPI, `llms.txt`, sandbox, structured guides + conventions) is the standard to reach; **Digiflazz** (real bilingual docs site, but per-endpoint MD5 signature formulas — the friction that ranks it below CHIP); **Gamevion** (`Authorization: Bearer` **and** `X-API-KEY` — two secrets, thin OAS, no player-validation endpoint) is the standard to avoid. The founder explicitly wants CHIP-tier.
+
+Current auth: a single bearer `reseller_api_keys` credential (`pgrk_<48>`, sha256 at rest, multiple named keys per reseller already supported, rotate/revoke from day one — ADR-074 decision 1). No external partner holds a key in production yet (pre-commercial-launch — suppliers unfunded), so a response-shape change now has zero blast radius.
+
+Not decided here, recorded so it is not silently assumed: **self-serve reseller signup** stays out of scope (a separate, larger decision — payment risk, KYC, auto tier-assignment) → **ADR-085 candidate**. ADR-084 assumes invite-only; the docs carry a "Request access — contact us" page with no form.
+
+**Decision:**
+
+1. **API surface** — keep the four ADR-074 endpoints and add two:
+   - **`GET /v1/orders`** — the caller's own order history, cursor-paginated (`?cursor=`, `?limit=` capped at 100, newest first), optional `?status=` (delivery status) and `?created_after=` (ISO 8601) filters, scoped to `wallet_reseller_id`. Returns `{ items: [<order>...], next_cursor: string|null }`. Cursor, not page-number, so a new order landing mid-pagination cannot shift the window.
+   - **A delivery webhook** — see decision 4.
+   - **Rejected: a player-ID validation endpoint.** It would expose supplier structure, and Gamevion has no such endpoint anyway — order-time validation (ADR-005) remains the answer.
+
+2. **The reseller-private boundary is formalised.** These never appear in any response body or in the docs: `cost_price`, `platform_profit`, the platform's markup, the tier's `markup_percent`, any supplier name or identity, `supplier_package_ref`, `Package.id`, the internal order id, any other reseller's data. (Already the code's discipline — `ResellerApi\OrderController::publicOrder()` + `backend/AGENTS.md`; this pins it as an ADR invariant.) `price_sen` is always the caller's own tier-adjusted price.
+
+3. **Error contract** — every 4xx response is `{ "error": "<STABLE_CODE>", "message": "<human text>" }`. `error` is a stable machine-readable code; `message` stays (an additive modification of ADR-074 decision 3's message-only shape — an external integrator must never parse English prose). HTTP status is used meaningfully:
+   - `401` — `MISSING_API_KEY`, `INVALID_API_KEY`
+   - `403` — `RESELLER_INACTIVE`
+   - `404` — `ORDER_NOT_FOUND`
+   - `409` — `IDEMPOTENCY_KEY_CONFLICT`
+   - `422` — `VALIDATION_FAILED` (with `details: { <field>: [<message>...] }`), `UNKNOWN_PRODUCT_CODE`, `NO_TIER_ASSIGNED`, `INSUFFICIENT_BALANCE`
+   - `429` — `RATE_LIMITED`, plus a `Retry-After` header
+
+4. **Delivery webhook.**
+   - `reseller_webhooks` (`reseller_id`, `url`, `secret_hash`, `is_active`) — one endpoint per `Reseller` account, `url` + `secret` self-managed from the portal (admin can also set/read for support). `secret` is generated, shown once, sha256 at rest — the same trust model as the API key.
+   - Events: `order.delivered`, `order.failed`, `order.refunded` (a wallet refund on a failed-and-not-retried order).
+   - Transport: `POST` JSON, header `X-Hub-Signature-256: sha256=<hmac(secret, rawBody)>` — mirrors `DigiflazzWebhookController`'s inbound scheme. Payload is the same public order shape plus `event`, `event_id` (for the receiver's own idempotency), and `occurred_at`.
+   - Delivery: a Horizon job (`DeliverResellerWebhook`, Redis queue per ADR-048), exponential backoff, ~5 attempts over ~1 hour, then `exhausted`. `reseller_webhook_deliveries` records every attempt (`event`, `event_id`, `order_id`, `payload`, `attempts`, `status` pending/delivered/failed/exhausted, `last_response_code`, `next_retry_at`) — a dead-letter view in the portal. Polling `GET /v1/orders/{orderNumber}` stays the backstop.
+   - Dispatched **after** the fulfillment DB transaction commits, from `OrderFulfillmentService` — never inside the money-critical transaction.
+
+5. **Idempotency semantics, documented precisely** (the #1 integration foot-gun):
+   - Same `idempotency_key` + same payload → the original order, **HTTP 200** (changed from the current 201) + header `Idempotent-Replayed: true`.
+   - Same key + a *different* payload → **409 `IDEMPOTENCY_KEY_CONFLICT`**. A hash of the request payload is stored alongside the key (`orders.reseller_api_idempotency_payload_hash`) to detect this — currently undetected.
+   - Keys are retained for the life of the order (indefinitely). The docs instruct: one fresh UUID per logical order.
+
+6. **Auth stays a single bearer API key.** No request signing (the Digiflazz friction), no mandatory second secret (the Gamevion pattern — no security gain over one strong opaque token). Hardened around instead:
+   - **Optional per-key IP allowlist** (`reseller_api_keys.allowed_ips`, JSON, empty = any IP). Recommended in the docs for server-to-server integrations; never mandatory, so a serverless / shared-infra reseller still works (the same reasoning ADR-074 decision 4 gave for rate-limiting on the token, not the IP).
+   - **`reseller_api_keys.last_used_ip`** surfaced in the portal so a reseller spots anomalous use.
+   - Blast radius is already bounded by the prepaid wallet (max loss = current balance) and the delivery webhook (fast notification of unexpected orders).
+
+7. **Documentation stack — a Starlight (Astro) site, not the Scramble viewer.**
+   - Scramble is kept **only as the spec generator**: `php artisan scramble:export` produces `api.json`, committed into the docs app. A CI job regenerates it and fails on any drift from the committed copy (the ADR-033 lesson).
+   - A new `docs-site/` app (Astro + Starlight + `starlight-openapi`, nothing else) renders the committed `api.json` as the reference, alongside hand-written Markdown guides. Deploys on Vercel as the project's **fourth** frontend → **`docs.pekangame.space`**.
+   - In production the Scramble route (`/docs/api`) **301-redirects** to `docs.pekangame.space`; the raw spec is served statically as `docs.pekangame.space/openapi.json`.
+   - Guardrails for a solo-maintained app: pinned Astro + Starlight versions, dependency-minimal, the docs app builds in CI on every PR.
+
+8. **Documentation content — 11 pages:** Introduction (what it is, invite-only, base URL, environments) · Authentication (bearer key, issue/rotate, IP allowlist, compromise → revoke + reissue) · Your first order (end-to-end: catalog → orders → poll/webhook) · Product codes (`{reseller_code}-{denomination}` / `{reseller_code}-{catalog_code}`, discovered via `/catalog`) · Idempotency & retries · Delivery notifications (webhook setup, signature verification, event shapes, retry, poll fallback) · Wallet & balance (prepaid model, insufficient-balance handling, top-up via portal/contact) · Errors (the full catalog — status + code + meaning + what to do) · Rate limits (60/min per key, `Retry-After`, 429) · Versioning & changelog · API Reference (auto from `api.json`).
+
+9. **Versioning & deprecation policy** (in the ADR and on the docs site): the path carries `/v1`. Additive, backward-compatible changes (new endpoints, new optional fields, new error codes) ship without a version bump. A breaking change means `/v2`, with `/v1` supported for **at least 6 months** after `/v2` GA, a `Sunset` header on `/v1`, and a docs deprecation notice. `info.version` in the spec is the docs revision (semver), not the API version. A dated changelog page.
+
+10. **Portal surface** — webhook URL/secret + the delivery-attempt log + per-key IP allowlist + `last_used_ip` all live in the `reseller/` portal (`:3002`), extending the existing "API Keys" area (ADR-074 PR-E). `/admin/resellers` gains read/set for support.
+
+11. **Four PRs, in order:**
+    - **PR-1 — API surface hardening** (the contract must be stable before it is documented): the error-code envelope on every 4xx path; `reseller_api_keys.allowed_ips` + `last_used_ip`; `orders.reseller_api_idempotency_payload_hash`; `price_sen` → integer in `/v1/catalog`; `#[Response]` / summary / description PHP attributes on every endpoint so Scramble emits the full 401/403/404/409/422/429 spec; `EnsureResellerApiKey` enforcing `allowed_ips` and writing `last_used_ip`; the 429 `Retry-After` header + body; the idempotency change (200 + `Idempotent-Replayed`, 409 on payload conflict) in `ResellerOrderPlacementService`. Two migrations. No new endpoints. No compat shim — no external consumer exists yet.
+    - **PR-2 — `GET /v1/orders`** (order-list, cursor pagination + filters).
+    - **PR-3 — the delivery webhook** (`reseller_webhooks` + `reseller_webhook_deliveries`, `DeliverResellerWebhook` job, the after-commit dispatch hook in `OrderFulfillmentService`, the portal + admin screens).
+    - **PR-4 — the docs site** (`docs-site/` Starlight app, `scramble:export` + committed `api.json` + the CI drift-guard + the CI build gate, the 11 pages, the Vercel project + `docs.pekangame.space` DNS, the `/docs/api` → docs-site redirect).
+    - PR-1 is mandatory first. PR-2 and PR-3 can run in parallel. PR-4 documents the finished contract.
+
+**Rationale:**
+
+- Documenting a still-loose contract produces docs that go stale immediately — hence PR-1 first, and a stable machine-readable `error` code (not an English `message`) is a hard integration requirement, not a nicety.
+- A single bearer key is the modern standard (CHIP, Stripe) and the lowest-friction choice — which is the entire reason CHIP ranks first and the goal here. Signing and mandatory second secrets are the exact patterns that make Digiflazz and Gamevion worse to integrate. The optional IP allowlist adds real protection for the reseller who wants it, at zero cost to the one who can't use it.
+- The webhook removes the poll burden and matches CHIP's `success_callback` model; reusing `DigiflazzWebhookController`'s signature scheme keeps one HMAC convention across the codebase.
+- Starlight over Scramble's viewer is a deliberate, founder-made trade: it is the heavier option (a fourth Vercel app, a build pipeline, a committed spec that needs a drift-guard, hand-written guides that can go stale) but it is the only one that delivers the CHIP-shaped experience — multi-page guides plus reference plus changelog on an owned domain. The guardrails (pinned versions, minimal deps, CI build + drift gates) are what keep it maintainable by one person.
+
+**Consequence to track:**
+
+- After PR-1, `price_sen`'s type and the replay status code are a committed external contract — any later change is breaking and triggers the decision-9 policy.
+- A leaked webhook `secret` lets an attacker spoof delivery events to the reseller's system → `secret` is rotatable, shown once, sha256 at rest.
+- `docs-site/` is a fourth Vercel project and a new npm dependency surface for a solo founder — the CI build gate and pinned versions are mitigation, not optional.
+- The `docs-site/` name avoids a clash with the existing `docs/` (ADR/PRD) directory.
+- ADR-085 candidate: self-serve reseller signup.
+- Update `docs/prd.md` §14/§15; retag the "ADR-084 candidate" pointer (§15 item 9) as ADR-084 accepted.
+- `config/scramble.php`'s `api_path` already scopes the spec to `api/reseller` only (ADR-074 PR-E) — verify no admin/storefront route leaks after the annotation pass.

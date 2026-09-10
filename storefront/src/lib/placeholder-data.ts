@@ -2,27 +2,18 @@
  * Static placeholder content for the homepage. Games/packages moved to
  * lib/catalog.ts, hero slides to lib/hero-slides.ts, and payment
  * channels to lib/payment-methods.ts (all real backend data) —
- * everything remaining here (testimonials, FAQ) still has no backing
- * model, kept as honest static content rather than a fake dynamic
- * system.
+ * everything remaining here (FAQ) still has no backing model, kept as
+ * honest static content rather than a fake dynamic system.
  *
  * The "This Week's Promotions" section and its PROMOTIONS array were
  * removed in ADR-071 PR0: hardcoded promos with past "Ends:" dates were
  * live in production. Re-introducing promotions requires a real
  * admin-editable model (its own future ADR), not placeholder data.
+ *
+ * TESTIMONIALS was removed on `fix/storefront-review-scoping` (ADR-082):
+ * the homepage marquee now shows real approved reviews only and renders
+ * nothing when a brand has none.
  */
-
-export interface Testimonial {
-  name: string;
-  rating: number;
-  quote: string;
-}
-
-export const TESTIMONIALS: Testimonial[] = [
-  { name: "Ahmad R.", rating: 5, quote: "Fast process — diamonds arrived within 2 minutes of payment." },
-  { name: "Nurul S.", rating: 5, quote: "Very easy and safe. Only the first-time setup takes a bit of time." },
-  { name: "Hafiz M.", rating: 5, quote: "Cheapest UC prices in Malaysia with instant delivery. Best, PekanGame!" },
-];
 
 export interface FaqItem {
   question: string;
