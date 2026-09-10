@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ResellerApi;
 
 use App\Exceptions\ResellerApi\ResellerApiException;
+use App\Http\Requests\ResellerApi\IndexOrdersRequest;
 use App\Http\Requests\ResellerApi\PlaceOrderRequest;
 use App\Models\Order;
 use App\Services\Ledger\InsufficientBalanceException;
@@ -16,11 +17,12 @@ use Dedoc\Scramble\Attributes\Endpoint;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 /**
- * ADR-074 decision 3 + ADR-084 PR-1: the Reseller API's order
- * create/status endpoints. All money/order logic is delegated
- * (`ResellerCatalogService` resolves the code,
+ * ADR-074 decision 3 + ADR-084 PR-1/PR-2: the Reseller API's order
+ * create / status / history endpoints. All money/order logic is
+ * delegated (`ResellerCatalogService` resolves the code,
  * `ResellerOrderPlacementService` resolves the tier price and places the
  * order). This controller orchestrates, translates the service's
  * channel-neutral exceptions into the stable `ResellerApiException`
@@ -28,6 +30,9 @@ use Illuminate\Http\Request;
  */
 class OrderController extends Controller
 {
+    /** ADR-084 PR-2: `GET /v1/orders` page size when the caller sends no `limit`. */
+    private const DEFAULT_LIMIT = 25;
+
     /** The `publicOrder()` shape, for the `#[Response]` examples. */
     private const ORDER_EXAMPLE = [
         'order_number' => 'PG-7QK2M9X4RJ',
@@ -45,6 +50,46 @@ class OrderController extends Controller
         private readonly ResellerCatalogService $catalog,
         private readonly ResellerOrderPlacementService $placement,
     ) {}
+
+    #[Endpoint(
+        title: 'List orders',
+        description: "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status and `?created_after=` (ISO 8601) on creation time. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
+    )]
+    #[Response(status: 200, description: 'A page of orders.', examples: [[
+        'items' => [self::ORDER_EXAMPLE],
+        'next_cursor' => 'eyJpZCI6MTQ4LCJfcG9pbnRzVG9OZXh0SXRlbXMiOnRydWV9',
+    ]])]
+    #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
+    #[Response(status: 403, description: '`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.', type: self::ERROR_SHAPE, examples: [self::ERROR_403])]
+    #[Response(status: 422, description: '`VALIDATION_FAILED` — an unusable `limit`, `status` or `created_after`.', type: self::ERROR_SHAPE, examples: [[
+        'error' => 'VALIDATION_FAILED', 'message' => 'The request payload failed validation.', 'details' => ['status' => ['The selected status is invalid.']],
+    ]])]
+    #[Response(status: 429, description: '`RATE_LIMITED` — retry after the `Retry-After` header.', type: self::ERROR_SHAPE, examples: [self::ERROR_429])]
+    public function index(IndexOrdersRequest $request): JsonResponse
+    {
+        $reseller = $this->reseller($request);
+        $data = $request->validated();
+
+        $query = Order::query()
+            ->where('wallet_reseller_id', $reseller->id)
+            ->with(['game:id,reseller_code', 'package:id,denomination,catalog_code'])
+            ->orderByDesc('id');
+
+        if (isset($data['status'])) {
+            $query->where('delivery_status', $data['status']);
+        }
+
+        if (isset($data['created_after'])) {
+            $query->where('created_at', '>=', Carbon::parse($data['created_after']));
+        }
+
+        $page = $query->cursorPaginate($data['limit'] ?? self::DEFAULT_LIMIT);
+
+        return response()->json([
+            'items' => $page->getCollection()->map(fn (Order $order) => self::publicOrder($order))->all(),
+            'next_cursor' => $page->nextCursor()?->encode(),
+        ]);
+    }
 
     #[Endpoint(
         title: 'Place an order',
