@@ -179,9 +179,13 @@ jobs:
         working-directory: backend
       - run: php artisan key:generate
         working-directory: backend
-      # sqlite so the command boots without a DB service; scramble reads
-      # routes/controllers by reflection, not the DB, but providers boot.
+      # sqlite + migrations: Scramble infers nullability of response
+      # fields from the real schema (e.g. games.reseller_code,
+      # orders.server_id are nullable), so the export must run against a
+      # migrated DB to match how the committed spec was generated.
       - run: touch database/database.sqlite
+        working-directory: backend
+      - run: DB_CONNECTION=sqlite DB_DATABASE=database/database.sqlite php artisan migrate --force
         working-directory: backend
       - run: DB_CONNECTION=sqlite DB_DATABASE=database/database.sqlite php artisan scramble:clear && DB_CONNECTION=sqlite DB_DATABASE=database/database.sqlite php artisan scramble:export --path=../docs-site/public/openapi.json --no-ansi --silent
         working-directory: backend
