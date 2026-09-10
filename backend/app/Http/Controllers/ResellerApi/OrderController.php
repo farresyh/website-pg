@@ -94,7 +94,7 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'Place an order',
-        description: "Charges the caller's wallet at their tier price and queues fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict.",
+        description: 'Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict.',
     )]
     #[Response(status: 201, description: 'The order was placed.', examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 200, description: 'Idempotent replay — the original order (also carries `Idempotent-Replayed: true`).', examples: [self::ORDER_EXAMPLE])]

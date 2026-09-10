@@ -36,7 +36,7 @@ Branch on **`error`** (a stable machine code) and the **HTTP status** — never 
 | 409 | `IDEMPOTENCY_KEY_CONFLICT` | The `idempotency_key` was already used with a different payload. | Use a fresh UUID. |
 | 422 | `VALIDATION_FAILED` | A field is missing or malformed. See `details`. | Fix the payload. |
 | 422 | `UNKNOWN_PRODUCT_CODE` | The `product_code` is unknown or unavailable. | Re-read `GET /v1/catalog`. |
-| 422 | `NO_TIER_ASSIGNED` | No wholesale tier is set on the account. | Contact PekanGame. |
+| 422 | `NO_TIER_ASSIGNED` | Your account has no pricing configured yet. | Contact PekanGame. |
 | 422 | `INSUFFICIENT_BALANCE` | The order would overdraw the wallet. | Top up; retry with a fresh key. |
 | 429 | `RATE_LIMITED` | Too many requests. | Wait for the `Retry-After` header, then retry. |
 
