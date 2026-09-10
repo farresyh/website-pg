@@ -4,6 +4,101 @@ Immutable record of foundation decisions made before any code was written. Each 
 
 **Do not edit past entries to reflect new thinking.** If a decision changes later, add a new entry that supersedes it and say so explicitly — the history of *why we changed our minds* is as valuable as the original rationale.
 
+> **Doc map (2026-09-11):** older entries below say "update `prd.md` §14/§15" or cite "`prd.md` §14's `<date>` entry". `prd.md` §14 was a running chronological build log; on 2026-09-11 that log moved to **[`docs/build-log.md`](./build-log.md)** (search it by the same date). `prd.md` now carries only §15 (the feature-status tracker) and §16 (the live backlog). Those historical pointers are left as-written per the "do not edit past entries" rule.
+
+---
+
+## ADR Index
+
+_Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line (superseded / revised / built / live) is authoritative; several early "design" ADRs were built later under their own build addenda._
+
+| # | Decision |
+| --- | --- |
+| **ADR-001** | Payment gateway — Xendit |
+| **ADR-002** | Ledger-based balance, not a mutable column |
+| **ADR-003** | Tenant-aware schema, platform-owner-only MVP features |
+| **ADR-004** | No cash refunds, ever |
+| **ADR-005** | Player-ID pre-payment validation is not universal |
+| **ADR-006** | Supplier Adapter/Normalizer layer is MVP, not Phase 2 |
+| **ADR-007** | Internal fraud blacklist is first-class MVP |
+| **ADR-008** | Split frontend stack — Vue for Admin, Next.js for Storefront |
+| **ADR-009** | (D8-revised): Unify frontend stack — Next.js (React) for both Admin Panel and Storefront |
+| **ADR-010** | Docker for MySQL only, not full Laravel Sail |
+| **ADR-011** | Storefront stays guest-checkout — no Customer account/auth in MVP |
+| **ADR-012** | Admin Panel UI built on the free TailAdmin template as a component/layout reference |
+| **ADR-013** | Platform owner is the first Reseller row, not a parallel single-tenant concept |
+| **ADR-014** | 24/7 burst-resilience baseline — queue, retry, indexing, caching, rate-limiting, observability |
+| **ADR-015** | Price Sync — cost propagation + deactivation detection (built 2026-07-26) |
+| **ADR-016** | Price Sync Center — admin UI design (design only, downstream of ADR-015) |
+| **ADR-017** | Order Resend Delivery — same-game package swap + live price reconciliation (built 2026-07-27) |
+| **ADR-018** | Sandbox Test Orders — a middleware-only tool for exercising the real Order lifecycle without… |
+| **ADR-019** | Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restru… |
+| **ADR-020** | Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fro… |
+| **ADR-021** | Next-session priority re-sequencing — payment reconciliation before deployment infra |
+| **ADR-022** | Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international… |
+| **ADR-023** | Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules |
+| **ADR-024** | Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14) |
+| **ADR-025** | Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price (built… |
+| **ADR-026** | Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-cre… |
+| **ADR-027** | VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, memb… |
+| **ADR-028** | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split (buil… |
+| **ADR-029** | SEO Management — reseller-scoped SEO settings, redirects, and per-game wiring (built 2026-08… |
+| **ADR-030** | Digiflazz supplier integration — buyer-role adapter, prepaid games only (built 2026-08-25) |
+| **ADR-031** | Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (built 2026-08-25) |
+| **ADR-032** | Async supplier delivery — `DeliveryStatus::Pending` + normalized `SupplierResponse` outcome… |
+| **ADR-033** | Foreign-currency supplier pricing — FX-rate conversion at sync time (built 2026-08-25) |
+| **ADR-034** | Storefront best-price selection — `packages.denomination` (built 2026-08-25) |
+| **ADR-035** | Voucher Path A double-submission guard — idempotency key, mirroring checkout (built 2026-08-26) |
+| **ADR-036** | Voucher Merge — admin-triggered consolidation into a new code, no ledger write (built 2026-0… |
+| **ADR-037** | Staging/production git branch model + staging environment infra (branch model built + in liv… |
+| **ADR-038** | Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off h… |
+| **ADR-039** | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) (design 2026… |
+| **ADR-040** | Gamevion sandbox integration — investigation saga, `telp` normalization, `callback_url` fix… |
+| **ADR-041** | Checkout-level idempotency key — client-generated key, unique DB constraint, replay/resume b… |
+| **ADR-042** | SEO module scope widened — structured data, scripts manager, crawler/robots management, site… |
+| **ADR-043** | `llms.txt` — auto-generated AI/LLM-context route (built 2026-08-22) |
+| **ADR-044** | Zod runtime schema validation at the admin/storefront API boundary (built 2026-08-27) |
+| **ADR-045** | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `defin… |
+| **ADR-046** | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_co… |
+| **ADR-047** | Realtime broadcasting — Laravel Reverb + Echo, replacing application-level polling (items 1-… |
+| **ADR-048** | Queue driver migration to Redis, plus Horizon + Pulse — reverses ADR-014 decision #1 / ADR-0… |
+| **ADR-049** | Customer Analytics (ANL-1..4) — identity as a derived grouping, segmentation rules, and date… |
+| **ADR-050** | Customer Detail drill-down (ANL-5) — profit-panel scoping, kept consistent with the delivery… |
+| **ADR-051** | Middleware Request Logs (MID-10/11, MUI-9) — HTTP-client-event hook, redact-then-queue write… |
+| **ADR-052** | Middleware Panel closure batch — MUI-7 merged into Validators, MUI-1 as a thin `/middleware`… |
+| **ADR-053** | Reviews (REV-1..5) — guest, order-linked submission via a real-time delivery-status trigger,… |
+| **ADR-054** | Developer raw API tester (DEV-1/2, MUI-11) — typed-DTO editor over the real adapter seam, ba… |
+| **ADR-055** | Membership upsell promo card — storefront Order Summary, Tier 2 teaser (design only, grilled… |
+| **ADR-056** | Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored… |
+| **ADR-057** | Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted… |
+| **ADR-058** | Reseller authentication + admin Reseller Management (RES-1..6) — BUILT + LIVE (guard later r… |
+| **ADR-059** | Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront con… |
+| **ADR-060** | Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-… |
+| **ADR-061** | Every storefront is a Reseller — abolish the platform-owner special-case |
+| **ADR-062** | Rebrand the primary storefront to "PekanGame" |
+| **ADR-063** | Storefront visual system replacement — light neo-brutalist "Digital Architect" world |
+| **ADR-064** | Storefront per-surface redesign + component rebuild |
+| **ADR-065** | Guest order-status detail — masked contact + payment breakdown on a track-by-number view |
+| **ADR-066** | Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation |
+| **ADR-067** | Digiflazz adapter completion — buyer-area scoping, dual product status, per-supplier Product… |
+| **ADR-068** | Self-serve membership subscription payment — customer pays for a tier through the CHIP check… |
+| **ADR-069** | Digiflazz supplier hardening — inbound webhook, credential-rotation surfacing, raw-price vis… |
+| **ADR-070** | RESERVED — supplier-deposit / FX-history ledger → subsumed by ADR-083 |
+| **ADR-071** | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidati… |
+| **ADR-072** | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename… |
+| **ADR-073** | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit b… |
+| **ADR-074** | Reseller API channel — per-tenant API keys, order-placement/status endpoints |
+| **ADR-075** | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology |
+| **ADR-076** | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, re… |
+| **ADR-077** | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagati… |
+| **ADR-078** | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibi… |
+| **ADR-079** | Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official S… |
+| **ADR-080** | Membership × per-brand — close the `/membership` surface consistently on a membership-disabl… |
+| **ADR-081** | Affiliate storefront theme presets — a curated fixed set, NOT the THM-1..4 custom theme system |
+| **ADR-082** | Public-facing review display — homepage marquee + per-game reviews on the product page |
+| **ADR-083** | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Re… |
+| **ADR-084** | Reseller API — developer documentation site, plus the surface hardening that must land first |
+
 ---
 
 ## ADR-001 (D1): Payment gateway — Xendit
@@ -214,7 +309,7 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 
 ## ADR-014: 24/7 burst-resilience baseline — queue, retry, indexing, caching, rate-limiting, observability
 
-**Status:** Accepted — 2026-07-26 (design session while blocked on Gamevion support's reply re: ADR-006's sandbox `500`; founder explicitly asked to strengthen the foundation in parallel rather than wait idle)
+**Status:** Accepted — 2026-07-26 (design session while blocked on Gamevion support's reply re: ADR-006's sandbox `500`; founder explicitly asked to strengthen the foundation in parallel rather than wait idle). **Partly revised:** decision 5's app-wide `CACHE_STORE=database` was reversed to Redis by [ADR-077](#adr-077-storefront-read-path--redis-cache-cutover-eviction-policy-invalidation-fan-out-propagation-freshness) (2026-09-07) once production Pulse showed the `cache` table was the system's biggest latency source.
 
 > **Superseded in part by ADR-077 (2026-09-07):** decision 5's app-wide `database` cache store is cut to Redis — production Pulse showed the `database` `cache` table had become the system's single biggest latency source (a 52-second `select from cache` under lock contention). Decision 4's index list is extended there too. Decision 7's "state on `database`, ready to scale" note still holds for sessions; the cache half moved. The "cache values must be plain arrays" rule from this ADR's own addendum below is now belt-and-braces rather than load-bearing (Redis does not corrupt nested objects) — kept for portability.
 
@@ -380,7 +475,7 @@ Frontend (decision #8): `OrderDetailCards`/`DeliveryLogsTable` extracted from `/
 
 ## ADR-019: Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restructure
 
-**Status:** Accepted — 2026-07-27 (findings and sequencing discussed with the founder in a dedicated audit session; grilled on the "fix now vs. wait for deploy" split specifically, not per-item)
+**Status:** Accepted — 2026-07-27 (findings and sequencing discussed with the founder in a dedicated audit session; grilled on the "fix now vs. wait for deploy" split specifically, not per-item). **Partly revised:** the "no Redis, `database` cache driver" deferral was closed by [ADR-077](#adr-077-storefront-read-path--redis-cache-cutover-eviction-policy-invalidation-fan-out-propagation-freshness) (2026-09-07).
 
 > **Extended by ADR-077 (2026-09-07):** the `database` cache-store decision this audit confirmed as correctly-built has since been reversed to Redis — the reasoning that held in 2026-07 (no production infra, Redis not worth the ops burden) stopped holding once ADR-048 put Redis in the stack and production Pulse data showed the `database` `cache` table causing multi-second lock stalls.
 
@@ -2156,7 +2251,7 @@ Investigation before grilling found each item already overlaps existing, shipped
 
 ## ADR-053: Reviews (REV-1..5) — guest, order-linked submission via a real-time delivery-status trigger, admin-only moderation
 
-**Status:** Accepted (design) — 2026-08-28 (grilled via `/mattpocock-skills:grilling`, three rounds, before any code touched)
+**Status:** Accepted (design) — 2026-08-28 (grilled via `/mattpocock-skills:grilling`, three rounds, before any code touched). **Decision 6 reversed by [ADR-082](#adr-082-public-facing-review-display--homepage-marquee--per-game-reviews-on-the-product-page)** (2026-09-09) — approved reviews *are* now shown publicly (`approved == public`).
 
 **Context:** `docs/prd.md` §6.13/§15 REV-1..5 is a completely unbuilt feature (⬜/⬜, "Not blocked on supplier") — no `Review` model, migration, or route exists anywhere (confirmed via grep). Picked as the next backlog item once the Middleware Panel batch (ADR-052) closed. The spec itself only covers the admin moderation side (stats, table, approve/reject, bulk-approve-all, filters) — it says nothing about how a review actually gets created, which is the real load-bearing gap: the storefront is guest-checkout only (ADR-011, no customer accounts), so a review can't hang off a `User` the way a typical review system would.
 
@@ -4456,7 +4551,7 @@ Existing state this builds on: `Supplier.balance` is a single `decimal:2` column
 
 ## ADR-084: Reseller API — developer documentation site, plus the surface hardening that must land first
 
-**Status:** Accepted & **fully built** — designed/grilled 2026-09-10 (`/mattpocock-skills:grilling`, 4 rounds); all 4 PRs shipped to `staging` 2026-09-10 (PR-1 #162, PR-2 #163, PR-3 #164, PR-4). Delivers ADR-074's own deferred consequence ("API documentation for the reseller-facing contract... tracked as its own task once the endpoint ships"). Extends ADR-074 decision 3; reverses nothing. See the four build addenda below. One-time infra left to the founder: run `scripts/adr-084-docs-site-wizard.sh`, then set `DOCS_SITE_URL` on Forge.
+**Status:** Accepted & **fully built + live in production** — designed/grilled 2026-09-10 (`/mattpocock-skills:grilling`, 4 rounds); PR-1..4 (#162/#163/#164/#165) released to `main` via release PR #166 (merge `8ec5e8e`, 2026-09-10). The founder ran `scripts/adr-084-docs-site-wizard.sh`: `docs.pekangame.space` is live and `/docs/api` `301`s to it (`DOCS_SITE_URL` set on Forge — verified live 2026-09-11). Nothing founder-owed remains. A follow-up spec-wording de-leak (PR #167, `enum_cases_description_strategy => false` + a scrub loop) sits on `staging` awaiting the next release. Delivers ADR-074's own deferred consequence ("API documentation for the reseller-facing contract... tracked as its own task once the endpoint ships"). Extends ADR-074 decision 3; reverses nothing. See the build addenda below and `docs/build-log.md`.
 
 **Context:**
 

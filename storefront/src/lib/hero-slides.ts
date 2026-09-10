@@ -5,8 +5,8 @@ import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * Real request/response contract for the public hero-banner listing
- * (HeroSlideController, docs/prd.md §14/§15 backlog: "Hero Banner /
- * Campaign management") — replaces placeholder-data.ts's HERO_SLIDES.
+ * (HeroSlideController; see docs/prd.md §15 "Storefront" / "SEO" rows) —
+ * replaces placeholder-data.ts's HERO_SLIDES.
  * Same snake_case-wire / camelCase-UI translation pattern as catalog.ts.
  *
  * ADR-044: schema is the source of truth for the wire shape below.

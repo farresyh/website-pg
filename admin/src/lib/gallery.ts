@@ -1,7 +1,7 @@
 import { apiFetch, apiUpload } from "@/lib/api-client";
 
 /**
- * IMG-1/IMG-2 (docs/prd.md §14/§15 backlog) — Image Gallery. No FK
+ * IMG-1/IMG-2 (docs/prd.md §15 "Image Gallery" row) — Image Gallery. No FK
  * from Game/HeroSlide to a gallery image: an admin uploads here,
  * copies the resulting `url`, and pastes it into `EditGameModal` /
  * the Hero Slide modal's existing `image_url` field — same as

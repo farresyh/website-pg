@@ -18,7 +18,8 @@ change to those paths with the same care the existing code already does.
 | `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery, Affiliates, Resellers |
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
-| `docs/` | `prd.md` (spec + build-status log), `adr.md` (decision log), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
+| `docs-site/` | Astro 7 + Starlight — public Reseller API docs | The **4th frontend** (ADR-084). Deploys on Vercel → `docs.pekangame.space`; `/docs/api` on the backend 301s to it. Spec is generated (`php artisan scramble:export`), never hand-edited; CI drift-guards it |
+| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log — has an ADR index at the top), `build-log.md` (the running chronological build record — moved out of §14 on 2026-09-11), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
 
 > **Terminology (ADR-072, 2026-09-04):** the old whitelabel "Reseller" was
 > renamed **Affiliate**; "Reseller" now means a prepaid-wallet account with
@@ -26,11 +27,11 @@ change to those paths with the same care the existing code already does.
 > ADR titles/bodies written before ADR-072 that say "Reseller" mean today's
 > "Affiliate". See PRD §13 Glossary.
 
-`admin/`, `storefront/`, and `reseller/` each carry their own
+`admin/`, `storefront/`, `reseller/`, and `docs-site/` each carry their own
 `CLAUDE.md`/`AGENTS.md` — `admin/` and `storefront/` are just the auto-generated
-Next.js-version banner; `reseller/` adds portal-specific conventions. This file
-covers the whole repo; `backend/CLAUDE.md` adds Laravel-specific conventions on
-top of it.
+Next.js-version banner; `reseller/` and `docs-site/` add their own conventions
+(`docs-site/CLAUDE.md` is a symlink to its `AGENTS.md`). This file covers the
+whole repo; `backend/CLAUDE.md` adds Laravel-specific conventions on top of it.
 
 ## Working Conventions
 
@@ -55,17 +56,18 @@ top of it.
   2026-08-29** — those source files are deleted. Build new screens with the
   PrimeReact-Tailwind components and the shared `globals.css` design tokens.
   `RichTextEditor` is the one hand-rolled primitive that stays (no PrimeReact
-  equivalent). See `docs/prd.md`'s PrimeReact Migration Tracker for the history.
+  equivalent). Screen-by-screen migration history is in `docs/build-log.md`.
 - **Money is never trusted from the client.** Price, cost, and profit are
   always computed server-side from stored `Package`/`Game` data at the moment
   of use — see ORD-9 in `docs/prd.md` and `PricingService`. If you find
   yourself accepting a monetary value in a request payload, stop and check
   whether it should be computed instead.
-- **Keep `docs/prd.md` §14/§15 current.** §14 is a chronological build log
-  (what shipped, when, why); §15 is the coarse status-by-feature-area
-  tracker. Update both when a tracked item ships or a new gap is found —
-  don't let the docs drift from what's actually true, per the doc's own
-  standing instruction.
+- **Keep the docs current when something ships.** `docs/build-log.md` is the
+  running chronological record (what shipped, when, why, gotchas hit) — append
+  to it. `docs/prd.md` §15 is the coarse status-by-feature-area tracker and §16
+  is the live backlog — move items across as they land. `docs/adr.md` gets a new
+  numbered entry for any non-trivial decision. Don't let any of them drift from
+  what's actually true — verify against production, not memory.
 - Do what has been asked; nothing more, nothing less.
 - Never create files unless necessary — prefer editing existing files. Never
   create documentation files unless explicitly requested.
@@ -95,7 +97,8 @@ top of it.
   separately-deployed staging server), and only then does `staging` merge
   into `main`. **A push to `main` auto-deploys the backend to production**
   via the CI `deploy` job (POSTs `FORGE_DEPLOY_HOOK`, gated on all test jobs
-  green — ADR-066); the three frontends auto-deploy from `main` on Vercel.
+  green — ADR-066); the four frontends (`admin/`, `storefront/`, `reseller/`,
+  `docs-site/`) auto-deploy from `main` on Vercel.
   Both `staging` and `main` are protected, PR-only, with required CI checks.
 - **One exception: `hotfix/*` branches may cut directly from `main`**, scoped
   strictly to P0 incidents (payment/ledger/checkout down) where waiting on
@@ -152,13 +155,13 @@ cd e2e && npm test
 actual queue worker running — `composer run dev` includes one (`php artisan
 horizon`, since ADR-048); a bare `php artisan serve` (or Laravel Herd on its
 own) does not. A stuck "Syncing…" state with nothing updating almost always
-means the worker isn't running, not a frontend bug — see `docs/prd.md` §14's
+means the worker isn't running, not a frontend bug — see `docs/build-log.md`'s
 2026-07-27 live-testing entry. A second, quieter cause of the same symptom:
 `composer run dev` itself silently kills its own queue worker if
 `backend/node_modules` was never installed (`npm install` inside `backend/`,
 separate from `admin/`/`storefront/`'s own installs) — its `vite` step fails
 and `concurrently --kill-others` tears down `horizon` with it, visible only
-in the backend's own terminal output. See `docs/prd.md` §14's 2026-07-28
+in the backend's own terminal output. See `docs/build-log.md`'s 2026-07-28
 addendum. **Third cause, since ADR-048:** `horizon` itself needs
 `backend/docker-compose.yml`'s `redis` service running (`QUEUE_CONNECTION`
 moved off `database` onto `redis`, and Horizon has no `database`-driver
@@ -180,7 +183,7 @@ session that adds a migration should run **plain `php artisan migrate`**
 done, not just the test suites. `migrate:fresh` **drops every table** — the
 local sqlite dev DB is gitignored with no backup, so a `migrate:fresh` there
 permanently wipes any locally-set-up games/packages/test data. See
-`docs/prd.md` §14's 2026-07-29 Blacklist/Fraud entry for the additive-migrate
+`docs/build-log.md`'s 2026-07-29 Blacklist/Fraud entry for the additive-migrate
 gotcha and its 2026-08-31 ADR-061 PR-B entry for a `migrate:fresh` data-loss
 incident.
 
@@ -208,5 +211,5 @@ shell (no `GITHUB_ACTIONS` var there). Found in `e2e/scripts/boot-backend.sh`
 corrupted `APP_KEY` broke nothing until the first real encrypted write
 (`Supplier.api_config`, ADR-046), which then surfaced only as Playwright's
 generic "Process from config.webServer was not able to start" — see
-`docs/prd.md` §14's 2026-08-27 entry for the full root-cause chain. Any
+`docs/build-log.md`'s 2026-08-27 entry for the full root-cause chain. Any
 script that captures `artisan` output into a variable needs `--no-ansi`.

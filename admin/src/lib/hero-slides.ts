@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/api-client";
 
 /**
- * docs/prd.md §14/§15 backlog: "Hero Banner / Campaign management."
+ * Hero Banner / Campaign management (see docs/prd.md §15 "Storefront" row).
  * Deliberately separate from a future Promotions feature (founder
  * decision, 2026-07-26) — a hero slide is marketing copy an admin
  * authors directly (image + text + CTA links), never tied to a real

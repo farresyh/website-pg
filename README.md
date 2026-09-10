@@ -22,6 +22,7 @@ behind them, not left implicit.
 | `admin/` | Next.js 16 + React 19 + Tailwind v4 | Internal admin panel — games/packages, orders, withdrawals, vouchers, affiliates, resellers, Price Sync Center, gallery |
 | `storefront/` | Next.js 16 + React 19 + Tailwind v4 | Public storefront — catalog, guest checkout, order tracking. Also renders every Affiliate whitelabel brand per `Host`/custom domain (ADR-060) |
 | `reseller/` | Next.js 16 + React 19 + Tailwind v4 | Partner portal — one app, two account types: Affiliate (earnings ledger, withdrawals, wholesale tier, storefront config, custom domain — ADR-058/059/060) and Reseller (prepaid wallet, API keys, bot — ADR-072–076) |
+| `docs-site/` | Astro 7 + Starlight | Public Reseller API developer docs → `docs.pekangame.space` (ADR-084). OpenAPI spec is generated from the backend, not hand-written |
 
 Auth is bearer-token (Laravel Sanctum) end to end — there's no session-cookie
 auth and no CSRF surface between the frontends and the API (see ADR-009 and
@@ -101,14 +102,14 @@ cd e2e && npm test   # Playwright, 4 golden paths (ADR-023) — boots its own th
 
 ## Current status
 
-**Deployed, pre-commercial-launch — but it has taken its first real money.**
-The backend is live on a Laravel Forge–managed DigitalOcean droplet at
-`api.pekangame.space`, the three frontends are on Vercel (`pekangame.space`,
-`admin.pekangame.space`, `reseller.pekangame.space`) — see [ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation) —
-and as of 2026-09-03 CHIP FPX is **live** (live keys, `fpx` channel active): one
-real order (`PG-PYAYMRYNUYV0`, RM1.94) has been paid end-to-end through the CHIP
-hosted page + `success_callback` webhook. Not yet open for real customers: the
-catalogue is one placeholder game and no supplier account is funded, so orders
-can be paid but not delivered. `docs/prd.md` §14 has the running deploy log;
-§15 (MVP Scope Tracker) has what's built vs. outstanding, and its "NEXT SESSION"
-pointer has the launch blockers.
+**Deployed and feature-complete, pre-commercial-launch — it has taken its first
+real money.** The backend is live on a Laravel Forge–managed DigitalOcean droplet
+at `api.pekangame.space`; the four frontends are on Vercel (`pekangame.space`,
+`admin.pekangame.space`, `reseller.pekangame.space`, `docs.pekangame.space`) — see
+[ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation).
+CHIP FPX is **live** and one real order (`PG-PYAYMRYNUYV0`, RM1.94) has been paid
+end-to-end through the hosted page + `success_callback` webhook. The one thing
+still gating real customers: **no supplier account is funded** (deliberate founder
+hold), so orders can be paid but not delivered. `docs/prd.md` §15 has the
+per-feature status and §16 the live backlog; `docs/build-log.md` is the running
+chronological build record; `docs/adr.md` is the decision log.
