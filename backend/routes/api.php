@@ -881,6 +881,7 @@ Route::post('/webhooks/openwa', [OpenWaWebhookController::class, 'handle'])
 Route::prefix('reseller/v1')->middleware(['throttle:reseller-api', EnsureResellerApiKey::class])->group(function () {
     Route::get('/catalog', [ResellerApiCatalogController::class, 'index']);
     Route::get('/balance', [ResellerApiBalanceController::class, 'show']);
+    Route::get('/orders', [ResellerApiOrderController::class, 'index']);
     Route::post('/orders', [ResellerApiOrderController::class, 'store']);
     Route::get('/orders/{orderNumber}', [ResellerApiOrderController::class, 'show']);
 });

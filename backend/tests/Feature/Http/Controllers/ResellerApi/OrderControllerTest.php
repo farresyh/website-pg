@@ -10,12 +10,13 @@ use App\Models\ResellerTier;
 use App\Models\Supplier;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Reseller\ResellerApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
-/** ADR-074 decision 3: POST/GET /api/reseller/v1/orders. */
+/** ADR-074 decision 3 + ADR-084 PR-1/PR-2: POST/GET /api/reseller/v1/orders. */
 class OrderControllerTest extends TestCase
 {
     use RefreshDatabase;
@@ -207,5 +208,118 @@ class OrderControllerTest extends TestCase
         $this->postJson('/api/reseller/v1/orders', [
             'product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => 'no-auth-test',
         ])->assertUnauthorized()->assertJsonPath('error', 'MISSING_API_KEY');
+    }
+
+    // ── ADR-084 PR-2: GET /v1/orders ──────────────────────────────────
+
+    private function order(Reseller $reseller, array $overrides = []): Order
+    {
+        return Order::factory()->create(array_merge([
+            'wallet_reseller_id' => $reseller->id,
+            'payment_method' => 'wallet',
+        ], $overrides));
+    }
+
+    public function test_index_lists_only_the_callers_own_orders_newest_first(): void
+    {
+        [$owner, $key] = $this->makeFundedReseller();
+        [$other] = $this->makeFundedReseller();
+
+        $older = $this->order($owner, ['order_number' => 'PG-OLDER']);
+        $newer = $this->order($owner, ['order_number' => 'PG-NEWER']);
+        $this->order($other, ['order_number' => 'PG-OTHER']);
+
+        $response = $this->getJson('/api/reseller/v1/orders', $this->authHeaders($key));
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'items');
+        $response->assertJsonPath('items.0.order_number', 'PG-NEWER');
+        $response->assertJsonPath('items.1.order_number', 'PG-OLDER');
+        $response->assertJsonPath('next_cursor', null);
+        $response->assertJsonMissingPath('items.0.cost_price');
+    }
+
+    public function test_index_paginates_with_an_opaque_cursor(): void
+    {
+        [$reseller, $key] = $this->makeFundedReseller();
+        foreach (range(1, 5) as $i) {
+            $this->order($reseller, ['order_number' => "PG-{$i}"]);
+        }
+
+        $first = $this->getJson('/api/reseller/v1/orders?limit=2', $this->authHeaders($key));
+        $first->assertOk()->assertJsonCount(2, 'items');
+        $this->assertNotNull($first->json('next_cursor'));
+
+        $cursor = urlencode($first->json('next_cursor'));
+        $second = $this->getJson("/api/reseller/v1/orders?limit=2&cursor={$cursor}", $this->authHeaders($key));
+        $second->assertOk()->assertJsonCount(2, 'items');
+
+        $firstNumbers = array_column($first->json('items'), 'order_number');
+        $secondNumbers = array_column($second->json('items'), 'order_number');
+        $this->assertEmpty(array_intersect($firstNumbers, $secondNumbers));
+
+        $cursor2 = urlencode($second->json('next_cursor'));
+        $third = $this->getJson("/api/reseller/v1/orders?limit=2&cursor={$cursor2}", $this->authHeaders($key));
+        $third->assertOk()->assertJsonCount(1, 'items');
+        $third->assertJsonPath('next_cursor', null);
+    }
+
+    public function test_index_filters_by_delivery_status(): void
+    {
+        [$reseller, $key] = $this->makeFundedReseller();
+        $this->order($reseller, ['order_number' => 'PG-DONE', 'delivery_status' => DeliveryStatus::Delivered]);
+        $this->order($reseller, ['order_number' => 'PG-FAIL', 'delivery_status' => DeliveryStatus::Failed]);
+
+        $response = $this->getJson('/api/reseller/v1/orders?status=failed', $this->authHeaders($key));
+
+        $response->assertOk()->assertJsonCount(1, 'items');
+        $response->assertJsonPath('items.0.order_number', 'PG-FAIL');
+    }
+
+    public function test_index_filters_by_created_after(): void
+    {
+        [$reseller, $key] = $this->makeFundedReseller();
+        $this->order($reseller, ['order_number' => 'PG-OLD', 'created_at' => '2026-01-01T00:00:00Z']);
+        $this->order($reseller, ['order_number' => 'PG-NEW', 'created_at' => '2026-09-01T00:00:00Z']);
+
+        $response = $this->getJson('/api/reseller/v1/orders?created_after=2026-06-01T00:00:00Z', $this->authHeaders($key));
+
+        $response->assertOk()->assertJsonCount(1, 'items');
+        $response->assertJsonPath('items.0.order_number', 'PG-NEW');
+    }
+
+    public function test_index_rejects_an_over_cap_limit_with_a_validation_envelope(): void
+    {
+        [, $key] = $this->makeFundedReseller();
+
+        $this->getJson('/api/reseller/v1/orders?limit=500', $this->authHeaders($key))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'VALIDATION_FAILED')
+            ->assertJsonPath('details.limit.0', fn ($m) => is_string($m));
+    }
+
+    public function test_index_rejects_an_unknown_status_with_a_validation_envelope(): void
+    {
+        [, $key] = $this->makeFundedReseller();
+
+        $this->getJson('/api/reseller/v1/orders?status=teleported', $this->authHeaders($key))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'VALIDATION_FAILED');
+    }
+
+    public function test_index_returns_an_empty_page_for_a_reseller_with_no_orders(): void
+    {
+        [, $key] = $this->makeFundedReseller();
+
+        $this->getJson('/api/reseller/v1/orders', $this->authHeaders($key))
+            ->assertOk()
+            ->assertExactJson(['items' => [], 'next_cursor' => null]);
+    }
+
+    public function test_index_requires_a_valid_api_key(): void
+    {
+        $this->getJson('/api/reseller/v1/orders')
+            ->assertUnauthorized()
+            ->assertJsonPath('error', 'MISSING_API_KEY');
     }
 }
