@@ -68,6 +68,18 @@ final class ResellerApiKeyService
         }
     }
 
+    /**
+     * ADR-084 PR-1 decision 6 / PR-4: replace one key's IP allowlist. An
+     * empty list is stored as `[]` = "any IP" (the opt-in default), never
+     * as a lockout. `EnsureResellerApiKey` does the exact-match check.
+     *
+     * @param  list<string>  $ips
+     */
+    public function setAllowedIps(ResellerApiKey $key, array $ips): void
+    {
+        $key->update(['allowed_ips' => array_values(array_unique($ips))]);
+    }
+
     private function hash(string $plainText): string
     {
         return hash('sha256', $plainText);

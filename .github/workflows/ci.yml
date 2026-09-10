@@ -142,6 +142,56 @@ jobs:
       - run: npm run build
       - run: npx eslint .
 
+  # ADR-084 PR-4 — the Reseller API docs site (4th Next-less frontend:
+  # Astro + Starlight). Same build/check gate as the other frontends.
+  # Versions are pinned exact in docs-site/package.json.
+  docs-site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
+  # ADR-084 PR-4 decision 7 (the ADR-033 lesson) — the committed
+  # docs-site/public/openapi.json must never drift from what the backend's
+  # Scramble annotations actually produce. Regenerate it and fail on any
+  # diff. `--no-ansi --silent` + `--path` (not command substitution) dodges
+  # the GITHUB_ACTIONS ANSI-injection gotcha (repo-root AGENTS.md).
+  scramble-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+      - run: composer install --no-progress --prefer-dist
+        working-directory: backend
+      - run: cp .env.example .env
+        working-directory: backend
+      - run: php artisan key:generate
+        working-directory: backend
+      # sqlite so the command boots without a DB service; scramble reads
+      # routes/controllers by reflection, not the DB, but providers boot.
+      - run: touch database/database.sqlite
+        working-directory: backend
+      - run: DB_CONNECTION=sqlite DB_DATABASE=database/database.sqlite php artisan scramble:clear && DB_CONNECTION=sqlite DB_DATABASE=database/database.sqlite php artisan scramble:export --path=../docs-site/public/openapi.json --no-ansi --silent
+        working-directory: backend
+      - name: Fail if the committed spec is stale
+        run: |
+          if ! git diff --exit-code -- docs-site/public/openapi.json; then
+            echo "::error::docs-site/public/openapi.json is stale. Run: cd backend && php artisan scramble:clear && php artisan scramble:export --path=../docs-site/public/openapi.json --no-ansi --silent"
+            exit 1
+          fi
+
   # ADR-023 — the 3 golden-path tests only (guest checkout->payment->
   # order status; admin login->Resend Delivery; admin login->Issue
   # Voucher), Chromium only. Both the supplier layer (Gamevion) and the
@@ -200,7 +250,7 @@ jobs:
   # `main` deploy from the Forge cutover until 2026-09-02).
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: [backend-tests, backend-concurrency, admin, storefront, reseller]
+    needs: [backend-tests, backend-concurrency, admin, storefront, reseller, docs-site, scramble-drift]
     runs-on: ubuntu-latest
     steps:
       - run: curl -sS --fail-with-body --max-time 30 -X POST "${{ secrets.FORGE_DEPLOY_HOOK }}"

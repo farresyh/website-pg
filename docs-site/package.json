@@ -1,0 +1,25 @@
+{
+  "name": "docs-site",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "//": "ADR-084 PR-4: the Reseller API docs site (docs.pekangame.space), a Vercel frontend. Versions are pinned EXACT (no ^) — a solo-maintained fourth app; an Astro/Starlight minor bump must be a deliberate PR, not a lockfile drift. Regenerate public/openapi.json with `cd ../backend && php artisan scramble:export --path=../docs-site/public/openapi.json --no-ansi --silent`; CI fails on drift.",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.0",
+    "astro": "7.3.2",
+    "sharp": "0.35.4",
+    "starlight-openapi": "0.26.2"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "typescript": "5.9.3"
+  }
+}

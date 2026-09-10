@@ -385,6 +385,7 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
     // (`/admin/resellers/{reseller}/api-keys*`), not removed.
     Route::get('/api-keys', [ResellerPortalApiKeyController::class, 'index']);
     Route::post('/api-keys', [ResellerPortalApiKeyController::class, 'store']);
+    Route::patch('/api-keys/{api_key}', [ResellerPortalApiKeyController::class, 'update']);
     Route::delete('/api-keys/{api_key}', [ResellerPortalApiKeyController::class, 'destroy']);
 
     // ADR-084 PR-3 decision 4/10 — the single delivery-webhook endpoint:
@@ -715,6 +716,7 @@ Route::middleware('auth:sanctum')->group(function () {
             // response.
             Route::get('/{reseller}/api-keys', [ResellerApiKeyController::class, 'index']);
             Route::post('/{reseller}/api-keys', [ResellerApiKeyController::class, 'store']);
+            Route::patch('/{reseller}/api-keys/{api_key}', [ResellerApiKeyController::class, 'update']);
             Route::delete('/{reseller}/api-keys/{api_key}', [ResellerApiKeyController::class, 'destroy']);
 
             // ADR-084 PR-3 decision 10 — support-side view/set/rotate/

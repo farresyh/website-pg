@@ -51,7 +51,9 @@ export function getResellerProfile(token: string) {
 export interface ResellerApiKeyRow {
   id: number;
   name: string;
+  allowed_ips: string[];
   last_used_at: string | null;
+  last_used_ip: string | null;
   revoked_at: string | null;
   created_at: string | null;
 }
@@ -65,6 +67,15 @@ export function issueApiKey(token: string, name: string) {
     method: "POST",
     token,
     body: { name },
+  });
+}
+
+/** ADR-084 PR-4: replace one key's IP allowlist. An empty array = any IP (opt-in). */
+export function updateApiKeyAllowedIps(token: string, id: number, allowedIps: string[]) {
+  return apiFetch<ResellerApiKeyRow>(`/api/reseller-portal/api-keys/${id}`, {
+    method: "PATCH",
+    token,
+    body: { allowed_ips: allowedIps },
   });
 }
 

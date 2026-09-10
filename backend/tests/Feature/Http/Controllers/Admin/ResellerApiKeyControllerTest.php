@@ -93,4 +93,41 @@ class ResellerApiKeyControllerTest extends TestCase
 
         $this->postJson("/api/resellers/{$reseller->id}/api-keys", ['name' => 'x'])->assertUnauthorized();
     }
+
+    public function test_update_sets_the_ip_allowlist(): void
+    {
+        $this->actAsSuperAdmin();
+        $reseller = $this->makeReseller();
+        $issued = app(ResellerApiKeyService::class)->issue($reseller, 'Production key');
+
+        $response = $this->patchJson("/api/resellers/{$reseller->id}/api-keys/{$issued['key']->id}", [
+            'allowed_ips' => ['203.0.113.7', '198.51.100.24'],
+        ]);
+
+        $response->assertOk()->assertJsonPath('allowed_ips', ['203.0.113.7', '198.51.100.24']);
+        $this->assertSame(['203.0.113.7', '198.51.100.24'], $issued['key']->refresh()->allowed_ips);
+    }
+
+    public function test_update_rejects_a_malformed_ip(): void
+    {
+        $this->actAsSuperAdmin();
+        $reseller = $this->makeReseller();
+        $issued = app(ResellerApiKeyService::class)->issue($reseller, 'Production key');
+
+        $this->patchJson("/api/resellers/{$reseller->id}/api-keys/{$issued['key']->id}", [
+            'allowed_ips' => ['not-an-ip'],
+        ])->assertUnprocessable();
+    }
+
+    public function test_index_exposes_allowed_ips_and_last_used_ip(): void
+    {
+        $this->actAsSuperAdmin();
+        $reseller = $this->makeReseller();
+        app(ResellerApiKeyService::class)->issue($reseller, 'Production key');
+
+        $this->getJson("/api/resellers/{$reseller->id}/api-keys")
+            ->assertOk()
+            ->assertJsonPath('0.allowed_ips', [])
+            ->assertJsonPath('0.last_used_ip', null);
+    }
 }

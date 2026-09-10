@@ -1,0 +1,1092 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "PekanGame Reseller API",
+        "version": "1.0.0",
+        "description": "Order placement, order status, price list, and wallet balance for a Reseller (wallet) account. Every request needs a Bearer API key issued by PekanGame \u2014 Authorization: Bearer <key>."
+    },
+    "servers": [
+        {
+            "url": "https://api.pekangame.space/api/reseller",
+            "description": "Production"
+        }
+    ],
+    "security": [
+        {
+            "Reseller API key": []
+        }
+    ],
+    "paths": {
+        "/v1/balance": {
+            "get": {
+                "operationId": "balance.show",
+                "description": "The calling reseller's current prepaid wallet balance, in sen.",
+                "summary": "Get wallet balance",
+                "tags": [
+                    "Balance"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The current balance.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "balance_sen": 125000
+                                        }
+                                    ],
+                                    "properties": {
+                                        "balance_sen": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": [
+                                        "balance_sen"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "`MISSING_API_KEY` or `INVALID_API_KEY`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "MISSING_API_KEY",
+                                            "message": "An API key is required. Send it as a bearer token."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RESELLER_INACTIVE",
+                                            "message": "This reseller account is deactivated."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "`RATE_LIMITED` \u2014 retry after the `Retry-After` header.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RATE_LIMITED",
+                                            "message": "Too many requests. Retry after the period given in the Retry-After header."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/catalog": {
+            "get": {
+                "operationId": "catalog.index",
+                "description": "Every orderable product for the calling reseller, grouped by game. Each package's `price_sen` is the caller's own wallet-tier price in sen, markup already applied \u2014 never another tier's price, never cost. Order against `packages[].code` (`{game code}-{denomination}`).",
+                "summary": "List the catalogue",
+                "tags": [
+                    "Catalog"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The tier-priced catalogue.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "games": [
+                                                {
+                                                    "code": "MLMY",
+                                                    "name": "Mobile Legends (Malaysia)",
+                                                    "packages": [
+                                                        {
+                                                            "code": "MLMY-14",
+                                                            "name": "14 Diamonds",
+                                                            "price_sen": 1200
+                                                        },
+                                                        {
+                                                            "code": "MLMY-86",
+                                                            "name": "86 Diamonds",
+                                                            "price_sen": 6300
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "properties": {
+                                        "games": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "code": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "packages": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "code": {
+                                                                    "type": "string"
+                                                                },
+                                                                "name": {
+                                                                    "type": "string"
+                                                                },
+                                                                "price_sen": {
+                                                                    "type": "integer"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "code",
+                                                                "name",
+                                                                "price_sen"
+                                                            ]
+                                                        }
+                                                    }
+                                                },
+                                                "required": [
+                                                    "code",
+                                                    "name",
+                                                    "packages"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "games"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "`MISSING_API_KEY` or `INVALID_API_KEY`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "MISSING_API_KEY",
+                                            "message": "An API key is required. Send it as a bearer token."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RESELLER_INACTIVE",
+                                            "message": "This reseller account is deactivated."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "`NO_TIER_ASSIGNED` \u2014 no wallet tier is set on this account.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "NO_TIER_ASSIGNED",
+                                            "message": "This reseller account has no wallet tier assigned. Contact us to set one."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "`RATE_LIMITED` \u2014 retry after the `Retry-After` header.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RATE_LIMITED",
+                                            "message": "Too many requests. Retry after the period given in the Retry-After header."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/orders": {
+            "get": {
+                "operationId": "order.index",
+                "description": "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status and `?created_after=` (ISO 8601) on creation time. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
+                "summary": "List orders",
+                "tags": [
+                    "Order"
+                ],
+                "parameters": [
+                    {
+                        "name": "cursor",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 500
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "minimum": 1,
+                            "maximum": 100
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/DeliveryStatus"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "created_after",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "format": "date-time"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of orders.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "items": [
+                                                {
+                                                    "order_number": "PG-7QK2M9X4RJ",
+                                                    "product_code": "MLMY-86",
+                                                    "player_id": "123456789",
+                                                    "server_id": "2201",
+                                                    "price_sen": 6300,
+                                                    "payment_status": "paid",
+                                                    "delivery_status": "delivered",
+                                                    "created_at": "2026-09-10T09:14:52+00:00",
+                                                    "delivered_at": "2026-09-10T09:15:07+00:00"
+                                                }
+                                            ],
+                                            "next_cursor": "eyJpZCI6MTQ4LCJfcG9pbnRzVG9OZXh0SXRlbXMiOnRydWV9"
+                                        }
+                                    ],
+                                    "properties": {
+                                        "items": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "order_number": {
+                                                        "type": "string"
+                                                    },
+                                                    "product_code": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "player_id": {
+                                                        "type": "string"
+                                                    },
+                                                    "server_id": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "price_sen": {
+                                                        "type": "integer"
+                                                    },
+                                                    "payment_status": {
+                                                        "type": "string"
+                                                    },
+                                                    "delivery_status": {
+                                                        "type": "string"
+                                                    },
+                                                    "created_at": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "delivered_at": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    }
+                                                },
+                                                "required": [
+                                                    "order_number",
+                                                    "product_code",
+                                                    "player_id",
+                                                    "server_id",
+                                                    "price_sen",
+                                                    "payment_status",
+                                                    "delivery_status",
+                                                    "created_at",
+                                                    "delivered_at"
+                                                ]
+                                            }
+                                        },
+                                        "next_cursor": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "items",
+                                        "next_cursor"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "`VALIDATION_FAILED` \u2014 an unusable `limit`, `status` or `created_after`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "VALIDATION_FAILED",
+                                            "message": "The request payload failed validation.",
+                                            "details": {
+                                                "status": [
+                                                    "The selected status is invalid."
+                                                ]
+                                            }
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "`MISSING_API_KEY` or `INVALID_API_KEY`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "MISSING_API_KEY",
+                                            "message": "An API key is required. Send it as a bearer token."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RESELLER_INACTIVE",
+                                            "message": "This reseller account is deactivated."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "`RATE_LIMITED` \u2014 retry after the `Retry-After` header.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RATE_LIMITED",
+                                            "message": "Too many requests. Retry after the period given in the Retry-After header."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "order.store",
+                "description": "Charges the caller's wallet at their tier price and queues fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict.",
+                "summary": "Place an order",
+                "tags": [
+                    "Order"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PlaceOrderRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Idempotent replay \u2014 the original order (also carries `Idempotent-Replayed: true`).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string",
+                                    "examples": [
+                                        {
+                                            "order_number": "PG-7QK2M9X4RJ",
+                                            "product_code": "MLMY-86",
+                                            "player_id": "123456789",
+                                            "server_id": "2201",
+                                            "price_sen": 6300,
+                                            "payment_status": "paid",
+                                            "delivery_status": "delivered",
+                                            "created_at": "2026-09-10T09:14:52+00:00",
+                                            "delivered_at": "2026-09-10T09:15:07+00:00"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "`VALIDATION_FAILED` (with `details`), `UNKNOWN_PRODUCT_CODE`, `NO_TIER_ASSIGNED` or `INSUFFICIENT_BALANCE`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "INSUFFICIENT_BALANCE",
+                                            "message": "Wallet balance is insufficient for this order."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "201": {
+                        "description": "The order was placed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string",
+                                    "examples": [
+                                        {
+                                            "order_number": "PG-7QK2M9X4RJ",
+                                            "product_code": "MLMY-86",
+                                            "player_id": "123456789",
+                                            "server_id": "2201",
+                                            "price_sen": 6300,
+                                            "payment_status": "paid",
+                                            "delivery_status": "delivered",
+                                            "created_at": "2026-09-10T09:14:52+00:00",
+                                            "delivered_at": "2026-09-10T09:15:07+00:00"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "`MISSING_API_KEY` or `INVALID_API_KEY`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "MISSING_API_KEY",
+                                            "message": "An API key is required. Send it as a bearer token."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RESELLER_INACTIVE",
+                                            "message": "This reseller account is deactivated."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "`IDEMPOTENCY_KEY_CONFLICT` \u2014 the key was reused with a different payload.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "IDEMPOTENCY_KEY_CONFLICT",
+                                            "message": "This idempotency_key was already used for an order with a different payload. Use a fresh key per logical order."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "`RATE_LIMITED` \u2014 retry after the `Retry-After` header.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RATE_LIMITED",
+                                            "message": "Too many requests. Retry after the period given in the Retry-After header."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/orders/{orderNumber}": {
+            "get": {
+                "operationId": "order.show",
+                "description": "The current status of one of the caller's own orders. Poll this as the fallback to the delivery webhook.",
+                "summary": "Get an order",
+                "tags": [
+                    "Order"
+                ],
+                "parameters": [
+                    {
+                        "name": "orderNumber",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The order.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "order_number": "PG-7QK2M9X4RJ",
+                                            "product_code": "MLMY-86",
+                                            "player_id": "123456789",
+                                            "server_id": "2201",
+                                            "price_sen": 6300,
+                                            "payment_status": "paid",
+                                            "delivery_status": "delivered",
+                                            "created_at": "2026-09-10T09:14:52+00:00",
+                                            "delivered_at": "2026-09-10T09:15:07+00:00"
+                                        }
+                                    ],
+                                    "properties": {
+                                        "order_number": {
+                                            "type": "string"
+                                        },
+                                        "product_code": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "player_id": {
+                                            "type": "string"
+                                        },
+                                        "server_id": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "price_sen": {
+                                            "type": "integer"
+                                        },
+                                        "payment_status": {
+                                            "type": "string"
+                                        },
+                                        "delivery_status": {
+                                            "type": "string"
+                                        },
+                                        "created_at": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "delivered_at": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "order_number",
+                                        "product_code",
+                                        "player_id",
+                                        "server_id",
+                                        "price_sen",
+                                        "payment_status",
+                                        "delivery_status",
+                                        "created_at",
+                                        "delivered_at"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "`MISSING_API_KEY` or `INVALID_API_KEY`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "MISSING_API_KEY",
+                                            "message": "An API key is required. Send it as a bearer token."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RESELLER_INACTIVE",
+                                            "message": "This reseller account is deactivated."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "`ORDER_NOT_FOUND` \u2014 no order with that number belongs to the caller.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "ORDER_NOT_FOUND",
+                                            "message": "No order was found for that order number."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "`RATE_LIMITED` \u2014 retry after the `Retry-After` header.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "examples": [
+                                        {
+                                            "error": "RATE_LIMITED",
+                                            "message": "Too many requests. Retry after the period given in the Retry-After header."
+                                        }
+                                    ],
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "error",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "Reseller API key": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        },
+        "schemas": {
+            "DeliveryStatus": {
+                "type": "string",
+                "description": "Reflects the Supplier API only \u2014 never the payment gateway. See PaymentStatus. These are two independent state machines (ORD-11).\n| |\n|---|\n| `not_started` <br/>  |\n| `processing` <br/>  |\n| `delivered` <br/>  |\n| `failed` <br/>  |\n| `needs_review` <br/> ADR-026 (ORD-10) \u2014 a supplier order-creation attempt whose real outcome is unknown and cannot be resolved automatically (Gamevion's check-status endpoint needs its own invoice number, which is exactly what's missing in both cases this state covers). Reached either from Processing (a connection failure exhausted every retry layer, or createOrder() returned a fresh duplicate_reference) or from Failed (a stale duplicate_reference recorded before this state existed). Never reached from NotStarted. |\n| `pending` <br/> ADR-032 \u2014 a supplier accepted the order but hasn't confirmed the final outcome yet (Digiflazz's async `Pending`, `rc: 03`). Distinct from Processing (transient, resolved inside fulfill()'s own transaction) \u2014 this is a genuinely persistent waiting state, left as-is across requests until a webhook or poll resolves it (OrderFulfillmentService::finalizePendingDelivery()). Reached only from Processing; exits only to Delivered or Failed, never back through the normal retry path. |",
+                "enum": [
+                    "not_started",
+                    "processing",
+                    "delivered",
+                    "failed",
+                    "needs_review",
+                    "pending"
+                ],
+                "title": "DeliveryStatus"
+            },
+            "PlaceOrderRequest": {
+                "type": "object",
+                "description": "ADR-074 decision 3: the Reseller API's order-create payload \u2014\n`product_code` (PR-E0's `{reseller_code}-{denomination-or-\ncatalog_code}` scheme, resolved by `ResellerCatalogService`\ndownstream, not validated against the DB here \u2014 an unknown code is\na 422 from the controller, not a validation-layer concern) plus the\nsame `idempotency_key` shape `CreateCheckoutRequest`/\n`CreateVoucherRequest` already require.",
+                "properties": {
+                    "product_code": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "player_id": {
+                        "type": "string",
+                        "maxLength": 64
+                    },
+                    "server_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 64
+                    },
+                    "idempotency_key": {
+                        "type": "string",
+                        "minLength": 8,
+                        "maxLength": 100
+                    }
+                },
+                "required": [
+                    "product_code",
+                    "player_id",
+                    "idempotency_key"
+                ],
+                "title": "PlaceOrderRequest"
+            }
+        }
+    }
+}

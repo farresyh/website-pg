@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ResellerPortal;
 
 use App\Http\Requests\ResellerPortal\StoreApiKeyRequest;
+use App\Http\Requests\ResellerPortal\UpdateApiKeyRequest;
 use App\Models\ResellerApiKey;
 use App\Services\Reseller\ResellerApiKeyService;
 use Illuminate\Http\JsonResponse;
@@ -55,6 +56,18 @@ class ApiKeyController extends Controller
         ], 201);
     }
 
+    /** ADR-084 PR-4: edit this key's IP allowlist (empty array = any IP). */
+    public function update(UpdateApiKeyRequest $request, ResellerApiKey $api_key): JsonResponse
+    {
+        $reseller = $this->reseller($request);
+
+        abort_unless($api_key->reseller_id === $reseller->id, 404);
+
+        $this->apiKeys->setAllowedIps($api_key, $request->validated('allowed_ips'));
+
+        return response()->json(self::publicKey($api_key->fresh()));
+    }
+
     public function destroy(Request $request, ResellerApiKey $api_key): Response
     {
         $reseller = $this->reseller($request);
@@ -74,7 +87,9 @@ class ApiKeyController extends Controller
         return [
             'id' => $key->id,
             'name' => $key->name,
+            'allowed_ips' => $key->allowed_ips ?? [],
             'last_used_at' => $key->last_used_at?->toIso8601String(),
+            'last_used_ip' => $key->last_used_ip,
             'revoked_at' => $key->revoked_at?->toIso8601String(),
             'created_at' => $key->created_at?->toIso8601String(),
         ];
