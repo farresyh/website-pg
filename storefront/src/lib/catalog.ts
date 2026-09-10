@@ -5,7 +5,7 @@ import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * Real request/response contracts for the public catalog endpoints
- * (CatalogController, docs/prd.md §14/§15 NEXT SESSION pointer) — the
+ * (CatalogController; see docs/prd.md §15 "Storefront" row) — the
  * replacement for placeholder-data.ts's PLACEHOLDER_GAMES/
  * PLACEHOLDER_PACKAGES. Wire shapes below are snake_case exactly as
  * the backend returns them (same convention as checkout.ts); the
