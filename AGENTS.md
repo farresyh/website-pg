@@ -33,6 +33,35 @@ Next.js-version banner; `reseller/` and `docs-site/` add their own conventions
 (`docs-site/CLAUDE.md` is a symlink to its `AGENTS.md`). This file covers the
 whole repo; `backend/CLAUDE.md` adds Laravel-specific conventions on top of it.
 
+## Task Lifecycle (build / fix work)
+
+Not every request is a build task — a question, a doc tweak, or a genuine
+one-liner skips most of this. For anything that changes behaviour:
+
+1. **Decide + grill first.** A non-trivial design or trade-off gets a numbered
+   `docs/adr.md` entry (Context → Decision → Rationale → Consequence),
+   stress-tested with `/mattpocock-skills:grilling` before it's marked Accepted.
+   After the grill, give the founder a plain-language recap of the whole plan
+   before writing any code.
+2. **Branch before the first edit.** `git branch --show-current`; if it comes
+   back `staging` or `main`, cut a `feature/*` or `fix/*` branch off `staging`
+   *now* (see Branch Workflow below). This gets skipped in practice — treat it
+   as the literal first action of the task.
+3. **Build it** — test-first (red → green) for money-critical logic; tests live
+   in `backend/tests`.
+4. **Migrate the local dev DB** — plain `php artisan migrate` (never
+   `migrate:fresh`). `php artisan test` passing is *not* proof the local DB has
+   the new tables/columns — see the migration gotcha under Build & Test.
+5. **Verify** — `php artisan test` (+ the concurrency suite if locking changed);
+   `tsc` / `lint` / `build` for any frontend touched; a real browser or `curl`
+   check for anything user-facing, not just a green suite.
+6. **Update the docs** — append the "what shipped, why, gotchas" note to
+   `docs/build-log.md`; move items across `docs/prd.md` §15 / §16; add a new
+   `docs/adr.md` entry (and an index row) for any new decision.
+7. **Commit** (granular, `--no-ff` history), **push**, **open a PR into
+   `staging`**. CI green is the only merge gate. A `staging`→`main` release is a
+   separate, deliberate step — only when the founder asks for it.
+
 ## Working Conventions
 
 - **Record decisions, don't just make them.** Every non-trivial architecture
