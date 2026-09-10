@@ -53,6 +53,29 @@ class ResellerApiKeyServiceTest extends TestCase
         $this->assertNotNull($issued['key']->refresh()->last_used_at);
     }
 
+    public function test_resolve_records_last_used_ip_when_given(): void
+    {
+        $reseller = $this->reseller();
+        $service = app(ResellerApiKeyService::class);
+        $issued = $service->issue($reseller, 'Production key');
+
+        $service->resolve($issued['plainText'], '203.0.113.42');
+
+        $this->assertSame('203.0.113.42', $issued['key']->refresh()->last_used_ip);
+    }
+
+    public function test_resolve_leaves_last_used_ip_untouched_when_no_ip_is_given(): void
+    {
+        $reseller = $this->reseller();
+        $service = app(ResellerApiKeyService::class);
+        $issued = $service->issue($reseller, 'Production key');
+        $issued['key']->update(['last_used_ip' => '198.51.100.1']);
+
+        $service->resolve($issued['plainText']);
+
+        $this->assertSame('198.51.100.1', $issued['key']->refresh()->last_used_ip);
+    }
+
     public function test_resolve_returns_null_for_an_unknown_key(): void
     {
         $this->assertNull(app(ResellerApiKeyService::class)->resolve('pgrk_does-not-exist'));

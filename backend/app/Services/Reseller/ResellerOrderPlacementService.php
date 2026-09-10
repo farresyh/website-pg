@@ -47,8 +47,14 @@ final class ResellerOrderPlacementService
      * are gone): wholesale base `cost × (1 + tier%)`, no affiliate margin,
      * `affiliateProfit = 0` by construction (ADR-073 decision 6), and the
      * tier markup snapshotted onto `orders.wholesale_markup_pct`.
+     *
+     * ADR-084 PR-1 decision 5: returns a `ResellerOrderPlacementResult` so
+     * a caller can tell a fresh placement from an idempotent replay. When
+     * `$request->payloadHash` is set (Reseller API), a replay whose stored
+     * hash differs throws `IdempotencyKeyPayloadMismatchException` — the
+     * same key was reused for a genuinely different order.
      */
-    public function placeOrder(Reseller $reseller, ResellerOrderPlacementRequest $request): Order
+    public function placeOrder(Reseller $reseller, ResellerOrderPlacementRequest $request): ResellerOrderPlacementResult
     {
         if (! $reseller->is_active) {
             throw new ResellerInactiveException("Reseller #{$reseller->id} is deactivated.");
@@ -56,7 +62,9 @@ final class ResellerOrderPlacementService
 
         $existing = Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->first();
         if ($existing !== null) {
-            return $existing;
+            $this->assertPayloadMatches($existing, $request->payloadHash);
+
+            return new ResellerOrderPlacementResult($existing, wasReplay: true);
         }
 
         if ($reseller->reseller_tier_id === null) {
@@ -91,6 +99,7 @@ final class ResellerOrderPlacementService
                     supplierId: $request->supplierId,
                     supplierProductRef: $request->supplierProductRef,
                     walletResellerId: $reseller->id,
+                    resellerApiIdempotencyPayloadHash: $request->payloadHash,
                 ));
 
                 // ADR-073 decision 4: debit AFTER the Order exists (not
@@ -121,7 +130,10 @@ final class ResellerOrderPlacementService
             // this). Same no-op-replay outcome as finding it up front,
             // never a second debit — the transaction rolled back before
             // `debit()` ran.
-            return Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->firstOrFail();
+            $raced = Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->firstOrFail();
+            $this->assertPayloadMatches($raced, $request->payloadHash);
+
+            return new ResellerOrderPlacementResult($raced, wasReplay: true);
         }
 
         // ADR-073 decision 4: dispatched only after the transaction above
@@ -131,6 +143,24 @@ final class ResellerOrderPlacementService
         // commit is visible. Mirrors CheckoutService::settleWithVoucher().
         FulfillOrderJob::dispatch($order->fresh());
 
-        return $order->fresh();
+        return new ResellerOrderPlacementResult($order->fresh(), wasReplay: false);
+    }
+
+    /**
+     * ADR-084 PR-1 decision 5. No-op when the caller supplied no hash (the
+     * Bot channel) or when the stored order predates payload hashing —
+     * only a real mismatch of two present hashes is a conflict.
+     */
+    private function assertPayloadMatches(Order $existing, ?string $payloadHash): void
+    {
+        if ($payloadHash === null || $existing->reseller_api_idempotency_payload_hash === null) {
+            return;
+        }
+
+        if (! hash_equals($existing->reseller_api_idempotency_payload_hash, $payloadHash)) {
+            throw new IdempotencyKeyPayloadMismatchException(
+                "Idempotency key {$existing->checkout_idempotency_key} was reused with a different payload.",
+            );
+        }
     }
 }

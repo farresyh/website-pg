@@ -23,5 +23,11 @@ final class ResellerOrderPlacementRequest
         public readonly ?int $gameId = null,
         public readonly ?int $packageId = null,
         public readonly ?int $supplierId = null,
+        /**
+         * ADR-084 PR-1 decision 5: sha256 of the semantic order payload,
+         * set only by the Reseller API channel. Null (Bot channel) skips
+         * the same-key-different-payload conflict check entirely.
+         */
+        public readonly ?string $payloadHash = null,
     ) {}
 }
