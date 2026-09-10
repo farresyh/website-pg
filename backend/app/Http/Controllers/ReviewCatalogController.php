@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Review;
 use App\Services\Cache\NextRevalidation;
@@ -14,21 +15,33 @@ use Illuminate\Support\Facades\Cache;
 /**
  * Public, guest-callable approved reviews endpoint for the storefront homepage.
  * Returns latest approved reviews with masked customer names for privacy.
+ *
+ * Both endpoints are tenant-scoped to the resolved storefront brand
+ * (`X-Storefront-Host` → `StorefrontBrand`): an affiliate whitelabel
+ * storefront only ever surfaces reviews from its own orders, the primary
+ * brand also matching any null-`affiliate_id` order. `index()` reuses
+ * `Order::scopeForStorefrontBrand()` (the scope PR #158 added for the
+ * public track-order lookup); `gameReviews()` inlines the same predicate
+ * alongside its `game_id` filter.
  */
 class ReviewCatalogController extends Controller
 {
     private const CACHE_TTL_SECONDS = 60;
+
     private const CACHE_KEY = 'catalog.public.reviews';
 
-    public function index(): JsonResponse
+    public function index(StorefrontBrand $brand): JsonResponse
     {
+        $affiliate = $brand->get();
+
         $reviews = Cache::remember(
-            self::CACHE_KEY,
+            self::homepageCacheKey($affiliate->id),
             self::CACHE_TTL_SECONDS,
-            function () {
+            function () use ($affiliate) {
                 return Review::query()
                     ->where('status', ReviewStatus::Approved->value)
                     ->whereNotNull('comment')
+                    ->whereHas('order', fn ($q) => $q->forStorefrontBrand($affiliate))
                     ->with([
                         'order:id,customer_name,customer_email,game_id,package_id',
                         'order.game:id,name',
@@ -57,7 +70,7 @@ class ReviewCatalogController extends Controller
 
     public function gameReviews(string $slug, StorefrontBrand $brand): JsonResponse
     {
-        $game = \App\Models\Game::query()
+        $game = Game::query()
             ->where('slug', $slug)
             ->where('is_active', true)
             ->first();
@@ -124,12 +137,26 @@ class ReviewCatalogController extends Controller
         return response()->json($payload);
     }
 
+    /**
+     * A null `$affiliateId` (a primary-brand order carries no `affiliate_id`)
+     * normalises to the primary affiliate's id — the same brand key `index()`
+     * writes under for the primary storefront.
+     */
     public static function forgetCache(?int $affiliateId = null, ?int $gameId = null): void
     {
-        Cache::forget(self::CACHE_KEY);
-        if ($affiliateId !== null && $gameId !== null) {
+        $affiliateId ??= Affiliate::primary()->id;
+
+        Cache::forget(self::homepageCacheKey($affiliateId));
+
+        if ($gameId !== null) {
             Cache::forget("catalog.game_reviews.{$affiliateId}.{$gameId}");
         }
+
         NextRevalidation::purge();
+    }
+
+    private static function homepageCacheKey(int $affiliateId): string
+    {
+        return self::CACHE_KEY.".{$affiliateId}";
     }
 }
