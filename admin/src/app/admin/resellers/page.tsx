@@ -63,6 +63,7 @@ import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/r
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
+import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
 import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
 import ResellerPortalUsersModal from "@/components/resellers/ResellerPortalUsersModal";
 
@@ -91,6 +92,7 @@ export default function ResellersPage() {
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
   const [walletTarget, setWalletTarget] = useState<ResellerRow | null>(null);
   const [apiKeysTarget, setApiKeysTarget] = useState<ResellerRow | null>(null);
+  const [webhookTarget, setWebhookTarget] = useState<ResellerRow | null>(null);
   const [whatsAppGroupsTarget, setWhatsAppGroupsTarget] = useState<ResellerRow | null>(null);
   const [portalUsersTarget, setPortalUsersTarget] = useState<ResellerRow | null>(null);
 
@@ -219,6 +221,9 @@ export default function ResellersPage() {
                             <Button size="small" variant="outlined" onClick={() => setApiKeysTarget(r)}>
                               API Keys
                             </Button>
+                            <Button size="small" variant="outlined" onClick={() => setWebhookTarget(r)}>
+                              Webhook
+                            </Button>
                             <Button size="small" variant="outlined" onClick={() => setWhatsAppGroupsTarget(r)}>
                               WhatsApp Groups
                             </Button>
@@ -338,6 +343,15 @@ export default function ResellersPage() {
           onClose={() => setApiKeysTarget(null)}
           token={token}
           reseller={apiKeysTarget}
+        />
+      )}
+
+      {webhookTarget && (
+        <ResellerWebhookModal
+          isOpen={webhookTarget !== null}
+          onClose={() => setWebhookTarget(null)}
+          token={token}
+          reseller={webhookTarget}
         />
       )}
 

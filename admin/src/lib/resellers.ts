@@ -181,6 +181,72 @@ export function revokeResellerApiKey(token: string, resellerId: number, apiKeyId
 }
 
 /**
+ * ADR-084 PR-3 decision 4/10: a Reseller's single delivery-webhook
+ * endpoint. `secret` is in a response ONLY when it was just generated
+ * (first set, or a rotate) — never refetchable. The reseller
+ * self-manages the same from the portal; admin has it for support.
+ */
+export interface ResellerWebhook {
+  url: string;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ResellerWebhookDelivery {
+  id: number;
+  event: string;
+  event_id: string;
+  order_number: string | null;
+  status: "pending" | "delivered" | "failed" | "exhausted";
+  attempts: number;
+  last_response_code: number | null;
+  next_retry_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ResellerWebhookDeliveryPage {
+  data: ResellerWebhookDelivery[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
+
+export function getResellerWebhook(token: string, resellerId: number) {
+  return apiFetch<{ webhook: ResellerWebhook | null }>(`/api/resellers/${resellerId}/webhook`, { token });
+}
+
+export function setResellerWebhook(token: string, resellerId: number, url: string) {
+  return apiFetch<{ webhook: ResellerWebhook; secret: string | null }>(`/api/resellers/${resellerId}/webhook`, {
+    method: "POST",
+    token,
+    body: { url },
+  });
+}
+
+export function rotateResellerWebhookSecret(token: string, resellerId: number) {
+  return apiFetch<{ secret: string }>(`/api/resellers/${resellerId}/webhook/rotate-secret`, { method: "POST", token });
+}
+
+export function setResellerWebhookActive(token: string, resellerId: number, isActive: boolean) {
+  return apiFetch<{ webhook: ResellerWebhook }>(`/api/resellers/${resellerId}/webhook/status`, {
+    method: "PATCH",
+    token,
+    body: { is_active: isActive },
+  });
+}
+
+export function deleteResellerWebhook(token: string, resellerId: number) {
+  return apiFetch<void>(`/api/resellers/${resellerId}/webhook`, { method: "DELETE", token });
+}
+
+export function listResellerWebhookDeliveries(token: string, resellerId: number) {
+  return apiFetch<ResellerWebhookDeliveryPage>(`/api/resellers/${resellerId}/webhook/deliveries`, { token });
+}
+
+/**
  * ADR-075 / PR-F build addendum decision 3: the Reseller Bot channel's
  * group-linking UX. A pending row is platform-wide (a captured group
  * isn't yet attributed to any Reseller) — the admin picks one and links

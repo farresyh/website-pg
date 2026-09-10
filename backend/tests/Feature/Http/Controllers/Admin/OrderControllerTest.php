@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Jobs\FulfillOrderJob;
+use App\Jobs\Reseller\DeliverResellerWebhook;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\AdminUser;
 use App\Models\Game;
@@ -11,12 +12,14 @@ use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\ResellerBotOrderNotification;
+use App\Models\ResellerWebhookDelivery;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Reseller\Webhook\ResellerWebhookService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
@@ -816,5 +819,47 @@ class OrderControllerTest extends TestCase
         // A wallet order placed via the Reseller API (not the Bot) has
         // no whatsapp_group_id to notify — must not throw.
         $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+    }
+
+    /**
+     * ADR-084 PR-3 decision 4: refundToWallet() dispatches `order.refunded`
+     * directly (not via OrderStatusUpdated — it never changes
+     * delivery_status), the API-channel counterpart to the Bot refund
+     * notice.
+     */
+    public function test_refund_to_wallet_queues_an_order_refunded_webhook(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        app(ResellerWebhookService::class)->setEndpoint($reseller, 'https://example.test/hook');
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+
+        $delivery = ResellerWebhookDelivery::query()->where('order_id', $order->id)->sole();
+        $this->assertSame('order.refunded', $delivery->event);
+        Queue::assertPushed(DeliverResellerWebhook::class, fn ($job) => $job->deliveryId === $delivery->id);
+    }
+
+    public function test_refund_to_wallet_does_not_queue_a_webhook_when_the_reseller_has_none(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+
+        $this->assertSame(0, ResellerWebhookDelivery::query()->count());
+        Queue::assertNotPushed(DeliverResellerWebhook::class);
     }
 }
