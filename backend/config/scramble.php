@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\RedirectApiDocsToSite;
 use Dedoc\Scramble\Http\Middleware\RestrictedDocsAccess;
 
 return [
@@ -48,9 +49,11 @@ return [
 
     'info' => [
         /*
-         * API version.
+         * ADR-084 decision 9: this is the DOCS revision (semver), not the
+         * API version — the API version is the `/v1` in the path. Bump on
+         * a docs release; a breaking API change is `/v2`, not a bump here.
          */
-        'version' => env('API_VERSION', '0.0.1'),
+        'version' => env('API_VERSION', '1.0.0'),
 
         /*
          * Description rendered on the home page of the API documentation (`/docs/api`).
@@ -114,8 +117,16 @@ return [
      *     'Prod' => 'https://scramble.dedoc.co/api',
      * ],
      * ```
+     *
+     * ADR-084 PR-4 decision 7: pinned to the production base URL so the
+     * committed `docs-site/public/openapi.json` (and the CI drift-guard's
+     * regeneration of it) is deterministic — the `null` default derives
+     * the server from `APP_URL`, which differs per environment and made
+     * every export churn.
      */
-    'servers' => null,
+    'servers' => [
+        'Production' => env('RESELLER_API_BASE_URL', 'https://api.pekangame.space/api/reseller'),
+    ],
 
     /**
      * Determines how Scramble stores the descriptions of enum cases.
@@ -155,6 +166,9 @@ return [
 
     'middleware' => [
         'web',
+        // ADR-084 PR-4 decision 7 — 301 to docs.pekangame.space once
+        // DOCS_SITE_URL is set; a no-op (keeps the Scramble UI) until then.
+        RedirectApiDocsToSite::class,
         RestrictedDocsAccess::class,
     ],
 

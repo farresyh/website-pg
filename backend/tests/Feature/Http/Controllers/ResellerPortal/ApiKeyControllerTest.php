@@ -107,4 +107,53 @@ class ApiKeyControllerTest extends TestCase
         $this->withToken($this->tokenFor($mine))->deleteJson("/api/reseller-portal/api-keys/{$otherKey->id}")->assertNotFound();
         $this->assertNull($otherKey->fresh()->revoked_at);
     }
+
+    public function test_update_sets_the_ip_allowlist_and_returns_it(): void
+    {
+        $reseller = $this->reseller();
+        $token = $this->tokenFor($reseller);
+        $keyId = $this->withToken($token)->postJson('/api/reseller-portal/api-keys', ['name' => 'x'])->json('id');
+
+        $response = $this->withToken($token)->patchJson("/api/reseller-portal/api-keys/{$keyId}", [
+            'allowed_ips' => ['203.0.113.7'],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('allowed_ips', ['203.0.113.7'])
+            ->assertJsonPath('last_used_ip', null);
+        $this->assertSame(['203.0.113.7'], ResellerApiKey::query()->find($keyId)->allowed_ips);
+    }
+
+    public function test_update_clears_the_allowlist_with_an_empty_array(): void
+    {
+        $reseller = $this->reseller();
+        $token = $this->tokenFor($reseller);
+        $keyId = $this->withToken($token)->postJson('/api/reseller-portal/api-keys', ['name' => 'x'])->json('id');
+        $this->withToken($token)->patchJson("/api/reseller-portal/api-keys/{$keyId}", ['allowed_ips' => ['203.0.113.7']]);
+
+        $this->withToken($token)->patchJson("/api/reseller-portal/api-keys/{$keyId}", ['allowed_ips' => []])
+            ->assertOk()
+            ->assertJsonPath('allowed_ips', []);
+    }
+
+    public function test_update_rejects_a_malformed_ip(): void
+    {
+        $reseller = $this->reseller();
+        $token = $this->tokenFor($reseller);
+        $keyId = $this->withToken($token)->postJson('/api/reseller-portal/api-keys', ['name' => 'x'])->json('id');
+
+        $this->withToken($token)->patchJson("/api/reseller-portal/api-keys/{$keyId}", ['allowed_ips' => ['nope']])
+            ->assertUnprocessable();
+    }
+
+    public function test_update_404s_for_another_resellers_key(): void
+    {
+        $mine = $this->reseller();
+        $other = Reseller::query()->create(['business_name' => 'Other', 'is_active' => true]);
+        $otherKey = ResellerApiKey::query()->create(['reseller_id' => $other->id, 'name' => 'Not mine', 'key_hash' => 'x']);
+
+        $this->withToken($this->tokenFor($mine))
+            ->patchJson("/api/reseller-portal/api-keys/{$otherKey->id}", ['allowed_ips' => ['203.0.113.7']])
+            ->assertNotFound();
+    }
 }

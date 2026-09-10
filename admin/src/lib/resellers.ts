@@ -159,7 +159,9 @@ export function creditResellerWallet(token: string, id: number, values: CreditRe
 export interface ResellerApiKey {
   id: number;
   name: string;
+  allowed_ips: string[];
   last_used_at: string | null;
+  last_used_ip: string | null;
   revoked_at: string | null;
   created_at: string;
 }
@@ -178,6 +180,15 @@ export function issueResellerApiKey(token: string, resellerId: number, name: str
 
 export function revokeResellerApiKey(token: string, resellerId: number, apiKeyId: number) {
   return apiFetch<void>(`/api/resellers/${resellerId}/api-keys/${apiKeyId}`, { method: "DELETE", token });
+}
+
+/** ADR-084 PR-4: admin edits one key's IP allowlist for support (empty array = any IP). */
+export function updateResellerApiKeyAllowedIps(token: string, resellerId: number, apiKeyId: number, allowedIps: string[]) {
+  return apiFetch<ResellerApiKey>(`/api/resellers/${resellerId}/api-keys/${apiKeyId}`, {
+    method: "PATCH",
+    token,
+    body: { allowed_ips: allowedIps },
+  });
 }
 
 /**

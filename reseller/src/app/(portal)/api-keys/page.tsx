@@ -7,13 +7,14 @@
  * adapted to this app's own read-screen design system.
  */
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import {
   listApiKeys,
   issueApiKey,
   revokeApiKey,
+  updateApiKeyAllowedIps,
   type ResellerApiKeyRow,
 } from "@/lib/reseller-portal";
 import { formatDateTime } from "@/lib/format";
@@ -27,6 +28,9 @@ export default function ApiKeysPage() {
   const [issuing, setIssuing] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
   const [freshPlainTextKey, setFreshPlainTextKey] = useState<string | null>(null);
+  const [ipEditId, setIpEditId] = useState<number | null>(null);
+  const [ipDraft, setIpDraft] = useState("");
+  const [savingIps, setSavingIps] = useState(false);
 
   function refresh() {
     const session = getClientSession();
@@ -59,6 +63,34 @@ export default function ApiKeysPage() {
       setError(err instanceof ApiError ? err.message : "Could not issue a new key.");
     } finally {
       setIssuing(false);
+    }
+  }
+
+  function openIpEditor(key: ResellerApiKeyRow) {
+    setIpEditId(key.id);
+    setIpDraft(key.allowed_ips.join("\n"));
+    setError(null);
+  }
+
+  async function handleSaveIps(key: ResellerApiKeyRow) {
+    const session = getClientSession();
+    if (!session) return;
+
+    const ips = ipDraft
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    setSavingIps(true);
+    setError(null);
+    try {
+      await updateApiKeyAllowedIps(session.token, key.id, ips);
+      setIpEditId(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save the IP allowlist.");
+    } finally {
+      setSavingIps(false);
     }
   }
 
@@ -139,39 +171,102 @@ export default function ApiKeysPage() {
                 <tr className="text-left text-theme-xs font-medium text-gray-500 dark:text-gray-400">
                   <th className="px-5 py-3">Label</th>
                   <th className="px-5 py-3">Last used</th>
+                  <th className="px-5 py-3">IP allowlist</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {(keys ?? []).map((key) => (
-                  <tr key={key.id} className="text-gray-600 dark:text-gray-300">
-                    <td className="px-5 py-4">{key.name}</td>
-                    <td className="px-5 py-4 text-gray-500 dark:text-gray-400">
-                      {key.last_used_at ? formatDateTime(key.last_used_at) : "Never"}
-                    </td>
-                    <td className="px-5 py-4">
-                      {key.revoked_at ? (
-                        <span className="text-error-600 dark:text-error-400">
-                          Revoked {formatDateTime(key.revoked_at)}
-                        </span>
-                      ) : (
-                        <span className="text-success-600 dark:text-success-400">Active</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      {!key.revoked_at && (
-                        <button
-                          type="button"
-                          disabled={revokingId === key.id}
-                          onClick={() => handleRevoke(key)}
-                          className="rounded-lg border border-error-200 px-3 py-1.5 text-theme-xs text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:text-error-400 dark:hover:bg-error-500/10"
-                        >
-                          {revokingId === key.id ? "…" : "Revoke"}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={key.id}>
+                    <tr className="text-gray-600 dark:text-gray-300">
+                      <td className="px-5 py-4">{key.name}</td>
+                      <td className="px-5 py-4 text-gray-500 dark:text-gray-400">
+                        {key.last_used_at ? formatDateTime(key.last_used_at) : "Never"}
+                        {key.last_used_ip && (
+                          <span className="block text-theme-xs text-gray-400">from {key.last_used_ip}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-gray-500 dark:text-gray-400">
+                        {key.revoked_at ? (
+                          "—"
+                        ) : key.allowed_ips.length === 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => openIpEditor(key)}
+                            className="text-theme-xs text-gray-400 underline decoration-dotted hover:text-gray-600 dark:hover:text-gray-300"
+                          >
+                            Any IP — restrict
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openIpEditor(key)}
+                            className="text-theme-xs text-brand-500 hover:underline"
+                          >
+                            {key.allowed_ips.length} IP{key.allowed_ips.length > 1 ? "s" : ""} — edit
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        {key.revoked_at ? (
+                          <span className="text-error-600 dark:text-error-400">
+                            Revoked {formatDateTime(key.revoked_at)}
+                          </span>
+                        ) : (
+                          <span className="text-success-600 dark:text-success-400">Active</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        {!key.revoked_at && (
+                          <button
+                            type="button"
+                            disabled={revokingId === key.id}
+                            onClick={() => handleRevoke(key)}
+                            className="rounded-lg border border-error-200 px-3 py-1.5 text-theme-xs text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:text-error-400 dark:hover:bg-error-500/10"
+                          >
+                            {revokingId === key.id ? "…" : "Revoke"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {ipEditId === key.id && (
+                      <tr className="bg-gray-50 dark:bg-white/[0.02]">
+                        <td colSpan={5} className="px-5 py-4">
+                          <div className="space-y-2">
+                            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                              One IPv4/IPv6 address per line (or comma-separated). Leave empty to allow any IP.
+                              Exact match only — no ranges.
+                            </p>
+                            <textarea
+                              value={ipDraft}
+                              onChange={(e) => setIpDraft(e.target.value)}
+                              rows={4}
+                              placeholder="203.0.113.7&#10;198.51.100.24"
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-theme-xs text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveIps(key)}
+                                disabled={savingIps}
+                                className="rounded-lg bg-brand-500 px-3 py-1.5 text-theme-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                              >
+                                {savingIps ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIpEditId(null)}
+                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

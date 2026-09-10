@@ -1,0 +1,42 @@
+---
+title: PekanGame Reseller API
+description: Place orders, check status, and read the price list and wallet balance for a PekanGame prepaid-wallet reseller account.
+template: splash
+hero:
+  tagline: A small REST API for placing game top-up orders against your prepaid PekanGame wallet.
+  actions:
+    - text: Get started
+      link: /introduction/
+      icon: right-arrow
+    - text: API Reference
+      link: /reference/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+	<Card title="One bearer key" icon="approve-check">
+		Authenticate every request with a single `Authorization: Bearer` API key. No
+		request signing, no second secret.
+	</Card>
+	<Card title="Prepaid wallet" icon="setting">
+		Every order is charged to your wallet at your tier price. Top up and read
+		your balance from the partner portal.
+	</Card>
+	<Card title="Idempotent orders" icon="random">
+		Send one UUID per logical order. A retry with the same key returns the
+		original order, never a duplicate charge.
+	</Card>
+	<Card title="Delivery webhooks" icon="email">
+		Get a signed `order.delivered` / `order.failed` / `order.refunded` callback,
+		or poll the order — your choice.
+	</Card>
+</CardGrid>
+
+## Access is invite-only
+
+There is no public sign-up. PekanGame provisions your reseller account, assigns
+your wholesale tier, and issues your first API key. See
+[Authentication](/authentication/) for how to rotate and scope keys once you
+have one, or [request access](/introduction/#request-access).
