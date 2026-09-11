@@ -80,7 +80,7 @@ export default async function RootLayout({
   const membershipEnabled = plans.length > 0;
 
   const themePreset = getThemePreset(branding.themePreset);
-  const themeCss = generateThemeCss(themePreset);
+  const themeCss = generateThemeCss(themePreset, branding.themeMode);
 
   const headScripts = scripts.filter((s) => s.location === "head").sort((a, b) => a.priority - b.priority);
   const bodyEndScripts = scripts.filter((s) => s.location === "body_end").sort((a, b) => a.priority - b.priority);

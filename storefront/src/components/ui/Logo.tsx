@@ -7,16 +7,26 @@
  *
  * ADR-060 PR-6: when the `Host`-resolved brand has uploaded its own
  * logo, `src` is that image (served from the backend `/storage` host).
- * A plain `<img>`, not `next/image` — a ~34px brand mark gains nothing
+ * A plain `<img>`, not `next/image` — a small brand mark gains nothing
  * from the optimizer and this sidesteps the per-brand `remotePatterns`
  * question entirely. Falls back to the placeholder mark when unset.
+ *
+ * ADR-089: a real uploaded logo is bounded by `maxHeight`/`maxWidth`,
+ * never forced into a square — most real-world logos are wordmarks or
+ * wide icon+text combos (grilled against a rectangular-slot uploaded
+ * logo shrinking illegibly in a fixed 34px square, live on an affiliate
+ * storefront). The placeholder mark stays a fixed square — it's
+ * deliberately drawn as one (ADR-063 decision 8), not an uploaded asset
+ * with its own aspect ratio.
  */
 export default function Logo({
-  size = 32,
+  maxHeight = 48,
+  maxWidth = 180,
   src = null,
   alt = "",
 }: {
-  size?: number;
+  maxHeight?: number;
+  maxWidth?: number;
   src?: string | null;
   alt?: string;
 }) {
@@ -26,17 +36,17 @@ export default function Logo({
       <img
         src={src}
         alt={alt}
-        width={size}
-        height={size}
-        style={{ width: size, height: size, objectFit: "contain" }}
+        style={{ maxHeight, maxWidth, width: "auto", height: "auto", objectFit: "contain" }}
       />
     );
   }
 
+  const placeholderSize = Math.min(maxHeight, 32);
+
   return (
     <svg
-      width={size}
-      height={size}
+      width={placeholderSize}
+      height={placeholderSize}
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

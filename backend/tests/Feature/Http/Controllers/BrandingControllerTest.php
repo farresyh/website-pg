@@ -42,6 +42,17 @@ class BrandingControllerTest extends TestCase
         $this->assertSame('© 2026 PekanGame. All rights reserved.', $response->json('footer_text'));
     }
 
+    public function test_show_defaults_favicon_and_theme_mode_when_unset(): void
+    {
+        $this->seedBrandingAndFooter();
+
+        $response = $this->getJson('/api/catalog/branding');
+
+        $response->assertOk();
+        $this->assertNull($response->json('favicon_url'));
+        $this->assertSame('light', $response->json('theme_mode'));
+    }
+
     public function test_show_resolves_footer_games_in_the_stored_order(): void
     {
         $affiliate = $this->primaryAffiliate();

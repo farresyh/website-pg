@@ -26,7 +26,9 @@ const BrandingWireSchema = z.object({
   // `affiliate_branding.logo_path` (a full URL on the backend host), or
   // null to fall back to the placeholder mark.
   logo_url: z.string().nullable(),
+  favicon_url: z.string().nullable().optional(),
   theme_preset: z.string().nullable().optional(),
+  theme_mode: z.enum(["light", "dark"]).nullable().optional(),
   support_email: z.string().nullable(),
   support_phone: z.string().nullable(),
   telegram_contact_link: z.string().nullable(),
@@ -47,7 +49,9 @@ export interface Branding {
   storeName: string;
   description: string | null;
   logoUrl: string | null;
+  faviconUrl: string | null;
   themePreset: string;
+  themeMode: "light" | "dark";
   supportEmail: string | null;
   supportPhone: string | null;
   socialLinks: { facebook?: string; instagram?: string; tiktok?: string; youtube?: string; whatsapp?: string };
@@ -59,7 +63,9 @@ const BRANDING_FALLBACK: Branding = {
   storeName: "PekanGame",
   description: null,
   logoUrl: null,
+  faviconUrl: null,
   themePreset: "default",
+  themeMode: "light",
   supportEmail: null,
   supportPhone: null,
   socialLinks: {},
@@ -84,7 +90,9 @@ export async function getBranding(): Promise<Branding> {
         storeName: wire.store_name,
         description: wire.description,
         logoUrl: wire.logo_url,
+        faviconUrl: wire.favicon_url ?? null,
         themePreset: wire.theme_preset ?? "default",
+        themeMode: wire.theme_mode ?? "light",
         supportEmail: wire.support_email,
         supportPhone: wire.support_phone,
         socialLinks: wire.social_links ?? {},

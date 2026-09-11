@@ -24,8 +24,10 @@ class AffiliateBranding extends Model
         'affiliate_id',
         'store_name',
         'theme_preset',
+        'theme_mode',
         'description',
         'logo_path',
+        'favicon_path',
         'support_email',
         'support_phone',
         'telegram_contact_link',
@@ -35,6 +37,14 @@ class AffiliateBranding extends Model
     protected $casts = [
         'social_links' => 'array',
     ];
+
+    /**
+     * ADR-089: the admin `Settings\SettingsController` serializes this
+     * model straight to JSON (no hand-built response array, unlike the
+     * public/affiliate branding controllers) — without `$appends` its
+     * `logo_url`/`favicon_url` accessors never reach that response.
+     */
+    protected $appends = ['logo_url', 'favicon_url'];
 
     /**
      * ADR-060 PR-6: `logo_path` stores a disk path, never a URL (the
@@ -48,5 +58,13 @@ class AffiliateBranding extends Model
         return Attribute::get(fn (): ?string => $this->logo_path === null
             ? null
             : Storage::disk(config('filesystems.gallery_disk'))->url($this->logo_path));
+    }
+
+    /** ADR-089: same derive-at-read-time convention as `logoUrl`. */
+    protected function faviconUrl(): Attribute
+    {
+        return Attribute::get(fn (): ?string => $this->favicon_path === null
+            ? null
+            : Storage::disk(config('filesystems.gallery_disk'))->url($this->favicon_path));
     }
 }

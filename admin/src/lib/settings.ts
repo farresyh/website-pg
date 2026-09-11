@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, apiUpload } from "@/lib/api-client";
 
 /** ADR-028 + its 2026-08-22 addendum — the Settings screen's three tabs. */
 
@@ -7,6 +7,10 @@ export interface Branding {
   affiliate_id: number;
   store_name: string;
   description: string | null;
+  // ADR-089: primary brand's logo/favicon — same upload pipeline as the
+  // affiliate portal's Branding tab, just admin-gated.
+  logo_url: string | null;
+  favicon_url: string | null;
   support_email: string | null;
   support_phone: string | null;
   telegram_contact_link: string | null;
@@ -67,6 +71,26 @@ export function getSettings(token: string) {
 
 export function updateBranding(token: string, values: UpdateBrandingValues) {
   return apiFetch<Branding>("/api/settings/branding", { method: "PUT", token, body: values });
+}
+
+export function uploadBrandingLogo(token: string, file: File) {
+  const form = new FormData();
+  form.append("image", file);
+  return apiUpload<Branding>("/api/settings/branding/logo", form, { token });
+}
+
+export function deleteBrandingLogo(token: string) {
+  return apiFetch<Branding>("/api/settings/branding/logo", { method: "DELETE", token });
+}
+
+export function uploadBrandingFavicon(token: string, file: File) {
+  const form = new FormData();
+  form.append("image", file);
+  return apiUpload<Branding>("/api/settings/branding/favicon", form, { token });
+}
+
+export function deleteBrandingFavicon(token: string) {
+  return apiFetch<Branding>("/api/settings/branding/favicon", { method: "DELETE", token });
 }
 
 export function updateFooterSettings(token: string, values: UpdateFooterValues) {

@@ -246,6 +246,8 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 
 **Resolved 2026-09-09 by [ADR-081](./adr.md).** Shipped: a **curated fixed set of 5 theme presets** (`affiliate_branding.theme_preset`), an affiliate picks one in the portal "Theme" tab (live preview), the storefront injects the preset's Material-3 **colour** tokens only — structure/typography unchanged. Adding a preset is a code change, not an admin operation. The heavier THM-1..4 vision below is **dropped, not deferred** — re-argue only against real sized demand.
 
+**Extended 2026-09-11 by [ADR-090](./adr.md).** Grilled after the founder found the presets barely changed the page in production — root cause: `tokens` only ever covered accent colours (`--color-primary`/`secondary`/`tertiary`/`warning`), never `--color-surface*`/`--color-ink` (background/text), which stayed fixed once in `globals.css :root` regardless of preset. All 5 presets now carry surface/ink overrides too, so a preset actually recolors the whole page, not just buttons/badges. Also delivers the first slice of ADR-081's pinned dark-mode requirement: a per-affiliate fixed **Site Mode** (light/dark, not a viewer-side toggle) with a hand-authored `tokensDark` for the `default` preset; the other 4 presets' dark palettes are backlog (§16).
+
 | ID | Original Phase-2 requirement | Status |
 | --- | --- | --- |
 | **THM-1** | Theme list (cards/grid) with preview, status badge, usage count | 🟡 **Partial** — a fixed preset picker with live preview shipped (ADR-081); no admin CRUD, no usage count |
@@ -597,11 +599,11 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Backups (BAK-1..5) | ✅ Live — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. Host-agnostic | ADR-039 |
 | Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete. In-modal picker not wired (paste URL); disk is config-driven for a later R2 swap | — |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage | ADR-029 |
-| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt | ADR-028 |
+| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
-| Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Real logo/artwork still placeholder | ADR-062–065, 071, 077–079 |
+| Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork asset itself still placeholder | ADR-062–065, 071, 077–079, 089, 090 |
 | Internal Accounting (supplier funding ledger) | 🟡 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. PR-2 (CHIP `.xlsx` settlement recon, Monthly Accounting Summary) waits for real order flow | ADR-083 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
@@ -625,7 +627,9 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
 ## Polish (not blocking launch)
 
 2. **Real PekanGame logo + hero artwork** — the primary storefront mark is still
-   the SVG placeholder (affiliate logos already upload via the portal).
+   the SVG placeholder. The upload gap is closed (ADR-089 gave `/admin/settings`
+   a Logo + Favicon panel, same pipeline affiliates already had); the founder
+   still owes the actual asset file.
 3. **Founder-owed one-off:** open `/admin/reviews`, filter *approved*, read
    through once — ADR-082 made every approved review public retroactively (the
    approve bar used to mean "not spam", now means "shown to customers"); reject
@@ -639,7 +643,12 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
    price update), GAME-12 + game SEO fields, ORD-5 (order export), SET-9 (the
    Telegram *sender* — the setting fields exist), gallery in-modal picker,
    gallery→WebP + delete referential safety, SEO `AggregateRating` JSON-LD on the
-   PDP, consolidate ADR-081's 3× theme-preset ID list.
+   PDP, consolidate ADR-081's 3× theme-preset ID list (now also the token-map
+   duplication ADR-090 grew across the same 2 files), and **ADR-090's
+   dark-palette backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each
+   still need a hand-authored `tokensDark` (only `default` has one; the
+   portal's Site Mode toggle already hides "Dark" for any preset without one,
+   so this is additive design work, not a blocker).
 
 ## Hardening (founder `.env` / infra)
 
@@ -676,7 +685,6 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 Voucher double-submit guard (Path A) · blacklist data-source / appeal policy ·
-**dark-mode / THM ADR** (must add `tokensDark` per ADR-081 preset) ·
 CHIP credential `.env`→DB migration · Cloudflare R2 storage (code
 prepped — `ImageIngestService` seam + `GALLERY_DISK`; fold in WebP-at-upload).
 The `PaymentGatewayFactory` seam is kept for multi-region payment; a real 2nd

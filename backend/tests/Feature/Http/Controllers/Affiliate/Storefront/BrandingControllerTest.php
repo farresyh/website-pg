@@ -132,6 +132,70 @@ class BrandingControllerTest extends TestCase
         Storage::disk(config('filesystems.gallery_disk'))->assertMissing("affiliate-logos/{$affiliate->id}.webp");
     }
 
+    public function test_favicon_upload_requires_a_square_image_at_least_512px(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $affiliate = $this->affiliate();
+        $token = $this->tokenFor($affiliate);
+
+        $this->withToken($token)->post('/api/affiliate/storefront/branding/favicon', [
+            'image' => UploadedFile::fake()->image('too-small.png', 200, 200),
+        ])->assertStatus(422)->assertJsonValidationErrors('image');
+
+        $this->withToken($token)->post('/api/affiliate/storefront/branding/favicon', [
+            'image' => UploadedFile::fake()->image('not-square.png', 512, 800),
+        ])->assertStatus(422)->assertJsonValidationErrors('image');
+    }
+
+    public function test_favicon_upload_stores_a_webp_and_exposes_a_url(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $affiliate = $this->affiliate();
+
+        $response = $this->withToken($this->tokenFor($affiliate))->post('/api/affiliate/storefront/branding/favicon', [
+            'image' => UploadedFile::fake()->image('favicon.png', 512, 512),
+        ]);
+
+        $response->assertOk();
+        $this->assertStringContainsString('.webp', $response->json('branding.favicon_url'));
+        Storage::disk(config('filesystems.gallery_disk'))->assertExists("affiliate-favicons/{$affiliate->id}.webp");
+    }
+
+    public function test_delete_favicon_removes_the_file_and_nulls_the_column(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $affiliate = $this->affiliate();
+        $token = $this->tokenFor($affiliate);
+
+        $this->withToken($token)->post('/api/affiliate/storefront/branding/favicon', [
+            'image' => UploadedFile::fake()->image('favicon.png', 512, 512),
+        ])->assertOk();
+
+        $this->withToken($token)->deleteJson('/api/affiliate/storefront/branding/favicon')
+            ->assertOk()->assertJsonPath('branding.favicon_url', null);
+
+        Storage::disk(config('filesystems.gallery_disk'))->assertMissing("affiliate-favicons/{$affiliate->id}.webp");
+    }
+
+    public function test_theme_mode_defaults_to_light_and_is_rejected_outside_the_enum(): void
+    {
+        $affiliate = $this->affiliate();
+        $token = $this->tokenFor($affiliate);
+
+        $this->withToken($token)->getJson('/api/affiliate/storefront/branding')
+            ->assertOk()->assertJsonPath('branding.theme_mode', 'light');
+
+        $this->withToken($token)->putJson('/api/affiliate/storefront/branding', [
+            'store_name' => 'Acme Games',
+            'theme_mode' => 'midnight',
+        ])->assertStatus(422)->assertJsonValidationErrors('theme_mode');
+
+        $this->withToken($token)->putJson('/api/affiliate/storefront/branding', [
+            'store_name' => 'Acme Games',
+            'theme_mode' => 'dark',
+        ])->assertOk()->assertJsonPath('branding.theme_mode', 'dark');
+    }
+
     public function test_a_deactivated_affiliate_is_read_only(): void
     {
         $affiliate = $this->affiliate(['status' => 'deactivated']);
