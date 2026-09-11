@@ -588,7 +588,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. ORD-5 export unbuilt | ADR-017, 026, 032 |
-| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF. Grouped-SQL rewrite deferred to the Reports restructure ADR | — |
+| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF. Restructure (dimensional rebuild + grouped-SQL rewrite) + a Gemini-backed LLM query assistant both grilled 2026-09-11, not built | ADR-086, 087 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`) | — |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
@@ -660,14 +660,24 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     `docs/build-log.md`).
 11. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
+12. **ADR-086** — Reports restructure: rebuild-from-scratch audit of every
+    existing `ReportService` method/tab (keep/merge/extend per case), new
+    Membership + Reseller-wallet breakdown dimensions, single-pass grouped-SQL
+    rewrite of all 7 breakdown methods (shared paid_at-scope + double-count-safe
+    profit SQL fragment), existing filter/tab UX preserved, hand-rolled SVG
+    charts migrated to PrimeReact `Chart` (Chart.js, zero new dependency).
+    Grilled 2026-09-11.
+13. **ADR-087** — Admin Reports LLM Assistant: Gemini Flash, curated read-only
+    SQL views (not raw-table text-to-SQL, not a fixed-function-only set) sitting
+    on top of ADR-086's grouped-SQL layer, `super_admin`-only, its own route
+    under Reports (`/admin/reports/assistant`), additive to — not a replacement
+    for — the existing tabs. Grilled 2026-09-11.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 Voucher double-submit guard (Path A) · blacklist data-source / appeal policy ·
-**Reports restructure** (Membership + Reseller dimensions together, the grouped-SQL
-rewrite of `ReportService`, the deferred `orders(affiliate_id,created_at)` index) ·
-**dark-mode / THM ADR** (must add `tokensDark` per ADR-081 preset) · LLM report
-assistant · CHIP credential `.env`→DB migration · Cloudflare R2 storage (code
+**dark-mode / THM ADR** (must add `tokensDark` per ADR-081 preset) ·
+CHIP credential `.env`→DB migration · Cloudflare R2 storage (code
 prepped — `ImageIngestService` seam + `GALLERY_DISK`; fold in WebP-at-upload).
 The `PaymentGatewayFactory` seam is kept for multi-region payment; a real 2nd
 gateway is revisited only when cross-border selling is real (ADR-022 — Xendit
