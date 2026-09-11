@@ -31,6 +31,14 @@ class ReportServiceTest extends TestCase
         $this->reports = new ReportService;
     }
 
+    /** ADR-086 filter-unification follow-up — dailyTrend() now takes an explicit range, no more "last N days" built in. */
+    private function lastNDaysRange(int $days): array
+    {
+        $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay();
+
+        return [$todayKl->subDays($days - 1)->setTimezone('UTC'), $todayKl->addDay()->setTimezone('UTC')];
+    }
+
     private function order(array $overrides = []): Order
     {
         return Order::query()->create(array_merge([
@@ -150,7 +158,8 @@ class ReportServiceTest extends TestCase
 
         $this->order(['final_amount' => 1500, 'paid_at' => $lateNight->setTimezone('UTC')]);
 
-        $days = collect($this->reports->dailyTrend(7, null));
+        [$from, $to] = $this->lastNDaysRange(7);
+        $days = collect($this->reports->dailyTrend($from, $to, null));
         $todayRow = $days->firstWhere('date', $todayKl->toDateString());
 
         $this->assertSame(1500, $todayRow['sales']);
@@ -169,12 +178,53 @@ class ReportServiceTest extends TestCase
         $this->assertSame(50, $rows[0]['platform_profit']);
     }
 
+    /** Export-widening follow-up (2026-09-11) — every dimension the on-screen breakdown tabs group by, for external pivot analysis. */
+    public function test_export_rows_carry_every_breakdown_dimension(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+
+        $this->order([
+            'game_id' => $game->id,
+            'wallet_reseller_id' => $reseller->id,
+            'payment_method' => 'fpx',
+            'pricing_basis' => 'member',
+            'delivery_status' => 'failed',
+        ]);
+
+        $rows = $this->reports->exportRows(null, null, null)->all();
+
+        $this->assertSame('Mobile Legends', $rows[0]['game_name']);
+        $this->assertSame('fpx', $rows[0]['payment_method']);
+        $this->assertSame('Member', $rows[0]['pricing_basis']);
+        $this->assertSame('Acme Reseller', $rows[0]['reseller_name']);
+        $this->assertSame('failed', $rows[0]['delivery_status']);
+        $this->assertSame(0, $rows[0]['platform_profit']); // paid but not delivered — no ledger credit, matches the pinned rule
+    }
+
+    /** Still used by CustomerAnalyticsController — see ReportService::dateRangeForYearMonth()'s own doc comment. */
     public function test_date_range_for_year_month_resolves_kl_month_boundaries(): void
     {
         [$from, $to] = $this->reports->dateRangeForYearMonth(2026, 8);
 
         $this->assertSame('2026-07-31T16:00:00+00:00', $from->toIso8601String());
         $this->assertSame('2026-08-31T16:00:00+00:00', $to->toIso8601String());
+    }
+
+    public function test_date_range_from_dates_resolves_kl_calendar_boundaries(): void
+    {
+        [$from, $to] = $this->reports->dateRangeFromDates('2026-08-01', '2026-08-31');
+
+        $this->assertSame('2026-07-31T16:00:00+00:00', $from->toIso8601String());
+        $this->assertSame('2026-08-31T16:00:00+00:00', $to->toIso8601String()); // exclusive — KL midnight of the day AFTER 'to'
+    }
+
+    public function test_date_range_from_dates_null_on_either_side_means_unbounded(): void
+    {
+        [$from, $to] = $this->reports->dateRangeFromDates(null, null);
+
+        $this->assertNull($from);
+        $this->assertNull($to);
     }
 
     public function test_summary_computes_avg_order_value(): void
@@ -373,7 +423,8 @@ class ReportServiceTest extends TestCase
         (new LedgerService)->credit('affiliate', $affiliate->id, 20, 'order_profit', 'order', $order->id);
 
         $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay()->toDateString();
-        $rows = collect($this->reports->dailyTrend(7, null));
+        [$from, $to] = $this->lastNDaysRange(7);
+        $rows = collect($this->reports->dailyTrend($from, $to, null));
         $today = $rows->firstWhere('date', $todayKl);
 
         $this->assertSame(1100, $today['sales']);
