@@ -3,6 +3,8 @@
 namespace Tests\Feature\Console;
 
 use App\Models\Supplier;
+use App\Models\SupplierLedgerEntry;
+use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
@@ -115,6 +117,46 @@ class RefreshSupplierBalancesCommandTest extends TestCase
         $this->artisan('app:refresh-supplier-balances')->assertSuccessful();
 
         $this->assertStringContainsString('failed', $supplier->fresh()->last_test_result);
+    }
+
+    /** ADR-083 decision 6: the freshly-polled balance vs the funding ledger's own sum. */
+    public function test_it_warns_when_the_funding_ledger_has_drifted(): void
+    {
+        $supplier = $this->configuredGamevion(['drift_threshold' => '10']);
+        SupplierLedgerEntry::query()->create([
+            'supplier_id' => $supplier->id,
+            'type' => SupplierLedgerEntryType::Topup->value,
+            'amount' => 700.0, // polled comes back 812.50 below — variance 112.50 > threshold 10
+            'currency' => 'MYR',
+        ]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, 812.50));
+
+        Log::shouldReceive('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $ctx) => $message === 'Supplier funding ledger has drifted from the polled balance'
+                && $ctx['supplier'] === 'gamevion'
+                && $ctx['polled_balance'] === 812.50
+                && $ctx['ledger_balance'] === 700.0
+                && $ctx['variance'] === 112.50
+                && $ctx['threshold'] === 10.0);
+
+        $this->artisan('app:refresh-supplier-balances')->assertSuccessful();
+    }
+
+    public function test_it_does_not_warn_on_drift_when_no_drift_threshold_is_set(): void
+    {
+        $supplier = $this->configuredGamevion();
+        SupplierLedgerEntry::query()->create([
+            'supplier_id' => $supplier->id,
+            'type' => SupplierLedgerEntryType::Topup->value,
+            'amount' => 1.0, // wildly different from the polled 812.50, but unwatched
+            'currency' => 'MYR',
+        ]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, 812.50));
+
+        Log::shouldReceive('warning')->never();
+
+        $this->artisan('app:refresh-supplier-balances')->assertSuccessful();
     }
 
     public function test_it_skips_a_supplier_that_is_not_fully_configured(): void

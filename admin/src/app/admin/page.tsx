@@ -219,6 +219,15 @@ export default function AdminDashboardPage() {
                       {s.name}
                       <Tag severity={s.circuit_state === "closed" ? "success" : "danger"}>{s.circuit_state}</Tag>
                       {s.low_balance && <Tag severity="warn">low balance</Tag>}
+                      {/* ADR-083 decision 6 — drift is null when this supplier has no drift_threshold configured, not when it's in sync; only ever shown once it's actually drifted. */}
+                      {s.drift?.is_drifted && (
+                        <Tag
+                          severity="warn"
+                          title={`Ledger ${s.drift.ledger_balance.toLocaleString()} vs polled ${s.drift.polled_balance.toLocaleString()} — variance ${s.drift.variance.toLocaleString()} (threshold ${s.drift.threshold.toLocaleString()})`}
+                        >
+                          funding drift
+                        </Tag>
+                      )}
                     </span>
                     <span
                       className={

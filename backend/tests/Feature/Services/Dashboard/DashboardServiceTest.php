@@ -5,7 +5,9 @@ namespace Tests\Feature\Services\Dashboard;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Supplier;
+use App\Models\SupplierLedgerEntry;
 use App\Models\Voucher;
+use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerService;
@@ -205,11 +207,45 @@ class DashboardServiceTest extends TestCase
 
         // ADR-069 stress-test Q8 — health() reads the threshold out of
         // the encrypted api_config but must never surface it: the
-        // supplier row is a fixed whitelist of keys.
+        // supplier row is a fixed whitelist of keys. ADR-083 decision 6
+        // adds 'drift' (null here — none of these three set drift_threshold).
         $this->assertSame(
-            ['id', 'name', 'slug', 'balance', 'low_balance', 'circuit_state'],
+            ['id', 'name', 'slug', 'balance', 'low_balance', 'drift', 'circuit_state'],
             array_keys($rows['Low One']),
         );
+        $this->assertNull($rows['Low One']['drift']);
+    }
+
+    /** ADR-083 decision 6: the drift chip's own data, computed via Supplier::fundingDrift(). */
+    public function test_health_flags_a_supplier_whose_funding_ledger_has_drifted(): void
+    {
+        $drifted = Supplier::query()->create([
+            'name' => 'Drifted One', 'slug' => 'drifted-'.uniqid(), 'currency' => 'IDR', 'balance' => 100000,
+            'api_config' => ['drift_threshold' => '1000'],
+        ]);
+        SupplierLedgerEntry::query()->create([
+            'supplier_id' => $drifted->id,
+            'type' => SupplierLedgerEntryType::Topup->value,
+            'amount' => 50000, // 50,000 vs polled 100,000 — variance 50,000 > threshold 1,000
+            'currency' => 'IDR',
+        ]);
+
+        $inSync = Supplier::query()->create([
+            'name' => 'In Sync One', 'slug' => 'insync-'.uniqid(), 'currency' => 'IDR', 'balance' => 100000,
+            'api_config' => ['drift_threshold' => '1000'],
+        ]);
+        SupplierLedgerEntry::query()->create([
+            'supplier_id' => $inSync->id,
+            'type' => SupplierLedgerEntryType::Topup->value,
+            'amount' => 100000,
+            'currency' => 'IDR',
+        ]);
+
+        $rows = collect($this->dashboard->health()['suppliers'])->keyBy('name');
+
+        $this->assertTrue($rows['Drifted One']['drift']['is_drifted']);
+        $this->assertSame(50000.0, $rows['Drifted One']['drift']['variance']);
+        $this->assertFalse($rows['In Sync One']['drift']['is_drifted']);
     }
 
     public function test_stuck_orders_combines_needs_review_and_stale_processing_and_stale_pending(): void

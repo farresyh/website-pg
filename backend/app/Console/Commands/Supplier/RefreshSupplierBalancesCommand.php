@@ -112,6 +112,25 @@ class RefreshSupplierBalancesCommand extends Command
             } else {
                 $this->info("'{$supplier->slug}' balance: {$balance} {$supplier->currency}");
             }
+
+            // ADR-083 decision 6 — compares the just-refreshed
+            // `balance` against the funding ledger's own sum; never
+            // auto-corrects either side, only warns. `fundingDrift()`
+            // returns null when `drift_threshold` isn't configured
+            // (fail-safe to silent, same posture as low-balance above).
+            $drift = $supplier->fundingDrift();
+
+            if ($drift !== null && $drift['is_drifted']) {
+                Log::warning('Supplier funding ledger has drifted from the polled balance', [
+                    'supplier' => $supplier->slug,
+                    'polled_balance' => $drift['polled_balance'],
+                    'ledger_balance' => $drift['ledger_balance'],
+                    'variance' => $drift['variance'],
+                    'threshold' => $drift['threshold'],
+                    'currency' => $supplier->currency,
+                ]);
+                $this->warn("'{$supplier->slug}' funding ledger drifted: polled {$drift['polled_balance']} vs ledger {$drift['ledger_balance']} {$supplier->currency} (variance {$drift['variance']}, threshold {$drift['threshold']})");
+            }
         }
 
         return self::SUCCESS;

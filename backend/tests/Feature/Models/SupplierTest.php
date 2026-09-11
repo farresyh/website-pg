@@ -3,6 +3,8 @@
 namespace Tests\Feature\Models;
 
 use App\Models\Supplier;
+use App\Models\SupplierLedgerEntry;
+use App\Services\Accounting\SupplierLedgerEntryType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -79,5 +81,63 @@ class SupplierTest extends TestCase
         $reloaded = Supplier::query()->findOrFail($supplier->id);
 
         $this->assertTrue($reloaded->is_active);
+    }
+
+    /** ADR-083 decision 6: unconfigured drift_threshold means "not watched", not "in sync". */
+    public function test_funding_drift_is_null_without_a_configured_threshold(): void
+    {
+        $supplier = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR', 'balance' => 100000,
+        ]);
+
+        $this->assertNull($supplier->fundingDrift());
+    }
+
+    public function test_funding_drift_is_null_without_a_polled_balance(): void
+    {
+        $supplier = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR',
+            'api_config' => ['drift_threshold' => '1000'],
+        ]);
+
+        $this->assertNull($supplier->fundingDrift());
+    }
+
+    public function test_funding_drift_compares_polled_balance_against_the_ledger_sum(): void
+    {
+        $supplier = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'balance' => 100000,
+            'api_config' => ['drift_threshold' => '1000'],
+        ]);
+        SupplierLedgerEntry::query()->create([
+            'supplier_id' => $supplier->id,
+            'type' => SupplierLedgerEntryType::Topup->value,
+            'amount' => 95000,
+            'currency' => 'IDR',
+        ]);
+
+        $drift = $supplier->fundingDrift();
+
+        $this->assertSame(100000.0, $drift['polled_balance']);
+        $this->assertSame(95000.0, $drift['ledger_balance']);
+        $this->assertSame(5000.0, $drift['variance']);
+        $this->assertSame(1000.0, $drift['threshold']);
+        $this->assertTrue($drift['is_drifted']);
+    }
+
+    public function test_funding_drift_is_false_when_variance_is_within_threshold(): void
+    {
+        $supplier = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'balance' => 100000,
+            'api_config' => ['drift_threshold' => '10000'],
+        ]);
+        SupplierLedgerEntry::query()->create([
+            'supplier_id' => $supplier->id,
+            'type' => SupplierLedgerEntryType::Topup->value,
+            'amount' => 95000,
+            'currency' => 'IDR',
+        ]);
+
+        $this->assertFalse($supplier->fundingDrift()['is_drifted']);
     }
 }

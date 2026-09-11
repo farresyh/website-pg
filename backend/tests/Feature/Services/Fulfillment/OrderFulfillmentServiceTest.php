@@ -6,8 +6,11 @@ use App\Models\Affiliate;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
+use App\Models\SupplierLedgerEntry;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Services\Accounting\SupplierFundingService;
+use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
@@ -51,6 +54,7 @@ class OrderFulfillmentServiceTest extends TestCase
             $this->app->make(SupplierAdapterFactory::class),
             new LedgerService,
             new VoucherService(new LedgerService),
+            new SupplierFundingService,
         );
     }
 
@@ -210,6 +214,7 @@ class OrderFulfillmentServiceTest extends TestCase
             $this->app->make(SupplierAdapterFactory::class),
             new LedgerService,
             new VoucherService(new LedgerService),
+            new SupplierFundingService,
         );
 
         $result = $service->fulfill($order);
@@ -606,5 +611,98 @@ class OrderFulfillmentServiceTest extends TestCase
 
         $this->service($this->fakeSupplierAdapter(true))
             ->finalizePendingDelivery($order, SupplierOutcome::Pending);
+    }
+
+    /**
+     * ADR-083 decision 3: a synchronous Success (Gamevion always, or a
+     * Digiflazz order that never went Pending) writes ORDER_DRAWDOWN
+     * from the adapter's own `price` — AFTER fulfill()'s transaction
+     * commits, never from `orders.cost_price`.
+     */
+    public function test_fulfill_records_a_supplier_ledger_drawdown_when_the_adapter_reports_a_price(): void
+    {
+        $order = $this->paidOrder();
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1', 'price' => 850.0]))
+            ->fulfill($order);
+
+        $entry = SupplierLedgerEntry::query()->sole();
+        $this->assertSame(SupplierLedgerEntryType::OrderDrawdown->value, $entry->type);
+        $this->assertSame('-850.0000', $entry->amount);
+        $this->assertSame('MYR', $entry->currency);
+        $this->assertSame('order', $entry->reference_type);
+        $this->assertSame($order->id, $entry->reference_id);
+    }
+
+    /** A Pending response never carries a price — nothing to record yet. */
+    public function test_fulfill_records_no_drawdown_when_the_adapter_reports_no_price(): void
+    {
+        $order = $this->paidOrder();
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-2']))
+            ->fulfill($order);
+
+        $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    /** A Pending order accepted (but not yet finalized) records no drawdown either. */
+    public function test_fulfill_records_no_drawdown_on_a_pending_response(): void
+    {
+        $order = $this->paidOrder();
+
+        $this->service($this->fakePendingSupplierAdapter())->fulfill($order);
+
+        $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * ADR-083 decision 3: the Digiflazz webhook (or the reconcile poll's
+     * own checkStatus() re-submit) is where a Pending order's real
+     * `price` first becomes known — this is the only place its drawdown
+     * gets recorded.
+     */
+    public function test_finalize_pending_delivery_records_a_supplier_ledger_drawdown_on_success(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Pending->value]);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($order, SupplierOutcome::Success, 'DGFLZ-DRAWDOWN-1', ['status' => 'Sukses', 'price' => 15000.0]);
+
+        $entry = SupplierLedgerEntry::query()->sole();
+        $this->assertSame(SupplierLedgerEntryType::OrderDrawdown->value, $entry->type);
+        $this->assertSame('-15000.0000', $entry->amount);
+        $this->assertSame('order', $entry->reference_type);
+        $this->assertSame($order->id, $entry->reference_id);
+    }
+
+    /**
+     * Grilled 2026-09-11 (ADR-083): a Gagal after Pending writes NO
+     * REFUND — a Pending response never carried a price, so nothing was
+     * ever recorded as drawn down for it in the first place.
+     */
+    public function test_finalize_pending_delivery_records_no_supplier_ledger_entry_on_failure(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Pending->value]);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($order, SupplierOutcome::Failure, null, ['status' => 'Gagal', 'buyer_last_saldo' => 500000]);
+
+        $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * Defense-in-depth (ADR-083 decision 2's own append-only guard is
+     * the primary one): SupplierFundingService::recordOrderDrawdown()
+     * itself won't double-write for the same order even if called twice.
+     */
+    public function test_record_order_drawdown_is_idempotent_per_order(): void
+    {
+        $order = $this->paidOrder();
+        $funding = app(SupplierFundingService::class);
+
+        $funding->recordOrderDrawdown($order, 850.0);
+        $funding->recordOrderDrawdown($order, 850.0);
+
+        $this->assertSame(1, SupplierLedgerEntry::query()->count());
     }
 }

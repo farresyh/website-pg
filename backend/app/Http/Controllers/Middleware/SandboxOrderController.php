@@ -10,6 +10,7 @@ use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
 use App\Services\Ledger\LedgerService;
@@ -165,6 +166,7 @@ class SandboxOrderController extends Controller
             app(SupplierAdapterFactory::class),
             app(LedgerService::class),
             app(VoucherService::class),
+            app(SupplierFundingService::class),
         );
 
         $resend = new OrderResendService($fulfillment, app(PricingService::class), app(MembershipPricingService::class));
