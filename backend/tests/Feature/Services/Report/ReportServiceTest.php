@@ -5,6 +5,7 @@ namespace Tests\Feature\Services\Report;
 use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -378,5 +379,68 @@ class ReportServiceTest extends TestCase
         $this->assertSame(1100, $today['sales']);
         $this->assertSame(100, $today['platform_profit']);
         $this->assertSame(20, $today['affiliate_profit']);
+    }
+
+    /**
+     * ADR-086 PR-2 — the Reseller-wallet breakdown dimension. `wallet_reseller_id`
+     * is a distinct column from `affiliate_id` (ADR-072..075); a wallet order's
+     * `affiliate_profit` is always 0 (no revenue-share channel), so this
+     * dimension only ever reports platform profit.
+     */
+    public function test_reseller_breakdown_groups_by_wallet_reseller(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'affiliate_profit' => 0,
+            'final_amount' => 1000,
+            'platform_profit' => 80,
+        ]);
+        (new LedgerService)->credit('platform', null, 80, 'order_profit', 'order', $order->id);
+
+        // A normal (non-wallet) order in the same range must not leak in here.
+        $this->order(['final_amount' => 5000]);
+
+        $rows = $this->reports->resellerBreakdown(null, null, null);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($reseller->id, $rows[0]['reseller_id']);
+        $this->assertSame('Acme Reseller', $rows[0]['reseller_name']);
+        $this->assertSame(1000, $rows[0]['sales']);
+        $this->assertSame(1, $rows[0]['orders_count']);
+        $this->assertSame(80, $rows[0]['platform_profit']);
+    }
+
+    public function test_reseller_breakdown_keeps_the_name_of_a_soft_deleted_reseller(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Gone Reseller', 'is_active' => true]);
+        $this->order(['wallet_reseller_id' => $reseller->id, 'final_amount' => 500]);
+        $reseller->delete();
+
+        $rows = $this->reports->resellerBreakdown(null, null, null);
+
+        $this->assertSame('Gone Reseller', $rows[0]['reseller_name']);
+    }
+
+    public function test_reseller_breakdown_sales_not_doubled_by_dual_ledger_rows(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'affiliate_profit' => 20,
+            'final_amount' => 1100,
+            'platform_profit' => 100,
+        ]);
+        (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $order->id);
+        (new LedgerService)->credit('affiliate', null, 20, 'order_profit', 'order', $order->id);
+
+        $rows = $this->reports->resellerBreakdown(null, null, null);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(1100, $rows[0]['sales']); // not 2200
+        $this->assertSame(1, $rows[0]['orders_count']);
+        $this->assertSame(100, $rows[0]['platform_profit']);
     }
 }

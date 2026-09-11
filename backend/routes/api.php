@@ -490,6 +490,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/breakdown/games', [ReportController::class, 'gameBreakdown']);
         Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
         Route::get('/breakdown/affiliates', [ReportController::class, 'affiliateBreakdown']);
+        Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
         Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
         Route::get('/export', [ReportController::class, 'export']);

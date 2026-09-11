@@ -4691,7 +4691,7 @@ Not decided here, recorded so it is not silently assumed: **self-serve reseller 
 
 ## ADR-086: Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite
 
-**Status:** Accepted — grilled 2026-09-11 (`/mattpocock-skills:grilling`, 3 rounds). **PR-1 built + on `staging` same day** (decision 3's grouped-SQL rewrite; see the build addendum below and `docs/build-log.md`). PR-2 (decision 2's new dimensions) and PR-3 (decision 7's chart migration) not started. Paired with ADR-087, which the LLM assistant's curated views sit on top of.
+**Status:** Accepted — grilled 2026-09-11 (`/mattpocock-skills:grilling`, 3 rounds). **PR-1 + PR-2 built + on `staging` same day** (decision 3's grouped-SQL rewrite; decision 2's new dimensions — the Membership half turned out to already exist, only Reseller-wallet was new; see the build addenda below and `docs/build-log.md`). PR-3 (decision 7's chart migration) not started. Paired with ADR-087, which the LLM assistant's curated views sit on top of.
 
 **Context:**
 
@@ -4724,6 +4724,14 @@ Rebuild-from-scratch (decision 1) beats continuing to patch because the current 
 - Public method signatures and return shapes are byte-identical to before — `ReportController` and the `admin/` frontend are untouched by this PR.
 - Tests: +5. Fast suite (sqlite) **1754/1754**. Same Report tests re-run against the project's real MySQL `docker compose` container (a throwaway phpunit config, deleted after): **34/34** — the only way to actually exercise the `CONVERT_TZ` branch. Pint clean on both touched files. No migration.
 - **Still PR-2** (decision 2's Membership/Reseller-wallet dimensions) **and PR-3** (decision 7's chart migration).
+
+**PR-2 build addendum — Reseller-wallet breakdown, 2026-09-11 (`feature/adr-086-reports-restructure-pr2-new-dimensions` → `staging`).** Delivers decision 2 — partially.
+
+- **Build-time audit found the Membership half of decision 2 already built.** `membershipBreakdown()`/the Membership tab existed before this restructure was proposed (ADR-027's continued addendum), already reporting the member/standard split + margin-forgone + fee revenue decision 2 described. Kept as-is, no new work — the ADR's own Context section was stale on this point by build time.
+- **The genuinely new work: `ReportService::resellerBreakdown()`**, grouped by `wallet_reseller_id` via the same `salesByGroup()`/`profitByGroup()` pattern PR-1 introduced (no new double-count risk — same structural guarantee). `GET /api/reports/breakdown/resellers`. Lands as a second panel inside the existing **Affiliates** tab, not a new top-level tab — Affiliate (brand) and Reseller (wallet) are mutually-exclusive dimensions of the same `orders` table, so two labeled panels in one tab reads better than a 9th tab.
+- Full detail (dropped key-0 bucket, `withTrashed()` name lookup, no `affiliate_profit` column) in `docs/build-log.md`'s own PR-2 addendum.
+- Tests: +4 backend. Fast suite (sqlite) **1758/1758**; real MySQL **38/38**. Pint clean; `admin/` `tsc`/lint/`next build` clean. No migration.
+- **Still PR-3** (decision 7's chart migration).
 
 ---
 
