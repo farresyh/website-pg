@@ -280,4 +280,103 @@ class ReportServiceTest extends TestCase
         $this->assertSame(50, $rows[0]['transaction_fees']);
         $this->assertSame(2000, $rows[0]['avg_order_value']);
     }
+
+    /**
+     * ADR-086 PR-1 — the grouped-SQL rewrite's #1 correctness risk: every
+     * delivered order carries TWO `order_profit` ledger rows (platform +
+     * affiliate split). A naive JOIN-then-GROUP-BY that also sums
+     * `final_amount` in the same row set double-counts sales, since the
+     * order row is matched twice. These lock in that sales is summed once
+     * per order regardless of how many ledger rows it has, across every
+     * grouped breakdown dimension.
+     */
+    public function test_game_breakdown_sales_not_doubled_by_dual_ledger_rows(): void
+    {
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $affiliate = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+
+        $order = $this->order([
+            'game_id' => $game->id,
+            'affiliate_id' => $affiliate->id,
+            'final_amount' => 1100,
+            'platform_profit' => 100,
+            'affiliate_profit' => 20,
+        ]);
+        (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $order->id);
+        (new LedgerService)->credit('affiliate', $affiliate->id, 20, 'order_profit', 'order', $order->id);
+
+        $rows = $this->reports->gameBreakdown(null, null, null);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(1100, $rows[0]['sales']); // not 2200
+        $this->assertSame(1, $rows[0]['orders_count']);
+        $this->assertSame(100, $rows[0]['platform_profit']);
+        $this->assertSame(20, $rows[0]['affiliate_profit']);
+    }
+
+    public function test_affiliate_breakdown_sales_not_doubled_by_dual_ledger_rows(): void
+    {
+        $affiliate = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+
+        $order = $this->order([
+            'affiliate_id' => $affiliate->id,
+            'final_amount' => 1100,
+            'platform_profit' => 100,
+            'affiliate_profit' => 20,
+        ]);
+        (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $order->id);
+        (new LedgerService)->credit('affiliate', $affiliate->id, 20, 'order_profit', 'order', $order->id);
+
+        $rows = $this->reports->affiliateBreakdown(null, null, null);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(1100, $rows[0]['sales']);
+        $this->assertSame(1, $rows[0]['orders_count']);
+        $this->assertSame(100, $rows[0]['platform_profit']);
+        $this->assertSame(20, $rows[0]['affiliate_profit']);
+    }
+
+    public function test_daily_breakdown_sales_not_doubled_by_dual_ledger_rows(): void
+    {
+        $affiliate = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+
+        $order = $this->order([
+            'affiliate_id' => $affiliate->id,
+            'final_amount' => 1100,
+            'platform_profit' => 100,
+            'affiliate_profit' => 20,
+        ]);
+        (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $order->id);
+        (new LedgerService)->credit('affiliate', $affiliate->id, 20, 'order_profit', 'order', $order->id);
+
+        $rows = $this->reports->dailyBreakdown(null, null, null);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(1100, $rows[0]['sales']);
+        $this->assertSame(1, $rows[0]['orders_count']);
+        $this->assertSame(100, $rows[0]['platform_profit']);
+        $this->assertSame(20, $rows[0]['affiliate_profit']);
+    }
+
+    public function test_daily_trend_sales_not_doubled_by_dual_ledger_rows(): void
+    {
+        $affiliate = Affiliate::query()->create(['business_name' => 'Affiliate A', 'markup_pct' => 5]);
+
+        $order = $this->order([
+            'affiliate_id' => $affiliate->id,
+            'final_amount' => 1100,
+            'platform_profit' => 100,
+            'affiliate_profit' => 20,
+        ]);
+        (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $order->id);
+        (new LedgerService)->credit('affiliate', $affiliate->id, 20, 'order_profit', 'order', $order->id);
+
+        $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay()->toDateString();
+        $rows = collect($this->reports->dailyTrend(7, null));
+        $today = $rows->firstWhere('date', $todayKl);
+
+        $this->assertSame(1100, $today['sales']);
+        $this->assertSame(100, $today['platform_profit']);
+        $this->assertSame(20, $today['affiliate_profit']);
+    }
 }
