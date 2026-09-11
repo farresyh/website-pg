@@ -47,12 +47,23 @@ final class SupplierConfigSchema
         // in the supplier's own balance currency) drives the daily
         // app:refresh-supplier-balances warning + the Dashboard Health
         // chip. Absent = no warning.
+        //
+        // ADR-083 decision 6 — `drift_threshold` (a bare number, same
+        // currency, same "absent = no warning" posture): the max
+        // acceptable gap between the polled `balance` and this
+        // supplier's own `supplier_ledger_entries` sum before
+        // `Supplier::fundingDrift()` flags it. A funding-ledger concern,
+        // not supplier-integration — lives here anyway (not under
+        // `/accounting`) because it's compared against the SAME polled
+        // `balance` this schema already gates, and the edit form is the
+        // one place that number is entered.
         'digiflazz' => [
             'category_whitelist' => 'list',
             'webhook_secret' => 'secret',
             'low_balance_threshold' => 'text',
+            'drift_threshold' => 'text',
         ],
-        'gamevion' => ['low_balance_threshold' => 'text'],
+        'gamevion' => ['low_balance_threshold' => 'text', 'drift_threshold' => 'text'],
     ];
 
     /**
