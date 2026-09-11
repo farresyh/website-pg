@@ -69,7 +69,7 @@ final class ResellerApiException extends RuntimeException
 
     public static function noTierAssigned(): self
     {
-        return new self('NO_TIER_ASSIGNED', 422, 'This reseller account has no wallet tier assigned. Contact us to set one.');
+        return new self('NO_TIER_ASSIGNED', 422, 'This reseller account has no pricing configured yet. Contact PekanGame to set it up.');
     }
 
     public static function insufficientBalance(): self

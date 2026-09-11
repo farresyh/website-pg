@@ -12,7 +12,7 @@ export function GamesTab({ token, filters }: { token: string; filters: ReportFil
       .then((res) => setGames(res.games))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.year, filters.month, filters.affiliateId]);
+  }, [token, filters.from, filters.to, filters.affiliateId]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">

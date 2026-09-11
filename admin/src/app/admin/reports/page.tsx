@@ -12,11 +12,19 @@
  *
  * ADR-038: new screen, PrimeReact-Tailwind only (Button/Select/Tabs),
  * no old TailAdmin primitives.
+ *
+ * ADR-086 filter-unification follow-up (2026-09-11): the old separate
+ * Year/Month picker is replaced by ONE date-range filter (preset +
+ * custom from/to) that every tab — KPI cards, breakdown tables, and the
+ * trend charts — resolves identically. Previously the trend charts had
+ * their own private 7/14/30-day toggle that silently ignored this
+ * filter; that's gone, see OverviewTab/ProfitAnalysisTab.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectTrigger,
@@ -33,6 +41,7 @@ import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { type ReportAffiliate, type ReportFilters, listReportAffiliates, exportReport } from "@/lib/reports";
+import { DATE_RANGE_PRESETS, type DateRangePreset, resolveDateRange } from "@/lib/date-range";
 import { OverviewTab } from "@/components/reports/tabs/OverviewTab";
 import { SalesAnalysisTab } from "@/components/reports/tabs/SalesAnalysisTab";
 import { ProfitAnalysisTab } from "@/components/reports/tabs/ProfitAnalysisTab";
@@ -43,17 +52,6 @@ import { AffiliatesTab } from "@/components/reports/tabs/AffiliatesTab";
 import { MembershipTab } from "@/components/reports/tabs/MembershipTab";
 
 const AFFILIATE_ALL = "all";
-const YEAR_ALL = "all";
-
-const currentYear = new Date().getFullYear();
-const yearOptions = [YEAR_ALL, ...Array.from({ length: 5 }, (_, i) => String(currentYear - i))];
-const monthOptions = [YEAR_ALL, ...Array.from({ length: 12 }, (_, i) => String(i + 1))];
-const monthLabels: Record<string, string> = {
-  all: "All months",
-  "1": "January", "2": "February", "3": "March", "4": "April",
-  "5": "May", "6": "June", "7": "July", "8": "August",
-  "9": "September", "10": "October", "11": "November", "12": "December",
-};
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -72,8 +70,9 @@ export default function ReportsPage() {
 
   const [affiliates, setAffiliates] = useState<ReportAffiliate[]>([]);
   const [affiliateId, setAffiliateId] = useState<string>(AFFILIATE_ALL);
-  const [year, setYear] = useState<string>(YEAR_ALL);
-  const [month, setMonth] = useState<string>(YEAR_ALL);
+  const [rangePreset, setRangePreset] = useState<DateRangePreset>("all");
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
@@ -87,9 +86,10 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const { from, to } = resolveDateRange(rangePreset, customFrom, customTo);
   const filters: ReportFilters = {
-    year: year === YEAR_ALL ? undefined : Number(year),
-    month: year === YEAR_ALL || month === YEAR_ALL ? undefined : Number(month),
+    from,
+    to,
     affiliateId: affiliateId === AFFILIATE_ALL ? undefined : Number(affiliateId),
   };
 
@@ -151,21 +151,18 @@ export default function ReportsPage() {
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <FilterSelect label="Affiliate" value={affiliateId} onChange={setAffiliateId} options={affiliateOptions} />
         <FilterSelect
-          label="Year"
-          value={year}
-          onChange={(v) => {
-            setYear(v);
-            if (v === YEAR_ALL) setMonth(YEAR_ALL);
-          }}
-          options={yearOptions.map((y) => ({ label: y === YEAR_ALL ? "All time" : y, value: y }))}
+          label="Date Range"
+          value={rangePreset}
+          onChange={(v) => setRangePreset(v as DateRangePreset)}
+          options={DATE_RANGE_PRESETS}
         />
-        <FilterSelect
-          label="Month"
-          value={month}
-          onChange={setMonth}
-          disabled={year === YEAR_ALL}
-          options={monthOptions.map((m) => ({ label: monthLabels[m], value: m }))}
-        />
+        {rangePreset === "custom" && (
+          <>
+            <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="w-[9.5rem]" />
+            <span className="text-theme-xs text-gray-400 dark:text-gray-500">to</span>
+            <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="w-[9.5rem]" />
+          </>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={(e) => setActiveTab(e.value as string)}>

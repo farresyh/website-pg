@@ -108,12 +108,20 @@ final class DashboardService
                 && is_numeric($threshold)
                 && (float) $supplier->balance < (float) $threshold;
 
+            // ADR-083 decision 6 — same computation
+            // app:refresh-supplier-balances logs from, exposed here for
+            // the amber chip. Null (drift_threshold unconfigured) means
+            // "not watched", not "not drifted" — the frontend must not
+            // conflate the two.
+            $drift = $supplier->fundingDrift();
+
             return [
                 'id' => $supplier->id,
                 'name' => $supplier->name,
                 'slug' => $supplier->slug,
                 'balance' => (float) $supplier->balance,
                 'low_balance' => $lowBalance,
+                'drift' => $drift,
                 'circuit_state' => $breaker->state()->value,
             ];
         })->values()->all();
@@ -148,7 +156,7 @@ final class DashboardService
 
         return [
             'suppliers' => $suppliers,
-            'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it).',
+            'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it). drift (ADR-083 decision 6) compares that same balance against SUM(supplier_ledger_entries) — null when no drift_threshold is configured for this supplier, meaning "not watched", not "not drifted".',
             // PR-F build addendum decision 5 — an active health signal
             // for the Reseller Bot channel's OpenWA session, reversed
             // from this screen's usual "no live ping" posture only in

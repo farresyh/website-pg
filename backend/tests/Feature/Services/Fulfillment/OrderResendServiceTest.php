@@ -10,6 +10,7 @@ use App\Models\Package;
 use App\Models\PlayerValidation;
 use App\Models\PlayerValidatorProfile;
 use App\Models\Supplier;
+use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
 use App\Services\Ledger\LedgerService;
@@ -56,6 +57,7 @@ class OrderResendServiceTest extends TestCase
                 $this->app->make(SupplierAdapterFactory::class),
                 new LedgerService,
                 new VoucherService(new LedgerService),
+                new SupplierFundingService,
             ),
             new PricingService,
             new MembershipPricingService,

@@ -27,6 +27,15 @@ export interface DashboardSummary {
   vouchers_issued_today: DashboardMetric & { amount_sen: number };
 }
 
+/** ADR-083 decision 6 — null means drift_threshold isn't configured (not watched), never "in sync". */
+export interface SupplierFundingDrift {
+  ledger_balance: number;
+  polled_balance: number;
+  variance: number;
+  threshold: number;
+  is_drifted: boolean;
+}
+
 export interface DashboardHealthSupplier {
   id: number;
   name: string;
@@ -34,6 +43,7 @@ export interface DashboardHealthSupplier {
   balance: number;
   /** ADR-069 — balance is below this supplier's api_config['low_balance_threshold']. */
   low_balance: boolean;
+  drift: SupplierFundingDrift | null;
   circuit_state: "closed" | "open";
 }
 

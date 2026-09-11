@@ -4,6 +4,104 @@ Immutable record of foundation decisions made before any code was written. Each 
 
 **Do not edit past entries to reflect new thinking.** If a decision changes later, add a new entry that supersedes it and say so explicitly — the history of *why we changed our minds* is as valuable as the original rationale.
 
+> **Doc map (2026-09-11):** older entries below say "update `prd.md` §14/§15" or cite "`prd.md` §14's `<date>` entry". `prd.md` §14 was a running chronological build log; on 2026-09-11 that log moved to **[`docs/build-log.md`](./build-log.md)** (search it by the same date). `prd.md` now carries only §15 (the feature-status tracker) and §16 (the live backlog). Those historical pointers are left as-written per the "do not edit past entries" rule.
+
+---
+
+## ADR Index
+
+_Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line (superseded / revised / built / live) is authoritative; several early "design" ADRs were built later under their own build addenda._
+
+| # | Decision |
+| --- | --- |
+| **ADR-001** | Payment gateway — Xendit |
+| **ADR-002** | Ledger-based balance, not a mutable column |
+| **ADR-003** | Tenant-aware schema, platform-owner-only MVP features |
+| **ADR-004** | No cash refunds, ever |
+| **ADR-005** | Player-ID pre-payment validation is not universal |
+| **ADR-006** | Supplier Adapter/Normalizer layer is MVP, not Phase 2 |
+| **ADR-007** | Internal fraud blacklist is first-class MVP |
+| **ADR-008** | Split frontend stack — Vue for Admin, Next.js for Storefront |
+| **ADR-009** | (D8-revised): Unify frontend stack — Next.js (React) for both Admin Panel and Storefront |
+| **ADR-010** | Docker for MySQL only, not full Laravel Sail |
+| **ADR-011** | Storefront stays guest-checkout — no Customer account/auth in MVP |
+| **ADR-012** | Admin Panel UI built on the free TailAdmin template as a component/layout reference |
+| **ADR-013** | Platform owner is the first Reseller row, not a parallel single-tenant concept |
+| **ADR-014** | 24/7 burst-resilience baseline — queue, retry, indexing, caching, rate-limiting, observability |
+| **ADR-015** | Price Sync — cost propagation + deactivation detection (built 2026-07-26) |
+| **ADR-016** | Price Sync Center — admin UI design (design only, downstream of ADR-015) |
+| **ADR-017** | Order Resend Delivery — same-game package swap + live price reconciliation (built 2026-07-27) |
+| **ADR-018** | Sandbox Test Orders — a middleware-only tool for exercising the real Order lifecycle without… |
+| **ADR-019** | Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restru… |
+| **ADR-020** | Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fro… |
+| **ADR-021** | Next-session priority re-sequencing — payment reconciliation before deployment infra |
+| **ADR-022** | Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international… |
+| **ADR-023** | Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules |
+| **ADR-024** | Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14) |
+| **ADR-025** | Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price (built… |
+| **ADR-026** | Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-cre… |
+| **ADR-027** | VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, memb… |
+| **ADR-028** | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split (buil… |
+| **ADR-029** | SEO Management — reseller-scoped SEO settings, redirects, and per-game wiring (built 2026-08… |
+| **ADR-030** | Digiflazz supplier integration — buyer-role adapter, prepaid games only (built 2026-08-25) |
+| **ADR-031** | Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (built 2026-08-25) |
+| **ADR-032** | Async supplier delivery — `DeliveryStatus::Pending` + normalized `SupplierResponse` outcome… |
+| **ADR-033** | Foreign-currency supplier pricing — FX-rate conversion at sync time (built 2026-08-25) |
+| **ADR-034** | Storefront best-price selection — `packages.denomination` (built 2026-08-25) |
+| **ADR-035** | Voucher Path A double-submission guard — idempotency key, mirroring checkout (built 2026-08-26) |
+| **ADR-036** | Voucher Merge — admin-triggered consolidation into a new code, no ledger write (built 2026-0… |
+| **ADR-037** | Staging/production git branch model + staging environment infra (branch model built + in liv… |
+| **ADR-038** | Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off h… |
+| **ADR-039** | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) (design 2026… |
+| **ADR-040** | Gamevion sandbox integration — investigation saga, `telp` normalization, `callback_url` fix… |
+| **ADR-041** | Checkout-level idempotency key — client-generated key, unique DB constraint, replay/resume b… |
+| **ADR-042** | SEO module scope widened — structured data, scripts manager, crawler/robots management, site… |
+| **ADR-043** | `llms.txt` — auto-generated AI/LLM-context route (built 2026-08-22) |
+| **ADR-044** | Zod runtime schema validation at the admin/storefront API boundary (built 2026-08-27) |
+| **ADR-045** | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `defin… |
+| **ADR-046** | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_co… |
+| **ADR-047** | Realtime broadcasting — Laravel Reverb + Echo, replacing application-level polling (items 1-… |
+| **ADR-048** | Queue driver migration to Redis, plus Horizon + Pulse — reverses ADR-014 decision #1 / ADR-0… |
+| **ADR-049** | Customer Analytics (ANL-1..4) — identity as a derived grouping, segmentation rules, and date… |
+| **ADR-050** | Customer Detail drill-down (ANL-5) — profit-panel scoping, kept consistent with the delivery… |
+| **ADR-051** | Middleware Request Logs (MID-10/11, MUI-9) — HTTP-client-event hook, redact-then-queue write… |
+| **ADR-052** | Middleware Panel closure batch — MUI-7 merged into Validators, MUI-1 as a thin `/middleware`… |
+| **ADR-053** | Reviews (REV-1..5) — guest, order-linked submission via a real-time delivery-status trigger,… |
+| **ADR-054** | Developer raw API tester (DEV-1/2, MUI-11) — typed-DTO editor over the real adapter seam, ba… |
+| **ADR-055** | Membership upsell promo card — storefront Order Summary, Tier 2 teaser (design only, grilled… |
+| **ADR-056** | Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored… |
+| **ADR-057** | Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted… |
+| **ADR-058** | Reseller authentication + admin Reseller Management (RES-1..6) — BUILT + LIVE (guard later r… |
+| **ADR-059** | Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront con… |
+| **ADR-060** | Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-… |
+| **ADR-061** | Every storefront is a Reseller — abolish the platform-owner special-case |
+| **ADR-062** | Rebrand the primary storefront to "PekanGame" |
+| **ADR-063** | Storefront visual system replacement — light neo-brutalist "Digital Architect" world |
+| **ADR-064** | Storefront per-surface redesign + component rebuild |
+| **ADR-065** | Guest order-status detail — masked contact + payment breakdown on a track-by-number view |
+| **ADR-066** | Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation |
+| **ADR-067** | Digiflazz adapter completion — buyer-area scoping, dual product status, per-supplier Product… |
+| **ADR-068** | Self-serve membership subscription payment — customer pays for a tier through the CHIP check… |
+| **ADR-069** | Digiflazz supplier hardening — inbound webhook, credential-rotation surfacing, raw-price vis… |
+| **ADR-070** | RESERVED — supplier-deposit / FX-history ledger → subsumed by ADR-083 |
+| **ADR-071** | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidati… |
+| **ADR-072** | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename… |
+| **ADR-073** | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit b… |
+| **ADR-074** | Reseller API channel — per-tenant API keys, order-placement/status endpoints |
+| **ADR-075** | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology |
+| **ADR-076** | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, re… |
+| **ADR-077** | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagati… |
+| **ADR-078** | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibi… |
+| **ADR-079** | Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official S… |
+| **ADR-080** | Membership × per-brand — close the `/membership` surface consistently on a membership-disabl… |
+| **ADR-081** | Affiliate storefront theme presets — a curated fixed set, NOT the THM-1..4 custom theme system |
+| **ADR-082** | Public-facing review display — homepage marquee + per-game reviews on the product page |
+| **ADR-083** | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Re… |
+| **ADR-084** | Reseller API — developer documentation site, plus the surface hardening that must land first |
+| **ADR-086** | Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite |
+| **ADR-087** | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs |
+| **ADR-088** | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening |
+
 ---
 
 ## ADR-001 (D1): Payment gateway — Xendit
@@ -214,7 +312,7 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 
 ## ADR-014: 24/7 burst-resilience baseline — queue, retry, indexing, caching, rate-limiting, observability
 
-**Status:** Accepted — 2026-07-26 (design session while blocked on Gamevion support's reply re: ADR-006's sandbox `500`; founder explicitly asked to strengthen the foundation in parallel rather than wait idle)
+**Status:** Accepted — 2026-07-26 (design session while blocked on Gamevion support's reply re: ADR-006's sandbox `500`; founder explicitly asked to strengthen the foundation in parallel rather than wait idle). **Partly revised:** decision 5's app-wide `CACHE_STORE=database` was reversed to Redis by [ADR-077](#adr-077-storefront-read-path--redis-cache-cutover-eviction-policy-invalidation-fan-out-propagation-freshness) (2026-09-07) once production Pulse showed the `cache` table was the system's biggest latency source.
 
 > **Superseded in part by ADR-077 (2026-09-07):** decision 5's app-wide `database` cache store is cut to Redis — production Pulse showed the `database` `cache` table had become the system's single biggest latency source (a 52-second `select from cache` under lock contention). Decision 4's index list is extended there too. Decision 7's "state on `database`, ready to scale" note still holds for sessions; the cache half moved. The "cache values must be plain arrays" rule from this ADR's own addendum below is now belt-and-braces rather than load-bearing (Redis does not corrupt nested objects) — kept for portability.
 
@@ -380,7 +478,7 @@ Frontend (decision #8): `OrderDetailCards`/`DeliveryLogsTable` extracted from `/
 
 ## ADR-019: Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restructure
 
-**Status:** Accepted — 2026-07-27 (findings and sequencing discussed with the founder in a dedicated audit session; grilled on the "fix now vs. wait for deploy" split specifically, not per-item)
+**Status:** Accepted — 2026-07-27 (findings and sequencing discussed with the founder in a dedicated audit session; grilled on the "fix now vs. wait for deploy" split specifically, not per-item). **Partly revised:** the "no Redis, `database` cache driver" deferral was closed by [ADR-077](#adr-077-storefront-read-path--redis-cache-cutover-eviction-policy-invalidation-fan-out-propagation-freshness) (2026-09-07).
 
 > **Extended by ADR-077 (2026-09-07):** the `database` cache-store decision this audit confirmed as correctly-built has since been reversed to Redis — the reasoning that held in 2026-07 (no production infra, Redis not worth the ops burden) stopped holding once ADR-048 put Redis in the stack and production Pulse data showed the `database` `cache` table causing multi-second lock stalls.
 
@@ -2156,7 +2254,7 @@ Investigation before grilling found each item already overlaps existing, shipped
 
 ## ADR-053: Reviews (REV-1..5) — guest, order-linked submission via a real-time delivery-status trigger, admin-only moderation
 
-**Status:** Accepted (design) — 2026-08-28 (grilled via `/mattpocock-skills:grilling`, three rounds, before any code touched)
+**Status:** Accepted (design) — 2026-08-28 (grilled via `/mattpocock-skills:grilling`, three rounds, before any code touched). **Decision 6 reversed by [ADR-082](#adr-082-public-facing-review-display--homepage-marquee--per-game-reviews-on-the-product-page)** (2026-09-09) — approved reviews *are* now shown publicly (`approved == public`).
 
 **Context:** `docs/prd.md` §6.13/§15 REV-1..5 is a completely unbuilt feature (⬜/⬜, "Not blocked on supplier") — no `Review` model, migration, or route exists anywhere (confirmed via grep). Picked as the next backlog item once the Middleware Panel batch (ADR-052) closed. The spec itself only covers the admin moderation side (stats, table, approve/reject, bulk-approve-all, filters) — it says nothing about how a review actually gets created, which is the real load-bearing gap: the storefront is guest-checkout only (ADR-011, no customer accounts), so a review can't hang off a `User` the way a typical review system would.
 
@@ -4387,7 +4485,7 @@ This ADR documents the shipped design, records the grill decisions, and lists th
 
 ## ADR-083: Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS
 
-**Status:** Accepted (design) — first drafted with the founder 2026-09-09; **fully re-grilled and materially reshaped 2026-09-10** (`/mattpocock-skills:grilling`, 6 rounds / 26 questions) after a stress-test against the codebase and the live CHIP / supplier APIs. The first draft (a self-contained corporate accounting system: per-order FIFO COGS, a polled "CHIP Settlement/Payout API", `expenses` / `marketing_budgets` / `capital_injections` / `capital_repayments` tables, a Malaysian-bank-statement reconciliation engine, Gemini-Vision receipt parsing, a bespoke Investor Dashboard, a 4-PR build) was found to be **over-scoped for a solo-run pre-launch business and built on two facts that do not hold** — see Context §1–2. This entry is the reshaped design. Design-only, zero code modified. Scheduled for 2 PRs. **This fills in ADR-070 (RESERVED).**
+**Status:** Accepted, **PR-1 built 2026-09-11** (`feature/adr-083-supplier-funding-ledger`, PR to `staging` — see `docs/build-log.md`); PR-2 still design-only. First drafted with the founder 2026-09-09; **fully re-grilled and materially reshaped 2026-09-10** (`/mattpocock-skills:grilling`, 6 rounds / 26 questions) after a stress-test against the codebase and the live CHIP / supplier APIs. The first draft (a self-contained corporate accounting system: per-order FIFO COGS, a polled "CHIP Settlement/Payout API", `expenses` / `marketing_budgets` / `capital_injections` / `capital_repayments` tables, a Malaysian-bank-statement reconciliation engine, Gemini-Vision receipt parsing, a bespoke Investor Dashboard, a 4-PR build) was found to be **over-scoped for a solo-run pre-launch business and built on two facts that do not hold** — see Context §1–2. This entry is the reshaped design. Scheduled for 2 PRs. **This fills in ADR-070 (RESERVED).**
 
 **Context:**
 
@@ -4443,20 +4541,20 @@ Existing state this builds on: `Supplier.balance` is a single `decimal:2` column
 
 **Consequence to track:**
 
-- **PR-1 (build now, before the first supplier is funded):** `supplier_transfers` + `supplier_ledger_entries` (append-only, model-enforced), the "Record Supplier Transfer" admin UI (receipt upload to `private` disk), `ORDER_DRAWDOWN` / `REFUND` capture in `DigiflazzWebhookController` + the Gamevion response path, the drift-check extension to `app:refresh-supplier-balances` + System Health chip, and the Transaction Register screen + CSV export. **No change to `OrderFulfillmentService`.**
+- **PR-1 — built 2026-09-11.** `supplier_transfers` + `supplier_ledger_entries` (append-only, model-enforced), the "Record Supplier Transfer" admin UI (under `/admin/accounting`, deliberately not `/middleware` — a bookkeeping action, not supplier-integration config), `ORDER_DRAWDOWN` capture hooked into `OrderFulfillmentService::fulfill()` + `finalizePendingDelivery()` **after** each method's own transaction commits, the drift-check extension to `app:refresh-supplier-balances` + a Dashboard Health amber chip (new `Supplier.api_config['drift_threshold']`), and the Transaction Register screen + CSV export. **`OrderFulfillmentService`'s transaction itself is untouched**, confirmed in the build. **Grilled 2026-09-11, superseding the line below:** a `Pending` Digiflazz order that resolves `Gagal` writes **no `REFUND`** — a `Pending` response never carries a `price`, so nothing was ever recorded as drawn down for it in the first place; only a confirmed `Sukses` (synchronous or via webhook/reconcile-poll) writes `ORDER_DRAWDOWN`. If a real Digiflazz account is later found to actually deduct-then-restore saldo at `Pending` submission, this needs a deliberate `REFUND`/`MANUAL_ADJUSTMENT` branch added, not assumed from this note.
 - **PR-2 (build once real orders flow):** `payment_settlements` + the "CHIP Settlements" `.xlsx` ingest / match screen (`openspout/openspout` added to `backend/composer.json` — no spreadsheet library today), the Monthly Accounting Summary screen, and the FX-variance calculation.
 - **Pre-PR-2 verification (the ADR-033 lesson — a third-party format has bitten this project twice):** obtain a real settlement `.xlsx` from the **PekanGame** CHIP account (the sample reviewed during this grill was from another of the founder's accounts) and confirm the column set holds across acquirers (FPX, DuitNow QR, card) before writing the parser. Parser keys on column names, tolerates missing optional columns, and iterates all non-"Summary" sheets.
-- If a `Gagal` callback does not report the restored supplier saldo, `REFUND` falls back to `MANUAL_ADJUSTMENT` — watch whether this is frequent enough to need dedicated handling.
+- ~~If a `Gagal` callback does not report the restored supplier saldo, `REFUND` falls back to `MANUAL_ADJUSTMENT` — watch whether this is frequent enough to need dedicated handling.~~ Superseded by the PR-1 note above — no `REFUND` is written on `Gagal` at all, so there is no restored-amount fallback to reach for.
 - `Supplier.balance` stays as the API-refreshed cache other code already reads (ADR-069); a derived `supplierLedgerBalance()` accessor is added alongside — no migration, no retirement.
 - Forge production: verify the daily automated MySQL backup is enabled and that the server backup includes `storage/app/private`. The `private` disk must be configured in `config/filesystems.php` and verified on the box.
 - Foreign amounts are `decimal(18,4)` throughout; MYR stays integer sen (ADR-002). Never assume integer-sen for a foreign currency.
-- Update `docs/prd.md` §14 and §15 to reflect this reshaped design; update the ADR-070 RESERVED stub to point here.
+- ~~Update `docs/prd.md` §14 and §15 to reflect this reshaped design; update the ADR-070 RESERVED stub to point here.~~ Done — `docs/prd.md` §15 carries a PR-1-built row (§14 no longer exists post the 2026-09-11 doc restructure, folded into `docs/build-log.md`); the ADR-070 index stub already points here.
 
 ---
 
 ## ADR-084: Reseller API — developer documentation site, plus the surface hardening that must land first
 
-**Status:** Accepted & **fully built** — designed/grilled 2026-09-10 (`/mattpocock-skills:grilling`, 4 rounds); all 4 PRs shipped to `staging` 2026-09-10 (PR-1 #162, PR-2 #163, PR-3 #164, PR-4). Delivers ADR-074's own deferred consequence ("API documentation for the reseller-facing contract... tracked as its own task once the endpoint ships"). Extends ADR-074 decision 3; reverses nothing. See the four build addenda below. One-time infra left to the founder: run `scripts/adr-084-docs-site-wizard.sh`, then set `DOCS_SITE_URL` on Forge.
+**Status:** Accepted & **fully built + live in production** — designed/grilled 2026-09-10 (`/mattpocock-skills:grilling`, 4 rounds); PR-1..4 (#162/#163/#164/#165) released to `main` via release PR #166 (merge `8ec5e8e`, 2026-09-10). The founder ran `scripts/adr-084-docs-site-wizard.sh`: `docs.pekangame.space` is live and `/docs/api` `301`s to it (`DOCS_SITE_URL` set on Forge — verified live 2026-09-11). Nothing founder-owed remains. A follow-up spec-wording de-leak (PR #167, `enum_cases_description_strategy => false` + a scrub loop) sits on `staging` awaiting the next release. Delivers ADR-074's own deferred consequence ("API documentation for the reseller-facing contract... tracked as its own task once the endpoint ships"). Extends ADR-074 decision 3; reverses nothing. See the build addenda below and `docs/build-log.md`.
 
 **Context:**
 
@@ -4585,3 +4683,119 @@ Not decided here, recorded so it is not silently assumed: **self-serve reseller 
 - Tests: `+11` — portal `ApiKeyControllerTest` +5 (set/clear allowlist, malformed IP → 422, exposes `allowed_ips`/`last_used_ip`, cross-reseller 404), admin `ResellerApiKeyControllerTest` +3, `RedirectApiDocsToSiteTest` +3 (serves Scramble when unset, 301s the UI + the spec when set). Full fast suite **1709/1709**, concurrency **13/13** (real MySQL), Pint clean; `docs-site` `build` + `check` clean, `reseller/` + `admin/` `build` + `lint` clean; `scramble:export` deterministic (no drift).
 - **Consequence to track:** every future change to a `ResellerApi\*` controller's `#[Endpoint]` / `#[Response]` attributes must be followed by regenerating `docs-site/public/openapi.json` or CI's `scramble-drift` job fails the PR. `docs-site/` is a fourth Vercel project and a new npm dependency surface — the pinned versions + the CI build gate are the mitigation.
 - **Founder-owed (one-time, outside the PR):** run the wizard; then set `DOCS_SITE_URL` on Forge; add `docs.pekangame.space` to the PRD's infra list.
+
+**PR-4 wording pass — `fix/adr-084-docs-wording`, 2026-09-10 (PR to `staging`).** Founder review of the live site caught internal vocabulary that had leaked from the source into the published docs. Two mechanisms, both fixed:
+- **Guide prose.** "wholesale tier" / "tier price" / "PekanGame's margin" / "the Affiliate whitelabel storefront" / "submits it to the supplier" → plain external wording ("your account's price", "your price for that package", no mention of the Affiliate product line, no supplier references). Standardised every example on the `https://api.pekangame.space/api/reseller` base + `/v1/…` short paths (was a mix of full and short). Added an **Order status values** table to "Your first order" (the full `delivery_status` set incl. `pending`, and that `payment_status` is always `paid` for a wallet order) and pointed the `?status=` filter mentions at it.
+- **Generated spec.** Scramble lifts the *class docblock* of every referenced enum / FormRequest into the public schema description — `DeliveryStatus` ("Supplier API… ORD-11"), `PaymentStatus` ("Xendit, CHIP"), `PlaceOrderRequest` ("ADR-074 decision 3… `CreateCheckoutRequest`") were all bleeding through. Fixes: `config/scramble.php` `enum_cases_description_strategy` → `false` (the case doc-comments carry ADR refs), and a scrub loop in `Scramble::extendOpenApi` that blanks any component-schema description matching an internal pattern (`ADR-\d`, `ORD-\d`, `PR-[A-Z]?\d`, `Xendit`, `Supplier API`, `payment gateway`, `Create\w+Request`) — belt-and-braces for future additions. The `NO_TIER_ASSIGNED` API message ("no wallet tier assigned. Contact us…") → "no pricing configured yet. Contact PekanGame…". `#[Endpoint]` descriptions on `/v1/catalog` + `POST /v1/orders` de-jargoned. Spec regenerated; `scramble-drift` green. Source comments on the money-critical enums left untouched — the scrub is output-only. Full fast suite **1709/1709**, docs-site build + check clean.
+
+---
+
+## ADR-086: Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite
+
+**Status:** Accepted & **fully built** — grilled 2026-09-11 (`/mattpocock-skills:grilling`, 3 rounds). PR-1 + PR-2 on `staging` (decision 3's grouped-SQL rewrite; decision 2's new dimensions — the Membership half turned out to already exist, only Reseller-wallet was new). PR-3 (decision 7's chart migration) closed without a code change — decision 7's premise didn't hold, see its build addendum below. Paired with ADR-087, which the LLM assistant's curated views sit on top of.
+
+**Context:**
+
+`ReportService` (`backend/app/Services/Report/ReportService.php`, 533 lines) and the tabbed `/admin/reports` UI (8 tabs: Overview, Sales Analysis, Profit Analysis, Orders, Games, Payment Methods, Affiliates, Membership) were built 2026-08-26/27 (RPT-1..3, `prd.md` §6.9) around two pinned rules that must survive any rewrite: sales/orders-count/latest-order are `paid_at`-scoped `payment_status=Paid` orders only (never `created_at`); profit is summed from `ledger_entries` `type=order_profit` rows, credited only on successful delivery — never read off `Order.platform_profit`/`affiliate_profit` directly (those are checkout-time snapshots, stamped before the delivery outcome is known).
+
+Two things moved since: (1) Membership (ADR-068) and the wallet `Reseller` channel (ADR-072..075) each added real reporting dimensions the shape wasn't built to cleanly absorb — `orders` now carries `membership_id`/`pricing_basis`/`member_discount_percent` and a `wallet_reseller_id` column distinct from `affiliate_id`, but no breakdown surfaces them; a wallet order today just falls into the generic Payment Methods/Affiliates buckets. Founder's own call, 2026-09-04: don't patch a one-off tab per feature — wait for a proper restructure. (2) A 2026-09-07 query-perf audit (ADR-077) found all seven breakdown methods aggregate in PHP (`->get()` + `foreach`) — a null-year filter pulls every paid order in history into memory on each Reports-tab load. ADR-077 PR-4 did the cheap part (an `ledger_entries(type,reference_type,reference_id)` index + collapsing `summary()`'s 3 queries into 1) and deliberately left the full grouped-SQL rewrite to this ADR, because it needs two things grilled together: Asia/Kuala_Lumpur day-bucketing done correctly in SQL, and a double-count-safe profit rollup — each order carries **two** `order_profit` ledger rows (a platform-split and an affiliate-split), so a naive JOIN against `orders.final_amount` double-counts sales the moment it's joined to both rows.
+
+**Decision:**
+
+1. **Full rebuild-from-scratch audit, not incremental patching.** Every one of the 10 current `ReportService` methods (`summary`, `dailyTrend`, `dailyBreakdown`, `gameBreakdown`, `paymentMethodBreakdown`, `affiliateBreakdown`, `membershipBreakdown`, `orderStatusFunnel`, `exportRows`, `dateRangeForYearMonth`) and all 8 UI tabs get individually assessed: keep as-is, merge into another breakdown, or extend/replace. The exact per-method/per-tab call is **not pre-decided here** — it's made during the audit itself, at build time, against the dimensional needs below. Recorded as a deliberate non-decision, not a silent assumption.
+2. **Two new dimensions land:** a Membership breakdown (member- vs standard-priced orders via `pricing_basis`/`membership_id`, revenue/margin impact of `member_discount_percent`) and a Reseller-wallet breakdown (per-`wallet_reseller_id` order volume/spend, kept distinct from the Affiliate/brand breakdown that already exists on `affiliate_id`). Placement (new sub-section inside the existing Affiliates/Membership tabs vs a new top-level tab) is decided during the build-time audit in decision 1 — the working assumption going in is sub-section-of-existing-tab, not another top-level tab, to avoid an unbounded tab count.
+3. **All seven non-trivial breakdown methods are rewritten as grouped SQL in one pass**, not phased — `summary`, `dailyTrend`, `dailyBreakdown`, `gameBreakdown`, `paymentMethodBreakdown`, `affiliateBreakdown`, `membershipBreakdown`, `orderStatusFunnel`. Phasing was considered and rejected: the timezone-bucketing and the double-count-safe profit rollup need to be **the same shared SQL fragment/CTE** across every method, and rewriting one method at a time risks two methods disagreeing on the same business rule mid-transition. `exportRows`/`dateRangeForYearMonth` are untouched (row-level export, pure date-math — no aggregation to rewrite).
+4. **Correctness proof is test-only** — extend `ReportServiceTest`/`ReportMembershipBreakdownTest` with golden-number fixtures covering the edge cases that make this rewrite risky (a paid-but-undelivered order contributing $0 profit forever; the dual `order_profit` ledger row; a member-priced order; a wallet-reseller order), get the full suite green, then swap. No shadow-run/parallel-run infrastructure is built — this repo's established pattern for proving money-critical logic correct is a real-subprocess test suite (see the concurrency suite), not live A/B infrastructure, and building the latter here would be new complexity the test-first convention doesn't need.
+5. **The deferred `orders(affiliate_id, created_at)` index lands as part of this work.** Whether `wallet_reseller_id` needs a matching composite index is decided during the build-time audit, once the actual new breakdown queries are written (decision 1).
+6. **The filter/tab UX paradigm is preserved.** This ADR rewrites the data layer and widens dimensional coverage — it does not change how the admin interacts with Reports. Date/affiliate/year/month filtering above a tabbed layout stays exactly as it is today (founder, 2026-09-11: *"report cara sedia ada ni saya nak juga meaning saya boleh filter ikut date reseller ke tabs semua tu"*).
+7. **~~Charting: PrimeReact's `Chart` component~~ — SUPERSEDED at PR-3 build time (2026-09-11), see the build addendum below. This decision's premise was factually wrong on two counts, caught before any code was written: `primereact@11.1.0` (the version this repo pins) ships no `Chart` component at all — only `organizationchart` (a tree diagram, unrelated), confirmed via the published npm tarball's file listing — so "zero new dependency" was false; a real charting library would have to be added. Separately, neither PR-1 nor PR-2 ever needed a new chart — both restructure PRs added table breakdowns only, so the "several new charts" premise didn't materialize either. Final decision: no migration, no new dependency — see the addendum.**
+
+**Rationale:**
+
+Rebuild-from-scratch (decision 1) beats continuing to patch because the current shape was designed before Membership/Reseller existed as reporting dimensions — bolting them on as one-off tabs is exactly the anti-pattern the founder already rejected once (2026-09-04). A single-pass grouped-SQL rewrite (decision 3) is safer than phasing it precisely because the two pinned business rules (`paid_at` scope, double-count-safe profit) are the entire point of the exercise — they must be expressed once and reused, not reinvented per method. Test-only correctness proof (decision 4) matches how every other money-critical rewrite in this codebase has been validated (ledger, checkout, withdrawal concurrency) — this repo trusts a well-designed fixture suite over live-traffic shadow comparison for logic this deterministic. Preserving the filter/tab UX (decision 6) keeps this a backend/data-layer project, not a redesign — consistent with the founder explicitly scoping "restructure" to mean "audit and rebuild the underlying implementation," not "change how I use the page." Decision 7 as originally written is superseded — see its strikethrough and the PR-3 build addendum below for the corrected reasoning (no library, no migration).
+
+**Consequence to track:** the shared SQL fragment/CTE for `paid_at`-scope + double-count-safe profit becomes the canonical pattern for *any* future reporting code — including ADR-087's curated LLM-assistant views, which should compose on top of it rather than reimplement it. Any future new breakdown dimension extends the grouped-SQL layer; a new PHP `->get()`+`foreach` method is a regression. The exact tab/sub-tab placement for the two new dimensions (decision 2) and the per-method keep/merge/replace calls (decision 1) are open until the build-time audit — track them as this ADR's own build addendum when the work starts, same as ADR-083/084's PR addenda pattern.
+
+**PR-1 build addendum — grouped-SQL rewrite, 2026-09-11 (`feature/adr-086-reports-restructure-pr1-grouped-sql` → `staging`).** Delivers decision 3. Full detail + rationale in `docs/build-log.md`'s own PR-1 addendum; summarized here per this repo's "amend the ADR when the build happens" convention.
+
+- **Build-time audit (decision 1) found only 6 of the "7 breakdown methods" actually did PHP-side row aggregation** — `dailyTrend`, `dailyBreakdown`, `gameBreakdown`, `paymentMethodBreakdown`, `affiliateBreakdown`, `membershipBreakdown`. `summary()` and `orderStatusFunnel()` were already SQL-aggregated; left untouched. `exportRows()` is a row-level export, not a breakdown; left untouched.
+- **Double-count safety achieved structurally**: sales/count always aggregate from `orders` alone (`salesByGroup()`); profit always aggregates from `ledger_entries` JOINed to `orders` for filtering only, summing solely `ledger_entries.amount` grouped by `(key, owner_type)` (`profitByGroup()`) — the two queries never share a row set, so a dual-ledger-row order can never inflate sales. 5 new tests (`*_sales_not_doubled_by_dual_ledger_rows`) credit both ledger splits on one order and assert this directly.
+- **Day-bucketing** (`dayBucketExpr()`) is driver-conditional: `DATE(CONVERT_TZ(paid_at, '+00:00', '+08:00'))` on MySQL (literal UTC+8 offset — KL has no DST, so no named-zone/`mysql.time_zone_name` dependency), `date(paid_at, '+8 hours')` on sqlite (the fast suite's driver; `CONVERT_TZ` doesn't exist there). New pattern for this codebase, introduced because this is the first timezone-bucketed `GROUP BY` pushed to the database.
+- **Decision 5's `orders(affiliate_id, created_at)` index deliberately NOT included** — ADR-077 PR-4 already found it forces an FK-support-index drop + rebuild on the money-critical `orders` table (full row-revalidation lock); the existing `orders_report_scope_index(is_test, payment_status, paid_at)` already covers the query's main filter, so this PR's aggregation-in-SQL win lands without it. Tracked as its own follow-up migration, not bundled here.
+- Public method signatures and return shapes are byte-identical to before — `ReportController` and the `admin/` frontend are untouched by this PR.
+- Tests: +5. Fast suite (sqlite) **1754/1754**. Same Report tests re-run against the project's real MySQL `docker compose` container (a throwaway phpunit config, deleted after): **34/34** — the only way to actually exercise the `CONVERT_TZ` branch. Pint clean on both touched files. No migration.
+- **Still PR-2** (decision 2's Membership/Reseller-wallet dimensions) **and PR-3** (decision 7's chart migration).
+
+**PR-2 build addendum — Reseller-wallet breakdown, 2026-09-11 (`feature/adr-086-reports-restructure-pr2-new-dimensions` → `staging`).** Delivers decision 2 — partially.
+
+- **Build-time audit found the Membership half of decision 2 already built.** `membershipBreakdown()`/the Membership tab existed before this restructure was proposed (ADR-027's continued addendum), already reporting the member/standard split + margin-forgone + fee revenue decision 2 described. Kept as-is, no new work — the ADR's own Context section was stale on this point by build time.
+- **The genuinely new work: `ReportService::resellerBreakdown()`**, grouped by `wallet_reseller_id` via the same `salesByGroup()`/`profitByGroup()` pattern PR-1 introduced (no new double-count risk — same structural guarantee). `GET /api/reports/breakdown/resellers`. Lands as a second panel inside the existing **Affiliates** tab, not a new top-level tab — Affiliate (brand) and Reseller (wallet) are mutually-exclusive dimensions of the same `orders` table, so two labeled panels in one tab reads better than a 9th tab.
+- Full detail (dropped key-0 bucket, `withTrashed()` name lookup, no `affiliate_profit` column) in `docs/build-log.md`'s own PR-2 addendum.
+- Tests: +4 backend. Fast suite (sqlite) **1758/1758**; real MySQL **38/38**. Pint clean; `admin/` `tsc`/lint/`next build` clean. No migration.
+- **Still PR-3** (decision 7's chart migration).
+
+**PR-3 — closed without a code change, 2026-09-11.** Before writing anything, checked decision 7's premise: `primereact@11.1.0` (this repo's pinned version) has no `Chart` component (only `organizationchart`, an unrelated tree diagram — confirmed via the published npm tarball's file listing), so "zero new dependency" was false. Separately, PR-1 and PR-2 both shipped without ever needing a new chart (only new table breakdowns), so the "several new charts" premise behind decision 7 never materialized either.
+
+Further check, at the founder's prompt: is a charting library the actual house style anywhere else in `admin/`? No — `admin/src/app/admin/customer-analytics/[email]/page.tsx`'s "Monthly Spending Trend" is plain CSS bars (a styled `<div>`, not even SVG), its own comment citing it as matching **"Dashboard's Hourly Activity precedent"**. That's three independent hand-rolled visuals now (Dashboard Hourly Activity, Customer Analytics Monthly Spending, Reports `TrendChart.tsx`) — a real, repeated, deliberately-referenced pattern, not organic drift.
+
+**Decision 7 is retracted, not replaced.** `TrendChart.tsx` and every other existing hand-rolled Reports visual stay exactly as they are — no chart-library dependency added, no migration. ADR-086 is **fully delivered** across PR-1 + PR-2; there is no PR-3 code. This ADR's own "zero new dependency" framing was the tell that should have been checked against the installed package before being written into the decision — noted for future ADRs that cite a specific library API without having confirmed it against the actually-installed version.
+
+**ADR-086 is now complete.**
+
+---
+
+## ADR-087: Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs
+
+**Status:** Accepted (design) — grilled 2026-09-11 (`/mattpocock-skills:grilling`, 3 rounds). Not built. Depends on ADR-086: the curated views this ADR defines are meant to sit on top of ADR-086's rewritten grouped-SQL layer and reuse its business-rule logic (`paid_at` scope, double-count-safe profit), not reimplement it separately.
+
+**Context:**
+
+Founder wants a free-form natural-language business-question assistant inside admin Reports — "produk paling laris", "margin paling tinggi produk mana", and open-ended marketing-strategy discussion about the business — instead of exporting to Excel/Power BI. First flagged 2026-08-26, deliberately not built then: raw text-to-SQL against a money-critical production database was judged unsafe (hallucinated joins/aggregations could mislead the owner's business decisions with no visual sanity-check), and the agreed direction was constrained tool-calling over a fixed, tested set of aggregation functions — treated as a new deep-module seam, same category as `SupplierAdapter`/`PaymentGateway`.
+
+This grill (2026-09-11) revisited that constraint: the founder wants flexibility closer to using ChatGPT/Gemini directly against the business's own data — explore/group in ways nothing was pre-built for — and asked directly whether that's dangerous. It is, for three concrete reasons surfaced and agreed in the grill: (1) raw SQL generated per-query can silently get the double-count-safe profit rollup or `paid_at`-scoping wrong, with no visible error — the report just looks normal and is wrong; (2) an LLM with unrestricted DB access can reach credential/secret tables (`admin_users.password`, encrypted `Supplier.api_config`, `reseller_api_keys`, payment gateway secrets) even when nobody asked it to; (3) indirect prompt injection via free-text DB fields read into the LLM's context is a non-zero (if currently low-probability) risk. The founder also explicitly confirmed (2026-09-11) that this is a **second, additive feature** — the existing tabbed Reports UI (ADR-086) stays exactly as it is; this assistant is a separate surface for discussing the same underlying data, not a replacement for it.
+
+**Decision:**
+
+1. **Data-access mechanism: curated read-only SQL views**, not raw-table access and not a fixed tool-function-only set. A dedicated, read-only MySQL credential is granted `SELECT` on a defined set of views only — no grant on any raw table. The views encode ADR-086's two pinned business rules (`paid_at` scope, double-count-safe profit) plus Asia/Kuala_Lumpur bucketing, so the LLM's generated SQL cannot get them wrong regardless of what it writes — the business logic is baked into the view definition, not re-derived per query. Within that view set, the LLM is free to `SELECT`/`JOIN`/`GROUP BY`/filter however the question calls for — this is what supplies the "explore freely" flexibility the founder wants, without opening raw-table access.
+2. **Statement guardrails, enforced in application code before any query runs:** reject anything that isn't a single `SELECT` statement (parse-checked, not just credential-enforced), a query statement timeout, and a result row-limit cap. The read-only DB credential (decision 1) is the hard backstop if the parse check is ever bypassed — defense in depth, not either/or.
+3. **Explicit, no-exception denylist enforced at the view-definition layer:** any credential/secret/password-shaped column (`admin_users.password`, encrypted `Supplier.api_config`, `reseller_api_keys`, payment gateway secrets, webhook signing secrets) is never exposed through any view, full stop — these tables are simply not among the views the read-only credential can see. Customer PII (email/phone) **is** included in the views — `super_admin` already has full access to this data via Orders/Customer Analytics, and unlike the reseller/affiliate-facing "platform cost structure is private" rule, there is no internal-vs-external boundary being crossed here (this assistant is `super_admin`-only, decision 6).
+4. **Model: Gemini**, not Anthropic — founder's explicit cost/reasoning call. Specifically the **Flash tier** (`Gemini 3.7 Flash` or the current stable Flash release at build time), not Flash-Lite (reasoning risk on SQL-generation accuracy for money-critical data outweighs the marginal cost saving) and not Pro (cost premium unjustified for this workload). Gemini pricing researched during the grill (Sept 2026): Flash-tier introductory pricing ~$0.75/$3.75 per 1M input/output tokens through end of 2026, standard $1.50/$7.50 after — revisit if usage scales materially or pricing tiers shift by build time.
+5. **Grounding policy:** any factual claim about the business — a number, a trend, a ranking — must be traceable to an actual view-query result; the assistant must never present a fabricated figure as if it came from the data. Strategic/marketing advice may additionally draw on the model's general world knowledge (marketing best practice, industry trend) not present in the database — the founder explicitly wants this blend — but such advice must be clearly built on top of the real, cited data, never presented as though the general-knowledge portion itself came from querying our DB.
+6. **Access control: `super_admin` only**, via the existing `admin.role:super_admin` middleware pattern (`EnsureAdminRole`) — not `admin`. Same instinct as the existing "platform cost structure is private" convention, applied here because this assistant's view surface is broader than any single existing screen.
+7. **Interaction pattern: chat-style, with session-scoped history only** — not persisted to the database long-term. Supports natural follow-up ("tunjuk top game bulan ni" → "macam mana margin dia?") without building durable chat-transcript storage the founder didn't ask for. Distinct from decision 8's audit log, which does persist.
+8. **Audit logging: every query is logged and retained 90 days** — the natural-language question, the generated SQL, and the result set — independent of the ephemeral chat session. This is the compliance/review trail for a feature with broad read access to money-critical data.
+9. **Placement: its own route under the Reports section** (e.g. `/admin/reports/assistant`), not a 9th tab inside the existing tabbed Reports UI and not a separate top-level nav item. The founder confirmed explicitly (2026-09-11) this is conceptually a different kind of surface from the data tabs (chat UI vs. table/chart panel) but still belongs adjacent to Reports, not elsewhere in admin.
+10. **Backend-owned; API key in `.env` only, for now.** Follows the existing `SupplierAdapter`/`PaymentGateway` convention — all business logic and the external API call live in the Laravel backend, never called client-side from `admin/`. The Gemini API key is stored the same way the CHIP credential is stored today (`.env`-only); it deliberately does **not** get its own bespoke DB-credential-storage pattern — that's tracked as the existing cross-cutting "payment gateway credential migration" backlog item, and this ADR doesn't duplicate that decision for one more integration.
+
+**Rationale:**
+
+The curated-view approach (decision 1) is the resolution to the safety-vs-flexibility tension the grill surfaced directly: raw SQL access is genuinely dangerous for the three reasons in Context, but a fixed tool-function set (the original 2026-08-26 direction) is more restrictive than the founder actually wants. Views split the difference correctly because the two things that actually needed to be guaranteed — correct business-rule math, and no path to secrets — are properties of *what's queryable*, not *how it's queried*; baking them into view definitions means the LLM's query-generation freedom can't violate either one. Statement guardrails (decision 2) are defense-in-depth on top of that, not a replacement for it. `super_admin`-only (decision 6) and the audit log (decision 8) both reflect that this is a strictly more powerful read surface than anything else in admin — access and accountability are tightened accordingly. Grounding policy (decision 5) resolves the founder's own stated requirement precisely: data facts grounded, strategic reasoning allowed to blend in outside knowledge, but never blurred together as if both were equally DB-sourced.
+
+**Consequence to track:** the curated-view layer is a new deep-module seam (same category as `SupplierAdapter`/`PaymentGateway`) — any future change to a sales/profit business rule must update it, and it should be built to compose directly on top of ADR-086's rewritten grouped-SQL queries rather than duplicate their logic (exact factoring — shared query builder vs. views literally selecting from the same underlying aggregation — is a build-time decision, not pinned here). Gemini's Flash-tier pricing used in this decision is time-sensitive introductory pricing (through end of 2026); re-check cost assumptions at build time and again if usage scales. The `.env`-only credential storage (decision 10) inherits the same rotation/access-hygiene gap already tracked against the CHIP credential — no new gap, but also no improvement, until that cross-cutting migration happens.
+
+---
+
+## ADR-088: Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening
+
+**Status:** Accepted & built — 2026-09-11, same day as ADR-086/087. Backend + frontend on `feature/reports-unified-date-range-filter`.
+
+**Context:**
+
+Live-testing `/admin/reports` in production, the founder found the "Sales vs Owner Profit" trend chart (and, on the Profit Analysis tab, both its charts) silently disagreed with the page's own Affiliate/Year/Month filter row — changing Year/Month had no visible effect on those charts at all. This was not a bug: RPT-2's original 2026-08-26 design explicitly pinned the trend chart to "always last N days from today" (7/14/30, its own in-card toggle), independent of RPT-3's Year/Month filter, which "only narrows the stat cards/export" (see `ReportService::dailyTrend()`'s pre-2026-09-11 doc comment). In practice this reads as broken, not as a documented exception — a founder watching the KPI cards and the chart update differently for what looks like one filter row is exactly the confusing outcome ADR-086's whole restructure was trying to move away from.
+
+Separately, checking RPT-3's export while investigating: `exportRows()`'s 7-column shape (Order #, Paid At, Customer, Affiliate, Sales, Platform Profit, Affiliate Profit) can't actually support the export's own stated purpose — a self-sufficient source for external pivot analysis (Excel/Power BI, the founder's original 2026-08-26 framing) — because it carries none of the dimensions the on-screen breakdown tabs group by (game, payment method, member/standard pricing, reseller channel).
+
+**Decision:**
+
+1. **The old separate Year/Month picker is replaced by one Date-Range filter** — a preset dropdown (All time / This month / Last 7/14/30/90 days / Custom range, the last showing two date inputs) resolved client-side (`admin/src/lib/date-range.ts`) into a `{from, to}` KL-calendar-date pair (`'YYYY-MM-DD'`) sent to every `/api/reports/*` endpoint identically. `ReportService::dateRangeFromDates()` replaces the Reports page's use of `dateRangeForYearMonth()` (which is *kept* — see decision 4).
+2. **The trend chart's own private day-toggle is removed entirely.** `ReportService::dailyTrend(CarbonImmutable $from, CarbonImmutable $toExclusive, ?int $affiliateId)` now takes an explicit range like every other breakdown method, zero-filling every day in `[from, toExclusive)` — RPT-2's "always last N days, independent of the filter" rule is reversed; the trend chart now follows the exact same filter as the KPI cards and every table.
+3. **"All time" resolves to a bounded last-30-days window for the trend chart specifically, never for anything else.** `dailyTrend()` always zero-fills its range, so it can never be handed an unbounded one; `ReportController::trendRangeFromRequest()` is the one place that substitutes the fallback, only when the page's own filter resolves to `[null, null]`. Every other endpoint (`summary`, the breakdown tables, export) stays genuinely unbounded on "All time" — this fallback is scoped to the one method structurally unable to accept an unbounded range, not a page-wide behavior.
+4. **`dateRangeForYearMonth()` is kept, not deleted** — `CustomerAnalyticsController` (ANL-1..4, ADR-049) still uses it for its own, separate Year/Month filter. That page's UX wasn't part of this change and stays exactly as it is; `ReportService` now carries two range-resolution methods side by side; deep-module seam, two call sites, each keeps the range shape suited to its own page (caught in review before shipping — the first pass deleted the method and broke `CustomerAnalyticsControllerTest` on the full suite run).
+5. **Export widened to 13 columns**, adding Game, Package, Payment Method, Pricing Basis, Reseller, and Delivery Status to the original 7. Column naming/values deliberately mirror `Admin\OrderController`'s own order-detail response (`game.name`, `package.name`, `wallet_reseller.business_name`) — the same terms an admin already knows from `/admin/orders`, not export-only labels. `delivery_status` is included specifically because a paid order's ledger-sourced `platform_profit`/`affiliate_profit` here can legitimately be RM0 while `/admin/orders` still shows that same order's checkout-time-stamped (non-ledger) snapshot for a failed delivery — without this column, that discrepancy looks like an inconsistency rather than the intentional, already-pinned rule it is. PDF export switched to landscape (`setPaper('a4', 'landscape')`) — 13 columns don't fit a portrait page legibly.
+6. **A local-dev-only demo seeder** (`database/seeders/ReportDemoSeeder.php`) was added to make any of this reviewable without hand-creating orders — ~95 days of varied orders (games, payment methods, member/standard pricing, a wallet Reseller, a mix of delivered/failed/pending outcomes) via the same `Order::create()` + `LedgerService::credit()` pattern the test suite's own fixtures use, so it can never itself become a double-count-safety counterexample. Never part of `DatabaseSeeder`'s default chain; run explicitly (`php artisan db:seed --class=Database\Seeders\ReportDemoSeeder`); local sqlite dev DB only, never production.
+
+**Rationale:**
+
+A single date-range filter (decisions 1-2) is the direct fix for the founder's own observation: a page with one filter row should have exactly one filter model, not a page-level one plus a silently-different per-chart one. The bounded-fallback scoping (decision 3) keeps that fix from reopening the exact problem ADR-086 PR-1 solved — an unbounded all-time query pulling unbounded history into a zero-fill loop — while every *other* endpoint keeps genuine "All time" scope, since only the trend chart's zero-fill requires a bounded window to begin with. Keeping `dateRangeForYearMonth()` (decision 4) is the "Deep modules, stable seams" instinct applied literally — `ReportService` is a shared seam with a second, real consumer whose own UX this change was never asked to touch; deleting a method a repo-wide search would have caught is exactly the kind of unscoped change AGENTS.md warns against, caught here by running the full test suite before considering the work done, not just the Reports-scoped one. Export widening (decision 5) fixes RPT-3's own stated purpose rather than adding a competing per-tab export mechanism — every on-screen breakdown remains reconstructable from one raw file via an external pivot table, which is what "export for Excel/Power BI" was always supposed to mean.
+
+**Consequence to track:** any future Reports tab that adds its own local state mirroring a page-level filter (the exact shape of the bug this ADR fixes) should be treated as a smell, not a pattern — every fetch on `/admin/reports` reads `filters.from`/`filters.to`/`filters.affiliateId` directly, nothing else. `CustomerAnalyticsController`'s independent Year/Month filter is a deliberate, tracked exception (decision 4), not an inconsistency to "fix" later without asking. The demo seeder is dev-only tooling, not covered by the test suite itself — if its field/enum assumptions drift from `Order`'s real schema, it fails loudly (a `QueryException`) rather than silently, which is the acceptable failure mode for a local convenience tool.

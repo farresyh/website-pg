@@ -3,6 +3,7 @@
 namespace App\Services\Fulfillment;
 
 use App\Models\Order;
+use App\Services\Accounting\SupplierFundingService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\OrderStatusService;
@@ -41,6 +42,7 @@ final class OrderFulfillmentService
         private readonly SupplierAdapterFactory $supplierAdapters,
         private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
+        private readonly SupplierFundingService $supplierFunding,
     ) {}
 
     /**
@@ -58,7 +60,13 @@ final class OrderFulfillmentService
      */
     public function fulfill(Order $order): Order
     {
-        return DB::transaction(function () use ($order) {
+        // ADR-083 decision 3 — captured here, written to the supplier
+        // funding ledger only AFTER the transaction below commits (see
+        // the bottom of this method). Stays null unless the Success
+        // branch actually runs and the adapter reported a price.
+        $drawdownPrice = null;
+
+        $delivered = DB::transaction(function () use ($order, &$drawdownPrice) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             // ORD-11's central guard: delivery may only start once
@@ -182,8 +190,18 @@ final class OrderFulfillmentService
             // order never used a voucher.
             $this->vouchers->commit($locked->id);
 
+            if (isset($result->data['price'])) {
+                $drawdownPrice = (float) $result->data['price'];
+            }
+
             return $locked->fresh();
         });
+
+        if ($drawdownPrice !== null) {
+            $this->supplierFunding->recordOrderDrawdown($delivered, $drawdownPrice);
+        }
+
+        return $delivered;
     }
 
     /**
@@ -209,7 +227,9 @@ final class OrderFulfillmentService
             );
         }
 
-        return DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse) {
+        $drawdownPrice = null;
+
+        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, &$drawdownPrice) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             Log::withContext(['reference_number' => $locked->reference_number]);
@@ -229,6 +249,15 @@ final class OrderFulfillmentService
 
                 Log::info('Pending delivery finalized as delivered', ['supplier_ref' => $supplierRef]);
 
+                // ADR-083 decision 3 — the Digiflazz webhook (or the
+                // reconcile poll's own checkStatus() re-submit) carries
+                // the real `price` here; a `Pending` order's own initial
+                // response never did, so this is the only place a
+                // Digiflazz drawdown gets recorded.
+                if (is_array($supplierResponse) && isset($supplierResponse['price'])) {
+                    $drawdownPrice = (float) $supplierResponse['price'];
+                }
+
                 return $locked->fresh();
             }
 
@@ -239,17 +268,33 @@ final class OrderFulfillmentService
                 'delivery_status' => $failedStatus->value,
             ]);
 
-            // Deliberately no voucher/ledger action here — a Pending
-            // order finalized as Failed lands on the exact same Failed
-            // state a synchronous rejection would, so the existing
-            // Failed-only voucher-issuance gate
+            // Deliberately no voucher/retail-ledger action here — a
+            // Pending order finalized as Failed lands on the exact same
+            // Failed state a synchronous rejection would, so the
+            // existing Failed-only voucher-issuance gate
             // (VoucherController::storeFromOrder()) applies unchanged.
-            // No cash was ever taken from the ledger for this order, so
+            // No cash was ever taken from OUR ledger for this order, so
             // there is nothing to reverse (ADR-004).
+            //
+            // ADR-083 decision 3 (grilled 2026-09-11): no supplier-ledger
+            // action here either — a `Pending` response never carried a
+            // `price` (see the Success branch above), so nothing was
+            // ever recorded as drawn down for this order; a `Gagal`
+            // after `Pending` writes no `REFUND`. If a real Digiflazz
+            // account is later found to actually deduct saldo at
+            // `Pending` submission and restore it on `Gagal`, this needs
+            // a deliberate `REFUND`/`MANUAL_ADJUSTMENT` branch added
+            // here — don't assume it.
             Log::warning('Pending delivery finalized as failed', ['supplier_response' => $supplierResponse]);
 
             return $locked->fresh();
         });
+
+        if ($drawdownPrice !== null) {
+            $this->supplierFunding->recordOrderDrawdown($finalized, $drawdownPrice);
+        }
+
+        return $finalized;
     }
 
     /**

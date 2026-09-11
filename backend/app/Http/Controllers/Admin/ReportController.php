@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Affiliate;
 use App\Services\Report\ReportService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -16,6 +17,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * the sales/profit definitions grilled and pinned 2026-08-26 — this
  * controller only resolves request params into the service's params,
  * no calculation lives here.
+ *
+ * ADR-086 filter-unification follow-up (2026-09-11): the old separate
+ * Year/Month picker is gone — every tab, `?from=`/`?to=` (KL calendar
+ * dates, 'YYYY-MM-DD', both optional), resolved by `rangeFromRequest()`.
+ * The trend chart alone gets `trendRangeFromRequest()`, which substitutes
+ * a bounded last-30-days fallback when the page's own filter is
+ * unbounded ("All time") — `ReportService::dailyTrend()` always
+ * zero-fills its range, so it can never be handed an unbounded one.
  */
 class ReportController extends Controller
 {
@@ -43,11 +52,10 @@ class ReportController extends Controller
 
     public function trend(Request $request): JsonResponse
     {
-        $days = (int) $request->query('days', 7);
-        $days = in_array($days, [7, 14, 30], true) ? $days : 7;
+        [$from, $toExclusive] = $this->trendRangeFromRequest($request);
 
         return response()->json([
-            'days' => $this->reports->dailyTrend($days, $this->affiliateId($request)),
+            'days' => $this->reports->dailyTrend($from, $toExclusive, $this->affiliateId($request)),
         ]);
     }
 
@@ -97,6 +105,16 @@ class ReportController extends Controller
         ]);
     }
 
+    /** ADR-086 PR-2 — Reseller-wallet breakdown, distinct from Affiliate above. */
+    public function resellerBreakdown(Request $request): JsonResponse
+    {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+
+        return response()->json([
+            'resellers' => $this->reports->resellerBreakdown($from, $toExclusive, $this->affiliateId($request)),
+        ]);
+    }
+
     public function orderStatusFunnel(Request $request): JsonResponse
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);
@@ -123,7 +141,7 @@ class ReportController extends Controller
         $rows = $this->reports->exportRows($from, $toExclusive, $affiliateId)->all();
 
         $format = $request->query('format', 'csv');
-        $rangeLabel = $this->rangeLabel($request->integer('year') ?: null, $request->integer('month') ?: null);
+        $rangeLabel = $this->rangeLabel($from, $toExclusive);
         $affiliateLabel = $affiliateId ? Affiliate::query()->find($affiliateId)?->business_name : null;
 
         return $format === 'pdf'
@@ -138,19 +156,42 @@ class ReportController extends Controller
 
     private function rangeFromRequest(Request $request): array
     {
-        return $this->reports->dateRangeForYearMonth(
-            $request->integer('year') ?: null,
-            $request->integer('month') ?: null,
+        return $this->reports->dateRangeFromDates(
+            $request->filled('from') ? $request->query('from') : null,
+            $request->filled('to') ? $request->query('to') : null,
         );
     }
 
-    private function rangeLabel(?int $year, ?int $month): string
+    /**
+     * The trend chart's own range: same as everything else on the page,
+     * except an unbounded ("All time") side is never passed through —
+     * `dailyTrend()` always zero-fills its window, so an unbounded one
+     * would mean an unbounded row count. Falls back to the last 30 days,
+     * matching this filter's pre-unification default.
+     */
+    private function trendRangeFromRequest(Request $request): array
     {
-        if ($year === null) {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+
+        if ($from === null || $toExclusive === null) {
+            $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay();
+
+            return [$todayKl->subDays(29)->setTimezone('UTC'), $todayKl->addDay()->setTimezone('UTC')];
+        }
+
+        return [$from, $toExclusive];
+    }
+
+    private function rangeLabel(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): string
+    {
+        if ($from === null || $toExclusive === null) {
             return 'All time';
         }
 
-        return $month !== null ? sprintf('%04d-%02d', $year, $month) : (string) $year;
+        $fromKl = $from->setTimezone(ReportService::TIMEZONE)->toDateString();
+        $toKl = $toExclusive->subDay()->setTimezone(ReportService::TIMEZONE)->toDateString();
+
+        return $fromKl === $toKl ? $fromKl : "{$fromKl}_to_{$toKl}";
     }
 
     private function exportCsv(array $rows, string $rangeLabel): StreamedResponse
@@ -159,7 +200,10 @@ class ReportController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Order #', 'Paid At', 'Customer', 'Affiliate', 'Sales (RM)', 'Platform Profit (RM)', 'Affiliate Profit (RM)']);
+            fputcsv($out, [
+                'Order #', 'Paid At', 'Customer', 'Affiliate', 'Game', 'Package', 'Payment Method',
+                'Pricing Basis', 'Reseller', 'Delivery Status', 'Sales (RM)', 'Platform Profit (RM)', 'Affiliate Profit (RM)',
+            ]);
 
             foreach ($rows as $row) {
                 fputcsv($out, [
@@ -167,6 +211,12 @@ class ReportController extends Controller
                     $row['paid_at'],
                     $row['customer_email'],
                     $row['affiliate_name'] ?? '',
+                    $row['game_name'] ?? '',
+                    $row['package_name'] ?? '',
+                    $row['payment_method'] ?? '',
+                    $row['pricing_basis'],
+                    $row['reseller_name'] ?? '',
+                    $row['delivery_status'],
                     number_format($row['final_amount'] / 100, 2, '.', ''),
                     number_format($row['platform_profit'] / 100, 2, '.', ''),
                     number_format($row['affiliate_profit'] / 100, 2, '.', ''),
@@ -181,10 +231,12 @@ class ReportController extends Controller
     {
         $filename = 'sales-report-'.str_replace(' ', '-', strtolower($rangeLabel)).'.pdf';
 
+        // Landscape — the widened 13-column export (added 2026-09-11)
+        // doesn't fit a portrait page legibly.
         return Pdf::loadView('reports.export-pdf', [
             'rows' => $rows,
             'rangeLabel' => $rangeLabel,
             'affiliateLabel' => $affiliateLabel,
-        ])->download($filename);
+        ])->setPaper('a4', 'landscape')->download($filename);
     }
 }

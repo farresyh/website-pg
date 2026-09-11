@@ -6,6 +6,7 @@ use App\Jobs\CheckSupplierDeliveryJob;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
+use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -72,6 +73,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
             $this->app->make(SupplierAdapterFactory::class),
             new LedgerService,
             new VoucherService(new LedgerService),
+            new SupplierFundingService,
         );
     }
 

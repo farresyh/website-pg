@@ -3,14 +3,16 @@ title: Your first order
 description: An end-to-end walkthrough — read the catalogue, place an order, and get the result.
 ---
 
-This walkthrough places one order from start to finish. Every request needs the
+This walkthrough places one order from start to finish. Paths are shown
+relative to the [base URL](/introduction/#base-url) — prepend
+`https://api.pekangame.space/api/reseller`. Every request needs the
 `Authorization: Bearer` header from [Authentication](/authentication/); it is
 omitted below for brevity.
 
 ## 1. Check your balance
 
 ```http
-GET /api/reseller/v1/balance
+GET /v1/balance
 ```
 
 ```json
@@ -22,7 +24,7 @@ All money is in **sen** (RM 1.00 = `100`). `125000` is RM 1,250.00.
 ## 2. Read the catalogue
 
 ```http
-GET /api/reseller/v1/catalog
+GET /v1/catalog
 ```
 
 ```json
@@ -40,13 +42,13 @@ GET /api/reseller/v1/catalog
 }
 ```
 
-`price_sen` is **your** tier price, markup already applied. Order against
+`price_sen` is **your** price for that package, in sen. Order against
 `packages[].code` — see [Product codes](/product-codes/).
 
 ## 3. Place the order
 
 ```http
-POST /api/reseller/v1/orders
+POST /v1/orders
 Content-Type: application/json
 
 {
@@ -79,22 +81,38 @@ On success you get **HTTP 201** and the order:
 ```
 
 Your wallet is charged `price_sen` at this moment. `payment_status` is `paid`
-straight away (it is a wallet debit). `delivery_status` starts at
-`not_started`, advances to `processing` while PekanGame submits it to the
-supplier, then settles on `delivered` or `failed` (occasionally
-`needs_review` — a human checks it).
+straight away (it is a wallet debit). `delivery_status` then progresses on its
+own — see the table below.
+
+### Order status values
+
+`payment_status` is always `paid` for a wallet order.
+
+| `delivery_status` | Meaning |
+| --- | --- |
+| `not_started` | Accepted, not yet submitted for fulfilment. |
+| `processing` | Being fulfilled. |
+| `pending` | Submitted; awaiting the final result. |
+| `delivered` | Done. `delivered_at` is set. |
+| `failed` | Delivery failed. A wallet refund follows. |
+| `needs_review` | The outcome is ambiguous and being confirmed manually. Rare. |
+
+`delivered` is final. `failed` is usually final too, but PekanGame may
+re-attempt a stuck order, so a `failed` order can still reach `delivered`
+later (you get an `order.delivered` webhook if so). Poll or use the webhook
+until the order is `delivered` or `failed`.
 
 ## 4. Get the result
 
 Delivery is asynchronous. Two ways to learn the outcome:
 
-- **Poll** `GET /api/reseller/v1/orders/{order_number}` until `delivery_status`
+- **Poll** `GET /v1/orders/{order_number}` until `delivery_status`
   is `delivered` or `failed`.
 - **Webhook** — register an endpoint once and receive a signed `order.delivered`
   / `order.failed` callback. See [Delivery notifications](/webhooks/).
 
 ```http
-GET /api/reseller/v1/orders/PG-7QK2M9X4RJ
+GET /v1/orders/PG-7QK2M9X4RJ
 ```
 
 ```json
@@ -111,5 +129,6 @@ GET /api/reseller/v1/orders/PG-7QK2M9X4RJ
 }
 ```
 
-A `failed` order is refunded to your wallet (automatically once PekanGame stops
-retrying it, or on request). See [Wallet & balance](/wallet/).
+A `failed` order is refunded to your wallet — automatically once it is no
+longer being retried, or on request for one that is stuck. See
+[Wallet & balance](/wallet/).

@@ -63,6 +63,10 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-069 decision 13: a bare number in the supplier's balance
     // currency — drives the daily low-balance warning + Health chip.
     { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 50 (blank = no warning)" },
+    // ADR-083 decision 6: max acceptable gap between the polled balance
+    // above and this supplier's own funding-ledger sum before the
+    // Dashboard Health drift chip lights up. Blank = never checked.
+    { key: "drift_threshold", label: "Drift Threshold", type: "text", placeholder: "e.g. 50 (blank = drift never checked)" },
   ],
   digiflazz: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
@@ -80,6 +84,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-069 decision 13: a bare number in IDR — drives the daily
     // low-balance warning + the Dashboard Health chip.
     { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 100000 (IDR; blank = no warning)" },
+    // ADR-083 decision 6: max acceptable gap (IDR) between the polled
+    // balance above and this supplier's own funding-ledger sum.
+    { key: "drift_threshold", label: "Drift Threshold", type: "text", placeholder: "e.g. 50000 (IDR; blank = drift never checked)" },
   ],
 };
 

@@ -18,7 +18,7 @@ export function SalesAnalysisTab({ token, filters }: { token: string; filters: R
       .then((res) => setGames(res.games))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.year, filters.month, filters.affiliateId]);
+  }, [token, filters.from, filters.to, filters.affiliateId]);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

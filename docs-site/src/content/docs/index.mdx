@@ -21,8 +21,8 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 		request signing, no second secret.
 	</Card>
 	<Card title="Prepaid wallet" icon="setting">
-		Every order is charged to your wallet at your tier price. Top up and read
-		your balance from the partner portal.
+		Every order is charged to your wallet at your account's price. Top up and
+		read your balance from the partner portal.
 	</Card>
 	<Card title="Idempotent orders" icon="random">
 		Send one UUID per logical order. A retry with the same key returns the
@@ -36,7 +36,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 ## Access is invite-only
 
-There is no public sign-up. PekanGame provisions your reseller account, assigns
-your wholesale tier, and issues your first API key. See
-[Authentication](/authentication/) for how to rotate and scope keys once you
-have one, or [request access](/introduction/#request-access).
+There is no public sign-up. PekanGame sets up your reseller account, sets your
+pricing, and issues your first API key. See [Authentication](/authentication/)
+for how to rotate and scope keys once you have one, or
+[request access](/introduction/#request-access).

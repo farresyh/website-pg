@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -62,23 +63,25 @@ class ReportControllerTest extends TestCase
         ]);
     }
 
-    public function test_trend_defaults_to_seven_days(): void
+    /** ADR-086 filter-unification follow-up — no ?from/?to (the "All time" filter) falls back to a bounded last-30-days window. */
+    public function test_trend_defaults_to_last_30_days_when_unbounded(): void
     {
         $this->actingAsAdmin();
 
         $response = $this->getJson('/api/reports/trend');
 
         $response->assertOk();
-        $this->assertCount(7, $response->json('days'));
+        $this->assertCount(30, $response->json('days'));
     }
 
-    public function test_trend_rejects_unsupported_day_count(): void
+    public function test_trend_follows_the_same_from_to_filter_as_every_other_tab(): void
     {
         $this->actingAsAdmin();
 
-        $response = $this->getJson('/api/reports/trend?days=99');
+        $response = $this->getJson('/api/reports/trend?from=2026-08-01&to=2026-08-05');
 
-        $this->assertCount(7, $response->json('days'));
+        $response->assertOk();
+        $this->assertCount(5, $response->json('days'));
     }
 
     public function test_export_csv_streams_order_rows(): void
@@ -140,6 +143,15 @@ class ReportControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $this->getJson('/api/reports/breakdown/affiliates')->assertOk()->assertJsonStructure(['affiliates']);
+    }
+
+    public function test_reseller_breakdown_returns_rows(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        $this->order(['wallet_reseller_id' => $reseller->id]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/breakdown/resellers')->assertOk()->assertJsonStructure(['resellers']);
     }
 
     public function test_order_status_funnel_returns_shape(): void

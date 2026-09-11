@@ -43,6 +43,15 @@ const sections: PanelNavSection[] = [
       { kind: "link", name: "Affiliates", href: "/admin/affiliates", icon: <UserCircleIcon /> },
       { kind: "link", name: "Resellers", href: "/admin/resellers", icon: <DollarLineIcon /> },
       {
+        kind: "group",
+        name: "Accounting",
+        icon: <DollarLineIcon />,
+        children: [
+          { name: "Supplier Funding", href: "/admin/accounting/suppliers" },
+          { name: "Transaction Register", href: "/admin/accounting/transactions" },
+        ],
+      },
+      {
         // ADR-029 decision 10 — the one collapsible nav group.
         kind: "group",
         name: "SEO",

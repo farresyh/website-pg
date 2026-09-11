@@ -66,6 +66,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Accounting Attachment Disk
+    |--------------------------------------------------------------------------
+    |
+    | ADR-083 decision 10: supplier-transfer receipts and any future
+    | accounting attachment (CHIP settlement files, etc.) — deliberately
+    | private, same reasoning as backup_disk/wallet_receipts_disk above.
+    | Local by default; swap to "s3"/"r2" via env only, no code change.
+    |
+    */
+
+    'accounting_disk' => env('ACCOUNTING_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

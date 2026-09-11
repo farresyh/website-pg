@@ -4,8 +4,9 @@ description: Register a webhook to receive signed order.delivered / order.failed
 ---
 
 Instead of polling every order, you can register **one webhook endpoint** and
-have PekanGame POST you a signed event when an order reaches a terminal state.
-Polling `GET /v1/orders/{order_number}` always remains available as a fallback.
+have PekanGame POST you a signed event when an order is delivered, fails, or is
+refunded. Polling `GET /v1/orders/{order_number}` always remains available as a
+fallback.
 
 ## Setup
 
@@ -28,7 +29,9 @@ PekanGame support can also set this for you.
 | `order.failed` | Delivery failed. The wallet refund follows (see `order.refunded`). |
 | `order.refunded` | A failed order was refunded to your wallet. |
 
-Each event fires **at most once per order**.
+Each **event type** fires **at most once per order** — so one order can send
+you both an `order.failed` and a later `order.refunded`, but never two
+`order.failed`.
 
 ## Payload
 
@@ -96,7 +99,9 @@ if (! hash_equals($expected, $request->header('X-Hub-Signature-256', ''))) {
   deliveries table.
 - Retries are per-event; a later event for the same order is independent.
 - If your endpoint is down for longer than that, **reconcile with
-  `GET /v1/orders`** (filter by `?status=` and `?created_after=`).
+  `GET /v1/orders`** — `?created_after=<ISO 8601>` to bound the window, and
+  `?status=failed` / `?status=delivered` to filter (any
+  [`delivery_status` value](/first-order/#order-status-values)).
 
 ## If your signing secret leaks
 
