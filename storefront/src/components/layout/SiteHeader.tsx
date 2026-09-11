@@ -25,7 +25,7 @@ export default function SiteHeader() {
     <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-4 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
-          <Logo size={34} src={branding.logoUrl} alt={branding.storeName} />
+          <Logo maxHeight={48} maxWidth={180} src={branding.logoUrl} alt={branding.storeName} />
           <span className="font-display text-xl font-bold uppercase leading-none tracking-tight">{branding.storeName}</span>
         </Link>
 
