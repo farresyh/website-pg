@@ -26,6 +26,8 @@ use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\SupplierTransferController;
+use App\Http\Controllers\Admin\TransactionRegisterController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Affiliate\AffiliateAuthController;
@@ -638,6 +640,27 @@ Route::middleware('auth:sanctum')->group(function () {
         // history, checkout attempts incl. pending/failed). Declared
         // after /brands so the static segment still wins.
         Route::get('/{membership}', [AdminMembershipController::class, 'show']);
+    });
+
+    // ADR-083 decision 2 (PR-1) — "Record Supplier Transfer": the supplier
+    // funding ledger. Deliberately under /accounting, not /middleware —
+    // this is a bookkeeping action (money we sent to fund a supplier's
+    // account), not a supplier-integration one, same reasoning as
+    // Membership above. Nested under {supplier} like the reseller wallet
+    // is under {reseller}.
+    Route::middleware('admin.role:super_admin')->prefix('accounting')->group(function () {
+        Route::prefix('suppliers/{supplier}/transfers')->group(function () {
+            Route::get('/', [SupplierTransferController::class, 'index']);
+            Route::post('/', [SupplierTransferController::class, 'store']);
+        });
+
+        Route::get('/supplier-transfers/{supplierTransfer}/receipt', [SupplierTransferController::class, 'downloadReceipt']);
+
+        // ADR-083 decision 9 — Transaction Register: read-only, plus a
+        // CSV export, across orders/supplier transfers/supplier
+        // REFUND entries/Path-B vouchers.
+        Route::get('/transactions', [TransactionRegisterController::class, 'index']);
+        Route::get('/transactions/export', [TransactionRegisterController::class, 'export']);
     });
 
     // ADR-058 58b (RES-1..6) — admin Affiliate Management. Same
