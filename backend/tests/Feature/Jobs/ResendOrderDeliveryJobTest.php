@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
 use App\Services\Ledger\LedgerService;
@@ -48,6 +49,7 @@ class ResendOrderDeliveryJobTest extends TestCase
                 $this->app->make(SupplierAdapterFactory::class),
                 new LedgerService,
                 new VoucherService(new LedgerService),
+                new SupplierFundingService,
             ),
             new PricingService,
             new MembershipPricingService,
