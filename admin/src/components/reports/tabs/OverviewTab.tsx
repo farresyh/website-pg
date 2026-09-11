@@ -30,14 +30,11 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const dayRangeOptions: Array<7 | 14 | 30> = [7, 14, 30];
-
 export function OverviewTab({ token, filters }: { token: string; filters: ReportFilters }) {
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [trend, setTrend] = useState<ReportTrendDay[] | null>(null);
   const [topGames, setTopGames] = useState<ReportGameRow[] | null>(null);
   const [dailyRows, setDailyRows] = useState<ReportDailyBreakdownRow[] | null>(null);
-  const [days, setDays] = useState<7 | 14 | 30>(7);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,14 +47,13 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
     getReportDailyBreakdown(token, filters)
       .then((res) => setDailyRows(res.days))
       .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.year, filters.month, filters.affiliateId]);
-
-  useEffect(() => {
-    getReportTrend(token, days, filters.affiliateId)
+    // ADR-086 filter-unification follow-up — the trend chart now follows
+    // this same filter (no more its own private 7/14/30-day toggle).
+    getReportTrend(token, filters)
       .then((res) => setTrend(res.days))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the sales trend."));
-  }, [token, days, filters.affiliateId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, filters.from, filters.to, filters.affiliateId]);
 
   return (
     <div>
@@ -87,22 +83,6 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Sales vs Owner Profit</h2>
-            <div className="flex gap-1">
-              {dayRangeOptions.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => setDays(d)}
-                  className={`rounded-md px-2.5 py-1 text-theme-xs font-medium ${
-                    days === d
-                      ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400"
-                      : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.05]"
-                  }`}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
           </div>
           {trend ? (
             <TrendChart

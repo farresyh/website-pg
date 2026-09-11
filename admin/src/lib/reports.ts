@@ -6,10 +6,16 @@ import { apiFetch, ApiError } from "@/lib/api-client";
  * and pinned 2026-08-26 (ledger-sourced profit, paid_at-scoped sales,
  * Asia/Kuala_Lumpur day-bucketing). This client only forwards filters
  * and renders whatever the backend returns — no calculation here.
+ *
+ * ADR-086 filter-unification follow-up (2026-09-11): the old separate
+ * Year/Month picker is gone — `from`/`to` are KL calendar dates
+ * ('YYYY-MM-DD'), resolved client-side from one preset control
+ * (see reports/DateRangeFilter.tsx) and forwarded as-is to every tab,
+ * the trend chart included. Both undefined means "All time".
  */
 export interface ReportFilters {
-  year?: number;
-  month?: number;
+  from?: string;
+  to?: string;
   affiliateId?: number;
 }
 
@@ -124,52 +130,53 @@ export function listReportAffiliates(token: string) {
 }
 
 export function getReportSummary(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<ReportSummary>(`/api/reports/summary${query}`, { token });
 }
 
-export function getReportTrend(token: string, days: 7 | 14 | 30, affiliateId?: number) {
-  const query = buildQuery({ days, affiliate_id: affiliateId });
+/** ADR-086 filter-unification follow-up — trend chart now follows the same filters as every other tab, no more its own days=7|14|30 param. */
+export function getReportTrend(token: string, filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<{ days: ReportTrendDay[] }>(`/api/reports/trend${query}`, { token });
 }
 
 export function getReportDailyBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<{ days: ReportDailyBreakdownRow[] }>(`/api/reports/daily-breakdown${query}`, { token });
 }
 
 export function getTopGames(token: string, filters: ReportFilters, limit = 5) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId, limit });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, limit });
   return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/top-games${query}`, { token });
 }
 
 export function getGameBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/breakdown/games${query}`, { token });
 }
 
 export function getPaymentMethodBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<{ payment_methods: ReportPaymentMethodRow[] }>(`/api/reports/breakdown/payment-methods${query}`, { token });
 }
 
 export function getAffiliateBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<{ affiliates: ReportAffiliateRow[] }>(`/api/reports/breakdown/affiliates${query}`, { token });
 }
 
 export function getResellerBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<{ resellers: ReportResellerRow[] }>(`/api/reports/breakdown/resellers${query}`, { token });
 }
 
 export function getOrderStatusFunnel(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<ReportOrderStatusFunnel>(`/api/reports/order-status-funnel${query}`, { token });
 }
 
 export function getMembershipBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<ReportMembershipBreakdown>(`/api/reports/membership-breakdown${query}`, { token });
 }
 
@@ -186,8 +193,8 @@ export async function exportReport(
 ): Promise<void> {
   const query = buildQuery({
     format,
-    year: filters.year,
-    month: filters.month,
+    from: filters.from,
+    to: filters.to,
     affiliate_id: filters.affiliateId,
   });
 

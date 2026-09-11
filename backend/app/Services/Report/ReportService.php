@@ -62,6 +62,12 @@ final class ReportService
      * Resolves RPT-3's year/month filter into a [from, toExclusive) UTC
      * instant pair ready to feed into paid_at comparisons. Null year
      * means "no filter" (all-time) — both null.
+     *
+     * Kept alongside `dateRangeFromDates()` below (added 2026-09-11 for
+     * the Reports page's own filter-unification) because
+     * `CustomerAnalyticsController` (ANL-1..4, ADR-049) still uses this
+     * one for its own, unrelated year/month filter — Customer Analytics'
+     * UX wasn't part of that change and stays as it is.
      */
     public function dateRangeForYearMonth(?int $year, ?int $month): array
     {
@@ -73,6 +79,30 @@ final class ReportService
         $end = $month !== null ? $start->addMonth() : $start->addYear();
 
         return [$start->setTimezone('UTC'), $end->setTimezone('UTC')];
+    }
+
+    /**
+     * ADR-086 filter-unification follow-up (2026-09-11) — replaces the
+     * Reports page's old separate Year/Month picker with one date-range
+     * filter that every tab, including the trend chart, resolves the
+     * same way. `$fromDate`/`$toDate` are KL calendar dates
+     * ('YYYY-MM-DD'), inclusive on both ends from the caller's point of
+     * view — `$toDate` is converted to an exclusive UTC instant (KL
+     * midnight of the *next* day) so callers keep comparing with `<`,
+     * never `<=`. Either or both null means "no bound" on that side —
+     * both null is the "All time" filter.
+     */
+    public function dateRangeFromDates(?string $fromDate, ?string $toDate): array
+    {
+        $from = $fromDate !== null
+            ? CarbonImmutable::createFromFormat('Y-m-d', $fromDate, self::TIMEZONE)->startOfDay()->setTimezone('UTC')
+            : null;
+
+        $toExclusive = $toDate !== null
+            ? CarbonImmutable::createFromFormat('Y-m-d', $toDate, self::TIMEZONE)->startOfDay()->addDay()->setTimezone('UTC')
+            : null;
+
+        return [$from, $toExclusive];
     }
 
     public function summary(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
@@ -109,28 +139,35 @@ final class ReportService
     }
 
     /**
-     * RPT-2 — always "last N days from today", independent of RPT-3's
-     * year/month filter (that filter only narrows the stat cards/export).
+     * ADR-086 filter-unification follow-up (2026-09-11) — the trend chart
+     * now follows the SAME date-range filter as every other tab, instead
+     * of its own private "last N days from today" toggle (RPT-2's
+     * original 2026-08-26 rule, reversed after the founder found the two
+     * filters silently disagreeing in production). `$from`/`$toExclusive`
+     * are always concrete (never null) — `ReportController` is
+     * responsible for substituting a bounded fallback window (the
+     * previous last-30-days default) when the page's resolved filter is
+     * unbounded ("All time"), so this method never has to guess a range
+     * to zero-fill.
+     *
      * Both sales and profit are attributed to the order's own `paid_at`
      * day (KL), even though profit may only be ledger-credited later
      * once delivery completes — grilled 2026-08-26: acceptable because
      * delivery on this platform is near-instant in practice, and this
      * keeps the sales/profit overlay visually matched day-for-day.
      */
-    public function dailyTrend(int $days, ?int $affiliateId): array
+    public function dailyTrend(CarbonImmutable $from, CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $todayKl = CarbonImmutable::now(self::TIMEZONE)->startOfDay();
-        $startKl = $todayKl->subDays($days - 1);
-        $fromUtc = $startKl->setTimezone('UTC');
-        $toExclusiveUtc = $todayKl->addDay()->setTimezone('UTC');
+        $salesByDate = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), $this->dayBucketExpr('paid_at'));
+        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.paid_at'));
 
-        $salesByDate = $this->salesByGroup($this->scopedOrders($fromUtc, $toExclusiveUtc, $affiliateId), $this->dayBucketExpr('paid_at'));
-        $profitByDate = $this->profitByGroup($fromUtc, $toExclusiveUtc, $affiliateId, $this->dayBucketExpr('orders.paid_at'));
+        $startKl = $from->setTimezone(self::TIMEZONE)->startOfDay();
+        $endKlExclusive = $toExclusive->setTimezone(self::TIMEZONE)->startOfDay();
 
         $rows = [];
         $cursor = $startKl;
 
-        while ($cursor->lte($todayKl)) {
+        while ($cursor->lt($endKlExclusive)) {
             $key = $cursor->toDateString();
             $profit = $profitByDate->get($key);
             $rows[] = [
@@ -146,11 +183,11 @@ final class ReportService
     }
 
     /**
-     * Overview tab's Detailed Data Table — respects RPT-3's year/month
-     * filter (unlike dailyTrend(), which is always "last N days from
-     * now"). Only emits days that actually had a paid order — an
-     * unbounded/all-time range zero-filled day-by-day would be an
-     * unbounded row count. Newest first, matching the reference layout.
+     * Overview tab's Detailed Data Table. Only emits days that actually
+     * had a paid order — unlike dailyTrend(), which zero-fills every day
+     * in range (needed for a continuous chart line); doing that here too
+     * for an unbounded/all-time range would be an unbounded row count.
+     * Newest first, matching the reference layout.
      */
     public function dailyBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
@@ -433,12 +470,33 @@ final class ReportService
      * scope as summary(), joined to the order's actually-recognized
      * (ledger) profit rather than its cached column.
      */
+    /**
+     * ADR-086 export-widening follow-up (2026-09-11) — RPT-3's export is
+     * meant to be a self-sufficient source for external pivot analysis
+     * (Excel/Power BI), which the original 7-column shape couldn't
+     * actually support: it had no Game/Payment Method/Pricing Basis/
+     * Reseller columns, so none of those breakdowns could be reconstructed
+     * from the exported file. Widened to carry every dimension the
+     * on-screen breakdown tabs already group by. Column naming/values
+     * deliberately mirror `Admin\OrderController`'s own detail response
+     * (`game.name`, `package.name`, `wallet_reseller.business_name`) —
+     * same terms an admin already knows from `/admin/orders`, not
+     * export-only labels. `delivery_status` is included too: a paid
+     * order's `platform_profit`/`affiliate_profit` here can legitimately
+     * be RM0 while `/admin/orders` still shows its checkout-time-stamped
+     * (non-ledger) snapshot for a failed delivery — this column is what
+     * explains that discrepancy to whoever's reading the export.
+     */
     public function exportRows(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): Collection
     {
         $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
-            ->with('affiliate:id,business_name')
+            ->with(['affiliate:id,business_name', 'game:id,name', 'package:id,name', 'walletReseller:id,business_name'])
             ->orderBy('paid_at')
-            ->get(['id', 'order_number', 'paid_at', 'customer_email', 'final_amount', 'affiliate_id']);
+            ->get([
+                'id', 'order_number', 'paid_at', 'customer_email', 'final_amount',
+                'affiliate_id', 'game_id', 'package_id', 'wallet_reseller_id',
+                'payment_method', 'pricing_basis', 'delivery_status',
+            ]);
 
         $profitByOrder = LedgerEntry::query()
             ->where('type', 'order_profit')
@@ -455,6 +513,12 @@ final class ReportService
                 'paid_at' => $order->paid_at?->setTimezone(self::TIMEZONE)->toDateTimeString(),
                 'customer_email' => $order->customer_email,
                 'affiliate_name' => $order->affiliate?->business_name,
+                'game_name' => $order->game?->name,
+                'package_name' => $order->package?->name,
+                'payment_method' => $order->payment_method,
+                'pricing_basis' => $order->pricing_basis === PricingBasis::Member ? 'Member' : 'Standard',
+                'reseller_name' => $order->walletReseller?->business_name,
+                'delivery_status' => $order->delivery_status->value,
                 'final_amount' => $order->final_amount,
                 'platform_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount'),
                 'affiliate_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Affiliate->value)->sum('amount'),

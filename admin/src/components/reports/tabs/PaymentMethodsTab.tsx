@@ -14,7 +14,7 @@ export function PaymentMethodsTab({ token, filters }: { token: string; filters: 
       .then((res) => setRows(res.payment_methods))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.year, filters.month, filters.affiliateId]);
+  }, [token, filters.from, filters.to, filters.affiliateId]);
 
   return (
     <div className="grid grid-cols-1 gap-6">

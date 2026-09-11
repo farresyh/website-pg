@@ -5,17 +5,18 @@ import { type ReportFilters, type ReportTrendDay, getReportTrend } from "@/lib/r
 import { TrendChart } from "../TrendChart";
 import { toRm } from "../format";
 
-const dayRangeOptions: Array<7 | 14 | 30> = [7, 14, 30];
-
 export function ProfitAnalysisTab({ token, filters }: { token: string; filters: ReportFilters }) {
   const [trend, setTrend] = useState<ReportTrendDay[] | null>(null);
-  const [days, setDays] = useState<7 | 14 | 30>(30);
 
   useEffect(() => {
-    getReportTrend(token, days, filters.affiliateId)
+    // ADR-086 filter-unification follow-up — both charts below share one
+    // fetch and now follow the page's own filter (no more a private
+    // 7/14/30-day toggle disagreeing with it).
+    getReportTrend(token, filters)
       .then((res) => setTrend(res.days))
       .catch(() => undefined);
-  }, [token, days, filters.affiliateId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, filters.from, filters.to, filters.affiliateId]);
 
   const marginPct = trend?.map((d) => (d.sales > 0 ? (d.platform_profit / d.sales) * 100 : 0)) ?? [];
 
@@ -24,22 +25,6 @@ export function ProfitAnalysisTab({ token, filters }: { token: string; filters: 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Owner vs Affiliate Profit</h2>
-          <div className="flex gap-1">
-            {dayRangeOptions.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDays(d)}
-                className={`rounded-md px-2.5 py-1 text-theme-xs font-medium ${
-                  days === d
-                    ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400"
-                    : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.05]"
-                }`}
-              >
-                {d}d
-              </button>
-            ))}
-          </div>
         </div>
         {trend ? (
           <TrendChart

@@ -32,7 +32,7 @@ export function AffiliatesTab({ token, filters }: { token: string; filters: Repo
       .then((res) => setResellerRows(res.resellers))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.year, filters.month, filters.affiliateId]);
+  }, [token, filters.from, filters.to, filters.affiliateId]);
 
   return (
     <div className="flex flex-col gap-6">
