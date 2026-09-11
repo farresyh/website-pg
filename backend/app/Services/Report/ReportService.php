@@ -6,6 +6,7 @@ use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -277,6 +278,59 @@ final class ReportService
                 'orders_count' => $ordersCount,
                 'platform_profit' => $profit['platform'] ?? 0,
                 'affiliate_profit' => $profit['affiliate'] ?? 0,
+                'avg_order_value' => (int) round($row->sales / $ordersCount),
+            ];
+        }
+
+        usort($rows, fn (array $a, array $b) => $b['sales'] <=> $a['sales']);
+
+        return $rows;
+    }
+
+    /**
+     * ADR-086 PR-2 — Reseller-wallet breakdown. `wallet_reseller_id` (ADR-
+     * 072..075) is a column distinct from `affiliate_id`: a wallet order
+     * is placed by a prepaid-wallet Reseller account, not an Affiliate
+     * whitelabel brand. A wallet order's `affiliate_profit` is always 0
+     * (no revenue-share channel — the reseller pays the wholesale price
+     * and the platform keeps the full margin), so this breakdown only
+     * ever reports platform profit, not an affiliate split.
+     *
+     * Unlike affiliateBreakdown(), the "not a wallet order" (key 0)
+     * bucket is dropped rather than surfaced as "Unknown" — it's the
+     * overwhelming majority of normal orders, already covered by
+     * affiliateBreakdown()/the rest of Reports, and showing it here
+     * as "Unknown Reseller" would misleadingly imply those sales are
+     * reseller-channel activity. `withTrashed()` on the name lookup so a
+     * since-removed reseller's historical sales keep their name, not
+     * "Unknown Reseller".
+     */
+    public function resellerBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $sales = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), 'COALESCE(wallet_reseller_id, 0)');
+        $profitByReseller = $this->profitByGroup($from, $toExclusive, $affiliateId, 'COALESCE(orders.wallet_reseller_id, 0)');
+
+        $resellerIds = $sales->keys()->reject(fn ($id) => (int) $id === 0)->all();
+        $resellerNames = Reseller::query()->withTrashed()->whereIn('id', $resellerIds)->pluck('business_name', 'id');
+
+        $rows = [];
+
+        foreach ($sales as $id => $row) {
+            $idInt = (int) $id;
+
+            if ($idInt === 0) {
+                continue;
+            }
+
+            $ordersCount = (int) $row->orders_count;
+            $profit = $profitByReseller->get($id);
+
+            $rows[] = [
+                'reseller_id' => $idInt,
+                'reseller_name' => $resellerNames[$idInt] ?? 'Unknown Reseller',
+                'sales' => (int) $row->sales,
+                'orders_count' => $ordersCount,
+                'platform_profit' => $profit['platform'] ?? 0,
                 'avg_order_value' => (int) round($row->sales / $ordersCount),
             ];
         }

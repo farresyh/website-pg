@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -140,6 +141,15 @@ class ReportControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $this->getJson('/api/reports/breakdown/affiliates')->assertOk()->assertJsonStructure(['affiliates']);
+    }
+
+    public function test_reseller_breakdown_returns_rows(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        $this->order(['wallet_reseller_id' => $reseller->id]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/breakdown/resellers')->assertOk()->assertJsonStructure(['resellers']);
     }
 
     public function test_order_status_funnel_returns_shape(): void

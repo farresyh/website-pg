@@ -73,6 +73,16 @@ export interface ReportAffiliateRow {
   avg_order_value: number;
 }
 
+/** ADR-086 PR-2 — Reseller-wallet breakdown, distinct from ReportAffiliateRow above. */
+export interface ReportResellerRow {
+  reseller_id: number;
+  reseller_name: string;
+  sales: number;
+  orders_count: number;
+  platform_profit: number;
+  avg_order_value: number;
+}
+
 export interface ReportOrderStatusFunnel {
   total: number;
   by_status: {
@@ -146,6 +156,11 @@ export function getPaymentMethodBreakdown(token: string, filters: ReportFilters)
 export function getAffiliateBreakdown(token: string, filters: ReportFilters) {
   const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
   return apiFetch<{ affiliates: ReportAffiliateRow[] }>(`/api/reports/breakdown/affiliates${query}`, { token });
+}
+
+export function getResellerBreakdown(token: string, filters: ReportFilters) {
+  const query = buildQuery({ year: filters.year, month: filters.month, affiliate_id: filters.affiliateId });
+  return apiFetch<{ resellers: ReportResellerRow[] }>(`/api/reports/breakdown/resellers${query}`, { token });
 }
 
 export function getOrderStatusFunnel(token: string, filters: ReportFilters) {

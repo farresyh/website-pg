@@ -97,6 +97,16 @@ class ReportController extends Controller
         ]);
     }
 
+    /** ADR-086 PR-2 — Reseller-wallet breakdown, distinct from Affiliate above. */
+    public function resellerBreakdown(Request $request): JsonResponse
+    {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+
+        return response()->json([
+            'resellers' => $this->reports->resellerBreakdown($from, $toExclusive, $this->affiliateId($request)),
+        ]);
+    }
+
     public function orderStatusFunnel(Request $request): JsonResponse
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);
