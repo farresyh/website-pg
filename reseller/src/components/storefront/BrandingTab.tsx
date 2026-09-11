@@ -9,6 +9,8 @@ import {
   updateStorefrontSeo,
   uploadStorefrontLogo,
   deleteStorefrontLogo,
+  uploadStorefrontFavicon,
+  deleteStorefrontFavicon,
   type StorefrontBrandingResponse,
 } from "@/lib/portal";
 import { Panel, ErrorNote } from "@/components/ui";
@@ -51,7 +53,9 @@ export default function BrandingTab() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
+  const [faviconBusy, setFaviconBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const faviconRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const session = getClientSession();
@@ -146,6 +150,36 @@ export default function BrandingTab() {
     }
   }
 
+  async function handleFavicon(file: File) {
+    const session = getClientSession();
+    if (!session) return;
+    setError(null);
+    setFaviconBusy(true);
+    try {
+      const result = await uploadStorefrontFavicon(session.token, file);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not upload that favicon.");
+    } finally {
+      setFaviconBusy(false);
+      if (faviconRef.current) faviconRef.current.value = "";
+    }
+  }
+
+  async function removeFavicon() {
+    const session = getClientSession();
+    if (!session) return;
+    setError(null);
+    setFaviconBusy(true);
+    try {
+      setData(await deleteStorefrontFavicon(session.token));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not remove the favicon.");
+    } finally {
+      setFaviconBusy(false);
+    }
+  }
+
   if (error && !form) return <ErrorNote message={error} />;
   if (!form || !data) return <TabLoading />;
 
@@ -174,7 +208,7 @@ export default function BrandingTab() {
               className="block text-theme-xs text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-brand-600 disabled:opacity-50 dark:text-gray-400 dark:file:bg-brand-500/15 dark:file:text-brand-400"
             />
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-              PNG, JPG or WebP, up to 2&nbsp;MB. Converted to WebP automatically. SVG is not supported.
+              PNG, JPG or WebP, up to 2&nbsp;MB. Shown in your header + footer — a wide logo/wordmark works fine, it&apos;s not cropped to a square.
             </p>
             {data.branding.logo_url && writable && (
               <button
@@ -184,6 +218,42 @@ export default function BrandingTab() {
                 className="text-theme-xs text-error-600 hover:underline disabled:opacity-50 dark:text-error-400"
               >
                 Remove logo
+              </button>
+            )}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title="Favicon">
+        <div className="flex flex-wrap items-center gap-4 p-5">
+          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
+            {data.branding.favicon_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={data.branding.favicon_url} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <span className="text-theme-xs text-gray-400">None</span>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <input
+              ref={faviconRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={!writable || faviconBusy}
+              onChange={(e) => e.target.files?.[0] && handleFavicon(e.target.files[0])}
+              className="block text-theme-xs text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-brand-600 disabled:opacity-50 dark:text-gray-400 dark:file:bg-brand-500/15 dark:file:text-brand-400"
+            />
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+              Recommended: 512×512px square, PNG, transparent background — this becomes your browser tab icon. A separate asset from the logo above.
+            </p>
+            {data.branding.favicon_url && writable && (
+              <button
+                type="button"
+                onClick={removeFavicon}
+                disabled={faviconBusy}
+                className="text-theme-xs text-error-600 hover:underline disabled:opacity-50 dark:text-error-400"
+              >
+                Remove favicon
               </button>
             )}
           </div>
