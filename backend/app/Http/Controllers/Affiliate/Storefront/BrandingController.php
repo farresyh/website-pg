@@ -8,6 +8,7 @@ use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\SeoController as PublicSeoController;
 use App\Http\Requests\Affiliate\Storefront\UpdateBrandingRequest;
+use App\Http\Requests\Affiliate\Storefront\UploadFaviconRequest;
 use App\Http\Requests\Affiliate\Storefront\UploadImageRequest;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateSeoSettings;
@@ -38,6 +39,9 @@ class BrandingController extends Controller
     /** ADR-060 PR-6 planning addendum decision 4: logo longest edge. */
     private const LOGO_MAX_EDGE = 512;
 
+    /** ADR-089: favicon source, square — 512 covers every standard icon size Next.js's `app/icon` derives. */
+    private const FAVICON_MAX_EDGE = 512;
+
     public function __construct(private readonly ImageIngestService $images) {}
 
     public function show(Request $request): JsonResponse
@@ -51,7 +55,9 @@ class BrandingController extends Controller
                 'store_name' => $branding?->store_name ?? $affiliate->business_name,
                 'description' => $branding?->description,
                 'logo_url' => $branding?->logo_url,
+                'favicon_url' => $branding?->favicon_url,
                 'theme_preset' => $branding?->theme_preset ?? 'default',
+                'theme_mode' => $branding?->theme_mode ?? 'light',
                 'support_email' => $branding?->support_email,
                 'support_phone' => $branding?->support_phone,
                 'telegram_contact_link' => $branding?->telegram_contact_link,
@@ -123,6 +129,48 @@ class BrandingController extends Controller
         if ($branding?->logo_path !== null) {
             $this->images->delete($branding->logo_path);
             $branding->logo_path = null;
+            $branding->save();
+            $this->flushBrandCaches($affiliate->id);
+        }
+
+        return $this->show($request);
+    }
+
+    /**
+     * ADR-089: a favicon is a separate square asset from the header
+     * logo — see `UploadFaviconRequest` for why (dimension/ratio guard).
+     */
+    public function uploadFavicon(UploadFaviconRequest $request): JsonResponse
+    {
+        $affiliate = $request->user()->affiliateOwner();
+        $this->assertWritable($affiliate);
+
+        $path = $this->images->ingest(
+            $request->file('image'),
+            "affiliate-favicons/{$affiliate->id}.webp",
+            self::FAVICON_MAX_EDGE,
+        );
+
+        $branding = AffiliateBranding::withoutAffiliateScope()->firstOrNew(['affiliate_id' => $affiliate->id]);
+        $branding->store_name ??= $affiliate->business_name;
+        $branding->favicon_path = $path;
+        $branding->save();
+
+        $this->flushBrandCaches($affiliate->id);
+
+        return $this->show($request);
+    }
+
+    public function destroyFavicon(Request $request): JsonResponse
+    {
+        $affiliate = $request->user()->affiliateOwner();
+        $this->assertWritable($affiliate);
+
+        $branding = AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
+
+        if ($branding?->favicon_path !== null) {
+            $this->images->delete($branding->favicon_path);
+            $branding->favicon_path = null;
             $branding->save();
             $this->flushBrandCaches($affiliate->id);
         }

@@ -347,6 +347,8 @@ Route::prefix('affiliate')->group(function () {
                 Route::put('/branding', [AffiliateStorefrontBrandingController::class, 'update']);
                 Route::post('/branding/logo', [AffiliateStorefrontBrandingController::class, 'uploadLogo']);
                 Route::delete('/branding/logo', [AffiliateStorefrontBrandingController::class, 'destroyLogo']);
+                Route::post('/branding/favicon', [AffiliateStorefrontBrandingController::class, 'uploadFavicon']);
+                Route::delete('/branding/favicon', [AffiliateStorefrontBrandingController::class, 'destroyFavicon']);
 
                 Route::put('/seo', [AffiliateStorefrontSeoController::class, 'update']);
 
@@ -612,6 +614,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin')->prefix('settings')->group(function () {
         Route::get('/', [SettingsController::class, 'index']);
         Route::put('/branding', [SettingsController::class, 'updateBranding']);
+        // ADR-089: primary brand's logo/favicon — same upload pipeline
+        // as the affiliate portal, gated admin-side instead.
+        Route::post('/branding/logo', [SettingsController::class, 'uploadLogo']);
+        Route::delete('/branding/logo', [SettingsController::class, 'destroyLogo']);
+        Route::post('/branding/favicon', [SettingsController::class, 'uploadFavicon']);
+        Route::delete('/branding/favicon', [SettingsController::class, 'destroyFavicon']);
         Route::put('/footer', [SettingsController::class, 'updateFooter']);
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);

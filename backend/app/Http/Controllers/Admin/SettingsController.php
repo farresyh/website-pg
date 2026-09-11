@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
+use App\Http\Requests\Affiliate\Storefront\UploadFaviconRequest;
+use App\Http\Requests\Affiliate\Storefront\UploadImageRequest;
 use App\Http\Requests\Settings\BulkMarkupRequest;
 use App\Http\Requests\Settings\UpdateBrandingRequest;
 use App\Http\Requests\Settings\UpdateFooterSettingsRequest;
@@ -15,6 +17,7 @@ use App\Models\AffiliateFooterSettings;
 use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\PriceChangeLog;
+use App\Services\Media\ImageIngestService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +31,15 @@ use Mews\Purifier\Facades\Purifier;
  */
 class SettingsController extends Controller
 {
-    public function __construct(private readonly PackageMarkupService $markup) {}
+    /** ADR-089: mirrors the affiliate portal's own constants — see `Affiliate\Storefront\BrandingController`. */
+    private const LOGO_MAX_EDGE = 512;
+
+    private const FAVICON_MAX_EDGE = 512;
+
+    public function __construct(
+        private readonly PackageMarkupService $markup,
+        private readonly ImageIngestService $images,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -47,6 +58,64 @@ class SettingsController extends Controller
         $branding = $this->brandingFor($affiliate);
         $branding->update($request->validated());
         BrandingController::forgetCache($affiliate->id);
+
+        return response()->json($branding);
+    }
+
+    /** ADR-089: primary brand's logo — same pipeline as the affiliate portal's `uploadLogo`. */
+    public function uploadLogo(UploadImageRequest $request): JsonResponse
+    {
+        $affiliate = Affiliate::primary();
+        $path = $this->images->ingest($request->file('image'), "affiliate-logos/{$affiliate->id}.webp", self::LOGO_MAX_EDGE);
+
+        $branding = $this->brandingFor($affiliate);
+        $branding->logo_path = $path;
+        $branding->save();
+        BrandingController::forgetCache($affiliate->id);
+
+        return response()->json($branding);
+    }
+
+    public function destroyLogo(): JsonResponse
+    {
+        $affiliate = Affiliate::primary();
+        $branding = $this->brandingFor($affiliate);
+
+        if ($branding->logo_path !== null) {
+            $this->images->delete($branding->logo_path);
+            $branding->logo_path = null;
+            $branding->save();
+            BrandingController::forgetCache($affiliate->id);
+        }
+
+        return response()->json($branding);
+    }
+
+    /** ADR-089: primary brand's favicon — separate square asset, see `UploadFaviconRequest`. */
+    public function uploadFavicon(UploadFaviconRequest $request): JsonResponse
+    {
+        $affiliate = Affiliate::primary();
+        $path = $this->images->ingest($request->file('image'), "affiliate-favicons/{$affiliate->id}.webp", self::FAVICON_MAX_EDGE);
+
+        $branding = $this->brandingFor($affiliate);
+        $branding->favicon_path = $path;
+        $branding->save();
+        BrandingController::forgetCache($affiliate->id);
+
+        return response()->json($branding);
+    }
+
+    public function destroyFavicon(): JsonResponse
+    {
+        $affiliate = Affiliate::primary();
+        $branding = $this->brandingFor($affiliate);
+
+        if ($branding->favicon_path !== null) {
+            $this->images->delete($branding->favicon_path);
+            $branding->favicon_path = null;
+            $branding->save();
+            BrandingController::forgetCache($affiliate->id);
+        }
 
         return response()->json($branding);
     }

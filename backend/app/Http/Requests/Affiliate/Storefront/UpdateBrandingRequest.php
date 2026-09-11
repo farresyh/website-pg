@@ -24,6 +24,10 @@ class UpdateBrandingRequest extends FormRequest
         return [
             'store_name' => ['required', 'string', 'max:255'],
             'theme_preset' => ['nullable', 'string', 'in:default,bumblebee,redgiants,emerald,cobalt'],
+            // ADR-090: only `default` ships a dark palette today — the
+            // portal's ThemeTab hides "Dark" for any preset without a
+            // `tokensDark`, but this stays the actual enforcement.
+            'theme_mode' => ['nullable', 'string', 'in:light,dark'],
             'description' => ['nullable', 'string', 'max:2000'],
             'support_email' => ['nullable', 'email', 'max:255'],
             'support_phone' => ['nullable', 'string', 'max:32'],

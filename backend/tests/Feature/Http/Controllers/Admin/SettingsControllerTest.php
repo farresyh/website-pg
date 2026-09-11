@@ -9,6 +9,8 @@ use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -96,6 +98,46 @@ class SettingsControllerTest extends TestCase
             'store_name' => 'PekanGame',
             'support_email' => 'support@pekangame.space',
         ]);
+    }
+
+    public function test_uploads_and_removes_the_primary_brand_logo(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $this->actingAsSuperAdmin();
+        $primary = $this->primaryAffiliate();
+
+        $response = $this->post('/api/settings/branding/logo', [
+            'image' => UploadedFile::fake()->image('logo.png', 900, 300),
+        ]);
+
+        $response->assertOk();
+        $this->assertStringContainsString('.webp', $response->json('logo_url'));
+        Storage::disk(config('filesystems.gallery_disk'))->assertExists("affiliate-logos/{$primary->id}.webp");
+
+        $this->deleteJson('/api/settings/branding/logo')->assertOk()->assertJsonPath('logo_url', null);
+        Storage::disk(config('filesystems.gallery_disk'))->assertMissing("affiliate-logos/{$primary->id}.webp");
+    }
+
+    public function test_uploads_and_removes_the_primary_brand_favicon(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $this->actingAsSuperAdmin();
+        $primary = $this->primaryAffiliate();
+
+        $this->post('/api/settings/branding/favicon', [
+            'image' => UploadedFile::fake()->image('not-square.png', 512, 800),
+        ])->assertStatus(422)->assertJsonValidationErrors('image');
+
+        $response = $this->post('/api/settings/branding/favicon', [
+            'image' => UploadedFile::fake()->image('favicon.png', 512, 512),
+        ]);
+
+        $response->assertOk();
+        $this->assertStringContainsString('.webp', $response->json('favicon_url'));
+        Storage::disk(config('filesystems.gallery_disk'))->assertExists("affiliate-favicons/{$primary->id}.webp");
+
+        $this->deleteJson('/api/settings/branding/favicon')->assertOk()->assertJsonPath('favicon_url', null);
+        Storage::disk(config('filesystems.gallery_disk'))->assertMissing("affiliate-favicons/{$primary->id}.webp");
     }
 
     public function test_update_footer_sanitizes_legal_content_and_keeps_the_store_name_token_raw(): void
