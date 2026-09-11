@@ -602,6 +602,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Real logo/artwork still placeholder | ADR-062–065, 071, 077–079 |
+| Internal Accounting (supplier funding ledger) | 🟡 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. PR-2 (CHIP `.xlsx` settlement recon, Monthly Accounting Summary) waits for real order flow | ADR-083 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
 TailAdmin primitive in `admin/` migrated or deleted; `RichTextEditor` is the one
@@ -653,10 +654,10 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
 
 ## Buildable now (design done, not started)
 
-10. **ADR-083 PR-1** — supplier funding ledger (`supplier_transfers` +
-    `supplier_ledger_entries`, no FIFO). Grilled + designed 2026-09-10, buildable
-    before suppliers are funded. PR-2 (CHIP `.xlsx` settlement recon) waits for
-    real order flow + a real settlement file.
+10. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
+    Accounting Summary screen. Waits for real order flow + a real settlement
+    file from the **PekanGame** CHIP account (PR-1 shipped 2026-09-11 — see
+    `docs/build-log.md`).
 11. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
 
