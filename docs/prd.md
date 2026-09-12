@@ -246,6 +246,8 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 
 **Resolved 2026-09-09 by [ADR-081](./adr.md).** Shipped: a **curated fixed set of 5 theme presets** (`affiliate_branding.theme_preset`), an affiliate picks one in the portal "Theme" tab (live preview), the storefront injects the preset's Material-3 **colour** tokens only — structure/typography unchanged. Adding a preset is a code change, not an admin operation. The heavier THM-1..4 vision below is **dropped, not deferred** — re-argue only against real sized demand.
 
+**Extended 2026-09-11 by [ADR-090](./adr.md).** Grilled after the founder found the presets barely changed the page in production — root cause: `tokens` only ever covered accent colours (`--color-primary`/`secondary`/`tertiary`/`warning`), never `--color-surface*`/`--color-ink` (background/text), which stayed fixed once in `globals.css :root` regardless of preset. All 5 presets now carry surface/ink overrides too, so a preset actually recolors the whole page, not just buttons/badges. Also delivers the first slice of ADR-081's pinned dark-mode requirement: a per-affiliate fixed **Site Mode** (light/dark, not a viewer-side toggle) with a hand-authored `tokensDark` for the `default` preset; the other 4 presets' dark palettes are backlog (§16).
+
 | ID | Original Phase-2 requirement | Status |
 | --- | --- | --- |
 | **THM-1** | Theme list (cards/grid) with preview, status badge, usage count | 🟡 **Partial** — a fixed preset picker with live preview shipped (ADR-081); no admin CRUD, no usage count |
@@ -588,7 +590,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. ORD-5 export unbuilt | ADR-017, 026, 032 |
-| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. Gemini LLM assistant (ADR-087) not built | ADR-086, 087, 088 |
+| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. **ADR-087 built 2026-09-12** — Gemini Flash LLM assistant at `/admin/reports/assistant`, `super_admin`-only; needs `GEMINI_API_KEY` provisioned before it works in any real environment (same .env-only rollout as CHIP/Digiflazz) | ADR-086, 087, 088 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`) | — |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
@@ -597,11 +599,11 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Backups (BAK-1..5) | ✅ Live — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. Host-agnostic | ADR-039 |
 | Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete. In-modal picker not wired (paste URL); disk is config-driven for a later R2 swap | — |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage | ADR-029 |
-| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt | ADR-028 |
+| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
-| Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Real logo/artwork still placeholder | ADR-062–065, 071, 077–079 |
+| Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork asset itself still placeholder | ADR-062–065, 071, 077–079, 089, 090 |
 | Internal Accounting (supplier funding ledger) | 🟡 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. PR-2 (CHIP `.xlsx` settlement recon, Monthly Accounting Summary) waits for real order flow | ADR-083 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
@@ -625,7 +627,9 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
 ## Polish (not blocking launch)
 
 2. **Real PekanGame logo + hero artwork** — the primary storefront mark is still
-   the SVG placeholder (affiliate logos already upload via the portal).
+   the SVG placeholder. The upload gap is closed (ADR-089 gave `/admin/settings`
+   a Logo + Favicon panel, same pipeline affiliates already had); the founder
+   still owes the actual asset file.
 3. **Founder-owed one-off:** open `/admin/reviews`, filter *approved*, read
    through once — ADR-082 made every approved review public retroactively (the
    approve bar used to mean "not spam", now means "shown to customers"); reject
@@ -639,7 +643,12 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
    price update), GAME-12 + game SEO fields, ORD-5 (order export), SET-9 (the
    Telegram *sender* — the setting fields exist), gallery in-modal picker,
    gallery→WebP + delete referential safety, SEO `AggregateRating` JSON-LD on the
-   PDP, consolidate ADR-081's 3× theme-preset ID list.
+   PDP, consolidate ADR-081's 3× theme-preset ID list (now also the token-map
+   duplication ADR-090 grew across the same 2 files), and **ADR-090's
+   dark-palette backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each
+   still need a hand-authored `tokensDark` (only `default` has one; the
+   portal's Site Mode toggle already hides "Dark" for any preset without one,
+   so this is additive design work, not a blocker).
 
 ## Hardening (founder `.env` / infra)
 
@@ -660,23 +669,22 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     `docs/build-log.md`).
 11. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
-12. **ADR-086** — Reports restructure: rebuild-from-scratch audit of every
-    existing `ReportService` method/tab (keep/merge/extend per case), new
-    Membership + Reseller-wallet breakdown dimensions, single-pass grouped-SQL
-    rewrite of all 7 breakdown methods (shared paid_at-scope + double-count-safe
-    profit SQL fragment), existing filter/tab UX preserved, hand-rolled SVG
-    charts migrated to PrimeReact `Chart` (Chart.js, zero new dependency).
-    Grilled 2026-09-11.
-13. **ADR-087** — Admin Reports LLM Assistant: Gemini Flash, curated read-only
-    SQL views (not raw-table text-to-SQL, not a fixed-function-only set) sitting
-    on top of ADR-086's grouped-SQL layer, `super_admin`-only, its own route
-    under Reports (`/admin/reports/assistant`), additive to — not a replacement
-    for — the existing tabs. Grilled 2026-09-11.
-
+12. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
+    LLM Report Assistant (`/admin/reports/assistant`): a ChatGPT/Gemini-style
+    sidebar (new chat, switch between past threads, delete a thread), the
+    assistant still remembering a past thread's context when reopened. Reverses
+    ADR-087 decision 7 ("session-scoped only, never persisted to the database
+    long-term") — needs its own grill before building, not a trivial addition:
+    open questions include retention policy for old threads (vs. the existing
+    90-day audit log, which stays regardless and serves a different, compliance
+    purpose), per-admin thread isolation, and DB/endpoint shape (list/create/
+    delete thread, fetch a thread's messages). Raised by the founder 2026-09-12;
+    not a system-load concern either way — Gemini's own per-message cost already
+    scales with resent history length today, persisting it doesn't add API cost,
+    only cheap DB storage for a handful of `super_admin` accounts.
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 Voucher double-submit guard (Path A) · blacklist data-source / appeal policy ·
-**dark-mode / THM ADR** (must add `tokensDark` per ADR-081 preset) ·
 CHIP credential `.env`→DB migration · Cloudflare R2 storage (code
 prepped — `ImageIngestService` seam + `GALLERY_DISK`; fold in WebP-at-upload).
 The `PaymentGatewayFactory` seam is kept for multi-region payment; a real 2nd

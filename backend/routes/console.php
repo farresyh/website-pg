@@ -85,6 +85,14 @@ Schedule::call(fn () => Artisan::call('app:prune-supplier-request-logs'))
     ->name('supplier-request-log-pruning')
     ->withoutOverlapping();
 
+// ADR-087 decision 8 — same inert-until-real-cron pattern as above.
+// Prunes report_assistant_audit_logs past its 90-day retention window —
+// see PruneReportAssistantAuditLogsCommand's own docblock.
+Schedule::call(fn () => Artisan::call('app:prune-report-assistant-audit-logs'))
+    ->daily()
+    ->name('report-assistant-audit-log-pruning')
+    ->withoutOverlapping();
+
 // PR-F build addendum (ADR-075) — same inert-until-real-cron pattern as
 // above. Prunes reseller_whatsapp_pending_links past its 24h TTL and
 // reseller_bot_command_logs past its 7-day retention — see each

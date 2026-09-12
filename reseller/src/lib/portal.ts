@@ -324,7 +324,9 @@ export interface StorefrontBrandingResponse {
     store_name: string;
     description: string | null;
     logo_url: string | null;
+    favicon_url: string | null;
     theme_preset?: string | null;
+    theme_mode?: "light" | "dark" | null;
     support_email: string | null;
     support_phone: string | null;
     telegram_contact_link: string | null;
@@ -347,6 +349,7 @@ export function updateStorefrontBranding(
   body: {
     store_name: string;
     theme_preset?: string | null;
+    theme_mode?: "light" | "dark" | null;
     description?: string | null;
     support_email?: string | null;
     support_phone?: string | null;
@@ -379,6 +382,19 @@ export function uploadStorefrontLogo(token: string, file: File) {
 
 export function deleteStorefrontLogo(token: string) {
   return apiFetch<StorefrontBrandingResponse>("/api/affiliate/storefront/branding/logo", {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function uploadStorefrontFavicon(token: string, file: File) {
+  const form = new FormData();
+  form.append("image", file);
+  return apiUpload<StorefrontBrandingResponse>("/api/affiliate/storefront/branding/favicon", form, { token });
+}
+
+export function deleteStorefrontFavicon(token: string) {
+  return apiFetch<StorefrontBrandingResponse>("/api/affiliate/storefront/branding/favicon", {
     method: "DELETE",
     token,
   });

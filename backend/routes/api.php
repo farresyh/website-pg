@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\MembershipController as AdminMembershipController
 use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
+use App\Http\Controllers\Admin\ReportAssistantController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ResellerApiKeyController;
 use App\Http\Controllers\Admin\ResellerController;
@@ -347,6 +348,8 @@ Route::prefix('affiliate')->group(function () {
                 Route::put('/branding', [AffiliateStorefrontBrandingController::class, 'update']);
                 Route::post('/branding/logo', [AffiliateStorefrontBrandingController::class, 'uploadLogo']);
                 Route::delete('/branding/logo', [AffiliateStorefrontBrandingController::class, 'destroyLogo']);
+                Route::post('/branding/favicon', [AffiliateStorefrontBrandingController::class, 'uploadFavicon']);
+                Route::delete('/branding/favicon', [AffiliateStorefrontBrandingController::class, 'destroyFavicon']);
 
                 Route::put('/seo', [AffiliateStorefrontSeoController::class, 'update']);
 
@@ -496,6 +499,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/export', [ReportController::class, 'export']);
     });
 
+    // ADR-087 decision 6/9 — super_admin only (stricter than the Reports
+    // group above: this surface's read access is broader than any
+    // single existing screen), own route rather than a Reports tab.
+    Route::middleware('admin.role:super_admin')->prefix('reports/assistant')->group(function () {
+        Route::post('/ask', [ReportAssistantController::class, 'ask']);
+    });
+
     Route::middleware('admin.role:super_admin,admin')->prefix('customer-analytics')->group(function () {
         Route::get('/summary', [CustomerAnalyticsController::class, 'summary']);
         Route::get('/customers', [CustomerAnalyticsController::class, 'customers']);
@@ -612,6 +622,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin')->prefix('settings')->group(function () {
         Route::get('/', [SettingsController::class, 'index']);
         Route::put('/branding', [SettingsController::class, 'updateBranding']);
+        // ADR-089: primary brand's logo/favicon — same upload pipeline
+        // as the affiliate portal, gated admin-side instead.
+        Route::post('/branding/logo', [SettingsController::class, 'uploadLogo']);
+        Route::delete('/branding/logo', [SettingsController::class, 'destroyLogo']);
+        Route::post('/branding/favicon', [SettingsController::class, 'uploadFavicon']);
+        Route::delete('/branding/favicon', [SettingsController::class, 'destroyFavicon']);
         Route::put('/footer', [SettingsController::class, 'updateFooter']);
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
