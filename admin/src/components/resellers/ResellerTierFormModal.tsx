@@ -31,6 +31,7 @@ function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
   const [markup, setMarkup] = useState(editing?.markup_percent ?? "");
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [sortOrder, setSortOrder] = useState(String(editing?.sort_order ?? 0));
+  const [showOnPriceList, setShowOnPriceList] = useState(editing?.show_on_price_list ?? false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,6 +51,7 @@ function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
         markup_percent: markupPct,
         is_active: isActive,
         sort_order: Number.isFinite(sort) ? sort : 0,
+        show_on_price_list: showOnPriceList,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -84,6 +86,17 @@ function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active (assignable to resellers)
         </label>
+        <label className="flex items-center gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={showOnPriceList}
+            onChange={(e) => setShowOnPriceList(e.target.checked)}
+          />
+          Show on the public Reseller Price List
+        </label>
+        <p className="-mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+          Up to 3 tiers can be shown at once. Column order follows Sort order above.
+        </p>
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>

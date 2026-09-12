@@ -75,4 +75,44 @@ class ResellerTierControllerTest extends TestCase
         $this->deleteJson("/api/reseller-tiers/{$tier->id}")->assertOk();
         $this->assertSoftDeleted('reseller_tiers', ['id' => $tier->id]);
     }
+
+    /** ADR-091: at most 3 tiers may have show_on_price_list = true. */
+    public function test_show_on_price_list_capped_at_three_on_create(): void
+    {
+        $this->actAsSuperAdmin();
+
+        foreach (['SS', 'S', 'A'] as $i => $name) {
+            $this->postJson('/api/reseller-tiers', [
+                'name' => $name, 'markup_percent' => $i + 3, 'show_on_price_list' => true,
+            ])->assertCreated();
+        }
+
+        $this->postJson('/api/reseller-tiers', [
+            'name' => 'B', 'markup_percent' => 6, 'show_on_price_list' => true,
+        ])->assertUnprocessable()->assertJsonValidationErrors('show_on_price_list');
+
+        $this->assertSame(3, ResellerTier::query()->where('show_on_price_list', true)->count());
+    }
+
+    public function test_show_on_price_list_capped_at_three_on_update(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $tiers = collect(['SS', 'S', 'A'])->map(
+            fn ($name, $i) => ResellerTier::query()->create([
+                'name' => $name, 'markup_percent' => $i + 3, 'show_on_price_list' => true, 'is_active' => true,
+            ]),
+        );
+
+        $notShown = ResellerTier::query()->create([
+            'name' => 'SSS', 'markup_percent' => 0, 'show_on_price_list' => false, 'is_active' => true,
+        ]);
+
+        $this->putJson("/api/reseller-tiers/{$notShown->id}", ['show_on_price_list' => true])
+            ->assertUnprocessable()->assertJsonValidationErrors('show_on_price_list');
+
+        // Re-saving an already-shown tier (still true) must not trip its own count.
+        $this->putJson("/api/reseller-tiers/{$tiers->first()->id}", ['show_on_price_list' => true])
+            ->assertOk();
+    }
 }
