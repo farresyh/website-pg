@@ -41,7 +41,7 @@ final class ReportAssistantService
     private const AUDIT_SAMPLE_ROWS = 20;
 
     private const SCHEMA_DESCRIPTION = <<<'SCHEMA'
-        You may query ONLY these two read-only SQL views. No other table exists to you.
+        You may query ONLY these three read-only SQL views. No other table exists to you.
 
         llm_report_orders — one row per successfully PAID order (already filtered to
         is_test=false, payment_status=paid, paid_at IS NOT NULL). Money columns are
@@ -57,10 +57,16 @@ final class ReportAssistantService
           - delivery_status ('delivered', 'failed', 'processing', 'not_started', ...)
           - affiliate_id, affiliate_name (the whitelabel storefront brand; null = primary brand)
           - wallet_reseller_id, reseller_name (a prepaid-wallet Reseller order; null = not one)
+          - supplier_id, supplier_name (which supplier fulfilled this order)
+          - cost_price (what this order cost the platform, sen, AS OF WHEN IT WAS PLACED — use
+            llm_report_catalog instead for today's cost, they can legitimately differ)
+          - transaction_fee, voucher_discount (sen)
+          - affiliate_markup_pct, wholesale_markup_pct (percent, whichever channel applied)
           - final_amount (what the customer paid, sen)
           - normal_selling_price (member order's counterfactual standard price, sen; null for standard orders)
           - selling_price (sen)
           - platform_profit, affiliate_profit (ledger-recognized, sen; 0 if not yet delivered)
+          Gross margin on one order = final_amount - cost_price - transaction_fee.
 
         llm_report_membership_fees — one row per membership subscription/renewal fee
         actually booked (ledger type=membership_fee).
@@ -68,11 +74,24 @@ final class ReportAssistantService
           - membership_id, affiliate_id, affiliate_name
           - member_email, plan_id, plan_name
 
-        Rules: SELECT statements only, single statement, no other table/view name may
-        appear anywhere in the query (including subqueries). A LIMIT is added
-        automatically if you omit one; don't rely on being able to fetch more than a
-        couple hundred rows — aggregate in SQL (GROUP BY/SUM/COUNT), don't ask for raw
-        rows to aggregate yourself.
+        llm_report_catalog — one row per Package, CURRENT catalog state (not historical —
+        a package's cost/price can change over time via the weekly price sync; this is
+        "as of right now", not "as of any particular past order"). Use this for "what
+        does X cost today" / "which supplier" / "what's our current markup" questions;
+        use llm_report_orders' own cost_price for a specific past order's actual margin.
+          - package_id, package_name, denomination, is_active, sort_order
+          - cost_price, standard_selling_price, markup_percent (sen/percent, current)
+          - game_id, game_name, category
+          - supplier_id, supplier_name
+          - raw_price, raw_currency (the supplier's own listed price/currency before
+            conversion to MYR sen; null if this package isn't matched to a synced
+            supplier product)
+
+        Rules: SELECT statements only (a leading WITH/CTE is fine), single statement, no
+        other table/view name may appear anywhere in the query (including subqueries or
+        CTEs). A LIMIT is added automatically if you omit one; don't rely on being able
+        to fetch more than a couple hundred rows — aggregate in SQL (GROUP BY/SUM/COUNT),
+        don't ask for raw rows to aggregate yourself.
         SCHEMA;
 
     /**

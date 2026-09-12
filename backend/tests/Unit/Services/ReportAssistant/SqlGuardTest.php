@@ -30,6 +30,42 @@ class SqlGuardTest extends TestCase
         $this->assertStringContainsString('LIMIT 200', $sql);
     }
 
+    public function test_allows_a_select_against_the_catalog_view(): void
+    {
+        $sql = $this->guard->sanitize('SELECT package_name, cost_price FROM llm_report_catalog', 200);
+
+        $this->assertStringContainsString('llm_report_catalog', $sql);
+    }
+
+    /**
+     * Found live 2026-09-12: Gemini reasonably reached for a CTE
+     * ("top game, then its cost/supplier") and the guard rejected it
+     * outright since it only recognized a bare leading SELECT.
+     */
+    public function test_allows_a_select_with_a_leading_cte(): void
+    {
+        $sql = $this->guard->sanitize(
+            'WITH top AS (SELECT game_id FROM llm_report_orders GROUP BY game_id ORDER BY COUNT(*) DESC LIMIT 1) '
+            .'SELECT o.game_name, o.cost_price FROM llm_report_orders o JOIN top t ON t.game_id = o.game_id',
+            200,
+        );
+
+        $this->assertStringContainsString('WITH top AS', $sql);
+        $this->assertStringContainsString('LIMIT 200', $sql);
+    }
+
+    public function test_rejects_a_cte_hiding_a_delete(): void
+    {
+        // Every table referenced (llm_report_orders) is whitelisted —
+        // isolates that it's the DELETE keyword itself being caught,
+        // not the table check.
+        $this->expectException(UnsafeSqlException::class);
+        $this->guard->sanitize(
+            'WITH x AS (SELECT id FROM llm_report_orders) DELETE FROM llm_report_orders WHERE id IN (SELECT id FROM x)',
+            200,
+        );
+    }
+
     public function test_rejects_non_select_statements(): void
     {
         $this->expectException(UnsafeSqlException::class);

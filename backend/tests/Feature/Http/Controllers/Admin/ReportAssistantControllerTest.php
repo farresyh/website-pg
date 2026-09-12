@@ -3,8 +3,12 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\Package;
 use App\Models\ReportAssistantAuditLog;
+use App\Models\Supplier;
+use App\Models\SupplierProduct;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -99,6 +103,80 @@ class ReportAssistantControllerTest extends TestCase
         $this->assertSame('Berapa jumlah jualan setakat ini?', $log->question);
         $this->assertNotNull($log->generated_sql);
         $this->assertSame(1, $log->row_count);
+    }
+
+    /**
+     * 2026-09-12 follow-up — the founder asked whether cost/supplier/
+     * catalog data was in scope; it wasn't, so `llm_report_orders` was
+     * extended with cost_price/supplier columns and a new
+     * `llm_report_catalog` view (current package cost/supplier state,
+     * kept separate from the per-order historical view on purpose).
+     * This locks in that the catalog view is queryable end-to-end.
+     */
+    public function test_ask_can_query_current_catalog_cost_and_supplier_data(): void
+    {
+        $this->actingAsSuperAdmin();
+
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => []]);
+        $package = Package::query()->create([
+            'game_id' => $game->id,
+            'name' => '278 Diamonds',
+            'cost_price' => 3000,
+            'standard_selling_price' => 3500,
+            'markup_percent' => 16.67,
+            'supplier_id' => $supplier->id,
+            'supplier_package_ref' => 'GV-278',
+        ]);
+        SupplierProduct::query()->create([
+            'supplier_id' => $supplier->id,
+            'external_ref' => 'GV-278',
+            'name' => '278 Diamonds',
+            'price_sen' => 3000,
+            'raw_price' => 45000,
+            'raw_currency' => 'IDR',
+            'last_synced_at' => now(),
+        ]);
+
+        $this->app->instance(GeminiClient::class, new FakeGeminiClient([
+            json_encode([
+                'needs_query' => true,
+                'sql' => 'SELECT package_name, cost_price, raw_price, raw_currency, supplier_name FROM llm_report_catalog WHERE package_id = '.$package->id,
+            ]),
+            'Cost sekarang RM30.00, raw price IDR 45000 dari Gamevion.',
+        ]));
+
+        $response = $this->postJson('/api/reports/assistant/ask', ['question' => 'apa cost package 278 Diamonds sekarang?']);
+
+        $response->assertOk()->assertJson(['row_count' => 1]);
+        $log = ReportAssistantAuditLog::query()->latest('id')->first();
+        $this->assertSame(3000, $log->result_sample[0]['cost_price']);
+        $this->assertSame('Gamevion', $log->result_sample[0]['supplier_name']);
+        $this->assertSame(45000, $log->result_sample[0]['raw_price']);
+    }
+
+    /** llm_report_orders' extension (cost_price/supplier_name) queryable end-to-end. */
+    public function test_ask_can_query_the_extended_order_level_cost_and_supplier_columns(): void
+    {
+        $this->actingAsSuperAdmin();
+
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => []]);
+        $this->order(['final_amount' => 1100, 'cost_price' => 700, 'supplier_id' => $supplier->id]);
+
+        $this->app->instance(GeminiClient::class, new FakeGeminiClient([
+            json_encode([
+                'needs_query' => true,
+                'sql' => 'SELECT supplier_name, SUM(cost_price) as total_cost FROM llm_report_orders GROUP BY supplier_name',
+            ]),
+            'ok',
+        ]));
+
+        $response = $this->postJson('/api/reports/assistant/ask', ['question' => 'berapa jumlah cost ikut supplier?']);
+
+        $response->assertOk()->assertJson(['row_count' => 1]);
+        $log = ReportAssistantAuditLog::query()->latest('id')->first();
+        $this->assertSame('Digiflazz', $log->result_sample[0]['supplier_name']);
+        $this->assertSame(700, $log->result_sample[0]['total_cost']);
     }
 
     public function test_ask_never_double_counts_sales_across_the_dual_ledger_rows(): void
