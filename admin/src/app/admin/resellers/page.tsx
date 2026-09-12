@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/dialog";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { SimpleSelect } from "@/components/ui/select";
 import { PlusIcon } from "@/icons";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
@@ -51,6 +53,7 @@ import {
   createReseller,
   updateReseller,
   updateResellerStatus,
+  assignResellerTier,
   deleteReseller,
   listResellerTiers,
   createResellerTier,
@@ -90,6 +93,8 @@ export default function ResellersPage() {
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ResellerRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
+  const [tierTarget, setTierTarget] = useState<ResellerRow | null>(null);
+  const [tierSelectValue, setTierSelectValue] = useState<string>("");
   const [walletTarget, setWalletTarget] = useState<ResellerRow | null>(null);
   const [apiKeysTarget, setApiKeysTarget] = useState<ResellerRow | null>(null);
   const [webhookTarget, setWebhookTarget] = useState<ResellerRow | null>(null);
@@ -232,6 +237,16 @@ export default function ResellersPage() {
                             </Button>
                             <Button size="small" variant="outlined" onClick={() => { setEditing(r); setFormOpen(true); }}>
                               Edit
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                setTierTarget(r);
+                                setTierSelectValue(r.reseller_tier_id ? String(r.reseller_tier_id) : "");
+                              }}
+                            >
+                              Change Tier
                             </Button>
                             <Button
                               size="small"
@@ -427,6 +442,52 @@ export default function ResellersPage() {
                   }
                 >
                   Deactivate
+                </Button>
+              </DialogFooter>
+            </DialogPopup>
+          </DialogPositioner>
+        </DialogPortal>
+      </Dialog>
+
+      {/* Change tier — direct FK swap, no billing cycle/history (ADR-073 decision 1) */}
+      <Dialog open={tierTarget !== null} onOpenChange={(e) => !e.value && setTierTarget(null)}>
+        <DialogPortal>
+          <DialogBackdrop />
+          <DialogPositioner>
+            <DialogPopup>
+              <DialogHeader>
+                <DialogTitle>Change tier — {tierTarget?.business_name}</DialogTitle>
+              </DialogHeader>
+              <DialogContent>
+                <Label htmlFor="reseller_tier_select">Wallet tier</Label>
+                <SimpleSelect
+                  options={[
+                    { value: "", label: "— No tier —" },
+                    ...tiers
+                      .filter((t) => t.is_active || String(t.id) === tierSelectValue)
+                      .map((t) => ({ value: String(t.id), label: `${t.name} (+${t.markup_percent}% over cost)` })),
+                  ]}
+                  value={tierSelectValue}
+                  onChange={setTierSelectValue}
+                />
+                <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                  Takes effect immediately on the reseller&apos;s next wallet order — no billing cycle.
+                </p>
+              </DialogContent>
+              <DialogFooter>
+                <Button variant="outlined" onClick={() => setTierTarget(null)}>Cancel</Button>
+                <Button
+                  disabled={busy === tierTarget?.id || tierSelectValue === ""}
+                  onClick={() =>
+                    tierTarget &&
+                    guard(tierTarget.id, async () => {
+                      await assignResellerTier(token, tierTarget.id, Number(tierSelectValue));
+                      setTierTarget(null);
+                      await refresh(token);
+                    })
+                  }
+                >
+                  Apply
                 </Button>
               </DialogFooter>
             </DialogPopup>
