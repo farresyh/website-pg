@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\MembershipController as AdminMembershipController
 use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\RedirectController;
+use App\Http\Controllers\Admin\ReportAssistantController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\ResellerApiKeyController;
 use App\Http\Controllers\Admin\ResellerController;
@@ -496,6 +497,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
         Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
         Route::get('/export', [ReportController::class, 'export']);
+    });
+
+    // ADR-087 decision 6/9 — super_admin only (stricter than the Reports
+    // group above: this surface's read access is broader than any
+    // single existing screen), own route rather than a Reports tab.
+    Route::middleware('admin.role:super_admin')->prefix('reports/assistant')->group(function () {
+        Route::post('/ask', [ReportAssistantController::class, 'ask']);
     });
 
     Route::middleware('admin.role:super_admin,admin')->prefix('customer-analytics')->group(function () {

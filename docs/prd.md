@@ -590,7 +590,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. ORD-5 export unbuilt | ADR-017, 026, 032 |
-| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. Gemini LLM assistant (ADR-087) not built | ADR-086, 087, 088 |
+| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. **ADR-087 built 2026-09-12** — Gemini Flash LLM assistant at `/admin/reports/assistant`, `super_admin`-only; needs `GEMINI_API_KEY` provisioned before it works in any real environment (same .env-only rollout as CHIP/Digiflazz) | ADR-086, 087, 088 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`) | — |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
@@ -676,12 +676,6 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     profit SQL fragment), existing filter/tab UX preserved, hand-rolled SVG
     charts migrated to PrimeReact `Chart` (Chart.js, zero new dependency).
     Grilled 2026-09-11.
-13. **ADR-087** — Admin Reports LLM Assistant: Gemini Flash, curated read-only
-    SQL views (not raw-table text-to-SQL, not a fixed-function-only set) sitting
-    on top of ADR-086's grouped-SQL layer, `super_admin`-only, its own route
-    under Reports (`/admin/reports/assistant`), additive to — not a replacement
-    for — the existing tabs. Grilled 2026-09-11.
-
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 Voucher double-submit guard (Path A) · blacklist data-source / appeal policy ·

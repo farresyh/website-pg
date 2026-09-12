@@ -77,6 +77,50 @@ return [
             ],
         ],
 
+        /**
+         * ADR-087 decision 1/2 — the LLM Report Assistant's read-only
+         * data-access seam. Mirrors the app's real `default` connection
+         * driver (sqlite in tests, mysql in prod) but, on mysql, resolves
+         * credentials from `REPORT_ASSISTANT_DB_*` first — a dedicated
+         * MySQL user granted `SELECT` on `llm_report_orders`/
+         * `llm_report_membership_fees` only, no grant on any raw table
+         * (the hard backstop behind `SqlGuard`'s parse-check, decision 2).
+         * Falls back to the main `DB_USERNAME`/`DB_PASSWORD` when the
+         * dedicated user hasn't been provisioned yet — see
+         * `docs/build-log.md`'s ADR-087 entry for the GRANT statement to
+         * run in production. This inherits the same "provision later"
+         * gap already tracked against the CHIP credential
+         * (.env-only, no rotation) — no new gap, but no improvement yet.
+         */
+        'report_assistant' => match (env('DB_CONNECTION', 'sqlite')) {
+            'sqlite' => [
+                'driver' => 'sqlite',
+                'url' => env('DB_URL'),
+                'database' => env('DB_DATABASE', database_path('database.sqlite')),
+                'prefix' => '',
+                'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            ],
+            default => [
+                'driver' => 'mysql',
+                'url' => env('DB_URL'),
+                'host' => env('DB_HOST', '127.0.0.1'),
+                'port' => env('DB_PORT', '3306'),
+                'database' => env('DB_DATABASE', 'laravel'),
+                'username' => env('REPORT_ASSISTANT_DB_USERNAME', env('DB_USERNAME', 'root')),
+                'password' => env('REPORT_ASSISTANT_DB_PASSWORD', env('DB_PASSWORD', '')),
+                'unix_socket' => env('DB_SOCKET', ''),
+                'charset' => env('DB_CHARSET', 'utf8mb4'),
+                'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+                'prefix' => '',
+                'prefix_indexes' => true,
+                'strict' => true,
+                'engine' => null,
+                'options' => extension_loaded('pdo_mysql') ? array_filter([
+                    Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                ]) : [],
+            ],
+        },
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
