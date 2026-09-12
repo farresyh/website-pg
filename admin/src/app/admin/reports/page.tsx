@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -132,6 +133,14 @@ export default function ReportsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* ADR-087 decision 6/9 — super_admin only, own route (not a tab here). */}
+          {session?.role === "super_admin" && (
+            <Link href="/admin/reports/assistant">
+              <Button variant="outlined" size="small">
+                Ask Assistant
+              </Button>
+            </Link>
+          )}
           <Button variant="outlined" size="small" disabled={exporting !== null} onClick={() => handleExport("csv")}>
             {exporting === "csv" ? "Exporting…" : "Export CSV"}
           </Button>
