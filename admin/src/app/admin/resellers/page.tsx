@@ -306,6 +306,7 @@ export default function ResellersPage() {
                       <DataTableTHeadCell className={TH}>Markup %</DataTableTHeadCell>
                       <DataTableTHeadCell className={TH}>Resellers</DataTableTHeadCell>
                       <DataTableTHeadCell className={TH}>Active</DataTableTHeadCell>
+                      <DataTableTHeadCell className={TH}>Price List</DataTableTHeadCell>
                       <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
                     </DataTableTHeadRow>
                   </DataTableTHead>
@@ -319,6 +320,9 @@ export default function ResellersPage() {
                           <DataTableCell className={TD}>{t.resellers_count}</DataTableCell>
                           <DataTableCell className="px-5 py-4">
                             <Tag severity={t.is_active ? "success" : "secondary"}>{t.is_active ? "yes" : "no"}</Tag>
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4">
+                            <Tag severity={t.show_on_price_list ? "success" : "secondary"}>{t.show_on_price_list ? "shown" : "hidden"}</Tag>
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4">
                             <div className="flex gap-1.5">
