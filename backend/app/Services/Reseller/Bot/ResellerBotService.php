@@ -92,6 +92,22 @@ final class ResellerBotService
 
         $command = $this->parser->parse($rawText);
 
+        // E10 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+        // `.order`/`.topupbaki` already reject a deactivated Reseller via
+        // their own services (`ResellerInactiveException`) — these three
+        // read-only commands didn't, so a deactivated reseller could still
+        // read their own balance/order-history/catalog through the bot.
+        if (! $reseller->is_active && in_array($command->type, [
+            ResellerBotCommandType::Balance,
+            ResellerBotCommandType::TrackOrder,
+            ResellerBotCommandType::ListGames,
+        ], true)) {
+            $this->logFailure($reseller, $whatsappGroupId, $command->raw, 'reseller_inactive');
+            $this->openWa->sendText($whatsappGroupId, ResellerBotReplyFormatter::resellerInactive());
+
+            return;
+        }
+
         // ADR-076 decision 8 — a separate, stricter limit for `.checkid`
         // specifically: every other command here is a plain DB read,
         // this one can call a paid external provider (Moogold/
@@ -210,6 +226,19 @@ final class ResellerBotService
         // (whatsapp_message_id, group_id) — a chat command carries no
         // client-generated key of its own, and OpenWA's webhook can
         // redeliver the same inbound message.
+        //
+        // E7 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+        // this formula's safety depends on `$whatsappMessageId` staying
+        // identical across a redelivery of the *same* event — verified
+        // against OpenWA's own published changelog (docs.open-wa.org,
+        // checked 2026-09-12): webhook delivery is a documented
+        // at-least-once contract, and "deliveries are now recorded
+        // before they are attempted, and a bounded sweep replays
+        // whatever is stranded under its stored idempotency key" — i.e.
+        // a redelivery replays the same persisted payload, not a
+        // regenerated one, so `data.id` is stable across it. No code
+        // change follows from this — it confirms the existing formula
+        // was already correct.
         $idempotencyKey = "wa:{$groupId}:{$whatsappMessageId}";
 
         try {

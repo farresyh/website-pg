@@ -248,6 +248,19 @@ final class ResellerBotReplyFormatter
         return "Arahan tidak dikenali.\n\n".self::commandList();
     }
 
+    /**
+     * E10 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+     * shared copy for the read-only commands (`.baki`/`.trackorder`/
+     * `.listharga`) that now guard on `Reseller.is_active`, matching
+     * `.order`'s own `ResellerInactiveException` rejection in spirit —
+     * a clean reseller-facing message rather than leaking an internal
+     * exception string.
+     */
+    public static function resellerInactive(): string
+    {
+        return 'Akaun reseller ini telah dinyahaktifkan. Sila hubungi admin.';
+    }
+
     public static function formatSen(int $sen): string
     {
         return number_format($sen / 100, 2);
