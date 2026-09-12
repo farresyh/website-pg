@@ -4,6 +4,7 @@ namespace App\Services\ReportAssistant;
 
 use App\Models\AdminUser;
 use App\Models\ReportAssistantAuditLog;
+use App\Services\Report\ReportService;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -73,6 +74,29 @@ final class ReportAssistantService
         couple hundred rows — aggregate in SQL (GROUP BY/SUM/COUNT), don't ask for raw
         rows to aggregate yourself.
         SCHEMA;
+
+    /**
+     * Found live 2026-09-12: without this, Gemini defaulted to
+     * PostgreSQL-flavored SQL (`date_trunc()`, `AT TIME ZONE`) that
+     * doesn't exist on either engine this app actually runs on — the
+     * query failed at execution, not because of missing/wrong data.
+     * Telling it the real dialect + today's date up front lets it use
+     * plain datetime-string comparisons on `paid_at_kl`/`created_at_kl`
+     * (already pre-converted to Asia/Kuala_Lumpur) instead of reaching
+     * for a date-truncation function at all.
+     */
+    private function dialectNote(string $driver): string
+    {
+        $today = now(ReportService::TIMEZONE)->toDateTimeString();
+        $engine = $driver === 'sqlite' ? 'SQLite' : 'MySQL';
+
+        return "Today's date/time in Asia/Kuala_Lumpur is {$today}. SQL dialect: {$engine}. "
+            .'Do NOT use date_trunc(), EXTRACT(), or "AT TIME ZONE" — none of those exist here '
+            .'(that is PostgreSQL syntax). paid_at_kl/created_at_kl are already plain datetime '
+            .'values in Asia/Kuala_Lumpur — filter "this month"/"today"/a date range with plain '
+            .'comparisons against a literal datetime string (e.g. paid_at_kl >= \'2026-09-01 00:00:00\'), '
+            .'computed from the date given above, rather than a date-truncation function.';
+    }
 
     public function __construct(
         private readonly GeminiClient $gemini,
@@ -146,7 +170,9 @@ final class ReportAssistantService
      */
     private function plan(array $turns): array
     {
-        $systemPrompt = self::SCHEMA_DESCRIPTION."\n\n"
+        $driver = DB::connection($this->connectionName())->getDriverName();
+
+        $systemPrompt = self::SCHEMA_DESCRIPTION."\n\n".$this->dialectNote($driver)."\n\n"
             .'You are the planning step of a two-step pipeline for a business-reports '
             .'assistant. Given the conversation, reply with ONLY a JSON object: '
             .'{"needs_query": boolean, "sql": string|null, "direct_answer": string|null}. '

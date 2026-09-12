@@ -8,6 +8,7 @@ use App\Models\ReportAssistantAuditLog;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Report\ReportService;
 use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -136,6 +137,31 @@ class ReportAssistantControllerTest extends TestCase
         $response->assertOk()->assertJson(['sql' => null]);
         $log = ReportAssistantAuditLog::query()->first();
         $this->assertNotNull($log->error);
+    }
+
+    /**
+     * Found live 2026-09-12: without telling Gemini the real SQL dialect
+     * + today's date, it defaulted to PostgreSQL-flavored SQL
+     * (date_trunc(), AT TIME ZONE) that fails on both engines this app
+     * actually runs on. Locks in that the planning-turn prompt always
+     * carries the dialect + current KL date.
+     */
+    public function test_ask_tells_gemini_the_real_sql_dialect_and_todays_date(): void
+    {
+        $this->actingAsSuperAdmin();
+
+        $fake = new FakeGeminiClient([
+            json_encode(['needs_query' => false, 'direct_answer' => null]),
+            'ok',
+        ]);
+        $this->app->instance(GeminiClient::class, $fake);
+
+        $this->postJson('/api/reports/assistant/ask', ['question' => 'top game this month?'])->assertOk();
+
+        $planPrompt = $fake->calls[0]['systemPrompt'];
+        $this->assertStringContainsString('SQLite', $planPrompt);
+        $this->assertStringContainsString((string) now(ReportService::TIMEZONE)->format('Y-m-d'), $planPrompt);
+        $this->assertStringContainsString('date_trunc', $planPrompt);
     }
 
     public function test_ask_answers_directly_without_a_query_for_pure_strategy_questions(): void
