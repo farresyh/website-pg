@@ -78,6 +78,8 @@ export interface LedgerEntry {
   amount: number;
   reference_type: string | null;
   reference_id: number | null;
+  /** Only present on the Reseller wallet ledger (reference_type "order") — not the Affiliate earnings ledger. */
+  order_number?: string | null;
   reason: string | null;
   created_at: string | null;
 }

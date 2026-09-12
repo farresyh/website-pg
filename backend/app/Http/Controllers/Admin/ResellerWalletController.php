@@ -58,6 +58,7 @@ class ResellerWalletController extends Controller
                 'reference_type' => $entry->reference_type,
                 'reference_id' => $entry->reference_id,
                 'receipt_name' => $receiptFile?->getClientOriginalName(),
+                'order_number' => null,
                 'reason' => $entry->reason,
                 'created_at' => $entry->created_at?->toIso8601String(),
             ],

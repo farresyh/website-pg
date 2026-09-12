@@ -149,5 +149,5 @@ export interface PaymentChannel {
 
 /** Public, no-auth — same catalog the storefront checkout reads. */
 export function listPaymentChannels() {
-  return apiFetch<PaymentChannel[]>("/api/payment-methods");
+  return apiFetch<PaymentChannel[]>("/api/catalog/payment-methods");
 }

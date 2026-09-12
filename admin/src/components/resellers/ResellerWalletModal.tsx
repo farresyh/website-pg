@@ -65,17 +65,18 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
   const [receipt, setReceipt] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
 
-  function refresh() {
-    return getResellerWallet(token, reseller.id)
+  function refresh(p: number = page) {
+    return getResellerWallet(token, reseller.id, p)
       .then(setWallet)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load wallet."));
   }
 
   useEffect(() => {
-    refresh();
+    refresh(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reseller.id]);
+  }, [reseller.id, page]);
 
   async function handleCredit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,7 +94,8 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
       setAmountRm("");
       setNote("");
       setReceipt(null);
-      await refresh();
+      setPage(1);
+      await refresh(1);
       onCredited();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
@@ -171,6 +173,7 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Type</th>
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</th>
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Note / Receipt</th>
+                  <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reference</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -197,17 +200,45 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
                         </Button>
                       )}
                     </td>
+                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{entry.order_number ?? "—"}</td>
                   </tr>
                 ))}
                 {wallet.entries.data.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-gray-400">No ledger entries yet.</td>
+                    <td colSpan={5} className="px-4 py-6 text-center text-gray-400">No ledger entries yet.</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
+        {wallet.entries.last_page > 1 && (
+          <div className="mt-3 flex items-center justify-between text-theme-xs text-gray-500 dark:text-gray-400">
+            <span>
+              Page {wallet.entries.current_page} of {wallet.entries.last_page}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="small"
+                variant="outlined"
+                disabled={wallet.entries.current_page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                size="small"
+                variant="outlined"
+                disabled={wallet.entries.current_page >= wallet.entries.last_page}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -114,6 +114,8 @@ export interface WalletLedgerEntry {
   reference_type: string | null;
   reference_id: number | null;
   receipt_name: string | null;
+  /** Only set when reference_type is "order" — the customer-facing order number, not the internal id. */
+  order_number: string | null;
   reason: string | null;
   created_at: string;
 }

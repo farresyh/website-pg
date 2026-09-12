@@ -3,6 +3,7 @@
 namespace App\Services\Reseller;
 
 use App\Models\LedgerEntry;
+use App\Models\Order;
 use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Models\WalletTopupReceipt;
@@ -68,6 +69,20 @@ final class ResellerWalletService
             ? []
             : WalletTopupReceipt::query()->whereIn('id', $receiptIds)->pluck('original_name', 'id');
 
+        // Same batch-load shape for order-linked entries (wallet_debit /
+        // wallet_refund, both stamped reference_type = 'order' with
+        // reference_id = orders.id — ResellerOrderPlacementService /
+        // Admin\OrderController's refund path) — the portal shows the
+        // customer-facing order_number, never the internal id.
+        $orderIds = $page->getCollection()
+            ->where('reference_type', 'order')
+            ->pluck('reference_id')
+            ->filter()
+            ->all();
+        $orderNumbers = $orderIds === []
+            ? []
+            : Order::query()->whereIn('id', $orderIds)->pluck('order_number', 'id');
+
         return $page->through(fn (LedgerEntry $entry): array => [
             'id' => $entry->id,
             'type' => $entry->type,
@@ -76,6 +91,9 @@ final class ResellerWalletService
             'reference_id' => $entry->reference_id,
             'receipt_name' => $entry->reference_type === 'wallet_topup_receipt'
                 ? ($receiptNames[$entry->reference_id] ?? null)
+                : null,
+            'order_number' => $entry->reference_type === 'order'
+                ? ($orderNumbers[$entry->reference_id] ?? null)
                 : null,
             'reason' => $entry->reason,
             'created_at' => $entry->created_at?->toIso8601String(),

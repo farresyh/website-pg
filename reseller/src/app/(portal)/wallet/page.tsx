@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -36,12 +37,13 @@ export default function WalletPage() {
   const [amountRm, setAmountRm] = useState("50");
   const [channelCode, setChannelCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [page, setPage] = useState(1);
 
-  function refresh() {
+  function refresh(p: number = page) {
     const session = getClientSession();
     if (!session) return;
 
-    return getWallet(session.token)
+    return getWallet(session.token, p)
       .then((result) => {
         setWallet(result);
         setError(null);
@@ -52,7 +54,11 @@ export default function WalletPage() {
   }
 
   useEffect(() => {
-    refresh();
+    refresh(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  useEffect(() => {
     listPaymentChannels()
       .then((result) => {
         setChannels(result);
@@ -163,6 +169,7 @@ export default function WalletPage() {
                 <th className="px-5 py-3">Type</th>
                 <th className="px-5 py-3">Amount</th>
                 <th className="px-5 py-3">Reason</th>
+                <th className="px-5 py-3">Reference</th>
                 <th className="px-5 py-3">Date</th>
               </tr>
             </thead>
@@ -183,6 +190,18 @@ export default function WalletPage() {
                   <td className="px-5 py-4 text-gray-500 dark:text-gray-400">
                     {entry.reason ?? "—"}
                   </td>
+                  <td className="px-5 py-4">
+                    {entry.order_number ? (
+                      <Link
+                        href={`/orders/${entry.order_number}`}
+                        className="font-medium text-brand-500 hover:underline"
+                      >
+                        {entry.order_number}
+                      </Link>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-4 text-theme-xs text-gray-400">
                     {formatDateTime(entry.created_at)}
                   </td>
@@ -195,6 +214,32 @@ export default function WalletPage() {
           )}
           {!wallet && !error && <EmptyRow>Loading…</EmptyRow>}
         </div>
+
+        {wallet && wallet.entries.last_page > 1 && (
+          <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-theme-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
+            <span>
+              Page {wallet.entries.current_page} of {wallet.entries.last_page}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={wallet.entries.current_page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs disabled:opacity-40 dark:border-gray-700"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={wallet.entries.current_page >= wallet.entries.last_page}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs disabled:opacity-40 dark:border-gray-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </Panel>
     </div>
   );
