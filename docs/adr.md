@@ -4748,7 +4748,22 @@ Further check, at the founder's prompt: is a charting library the actual house s
 
 ## ADR-087: Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs
 
-**Status:** Accepted (design) — grilled 2026-09-11 (`/mattpocock-skills:grilling`, 3 rounds). Not built. Depends on ADR-086: the curated views this ADR defines are meant to sit on top of ADR-086's rewritten grouped-SQL layer and reuse its business-rule logic (`paid_at` scope, double-count-safe profit), not reimplement it separately.
+**Status:** Accepted & built — grilled 2026-09-11 (`/mattpocock-skills:grilling`, 3 rounds), built 2026-09-12 on `feature/llm-report-assistant`. Depends on ADR-086: the curated views this ADR defines sit on top of ADR-086's rewritten grouped-SQL layer and reuse its business-rule logic (`paid_at` scope, double-count-safe profit) via correlated subqueries baked into the view definitions themselves, rather than reimplementing that logic separately.
+
+**Build addendum (2026-09-12):** built substantially as designed, decisions 1-10 all implemented. Notable build-time resolutions:
+- Decision 1's curated views ended up as ONE flat fact view per grain rather than several narrower ones — `llm_report_orders` (one row per paid order, `platform_profit`/`affiliate_profit` pre-summed via correlated subqueries against `ledger_entries`) and `llm_report_membership_fees` — since a flat, order-grain fact table is what actually makes the double-count-safety property structural (a `SUM(final_amount)` alongside the profit columns can never double-count, because there's exactly one row per order regardless of how many ledger rows back it).
+- Decision 2's read-only DB credential (a dedicated `report_assistant` MySQL connection, `config/database.php`) only differs from the app's own connection on MySQL — sqlite has no user-based GRANTs, and a second sqlite `:memory:` handle is actually a *different*, empty database from the app's own, so the connection falls back to the app's default connection on sqlite (fast test suite, and any local dev setup still on sqlite). `SqlGuard`'s parse-check (single-statement, SELECT-only, view-name whitelist via regex on every FROM/JOIN including inside subqueries, forbidden-keyword list, row-limit cap) is the guardrail that actually runs everywhere; the dedicated MySQL credential is the decision-2 backstop in production once provisioned.
+- **Production follow-up owed:** the `report_assistant` MySQL user itself still needs provisioning — until then, the connection falls back to the main `DB_USERNAME`/`DB_PASSWORD` (see `config/database.php`'s doc comment). Run once ops is ready:
+  ```sql
+  CREATE USER 'report_assistant'@'%' IDENTIFIED BY '<strong password>';
+  GRANT SELECT ON <database>.llm_report_orders TO 'report_assistant'@'%';
+  GRANT SELECT ON <database>.llm_report_membership_fees TO 'report_assistant'@'%';
+  FLUSH PRIVILEGES;
+  ```
+  then set `REPORT_ASSISTANT_DB_USERNAME`/`REPORT_ASSISTANT_DB_PASSWORD` in production `.env`. Inherits the same "provision later" gap already tracked against the CHIP credential — no new gap, but no improvement yet either.
+- The two-Gemini-call orchestration (plan → guarded query → answer) lives in `ReportAssistantService`, faked in tests/e2e via `FakeGeminiClient` (same zero-network-fake discipline as `FakePaymentGateway`/`FakeSupplierAdapter`) — bound in `AppServiceProvider` exactly like `PlunkMailer`'s single-vendor pattern.
+- **Launch gate: `GEMINI_API_KEY` is unset** — smoke-tested locally 2026-09-12 (auth/role/validation/SqlGuard all confirmed live end-to-end via curl against the local dev DB), Gemini's own API correctly 403s with "Method doesn't allow unregistered callers" until a real key is provisioned. Same rollout shape as CHIP/Digiflazz: code is live, a credential is the last step.
+- `docs/build-log.md` has the full file list and test results.
 
 **Context:**
 
