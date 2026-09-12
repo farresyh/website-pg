@@ -103,6 +103,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-088** | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening |
 | **ADR-089** | Brand asset pipeline — aspect-preserving logo sizing, a primary-brand admin Logo/Favicon panel, per-brand dynamic favicon |
 | **ADR-090** | Theme preset background/ink tokens + a per-affiliate Site Mode (light/dark), the first slice of ADR-081's pinned dark-mode requirement |
+| **ADR-091** | Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers |
 
 ---
 
@@ -4897,3 +4898,38 @@ Grilled over two rounds. Round 1 settled: "dark mode" means a **per-affiliate fi
 - `bumblebee`/`redgiants`/`emerald`/`cobalt` still owe a `tokensDark` each — tracked in `docs/prd.md` §16. Until then, an affiliate on one of those presets simply has no Dark option in the portal.
 - The theme-preset duplication ADR-081 already flagged (`reseller/src/lib/theme-presets.ts` + `storefront/src/lib/theme-presets.ts`, two full copies) has grown by this ADR's new tokens — the follow-up noted there (a single source of truth, worth it at preset #6+) now applies to `tokensDark` too.
 - `ThemeTab.tsx`'s live preview still hardcodes a few cosmetic details (the payment-strip badge colours, the bottom price/button border) outside the surface/ink swap — a minor preview-fidelity gap, not a storefront-accuracy one (the actual storefront renders entirely off the injected CSS variables).
+
+---
+
+## ADR-091: Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers
+
+**Context:**
+
+Founder wanted a public price-list page like competitor sites (`synnmlbb.com/price-list`, `topagentgames.com/my/services`) — prospective resellers see tiered wholesale top-up rates before approaching the platform to sign up. His own proposal: shown only on the primary storefront or an affiliate brand categorized as "owned brand"; a checkbox on each `reseller_tiers` row to opt it into the page; minimum 1, maximum 3 tiers shown; near-real-time pricing linked to price sync. He explicitly asked for this to be checked/improved from a code-maintainability angle before building, not taken as final.
+
+Grilled over 3 rounds (`/mattpocock-skills:grilling`) plus a visual wireframe artifact reviewed before build. Codebase check up front found most of the plumbing already exists: `Affiliate.is_owned` (ADR-061 PR-A) is the exact "owned brand" concept; `ResellerCatalogService::listAvailable()` (ADR-077 PR-5) is already the cached, deduped, reseller-eligible package listing the Reseller API/Bot channels use; `reseller_tiers.sort_order` already exists for admin-table ordering. `reseller_tiers.markup_percent` is platform's own margin over `cost_price` (no second retail-markup layer like Affiliate has) — publishing it as a tier's price is a real margin-exposure decision, not a formality, though it matches how both reference competitor sites already operate.
+
+**Decision:**
+
+1. **Gating: automatic on every `Affiliate.is_owned = true` brand**, no separate per-brand opt-in toggle — `is_owned` already means "this is our own brand," a second toggle for the same distinction would be pure admin-surface overhead. Content is **platform-wide, identical on every `is_owned` brand** (`reseller_tiers` isn't an affiliate concept) — the brand only changes the page's skin (logo/theme), never its data.
+2. **Tier selection: `reseller_tiers.show_on_price_list` (boolean), capped at 3 `true` rows at once**, enforced in `Store`/`UpdateResellerTierRequest` (`withValidator`, DB count check — not a DB constraint). Explicitly **not** "auto-show the N lowest-markup active tiers" — the founder's own real ladder has a 0%-markup "SSS" tier for special/negotiated resellers that must stay excludable regardless of how cheap it is; inclusion is always an admin choice. Display order reuses the **existing** `sort_order` column — no new rank/order field.
+3. **Zero tiers marked `show_on_price_list` → the page and its footer link auto-hide**, no validation forcing at least 1 — same "empty array means off" contract `MembershipController::plans()` already established for its own kill switch (`GET /catalog/reseller-price-list` returns `{tiers: [], games: []}`), so `/price-list` calls Next's `notFound()` and `SiteFooter`/`sitemap.ts` skip the link, with no separate `enabled` flag to keep in sync.
+4. **Price display: absolute price per tier column only — no computed "save X%" between tiers.** The founder was explicit: a clean percentage between two public prices is a number a viewer can screenshot and use to back out the tier-to-tier markup delta directly; tier names + naturally-lower numbers left-to-right already carry the upsell signal without handing over a computed comparison.
+5. **Data scope: one page, client-side search/filter over the full list** — not a per-game picker, not server pagination. The reseller-eligible catalogue (hundreds of packages) is small enough to ship as one JSON payload and filter in the browser, matching how both reference competitor sites present their own price lists (land on the page, search, see it instantly).
+6. **Pricing formula: `PricingService::calculateForAffiliate(cost_price, standard_selling_price, tier.markup_percent, 0.0)->sellingPrice`** — the exact same call `OrderPricingResolver::resolveResellerWallet()` uses at real order time, so a displayed price can never drift from what a reseller in that tier is actually charged. No separate formula, no rounding drift risk.
+7. **Freshness: reuse `listAvailable()`'s existing 60s cache** for "which games/packages," compute the per-tier price arithmetic fresh on every request (cheap — a few hundred packages × ≤3 tiers, no DB query beyond one small `reseller_tiers` read and one `Game` name pluck). **No new cache key or invalidation choke point** — a second cache layer keyed on `reseller_tiers` state would need its own invalidation wired into `ResellerTierController`, for a computation cheap enough not to need caching at all. `ResellerTierController::store()`/`update()` do call `NextRevalidation::purge()` (the storefront's own Next Data Cache `catalog` tag, 30s TTL backstop either way) so a tier toggle reaches the live page promptly rather than waiting out the full backstop window.
+8. **Tier label: reuse the internal admin tier `name` field directly as the public label** ("Tier SS", "Tier S", "Tier A") — no separate customer-facing display-name column. The founder's own examples used the admin names as-is.
+9. **CTA: "Contact us" (WhatsApp), reusing the existing branding-driven contact resolution (`resolveWhatsappHref`)** — no new signup form or endpoint. Matches the current admin-invite-only reseller onboarding (ADR-074); a self-serve form would imply a signup flow that doesn't exist yet (see Consequence).
+10. **SEO: a real `generateMetadata()` entry** (title + description, same lightweight per-page pattern `/about-us` and `/track-order` already use — not the admin-editable SEO Templates screen, which is game-PDP-specific) **and a conditional `sitemap.ts` entry**, both gated on the same "tiers non-empty" signal.
+
+**Rationale:**
+
+- Reusing `listAvailable()`, `PricingService::calculateForAffiliate()`, `sort_order`, and the `MembershipController::plans()` "empty means off" contract means this feature adds almost no new deep-module surface — it recombines four already-proven, already-tested seams rather than inventing parallel versions of any of them (`AGENTS.md`'s "deep modules, stable seams" principle in practice).
+- A boolean + reused `sort_order` is simpler than a dedicated rank/priority column and still fully answers "which 3, in what order" — a new rank field would have solved a problem (stable ordering) that `sort_order` already solves.
+- No second cache layer is the more solid choice, not just the simpler one: a cache keyed on `reseller_tiers` state left unwired to `ResellerTierController` would have been a real staleness bug waiting to happen the first time someone forgot the invalidation call existed.
+
+**Consequence to track:**
+
+- If self-serve reseller signup ever ships (ADR-085 candidate, not started), this page's CTA is the natural place to switch from "Contact us" to a real signup flow — revisit decision 9 then, not before.
+- `reseller_tiers` gained its first field (`show_on_price_list`) that is genuinely public-facing rather than admin/billing-internal — any future `reseller_tiers` column should ask the same "does this leak to `/price-list`?" question decision 4 already settled for markup framing.
+- The margin-exposure trade-off in decision 1/6 (a tier's public price is `cost_price × (1 + markup%)`, unlike Affiliate's portal which never shows platform's own markup) was a deliberate, eyes-open founder call, matching how both reference competitor sites already operate — not an oversight to "fix" later.

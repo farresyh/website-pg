@@ -17,6 +17,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * DB, so a tier any reseller is currently assigned to can't be
  * hard-deleted anyway — soft-delete mirrors `AffiliateMembershipTier`'s
  * own precedent for a consistent admin-CRUD "delete" semantic.
+ *
+ * ADR-091: `show_on_price_list` opts a tier into the public Reseller
+ * Price List page (`PublicResellerPriceListController`) — at most 3
+ * `true` at once (enforced in Store/UpdateResellerTierRequest, not a DB
+ * constraint), display order is the existing `sort_order`.
  */
 class ResellerTier extends Model
 {
@@ -27,11 +32,13 @@ class ResellerTier extends Model
         'markup_percent',
         'is_active',
         'sort_order',
+        'show_on_price_list',
     ];
 
     protected $casts = [
         'markup_percent' => 'decimal:2',
         'is_active' => 'boolean',
+        'show_on_price_list' => 'boolean',
     ];
 
     public function resellers(): HasMany

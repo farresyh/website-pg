@@ -73,6 +73,7 @@ use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\PublicResellerPriceListController;
 use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceController;
 use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
 use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
@@ -261,6 +262,11 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     // channel listing, replacing the storefront's hardcoded
     // PLACEHOLDER_PAYMENT_CHANNELS.
     Route::get('/payment-methods', [PaymentMethodCatalogController::class, 'index']);
+
+    // ADR-091 — public Reseller Price List page. Content is
+    // platform-wide (reseller_tiers isn't an affiliate concept); the
+    // brand resolution here only gates is_owned, never re-prices.
+    Route::get('/reseller-price-list', [PublicResellerPriceListController::class, 'index']);
 
     // Public approved reviews for storefront homepage
     Route::get('/reviews', [ReviewCatalogController::class, 'index']);

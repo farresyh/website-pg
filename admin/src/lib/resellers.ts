@@ -32,6 +32,8 @@ export interface ResellerTier {
   markup_percent: string;
   is_active: boolean;
   sort_order: number;
+  /** ADR-091: opts this tier into the public Reseller Price List page — at most 3 tiers across the ladder. */
+  show_on_price_list: boolean;
   resellers_count: number;
 }
 
@@ -87,6 +89,7 @@ export interface ResellerTierValues {
   markup_percent: number;
   is_active: boolean;
   sort_order: number;
+  show_on_price_list: boolean;
 }
 
 export function createResellerTier(token: string, values: ResellerTierValues) {
@@ -114,6 +117,8 @@ export interface WalletLedgerEntry {
   reference_type: string | null;
   reference_id: number | null;
   receipt_name: string | null;
+  /** Only set when reference_type is "order" — the customer-facing order number, not the internal id. */
+  order_number: string | null;
   reason: string | null;
   created_at: string;
 }
