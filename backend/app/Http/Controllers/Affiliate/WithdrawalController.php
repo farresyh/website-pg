@@ -6,9 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Affiliate\CreateAffiliateWithdrawalRequest;
 use App\Models\Withdrawal;
 use App\Services\Affiliate\AffiliateEarningsService;
+use App\Services\Affiliate\AffiliateWithdrawalService;
 use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Ledger\LedgerService;
-use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -28,7 +27,7 @@ class WithdrawalController extends Controller
 {
     public function __construct(
         private readonly AffiliateEarningsService $earnings,
-        private readonly LedgerService $ledger,
+        private readonly AffiliateWithdrawalService $withdrawals,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -78,44 +77,16 @@ class WithdrawalController extends Controller
             ]);
         }
 
-        $balance = $this->earnings->balance($affiliate);
-        if ($data['amount'] > $balance) {
-            throw ValidationException::withMessages([
-                'amount' => ["Amount exceeds your withdrawable balance ({$balance} sen)."],
-            ]);
-        }
-
-        $hasOpenRequest = Withdrawal::query()
-            ->where('owner_type', LedgerOwnerType::Affiliate->value)
-            ->where('owner_id', $affiliate->id)
-            ->whereIn('status', [WithdrawalStatus::Pending->value, WithdrawalStatus::Approved->value])
-            ->exists();
-
-        if ($hasOpenRequest) {
-            throw ValidationException::withMessages([
-                'amount' => ['You already have a withdrawal in progress. Wait for it to complete before requesting another.'],
-            ]);
-        }
-
-        // A affiliate can have an earnings balance purely from `credit()`
-        // calls (order margin) with no `ledger_accounts` row yet —
-        // `credit()` never creates one. The admin approve step's
-        // `LedgerService::withdraw()` does `firstOrFail()` on that row,
-        // so ensure it exists now. Same defensive open as
-        // AffiliateTierFeeService::chargeCycle().
-        $this->ledger->openAccount(LedgerOwnerType::Affiliate, $affiliate->id);
-
-        $withdrawal = Withdrawal::query()->create([
-            'owner_type' => LedgerOwnerType::Affiliate->value,
-            'owner_id' => $affiliate->id,
+        // Balance check, "already has an open request" check, and the
+        // create itself all happen inside AffiliateWithdrawalService's
+        // one locked transaction — see its docblock for the race this
+        // closes.
+        $withdrawal = $this->withdrawals->request($affiliate, [
             'amount' => $data['amount'],
             'bank_name' => $bankName,
             'bank_account_no' => $bankAccountNo,
             'bank_account_holder' => $bankAccountHolder,
-            'status' => WithdrawalStatus::Pending,
-            'requested_by' => null,
-            'affiliate_user_id' => $request->user()->id,
-        ]);
+        ], $request->user()->id);
 
         return response()->json([
             'id' => $withdrawal->id,
