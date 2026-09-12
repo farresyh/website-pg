@@ -52,12 +52,38 @@ final class ResellerApiKeyService
             ->whereNull('revoked_at')
             ->first();
 
-        $key?->update(array_filter([
-            'last_used_at' => now(),
-            'last_used_ip' => $ip,
-        ], fn ($value) => $value !== null));
+        if ($key !== null && $this->shouldStamp($key, $ip)) {
+            $key->update(array_filter([
+                'last_used_at' => now(),
+                'last_used_ip' => $ip,
+            ], fn ($value) => $value !== null));
+        }
 
         return $key;
+    }
+
+    /**
+     * A2 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+     * the stamp used to write on every single authenticated call — a
+     * write-per-request under high QPS from one key. Skips the write once
+     * `last_used_at` is fresh (<60s, matching the catalog cache TTL) —
+     * unless the IP has changed, which always stamps immediately
+     * regardless of freshness: that's exactly the anomaly signal
+     * `last_used_ip` exists to surface (see `EnsureResellerApiKey`'s own
+     * doc comment — a request later rejected by the IP allowlist still
+     * gets stamped, deliberately, and this throttle doesn't touch that).
+     */
+    private function shouldStamp(ResellerApiKey $key, ?string $ip): bool
+    {
+        if ($key->last_used_at === null) {
+            return true;
+        }
+
+        if ($ip !== null && $ip !== $key->last_used_ip) {
+            return true;
+        }
+
+        return $key->last_used_at->diffInSeconds(now()) >= 60;
     }
 
     /** Idempotent — revoking an already-revoked key is a no-op, not an error. */

@@ -432,6 +432,11 @@ class CatalogController extends Controller
         // irrelevant to it.
         Cache::forget(ResellerCatalogService::CACHE_KEY);
 
+        // A1 hardening (2026-09-10 reseller-family audit): the per-tier
+        // priced catalog built on top of listAvailable() above goes stale
+        // on the same writes — flush every tier's cached entry at once.
+        ResellerApi\CatalogController::forgetPricedCache();
+
         NextRevalidation::purge();
     }
 

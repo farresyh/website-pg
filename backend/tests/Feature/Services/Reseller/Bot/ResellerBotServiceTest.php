@@ -503,6 +503,30 @@ class ResellerBotServiceTest extends TestCase
         $this->assertSame(1, WalletTopupAttempt::query()->count());
     }
 
+    /**
+     * E9 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+     * `.topupbaki`'s default-channel pick ("first active method by
+     * category, label") has no other test pinning it — a future admin
+     * reorder or a new payment method could silently change which
+     * channel a reseller gets top-up'd through. Pins today's expected
+     * pick (`fpx` sorts before `wallet_qr` alphabetically) so a future
+     * ordering change fails this test loudly instead of drifting silent.
+     */
+    public function test_topupbaki_picks_the_first_active_method_by_category_then_label(): void
+    {
+        $this->activeFpx();
+        PaymentMethod::query()->create([
+            'channel_code' => 'duitnow_qr', 'label' => 'DuitNow QR', 'category' => 'wallet_qr',
+            'gateway' => 'chip', 'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 0,
+        ]);
+        $this->bindGateway();
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+
+        $this->assertSame('fpx', WalletTopupAttempt::query()->firstOrFail()->channel_code);
+    }
+
     public function test_topupbaki_is_unavailable_when_no_payment_method_is_active(): void
     {
         $this->bindGateway();
@@ -538,6 +562,47 @@ class ResellerBotServiceTest extends TestCase
             ->where('reseller_id', $reseller->id)
             ->where('failure_reason', 'topup_below_minimum')
             ->count());
+    }
+
+    // --- E10 hardening: `.baki`/`.trackorder`/`.listharga` reject a deactivated reseller ---
+
+    public function test_baki_is_rejected_for_a_deactivated_reseller(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['is_active' => false]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'reseller_inactive',
+        ]);
+    }
+
+    public function test_trackorder_is_rejected_for_a_deactivated_reseller(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['is_active' => false]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-TEST', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'reseller_inactive',
+        ]);
+    }
+
+    public function test_listharga_is_rejected_for_a_deactivated_reseller(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['is_active' => false]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.listharga', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'reseller_inactive',
+        ]);
     }
 
     public function test_checkid_is_rate_limited_more_strictly_than_other_commands(): void

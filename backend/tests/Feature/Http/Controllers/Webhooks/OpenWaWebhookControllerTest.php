@@ -117,4 +117,32 @@ class OpenWaWebhookControllerTest extends TestCase
         $response->assertOk();
         $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
     }
+
+    /**
+     * E6 hardening (2026-09-10 reseller-family audit): a newer OpenWA
+     * server sends `kind` (server >= 0.23.4, docs.open-wa.org/changelog)
+     * — preferred over `isGroup` when both are present.
+     */
+    public function test_kind_group_is_treated_as_a_group_message_even_when_is_group_is_false(): void
+    {
+        $response = $this->signedPost([
+            'event' => 'message.received',
+            'data' => ['kind' => 'group', 'isGroup' => false, 'chatId' => 'g1@g.us', 'body' => 'hello', 'id' => 'msg1'],
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
+    }
+
+    /** `kind: channel` must not be misrouted into the group-trust flow just because `isGroup` is (wrongly) true. */
+    public function test_kind_channel_is_not_treated_as_a_group_message_even_when_is_group_is_true(): void
+    {
+        $response = $this->signedPost([
+            'event' => 'message.received',
+            'data' => ['kind' => 'channel', 'isGroup' => true, 'chatId' => 'c1@newsletter', 'body' => 'hello', 'id' => 'msg1'],
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'c1@newsletter']);
+    }
 }

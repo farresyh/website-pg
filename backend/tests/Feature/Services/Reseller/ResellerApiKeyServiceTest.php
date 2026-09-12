@@ -5,6 +5,7 @@ namespace Tests\Feature\Services\Reseller;
 use App\Models\Reseller;
 use App\Services\Reseller\ResellerApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /** ADR-074 decision 1: generate-once-show-once, hash-only-at-rest. */
@@ -74,6 +75,57 @@ class ResellerApiKeyServiceTest extends TestCase
         $service->resolve($issued['plainText']);
 
         $this->assertSame('198.51.100.1', $issued['key']->refresh()->last_used_ip);
+    }
+
+    /** A2 hardening: no write-per-call once the stamp is fresh (<60s), same IP. */
+    public function test_resolve_skips_the_stamp_write_when_fresh_and_same_ip(): void
+    {
+        $reseller = $this->reseller();
+        $service = app(ResellerApiKeyService::class);
+        $issued = $service->issue($reseller, 'Production key');
+
+        Carbon::setTestNow('2026-09-12 10:00:00');
+        $service->resolve($issued['plainText'], '203.0.113.42');
+        $firstStamp = $issued['key']->refresh()->last_used_at;
+
+        Carbon::setTestNow('2026-09-12 10:00:30');
+        $service->resolve($issued['plainText'], '203.0.113.42');
+
+        $this->assertTrue($firstStamp->equalTo($issued['key']->refresh()->last_used_at));
+    }
+
+    /** A2 hardening: a stale (>=60s) stamp still gets refreshed. */
+    public function test_resolve_refreshes_the_stamp_once_stale(): void
+    {
+        $reseller = $this->reseller();
+        $service = app(ResellerApiKeyService::class);
+        $issued = $service->issue($reseller, 'Production key');
+
+        Carbon::setTestNow('2026-09-12 10:00:00');
+        $service->resolve($issued['plainText'], '203.0.113.42');
+        $firstStamp = $issued['key']->refresh()->last_used_at;
+
+        Carbon::setTestNow('2026-09-12 10:01:01');
+        $service->resolve($issued['plainText'], '203.0.113.42');
+
+        $this->assertFalse($firstStamp->equalTo($issued['key']->refresh()->last_used_at));
+    }
+
+    /** A2 hardening: an IP change always stamps immediately — the anomaly signal. */
+    public function test_resolve_stamps_immediately_on_an_ip_change_even_when_fresh(): void
+    {
+        $reseller = $this->reseller();
+        $service = app(ResellerApiKeyService::class);
+        $issued = $service->issue($reseller, 'Production key');
+
+        Carbon::setTestNow('2026-09-12 10:00:00');
+        $service->resolve($issued['plainText'], '203.0.113.42');
+
+        Carbon::setTestNow('2026-09-12 10:00:05');
+        $service->resolve($issued['plainText'], '198.51.100.9');
+
+        $this->assertSame('198.51.100.9', $issued['key']->refresh()->last_used_ip);
+        $this->assertTrue(Carbon::now()->equalTo($issued['key']->refresh()->last_used_at));
     }
 
     public function test_resolve_returns_null_for_an_unknown_key(): void
