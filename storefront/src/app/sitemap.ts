@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { listGames } from "@/lib/catalog";
+import { getResellerPriceList } from "@/lib/reseller-price-list";
 import { SITE_URL } from "@/lib/site";
 
 /**
@@ -25,11 +26,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/track-order`, lastModified: new Date() },
   ];
 
-  const games = await listGames();
+  const [games, resellerPriceList] = await Promise.all([listGames(), getResellerPriceList()]);
   const gameRoutes: MetadataRoute.Sitemap = games.map((game) => ({
     url: `${SITE_URL}/order/${game.slug}`,
     lastModified: game.addedAt ? new Date(game.addedAt) : new Date(),
   }));
+
+  // ADR-091: only listed when the page actually renders on this brand —
+  // same "empty tiers = no page" signal as /price-list and SiteFooter.
+  if (resellerPriceList.tiers.length > 0) {
+    staticRoutes.push({ url: `${SITE_URL}/price-list`, lastModified: new Date() });
+  }
 
   return [...staticRoutes, ...gameRoutes];
 }
