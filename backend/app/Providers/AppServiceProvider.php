@@ -33,6 +33,9 @@ use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
 use App\Services\PlayerValidation\Providers\MoogoldValidator;
 use App\Services\PlayerValidation\Providers\NexoneValidator;
+use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
+use App\Services\ReportAssistant\Gemini\GeminiApiClient;
+use App\Services\ReportAssistant\Gemini\GeminiClient;
 use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\FakeSupplierAdapter;
@@ -240,6 +243,26 @@ class AppServiceProvider extends ServiceProvider
                 apiKey: (string) $config['api_key'],
                 fromEmail: $config['from_email'],
                 fromName: $config['from_name'],
+                timeoutSeconds: $config['timeout'],
+                connectTimeoutSeconds: $config['connect_timeout'],
+            );
+        });
+
+        // ADR-087 decision 4 — same single-vendor direct-class-binding
+        // pattern as PlunkMailer above. Faked for testing/e2e: a
+        // text-to-SQL model call can't be asserted against, and must
+        // never make a real, billed API call from the test suite.
+        $this->app->bind(GeminiClient::class, function ($app) {
+            if ($app->environment(['testing', 'e2e'])) {
+                return new FakeGeminiClient;
+            }
+
+            $config = config('services.gemini');
+
+            return new GeminiApiClient(
+                baseUrl: $config['base_url'],
+                apiKey: (string) $config['api_key'],
+                model: $config['model'],
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
             );

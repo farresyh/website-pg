@@ -144,6 +144,24 @@ return [
     ],
 
     /**
+     * ADR-087 — Admin Reports LLM Assistant. Gemini REST API
+     * (generativelanguage.googleapis.com), Flash tier per decision 4
+     * (reasoning risk on SQL-generation accuracy outweighs Flash-Lite's
+     * marginal saving; Pro's cost premium is unjustified for this
+     * workload). API key is `.env`-only for now (decision 10) — same
+     * storage discipline as `chip.secret_key` above, tracked against
+     * the same cross-cutting "payment gateway credential migration"
+     * backlog item rather than duplicated here.
+     */
+    'gemini' => [
+        'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+        'api_key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-flash-latest'),
+        'timeout' => (int) env('GEMINI_TIMEOUT_SECONDS', 30),
+        'connect_timeout' => (int) env('GEMINI_CONNECT_TIMEOUT_SECONDS', 5),
+    ],
+
+    /**
      * ADR-071 PR2 — the storefront's Next.js `catalog` Data-Cache tag is
      * purged on any catalog/SEO/branding/hero/payment mutation by
      * POSTing to its `/api/revalidate` route (mirroring this backend's
