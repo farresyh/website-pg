@@ -199,6 +199,32 @@ class ChipGatewayTest extends TestCase
             && $request->method() === 'GET');
         $this->assertTrue($result->success);
         $this->assertSame(PaymentStatus::Paid, $result->status);
+        $this->assertSame(10000, $result->data['amount_sen']);
+    }
+
+    /**
+     * Reseller-family harden item D (docs/build-log.md): CHIP's own
+     * OpenAPI spec types `purchase.total` as a string, not a number —
+     * `normalizePurchase()` used to pass it through unconverted, so a
+     * caller comparing it against a stored int `total_charged_sen` with
+     * strict `!==` (`ReconcilePendingWalletTopupsCommand::recover()`)
+     * would never match and silently refuse to credit forever.
+     */
+    public function test_get_payment_casts_a_string_total_to_an_int_amount_sen(): void
+    {
+        Http::fake([
+            'gate.chip-in.asia/*' => Http::response([
+                'id' => 'purchase-123',
+                'status' => 'paid',
+                'reference' => 'KRS-1',
+                'purchase' => ['total' => '10000'],
+            ], 200),
+        ]);
+
+        $result = $this->gateway()->getPayment('purchase-123');
+
+        $this->assertSame(10000, $result->data['amount_sen']);
+        $this->assertIsInt($result->data['amount_sen']);
     }
 
     public function test_get_payment_maps_error_status_to_failed(): void

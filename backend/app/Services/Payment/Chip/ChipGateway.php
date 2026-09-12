@@ -304,7 +304,12 @@ final class ChipGateway implements PaymentGateway
                 'descriptor' => 'WEB_URL',
                 'value' => $body['checkout_url'],
             ]] : [],
-            'amount_sen' => $body['purchase']['total'] ?? null,
+            // CHIP's own OpenAPI spec types `purchase.total` as a string,
+            // not a number — cast here, once, at the boundary, so every
+            // caller (order/membership/wallet-topup reconciliation) can
+            // keep comparing it as a plain int against its own stored
+            // `*_sen` column with strict `!==` without re-deriving this.
+            'amount_sen' => isset($body['purchase']['total']) ? (int) $body['purchase']['total'] : null,
         ];
     }
 }

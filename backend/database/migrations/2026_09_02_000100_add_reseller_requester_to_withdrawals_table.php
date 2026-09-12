@@ -33,9 +33,17 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Deliberately leaves `requested_by` nullable — restoring
+        // `nullable(false)` here fails outright once any reseller- or
+        // affiliate-originated row exists (both rely on `requested_by =
+        // null`, ADR-059 59c / ADR-072), and even where it would
+        // succeed, forcing it back would just orphan those rows.
+        // Reseller-family harden audit (2026-09-10): surfaced by
+        // AffiliateWithdrawalConcurrencyTest, the first concurrency test
+        // to leave such a row in the real MySQL database the
+        // DatabaseMigrations trait rolls back against.
         Schema::table('withdrawals', function (Blueprint $table) {
             $table->dropConstrainedForeignId('reseller_user_id');
-            $table->unsignedBigInteger('requested_by')->nullable(false)->change();
         });
     }
 };
