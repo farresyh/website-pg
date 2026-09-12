@@ -74,17 +74,29 @@ class OpenWaWebhookController extends Controller
      * Group messages only — a direct message to the bot number outside
      * any group is deliberately ignored (ADR-075 decision 3's group-
      * membership trust boundary has no individual-sender identity to
-     * even tentatively attribute a DM to). OpenWA's own payload shape
-     * for distinguishing a group chat from a DM isn't documented, so
-     * this reads a `isGroup` boolean defensively (default false — an
-     * unrecognized shape is treated as "not a group" rather than risking
-     * a DM being misrouted into the group-trust flow).
+     * even tentatively attribute a DM to).
+     *
+     * E6 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+     * confirmed against OpenWA's own published docs (docs.open-wa.org,
+     * checked 2026-09-12) — a boolean `isGroup` field is real and
+     * documented, so the field name read below was always correct.
+     * docs.open-wa.org/changelog (server >= 0.23.4) later added a more
+     * granular `kind` field (`individual`/`group`/`channel`/`status`/
+     * `broadcast`/`unknown`) specifically because "`isGroup` boolean
+     * could not" separate channel traffic from real group traffic — a
+     * gap that matters here (a channel message misread as `isGroup:
+     * true` would misroute into the group-trust flow). `kind` is
+     * preferred when the payload carries it (newer OpenWA versions);
+     * `isGroup` is the fallback for older ones. Still defaults to "not a
+     * group" on a wholly unrecognized shape — an unrecognized shape
+     * stays a silent drop, not a crash, matching every other
+     * defensively-read field in this controller.
      */
     private function handleMessageReceived(Request $request): void
     {
         $data = (array) $request->input('data', []);
 
-        if (! ($data['isGroup'] ?? false)) {
+        if (! $this->isGroupMessage($data)) {
             return;
         }
 
@@ -99,6 +111,16 @@ class OpenWaWebhookController extends Controller
         }
 
         $this->bot->handle($groupId, $text, $messageId);
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function isGroupMessage(array $data): bool
+    {
+        if (isset($data['kind']) && is_string($data['kind'])) {
+            return $data['kind'] === 'group';
+        }
+
+        return (bool) ($data['isGroup'] ?? false);
     }
 
     private function handleSessionStatus(Request $request): void
