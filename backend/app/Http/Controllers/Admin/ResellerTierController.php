@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreResellerTierRequest;
 use App\Http\Requests\Admin\UpdateResellerTierRequest;
 use App\Models\ResellerTier;
+use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
@@ -36,12 +37,23 @@ class ResellerTierController extends Controller
     {
         $tier = ResellerTier::query()->create($request->validated());
 
+        // ADR-091: a new tier could be created with show_on_price_list
+        // already true — the public price list (Next Data Cache, `catalog`
+        // tag) should reflect it without waiting out the 30s backstop TTL.
+        NextRevalidation::purge();
+
         return response()->json($tier, 201);
     }
 
     public function update(UpdateResellerTierRequest $request, ResellerTier $reseller_tier): JsonResponse
     {
         $reseller_tier->update($request->validated());
+
+        // ADR-091: covers show_on_price_list / markup_percent / sort_order
+        // changes — called unconditionally rather than special-casing
+        // which fields changed, same as every other admin write that
+        // touches public-facing content.
+        NextRevalidation::purge();
 
         return response()->json($reseller_tier->fresh());
     }
