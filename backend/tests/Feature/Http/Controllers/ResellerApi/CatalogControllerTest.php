@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers\ResellerApi;
 
+use App\Http\Controllers\CatalogController;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Reseller;
@@ -123,6 +124,52 @@ class CatalogControllerTest extends TestCase
         $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))
             ->assertForbidden()
             ->assertJsonPath('error', 'RESELLER_INACTIVE');
+    }
+
+    /** A1 hardening: a tier's priced catalog is cached — a cost_price change is stale until invalidated. */
+    public function test_priced_catalog_is_cached_per_tier(): void
+    {
+        [, $key] = $this->makeReseller(markupPercent: 10);
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $this->package($game, '14 Diamond', 14, 1000, 1200);
+
+        $first = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
+        $first->assertJsonPath('games.0.packages.0.price_sen', 1100); // 1000 * 1.10
+
+        Package::query()->first()->update(['cost_price' => 2000]);
+
+        $second = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
+        $second->assertJsonPath('games.0.packages.0.price_sen', 1100); // still cached
+    }
+
+    /** A1 hardening: forgetPricedCache() (the catalog-write choke point) bypasses the stale cache. */
+    public function test_priced_catalog_cache_is_invalidated_by_forget_priced_cache(): void
+    {
+        [, $key] = $this->makeReseller(markupPercent: 10);
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $this->package($game, '14 Diamond', 14, 1000, 5000);
+
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
+
+        Package::query()->first()->update(['cost_price' => 2000]);
+        CatalogController::forgetIndexCache();
+
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))
+            ->assertJsonPath('games.0.packages.0.price_sen', 2200); // 2000 * 1.10
+    }
+
+    /** A1 hardening: two tiers each get their own priced cache entry, never another's price. */
+    public function test_priced_catalog_cache_is_scoped_per_tier(): void
+    {
+        [, $keyA] = $this->makeReseller(markupPercent: 10);
+        [, $keyB] = $this->makeReseller(markupPercent: 20);
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $this->package($game, '14 Diamond', 14, 1000, 1200);
+
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($keyA))
+            ->assertJsonPath('games.0.packages.0.price_sen', 1100);
+        $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($keyB))
+            ->assertJsonPath('games.0.packages.0.price_sen', 1200);
     }
 
     public function test_rejects_a_revoked_key(): void

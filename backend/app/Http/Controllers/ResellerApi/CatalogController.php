@@ -12,6 +12,7 @@ use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * ADR-074 decision 3 + ADR-084 PR-1: `GET /api/reseller/v1/catalog` — the
@@ -26,10 +27,27 @@ use Illuminate\Support\Collection;
  */
 class CatalogController extends Controller
 {
+    /**
+     * A1 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+     * `packagesFor()`'s per-row `resolveResellerWallet()` compute used to
+     * re-run on every call regardless of caller — pure CPU (no DB query),
+     * but ~486 rows re-priced per request. Tagged (not a single key) so
+     * every tier's entry can be flushed at once, from either catalog-write
+     * choke point: `Admin\CatalogController::forgetIndexCache()` (a
+     * package/game changed) or `Admin\ResellerTierController::update()`
+     * (a tier's own `markup_percent` changed — the catalog didn't).
+     */
+    public const PRICED_CACHE_TAG = 'reseller.catalog.priced';
+
     public function __construct(
         private readonly ResellerCatalogService $catalog,
         private readonly OrderPricingResolver $pricingResolver,
     ) {}
+
+    public static function forgetPricedCache(): void
+    {
+        Cache::tags([self::PRICED_CACHE_TAG])->flush();
+    }
 
     #[Endpoint(
         title: 'List the catalogue',
@@ -59,23 +77,35 @@ class CatalogController extends Controller
             throw ResellerApiException::noTierAssigned();
         }
 
-        $markupPercent = (float) $reseller->tier->markup_percent;
-        $rows = $this->catalog->listAvailable();
-
-        $rowsByGameId = $rows->groupBy(fn (array $row): int => $row['package']->game_id);
-
-        $games = Game::query()
-            ->whereIn('id', $rowsByGameId->keys())
-            ->orderBy('name')
-            ->get(['id', 'reseller_code', 'name']);
-
-        $payload = $games->map(fn (Game $game): array => [
-            'code' => $game->reseller_code,
-            'name' => $game->name,
-            'packages' => $this->packagesFor($rowsByGameId->get($game->id, collect()), $markupPercent),
-        ])->values();
+        $payload = $this->pricedCatalogForTier($reseller->reseller_tier_id, (float) $reseller->tier->markup_percent);
 
         return response()->json(['games' => $payload]);
+    }
+
+    /**
+     * @return array<int, array{code: string, name: string, packages: array<int, array{code: string, name: string, price_sen: int}>}>
+     */
+    private function pricedCatalogForTier(int $tierId, float $markupPercent): array
+    {
+        return Cache::tags([self::PRICED_CACHE_TAG])->remember(
+            self::PRICED_CACHE_TAG.".{$tierId}",
+            60,
+            function () use ($markupPercent): array {
+                $rows = $this->catalog->listAvailable();
+                $rowsByGameId = $rows->groupBy(fn (array $row): int => $row['package']->game_id);
+
+                $games = Game::query()
+                    ->whereIn('id', $rowsByGameId->keys())
+                    ->orderBy('name')
+                    ->get(['id', 'reseller_code', 'name']);
+
+                return $games->map(fn (Game $game): array => [
+                    'code' => $game->reseller_code,
+                    'name' => $game->name,
+                    'packages' => $this->packagesFor($rowsByGameId->get($game->id, collect()), $markupPercent),
+                ])->values()->all();
+            },
+        );
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
 use App\Http\Requests\Admin\StoreResellerTierRequest;
 use App\Http\Requests\Admin\UpdateResellerTierRequest;
 use App\Models\ResellerTier;
@@ -54,6 +55,12 @@ class ResellerTierController extends Controller
         // which fields changed, same as every other admin write that
         // touches public-facing content.
         NextRevalidation::purge();
+
+        // A1 hardening (2026-09-10 reseller-family audit): a markup_percent
+        // change re-prices this tier's Reseller API catalog cache without
+        // touching any Package/Game row, so the catalog-write choke point
+        // alone wouldn't invalidate it — flush explicitly here too.
+        ResellerApiCatalogController::forgetPricedCache();
 
         return response()->json($reseller_tier->fresh());
     }

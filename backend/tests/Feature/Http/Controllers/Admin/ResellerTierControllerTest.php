@@ -3,8 +3,12 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\Game;
+use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
+use App\Models\Supplier;
+use App\Services\Reseller\ResellerApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -114,5 +118,30 @@ class ResellerTierControllerTest extends TestCase
         // Re-saving an already-shown tier (still true) must not trip its own count.
         $this->putJson("/api/reseller-tiers/{$tiers->first()->id}", ['show_on_price_list' => true])
             ->assertOk();
+    }
+
+    /** A1 hardening: a markup_percent edit invalidates the Reseller API's per-tier priced-catalog cache. */
+    public function test_update_invalidates_the_reseller_api_priced_catalog_cache(): void
+    {
+        $tier = ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 10, 'is_active' => true, 'sort_order' => 1]);
+        $reseller = Reseller::query()->create(['business_name' => 'Acme', 'reseller_tier_id' => $tier->id, 'is_active' => true]);
+        $key = app(ResellerApiKeyService::class)->issue($reseller, 'Test key')['plainText'];
+
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $supplier = Supplier::query()->create(['slug' => 'gamevion', 'name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 1000, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'REF-14', 'is_active' => true,
+        ]);
+
+        $this->getJson('/api/reseller/v1/catalog', ['Authorization' => "Bearer {$key}"])
+            ->assertJsonPath('games.0.packages.0.price_sen', 1100); // 1000 * 1.10
+
+        $this->actAsSuperAdmin();
+        $this->putJson("/api/reseller-tiers/{$tier->id}", ['markup_percent' => 20])->assertOk();
+
+        $this->getJson('/api/reseller/v1/catalog', ['Authorization' => "Bearer {$key}"])
+            ->assertJsonPath('games.0.packages.0.price_sen', 1200); // 1000 * 1.20, not the stale cache
     }
 }
