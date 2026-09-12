@@ -669,13 +669,19 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     `docs/build-log.md`).
 11. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
-12. **ADR-086** — Reports restructure: rebuild-from-scratch audit of every
-    existing `ReportService` method/tab (keep/merge/extend per case), new
-    Membership + Reseller-wallet breakdown dimensions, single-pass grouped-SQL
-    rewrite of all 7 breakdown methods (shared paid_at-scope + double-count-safe
-    profit SQL fragment), existing filter/tab UX preserved, hand-rolled SVG
-    charts migrated to PrimeReact `Chart` (Chart.js, zero new dependency).
-    Grilled 2026-09-11.
+12. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
+    LLM Report Assistant (`/admin/reports/assistant`): a ChatGPT/Gemini-style
+    sidebar (new chat, switch between past threads, delete a thread), the
+    assistant still remembering a past thread's context when reopened. Reverses
+    ADR-087 decision 7 ("session-scoped only, never persisted to the database
+    long-term") — needs its own grill before building, not a trivial addition:
+    open questions include retention policy for old threads (vs. the existing
+    90-day audit log, which stays regardless and serves a different, compliance
+    purpose), per-admin thread isolation, and DB/endpoint shape (list/create/
+    delete thread, fetch a thread's messages). Raised by the founder 2026-09-12;
+    not a system-load concern either way — Gemini's own per-message cost already
+    scales with resent history length today, persisting it doesn't add API cost,
+    only cheap DB storage for a handful of `super_admin` accounts.
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 Voucher double-submit guard (Path A) · blacklist data-source / appeal policy ·
