@@ -209,6 +209,3 @@ export async function getGamePackages(slug: string, membershipToken?: string): P
     [],
   );
 }
-
-/** Quick Counter's shortlist — a small, hand-picked subset of real games by slug (editorial curation, not backend data). */
-export const QUICK_COUNTER_SLUGS = ["mobile-legends", "pubg-mobile", "honor-of-kings", "free-fire"];

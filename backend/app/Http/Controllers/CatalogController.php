@@ -68,6 +68,7 @@ class CatalogController extends Controller
                 ->where('is_active', true)
                 ->whereNotIn('id', $this->hiddenGameIds())
                 ->with(['packages' => fn ($query) => $query->where('is_active', true)])
+                ->orderBy('sort_order')
                 ->orderBy('name')
                 ->get()
                 ->map(fn (Game $game) => $this->publicGameSummary($game))

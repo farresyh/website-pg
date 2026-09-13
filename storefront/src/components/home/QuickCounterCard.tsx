@@ -4,25 +4,26 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ArrowRight, GameController } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
-import { QUICK_COUNTER_SLUGS, type Game } from "@/lib/catalog";
+import { type Game } from "@/lib/catalog";
 
 const MAX_TILES = 6;
 
 /**
  * ADR-064: Stitch's "Quick Top-Up" widget — a bordered card beside the
- * hero with a game-picker *grid* (no dropdown). Shows the pinned quick
- * games first, padded with the top catalog games so the grid is never
- * sparse; a game's real thumbnail when it has one, a Phosphor icon
- * otherwise. Tap a tile to select, then "Start Top Up".
+ * hero with a game-picker *grid* (no dropdown). GAME-6 (2026-09-13):
+ * tiles are simply the first MAX_TILES games in `games`, the same
+ * admin-ordered list every other catalog surface uses (`sort_order`,
+ * CatalogController::index()) — previously a separate hardcoded
+ * QUICK_COUNTER_SLUGS shortlist that only a developer could change.
+ * Admin now controls this by dragging a game to the front in
+ * /admin/games' "Reorder Games", one control surface instead of two.
+ * A game's real thumbnail when it has one, a Phosphor icon otherwise.
+ * Tap a tile to select, then "Start Top Up".
  */
 export default function QuickCounterCard({ games }: { games: Game[] }) {
   const router = useRouter();
 
-  const pinned = QUICK_COUNTER_SLUGS.map((slug) => games.find((g) => g.slug === slug)).filter(
-    (g): g is Game => Boolean(g),
-  );
-  const seen = new Set(pinned.map((g) => g.slug));
-  const tiles = [...pinned, ...games.filter((g) => !seen.has(g.slug))].slice(0, MAX_TILES);
+  const tiles = games.slice(0, MAX_TILES);
 
   return (
     <div className="flex h-full flex-col rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">

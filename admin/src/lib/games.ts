@@ -39,6 +39,8 @@ export interface Game {
   image_url?: string | null;
   banner_url?: string | null;
   is_active?: boolean;
+  /** GAME-6 — display order everywhere (admin list, storefront catalog, Quick Top-Up). Set via reorderGames(), not the edit form. */
+  sort_order?: number;
   packages_count?: number;
   validation_rules?: GameValidationRules | null;
   /** MUI-5 follow-up — which admin-created PlayerValidatorProfile (if any) covers this game's storefront "Validate Player ID" flow. */
@@ -98,6 +100,15 @@ export function updateGame(token: string, gameId: number, values: UpdateGameValu
 
 export function deleteGame(token: string, gameId: number) {
   return apiFetch<void>(`/api/games/${gameId}`, { method: "DELETE", token });
+}
+
+/** GAME-6 — `gameIds` is the complete new front-to-back order; `sort_order` is written as each id's position. */
+export function reorderGames(token: string, gameIds: number[]) {
+  return apiFetch<{ games_reordered: number }>(`/api/games/reorder`, {
+    method: "POST",
+    token,
+    body: { game_ids: gameIds },
+  });
 }
 
 export function updatePackage(token: string, packageId: number, values: UpdatePackageValues) {

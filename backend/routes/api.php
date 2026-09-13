@@ -897,9 +897,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{hero_slide}', [AdminHeroSlideController::class, 'destroy']);
     });
 
-    // GAME-1..5/7 — Admin Games & Packages management.
+    // GAME-1..5/6/7 — Admin Games & Packages management.
     Route::middleware('admin.role:super_admin,admin')->group(function () {
         Route::get('/games', [GameController::class, 'index']);
+        Route::post('/games/reorder', [GameController::class, 'reorder']);
         Route::get('/games/{game}', [GameController::class, 'show']);
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
