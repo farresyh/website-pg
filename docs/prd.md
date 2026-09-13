@@ -586,7 +586,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13) | ADR-072–076, 084, 091, 093 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC) | ADR-006, 030–032, 067, 069 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived) | ADR-022 |
-| Games & Packages (GAME-1..11) | 🟡 GAME-1..5/7/9/10/11 live (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`). GAME-6 (drag-drop reorder) unbuilt — not blocking. GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
+| Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). ORD-5 export unbuilt | ADR-017, 026, 032, 092 |
@@ -615,8 +615,10 @@ kept. Screen-by-screen history in `docs/build-log.md`.
 # 16. Open Items & Backlog
 
 Last walked with the founder 2026-09-09, re-verified against production 2026-09-11,
-spot-checked against real code again 2026-09-13 (Voucher/Blacklist/GAME-11/SEO-fields
-lines below turned out already shipped — this list had drifted).
+spot-checked against real code again 2026-09-13 twice in the same day (Voucher/
+Blacklist/GAME-11/SEO-fields turned out already shipped; GAME-6 then shipped
+same-session, PR #192) — this list drifts easily, re-verify against real
+code/production before trusting an "open" line here, not just this doc's memory.
 Anything shipped and verified drops off this list into `docs/build-log.md`.
 
 ## The one launch gate
@@ -641,12 +643,7 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
 5. **e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
    30s timeout under the 60s per-test budget; raise it.
-6. Small unbuilt scope, none blocking: **GAME-6** (drag-drop reorder — real gap,
-   confirmed 2026-09-13 no admin UI touches `games.sort_order` at all today;
-   `AffiliateGame` has no `sort_order` of its own either, so an affiliate
-   storefront currently just inherits the primary brand's order verbatim —
-   decide at build time whether v1 stays primary-order-only or also gives
-   affiliates their own override), ORD-5 (order export), SET-9 (the Telegram
+6. Small unbuilt scope, none blocking: ORD-5 (order export), SET-9 (the Telegram
    *sender* — the setting fields exist), gallery in-modal picker, gallery→WebP
    + delete referential safety, SEO `AggregateRating` JSON-LD on the PDP,
    consolidate ADR-081's 3× theme-preset ID list (now also the token-map
@@ -663,9 +660,23 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
    reference for the team to follow instead of designing it from scratch again.
    Distinct from item 6's `tokensDark` backfill, which is additive work on the
    *current* design and can proceed independently.
-8. **GAME-11 (bulk price update), Game SEO fields, and GAME-12 are OFF this
-   list — confirmed already resolved 2026-09-13, not by this list's own prior
-   entries:**
+8. **GAME-6, GAME-11 (bulk price update), Game SEO fields, and GAME-12 are OFF
+   this list — confirmed already resolved 2026-09-13, not by this list's own
+   prior entries:**
+   - **GAME-6 — shipped same-session** (PR #192, `feature/game-6-reorder-games`):
+     `/admin/games`' "Reorder Games" (drag-drop, PrimeReact `reorderableRows`),
+     `GameController::reorder()`. Widened by one necessary fact found mid-build:
+     `games.sort_order` was completely dead everywhere — admin list, public
+     storefront catalog, **and** the Affiliate whitelabel catalog all ordered
+     alphabetically, ignoring the column entirely — now wired into all three.
+     Quick Top-Up's hardcoded `QUICK_COUNTER_SLUGS` shortlist (dev-only,
+     no admin control) dropped in the same PR — its tiles are now just the
+     first 6 games in the same admin-ordered list, one control surface
+     instead of two. `AffiliateGame` still has no `sort_order` of its own
+     (confirmed unchanged) — an affiliate storefront inherits the primary
+     brand's order verbatim, by design (`CatalogController::index()` is
+     shared/brand-scoped, not per-brand-ordered); revisit only if an
+     affiliate actually asks for independent ordering.
    - GAME-11 — already shipped: `SettingsController::bulkMarkup()` +
      `PlatformSettingsSection.tsx` under `/admin/settings`, not the Games page.
    - Game SEO fields — already shipped, ADR-029 (`/admin/seo/games`, built
