@@ -119,6 +119,24 @@ export function listOrders(
   return apiFetch<OrderPage>(`/api/orders${qs ? `?${qs}` : ""}`, { token });
 }
 
+/**
+ * ADR-092: the six Orders KPI-card counts, one lean grouped-count read
+ * decoupled from listOrders()'s paginated fetch — polled on an interval
+ * by the page itself, never recomputed by search/filter changes.
+ */
+export interface OrderSummary {
+  need_action: number;
+  needs_review: number;
+  processing: number;
+  completed: number;
+  today: number;
+  all: number;
+}
+
+export function getOrderSummary(token: string) {
+  return apiFetch<OrderSummary>("/api/orders/summary", { token });
+}
+
 export function getOrder(token: string, id: number) {
   return apiFetch<OrderDetail>(`/api/orders/${id}`, { token });
 }
