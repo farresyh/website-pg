@@ -39,11 +39,18 @@ final class PublicResellerPriceListService
      */
     public function build(): array
     {
+        // Admin's `sort_order` still governs every other tier-ordering
+        // surface (Wallet tiers table, portal tier picker) unchanged —
+        // this one public page renders it reversed: founder feedback
+        // 2026-09-13, cheapest tier should sit rightmost (a "prices
+        // rise as you scroll left" reading), while sort_order elsewhere
+        // keeps meaning "most-preferred/cheapest first". Display-order
+        // flip only, not a reinterpretation of what sort_order means.
         $tiers = ResellerTier::query()
             ->where('show_on_price_list', true)
             ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->orderBy('id')
+            ->orderByDesc('sort_order')
+            ->orderByDesc('id')
             ->get(['id', 'name', 'markup_percent']);
 
         // Same empty-array-means-off contract as MembershipController::

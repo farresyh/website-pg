@@ -4936,6 +4936,11 @@ Grilled over 3 rounds (`/mattpocock-skills:grilling`) plus a visual wireframe ar
 - `reseller_tiers` gained its first field (`show_on_price_list`) that is genuinely public-facing rather than admin/billing-internal — any future `reseller_tiers` column should ask the same "does this leak to `/price-list`?" question decision 4 already settled for markup framing.
 - The margin-exposure trade-off in decision 1/6 (a tier's public price is `cost_price × (1 + markup%)`, unlike Affiliate's portal which never shows platform's own markup) was a deliberate, eyes-open founder call, matching how both reference competitor sites already operate — not an oversight to "fix" later.
 
+**Addendum, 2026-09-13 (founder feedback, live mobile testing):** two display-only overrides on top of decisions 2 and 3, neither a change to the underlying data contract:
+- **Decision 2's column order is now rendered in reverse of `sort_order`** — `PublicResellerPriceListService::build()` orders `orderByDesc('sort_order')->orderByDesc('id')` instead of ascending, so the cheapest tier sits rightmost (a "price rises as you scroll left" reading) rather than leftmost. `sort_order` itself is untouched and still governs every other tier-ordering surface (Wallet tiers table, portal picker) ascending, as before — this is a display-order flip on this one page's output, not a reinterpretation of the field.
+- **Decision 3's footer link is hidden** (`SiteFooter` no longer fetches/renders it) while the page itself stays fully live at `/price-list` — the "empty tiers = no page" auto-hide contract (`notFound()`, `sitemap.ts`) is unchanged, this only removes the on-site nav discovery path. Not gated on a new admin toggle; a straight code-level hide, reversible by restoring the removed block if the founder wants it back in nav.
+- Also fixed the same session: the table's mobile scroll affordance — a 3rd tier column could clip flush against the bordered scrollport with zero visual cue more existed. `ResellerPriceListTable` now shows a "swipe to see all N tiers" hint below the table on narrow viewports whenever more than 2 tiers are shown.
+
 ---
 
 ## ADR-092: Admin Orders KPI cards — persistent, clickable status counts, closing the reseller-family audit's "no admin alert" gap without reopening ADR-073's manual-refund policy

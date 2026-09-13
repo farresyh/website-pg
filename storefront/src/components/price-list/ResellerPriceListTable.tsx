@@ -68,6 +68,17 @@ export default function ResellerPriceListTable({ list }: { list: ResellerPriceLi
           <p className="px-4 py-8 text-center text-sm text-on-surface-variant">No game found for &quot;{query}&quot;.</p>
         )}
       </div>
+      {/* The table's own rounded border sits on the scrollport, not the
+          full scrollable width — on a narrow viewport it can clip a tier
+          column flush with no visual cut to signal more exists. An
+          explicit hint below the table is the one affordance that's
+          foolproof (no fragile gradient-over-a-themed-background trick)
+          when there's more than 2 tiers to scroll to. */}
+      {list.tiers.length > 2 && (
+        <p className="mt-2 text-center text-xs text-on-surface-variant sm:hidden">
+          ← Swipe to see all {list.tiers.length} tiers →
+        </p>
+      )}
     </div>
   );
 }
