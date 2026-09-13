@@ -24,6 +24,7 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\PlayerValidation\PlayerValidator;
+use App\Services\PlayerValidation\ProviderUnavailableException;
 use App\Services\Reseller\Bot\ResellerBotService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -218,6 +219,160 @@ class ResellerBotServiceTest extends TestCase
             'reseller_id' => $reseller->id,
             'failure_reason' => 'insufficient_balance',
         ]);
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    // --- ADR-093: .order auto player-ID/region validation ---
+
+    public function test_order_rejects_an_invalid_player_id_when_the_game_has_a_validator(): void
+    {
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::invalid('mlbb');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $game = $this->makePackage(resellerCode: 'MLMY')->game;
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'invalid_player_id',
+        ]);
+        $this->assertDatabaseHas('player_validations', ['game_id' => $game->id, 'status' => 'invalid']);
+    }
+
+    public function test_order_rejects_a_player_id_whose_region_maps_to_a_different_game(): void
+    {
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::valid('mlbb', 'TestNick', 'MY');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $mlmy = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'ml-my', 'reseller_code' => 'MLMY', 'is_active' => true]);
+        $mlid = $this->makePackage(resellerCode: 'MLID')->game;
+        $mlid->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        // The player's real country (MY) maps to MLMY, not the MLID game the order is placed against.
+        PlayerRegionMapping::query()->create([
+            'player_validator_profile_id' => $profile->id, 'country_code' => 'MY',
+            'country_name' => 'Malaysia', 'game_id' => $mlmy->id,
+        ]);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLID-14 51049607 2005', 'msg-1');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'wrong_region_player_id',
+        ]);
+        $this->assertDatabaseHas('player_validations', ['game_id' => $mlid->id, 'status' => 'wrong_region']);
+    }
+
+    public function test_order_proceeds_when_the_player_id_is_valid_for_the_correct_region(): void
+    {
+        Queue::fake();
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::valid('mlbb', 'TestNick', 'MY');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $game = $this->makePackage(resellerCode: 'MLMY')->game;
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        PlayerRegionMapping::query()->create([
+            'player_validator_profile_id' => $profile->id, 'country_code' => 'MY',
+            'country_name' => 'Malaysia', 'game_id' => $game->id,
+        ]);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+
+        $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
+        $this->assertDatabaseHas('player_validations', ['game_id' => $game->id, 'status' => 'valid']);
+    }
+
+    /** ADR-093 decision 2 — an unofficial third-party outage must never block a legitimate paid order. */
+    public function test_order_proceeds_when_the_validator_provider_is_unavailable(): void
+    {
+        Queue::fake();
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                throw new ProviderUnavailableException('source down');
+            }
+        };
+        $this->app->bind('player-validator.mlbb', fn () => $fake);
+
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $game = $this->makePackage(resellerCode: 'MLMY')->game;
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+
+        $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
+        $this->assertSame(0, PlayerValidation::query()->count());
+    }
+
+    /** Same fail-open posture for a misconfigured/unbound validator key — a config error is not the reseller's fault either. */
+    public function test_order_proceeds_when_the_validator_key_is_unsupported(): void
+    {
+        Queue::fake();
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'Unbound', 'key' => 'no-such-validator']);
+        $game = $this->makePackage(resellerCode: 'MLMY')->game;
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+
+        $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
+    }
+
+    public function test_order_skips_validation_entirely_when_the_game_has_no_validator_profile(): void
+    {
+        Queue::fake();
+        $this->makePackage(resellerCode: 'MLMY');
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+
+        $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
+        $this->assertSame(0, PlayerValidation::query()->count());
+    }
+
+    /** ADR-093 decision 3 — the auto-check inside .order consumes the exact same bucket .checkid itself does. */
+    public function test_order_validation_is_rejected_once_the_shared_checkid_rate_limit_is_exhausted(): void
+    {
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $game = $this->makePackage(resellerCode: 'MLMY')->game;
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $reseller = $this->makeLinkedReseller();
+
+        for ($i = 0; $i < 10; $i++) {
+            RateLimiter::hit("reseller-bot-checkid:{$reseller->id}", 60);
+        }
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+
         $this->assertSame(0, Order::query()->count());
     }
 
@@ -503,6 +658,30 @@ class ResellerBotServiceTest extends TestCase
         $this->assertSame(1, WalletTopupAttempt::query()->count());
     }
 
+    /**
+     * E9 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
+     * `.topupbaki`'s default-channel pick ("first active method by
+     * category, label") has no other test pinning it — a future admin
+     * reorder or a new payment method could silently change which
+     * channel a reseller gets top-up'd through. Pins today's expected
+     * pick (`fpx` sorts before `wallet_qr` alphabetically) so a future
+     * ordering change fails this test loudly instead of drifting silent.
+     */
+    public function test_topupbaki_picks_the_first_active_method_by_category_then_label(): void
+    {
+        $this->activeFpx();
+        PaymentMethod::query()->create([
+            'channel_code' => 'duitnow_qr', 'label' => 'DuitNow QR', 'category' => 'wallet_qr',
+            'gateway' => 'chip', 'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 0,
+        ]);
+        $this->bindGateway();
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+
+        $this->assertSame('fpx', WalletTopupAttempt::query()->firstOrFail()->channel_code);
+    }
+
     public function test_topupbaki_is_unavailable_when_no_payment_method_is_active(): void
     {
         $this->bindGateway();
@@ -538,6 +717,47 @@ class ResellerBotServiceTest extends TestCase
             ->where('reseller_id', $reseller->id)
             ->where('failure_reason', 'topup_below_minimum')
             ->count());
+    }
+
+    // --- E10 hardening: `.baki`/`.trackorder`/`.listharga` reject a deactivated reseller ---
+
+    public function test_baki_is_rejected_for_a_deactivated_reseller(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['is_active' => false]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'reseller_inactive',
+        ]);
+    }
+
+    public function test_trackorder_is_rejected_for_a_deactivated_reseller(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['is_active' => false]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-TEST', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'reseller_inactive',
+        ]);
+    }
+
+    public function test_listharga_is_rejected_for_a_deactivated_reseller(): void
+    {
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['is_active' => false]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.listharga', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'reseller_inactive',
+        ]);
     }
 
     public function test_checkid_is_rate_limited_more_strictly_than_other_commands(): void

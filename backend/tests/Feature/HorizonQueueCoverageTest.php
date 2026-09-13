@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Jobs\SendMembershipReceiptJob;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
 use App\Services\OpenWa\OpenWaClient;
@@ -59,5 +60,14 @@ class HorizonQueueCoverageTest extends TestCase
 
         $this->assertSame('orders', $listener->queue);
         $this->assertContains($listener->queue, $this->supervisedQueues());
+    }
+
+    /** E8 hardening: OpenWaClient::sendText() now dispatches this job instead of calling out inline. */
+    public function test_send_reseller_bot_reply_job_is_pinned_to_the_orders_queue(): void
+    {
+        $job = new SendResellerBotReplyJob('chat-1', 'hello');
+
+        $this->assertSame('orders', $job->queue);
+        $this->assertContains($job->queue, $this->supervisedQueues());
     }
 }

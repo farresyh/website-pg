@@ -3,7 +3,6 @@ import Image from "next/image";
 import { FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, WhatsAppIcon } from "@/components/icons/SocialIcons";
 import Logo from "@/components/ui/Logo";
 import { getBranding } from "@/lib/branding";
-import { getResellerPriceList } from "@/lib/reseller-price-list";
 import { resolveWhatsappHref } from "@/lib/whatsapp";
 
 const SOCIAL_ICONS = [
@@ -25,11 +24,8 @@ const SOCIAL_ICONS = [
  * to reflect real active gateways (is_active=true) with official SVG badges.
  */
 export default async function SiteFooter() {
-  const [branding, resellerPriceList] = await Promise.all([getBranding(), getResellerPriceList()]);
+  const branding = await getBranding();
   const currentYear = new Date().getFullYear();
-  // ADR-091: same "empty tiers = no page" signal /price-list itself uses
-  // — auto-hidden here too, no separate is_owned check or admin toggle.
-  const resellerPriceListEnabled = resellerPriceList.tiers.length > 0;
   // WhatsApp falls back to a wa.me link built from `support_phone` when
   // no explicit `social_links.whatsapp` URL is set (ADR-071 PR0).
   const socialLinks = { ...branding.socialLinks, whatsapp: resolveWhatsappHref(branding) ?? undefined };
@@ -90,11 +86,13 @@ export default async function SiteFooter() {
               <li>
                 <Link href="/privacy" className="hover:text-primary">Privacy Policy</Link>
               </li>
-              {resellerPriceListEnabled && (
-                <li>
-                  <Link href="/price-list" className="hover:text-primary">Reseller Price List</Link>
-                </li>
-              )}
+              {/* Founder feedback 2026-09-13: hidden from footer nav for
+                  now — the page itself (ADR-091) stays fully live and
+                  reachable at /price-list directly, this only removes
+                  the on-site discovery link. Re-add by restoring this
+                  <li> (and the resellerPriceListEnabled/getResellerPriceList
+                  fetch this file used to carry) if the founder wants it
+                  back in nav. */}
             </ul>
           </div>
 

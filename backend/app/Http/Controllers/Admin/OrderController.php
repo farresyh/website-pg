@@ -97,6 +97,48 @@ class OrderController extends Controller
     }
 
     /**
+     * ADR-092: the six Orders KPI-card counts in one grouped query,
+     * deliberately not piggybacked onto index()'s paginated response —
+     * that query already varies per search/filter/page on every
+     * keystroke, and a card's count shouldn't be recomputed by typing.
+     * "processing" combines delivery_status processing + pending_delivery
+     * (decision 2 — both read as "being worked on" from an admin's-eye
+     * view; the two underlying filter pills stay separately clickable).
+     * "today" is orthogonal to delivery status, cutting across every
+     * bucket by created_at. Same is_test=false scope as index().
+     */
+    public function summary(): JsonResponse
+    {
+        $row = Order::query()
+            ->where('is_test', false)
+            ->selectRaw(
+                'SUM(CASE WHEN payment_status = ? AND delivery_status = ? THEN 1 ELSE 0 END) as need_action,
+                 SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as needs_review,
+                 SUM(CASE WHEN delivery_status IN (?, ?) THEN 1 ELSE 0 END) as processing,
+                 SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as completed,
+                 SUM(CASE WHEN created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) as today,
+                 COUNT(*) as all_orders',
+                [
+                    PaymentStatus::Paid->value, DeliveryStatus::Failed->value,
+                    DeliveryStatus::NeedsReview->value,
+                    DeliveryStatus::Processing->value, DeliveryStatus::Pending->value,
+                    DeliveryStatus::Delivered->value,
+                    now()->startOfDay(), now()->endOfDay(),
+                ],
+            )
+            ->first();
+
+        return response()->json([
+            'need_action' => (int) $row->need_action,
+            'needs_review' => (int) $row->needs_review,
+            'processing' => (int) $row->processing,
+            'completed' => (int) $row->completed,
+            'today' => (int) $row->today,
+            'all' => (int) $row->all_orders,
+        ]);
+    }
+
+    /**
      * ORD-6: customer info, game/package, payment info, supplier
      * response — everything needed to confirm a specific order's
      * outcome. Status-history timeline is deferred (would need its
