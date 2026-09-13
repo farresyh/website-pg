@@ -521,6 +521,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('admin.role:super_admin,admin')->prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
+        // ADR-092: registered before {order} so the literal segment
+        // never gets swallowed by route-model binding.
+        Route::get('/summary', [OrderController::class, 'summary']);
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::post('/{order}/retry-delivery', [OrderController::class, 'retryDelivery']);
         Route::post('/{order}/resend', [OrderController::class, 'resend']);

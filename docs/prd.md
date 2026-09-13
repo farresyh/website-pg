@@ -589,7 +589,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Games & Packages (GAME-1..12) | 🟡 GAME-1..5/7 live (list/detail, markup %, activate/deactivate, delete). GAME-6/11/12 + game SEO fields unbuilt — not blocking | — |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
-| Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. ORD-5 export unbuilt | ADR-017, 026, 032 |
+| Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). ORD-5 export unbuilt | ADR-017, 026, 032, 092 |
 | Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. **ADR-087 built 2026-09-12** — Gemini Flash LLM assistant at `/admin/reports/assistant`, `super_admin`-only; needs `GEMINI_API_KEY` provisioned before it works in any real environment (same .env-only rollout as CHIP/Digiflazz) | ADR-086, 087, 088 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`) | — |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
@@ -682,6 +682,12 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
+13. **ADR-093** — Reseller Bot `.order` fat-finger safety net (auto player-ID/
+    region validation before placing, player ID echoed in the confirmation
+    reply, no mandatory 2-step confirm). Grilled + Accepted 2026-09-12,
+    handoff for a following session. ADR-092 (same session's sibling design)
+    is done — see §15's Orders Management row.
+
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 Voucher double-submit guard (Path A) · blacklist data-source / appeal policy ·

@@ -39,14 +39,21 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, listOrders, getOrder, refundOrderToWallet } from "@/lib/orders";
+import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, listOrders, getOrder, getOrderSummary, refundOrderToWallet } from "@/lib/orders";
 import type { Voucher } from "@/lib/vouchers";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
 import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
 import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
+import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
+
+// ADR-092: cards poll on this interval while the page is open — the one
+// piece of "proactive" behaviour kept from the dropped WhatsApp-alert
+// idea, cheap because it's a single grouped-count query, not the full
+// paginated list.
+const SUMMARY_POLL_MS = 60_000;
 
 const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -109,6 +116,7 @@ function OrdersPageInner() {
     setPageNumber(1);
   }
   const [page, setPage] = useState<OrderPage | null>(null);
+  const [summary, setSummary] = useState<OrderSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<OrderDetail | null>(null);
@@ -233,8 +241,33 @@ function OrdersPageInner() {
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load orders.");
       });
-     
+
   }, [session, status, search, pageNumber]);
+
+  // ADR-092: decoupled from the listOrders() effect above — the six
+  // counts don't depend on search/filter/page, and shouldn't be
+  // refetched by them; this effect owns its own 60s poll instead.
+  useEffect(() => {
+    if (!session) return;
+
+    let cancelled = false;
+    const fetchSummary = () => {
+      getOrderSummary(session.token)
+        .then((s) => {
+          if (!cancelled) setSummary(s);
+        })
+        .catch(() => {
+          // Silent — the cards just keep showing their last-known counts.
+        });
+    };
+
+    fetchSummary();
+    const interval = setInterval(fetchSummary, SUMMARY_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [session]);
 
   // ORD-6 deep-link — Customer Analytics' Order History rows link here
   // as /admin/orders?order={id}. A plain .then()/.catch() chain, not
@@ -385,6 +418,8 @@ function OrdersPageInner() {
           {error}
         </p>
       )}
+
+      <OrderSummaryCards summary={summary} activeStatus={status} onSelect={setStatus} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input

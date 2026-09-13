@@ -222,6 +222,64 @@ class OrderControllerTest extends TestCase
         $this->assertSame('KRS-TODAY', $response->json('data.0.order_number'));
     }
 
+    /** ADR-092: the six KPI-card counts, one grouped query, is_test excluded. */
+    public function test_summary_requires_authentication(): void
+    {
+        $this->getJson('/api/orders/summary')->assertUnauthorized();
+    }
+
+    public function test_summary_returns_a_count_for_each_bucket(): void
+    {
+        // need_action
+        $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        // needs_review
+        $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
+        // processing bucket = processing + pending_delivery combined (ADR-092 decision 2)
+        $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Processing->value]);
+        $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Pending->value]);
+        // completed
+        $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Delivered->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders/summary');
+
+        $response->assertOk();
+        $response->assertJson([
+            'need_action' => 1,
+            'needs_review' => 2,
+            'processing' => 2,
+            'completed' => 1,
+            'today' => 6,
+            'all' => 6,
+        ]);
+    }
+
+    public function test_summary_today_excludes_orders_created_on_a_previous_day(): void
+    {
+        $this->order(['order_number' => 'KRS-TODAY']);
+        $yesterday = $this->order(['order_number' => 'KRS-YESTERDAY']);
+        $yesterday->forceFill(['created_at' => now()->subDay()])->save();
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders/summary');
+
+        $response->assertOk();
+        $response->assertJson(['today' => 1, 'all' => 2]);
+    }
+
+    public function test_summary_excludes_sandbox_orders(): void
+    {
+        $this->order(['is_test' => true, 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->order(['is_test' => false, 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders/summary');
+
+        $response->assertOk();
+        $response->assertJson(['need_action' => 1, 'all' => 1]);
+    }
+
     public function test_index_can_search_by_order_number(): void
     {
         $this->order(['order_number' => 'KRS-FINDME', 'customer_email' => 'a@example.com']);

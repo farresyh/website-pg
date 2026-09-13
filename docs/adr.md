@@ -4940,7 +4940,7 @@ Grilled over 3 rounds (`/mattpocock-skills:grilling`) plus a visual wireframe ar
 
 ## ADR-092: Admin Orders KPI cards — persistent, clickable status counts, closing the reseller-family audit's "no admin alert" gap without reopening ADR-073's manual-refund policy
 
-**Status:** Accepted (design) — 2026-09-12, grilled with the founder. **Not built yet** — implementation deferred to a following session, this ADR is the handoff.
+**Status:** Accepted & built — grilled 2026-09-12, built 2026-09-13 on `feature/adr-092-orders-kpi-cards`. `GET /api/orders/summary` (one grouped-aggregate query, `is_test=false` scope) + `OrderSummaryCards` above the existing `STATUS_FILTERS` pills on `/admin/orders`, polling every 60s. Zero touch to `ResellerOrderPlacementService`/`OrderFulfillmentService`/`refundToWallet`/locking, per decision.
 
 **Context:**
 
