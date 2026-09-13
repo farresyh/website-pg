@@ -92,7 +92,13 @@ class PublicResellerPriceListControllerTest extends TestCase
         $this->assertSame(['tiers' => [], 'games' => []], $response->json());
     }
 
-    public function test_shown_on_the_primary_brand_with_tiers_ordered_by_sort_order(): void
+    /**
+     * Founder feedback 2026-09-13: rendered in reverse of `sort_order`
+     * on this page specifically — cheapest tier sits rightmost. Every
+     * other tier-ordering surface (Wallet tiers table, portal picker)
+     * still reads `sort_order` ascending, unchanged.
+     */
+    public function test_shown_on_the_primary_brand_with_tiers_ordered_in_reverse_of_sort_order(): void
     {
         $this->primaryAffiliate();
         $this->package($this->game());
@@ -102,7 +108,7 @@ class PublicResellerPriceListControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/reseller-price-list');
 
         $response->assertOk();
-        $this->assertSame(['Tier SS', 'Tier S'], collect($response->json('tiers'))->pluck('name')->all());
+        $this->assertSame(['Tier S', 'Tier SS'], collect($response->json('tiers'))->pluck('name')->all());
     }
 
     public function test_shown_on_an_owned_non_primary_affiliate_brand(): void
