@@ -222,6 +222,13 @@ final class ResellerBotService
             return "Game ini memerlukan {$extraField}. Format: .order {$command->productCode} {playerId} {serverId}";
         }
 
+        if ($game !== null && $game->player_validator_enabled && $game->player_validator_profile_id !== null) {
+            $rejection = $this->validatePlayerForOrder($reseller, $command, $groupId, $game);
+            if ($rejection !== null) {
+                return $rejection;
+            }
+        }
+
         // ADR-075 decision 5: idempotency key derived from
         // (whatsapp_message_id, group_id) — a chat command carries no
         // client-generated key of its own, and OpenWA's webhook can
@@ -276,6 +283,82 @@ final class ResellerBotService
         );
 
         return ResellerBotReplyFormatter::orderPlaced($order);
+    }
+
+    /**
+     * ADR-093 decision 2 — auto-runs the same PlayerValidatorRegistry
+     * check `.checkid` already uses, before placeOrder() is called, so
+     * a caught problem never reaches the debit. Mirrors handleCheckId()'s
+     * own validate-then-resolve-region logic (reuse, not a parallel
+     * implementation) — the one deliberate difference is that both an
+     * invalid ID *and* a wrong-region match are logged as `.order`
+     * rejection reasons here (handleCheckId() only logs the invalid
+     * case), since this is blocking a real order attempt, not just
+     * answering an informational query. Returns null to let the order
+     * proceed, or a reply string to reject it.
+     */
+    private function validatePlayerForOrder(Reseller $reseller, ResellerBotCommand $command, string $groupId, Game $game): ?string
+    {
+        // Decision 3 — the exact same bucket/limit ADR-076 decision 8
+        // already gives `.checkid` (10/min per reseller); exhausting it
+        // here behaves identically to exhausting it via `.checkid`
+        // directly, not a silent skip of this safety check.
+        if (! RateLimiter::attempt("reseller-bot-checkid:{$reseller->id}", 10, fn () => true, 60)) {
+            return 'Terlalu banyak permintaan semakan ID. Sila cuba sebentar lagi.';
+        }
+
+        $profile = $game->playerValidatorProfile()->firstOrFail();
+
+        try {
+            $result = $this->validators->resolve($profile->key)->validate((string) $command->playerId, $command->serverId);
+        } catch (UnsupportedPlayerValidatorException|ProviderUnavailableException) {
+            // Decision 2 — fail-open: an outage or misconfiguration in an
+            // unofficial third-party integration must never block a
+            // legitimate paid order. Degrades to exactly today's
+            // no-validator behaviour, not worse.
+            return null;
+        }
+
+        $wrongRegionGame = null;
+        if ($result->valid && $result->countryCode !== null) {
+            $mapping = PlayerRegionMapping::query()
+                ->where('player_validator_profile_id', $profile->id)
+                ->where('country_code', $result->countryCode)
+                ->with('game:id,name,reseller_code')
+                ->first();
+
+            if ($mapping !== null && $mapping->game_id !== $game->id) {
+                $wrongRegionGame = $mapping->game;
+            }
+        }
+
+        // Same audit trail handleCheckId() already writes for every
+        // attempt — this is the identical underlying check, just
+        // triggered from .order instead of .checkid.
+        PlayerValidation::query()->create([
+            'game_id' => $game->id,
+            'player_id' => (string) $command->playerId,
+            'server_id' => $command->serverId,
+            'status' => $this->checkIdStatus($result->valid, $wrongRegionGame),
+            'country_code' => $result->countryCode,
+            'nickname' => $result->nickname,
+            'provider' => $result->provider,
+            'validated_at' => now(),
+        ]);
+
+        if (! $result->valid) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'invalid_player_id');
+
+            return ResellerBotReplyFormatter::checkIdInvalid();
+        }
+
+        if ($wrongRegionGame !== null) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'wrong_region_player_id');
+
+            return ResellerBotReplyFormatter::checkIdWrongRegion($result, $wrongRegionGame);
+        }
+
+        return null;
     }
 
     private function handleTrackOrder(Reseller $reseller, ResellerBotCommand $command, string $groupId): string

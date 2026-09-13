@@ -65,11 +65,21 @@ final class ResellerBotReplyFormatter
         );
     }
 
+    /**
+     * ADR-093 decision 4 — echoes the player ID (and server ID, when
+     * present) back for every order, not just validator-covered games,
+     * so the reseller can catch a fat-fingered ID by re-reading their
+     * own just-typed value a few seconds later.
+     */
     public static function orderPlaced(Order $order): string
     {
+        $playerLine = 'Player ID : '.$order->player_id
+            .($order->server_id !== null ? " ({$order->server_id})" : '')."\n";
+
         return self::wrap(
             "「 PESANAN DITERIMA 」\n\n"
             ."No. Order : {$order->order_number}\n"
+            .$playerLine
             .'Produk    : '.$order->package?->name."\n"
             .'Harga     : RM'.self::formatSen($order->selling_price)."\n\n"
             .'Sedang diproses, kami akan update sebentar lagi.'
