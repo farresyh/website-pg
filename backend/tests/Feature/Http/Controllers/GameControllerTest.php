@@ -199,6 +199,60 @@ class GameControllerTest extends TestCase
         $this->getJson("/api/games/{$game->id}/packages")->assertJsonPath('0.is_active', false);
     }
 
+    /** GAME-6. */
+    public function test_reorder_requires_authentication(): void
+    {
+        $this->postJson('/api/games/reorder', ['game_ids' => [1]])->assertUnauthorized();
+    }
+
+    /**
+     * GAME-6 — `sort_order` is written as each id's position in the
+     * submitted array, and index() (both the cached unfiltered path and
+     * the filtered path) must reflect it immediately.
+     */
+    public function test_reorder_sets_sort_order_from_submitted_position(): void
+    {
+        $a = Game::query()->create(['name' => 'Alpha Game', 'slug' => 'alpha-game']);
+        $b = Game::query()->create(['name' => 'Beta Game', 'slug' => 'beta-game']);
+        $c = Game::query()->create(['name' => 'Gamma Game', 'slug' => 'gamma-game']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/games/reorder', ['game_ids' => [$c->id, $a->id, $b->id]]);
+
+        $response->assertOk();
+        $response->assertJson(['games_reordered' => 3]);
+        $this->assertSame(0, $c->refresh()->sort_order);
+        $this->assertSame(1, $a->refresh()->sort_order);
+        $this->assertSame(2, $b->refresh()->sort_order);
+
+        $listed = $this->getJson('/api/games');
+        $this->assertSame(
+            ['Gamma Game', 'Alpha Game', 'Beta Game'],
+            collect($listed->json())->pluck('name')->all(),
+        );
+    }
+
+    public function test_reorder_rejects_an_unknown_game_id(): void
+    {
+        $game = Game::query()->create(['name' => 'Alpha Game', 'slug' => 'alpha-game']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/games/reorder', ['game_ids' => [$game->id, 99999]]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['game_ids.1']);
+    }
+
+    public function test_reorder_rejects_a_duplicate_game_id(): void
+    {
+        $game = Game::query()->create(['name' => 'Alpha Game', 'slug' => 'alpha-game']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/games/reorder', ['game_ids' => [$game->id, $game->id]]);
+
+        $response->assertUnprocessable();
+    }
+
     public function test_update_edits_the_games_own_fields(): void
     {
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global', 'is_active' => true]);

@@ -57,6 +57,21 @@ class CatalogControllerTest extends TestCase
         $this->assertSame(['Free Fire Global'], collect($response->json())->pluck('name')->all());
     }
 
+    /** GAME-6 — the public listing follows admin's drag-drop order, not alphabetical. */
+    public function test_index_orders_games_by_sort_order(): void
+    {
+        Game::query()->create(['name' => 'Zenless Zone Zero', 'slug' => 'zzz', 'is_active' => true, 'sort_order' => 0]);
+        Game::query()->create(['name' => 'Age of Empires Mobile', 'slug' => 'aoe-mobile', 'is_active' => true, 'sort_order' => 1]);
+
+        $response = $this->getJson('/api/catalog/games');
+
+        $response->assertOk();
+        $this->assertSame(
+            ['Zenless Zone Zero', 'Age of Empires Mobile'],
+            collect($response->json())->pluck('name')->all(),
+        );
+    }
+
     public function test_index_never_leaks_internal_fields(): void
     {
         Game::query()->create([

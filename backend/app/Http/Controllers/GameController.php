@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Games\ReorderGamesRequest;
 use App\Http\Requests\Games\UpdateGameRequest;
 use App\Models\Game;
 use App\Models\Package;
@@ -9,15 +10,16 @@ use App\Models\SupplierProduct;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
- * GAME-1..5: Admin's Games & Packages management, and also the "link
+ * GAME-1..5/6: Admin's Games & Packages management, and also the "link
  * to an existing Game" picker in the Price Sync Stage 2 promote flow
  * (SupplierProductController) — shared, not Admin- or
- * Middleware-specific data. GAME-6 (drag-and-drop reorder), GAME-9..11
- * (bulk sync/price actions — already covered by Product Manager's own
- * flow) and supplier_mappings/validation_rules/SEO field editing are
- * deliberately out of scope for this pass.
+ * Middleware-specific data. GAME-9..11 (bulk sync/price actions —
+ * already covered by Product Manager's own flow) and
+ * supplier_mappings/validation_rules/SEO field editing stay out of
+ * scope for this pass.
  */
 class GameController extends Controller
 {
@@ -51,7 +53,7 @@ class GameController extends Controller
                 // CatalogController's/HeroSlideController's doc
                 // comments for the full story. ->toArray() also
                 // flattens every date attribute to a plain string.
-                fn () => Game::query()->withCount('packages')->orderBy('name')->get()->toArray(),
+                fn () => Game::query()->withCount('packages')->orderBy('sort_order')->orderBy('name')->get()->toArray(),
             ));
         }
 
@@ -65,7 +67,30 @@ class GameController extends Controller
             $query->where('is_active', $status === 'active');
         }
 
-        return response()->json($query->orderBy('name')->get());
+        return response()->json($query->orderBy('sort_order')->orderBy('name')->get());
+    }
+
+    /**
+     * GAME-6 — admin drag-drop reorder. `game_ids` is the complete new
+     * front-to-back order; `sort_order` is written as each id's
+     * position in that array (0-based), matching `Package.sort_order`'s
+     * own convention. Mirrors `SettingsController::bulkMarkup()`'s
+     * shape (validated request, one DB::transaction, cache
+     * invalidation after commit) rather than inventing a new one.
+     */
+    public function reorder(ReorderGamesRequest $request): JsonResponse
+    {
+        $gameIds = $request->validated('game_ids');
+
+        DB::transaction(function () use ($gameIds) {
+            foreach ($gameIds as $position => $gameId) {
+                Game::query()->whereKey($gameId)->update(['sort_order' => $position]);
+            }
+        });
+
+        self::forgetIndexCache();
+
+        return response()->json(['games_reordered' => count($gameIds)]);
     }
 
     public function show(Game $game): JsonResponse

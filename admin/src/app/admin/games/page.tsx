@@ -48,9 +48,11 @@ import {
   updatePackageDenomination,
   updatePackageCatalogCode,
   deletePackage,
+  reorderGames,
 } from "@/lib/games";
 import EditGameModal from "@/components/games/EditGameModal";
 import EditPackageModal from "@/components/games/EditPackageModal";
+import ReorderGamesView from "@/components/games/ReorderGamesView";
 import { type PlayerValidatorProfile, listPlayerValidatorProfiles } from "@/lib/player-validators";
 
 function formatRm(sen: number): string {
@@ -190,6 +192,10 @@ export default function GamesPage() {
   const [editingPackage, setEditingPackage] = useState<GamePackage | null>(null);
   const [validatorProfiles, setValidatorProfiles] = useState<PlayerValidatorProfile[]>([]);
 
+  // GAME-6 — null = not reordering; an array = reorder mode, loaded
+  // unfiltered regardless of the list view's own search/status filter.
+  const [reorderGamesList, setReorderGamesList] = useState<Game[] | null>(null);
+
   async function refreshGames(token: string) {
     try {
       setGames(await listGames(token, { search: search || undefined, status: status === "all" ? undefined : status }));
@@ -271,6 +277,25 @@ export default function GamesPage() {
     await refreshGames(session.token);
   }
 
+  async function startReordering() {
+    if (!session) return;
+    setError(null);
+    try {
+      // Always the full unfiltered list — the current search/status
+      // filter must never determine what gets a sort_order written.
+      setReorderGamesList(await listGames(session.token, {}));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load games.");
+    }
+  }
+
+  async function handleSaveOrder(orderedIds: number[]) {
+    if (!session) return;
+    await reorderGames(session.token, orderedIds);
+    setReorderGamesList(null);
+    await refreshGames(session.token);
+  }
+
   async function handleToggleStatus(pkg: GamePackage) {
     if (!session) return;
     setError(null);
@@ -318,6 +343,16 @@ export default function GamesPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update catalog code.");
     }
+  }
+
+  if (reorderGamesList) {
+    return (
+      <ReorderGamesView
+        initialGames={reorderGamesList}
+        onSave={handleSaveOrder}
+        onCancel={() => setReorderGamesList(null)}
+      />
+    );
   }
 
   if (selected) {
@@ -454,11 +489,16 @@ export default function GamesPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Games & Packages</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Review, edit, and manage what&apos;s promoted from Product Manager.
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Games & Packages</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Review, edit, and manage what&apos;s promoted from Product Manager.
+          </p>
+        </div>
+        <Button size="small" variant="outlined" onClick={startReordering}>
+          Reorder Games
+        </Button>
       </div>
 
       {error && (
