@@ -4985,7 +4985,7 @@ The founder's own counter-proposal (with a reference screenshot from a different
 
 ## ADR-093: Reseller Bot `.order` fat-finger safety net — auto player-ID/region validation before placing, player ID echoed in the confirmation reply, no mandatory 2-step confirm
 
-**Status:** Accepted (design) — 2026-09-12, grilled with the founder. **Not built yet** — implementation deferred to a following session, this ADR is the handoff.
+**Status:** Accepted & built — grilled 2026-09-12, built 2026-09-13 on `feature/adr-093-bot-order-safety-net`. `ResellerBotService::handleOrder()` gained a new `validatePlayerForOrder()` step (decision 2 — invalid ID or wrong-region both reject before any debit, `ProviderUnavailableException`/`UnsupportedPlayerValidatorException` both fail-open per decision 2's stated intent), reusing the same `reseller-bot-checkid` rate-limit bucket (decision 3) and `PlayerValidation` audit trail `handleCheckId()` already writes. `ResellerBotReplyFormatter::orderPlaced()` now echoes the player ID + server ID for every order (decision 4). Zero touch to `ResellerOrderPlacementService`/ledger/locking.
 
 **Context:**
 
