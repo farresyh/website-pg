@@ -682,6 +682,15 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
+13. **ADR-094 — Combo Package.** Assembles several existing catalog Packages
+    into one opaque, sellable SKU above a game's native max denomination (e.g.
+    MLBB Malaysia's 7502 Diamonds), so a reseller/guest pays one CHIP FPX fee
+    instead of two. Design fully grilled + stress-tested 2026-09-13 (schema,
+    fulfillment leg-engine, partial-delivery policy, component-churn guards,
+    ledger/reporting/LLM-assistant impact all resolved) — **deliberately
+    parked**, not a build task yet. Revisit trigger: real recurring demand
+    detectable from existing order data (repeated same-`game_id`+`player_id`
+    checkouts in a short window), not assumed from one reseller conversation.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
