@@ -104,6 +104,17 @@ class Order extends Model
     }
 
     /**
+     * ADR-094 decision 7: populated only for a combo order (`package`
+     * resolves to a `Package` with `is_combo=true`) — one row per real
+     * outbound supplier call, in leg order. Empty for every ordinary
+     * single-supplier order.
+     */
+    public function deliveryLegs(): HasMany
+    {
+        return $this->hasMany(OrderDeliveryLeg::class)->orderBy('leg_number');
+    }
+
+    /**
      * ADR-073 decision 5: which `Reseller` (wallet) account placed this
      * order, distinct from `affiliate()` (which brand's storefront it
      * belongs to — always the primary brand for a wallet order). Null
