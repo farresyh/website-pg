@@ -597,7 +597,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. Host-agnostic. **2026-09-14: the restore-test had actually failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log` in prod) — both fixed, not yet re-verified against a real prod run | ADR-039 |
-| Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete. In-modal picker not wired (paste URL); disk is config-driven for a later R2 swap | — |
+| Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete, now WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning (ADR-095). In-modal picker not wired (paste URL). `GALLERY_DISK`/`BACKUP_DISK` can now point at real R2 buckets (`pekangame-gallery`/`pekangame-backups`, provisioned) — flip pending founder `.env` + one migration command | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage | ADR-029 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
@@ -737,15 +737,18 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     parked**, not a build task yet. Revisit trigger: real recurring demand
     detectable from existing order data (repeated same-`game_id`+`player_id`
     checkouts in a short window), not assumed from one reseller conversation.
-17. **ADR-095 — Cloudflare R2 storage cutover.** Reopened + grilled 2026-09-14
-    at the founder's own initiative ("tiada gambar lagi, bagus buat sekarang").
-    2 buckets (`pekangame-gallery` public via `cdn.pekangame.space`,
-    `pekangame-backups` private, own scoped tokens each) — folds in
-    Gallery WebP-at-upload (reuses `ImageIngestService`, 2000px cap) and
-    gallery-delete referential safety (warn+confirm). Resolves this list's
-    former "gallery→WebP + delete referential safety" line and ADR-039's
-    2026-08-26 flagged droplet-backup single-point-of-failure. Design fully
-    settled — not built yet; see `docs/adr.md`.
+17. **ADR-095 — Cloudflare R2 storage cutover — built 2026-09-14, one founder
+    step + one command left.** Both buckets (`pekangame-gallery` public via
+    `cdn.pekangame.space`, `pekangame-backups` private) + scoped tokens
+    provisioned live; Gallery WebP-at-upload (reuses `ImageIngestService`,
+    2000px cap) and delete referential safety (warn+confirm) shipped.
+    Resolved this list's former "gallery→WebP + delete referential safety"
+    line and ADR-039's droplet-backup single-point-of-failure. **Remaining:**
+    founder adds the new `R2_*`/`GALLERY_DISK`/`BACKUP_DISK` names to
+    `.env.example` (blocked by this session's own sandbox permissions on
+    `.env*` files) and, once this reaches `main` with `.env` flipped on both
+    ends, runs `php artisan gallery:migrate-to-r2` once against production to
+    move the 3 real existing files. See `docs/adr.md`'s build addendum.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

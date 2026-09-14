@@ -885,6 +885,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin,admin')->prefix('gallery/images')->group(function () {
         Route::get('/', [GalleryImageController::class, 'index']);
         Route::post('/', [GalleryImageController::class, 'store']);
+        Route::get('/{gallery_image}/references', [GalleryImageController::class, 'references']);
         Route::delete('/{gallery_image}', [GalleryImageController::class, 'destroy']);
     });
 
