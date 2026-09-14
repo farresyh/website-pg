@@ -617,7 +617,9 @@ kept. Screen-by-screen history in `docs/build-log.md`.
 Last walked with the founder 2026-09-09, re-verified against production 2026-09-11,
 spot-checked against real code again 2026-09-13 twice in the same day (Voucher/
 Blacklist/GAME-11/SEO-fields turned out already shipped; GAME-6 then shipped
-same-session, PR #192) — this list drifts easily, re-verify against real
+same-session, PR #192), and again 2026-09-14 (real logo/hero asset uploaded;
+`/admin/reviews` item found dormant — zero orders delivered yet, so zero
+reviews exist) — this list drifts easily, re-verify against real
 code/production before trusting an "open" line here, not just this doc's memory.
 Anything shipped and verified drops off this list into `docs/build-log.md`.
 
@@ -630,14 +632,18 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
 
 ## Polish (not blocking launch)
 
-2. **Real PekanGame logo + hero artwork** — the primary storefront mark is still
-   the SVG placeholder. The upload gap is closed (ADR-089 gave `/admin/settings`
-   a Logo + Favicon panel, same pipeline affiliates already had); the founder
-   still owes the actual asset file.
-3. **Founder-owed one-off:** open `/admin/reviews`, filter *approved*, read
-   through once — ADR-082 made every approved review public retroactively (the
-   approve bar used to mean "not spam", now means "shown to customers"); reject
-   anything not customer-appropriate.
+2. ~~Real PekanGame logo + hero artwork~~ — **DONE 2026-09-14.** Founder uploaded
+   the real asset via `/admin/settings`'s Logo + Favicon panel (ADR-089
+   pipeline). SVG placeholder replaced.
+3. **`/admin/reviews` approved-corpus re-read — DORMANT, not founder-owed
+   right now (re-checked 2026-09-14).** ADR-082 made every *approved* review
+   public retroactively (the approve bar used to mean "not spam", now means
+   "shown to customers"), which is real risk for a corpus approved under the
+   old bar — but REV-1..5 gates submission on an order reaching **Delivered**,
+   and the supplier-funding launch gate (item 1) means no order has been
+   delivered yet. Zero reviews exist, approved or otherwise — nothing to
+   read. Revisit only after the first real order is delivered and reviews
+   start coming in, not before.
 4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
    Bot channel works and every command is prod-verified; the webhook already has
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
@@ -720,15 +726,25 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-15. **ADR-094 — Combo Package.** Assembles several existing catalog Packages
-    into one opaque, sellable SKU above a game's native max denomination (e.g.
-    MLBB Malaysia's 7502 Diamonds), so a reseller/guest pays one CHIP FPX fee
-    instead of two. Design fully grilled + stress-tested 2026-09-13 (schema,
-    fulfillment leg-engine, partial-delivery policy, component-churn guards,
-    ledger/reporting/LLM-assistant impact all resolved) — **deliberately
-    parked**, not a build task yet. Revisit trigger: real recurring demand
-    detectable from existing order data (repeated same-`game_id`+`player_id`
-    checkouts in a short window), not assumed from one reseller conversation.
+15. **ADR-094 — Combo Package — UNPARKED 2026-09-14, build starts next
+    session.** Assembles several existing catalog Packages into one opaque,
+    sellable SKU above a game's native max denomination (e.g. MLBB Malaysia's
+    7502 Diamonds), so a reseller/guest pays one CHIP FPX fee instead of two.
+    Design fully grilled + stress-tested 2026-09-13 (schema, fulfillment
+    leg-engine, partial-delivery policy, component-churn guards,
+    ledger/reporting/LLM-assistant impact all resolved) — zero open technical
+    question, only decision 17's revisit trigger ("real recurring demand
+    detectable from existing order data... not assumed from one reseller
+    conversation") was still unmet. **Founder explicitly overrode that trigger
+    2026-09-14** — the order-data signal is currently unmeasurable anyway
+    (zero orders delivered, same supplier-funding gate as item 1), so waiting
+    on it would wait indefinitely; the direct reseller conversation itself is
+    accepted as sufficient signal instead. Next session starts the build
+    stress-test-first, per the founder's own framing — this touches
+    `OrderFulfillmentService`, the platform's single most money-critical
+    service, and ships all 5 consuming channels (storefront, Affiliate,
+    Reseller portal, REST API, Bot) in one release per decision 14, not
+    phased. See `docs/adr.md` ADR-094 for the full 17-decision design.
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 **CHIP credential `.env`→DB migration** — genuinely still open (confirmed
