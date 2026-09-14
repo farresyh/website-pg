@@ -29,6 +29,11 @@ class UploadGalleryImageRequest extends FormRequest
                 'image',
                 'mimes:jpg,jpeg,png,webp,gif',
                 'max:5120', // 5MB, in kilobytes per Laravel's `max` rule for files
+                // ADR-095: same decoder-memory-bomb guard the logo/hero
+                // uploads already have (ADR-089) — bounds the raw upload's
+                // pixel dimensions, unrelated to ImageIngestService's own
+                // resize-down-to-2000px target below.
+                'dimensions:max_width=5000,max_height=5000',
             ],
         ];
     }

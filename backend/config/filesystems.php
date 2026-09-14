@@ -123,6 +123,50 @@ return [
             'report' => false,
         ],
 
+        /*
+         * ADR-095: Cloudflare R2 (S3-compatible), the `gallery_disk` target
+         * once `GALLERY_DISK=r2_gallery` — a separate, own-named disk
+         * rather than repurposing the generic `s3` block above, since R2
+         * needs its own endpoint/credential shape, not AWS's. Public: the
+         * bucket is fronted by the `cdn.pekangame.space` custom domain
+         * (own scoped API token, not the backups token below) — `url`
+         * points there directly so `Storage::disk('r2_gallery')->url()`
+         * never routes through the raw R2 endpoint.
+         */
+        'r2_gallery' => [
+            'driver' => 's3',
+            'key' => env('R2_GALLERY_ACCESS_KEY_ID'),
+            'secret' => env('R2_GALLERY_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('R2_GALLERY_BUCKET'),
+            'url' => env('R2_GALLERY_PUBLIC_URL'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        /*
+         * ADR-095: the `backup_disk` target once `BACKUP_DISK=r2_backups`
+         * — deliberately no `url` key at all (unlike `r2_gallery` above):
+         * this bucket has no custom domain, no public access, and never
+         * needs one. Own scoped API token, separate from `r2_gallery`'s —
+         * least-privilege, and a misconfigured public-access setting on
+         * one bucket can never expose the other.
+         */
+        'r2_backups' => [
+            'driver' => 's3',
+            'key' => env('R2_BACKUPS_ACCESS_KEY_ID'),
+            'secret' => env('R2_BACKUPS_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('R2_BACKUPS_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

@@ -30,6 +30,12 @@ const nextConfig: NextConfig = {
         port: "8000",
         pathname: "/storage/**",
       },
+      // ADR-095 — gallery/logo/hero images served from R2 via this
+      // custom domain once GALLERY_DISK=r2_gallery.
+      {
+        protocol: "https",
+        hostname: "cdn.pekangame.space",
+      },
     ],
     // Herd's *.test domains resolve to 127.0.0.1 — Next.js's upstream-image
     // SSRF guard blocks any private-IP resolution by default. Dev-only: a

@@ -42,3 +42,14 @@ export function uploadGalleryImage(token: string, file: File) {
 export function deleteGalleryImage(token: string, id: number) {
   return apiFetch<void>(`/api/gallery/images/${id}`, { method: "DELETE", token });
 }
+
+/**
+ * ADR-095 decision 5 — pre-flight check for the delete-confirmation
+ * dialog: which Game/Hero Slide/Affiliate Branding rows still paste
+ * this image's URL, so the admin sees exactly what would be affected
+ * instead of a generic disclaimer. Never blocks the delete itself —
+ * see GalleryImageController::references()'s own doc comment.
+ */
+export function getGalleryImageReferences(token: string, id: number) {
+  return apiFetch<{ references: string[] }>(`/api/gallery/images/${id}/references`, { token });
+}

@@ -3,10 +3,14 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\AffiliateBranding;
 use App\Models\GalleryImage;
+use App\Models\Game;
+use App\Models\HeroSlide;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\ImageManager;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -124,5 +128,96 @@ class GalleryImageControllerTest extends TestCase
         $response->assertNoContent();
         $this->assertSame(0, GalleryImage::query()->count());
         Storage::disk('public')->assertMissing($image->path);
+    }
+
+    /** ADR-095: reuses ImageIngestService, same as logo/hero. */
+    public function test_store_re_encodes_to_webp_and_caps_the_longest_edge_at_2000px(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+
+        // 3000x1500 source, capped at 2000 → 2000x1000.
+        $response = $this->postJson('/api/gallery/images', [
+            'image' => UploadedFile::fake()->image('huge-banner.jpg', 3000, 1500),
+        ]);
+
+        $response->assertCreated();
+        $image = GalleryImage::query()->firstOrFail();
+        $this->assertStringEndsWith('.webp', $image->path);
+        $this->assertSame('image/webp', $image->mime_type);
+
+        $bytes = Storage::disk('public')->get($image->path);
+        $this->assertSame('image/webp', (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes));
+
+        $decoded = ImageManager::gd()->read($bytes);
+        $this->assertSame(2000, $decoded->width());
+        $this->assertSame(1000, $decoded->height());
+    }
+
+    public function test_store_rejects_a_file_over_the_dimension_limit(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/gallery/images', [
+            'image' => UploadedFile::fake()->image('too-big.png', 6000, 6000),
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('image');
+        $this->assertSame(0, GalleryImage::query()->count());
+    }
+
+    public function test_references_is_empty_when_nothing_uses_the_image(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+        $this->postJson('/api/gallery/images', ['image' => UploadedFile::fake()->image('unused.png')])->assertCreated();
+        $image = GalleryImage::query()->firstOrFail();
+
+        $response = $this->getJson("/api/gallery/images/{$image->id}/references");
+
+        $response->assertOk();
+        $this->assertSame([], $response->json('references'));
+    }
+
+    public function test_references_lists_every_real_consumer_of_the_image(): void
+    {
+        Storage::fake('public');
+        $this->actingAsAdmin();
+        $this->postJson('/api/gallery/images', ['image' => UploadedFile::fake()->image('shared.png')])->assertCreated();
+        $image = GalleryImage::query()->firstOrFail();
+
+        Game::query()->create([
+            'name' => 'Mobile Legends',
+            'slug' => 'mobile-legends',
+            'image_url' => $image->url,
+        ]);
+        HeroSlide::query()->create([
+            'title' => 'Top Up Sekejap',
+            'primary_cta_label' => 'Beli Sekarang',
+            'primary_cta_href' => '/order/mobile-legends',
+            'image_url' => $image->url,
+        ]);
+        $affiliate = $this->primaryAffiliate();
+        AffiliateBranding::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'store_name' => 'PekanGame',
+            // AffiliateBranding stores a disk PATH, not a URL — the other
+            // two consumers above store a pasted absolute URL.
+            'logo_path' => $image->path,
+        ]);
+
+        $response = $this->getJson("/api/gallery/images/{$image->id}/references");
+
+        $response->assertOk();
+        $this->assertSame(
+            [
+                'Game — Mobile Legends (image_url)',
+                'Hero Slide — Top Up Sekejap',
+                'Affiliate Branding — PekanGame (logo)',
+            ],
+            $response->json('references'),
+        );
     }
 }
