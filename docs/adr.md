@@ -5053,7 +5053,7 @@ Founder set the direction up front: the Bot channel exists specifically for B2B 
 
 ## ADR-094: Combo Package — assembling several existing catalog Packages into one opaque, sellable SKU above a game's native max denomination
 
-**Status:** Accepted (design) — grilled 2026-09-13, multiple rounds + a dedicated stress-test pass. **Parked, not built.** Revisit trigger is decision 17, below — this is a fully-reasoned design, not a build commitment.
+**Status:** Accepted (design) — grilled 2026-09-13, multiple rounds + a dedicated stress-test pass. **UNPARKED 2026-09-14** (decision 17's trigger explicitly overridden by the founder — see the 2026-09-14 addendum after Consequence to track). Build starts next session.
 
 **Context:**
 
@@ -5107,6 +5107,8 @@ The core engineering insight across nearly every decision here is the same one A
 - Decision 9's `needs_review` reuse inherits `StatusBadge.tsx`'s pre-existing missing-label gap (falls through to the raw string) — not introduced by this ADR, but worth fixing in the same PR since a combo order is now somewhat more likely to visit that state than before.
 - Decision 14's "ship all channels together" is a bigger single release than a phased rollout would be — accepted deliberately (see decision 14's own rationale) but worth remembering if the eventual build estimate balloons; splitting Reseller-first vs. storefront-first was considered and rejected here, not overlooked.
 - This ADR's own profit-neutrality finding (Context's last bullet) should be re-explained to the founder at build time if a long gap passes before decision 17's trigger fires — the "same price, more diamonds" pitch is a genuine reseller-facing selling point, but it is not a lever for platform profit, and no decision here should quietly get reinterpreted as one.
+
+**2026-09-14 addendum — decision 17's trigger explicitly overridden, not superseded.** Raised again during a routine backlog/UI-focus session; asked directly "is this buildable" (it always was — decisions 1-16 left zero open technical question). The blocker was purely decision 17's revisit trigger, which turns out to be currently unmeasurable on its own terms: it wants a pattern *detected from real order data*, but the supplier-funding launch gate (item 1, `docs/prd.md` §16) means zero orders have been delivered yet — the exact same gate, so waiting on it would mean waiting indefinitely regardless of real reseller demand. Founder's explicit call: accept the direct reseller conversation from this ADR's own Context as sufficient signal instead of the order-data pattern, and build stress-test-first next session. Decisions 1-16 are unchanged — this addendum only replaces decision 17's gating condition; it does not reopen or re-argue any design decision above.
 
 ---
 
