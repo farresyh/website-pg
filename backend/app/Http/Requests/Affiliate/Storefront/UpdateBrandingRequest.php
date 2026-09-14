@@ -23,6 +23,11 @@ class UpdateBrandingRequest extends FormRequest
     {
         return [
             'store_name' => ['required', 'string', 'max:255'],
+            // This ID list must match the keys of THEME_PRESETS in
+            // storefront/src/lib/theme-presets.ts (the canonical source,
+            // see that file's own header — ADR-081/090). PHP can't import
+            // the TS file, so this stays a hand-kept 4th copy; update both
+            // together when a preset is added/removed.
             'theme_preset' => ['nullable', 'string', 'in:default,bumblebee,redgiants,emerald,cobalt'],
             // ADR-090: only `default` ships a dark palette today — the
             // portal's ThemeTab hides "Dark" for any preset without a

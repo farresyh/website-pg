@@ -646,9 +646,7 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
 6. Small unbuilt scope, none blocking: ORD-5 (order export), SET-9 (the Telegram
    *sender* — the setting fields exist), gallery in-modal picker, gallery→WebP
    + delete referential safety, SEO `AggregateRating` JSON-LD on the PDP,
-   consolidate ADR-081's 3× theme-preset ID list (now also the token-map
-   duplication ADR-090 grew across the same 2 files), **ADR-090's dark-palette
-   backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each still need a
+   **ADR-090's dark-palette backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each still need a
    hand-authored `tokensDark` (only `default` has one; the portal's Site Mode
    toggle already hides "Dark" for any preset without one, so this is additive
    design work, not a blocker) — and the **reseller-family audit's item A3**
