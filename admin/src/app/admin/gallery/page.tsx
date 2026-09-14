@@ -21,6 +21,7 @@ import {
   listGalleryImages,
   uploadGalleryImage,
   deleteGalleryImage,
+  getGalleryImageReferences,
 } from "@/lib/gallery";
 
 function formatSize(bytes: number): string {
@@ -42,6 +43,8 @@ export default function GalleryPage() {
   const [uploading, setUploading] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [deletingImage, setDeletingImage] = useState<GalleryImage | null>(null);
+  const [deletingReferences, setDeletingReferences] = useState<string[] | null>(null);
+  const [loadingReferences, setLoadingReferences] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -89,11 +92,27 @@ export default function GalleryPage() {
     }
   }
 
+  function handleDeleteClick(image: GalleryImage) {
+    if (!session) return;
+    setDeletingImage(image);
+    setDeletingReferences(null);
+    setLoadingReferences(true);
+    // ADR-095 decision 5 — pre-flight check, fetched right when the
+    // dialog opens rather than embedded in every grid card (24+ per
+    // page); a plain fetch failure here degrades to "unknown," never
+    // blocks the delete action itself.
+    getGalleryImageReferences(session.token, image.id)
+      .then((res) => setDeletingReferences(res.references))
+      .catch(() => setDeletingReferences([]))
+      .finally(() => setLoadingReferences(false));
+  }
+
   async function handleDeleteConfirmed() {
     if (!session || !deletingImage) return;
     try {
       await deleteGalleryImage(session.token, deletingImage.id);
       setDeletingImage(null);
+      setDeletingReferences(null);
       refresh(session.token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete this image.");
@@ -185,7 +204,7 @@ export default function GalleryPage() {
                 <Button size="small" variant="outlined" className="flex-1" onClick={() => handleCopyUrl(image)}>
                   {copiedId === image.id ? "Copied!" : "Copy URL"}
                 </Button>
-                <Button size="small" severity="danger" onClick={() => setDeletingImage(image)}>
+                <Button size="small" severity="danger" onClick={() => handleDeleteClick(image)}>
                   Delete
                 </Button>
               </div>
@@ -218,22 +237,52 @@ export default function GalleryPage() {
       )}
 
       {deletingImage && (
-        <div className="fixed inset-0 z-99999 flex items-center justify-center bg-gray-400/50 backdrop-blur-[8px]" onClick={() => setDeletingImage(null)}>
+        <div
+          className="fixed inset-0 z-99999 flex items-center justify-center bg-gray-400/50 backdrop-blur-[8px]"
+          onClick={() => {
+            setDeletingImage(null);
+            setDeletingReferences(null);
+          }}
+        >
           <div
             className="w-full max-w-sm rounded-2xl bg-white p-6 dark:bg-gray-900"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">Delete image?</h2>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              &quot;{deletingImage.original_name}&quot; will be permanently deleted. This does not update any Game or Hero
-              Banner that already references its URL.
+              &quot;{deletingImage.original_name}&quot; will be permanently deleted.
             </p>
+            {loadingReferences && (
+              <p className="mt-3 text-theme-xs text-gray-400">Checking what still uses this image…</p>
+            )}
+            {!loadingReferences && deletingReferences && deletingReferences.length > 0 && (
+              <div className="mt-3 rounded-lg bg-warning-50 px-3 py-2 dark:bg-warning-500/15">
+                <p className="text-theme-xs font-medium text-warning-700 dark:text-warning-400">
+                  Still in use — deleting will not update these, they&apos;ll be left pointing at a missing image:
+                </p>
+                <ul className="mt-1 list-inside list-disc text-theme-xs text-warning-700 dark:text-warning-400">
+                  {deletingReferences.map((ref) => (
+                    <li key={ref}>{ref}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {!loadingReferences && deletingReferences && deletingReferences.length === 0 && (
+              <p className="mt-3 text-theme-xs text-gray-400">Nothing else currently uses this image.</p>
+            )}
             <div className="mt-6 flex justify-end gap-2">
-              <Button size="small" variant="outlined" onClick={() => setDeletingImage(null)}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  setDeletingImage(null);
+                  setDeletingReferences(null);
+                }}
+              >
                 Cancel
               </Button>
               <Button size="small" severity="danger" onClick={handleDeleteConfirmed}>
-                Delete
+                {deletingReferences && deletingReferences.length > 0 ? "Delete Anyway" : "Delete"}
               </Button>
             </div>
           </div>

@@ -72,8 +72,21 @@ return [
             // ADR-039 decision 1 — see the sqlite connection above for
             // the full rationale (this project's `dump.default` here is
             // the same value regardless of which connection is active).
+            //
+            // `mysql_gtid_purged` forces `--set-gtid-purged=OFF` on the
+            // mysqldump invocation. Found 2026-09-14: every production
+            // restore-test failed (14/14 since go-live, 2026-09-02) with
+            // "Access denied; you need ... SUPER, SYSTEM_VARIABLES_ADMIN
+            // or SESSION_VARIABLES_ADMIN" — spatie/db-dumper's default
+            // ('AUTO') lets mysqldump emit `SET @@SESSION.SQL_LOG_BIN=0`
+            // + `SET @@GLOBAL.GTID_PURGED=...` at the top of the dump
+            // (the managed DB has GTID enabled), and neither statement's
+            // privilege is grantable on a DigitalOcean Managed MySQL
+            // user. 'OFF' drops both lines from future dumps entirely —
+            // the dump's actual table data is unaffected either way.
             'dump' => [
                 'exclude_tables' => ['player_validations'],
+                'mysql_gtid_purged' => 'OFF',
             ],
         ],
 

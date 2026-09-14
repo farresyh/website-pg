@@ -122,7 +122,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **GAME-9** | Admin can sync input fields (pull field schema from supplier) per game or bulk | **MVP** |
 | **GAME-10** | Admin can sync prices (pull latest pricing from supplier) per game or bulk | **MVP** |
 | **GAME-11** | Admin can perform bulk price update (apply system markup to all packages) | **Important** |
-| **GAME-12** | Each supplier mapping on a Game stores its **own** `supports_validation` flag (validation capability is per game-supplier mapping, not a blanket per-supplier flag — confirmed varies even within one supplier's catalog) | **MVP** |
+| ~~**GAME-12**~~ | ~~Each supplier mapping on a Game stores its own `supports_validation` flag~~ — **❌ Dropped, 2026-09-13.** Neither supplier this platform has ever integrated (Gamevion, Digiflazz) exposes player-validation via its own API — both `validatePlayer()` unconditionally throw `ValidationNotSupportedException` (ADR-005's own "validation happens implicitly at order time"), and no code path anywhere ever read the flag this row described. Not a capability to build an admin toggle for. | — |
 
 ## 6.4 Admin — Price Sync Center
 
@@ -430,7 +430,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 | Entity | Key Fields | Description |
 | --- | --- | --- |
-| **Game** | `id`, `name`, `slug`, `category`, `is_active`, `sort_order`, `image_url`, `banner_url`, `supplier_mappings` (JSON array of `{supplier_id, product_ref, supports_validation, supports_server_list}`), `validation_rules` (JSON), SEO fields | A game title available for top-up. `supports_validation` lives per supplier-mapping entry, not on Supplier globally (per GAME-12). |
+| **Game** | `id`, `name`, `slug`, `category`, `is_active`, `sort_order`, `image_url`, `banner_url`, `supplier_mappings` (JSON array of `{supplier_id, product_ref, supports_validation, supports_server_list}`), `validation_rules` (JSON), SEO fields | A game title available for top-up. `supports_validation` remains in the stored JSON shape (harmless, unread) but is dead — GAME-12 (which introduced it) is dropped, 2026-09-13; see §16. Real player-ID validation runs through `Game.player_validator_enabled`/`player_validator_profile_id` (`PlayerValidatorRegistry`, ADR-093) instead — an unrelated, separate mechanism. |
 | **Package** | `id`, `game_id`, `name`, `cost_price` (supplier wholesale, sourced only from the supplier sync — never admin-editable), `markup_percent` (admin-set per package, decimal — added 2026-07-25), `standard_selling_price` (= `cost_price` × (1 + `markup_percent` / 100), rounded to the nearest sen — **stored**, recomputed only when `markup_percent` changes via `PackageMarkupService`, never recomputed live at order time; renamed from `reseller_cost_price` 2026-08-29, [ADR-027](./adr.md)), `is_active`, `supplier_id`, `supplier_package_ref`, `sort_order` | A specific top-up denomination within a game. `standard_selling_price` is the platform owner's own guest/standard price — it is **not** the customer-facing price for every buyer type; a real affiliate's own wholesale rate is a separate mechanism (`affiliate_membership_tiers`, see the Affiliate row below and [ADR-056](./adr.md) — backend built, checkout wiring [ADR-060](./adr.md)). Today it happens to equal the customer-facing price (the primary brand runs at `markup_pct = 0`), but the schema/formula never assumes that. |
 | **Supplier** | `id`, `name`, `slug`, `logo_url`, `is_active`, `api_config` (JSON — credentials, endpoints; **encrypted at rest**), `balance`, `currency` | A game credit supplier integrated via Middleware, accessed only through its Adapter (6.21). |
 | **Affiliate** | `id`, `business_name`, `contact_name`, `email`, `phone`, `markup_pct`, `max_markup_pct`, `domains` (JSON array, nullable), `status`, `is_owned` (bool — our own brand, [ADR-061](./adr.md)), `is_primary` (nullable bool, DB-enforced-single — the console/job/non-`Host` fallback tenant, never deletable), `membership_enabled` (bool — per-brand consumer-Membership toggle, effective only when the global `PlatformSettings.membership_enabled` master is also on), `deleted_at` (soft-delete, ADR-058 58b), `xendit_subaccount_id` (nullable, unused — xenPlatform dropped), `notes` — **no `balance` column**; balance is derived from `LedgerEntry` — **renamed from `Reseller`/`resellers` 2026-09-04, [ADR-072](./adr.md) PR-A, zero behaviour change** (vacates the `Reseller` name for a future prepaid-wallet entity, ADR-073..075) | A branded storefront owner. **Every storefront is a row here** — ours and third-party alike, with no special code path ([ADR-061](./adr.md), superseding ADR-013's `business_name = 'Platform Owner'` magic string). `Affiliate::primary()` resolves the one `is_primary` row for any context with no `Host` to resolve a brand from. `markup_pct`/`max_markup_pct` = the affiliate's own margin on top of what they pay the platform (an `is_owned` brand defaults 0 — all margin books as `platform_profit`). **What an affiliate pays the platform** depends on which `affiliate_membership_tiers` row they're subscribed to (or `standard_selling_price` if none active) — [ADR-056](./adr.md), backend built, checkout wiring ADR-060. |
@@ -586,7 +586,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13) | ADR-072–076, 084, 091, 093 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC) | ADR-006, 030–032, 067, 069 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived) | ADR-022 |
-| Games & Packages (GAME-1..12) | 🟡 GAME-1..5/7 live (list/detail, markup %, activate/deactivate, delete). GAME-6/11/12 + game SEO fields unbuilt — not blocking | — |
+| Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). ORD-5 export unbuilt | ADR-017, 026, 032, 092 |
@@ -596,8 +596,8 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ✅ Live — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. Host-agnostic | ADR-039 |
-| Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete. In-modal picker not wired (paste URL); disk is config-driven for a later R2 swap | — |
+| Backups (BAK-1..5) | ✅ Live — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. Host-agnostic. **2026-09-14: the restore-test had actually failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log` in prod) — both fixed, not yet re-verified against a real prod run | ADR-039 |
+| Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete, now WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning (ADR-095). In-modal picker not wired (paste URL). `GALLERY_DISK`/`BACKUP_DISK` can now point at real R2 buckets (`pekangame-gallery`/`pekangame-backups`, provisioned) — flip pending founder `.env` + one migration command | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage | ADR-029 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
@@ -614,7 +614,11 @@ kept. Screen-by-screen history in `docs/build-log.md`.
 
 # 16. Open Items & Backlog
 
-Last walked with the founder 2026-09-09, re-verified against production 2026-09-11.
+Last walked with the founder 2026-09-09, re-verified against production 2026-09-11,
+spot-checked against real code again 2026-09-13 twice in the same day (Voucher/
+Blacklist/GAME-11/SEO-fields turned out already shipped; GAME-6 then shipped
+same-session, PR #192) — this list drifts easily, re-verify against real
+code/production before trusting an "open" line here, not just this doc's memory.
 Anything shipped and verified drops off this list into `docs/build-log.md`.
 
 ## The one launch gate
@@ -639,37 +643,79 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
 5. **e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
    30s timeout under the 60s per-test budget; raise it.
-6. Small unbuilt scope, none blocking: GAME-6 (drag-drop reorder), GAME-11 (bulk
-   price update), GAME-12 + game SEO fields, ORD-5 (order export), SET-9 (the
-   Telegram *sender* — the setting fields exist), gallery in-modal picker,
-   gallery→WebP + delete referential safety, SEO `AggregateRating` JSON-LD on the
-   PDP, consolidate ADR-081's 3× theme-preset ID list (now also the token-map
-   duplication ADR-090 grew across the same 2 files), and **ADR-090's
-   dark-palette backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each
-   still need a hand-authored `tokensDark` (only `default` has one; the
-   portal's Site Mode toggle already hides "Dark" for any preset without one,
-   so this is additive design work, not a blocker).
+6. Small unbuilt scope, none blocking: ORD-5 (order export), SET-9 (the Telegram
+   *sender* — the setting fields exist), gallery in-modal picker, gallery→WebP
+   + delete referential safety, SEO `AggregateRating` JSON-LD on the PDP,
+   **ADR-090's dark-palette backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each still need a
+   hand-authored `tokensDark` (only `default` has one; the portal's Site Mode
+   toggle already hides "Dark" for any preset without one, so this is additive
+   design work, not a blocker) — and the **reseller-family audit's item A3**
+   (per-tier rate limit on the Reseller API/Bot) — deliberately deferred design
+   call from the 2026-09-10 audit, not forgotten.
+7. **ADR-090 dark mode needs a real redo, not just the backfill above.** The
+   founder tried the shipped version live and dislikes the actual design (not
+   missing presets — the design itself); next session he brings a Stitch
+   reference for the team to follow instead of designing it from scratch again.
+   Distinct from item 6's `tokensDark` backfill, which is additive work on the
+   *current* design and can proceed independently.
+8. **GAME-6, GAME-11 (bulk price update), Game SEO fields, and GAME-12 are OFF
+   this list — confirmed already resolved 2026-09-13, not by this list's own
+   prior entries:**
+   - **GAME-6 — shipped same-session** (PR #192, `feature/game-6-reorder-games`):
+     `/admin/games`' "Reorder Games" (drag-drop, PrimeReact `reorderableRows`),
+     `GameController::reorder()`. Widened by one necessary fact found mid-build:
+     `games.sort_order` was completely dead everywhere — admin list, public
+     storefront catalog, **and** the Affiliate whitelabel catalog all ordered
+     alphabetically, ignoring the column entirely — now wired into all three.
+     Quick Top-Up's hardcoded `QUICK_COUNTER_SLUGS` shortlist (dev-only,
+     no admin control) dropped in the same PR — its tiles are now just the
+     first 6 games in the same admin-ordered list, one control surface
+     instead of two. `AffiliateGame` still has no `sort_order` of its own
+     (confirmed unchanged) — an affiliate storefront inherits the primary
+     brand's order verbatim, by design (`CatalogController::index()` is
+     shared/brand-scoped, not per-brand-ordered); revisit only if an
+     affiliate actually asks for independent ordering.
+   - GAME-11 — already shipped: `SettingsController::bulkMarkup()` +
+     `PlatformSettingsSection.tsx` under `/admin/settings`, not the Games page.
+   - Game SEO fields — already shipped, ADR-029 (`/admin/seo/games`, built
+     2026-08-22).
+   - **GAME-12 dropped as a dead requirement**, not merely deprioritized:
+     `supports_validation` (the per-supplier-mapping player-validation-capability
+     flag) has zero code path anywhere that ever reads it, and both suppliers
+     this platform has ever integrated — Gamevion and Digiflazz —
+     unconditionally `throw ValidationNotSupportedException` from
+     `validatePlayer()` (confirmed in both adapters, consistent with ADR-005's
+     own "validation happens implicitly at order time" call). There was never
+     a capability to expose an admin toggle for. §8's `Game` row and the
+     GAME-1..12 requirements table are corrected to match.
 
 ## Hardening (founder `.env` / infra)
 
-7. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
+9. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
    are later phases; DNSSEC (founder's call). `.env.example` still owes
    `STOREFRONT_PRIMARY_HOSTS` / `VERCEL_*` / `GALLERY_DISK` / `CACHE_STORE=redis` /
    `PULSE_*`.
-8. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
-   the partner portal's withdrawal balances get meaningful.
-9. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
-   deferral — a real operational risk once real traffic exists.
+10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
+    the partner portal's withdrawal balances get meaningful.
+11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
+    deferral — a real operational risk once real traffic exists.
+12. **Founder-owed one-off:** confirm the next scheduled backup run (or an
+    on-demand "Backup Now") shows `status=success`/`restore_test_passed=true`
+    on `/middleware/backups` after `fix/backup-restore-test-gtid-privilege`
+    reaches `main` — the 2026-09-14 incident (14/14 restore-tests failed since
+    go-live, alert silently swallowed by `MAIL_MAILER=log`) is fixed but not
+    yet re-verified against a real production run. See `docs/adr.md`'s
+    ADR-039 addendum.
 
 ## Buildable now (design done, not started)
 
-10. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
+13. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
     Accounting Summary screen. Waits for real order flow + a real settlement
     file from the **PekanGame** CHIP account (PR-1 shipped 2026-09-11 — see
     `docs/build-log.md`).
-11. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
+14. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
-12. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
+15. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
     LLM Report Assistant (`/admin/reports/assistant`): a ChatGPT/Gemini-style
     sidebar (new chat, switch between past threads, delete a thread), the
     assistant still remembering a past thread's context when reopened. Reverses
@@ -682,14 +728,51 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
+16. **ADR-094 — Combo Package.** Assembles several existing catalog Packages
+    into one opaque, sellable SKU above a game's native max denomination (e.g.
+    MLBB Malaysia's 7502 Diamonds), so a reseller/guest pays one CHIP FPX fee
+    instead of two. Design fully grilled + stress-tested 2026-09-13 (schema,
+    fulfillment leg-engine, partial-delivery policy, component-churn guards,
+    ledger/reporting/LLM-assistant impact all resolved) — **deliberately
+    parked**, not a build task yet. Revisit trigger: real recurring demand
+    detectable from existing order data (repeated same-`game_id`+`player_id`
+    checkouts in a short window), not assumed from one reseller conversation.
+17. **ADR-095 — Cloudflare R2 storage cutover — built 2026-09-14, one founder
+    step + one command left.** Both buckets (`pekangame-gallery` public via
+    `cdn.pekangame.space`, `pekangame-backups` private) + scoped tokens
+    provisioned live; Gallery WebP-at-upload (reuses `ImageIngestService`,
+    2000px cap) and delete referential safety (warn+confirm) shipped.
+    Resolved this list's former "gallery→WebP + delete referential safety"
+    line and ADR-039's droplet-backup single-point-of-failure. **Remaining:**
+    founder adds the new `R2_*`/`GALLERY_DISK`/`BACKUP_DISK` names to
+    `.env.example` (blocked by this session's own sandbox permissions on
+    `.env*` files) and, once this reaches `main` with `.env` flipped on both
+    ends, runs `php artisan gallery:migrate-to-r2` once against production to
+    move the 3 real existing files. See `docs/adr.md`'s build addendum.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
-Voucher double-submit guard (Path A) · blacklist data-source / appeal policy ·
-CHIP credential `.env`→DB migration · Cloudflare R2 storage (code
-prepped — `ImageIngestService` seam + `GALLERY_DISK`; fold in WebP-at-upload).
+**CHIP credential `.env`→DB migration** — genuinely still open (confirmed
+2026-09-13), needs its own ADR + grill before building (touches live payment
+secrets). **Cloudflare R2 storage moved to item 17 above, 2026-09-14** — no
+longer parked, design done, buildable now.
 The `PaymentGatewayFactory` seam is kept for multi-region payment; a real 2nd
 gateway is revisited only when cross-border selling is real (ADR-022 — Xendit
 deleted).
+
+~~Voucher double-submit guard (Path A)~~ — **removed 2026-09-13, already
+shipped** (ADR-035, built 2026-08-26 — `vouchers.idempotency_key`,
+confirmed live in `VoucherController::store()`). This list had drifted;
+see the header note above.
+
+~~Blacklist data-source / appeal policy~~ — **removed 2026-09-13, already
+resolved, not a build task.** The blacklist feature itself shipped
+2026-07-29 (ADR-007's addendum, `/admin/blacklist`). Data-source was already
+settled by ADR-007's own Decision (internal, admin-curated from the
+platform's own chargeback/fraud history — never an external feed). Appeal
+already has a working mechanism (admin deactivates an entry via the existing
+`is_active` toggle); what was actually missing was a one-line documented
+policy, not a feature: *a wrongly-blacklisted customer contacts support,
+admin reviews the `blacklist_hits` history and deactivates the entry.*
 
 ---

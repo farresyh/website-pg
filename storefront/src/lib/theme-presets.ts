@@ -1,3 +1,13 @@
+// Theme presets shared between the storefront and the reseller portal's
+// preset picker (ADR-081/090) — MUST render identically in both, or an
+// affiliate's preview in reseller/ won't match what customers see live.
+// Canonical source: THIS file (storefront/src/lib/theme-presets.ts).
+// `reseller/src/lib/theme-presets.ts` is a byte-for-byte generated copy —
+// edit only here, then run `node scripts/sync-theme-presets.mjs`. CI's
+// `theme-preset-drift` job fails the build if the two ever diverge.
+// The backend's own copy of the preset-ID list
+// (`backend/app/Http/Requests/Affiliate/Storefront/UpdateBrandingRequest.php`)
+// must still be hand-kept in sync — PHP can't import this TS file.
 export interface ThemePreset {
   id: string;
   name: string;

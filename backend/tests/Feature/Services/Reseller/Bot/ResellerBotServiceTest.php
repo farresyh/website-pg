@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services\Reseller\Bot;
 
+use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
@@ -390,6 +391,42 @@ class ResellerBotServiceTest extends TestCase
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLMY', 'msg-2');
 
         $this->assertSame(0, ResellerBotCommandLog::query()->count());
+    }
+
+    /**
+     * Found 2026-09-13: a catalogue-sized `.list` reply (79 packages,
+     * MLID's real count) built a >4096-char message that OpenWA's
+     * `send-text` endpoint hard-rejects with a `400` — every retry
+     * exhausted silently, the reseller got nothing back at all. This
+     * pins the fix end-to-end: `ResellerBotService` now dispatches one
+     * `SendResellerBotReplyJob` per chunk instead of one for the whole
+     * listing, so no single message OpenWA is asked to send ever
+     * crosses the cap.
+     */
+    public function test_a_long_catalogue_list_dispatches_one_reply_job_per_chunk(): void
+    {
+        config(['services.openwa.session_id' => 'session-1', 'services.openwa.api_key' => 'key-1']);
+        Queue::fake();
+
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends Indonesia', 'slug' => 'mlbb-id', 'reseller_code' => 'MLID', 'is_active' => true]);
+        foreach (range(1, 79) as $n) {
+            Package::query()->create([
+                'game_id' => $game->id, 'name' => "{$n} Diamonds", 'denomination' => $n,
+                'cost_price' => 1000 + $n, 'standard_selling_price' => 1100 + $n,
+                'supplier_id' => $supplier->id, 'supplier_package_ref' => "sku-{$n}", 'is_active' => true,
+            ]);
+        }
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLID', 'msg-1');
+
+        $pushed = Queue::pushed(SendResellerBotReplyJob::class);
+
+        $this->assertGreaterThan(1, $pushed->count());
+        foreach ($pushed as $job) {
+            $this->assertLessThanOrEqual(4096, strlen($job->text));
+        }
     }
 
     public function test_unknown_game_code_on_list_is_logged(): void
