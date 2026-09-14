@@ -596,8 +596,8 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ✅ Live — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. Host-agnostic. **2026-09-14: the restore-test had actually failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log` in prod) — both fixed, not yet re-verified against a real prod run | ADR-039 |
-| Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete, now WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning (ADR-095). In-modal picker not wired (paste URL). `GALLERY_DISK`/`BACKUP_DISK` can now point at real R2 buckets (`pekangame-gallery`/`pekangame-backups`, provisioned) — flip pending founder `.env` + one migration command | ADR-095 |
+| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
+| Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage | ADR-029 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
@@ -699,23 +699,15 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     the partner portal's withdrawal balances get meaningful.
 11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
     deferral — a real operational risk once real traffic exists.
-12. **Founder-owed one-off:** confirm the next scheduled backup run (or an
-    on-demand "Backup Now") shows `status=success`/`restore_test_passed=true`
-    on `/middleware/backups` after `fix/backup-restore-test-gtid-privilege`
-    reaches `main` — the 2026-09-14 incident (14/14 restore-tests failed since
-    go-live, alert silently swallowed by `MAIL_MAILER=log`) is fixed but not
-    yet re-verified against a real production run. See `docs/adr.md`'s
-    ADR-039 addendum.
-
 ## Buildable now (design done, not started)
 
-13. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
+12. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
     Accounting Summary screen. Waits for real order flow + a real settlement
     file from the **PekanGame** CHIP account (PR-1 shipped 2026-09-11 — see
     `docs/build-log.md`).
-14. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
+13. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
-15. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
+14. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
     LLM Report Assistant (`/admin/reports/assistant`): a ChatGPT/Gemini-style
     sidebar (new chat, switch between past threads, delete a thread), the
     assistant still remembering a past thread's context when reopened. Reverses
@@ -728,7 +720,7 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-16. **ADR-094 — Combo Package.** Assembles several existing catalog Packages
+15. **ADR-094 — Combo Package.** Assembles several existing catalog Packages
     into one opaque, sellable SKU above a game's native max denomination (e.g.
     MLBB Malaysia's 7502 Diamonds), so a reseller/guest pays one CHIP FPX fee
     instead of two. Design fully grilled + stress-tested 2026-09-13 (schema,
@@ -737,19 +729,6 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     parked**, not a build task yet. Revisit trigger: real recurring demand
     detectable from existing order data (repeated same-`game_id`+`player_id`
     checkouts in a short window), not assumed from one reseller conversation.
-17. **ADR-095 — Cloudflare R2 storage cutover — built 2026-09-14, one founder
-    step + one command left.** Both buckets (`pekangame-gallery` public via
-    `cdn.pekangame.space`, `pekangame-backups` private) + scoped tokens
-    provisioned live; Gallery WebP-at-upload (reuses `ImageIngestService`,
-    2000px cap) and delete referential safety (warn+confirm) shipped.
-    Resolved this list's former "gallery→WebP + delete referential safety"
-    line and ADR-039's droplet-backup single-point-of-failure. **Remaining:**
-    founder adds the new `R2_*`/`GALLERY_DISK`/`BACKUP_DISK` names to
-    `.env.example` (blocked by this session's own sandbox permissions on
-    `.env*` files) and, once this reaches `main` with `.env` flipped on both
-    ends, runs `php artisan gallery:migrate-to-r2` once against production to
-    move the 3 real existing files. See `docs/adr.md`'s build addendum.
-
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 **CHIP credential `.env`→DB migration** — genuinely still open (confirmed
