@@ -143,7 +143,14 @@ final class ResellerBotService
             ResellerBotCommandType::Unrecognized => $this->handleUnrecognized($reseller, $command, $whatsappGroupId),
         };
 
-        $this->openWa->sendText($whatsappGroupId, $reply);
+        // `handleListGamePackages()` is the one handler that can return
+        // more than one message (`ResellerBotReplyFormatter::listPackages()`
+        // splits once a game's catalogue crosses OpenWA's per-message
+        // length cap, `MAX_MESSAGE_LENGTH`) — every other handler still
+        // returns a single string, sent as before.
+        foreach (is_array($reply) ? $reply : [$reply] as $text) {
+            $this->openWa->sendText($whatsappGroupId, $text);
+        }
     }
 
     private function handleUnrecognized(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
@@ -168,7 +175,8 @@ final class ResellerBotService
         return ResellerBotReplyFormatter::listGames($games);
     }
 
-    private function handleListGamePackages(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
+    /** @return string|list<string> */
+    private function handleListGamePackages(Reseller $reseller, ResellerBotCommand $command, string $groupId): string|array
     {
         $gameCode = (string) $command->gameCode;
         $game = Game::query()->where('reseller_code', $gameCode)->first();

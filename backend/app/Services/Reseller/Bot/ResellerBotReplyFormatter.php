@@ -42,27 +42,86 @@ final class ResellerBotReplyFormatter
     }
 
     /**
-     * @param  Collection<int, array{code: string, package: Package}>  $items  Already sorted (`Package::cheapestActivePerGame()`, ADR-076 decision 1).
+     * OpenWA's own `send-text` endpoint hard-rejects any message body over
+     * this length with a `400` (`MESSAGE_TEXT_MAX_LENGTH`, OpenWA's
+     * `src/modules/message/dto/send-message.dto.ts`) — before the text
+     * ever reaches WhatsApp, and with no response body our client logs.
+     * Found 2026-09-13: `.list MLID` (79 active denominations, the
+     * largest single-game catalogue) built a 7,605-char reply and every
+     * send silently failed after exhausting `SendResellerBotReplyJob`'s
+     * 3 retries — the reseller saw nothing at all. Re-running the same
+     * length check across every reseller-coded game found two more over
+     * the cap: `MLMY` (5,707 chars, 59 packages) and `MLGB` (4,164 chars,
+     * 43 packages) — not a one-game edge case, a property of package
+     * count that any game (including a new one) can grow into.
      */
-    public static function listPackages(Game $game, Collection $items, callable $sellingPriceSen): string
+    public const MAX_MESSAGE_LENGTH = 4096;
+
+    /**
+     * Splits into multiple WhatsApp messages once the full listing would
+     * cross `MAX_MESSAGE_LENGTH` — the cap is per-message, so each chunk
+     * gets its own ``` fence. Always breaks between packages, never
+     * inside one. Below the cap this still returns a single-element
+     * array with byte-for-byte the same text as before this method
+     * chunked (no "(1/1)" clutter) — every game short enough to fit in
+     * one message keeps rendering exactly as it did before this method
+     * existed.
+     *
+     * @param  Collection<int, array{code: string, package: Package}>  $items  Already sorted (`Package::cheapestActivePerGame()`, ADR-076 decision 1).
+     * @return list<string>
+     */
+    public static function listPackages(Game $game, Collection $items, callable $sellingPriceSen): array
     {
-        $lines = $items->map(function (array $row) use ($sellingPriceSen) {
+        $blocks = $items->map(function (array $row) use ($sellingPriceSen) {
             /** @var Package $package */
             $package = $row['package'];
 
             return "{$package->name}\n"
                 .'Harga : RM'.self::formatSen($sellingPriceSen($package))."\n"
                 ."Kod   : {$row['code']}";
-        })->implode("\n━━━━━━━━━━━━━━━\n");
+        })->all();
 
+        $separator = "\n━━━━━━━━━━━━━━━\n";
         $firstCode = $items->first()['code'];
+        $footer = "\n\n".'Guna .order {kod} {playerId} [{serverId}] untuk order.'
+            ."\nContoh: .order {$firstCode} 123456789";
 
-        return self::wrap(
-            "🛒 SENARAI PACKAGE — {$game->name}\n\n"
-            ."{$lines}\n\n"
-            .'Guna .order {kod} {playerId} [{serverId}] untuk order.'
-            ."\nContoh: .order {$firstCode} 123456789"
-        );
+        // The header carries a "(part/total)" suffix once split into more
+        // than one message. Reserve room for the widest plausible count
+        // (two digits either side) up front, before the real — always
+        // shorter or equal — suffix is substituted in below, so the
+        // reserved budget below is never an overestimate that lets a
+        // finished chunk slip back over the cap.
+        $header = fn (string $suffix) => "🛒 SENARAI PACKAGE — {$game->name}{$suffix}\n\n";
+        $wrapOverhead = strlen("```\n") + strlen("\n```");
+        $budget = self::MAX_MESSAGE_LENGTH - $wrapOverhead - strlen($header(' (99/99)')) - strlen($footer);
+
+        $chunks = [];
+        $current = '';
+        foreach ($blocks as $block) {
+            $addition = $current === '' ? $block : $separator.$block;
+
+            if ($current !== '' && strlen($current.$addition) > $budget) {
+                $chunks[] = $current;
+                $current = $block;
+
+                continue;
+            }
+
+            $current .= $addition;
+        }
+        if ($current !== '') {
+            $chunks[] = $current;
+        }
+
+        $total = count($chunks);
+
+        return array_values(array_map(function (string $body, int $index) use ($header, $total, $footer) {
+            $suffix = $total > 1 ? ' ('.($index + 1)."/{$total})" : '';
+            $isLast = $index === $total - 1;
+
+            return self::wrap($header($suffix).$body.($isLast ? $footer : ''));
+        }, $chunks, array_keys($chunks)));
     }
 
     /**
