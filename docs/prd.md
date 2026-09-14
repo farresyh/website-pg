@@ -730,15 +730,22 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     parked**, not a build task yet. Revisit trigger: real recurring demand
     detectable from existing order data (repeated same-`game_id`+`player_id`
     checkouts in a short window), not assumed from one reseller conversation.
+17. **ADR-095 — Cloudflare R2 storage cutover.** Reopened + grilled 2026-09-14
+    at the founder's own initiative ("tiada gambar lagi, bagus buat sekarang").
+    2 buckets (`pekangame-gallery` public via `cdn.pekangame.space`,
+    `pekangame-backups` private, own scoped tokens each) — folds in
+    Gallery WebP-at-upload (reuses `ImageIngestService`, 2000px cap) and
+    gallery-delete referential safety (warn+confirm). Resolves this list's
+    former "gallery→WebP + delete referential safety" line and ADR-039's
+    2026-08-26 flagged droplet-backup single-point-of-failure. Design fully
+    settled — not built yet; see `docs/adr.md`.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
-**CHIP credential `.env`→DB migration** · **Cloudflare R2 storage** (code
-prepped — `ImageIngestService` seam + `GALLERY_DISK`; fold in WebP-at-upload).
-Both are genuinely still open (confirmed 2026-09-13, not code-verified stale
-like the two items removed from this line below) — each needs its own ADR +
-grill before building (CHIP touches live payment secrets; R2 is a real infra
-cutover), not a small/direct build despite the seam already existing for R2.
+**CHIP credential `.env`→DB migration** — genuinely still open (confirmed
+2026-09-13), needs its own ADR + grill before building (touches live payment
+secrets). **Cloudflare R2 storage moved to item 17 above, 2026-09-14** — no
+longer parked, design done, buildable now.
 The `PaymentGatewayFactory` seam is kept for multi-region payment; a real 2nd
 gateway is revisited only when cross-border selling is real (ADR-022 — Xendit
 deleted).
