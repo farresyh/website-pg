@@ -49,6 +49,7 @@ import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
 import ComboLegBreakdown from "@/components/orders/ComboLegBreakdown";
+import ManualCheckButtons from "@/components/orders/ManualCheckButtons";
 
 // ADR-092: cards poll on this interval while the page is open — the one
 // piece of "proactive" behaviour kept from the dropped WhatsApp-alert
@@ -146,6 +147,23 @@ function OrdersPageInner() {
       setSelected(await getOrder(token, id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this order.");
+    }
+  }
+
+  /**
+   * ADR-096 — re-fetches the currently open order in place (no
+   * flash back to the list, unlike openOrder()'s own setSelected(null)
+   * reset) after a manual "Check from Supplier"/"Check from Gateway"
+   * applies an outcome. Silent on failure, same as handleResent()'s own
+   * background poll — the admin can just click the button again.
+   */
+  async function refreshSelected() {
+    const session = getClientSession();
+    if (!session || !selected) return;
+    try {
+      setSelected(await getOrder(session.token, selected.id));
+    } catch {
+      // Silent — see doc comment above.
     }
   }
 
@@ -379,6 +397,10 @@ function OrdersPageInner() {
               {retryMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{retryMessage}</span>}
             </div>
           )}
+          {/* ADR-096 — independent of the failed/needs_review block above:
+              a Pending delivery_status/payment_status is an async supplier/
+              gateway awaiting confirmation, not a failure needing retry. */}
+          {session && <ManualCheckButtons order={selected} token={session.token} onChecked={refreshSelected} />}
           {/* Rendered outside the failed/needs_review-gated block above,
               deliberately — unlike resend/voucher, a successful Mark as
               Delivered moves delivery_status to "delivered" in the same

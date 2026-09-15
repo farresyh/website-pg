@@ -372,6 +372,19 @@ return [
         'max_reconcile_age_days' => (int) env('DELIVERY_RECONCILIATION_MAX_RECONCILE_AGE_DAYS', 90),
     ],
 
+    // ADR-096 decision 8 — cooldown for the admin "Check from
+    // Supplier"/"Check from Gateway" manual-poll buttons, a cache-based
+    // throttle (not a DB column) set after every attempt (success,
+    // terminal failure, or error/timeout alike) so a spammed click or a
+    // supplier outage never triggers a rapid-fire retry loop. Default
+    // matches Digiflazz's own documented "don't re-check within 1
+    // minute" limit. Overridable per-supplier via
+    // Supplier.api_config['manual_check_cooldown_seconds'] (supplier
+    // side only — the gateway side has no override, ADR-096 decision 8).
+    'manual_check' => [
+        'cooldown_seconds' => (int) env('MANUAL_CHECK_COOLDOWN_SECONDS', 60),
+    ],
+
     // ADR-075 / PR-F build addendum — self-hosted OpenWA (github.com/
     // rmyndharis/OpenWA), one shared WhatsApp session/number for every
     // Reseller Bot-channel account. `engine` is OpenWA's own deployment
