@@ -527,6 +527,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::post('/{order}/retry-delivery', [OrderController::class, 'retryDelivery']);
         Route::post('/{order}/resend', [OrderController::class, 'resend']);
+        // ADR-096 — manual poll: a synchronous, read-only status-check
+        // call, deliberately exempt from ADR-014's "never sync" rule.
+        Route::post('/{order}/check-supplier', [OrderController::class, 'checkSupplier']);
+        Route::post('/{order}/check-gateway', [OrderController::class, 'checkGateway']);
         // ADR-026 decision 4a — the one needs_review exit that isn't a retry.
         Route::post('/{order}/mark-delivered', [OrderController::class, 'markDelivered']);
         // ADR-073 decision 7 — the wallet-order counterpart to

@@ -13,14 +13,18 @@ use App\Models\Package;
 use App\Models\ResellerBotOrderNotification;
 use App\Models\Voucher;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Fulfillment\SupplierDeliveryCheckService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\PaymentReconciliationService;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use App\Services\Reseller\Webhook\ResellerWebhookDispatcher;
 use App\Services\Reseller\Webhook\ResellerWebhookEvent;
+use App\Services\Supplier\SupplierAdapterFactory;
+use App\Support\ManualCheckCooldown;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -248,6 +252,114 @@ class OrderController extends Controller
         );
 
         return response()->json(['message' => 'Resend queued.']);
+    }
+
+    /**
+     * ADR-096 decision 5 — a deliberate, scoped exception to ADR-014's
+     * "never call the supplier synchronously" rule: a single short
+     * read-only status-check call, admin-initiated, so the raw response
+     * can be shown immediately rather than via a queued job's delayed
+     * result. Shares SupplierDeliveryCheckService with the scheduled
+     * CheckSupplierDeliveryJob (decision 7) — same finalize path, same
+     * combo per-leg loop, never a second copy of that logic.
+     */
+    public function checkSupplier(Order $order, SupplierAdapterFactory $supplierAdapters, OrderFulfillmentService $fulfillment, ManualCheckCooldown $cooldown): JsonResponse
+    {
+        if ($order->is_test) {
+            abort(404);
+        }
+
+        if ($order->delivery_status !== DeliveryStatus::Pending) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['Only an order with a Pending delivery can be checked from the supplier.'],
+            ]);
+        }
+
+        $cooldownKey = "manual-check:supplier:{$order->id}";
+        $remaining = $cooldown->remainingSeconds($cooldownKey);
+
+        if ($remaining > 0) {
+            return response()->json(['message' => 'Checked too recently — please wait before checking again.', 'retry_after_seconds' => $remaining], 422);
+        }
+
+        // ADR-032 decision 6 / ADR-096 decision 8 — a combo order has no
+        // supplier of its own (decision 3); its cooldown (and any
+        // future per-supplier override) is keyed on the first
+        // component's supplier, mirroring ReconcilePendingDeliveriesCommand's
+        // own checkStalePending() resolution.
+        $supplier = $order->package?->is_combo
+            ? $order->package->components->first()?->supplier
+            : $order->supplier;
+        $cooldownSeconds = $supplier?->api_config['manual_check_cooldown_seconds'] ?? config('services.manual_check.cooldown_seconds');
+
+        try {
+            $result = (new SupplierDeliveryCheckService($supplierAdapters, $fulfillment))->check($order);
+        } catch (\Throwable $e) {
+            $cooldown->start($cooldownKey, $cooldownSeconds);
+            Log::error('Manual supplier check failed', ['order_number' => $order->order_number, 'error' => $e->getMessage()]);
+
+            return response()->json(['message' => 'Supplier check failed: '.$e->getMessage()], 502);
+        }
+
+        $cooldown->start($cooldownKey, $cooldownSeconds);
+
+        $fresh = $order->fresh();
+
+        return response()->json([
+            'result' => $result,
+            'delivery_status' => $fresh->delivery_status->value,
+            'delivered_at' => $fresh->delivered_at?->toISOString(),
+            'supplier_ref' => $fresh->supplier_ref,
+        ]);
+    }
+
+    /**
+     * ADR-096 decision 5/7 — the payment-side counterpart to
+     * checkSupplier() above. Shares PaymentReconciliationService with
+     * the scheduled ReconcilePendingPaymentsCommand.
+     */
+    public function checkGateway(Order $order, PaymentReconciliationService $reconciliation, ManualCheckCooldown $cooldown): JsonResponse
+    {
+        if ($order->is_test) {
+            abort(404);
+        }
+
+        if ($order->payment_status !== PaymentStatus::Pending) {
+            throw ValidationException::withMessages([
+                'payment_status' => ['Only an order with a Pending payment can be checked from the gateway.'],
+            ]);
+        }
+
+        $cooldownKey = "manual-check:gateway:{$order->id}";
+        $remaining = $cooldown->remainingSeconds($cooldownKey);
+
+        if ($remaining > 0) {
+            return response()->json(['message' => 'Checked too recently — please wait before checking again.', 'retry_after_seconds' => $remaining], 422);
+        }
+
+        // ADR-096 decision 8 — no per-gateway cooldown override exists
+        // (unlike the supplier side); the global default applies to
+        // every gateway uniformly.
+        $cooldownSeconds = config('services.manual_check.cooldown_seconds');
+
+        try {
+            $result = $reconciliation->reconcileOrder($order);
+        } catch (\Throwable $e) {
+            $cooldown->start($cooldownKey, $cooldownSeconds);
+            Log::error('Manual gateway check failed', ['order_number' => $order->order_number, 'error' => $e->getMessage()]);
+
+            return response()->json(['message' => 'Gateway check failed: '.$e->getMessage()], 502);
+        }
+
+        $cooldown->start($cooldownKey, $cooldownSeconds);
+
+        $fresh = $order->fresh();
+
+        return response()->json([
+            'result' => $result,
+            'payment_status' => $fresh->payment_status->value,
+            'paid_at' => $fresh->paid_at?->toISOString(),
+        ]);
     }
 
     /**
