@@ -753,7 +753,20 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     fulfilling a real combo order through storefront checkout, the Reseller
     API, and the Reseller Bot — all 3 passed on first write. Reseller Portal
     has no order-placement surface at all (confirmed by grep), nothing to
-    verify there. Full backend suite **1925/1925** green. **ADR-094 is now
+    verify there. **A real local smoke test (3-component combo, real admin
+    API, simulated leg failure) then found 2 real bugs no automated test had
+    caught:** "Resend Delivery…" silently no-ops for a combo order (decision
+    10's guard only fires inside a queued job that swallows it — admin sees
+    a false success message, nothing happens), and a combo order could get
+    stuck at `Processing` forever if a leg attempt threw an unexpected
+    exception instead of a clean failure response. Both fixed 2026-09-15
+    (grilled first — the fulfillment-engine one touches the platform's
+    single most money-critical file): the admin panel now routes combo
+    orders to the plain retry action instead of the broken resend modal, and
+    `attemptLeg()` now catches any unexpected exception and marks the leg
+    NeedsReview (same ambiguity reasoning as the existing `duplicate_reference`
+    handling) instead of leaving the order stranded. Full backend suite
+    **1928/1928** green, concurrency suite green. **ADR-094 is now
     functionally complete** on `staging` — combo is genuinely buyable through
     every real channel, not just admin-creatable. See `docs/adr.md` ADR-094
     for the full 23-decision design.

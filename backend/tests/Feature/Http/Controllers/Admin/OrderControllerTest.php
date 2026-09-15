@@ -483,6 +483,36 @@ class OrderControllerTest extends TestCase
         Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
     }
 
+    /**
+     * ADR-094 decision 10 (2026-09-15 admin-UI fix): retry-delivery is
+     * the ONLY resend/retry path that actually works for a combo order
+     * — resend() always 422s one (assertSameGamePackage()'s is_combo
+     * guard fires unconditionally, even for a same-package "swap"),
+     * found live via a real local smoke test. The admin panel now
+     * routes combo orders here instead of opening the package-swap
+     * modal at all.
+     */
+    public function test_retry_delivery_queues_a_fulfillment_job_for_a_combo_order(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $combo = Package::query()->create([
+            'game_id' => Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-'.uniqid()])->id,
+            'name' => '10478 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 10478, 'cost_price' => 85000, 'standard_selling_price' => 93500,
+        ]);
+        $order = $this->order([
+            'package_id' => $combo->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
+    }
+
     public function test_retry_delivery_requires_authentication(): void
     {
         $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);

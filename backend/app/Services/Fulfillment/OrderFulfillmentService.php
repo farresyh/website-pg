@@ -16,6 +16,7 @@ use App\Services\Supplier\SupplierOutcome;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Orchestrates checkout COMPLETION — submitting a paid order to the
@@ -307,71 +308,125 @@ final class OrderFulfillmentService
      * per leg exactly as it does per order: routes to NeedsReview, never
      * a plain Failed, since it's evidence a prior attempt for *this leg's*
      * reference already reached the supplier.
+     *
+     * ADR-094 2026-09-15 addendum (post-Phase-4 resilience grill): the
+     * inner `DB::transaction()` only ever throws for a genuinely
+     * unexpected reason — a business-level rejection is a clean
+     * `SupplierResponse::failure()` return, handled below, never an
+     * exception. Found live: `fulfillCombo()`'s own first transaction
+     * (advancing the *order* to Processing) already commits before this
+     * loop starts, so an uncaught exception here used to strand the
+     * order at Processing forever — `resolveComboOutcome()` never ran.
+     * The ordinary single-supplier `fulfill()` doesn't have this gap
+     * (its Processing transition and its one supplier call share the
+     * *same* transaction, so an exception there rolls both back to a
+     * safe, retryable pre-attempt state) — this is specific to decision
+     * 7's deliberate per-leg-transaction design (avoiding a lock held
+     * across up to 3 sequential HTTP calls, ADR-077's own fixed lock-
+     * contention class).
      */
     private function attemptLeg(Order $order, OrderDeliveryLeg $leg): void
     {
         $drawdownPrice = null;
         $legId = $leg->id;
 
-        DB::transaction(function () use ($order, $leg, &$drawdownPrice) {
-            $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
+        try {
+            DB::transaction(function () use ($order, $leg, &$drawdownPrice) {
+                $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
-            if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
-                // Lost a race with another attempt at this same leg —
-                // nothing to do, the other attempt already owns it.
-                return;
-            }
+                if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
+                    // Lost a race with another attempt at this same leg —
+                    // nothing to do, the other attempt already owns it.
+                    return;
+                }
 
-            $component = $lockedLeg->componentPackage;
-            $adapter = $this->supplierAdapters->make($component->supplier->slug);
-            $legReferenceNumber = "{$order->reference_number}-L{$lockedLeg->leg_number}";
+                $component = $lockedLeg->componentPackage;
+                $adapter = $this->supplierAdapters->make($component->supplier->slug);
+                $legReferenceNumber = "{$order->reference_number}-L{$lockedLeg->leg_number}";
 
-            Log::withContext(['reference_number' => $legReferenceNumber]);
+                Log::withContext(['reference_number' => $legReferenceNumber]);
 
-            $result = $adapter->createOrder(new SupplierOrderRequest(
-                productRef: $component->supplier_package_ref,
-                referenceNumber: $legReferenceNumber,
-                playerId: $order->player_id,
-                serverId: $order->server_id,
-                customerPhone: $order->customer_phone,
-                orderId: $order->id,
-            ));
+                $result = $adapter->createOrder(new SupplierOrderRequest(
+                    productRef: $component->supplier_package_ref,
+                    referenceNumber: $legReferenceNumber,
+                    playerId: $order->player_id,
+                    serverId: $order->server_id,
+                    customerPhone: $order->customer_phone,
+                    orderId: $order->id,
+                ));
 
-            if ($result->outcome === SupplierOutcome::Pending) {
-                $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
+                if ($result->outcome === SupplierOutcome::Pending) {
+                    $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
 
-                Log::info('Combo leg pending — awaiting async supplier confirmation', ['leg_id' => $lockedLeg->id]);
+                    Log::info('Combo leg pending — awaiting async supplier confirmation', ['leg_id' => $lockedLeg->id]);
 
-                return;
-            }
+                    return;
+                }
 
-            if ($result->outcome === SupplierOutcome::Failure) {
-                $isDuplicateReference = $result->errorCode === 'duplicate_reference';
+                if ($result->outcome === SupplierOutcome::Failure) {
+                    $isDuplicateReference = $result->errorCode === 'duplicate_reference';
+
+                    $lockedLeg->update([
+                        'status' => $isDuplicateReference ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
+                        'failure_reason' => $result->errorMessage,
+                    ]);
+
+                    Log::warning($isDuplicateReference ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
+                        'leg_id' => $lockedLeg->id,
+                        'error_code' => $result->errorCode,
+                        'error_message' => $result->errorMessage,
+                    ]);
+
+                    return;
+                }
 
                 $lockedLeg->update([
-                    'status' => $isDuplicateReference ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
-                    'failure_reason' => $result->errorMessage,
+                    'status' => DeliveryStatus::Delivered->value,
+                    'supplier_reference' => $result->data['supplier_ref'] ?? null,
+                    'delivered_at' => now(),
                 ]);
 
-                Log::warning($isDuplicateReference ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
-                    'leg_id' => $lockedLeg->id,
-                    'error_code' => $result->errorCode,
-                    'error_message' => $result->errorMessage,
-                ]);
-
-                return;
-            }
-
-            $lockedLeg->update([
-                'status' => DeliveryStatus::Delivered->value,
-                'supplier_reference' => $result->data['supplier_ref'] ?? null,
-                'delivered_at' => now(),
+                if (isset($result->data['price'])) {
+                    $drawdownPrice = (float) $result->data['price'];
+                }
+            });
+        } catch (Throwable $e) {
+            // Same ambiguity duplicate_reference already handles above
+            // — we genuinely don't know whether the supplier received
+            // this leg's request before things broke, so the safe
+            // default is identical: NeedsReview, never Failed (Failed
+            // implies "nothing happened, safe to retry from scratch,"
+            // not a safe assumption here). A subsequent retry re-submits
+            // under the same idempotency key (decision 7) — if the
+            // supplier really did see it, duplicate_reference detection
+            // catches that safely, same as it always has. Deliberately
+            // NOT wrapping the recordOrderDrawdown() call below this
+            // try block — that runs only after a real Delivered commit,
+            // so a failure there is a bookkeeping concern, never a
+            // reason to relabel a delivery that genuinely already
+            // succeeded back to "needs review".
+            Log::error('Combo leg attempt threw unexpectedly — marking NeedsReview rather than stranding the order at Processing', [
+                'leg_id' => $legId,
+                'exception' => $e->getMessage(),
             ]);
 
-            if (isset($result->data['price'])) {
-                $drawdownPrice = (float) $result->data['price'];
-            }
-        });
+            DB::transaction(function () use ($legId, $e) {
+                $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($legId);
+
+                if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
+                    // Same race-guard as the main attempt above — another
+                    // concurrent attempt already resolved this leg.
+                    return;
+                }
+
+                $lockedLeg->update([
+                    'status' => DeliveryStatus::NeedsReview->value,
+                    'failure_reason' => 'Delivery attempt failed unexpectedly: '.$e->getMessage(),
+                ]);
+            });
+
+            return;
+        }
 
         if ($drawdownPrice !== null) {
             $this->supplierFunding->recordOrderDrawdown($order, $drawdownPrice, $leg->fresh());

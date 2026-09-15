@@ -309,6 +309,152 @@ class OrderFulfillmentServiceComboTest extends TestCase
     }
 
     /**
+     * ADR-094 2026-09-15 resilience addendum: a genuinely unexpected
+     * exception (not a clean SupplierResponse::failure()) used to
+     * strand the whole order at Processing forever — found live via a
+     * real local smoke test (an unconfigured supplier slug threw
+     * UnsupportedSupplierException, order never left Processing).
+     * attemptLeg() now catches this the same way duplicate_reference
+     * is already handled: NeedsReview, never Failed, since we don't
+     * know whether the supplier actually received the request.
+     */
+    public function test_a_leg_that_throws_unexpectedly_lands_in_needs_review_not_stranded_at_processing(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = new class implements SupplierAdapter
+        {
+            private int $calls = 0;
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->calls++;
+                if ($this->calls === 2) {
+                    throw new RuntimeException('Connection timed out');
+                }
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        // The order itself never gets stuck at Processing — it always
+        // resolves to a real outcome, same as if leg 2 had returned a
+        // clean SupplierResponse::failure().
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $legs[1]->status);
+        $this->assertStringContainsString('Connection timed out', $legs[1]->failure_reason);
+
+        // recordOrderDrawdown() must never fire for the leg that threw
+        // — only the genuinely delivered leg draws down the supplier
+        // funding ledger.
+        $this->assertSame(1, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * The retry path (decision 10's "ordinary Resend Delivery retry,
+     * no package swap") re-submits a NeedsReview-from-exception leg
+     * under the same idempotency key exactly like any other
+     * not-yet-succeeded leg — no special handling needed for it to
+     * recover once the underlying issue (e.g. connectivity) clears.
+     */
+    public function test_retrying_a_leg_that_previously_threw_completes_the_order_normally(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $throwingAdapter = new class implements SupplierAdapter
+        {
+            private int $calls = 0;
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->calls++;
+                if ($this->calls === 2) {
+                    throw new RuntimeException('Connection timed out');
+                }
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+        $this->service($throwingAdapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+
+        // Connectivity's fine now — the retry only re-attempts the one
+        // leg that isn't yet Delivered (decision 7's own idempotency).
+        $recoveredAdapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY', 'price' => 480]),
+        ]);
+
+        $result = $this->service($recoveredAdapter)->fulfill($order->fresh());
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame('SREF-A', $legs[0]->supplier_reference);
+        $this->assertSame('SREF-B-RETRY', $legs[1]->supplier_reference);
+        $this->assertSame(2, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
      * Decision 4's own example: the same component repeated (quantity 2)
      * expands into 2 real legs, each its own supplier call/idempotency
      * key/leg_number — not one call for "2 units".

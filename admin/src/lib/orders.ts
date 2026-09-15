@@ -208,6 +208,20 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
 }
 
 /**
+ * ADR-014's plain retry (no package swap) — the counterpart to
+ * resendOrderDelivery() above. ADR-094 decision 10: this is the ONLY
+ * retry path that actually works for a combo order — resendOrderDelivery()
+ * always rejects one (422, "use the ordinary Resend Delivery retry
+ * instead"), since its package-swap tool assumes exactly one
+ * supplier_product_ref to copy onto the Order, meaningless for a
+ * multi-leg combo. The orders page routes combo orders (`delivery_legs.
+ * length > 0`) here instead of opening ResendDeliveryModal.
+ */
+export function retryOrderDelivery(token: string, id: number) {
+  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", token });
+}
+
+/**
  * ORD-7's other resolution path (ADR-004: retry-delivery or voucher,
  * never a cash refund). For an ordinary failed order, the backend
  * computes and bounds the amount itself (`final_amount -
