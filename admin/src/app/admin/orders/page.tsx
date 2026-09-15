@@ -39,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, listOrders, getOrder, getOrderSummary, refundOrderToWallet } from "@/lib/orders";
+import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, listOrders, getOrder, getOrderSummary, refundOrderToWallet, retryOrderDelivery } from "@/lib/orders";
 import type { Voucher } from "@/lib/vouchers";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
@@ -129,6 +129,12 @@ function OrdersPageInner() {
   const [markDeliveredMessage, setMarkDeliveredMessage] = useState<string | null>(null);
   const [refundingToWallet, setRefundingToWallet] = useState(false);
   const [refundMessage, setRefundMessage] = useState<string | null>(null);
+  // ADR-094 decision 10: a combo order's only working recovery path —
+  // resendOrderDelivery() (package-swap) always 422s for a combo
+  // (found live, 2026-09-15 smoke test), so combo orders get this
+  // direct action instead of ResendDeliveryModal.
+  const [retryingDelivery, setRetryingDelivery] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
@@ -222,6 +228,22 @@ function OrdersPageInner() {
       setRefundMessage(err instanceof ApiError ? err.message : "Refund failed.");
     } finally {
       setRefundingToWallet(false);
+    }
+  }
+
+  /** ADR-094 decision 10 — the plain retry, no package picker (a combo can't swap package anyway). */
+  async function handleRetryDelivery() {
+    const session = getClientSession();
+    if (!session || !selected) return;
+    setRetryingDelivery(true);
+    setRetryMessage(null);
+    try {
+      await retryOrderDelivery(session.token, selected.id);
+      setRetryMessage("Delivery retry queued — refresh in a moment to see the result.");
+    } catch (err) {
+      setRetryMessage(err instanceof ApiError ? err.message : "Could not queue the retry.");
+    } finally {
+      setRetryingDelivery(false);
     }
   }
 
@@ -320,12 +342,19 @@ function OrdersPageInner() {
           {/* ADR-026: the ambiguous-outcome case — cross-reference banner, plus "Mark as Delivered" instead of "Issue Voucher" (decision 4c: voucher issuance is deliberately never available from this state). */}
           {selected.delivery_status === "needs_review" && <NeedsReviewBanner order={selected} />}
 
-          {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. A failed or needs_review delivery can be resent (ADR-026 decision 4b) — mirrors the backend guard exactly. */}
+          {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. A failed or needs_review delivery can be resent (ADR-026 decision 4b) — mirrors the backend guard exactly.
+              ADR-094 decision 10 (found live, 2026-09-15): a combo order (`delivery_legs.length > 0`) can never swap package — resendOrderDelivery() always 422s for one — so it gets the plain retry action instead, never this modal. */}
           {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Button size="small" onClick={() => setResendModalOpen(true)}>
-                Resend Delivery…
-              </Button>
+              {selected.delivery_legs.length > 0 ? (
+                <Button size="small" disabled={retryingDelivery} onClick={handleRetryDelivery}>
+                  {retryingDelivery ? "Retrying…" : "Retry Delivery…"}
+                </Button>
+              ) : (
+                <Button size="small" onClick={() => setResendModalOpen(true)}>
+                  Resend Delivery…
+                </Button>
+              )}
               {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both, Voucher's email-keyed mechanism has no meaning for a B2B wallet account. */}
               {selected.delivery_status === "failed" && selected.wallet_reseller && !selected.wallet_refunded && (
                 <Button size="small" variant="outlined" disabled={refundingToWallet} onClick={handleRefundToWallet}>
@@ -347,6 +376,7 @@ function OrdersPageInner() {
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
               {voucherMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{voucherMessage}</span>}
               {refundMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{refundMessage}</span>}
+              {retryMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{retryMessage}</span>}
             </div>
           )}
           {/* Rendered outside the failed/needs_review-gated block above,
