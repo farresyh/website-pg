@@ -43,7 +43,15 @@ import {
   linkSupplierProductCategory,
   promoteSupplierProduct,
 } from "@/lib/supplier-products";
-import { EXTRA_FIELD_OPTIONS, type Game, type GamePackage, type GameValidationRules, listGames, listGamePackages } from "@/lib/games";
+import {
+  CUSTOMER_NO_SEPARATOR_OPTIONS,
+  EXTRA_FIELD_OPTIONS,
+  type Game,
+  type GamePackage,
+  type GameValidationRules,
+  listGames,
+  listGamePackages,
+} from "@/lib/games";
 import { SimpleSelect } from "@/components/ui/select";
 import LinkCategoryModal from "@/components/middleware/LinkCategoryModal";
 import PromoteProductModal from "@/components/middleware/PromoteProductModal";
@@ -82,35 +90,68 @@ function sameGroup(a: SupplierProductCategory, b: SupplierProductCategory): bool
  * correct a wrong choice afterward (the "Link to Game" button
  * disappears once a category is linked). Reuses linkSupplierProductCategory
  * directly — game_id doesn't change, only validation_rules.
+ *
+ * ADR-097 decision 16: ONE "Update" button saves the WHOLE
+ * `validation_rules` object (every field this editor knows about),
+ * never a partial `{extra_field: X}`-only payload — the backend
+ * (`SupplierProductController::linkCategory()`) does a straight
+ * column replace, not a merge, so a partial save here would silently
+ * wipe out `customer_no_separator` (decision 15) the next time either
+ * control is touched. This is why there's one shared save action
+ * instead of a separate button per field.
  */
 function CheckoutInputEditor({
   initial,
+  supplierSlug,
   onUpdate,
 }: {
   initial: GameValidationRules | null | undefined;
-  onUpdate: (extraField: "server_id" | "zone_id" | null) => Promise<void>;
+  /** ADR-097 decision 20 — customer_no_separator only applies to a Digiflazz-linked game; hidden here to match the server-side restriction, not just decoration. */
+  supplierSlug: string | null | undefined;
+  onUpdate: (rules: GameValidationRules) => Promise<void>;
 }) {
-  const [value, setValue] = useState(initial?.extra_field ?? "");
+  const [extraField, setExtraField] = useState(initial?.extra_field ?? "");
+  const [separator, setSeparator] = useState(initial?.customer_no_separator ?? "");
   const [saving, setSaving] = useState(false);
+  const isDigiflazz = supplierSlug === "digiflazz";
 
   async function handleUpdate() {
     setSaving(true);
     try {
-      await onUpdate(value === "" ? null : (value as "server_id" | "zone_id"));
+      await onUpdate({
+        extra_field: extraField === "" ? null : (extraField as "server_id" | "zone_id"),
+        // Never send a stale separator for a non-Digiflazz game, even
+        // if local state somehow still holds one from a prior game.
+        customer_no_separator: isDigiflazz && separator !== "" ? (separator as "concat" | "space" | "pipe") : null,
+      });
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <SimpleSelect value={value} onChange={setValue} options={EXTRA_FIELD_OPTIONS} className="w-56" />
-      <Button size="small" disabled={saving} onClick={handleUpdate}>
-        {saving ? "Saving…" : "Update"}
-      </Button>
-      <code className="rounded bg-gray-100 px-1.5 py-0.5 text-theme-xs text-gray-500 dark:bg-white/5 dark:text-gray-400">
-        {JSON.stringify({ extra_field: value === "" ? null : value })}
-      </code>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="w-40 text-sm text-gray-600 dark:text-gray-300">Checkout field</label>
+        <SimpleSelect value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} className="w-56" />
+      </div>
+      {isDigiflazz && (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="w-40 text-sm text-gray-600 dark:text-gray-300">customer_no separator</label>
+          <SimpleSelect value={separator} onChange={setSeparator} options={CUSTOMER_NO_SEPARATOR_OPTIONS} className="w-56" />
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="small" disabled={saving} onClick={handleUpdate}>
+          {saving ? "Saving…" : "Update"}
+        </Button>
+        <code className="rounded bg-gray-100 px-1.5 py-0.5 text-theme-xs text-gray-500 dark:bg-white/5 dark:text-gray-400">
+          {JSON.stringify({
+            extra_field: extraField === "" ? null : extraField,
+            ...(isDigiflazz ? { customer_no_separator: separator === "" ? null : separator } : {}),
+          })}
+        </code>
+      </div>
     </div>
   );
 }
@@ -203,14 +244,14 @@ export default function ProductManagerPage() {
     if (reopened) await openCategory(session.token, reopened);
   }
 
-  async function handleUpdateCheckoutInput(extraField: "server_id" | "zone_id" | null) {
+  async function handleUpdateCheckoutInput(rules: GameValidationRules) {
     if (!session || !selected?.game || !selected.supplier) return;
 
     await linkSupplierProductCategory(session.token, {
       supplier_id: selected.supplier.id,
       group_label: selected.group_label,
       game_id: selected.game.id,
-      validation_rules: { extra_field: extraField },
+      validation_rules: rules,
     });
 
     const refreshed = await listSupplierProductCategories(session.token, { search: categorySearch || undefined });
@@ -420,6 +461,7 @@ export default function ProductManagerPage() {
                 <CheckoutInputEditor
                   key={`${groupKey(selected)}-${selected.game.id}`}
                   initial={selected.game.validation_rules}
+                  supplierSlug={selected.supplier?.slug}
                   onUpdate={handleUpdateCheckoutInput}
                 />
               </div>

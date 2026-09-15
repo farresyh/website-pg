@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Middleware;
 
+use App\Models\Supplier;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -23,6 +24,13 @@ use Illuminate\Validation\Rule;
  * /admin/games afterward. Structured/validated to a fixed enum (never
  * raw JSON), per legacy-reference-notes.md's "typo silently breaks
  * checkout" finding.
+ *
+ * `validation_rules.customer_no_separator` (ADR-097 decisions 2/20)
+ * rides along the same way — restricted server-side to a Digiflazz-
+ * linked category (decision 1's own scope), not just hidden client-
+ * side, so a value set on a non-Digiflazz game can't silently sit
+ * there never read by anything (the exact class of stale-config trap
+ * this ADR's own Finding 1 already found once).
  */
 class LinkSupplierProductCategoryRequest extends FormRequest
 {
@@ -47,6 +55,7 @@ class LinkSupplierProductCategoryRequest extends FormRequest
             'new_game.category' => ['nullable', 'string', 'max:255'],
             'validation_rules' => ['nullable', 'array'],
             'validation_rules.extra_field' => ['nullable', Rule::in(['server_id', 'zone_id'])],
+            'validation_rules.customer_no_separator' => ['nullable', Rule::in(['concat', 'space', 'pipe'])],
         ];
     }
 
@@ -55,6 +64,17 @@ class LinkSupplierProductCategoryRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             if ($this->filled('game_id') && $this->filled('new_game.name')) {
                 $validator->errors()->add('game_id', 'Provide either game_id or new_game, not both.');
+            }
+
+            if ($this->filled('validation_rules.customer_no_separator')) {
+                $supplier = Supplier::query()->find($this->input('supplier_id'));
+
+                if ($supplier !== null && $supplier->slug !== 'digiflazz') {
+                    $validator->errors()->add(
+                        'validation_rules.customer_no_separator',
+                        'customer_no_separator only applies to a Digiflazz-linked game.',
+                    );
+                }
             }
         });
     }

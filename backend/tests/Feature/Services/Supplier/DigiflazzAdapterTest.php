@@ -300,6 +300,74 @@ class DigiflazzAdapterTest extends TestCase
         Http::assertSent(fn ($request) => $request['customer_no'] === '123456789');
     }
 
+    /**
+     * ADR-097 decision 2/15 — a per-game override translates to the
+     * real wire character, overriding the supplier-level default
+     * ('|' per this test file's own adapter() helper).
+     */
+    public function test_create_order_uses_a_per_game_separator_override_over_the_supplier_default(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response(['data' => ['status' => 'Sukses', 'rc' => '00']], 200),
+        ]);
+
+        $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10',
+            referenceNumber: 'REF-1',
+            playerId: '51049607',
+            serverId: '2005',
+            customerNoSeparator: 'space',
+        ));
+
+        Http::assertSent(fn ($request) => $request['customer_no'] === '51049607 2005');
+    }
+
+    public function test_create_order_translates_the_pipe_separator_override(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response(['data' => ['status' => 'Sukses', 'rc' => '00']], 200),
+        ]);
+
+        $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '51049607', serverId: '2005',
+            customerNoSeparator: 'pipe',
+        ));
+
+        Http::assertSent(fn ($request) => $request['customer_no'] === '51049607|2005');
+    }
+
+    public function test_create_order_translates_the_concat_separator_override_to_no_separator(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response(['data' => ['status' => 'Sukses', 'rc' => '00']], 200),
+        ]);
+
+        $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '51049607', serverId: '2005',
+            customerNoSeparator: 'concat',
+        ));
+
+        Http::assertSent(fn ($request) => $request['customer_no'] === '510496072005');
+    }
+
+    /**
+     * ADR-097 decision 3 — null (unset) inherits whatever the
+     * supplier-level default currently resolves to, unchanged from
+     * this ADR's own default '|' in this test file's adapter() helper.
+     */
+    public function test_create_order_falls_back_to_the_supplier_default_when_no_override_is_given(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response(['data' => ['status' => 'Sukses', 'rc' => '00']], 200),
+        ]);
+
+        $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '51049607', serverId: '2005',
+        ));
+
+        Http::assertSent(fn ($request) => $request['customer_no'] === '51049607|2005');
+    }
+
     /** ADR-030 decision 3. */
     public function test_create_order_sends_testing_flag_only_when_in_testing_mode(): void
     {
@@ -510,6 +578,29 @@ class DigiflazzAdapterTest extends TestCase
 
         $this->assertSame(SupplierOutcome::Success, $result->outcome);
         $this->assertSame('SN-FINAL', $result->data['supplier_ref']);
+    }
+
+    /**
+     * ADR-097 decision 14 — the exact same customer_no a game's
+     * createOrder() used must be re-sent on checkStatus() too, since
+     * it's a literal re-submit; a mismatched separator here would
+     * break the resubmit match.
+     */
+    public function test_check_status_uses_the_same_per_game_separator_override_as_create_order(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response(['data' => ['status' => 'Sukses', 'rc' => '00', 'sn' => 'SN-FINAL']], 200),
+        ]);
+
+        $this->adapter()->checkStatus(new SupplierStatusCheckRequest(
+            supplierRef: 'REF-1',
+            productRef: 'MLBB_MY_14_PG1',
+            playerId: '51049607',
+            serverId: '2005',
+            customerNoSeparator: 'space',
+        ));
+
+        Http::assertSent(fn ($request) => $request['customer_no'] === '51049607 2005');
     }
 
     /**

@@ -59,6 +59,13 @@ final class SupplierDeliveryCheckService
             productRef: $order->supplier_product_ref,
             playerId: $order->player_id,
             serverId: $order->server_id,
+            // ADR-097 decision 14 — this service builds its own
+            // SupplierStatusCheckRequest independently of
+            // OrderFulfillmentService (ADR-096's reconcile poll +
+            // manual "Check from Supplier"), so it needs this fix too,
+            // not just createOrder()'s call site — a mismatched
+            // customer_no here breaks Digiflazz's re-submit match.
+            customerNoSeparator: $order->game?->customerNoSeparatorOverride(),
             orderId: $order->id,
         ));
 
@@ -131,6 +138,10 @@ final class SupplierDeliveryCheckService
                 productRef: $component->supplier_package_ref,
                 playerId: $order->player_id,
                 serverId: $order->server_id,
+                // ADR-097 decision 14 — $order->game, not the leg's
+                // component's own game: same-game-only combo (verified
+                // at StoreComboPackageRequest) means they're identical.
+                customerNoSeparator: $order->game?->customerNoSeparatorOverride(),
                 orderId: $order->id,
             ));
 

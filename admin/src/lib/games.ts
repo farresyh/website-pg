@@ -9,6 +9,15 @@ import { apiFetch } from "@/lib/api-client";
  */
 export interface GameValidationRules {
   extra_field?: "server_id" | "zone_id" | null;
+  /**
+   * ADR-097 decision 2 — Digiflazz-only, per-game override of the
+   * `customer_no` join separator (`playerId` + separator + `serverId`).
+   * Named enum, never a literal character (risks silent whitespace/
+   * escaping confusion in JSON). `null`/unset inherits whatever
+   * `Supplier.api_config['customer_no_separator']` currently resolves
+   * to for Digiflazz — no effect on any other supplier.
+   */
+  customer_no_separator?: "concat" | "space" | "pipe" | null;
 }
 
 /** Shared between LinkCategoryModal (set at link time) and the inline editor next to the Product Manager Catalog tab (correct it later). */
@@ -16,6 +25,14 @@ export const EXTRA_FIELD_OPTIONS = [
   { value: "", label: "UID only (Player ID)" },
   { value: "server_id", label: "UID + Server ID" },
   { value: "zone_id", label: "UID + Zone ID" },
+];
+
+/** ADR-097 decision 2 — CheckoutInputEditor's separator control, Digiflazz-linked games only. */
+export const CUSTOMER_NO_SEPARATOR_OPTIONS = [
+  { value: "", label: "Inherit supplier default" },
+  { value: "concat", label: "Concatenated (no separator)" },
+  { value: "space", label: "Space" },
+  { value: "pipe", label: "Pipe ( | )" },
 ];
 
 export function extraFieldLabel(extraField: "server_id" | "zone_id" | null | undefined): string {
