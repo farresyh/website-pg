@@ -319,6 +319,60 @@ class SandboxOrderControllerTest extends TestCase
             ->assertNotFound();
     }
 
+    /** ADR-026 addendum (2026-09-16) sandbox counterpart. */
+    public function test_confirm_failed_transitions_a_needs_review_test_order_without_touching_the_ledger(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $this->actingAsAdmin();
+        $orderId = $this->createSandboxOrder($game, $package);
+        $this->postJson("/api/middleware/sandbox/{$orderId}/resend", [
+            'package_id' => $package->id,
+            'simulate_success' => false,
+            'error_code' => 'duplicate_reference',
+        ])->assertOk();
+
+        $response = $this->postJson("/api/middleware/sandbox/{$orderId}/confirm-failed", [
+            'note' => 'Simulated unretriable failure.',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(DeliveryStatus::Failed->value, $response->json('delivery_status'));
+        $this->assertSame(0, LedgerEntry::query()->count());
+    }
+
+    public function test_confirm_failed_rejects_a_test_order_that_is_not_needs_review(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $this->actingAsAdmin();
+        $orderId = $this->createSandboxOrder($game, $package); // starts at delivery_status=failed
+
+        $response = $this->postJson("/api/middleware/sandbox/{$orderId}/confirm-failed", ['note' => 'note']);
+
+        $response->assertUnprocessable();
+    }
+
+    public function test_confirm_failed_404s_for_a_real_order(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $order = Order::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-REAL-CONFIRM-FAILED',
+            'is_test' => false,
+            'customer_email' => 'buyer@example.com',
+            'player_id' => '123456',
+            'game_id' => $game->id,
+            'package_id' => $package->id,
+            'cost_price' => 421, 'standard_selling_price' => 500, 'selling_price' => 500,
+            'transaction_fee' => 0, 'final_amount' => 500, 'platform_profit' => 79, 'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        $this->actingAsAdmin();
+
+        $this->postJson("/api/middleware/sandbox/{$order->id}/confirm-failed", ['note' => 'note'])
+            ->assertNotFound();
+    }
+
     public function test_resend_never_calls_the_real_supplier_adapter_binding(): void
     {
         // No Http::fake()/mock of GamevionAdapter is set up at all in

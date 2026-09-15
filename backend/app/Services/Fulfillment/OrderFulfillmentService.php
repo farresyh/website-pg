@@ -816,6 +816,54 @@ final class OrderFulfillmentService
     }
 
     /**
+     * ADR-026 addendum (2026-09-16, found shipping ADR-098) — the
+     * NeedsReview exit decision 4c's own rationale always assumed
+     * existed but was never built: "An admin must resolve the order to
+     * Delivered or a genuine Failed first" before Issue Voucher
+     * becomes available. Structurally necessary for a
+     * transactionAlreadyFormed order (ADR-098) — retry can never change
+     * that outcome, so without this, that class of order has no exit
+     * at all. Lands on plain Failed; Issue Voucher (VoucherController::
+     * storeFromOrder(), unchanged) is a deliberately separate,
+     * admin-triggered second step — this method credits nothing and
+     * touches no ledger/voucher itself.
+     *
+     * Unlike markDeliveredManually()'s supplier_response OVERWRITE
+     * (correct there — delivery succeeded, the prior ambiguous data no
+     * longer matters), this MERGES: the original error_code/
+     * error_message (the actual evidence this failed) stays, with the
+     * admin's own confirmation appended alongside it, not replacing it.
+     */
+    public function confirmDeliveryFailed(Order $order, string $note, string $confirmedBy): Order
+    {
+        return DB::transaction(function () use ($order, $note, $confirmedBy) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            $failedStatus = $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
+
+            Log::withContext(['reference_number' => $locked->reference_number]);
+
+            $locked->update([
+                'supplier_response' => array_merge(
+                    is_array($locked->supplier_response) ? $locked->supplier_response : [],
+                    [
+                        'confirmed_failed_by' => $confirmedBy,
+                        'note' => $note,
+                        'confirmed_at' => now()->toISOString(),
+                    ],
+                ),
+                'delivery_status' => $failedStatus->value,
+            ]);
+
+            Log::warning('Delivery confirmed genuinely failed after needs_review', [
+                'confirmed_by' => $confirmedBy,
+            ]);
+
+            return $locked->fresh();
+        });
+    }
+
+    /**
      * Every delivered order writes exactly two order_profit credit
      * entries (PRD §8 LedgerEntry) — kept as two rows even though MVP
      * has only the single internal owner-affiliate, so this never needs

@@ -606,6 +606,53 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
+     * ADR-026 addendum (2026-09-16, found shipping ADR-098) — the exit
+     * that lets a genuinely-unresolvable needs_review order (a
+     * transactionAlreadyFormed Digiflazz rc, retry can never change it)
+     * reach Failed, unlocking Issue Voucher (Failed-only gate,
+     * unchanged). Preserves the original error_code/message instead of
+     * overwriting it — that's the actual evidence this failed.
+     */
+    public function test_confirm_delivery_failed_transitions_from_needs_review_and_preserves_original_error(): void
+    {
+        $order = $this->paidOrder([
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true))
+            ->confirmDeliveryFailed($order, 'Confirmed dead via request logs — same rc replayed 3x.', 'Jane Admin');
+
+        $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
+        $this->assertSame('02', $result->supplier_response['error_code']);
+        $this->assertSame('Transaksi Gagal', $result->supplier_response['error_message']);
+        $this->assertSame('Jane Admin', $result->supplier_response['confirmed_failed_by']);
+        $this->assertSame('Confirmed dead via request logs — same rc replayed 3x.', $result->supplier_response['note']);
+    }
+
+    public function test_confirm_delivery_failed_rejects_when_not_needs_review(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->confirmDeliveryFailed($order, 'note', 'Jane Admin');
+    }
+
+    /** Unblocks the whole point of this action: Issue Voucher works once the order is genuinely Failed. */
+    public function test_confirm_delivery_failed_then_unblocks_voucher_issuance(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true))
+            ->confirmDeliveryFailed($order, 'note', 'Jane Admin');
+
+        $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
+        $this->assertSame(0, Voucher::query()->where('order_id', $order->id)->count());
+    }
+
+    /**
      * ADR-032 decision 3: the webhook/poll-driven money path out of
      * Pending — reached via createOrder()'s async acceptance, not a
      * synchronous fulfill() call.

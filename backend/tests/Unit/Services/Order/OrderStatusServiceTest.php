@@ -17,7 +17,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_rejects_starting_delivery_when_payment_is_not_paid(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -26,7 +26,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_starts_delivery_when_payment_is_paid_and_not_yet_started(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->startDelivery(PaymentStatus::Paid, DeliveryStatus::NotStarted);
 
@@ -39,7 +39,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_rejects_starting_delivery_when_already_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -48,7 +48,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_rejects_starting_delivery_when_already_delivered(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -61,7 +61,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_allows_retry_from_failed_delivery_when_payment_is_paid(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->startDelivery(PaymentStatus::Paid, DeliveryStatus::Failed);
 
@@ -70,7 +70,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_marks_delivered_from_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->markDelivered(DeliveryStatus::Processing);
 
@@ -79,7 +79,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_rejects_marking_delivered_when_not_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -88,7 +88,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_marks_delivery_failed_from_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->markDeliveryFailed(DeliveryStatus::Processing);
 
@@ -97,7 +97,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_rejects_marking_delivery_failed_when_not_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -111,7 +111,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_allows_retry_from_needs_review_when_payment_is_paid(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->startDelivery(PaymentStatus::Paid, DeliveryStatus::NeedsReview);
 
@@ -125,7 +125,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_marks_needs_review_from_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->markNeedsReview(DeliveryStatus::Processing);
 
@@ -139,7 +139,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_marks_needs_review_from_failed(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->markNeedsReview(DeliveryStatus::Failed);
 
@@ -148,7 +148,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_rejects_marking_needs_review_when_not_processing_or_failed(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -164,7 +164,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_marks_needs_review_from_pending(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->markNeedsReview(DeliveryStatus::Pending);
 
@@ -173,7 +173,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_marks_delivered_manually_from_needs_review(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->markDeliveredManually(DeliveryStatus::NeedsReview);
 
@@ -187,11 +187,30 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_rejects_marking_delivered_manually_when_not_needs_review(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
         $service->markDeliveredManually(DeliveryStatus::Failed);
+    }
+
+    /** ADR-026 addendum (2026-09-16) — the exit decision 4c always assumed existed. */
+    public function test_marks_needs_review_as_failed_from_needs_review(): void
+    {
+        $service = new OrderStatusService;
+
+        $result = $service->markNeedsReviewAsFailed(DeliveryStatus::NeedsReview);
+
+        $this->assertSame(DeliveryStatus::Failed, $result);
+    }
+
+    public function test_rejects_confirming_delivery_failed_when_not_needs_review(): void
+    {
+        $service = new OrderStatusService;
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $service->markNeedsReviewAsFailed(DeliveryStatus::Processing);
     }
 
     /**
@@ -202,7 +221,7 @@ class OrderStatusServiceTest extends TestCase
      */
     public function test_marks_pending_from_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->markPending(DeliveryStatus::Processing);
 
@@ -211,7 +230,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_rejects_marking_pending_when_not_processing(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -221,7 +240,7 @@ class OrderStatusServiceTest extends TestCase
     /** ADR-032 decision 3: the webhook/poll-driven exit confirming real delivery. */
     public function test_finalizes_pending_success_from_pending(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->finalizePendingSuccess(DeliveryStatus::Pending);
 
@@ -230,7 +249,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_rejects_finalizing_pending_success_when_not_pending(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
@@ -240,7 +259,7 @@ class OrderStatusServiceTest extends TestCase
     /** ADR-032 decision 3: the webhook/poll-driven exit confirming a real, terminal failure. */
     public function test_finalizes_pending_failure_from_pending(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $result = $service->finalizePendingFailure(DeliveryStatus::Pending);
 
@@ -249,7 +268,7 @@ class OrderStatusServiceTest extends TestCase
 
     public function test_rejects_finalizing_pending_failure_when_not_pending(): void
     {
-        $service = new OrderStatusService();
+        $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
