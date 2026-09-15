@@ -31,6 +31,11 @@ export class ApiError extends Error {
     public status: number,
     public code: string | undefined,
     message: string,
+    // ADR-096 — the manual-poll cooldown 422 carries a retry_after_seconds
+    // field alongside message; kept generic (raw response body) rather
+    // than a one-off constructor param, for any future caller that needs
+    // more than message/code.
+    public payload?: Record<string, unknown> | null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -65,6 +70,7 @@ export async function apiFetch<T>(
       response.status,
       payload?.code,
       payload?.message ?? `Request to ${path} failed (${response.status})`,
+      payload,
     );
   }
 
@@ -99,6 +105,7 @@ export async function apiUpload<T>(
       response.status,
       payload?.code,
       payload?.message ?? `Request to ${path} failed (${response.status})`,
+      payload,
     );
   }
 
