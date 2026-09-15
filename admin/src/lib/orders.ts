@@ -119,6 +119,11 @@ export interface OrderDetail extends OrderListItem {
   // leg's own component price, admin-adjustable, never trusted as-is
   // (the backend re-derives and caps its own copy independently).
   suggested_voucher_amount: number | null;
+  // ADR-026 addendum (2026-09-16) — computed server-side from the
+  // persisted error_code (Digiflazz's own rc table / Gamevion's
+  // duplicate_reference), never a second hand-copied rc list here.
+  // Drives the Resend Delivery futility warning.
+  delivery_retry_likely_futile: boolean;
 }
 
 export interface OrderPage {
@@ -263,6 +268,21 @@ export function refundOrderToWallet(token: string, id: number) {
  */
 export function markOrderDelivered(token: string, id: number, values: { supplier_ref: string; note?: string }) {
   return apiFetch<OrderDetail>(`/api/orders/${id}/mark-delivered`, { method: "POST", token, body: values });
+}
+
+/**
+ * ADR-026 addendum (2026-09-16) — the other needs_review exit decision
+ * 4c's own text always assumed existed: lands the order on plain
+ * `failed`, unblocking the existing Issue Voucher action (a
+ * deliberately separate second step, not collapsed into this one).
+ * `note` is required — an admin's own "I've confirmed this genuinely
+ * failed" claim, same discipline as markOrderDelivered() but for the
+ * opposite outcome. Backend rejects (422) unless delivery_status is
+ * already "needs_review", or for a genuine partial-combo-delivery
+ * order (that case has its own custom-amount voucher path instead).
+ */
+export function confirmOrderDeliveryFailed(token: string, id: number, values: { note: string }) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}/confirm-failed`, { method: "POST", token, body: values });
 }
 
 /**
