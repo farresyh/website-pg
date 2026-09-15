@@ -40,11 +40,36 @@ export interface DashboardHealthSupplier {
   id: number;
   name: string;
   slug: string;
+  /** In this supplier's own currency — never assume MYR (Digiflazz is IDR). */
   balance: number;
+  currency: string;
+  /** Display-only conversion (CurrencyRateService, cached ~24h). Null when unavailable — never a hardcoded MYR label. */
+  balance_myr_equivalent: number | null;
   /** ADR-069 — balance is below this supplier's api_config['low_balance_threshold']. */
   low_balance: boolean;
   drift: SupplierFundingDrift | null;
   circuit_state: "closed" | "open";
+}
+
+/**
+ * 2026-09-15 addendum: the one place a supplier's own-currency balance
+ * gets formatted for display — both /middleware's dashboard and
+ * /admin's System Health render `DashboardHealthSupplier` (same
+ * endpoint), and both used to either hardcode "RM" or show a bare
+ * unlabeled number regardless of the real currency. Same IDR-has-no-
+ * decimals convention `SupplierTransferModal`'s own `formatForeign()`
+ * already uses, kept consistent rather than duplicated with drift.
+ */
+export function formatSupplierBalance(amount: number, currency: string): string {
+  const decimals = currency === "IDR" ? 0 : 2;
+
+  return `${currency} ${amount.toLocaleString("en-MY", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
+
+export function formatMyrEquivalent(amount: number | null): string | null {
+  if (amount === null) return null;
+
+  return `≈ RM ${amount.toFixed(2)}`;
 }
 
 export interface DashboardHealth {

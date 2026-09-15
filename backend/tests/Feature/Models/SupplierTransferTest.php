@@ -74,4 +74,57 @@ class SupplierTransferTest extends TestCase
         $this->assertTrue($transfer->supplier->is($supplier));
         $this->assertTrue($supplier->transfers()->first()->is($transfer));
     }
+
+    // ── ADR-083 2026-09-15 addendum ───────────────────────────────────────
+
+    public function test_net_foreign_received_subtracts_the_supplier_fee(): void
+    {
+        $supplier = $this->makeSupplier();
+
+        $transfer = SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id,
+            'source_channel' => 'wise',
+            'amount_myr_sent' => 19889,
+            'currency' => 'IDR',
+            'amount_foreign_received' => '832672.0000',
+            'supplier_fee' => '15000.0000',
+        ]);
+
+        $this->assertSame('817672.0000', $transfer->netForeignReceived());
+    }
+
+    /** No supplier_fee set — net equals the gross figure, same as before this addendum. */
+    public function test_net_foreign_received_equals_gross_when_no_supplier_fee_is_set(): void
+    {
+        $supplier = $this->makeSupplier();
+
+        $transfer = SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id,
+            'source_channel' => 'wise',
+            'amount_myr_sent' => 100000,
+            'currency' => 'IDR',
+            'amount_foreign_received' => '3700000.0000',
+        ]);
+
+        $this->assertSame('3700000.0000', $transfer->netForeignReceived());
+    }
+
+    /** decision 7: a void/adjust correction is only ever a new ledger row — the transfer itself may still gain void metadata (it was always documented as "not append-only itself"). */
+    public function test_voided_at_and_void_reason_are_settable(): void
+    {
+        $supplier = $this->makeSupplier();
+        $transfer = SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id,
+            'source_channel' => 'wise',
+            'amount_myr_sent' => 19889,
+            'currency' => 'IDR',
+            'amount_foreign_received' => '832672.0000',
+        ]);
+
+        $transfer->update(['voided_at' => now(), 'void_reason' => 'Wrong account number']);
+
+        $reloaded = $transfer->fresh();
+        $this->assertNotNull($reloaded->voided_at);
+        $this->assertSame('Wrong account number', $reloaded->void_reason);
+    }
 }

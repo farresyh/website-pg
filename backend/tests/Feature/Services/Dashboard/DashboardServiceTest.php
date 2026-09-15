@@ -9,6 +9,7 @@ use App\Models\SupplierLedgerEntry;
 use App\Models\Voucher;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
+use App\Services\Currency\CurrencyRateService;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerService;
 use App\Services\OpenWa\OpenWaSessionStatus;
@@ -18,6 +19,7 @@ use App\Services\Report\ReportService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -34,7 +36,23 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus);
+        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus, new CurrencyRateService);
+    }
+
+    /**
+     * 2026-09-15 addendum: health()'s new balance_myr_equivalent calls
+     * CurrencyRateService for a non-MYR supplier — any test creating
+     * one needs this (or its own specific `Http::fake([...])`) to stay
+     * free of real network I/O. Deliberately called per-test, not from
+     * setUp(): `Http::fake()`'s stub callbacks stack in registration
+     * order and the *first* matching one wins (Laravel's own
+     * `PendingRequest::buildStubHandler()`), so a blanket setUp() fake
+     * would always shadow a more specific one a test tries to add
+     * later — found live writing this addendum's own tests.
+     */
+    private function fakeNoFxRateAvailable(): void
+    {
+        Http::fake();
     }
 
     private function order(array $overrides = []): Order
@@ -166,6 +184,59 @@ class DashboardServiceTest extends TestCase
 
     // --- health() / DASH-2 -----------------------------------------------
 
+    /**
+     * 2026-09-15 addendum: found live — this endpoint never carried
+     * `currency` at all, so both this screen and /middleware's own
+     * dashboard (same endpoint) either hardcoded "RM" or showed a bare
+     * number with no currency, regardless of the real supplier
+     * currency (Digiflazz is IDR, not MYR).
+     */
+    public function test_health_includes_each_suppliers_own_currency(): void
+    {
+        $this->fakeNoFxRateAvailable();
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-'.uniqid(), 'currency' => 'MYR', 'balance' => 250.50, 'api_config' => []]);
+        Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-'.uniqid(), 'currency' => 'IDR', 'balance' => 832672, 'api_config' => []]);
+
+        $rows = collect($this->dashboard->health()['suppliers'])->keyBy('name');
+
+        $this->assertSame('MYR', $rows['Gamevion']['currency']);
+        $this->assertSame('IDR', $rows['Digiflazz']['currency']);
+    }
+
+    /** An already-MYR supplier needs no FX lookup — the equivalent is just its own balance. */
+    public function test_health_myr_equivalent_is_the_balance_itself_for_an_already_myr_supplier(): void
+    {
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-'.uniqid(), 'currency' => 'MYR', 'balance' => 250.50, 'api_config' => []]);
+
+        $row = collect($this->dashboard->health()['suppliers'])->firstWhere('name', 'Gamevion');
+
+        $this->assertSame(250.5, $row['balance_myr_equivalent']);
+    }
+
+    /** A foreign-currency supplier's equivalent goes through CurrencyRateService — real conversion, not a hardcoded RM label. */
+    public function test_health_myr_equivalent_converts_a_foreign_currency_balance(): void
+    {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000231]], 200)]);
+        Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-'.uniqid(), 'currency' => 'IDR', 'balance' => 832672, 'api_config' => []]);
+
+        $row = collect($this->dashboard->health()['suppliers'])->firstWhere('name', 'Digiflazz');
+
+        $this->assertSame(round(832672 * 0.000231, 2), $row['balance_myr_equivalent']);
+    }
+
+    /** No live rate and nothing ever cached — never breaks the whole 60s-polled endpoint, just this one field. */
+    public function test_health_myr_equivalent_is_null_when_no_rate_is_available(): void
+    {
+        Http::fake(['open.er-api.com/*' => Http::response([], 500)]);
+        Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-'.uniqid(), 'currency' => 'IDR', 'balance' => 832672, 'api_config' => []]);
+
+        $health = $this->dashboard->health();
+        $row = collect($health['suppliers'])->firstWhere('name', 'Digiflazz');
+
+        $this->assertNull($row['balance_myr_equivalent']);
+        $this->assertSame(832672.0, $row['balance']);
+    }
+
     public function test_health_reads_circuit_state_derived_not_live(): void
     {
         $slug = 'test-supplier-'.uniqid();
@@ -186,6 +257,7 @@ class DashboardServiceTest extends TestCase
 
     public function test_health_flags_a_supplier_whose_balance_is_below_its_threshold(): void
     {
+        $this->fakeNoFxRateAvailable();
         Supplier::query()->create([
             'name' => 'Low One', 'slug' => 'low-'.uniqid(), 'currency' => 'IDR', 'balance' => 500,
             'api_config' => ['low_balance_threshold' => '1000'],
@@ -209,8 +281,9 @@ class DashboardServiceTest extends TestCase
         // the encrypted api_config but must never surface it: the
         // supplier row is a fixed whitelist of keys. ADR-083 decision 6
         // adds 'drift' (null here — none of these three set drift_threshold).
+        // 2026-09-15 addendum adds 'currency'/'balance_myr_equivalent'.
         $this->assertSame(
-            ['id', 'name', 'slug', 'balance', 'low_balance', 'drift', 'circuit_state'],
+            ['id', 'name', 'slug', 'balance', 'currency', 'balance_myr_equivalent', 'low_balance', 'drift', 'circuit_state'],
             array_keys($rows['Low One']),
         );
         $this->assertNull($rows['Low One']['drift']);
@@ -219,6 +292,7 @@ class DashboardServiceTest extends TestCase
     /** ADR-083 decision 6: the drift chip's own data, computed via Supplier::fundingDrift(). */
     public function test_health_flags_a_supplier_whose_funding_ledger_has_drifted(): void
     {
+        $this->fakeNoFxRateAvailable();
         $drifted = Supplier::query()->create([
             'name' => 'Drifted One', 'slug' => 'drifted-'.uniqid(), 'currency' => 'IDR', 'balance' => 100000,
             'api_config' => ['drift_threshold' => '1000'],

@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AdjustSupplierTransferRequest;
 use App\Http\Requests\Admin\StoreSupplierTransferRequest;
+use App\Http\Requests\Admin\VoidSupplierTransferRequest;
 use App\Models\Supplier;
 use App\Models\SupplierTransfer;
 use App\Services\Accounting\SupplierFundingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -42,6 +45,7 @@ class SupplierTransferController extends Controller
             $data['fee_myr'] ?? 0,
             $data['currency'],
             (string) $data['amount_foreign_received'],
+            isset($data['supplier_fee']) ? (string) $data['supplier_fee'] : null,
             $data['reference_no'] ?? null,
             $request->file('receipt'),
             $request->user()->id,
@@ -53,6 +57,7 @@ class SupplierTransferController extends Controller
             'amount_myr_sent' => $transfer->amount_myr_sent,
             'currency' => $transfer->currency,
             'amount_foreign_received' => $transfer->amount_foreign_received,
+            'supplier_fee' => $transfer->supplier_fee,
             'admin_user_id' => $request->user()->id,
         ]);
 
@@ -65,5 +70,73 @@ class SupplierTransferController extends Controller
     public function downloadReceipt(SupplierTransfer $supplierTransfer): StreamedResponse
     {
         return $this->funding->downloadReceipt($supplierTransfer);
+    }
+
+    /**
+     * ADR-083 2026-09-15 addendum — "Adjust": a partial, signed
+     * correction against an already-recorded transfer. See
+     * `SupplierFundingService::recordManualAdjustment()`.
+     */
+    public function adjust(AdjustSupplierTransferRequest $request, SupplierTransfer $supplierTransfer): JsonResponse
+    {
+        $this->assertNotVoided($supplierTransfer);
+
+        $entry = $this->funding->recordManualAdjustment(
+            $supplierTransfer,
+            (string) $request->validated('amount'),
+            $request->validated('reason'),
+            $request->user()->id,
+        );
+
+        Log::info('Supplier transfer manually adjusted', [
+            'supplier_transfer_id' => $supplierTransfer->id,
+            'amount' => $entry->amount,
+            'reason' => $entry->reason,
+            'admin_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'entry' => $entry,
+            'ledger_balance' => $supplierTransfer->supplier->refresh()->supplierLedgerBalance(),
+        ], 201);
+    }
+
+    /**
+     * ADR-083 2026-09-15 addendum — "Void Entirely": the money behind
+     * this transfer never reached the supplier at all. See
+     * `SupplierFundingService::voidTransfer()`.
+     */
+    public function void(VoidSupplierTransferRequest $request, SupplierTransfer $supplierTransfer): JsonResponse
+    {
+        $this->assertNotVoided($supplierTransfer);
+
+        $entry = $this->funding->voidTransfer(
+            $supplierTransfer,
+            $request->validated('reason'),
+            $request->user()->id,
+        );
+
+        Log::warning('Supplier transfer voided', [
+            'supplier_transfer_id' => $supplierTransfer->id,
+            'reversed_amount' => $entry->amount,
+            'reason' => $entry->reason,
+            'admin_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'transfer' => $supplierTransfer->fresh(),
+            'entry' => $entry,
+            'ledger_balance' => $supplierTransfer->supplier->refresh()->supplierLedgerBalance(),
+        ], 201);
+    }
+
+    /** Shared guard for both correction actions — a voided transfer is already fully reversed, a second correction on it would be a real double-count. */
+    private function assertNotVoided(SupplierTransfer $transfer): void
+    {
+        if ($transfer->voided_at !== null) {
+            throw ValidationException::withMessages([
+                'transfer' => ['This transfer has already been voided.'],
+            ]);
+        }
     }
 }
