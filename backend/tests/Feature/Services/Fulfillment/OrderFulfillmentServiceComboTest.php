@@ -13,12 +13,14 @@ use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
+use App\Services\Supplier\SupplierOutcome;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -369,5 +371,171 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame('SREF-A', $legs[0]->supplier_reference); // untouched by the retry
         $this->assertSame('SREF-B-RETRY', $legs[1]->supplier_reference);
         $this->assertSame(1, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->count());
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): a Digiflazz-shaped async leg lands
+     * the whole order in Pending, exactly like the single-order path.
+     */
+    public function test_a_pending_leg_lands_the_whole_order_in_pending(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
+        $this->assertSame(DeliveryStatus::Pending, $legs[1]->status);
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): finalizePendingDeliveryLeg() is the
+     * per-leg counterpart to finalizePendingDelivery() — a webhook/poll
+     * resolving the last still-Pending leg transitions the whole order
+     * out of Pending, crediting profit exactly once.
+     */
+    public function test_finalizing_the_last_pending_leg_as_delivered_completes_the_order(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+        $pendingResult = $this->service($adapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::Pending, $pendingResult->delivery_status);
+
+        $pendingLeg = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->firstOrFail();
+
+        $finalResult = $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $pendingLeg,
+            SupplierOutcome::Success,
+            'SREF-B-WEBHOOK',
+            ['price' => 480],
+        );
+
+        $this->assertSame(DeliveryStatus::Delivered, $finalResult->delivery_status);
+        $this->assertNotNull($finalResult->delivered_at);
+        $this->assertSame('SREF-B-WEBHOOK', $pendingLeg->fresh()->supplier_reference);
+        $this->assertSame(1, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->count());
+        $this->assertSame(2, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * A Pending leg resolving as Failed while its sibling already
+     * Delivered is decision 9's partial-delivery case, same as the
+     * synchronous path — just reached via webhook/poll instead.
+     */
+    public function test_finalizing_a_pending_leg_as_failed_lands_the_order_in_needs_review(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $pendingLeg = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->firstOrFail();
+
+        $finalResult = $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $pendingLeg,
+            SupplierOutcome::Failure,
+            null,
+            ['error_message' => 'Gagal'],
+        );
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $finalResult->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, $pendingLeg->fresh()->status);
+        $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
+    }
+
+    /**
+     * A leg still stuck Pending after one resolves must leave the order
+     * at Pending, not throw — resolveComboOutcome() re-evaluated from a
+     * Pending entry state with an incomplete leg set is a no-op.
+     */
+    public function test_finalizing_one_of_two_pending_legs_leaves_the_order_pending(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::pending(['status' => 'Pending']),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $legA = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 1)->firstOrFail();
+
+        $result = $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $legA,
+            SupplierOutcome::Success,
+            'SREF-A-WEBHOOK',
+        );
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+    }
+
+    /**
+     * Same idempotency-by-construction guard finalizePendingDelivery()
+     * relies on at the order level — a duplicate webhook delivery for
+     * an already-finalized leg throws, never double-credits.
+     */
+    public function test_finalizing_an_already_delivered_leg_throws(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo);
+
+        $this->service($this->queuedAdapter([SupplierResponse::success(['supplier_ref' => 'SREF'])]))->fulfill($order);
+        $leg = OrderDeliveryLeg::query()->where('order_id', $order->id)->firstOrFail();
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $leg,
+            SupplierOutcome::Success,
+            'SREF-DUPLICATE',
+        );
     }
 }

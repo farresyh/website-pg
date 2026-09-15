@@ -5,6 +5,7 @@ namespace App\Console\Commands\Fulfillment;
 use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use Illuminate\Console\Attributes\Description;
@@ -134,6 +135,15 @@ class ReconcilePendingDeliveriesCommand extends Command
      * scheduled command (ADR-014) — dispatches CheckSupplierDeliveryJob
      * instead, which does its own lockForUpdate() via
      * finalizePendingDelivery(), same as retryStuckProcessing() above.
+     *
+     * ADR-094 decision 7 (Phase 3b): a combo order has no `supplier`
+     * of its own (decision 3) — its threshold config comes from its
+     * components' shared supplier instead (decision 4's same-supplier-
+     * only constraint means there's exactly one to read). The age-out
+     * branch also cascades onto every still-Pending leg, not just the
+     * order row, so `order_delivery_legs` stays accurate for the admin
+     * leg breakdown rather than showing a stale "pending" leg under an
+     * order already flagged for review.
      */
     private function checkStalePending(OrderStatusService $orderStatus): void
     {
@@ -142,11 +152,14 @@ class ReconcilePendingDeliveriesCommand extends Command
 
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Pending->value)
-            ->with('supplier')
+            ->with(['supplier', 'package.components.supplier'])
             ->get();
 
         foreach ($orders as $order) {
-            $apiConfig = $order->supplier?->api_config ?? [];
+            $supplier = $order->package?->is_combo
+                ? $order->package->components->first()?->supplier
+                : $order->supplier;
+            $apiConfig = $supplier?->api_config ?? [];
             $staleMinutes = $apiConfig['pending_stale_minutes'] ?? $defaultStaleMinutes;
             $maxAgeDays = $apiConfig['max_reconcile_age_days'] ?? $defaultMaxAgeDays;
 
@@ -161,6 +174,11 @@ class ReconcilePendingDeliveriesCommand extends Command
                     $needsReview = $orderStatus->markNeedsReview($locked->delivery_status);
 
                     $locked->update(['delivery_status' => $needsReview->value]);
+
+                    OrderDeliveryLeg::query()
+                        ->where('order_id', $locked->id)
+                        ->where('status', DeliveryStatus::Pending->value)
+                        ->update(['status' => DeliveryStatus::NeedsReview->value]);
 
                     Log::withContext(['order_number' => $locked->order_number]);
                     Log::warning('Delivery reconciliation: Pending order too old to safely re-poll, flagged for review');

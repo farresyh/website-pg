@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Http\Controllers\Webhooks;
 
+use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
+use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
@@ -314,5 +317,146 @@ class DigiflazzWebhookControllerTest extends TestCase
             ->assertStatus(409);
 
         $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): a combo leg's ref_id carries the
+     * -L{n} suffix — parsed off before the order lookup, then routed
+     * through finalizePendingDeliveryLeg() re-scoped to the leg's own
+     * component package, never the order's own (null) supplier fields.
+     */
+    private function comboOrderWithPendingLeg(array $overrides = []): array
+    {
+        $supplier = $this->digiflazzSupplier();
+        $game = Game::query()->create(['name' => 'MLBB Combo Test', 'slug' => 'mlbb-combo-test-'.uniqid()]);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Component', 'denomination' => 100,
+            'cost_price' => 500, 'standard_selling_price' => 600, 'markup_percent' => 20,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'dgf-combo-leg-sku',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 100, 'cost_price' => 500, 'standard_selling_price' => 600, 'markup_percent' => 20,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+
+        $order = Order::query()->create(array_merge([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-DGF-COMBO-1',
+            'reference_number' => 'REF-DGF-COMBO-1',
+            'customer_email' => 'buyer@example.com',
+            'game_id' => $game->id,
+            'package_id' => $combo->id,
+            'player_id' => '900000001',
+            'server_id' => '1234',
+            'supplier_id' => null,
+            'supplier_product_ref' => null,
+            'cost_price' => 500,
+            'standard_selling_price' => 600,
+            'selling_price' => 700,
+            'transaction_fee' => 100,
+            'final_amount' => 800,
+            'platform_profit' => 100,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Pending->value,
+        ], $overrides));
+
+        $leg = OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id,
+            'component_package_id' => $component->id,
+            'supplier_id' => $supplier->id,
+            'leg_number' => 1,
+            'status' => DeliveryStatus::Pending->value,
+        ]);
+
+        return [$order, $leg, $component];
+    }
+
+    public function test_a_sukses_callback_for_a_combo_leg_finalizes_that_leg_and_the_order(): void
+    {
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg();
+
+        $this->sendWebhook([
+            'ref_id' => $order->reference_number.'-L1',
+            'customer_no' => '900000001.1234',
+            'buyer_sku_code' => $component->supplier_package_ref,
+            'status' => 'Sukses',
+            'rc' => '00',
+            'sn' => 'SN-COMBO-LEG-1',
+            'price' => 480,
+            'buyer_last_saldo' => 3200,
+        ])->assertOk()->assertJson(['message' => 'ok']);
+
+        $leg->refresh();
+        $this->assertSame(DeliveryStatus::Delivered, $leg->status);
+        $this->assertSame('SN-COMBO-LEG-1', $leg->supplier_reference);
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+
+        $this->assertDatabaseHas('supplier_ledger_entries', [
+            'reference_type' => 'order_delivery_leg',
+            'reference_id' => $leg->id,
+        ]);
+    }
+
+    public function test_a_gagal_callback_for_a_combo_leg_finalizes_that_leg_as_failed(): void
+    {
+        [$order, $leg] = $this->comboOrderWithPendingLeg();
+        $component = $leg->componentPackage;
+
+        $this->sendWebhook([
+            'ref_id' => $order->reference_number.'-L1',
+            'customer_no' => '900000001.1234',
+            'buyer_sku_code' => $component->supplier_package_ref,
+            'status' => 'Gagal',
+            'rc' => '02',
+            'message' => 'Gagal',
+        ])->assertOk();
+
+        $this->assertSame(DeliveryStatus::Failed, $leg->fresh()->status);
+        // Sole leg, all-Failed — clean retryable Failed, not needs_review.
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
+    public function test_a_combo_leg_sku_mismatch_is_rejected_409(): void
+    {
+        [$order, $leg] = $this->comboOrderWithPendingLeg();
+
+        $this->sendWebhook([
+            'ref_id' => $order->reference_number.'-L1',
+            'buyer_sku_code' => 'wrong-sku',
+            'status' => 'Sukses',
+            'sn' => 'SN-X',
+        ])->assertStatus(409);
+
+        $this->assertSame(DeliveryStatus::Pending, $leg->fresh()->status);
+    }
+
+    public function test_a_callback_for_a_nonexistent_leg_number_is_rejected_404(): void
+    {
+        [$order] = $this->comboOrderWithPendingLeg();
+
+        $this->sendWebhook([
+            'ref_id' => $order->reference_number.'-L99',
+            'buyer_sku_code' => 'irrelevant',
+            'status' => 'Sukses',
+            'sn' => 'SN-X',
+        ])->assertStatus(404);
+    }
+
+    public function test_a_duplicate_combo_leg_callback_is_acknowledged_without_double_crediting(): void
+    {
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg();
+        $payload = [
+            'ref_id' => $order->reference_number.'-L1',
+            'buyer_sku_code' => $component->supplier_package_ref,
+            'status' => 'Sukses',
+            'sn' => 'SN-COMBO-LEG-1',
+        ];
+
+        $this->sendWebhook($payload)->assertOk();
+        $this->sendWebhook($payload)->assertOk()->assertJson(['message' => 'already finalized']);
+
+        $this->assertSame(1, LedgerEntry::query()->where('reference_id', $order->id)->where('type', 'order_profit')->where('owner_type', 'platform')->count());
     }
 }
