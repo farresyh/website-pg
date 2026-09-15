@@ -70,4 +70,18 @@ class Game extends Model
     {
         return $this->validation_rules['customer_no_separator'] ?? null;
     }
+
+    /**
+     * ADR-097 decision 6/7 — the admin-curated Zone ID picklist. Empty
+     * array normalizes to null (same "unset preserves free text"
+     * behavior either way, one less shape for a caller to check).
+     *
+     * @return list<string>|null
+     */
+    public function zoneOptions(): ?array
+    {
+        $options = $this->validation_rules['zone_options'] ?? null;
+
+        return is_array($options) && $options !== [] ? $options : null;
+    }
 }

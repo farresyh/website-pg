@@ -57,6 +57,7 @@ class CatalogController extends Controller
         'games' => [[
             'code' => 'MLMY',
             'name' => 'Mobile Legends (Malaysia)',
+            'checkout_input' => ['field' => 'zone_id', 'options' => ['SouthEastAsia', 'MENA']],
             'packages' => [
                 ['code' => 'MLMY-14', 'name' => '14 Diamonds', 'price_sen' => 1200],
                 ['code' => 'MLMY-86', 'name' => '86 Diamonds', 'price_sen' => 6300],
@@ -83,7 +84,7 @@ class CatalogController extends Controller
     }
 
     /**
-     * @return array<int, array{code: string, name: string, packages: array<int, array{code: string, name: string, price_sen: int}>}>
+     * @return array<int, array{code: string, name: string, checkout_input: array{field: ?string, options: ?array<int, string>}, packages: array<int, array{code: string, name: string, price_sen: int}>}>
      */
     private function pricedCatalogForTier(int $tierId, float $markupPercent): array
     {
@@ -94,14 +95,21 @@ class CatalogController extends Controller
                 $rows = $this->catalog->listAvailable();
                 $rowsByGameId = $rows->groupBy(fn (array $row): int => $row['package']->game_id);
 
+                // ADR-097 decision 12/17 — 'validation_rules' must be in
+                // this explicit column list or checkout_input silently
+                // resolves to null for every row.
                 $games = Game::query()
                     ->whereIn('id', $rowsByGameId->keys())
                     ->orderBy('name')
-                    ->get(['id', 'reseller_code', 'name']);
+                    ->get(['id', 'reseller_code', 'name', 'validation_rules']);
 
                 return $games->map(fn (Game $game): array => [
                     'code' => $game->reseller_code,
                     'name' => $game->name,
+                    'checkout_input' => [
+                        'field' => $game->validation_rules['extra_field'] ?? null,
+                        'options' => $game->zoneOptions(),
+                    ],
                     'packages' => $this->packagesFor($rowsByGameId->get($game->id, collect()), $markupPercent),
                 ])->values()->all();
             },

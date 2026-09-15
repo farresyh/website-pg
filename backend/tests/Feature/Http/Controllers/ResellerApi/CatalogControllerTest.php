@@ -58,11 +58,28 @@ class CatalogControllerTest extends TestCase
         $response->assertExactJson(['games' => [[
             'code' => 'MLMY',
             'name' => 'Mobile Legends Malaysia',
+            'checkout_input' => ['field' => null, 'options' => null],
             'packages' => [
                 ['code' => 'MLMY-14', 'name' => '14 Diamond', 'price_sen' => 1100], // 1000 * 1.10
                 ['code' => 'MLMY-86', 'name' => '86 Diamond', 'price_sen' => 5500], // 5000 * 1.10
             ],
         ]]]);
+    }
+
+    /** ADR-097 decision 12 — a reseller/integrator can now discover a game's checkout requirement programmatically. */
+    public function test_catalog_exposes_a_games_checkout_input_requirement(): void
+    {
+        [, $key] = $this->makeReseller();
+        $game = Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-checkout-input-test', 'reseller_code' => 'MLZONE', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+        $this->package($game, '14 Diamond', 14, 1000, 1200);
+
+        $response = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
+
+        $response->assertOk();
+        $response->assertJsonPath('games.0.checkout_input', ['field' => 'zone_id', 'options' => ['SouthEastAsia', 'MENA']]);
     }
 
     public function test_excludes_games_without_a_reseller_code(): void

@@ -12,6 +12,7 @@ use App\Models\ResellerBotCommandLog;
 use App\Models\ResellerBotOrderNotification;
 use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
+use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
@@ -62,6 +63,7 @@ final class ResellerBotService
         private readonly ResellerWalletTopupService $topups,
         private readonly PlayerValidatorRegistry $validators,
         private readonly OpenWaClient $openWa,
+        private readonly CheckoutInputValidator $checkoutInputValidator,
     ) {}
 
     public function handle(string $whatsappGroupId, string $rawText, string $whatsappMessageId): void
@@ -222,12 +224,16 @@ final class ResellerBotService
         }
 
         $game = Game::query()->find($package->game_id);
-        $extraField = $game?->validation_rules['extra_field'] ?? null;
 
-        if ($extraField !== null && $command->serverId === null) {
-            $this->logFailure($reseller, $groupId, $command->raw, 'missing_server_id');
+        // ADR-097 decision 19 — the same presence+value rule the
+        // storefront and the Reseller API now enforce, not just
+        // presence. This channel's own format-hint suffix (unique to
+        // it — the raw .order command syntax) rides along after the
+        // shared validator's message, not inside it.
+        if ($game !== null && $error = $this->checkoutInputValidator->validate($game, $command->serverId)) {
+            $this->logFailure($reseller, $groupId, $command->raw, $command->serverId === null ? 'missing_server_id' : 'invalid_zone_id');
 
-            return "Game ini memerlukan {$extraField}. Format: .order {$command->productCode} {playerId} {serverId}";
+            return "{$error['message']} Format: .order {$command->productCode} {playerId} {serverId}";
         }
 
         if ($game !== null && $game->player_validator_enabled && $game->player_validator_profile_id !== null) {

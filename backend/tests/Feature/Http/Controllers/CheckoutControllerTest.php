@@ -280,6 +280,33 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame('5001', Order::query()->firstOrFail()->server_id);
     }
 
+    /** ADR-097 decision 10 — value-restriction, not just presence, once a game has a defined zone list. */
+    public function test_rejects_checkout_for_a_zone_id_game_with_a_value_outside_the_defined_list(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage([
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['server_id' => 'SEA']));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('server_id');
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_accepts_checkout_for_a_zone_id_game_with_a_value_matching_the_defined_list(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage([
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['server_id' => 'SouthEastAsia']));
+
+        $response->assertCreated();
+    }
+
     public function test_rejects_a_package_that_does_not_belong_to_the_given_game(): void
     {
         $this->bindGateway();
