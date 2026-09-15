@@ -49,6 +49,24 @@ export interface Game {
   player_validator_enabled?: boolean;
 }
 
+/** ADR-094 decision 1: one of a combo Package's own components — this game's own package list, projected down for the composition/edit UI. */
+export interface ComboComponent {
+  id: number;
+  name: string;
+  denomination: number | null;
+  cost_price: number;
+  standard_selling_price: number;
+  is_active: boolean;
+  /** How many of this component one unit of the combo delivers (decision 4's repeated-component allowance). */
+  quantity: number;
+}
+
+/** ADR-094 decision 13/21: a combo currently depending on this package as an active component — decision 13's admin-panel deactivate-cascade warning is computed from this, client-side, before ever calling the API. */
+export interface ComboDependent {
+  id: number;
+  name: string;
+}
+
 export interface GamePackage {
   id: number;
   name: string;
@@ -63,6 +81,14 @@ export interface GamePackage {
   supplier_package_ref: string;
   /** Read-only — has the supplier turned this item off on their own side? */
   supplier_active: boolean;
+  /** ADR-094: assembled from several other Packages instead of a real supplier item — no supplier_id/supplier_package_ref of its own. */
+  is_combo: boolean;
+  combo_override_markup_percent: string | null;
+  combo_override_price: number | null;
+  /** Populated only for a combo row (its own components, in fulfillment order); empty otherwise. */
+  components: ComboComponent[];
+  /** Populated for every row — which active combo(s) would cascade-deactivate if this package were switched off. */
+  active_combo_dependents: ComboDependent[];
 }
 
 export interface UpdateGameValues {
@@ -123,11 +149,20 @@ export function updatePackageMarkup(token: string, packageId: number, markupPerc
   });
 }
 
-export function updatePackageStatus(token: string, packageId: number, isActive: boolean) {
+/**
+ * ADR-094 decision 13: `acknowledgeCascade` is only ever sent `true`
+ * after the caller has already shown the admin which active combo(s)
+ * would cascade-deactivate (computed client-side from the already-
+ * loaded package list's own `active_combo_dependents` — see the games
+ * page's handleToggleStatus) — never sent speculatively. The backend
+ * re-checks this itself regardless (defense in depth, not the primary
+ * discovery mechanism).
+ */
+export function updatePackageStatus(token: string, packageId: number, isActive: boolean, acknowledgeCascade?: boolean) {
   return apiFetch<GamePackage>(`/api/packages/${packageId}/status`, {
     method: "PATCH",
     token,
-    body: { is_active: isActive },
+    body: { is_active: isActive, ...(acknowledgeCascade ? { acknowledge_cascade: true } : {}) },
   });
 }
 
@@ -151,4 +186,24 @@ export function updatePackageCatalogCode(token: string, packageId: number, catal
 
 export function deletePackage(token: string, packageId: number) {
   return apiFetch<void>(`/api/packages/${packageId}`, { method: "DELETE", token });
+}
+
+/** ADR-094 decisions 1-4: assembles a new combo Package from `components` already promoted on this game — the one deliberate exception to every other Package tracing back to a real supplier item. */
+export interface CreateComboPackageValues {
+  name: string;
+  components: { package_id: number; quantity: number }[];
+}
+
+export function createComboPackage(token: string, gameId: number, values: CreateComboPackageValues) {
+  return apiFetch<GamePackage>(`/api/games/${gameId}/packages/combo`, { method: "POST", token, body: values });
+}
+
+/** ADR-094 decision 5's second half — mutually exclusive, same as UpdatePackageDenominationValues/UpdatePackageCatalogCodeValues. Passing both null reverts to the default sum-of-components price. */
+export interface UpdateComboOverrideValues {
+  combo_override_markup_percent: number | null;
+  combo_override_price: number | null;
+}
+
+export function updateComboOverride(token: string, packageId: number, values: UpdateComboOverrideValues) {
+  return apiFetch<GamePackage>(`/api/packages/${packageId}/combo-override`, { method: "PATCH", token, body: values });
 }

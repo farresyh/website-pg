@@ -115,21 +115,28 @@ final class ComboPricingService
     }
 
     /**
-     * Decision 13's Price-Sync-automated cascade half: a component
-     * Price Sync itself just deactivated cascades onto every active
-     * combo referencing it — no warn-and-acknowledge prompt (that's
-     * the separate admin-manual half, no human is present here), but
-     * every cascade still writes its own `DeactivationLog` row so it
-     * shows up in the same Sync Details modal, never a silent
-     * side-effect.
+     * Decision 13: cascades a deactivation onto every active combo
+     * referencing `$component`. Two callers, two provenances (mirrors
+     * `DeactivationLog::adminUser()`'s own existing "null for
+     * automatic, set for manual" convention — SupplierController's
+     * bulk deactivate is the precedent): Price Sync's own automated
+     * deactivation (`$priceSyncRunId` set, `$adminUserId` null — no
+     * human is present to acknowledge) and an admin manually
+     * deactivating a component Package via `PackageController::
+     * updateStatus()` (`$adminUserId` set, `$priceSyncRunId` null —
+     * that path requires an explicit warn-and-acknowledge first,
+     * this method only executes the cascade once acknowledged). Every
+     * cascade still writes its own `DeactivationLog` row either way,
+     * so it's visible in the Sync Details modal or a future admin
+     * audit view, never a silent side-effect.
      *
      * @return Collection<int, int> affected game_ids
      */
-    public function cascadeDeactivate(Package $component, ?int $priceSyncRunId): Collection
+    public function cascadeDeactivate(Package $component, ?int $priceSyncRunId, ?int $adminUserId = null): Collection
     {
         $affectedGameIds = collect();
 
-        $component->partOfCombos()->where('is_active', true)->get()->each(function (Package $combo) use ($priceSyncRunId, $affectedGameIds) {
+        $component->partOfCombos()->where('is_active', true)->get()->each(function (Package $combo) use ($priceSyncRunId, $adminUserId, $affectedGameIds) {
             $combo->update([
                 'is_active' => false,
                 'deactivated_reason' => 'combo_component_deactivated',
@@ -139,6 +146,7 @@ final class ComboPricingService
             DeactivationLog::query()->create([
                 'price_sync_run_id' => $priceSyncRunId,
                 'package_id' => $combo->id,
+                'admin_user_id' => $adminUserId,
             ]);
 
             $affectedGameIds->push($combo->game_id);

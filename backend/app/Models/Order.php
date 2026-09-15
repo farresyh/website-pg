@@ -115,6 +115,55 @@ class Order extends Model
     }
 
     /**
+     * ADR-094 decision 9 (2026-09-15 Phase 4): a combo order's
+     * delivery_status can land in NeedsReview for two structurally
+     * different reasons — real leg-level ambiguity (a leg itself is
+     * NeedsReview, e.g. a Gamevion duplicate_reference, or a leg still
+     * Pending) versus a genuine partial delivery (some legs Delivered,
+     * some cleanly Failed, nothing ambiguous/in-flight left). Only the
+     * second is decision 9's carve-out from ADR-026 decision 4c's
+     * "Issue Voucher is blocked from needs_review" rule — the first
+     * case still requires a human Retry/Resend/Mark Delivered call,
+     * never a refund. Non-combo orders (`deliveryLegs` empty) are
+     * always false here — their own needs_review path is unchanged.
+     */
+    public function isPartialComboDelivery(): bool
+    {
+        if ($this->delivery_status !== DeliveryStatus::NeedsReview) {
+            return false;
+        }
+
+        $statuses = $this->deliveryLegs->pluck('status');
+
+        if ($statuses->isEmpty()) {
+            return false;
+        }
+
+        if ($statuses->contains(DeliveryStatus::NeedsReview) || $statuses->contains(DeliveryStatus::Pending)) {
+            return false;
+        }
+
+        return $statuses->contains(DeliveryStatus::Delivered) && $statuses->contains(DeliveryStatus::Failed);
+    }
+
+    /**
+     * Decision 9's prefill: the sum of every Failed leg's own component
+     * price — an admin-adjustable starting point for Issue Voucher's
+     * custom amount, not the final word (`standard_selling_price` may
+     * have moved since this order was placed).
+     */
+    public function suggestedPartialVoucherAmount(): ?int
+    {
+        if (! $this->isPartialComboDelivery()) {
+            return null;
+        }
+
+        return (int) $this->deliveryLegs
+            ->where('status', DeliveryStatus::Failed)
+            ->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->standard_selling_price ?? 0);
+    }
+
+    /**
      * ADR-073 decision 5: which `Reseller` (wallet) account placed this
      * order, distinct from `affiliate()` (which brand's storefront it
      * belongs to — always the primary brand for a wallet order). Null

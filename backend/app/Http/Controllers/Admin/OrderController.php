@@ -405,6 +405,15 @@ class OrderController extends Controller
             // attempt, most recent first, alongside the package it
             // actually used (may differ from the order's own).
             'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
+            // ADR-094 decision 12 (2026-09-15 Phase 4): empty for every
+            // ordinary single-supplier order — populated only for a
+            // combo order, one row per real outbound supplier call,
+            // for the detail screen's leg-breakdown table.
+            // standard_selling_price is needed here, not just for
+            // display — Order::suggestedPartialVoucherAmount() sums it
+            // straight off this already-eager-loaded relation.
+            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price',
+            'deliveryLegs.supplier:id,name',
         ]);
 
         return response()->json([
@@ -414,6 +423,14 @@ class OrderController extends Controller
             // a fresh page load too, not just right after a successful
             // action in the same session.
             'wallet_refunded' => $this->alreadyRefundedToWallet($order),
+            // ADR-094 decision 9: gates the admin panel's Issue Voucher
+            // button for the one needs_review case that's actually a
+            // genuine partial delivery, with a starting-point amount
+            // (admin-adjustable, never trusted as-is server-side —
+            // VoucherController::storeFromOrder() re-derives its own
+            // cap independently).
+            'partial_combo_delivery' => $order->isPartialComboDelivery(),
+            'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
         ]);
     }
 

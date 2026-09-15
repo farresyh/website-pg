@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Models;
 
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
+use App\Models\Package;
+use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
@@ -95,5 +99,96 @@ class OrderTest extends TestCase
         $reloaded = Order::query()->findOrFail($order->id);
 
         $this->assertSame('Free Fire', $reloaded->supplier_response['game']);
+    }
+
+    private ?Supplier $comboSupplier = null;
+
+    private ?Game $comboGame = null;
+
+    private function componentPackage(array $overrides = []): Package
+    {
+        $this->comboSupplier ??= Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $this->comboGame ??= Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia']);
+        $supplier = $this->comboSupplier;
+        $game = $this->comboGame;
+
+        return Package::query()->create(array_merge([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000, 'markup_percent' => 10,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ], $overrides));
+    }
+
+    private function leg(Order $order, Package $component, DeliveryStatus $status, int $legNumber): OrderDeliveryLeg
+    {
+        return OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $component->id,
+            'supplier_id' => $component->supplier_id, 'leg_number' => $legNumber, 'status' => $status->value,
+        ]);
+    }
+
+    /**
+     * ADR-094 decision 9 (Phase 4): the actual partial-delivery case —
+     * a real Delivered+Failed split, nothing Pending/NeedsReview left.
+     */
+    public function test_is_partial_combo_delivery_true_for_a_genuine_delivered_and_failed_split(): void
+    {
+        $delivered = $this->componentPackage();
+        $failed = $this->componentPackage([
+            'name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976',
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+        ]);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $failed, DeliveryStatus::Failed, 2);
+
+        $this->assertTrue($order->isPartialComboDelivery());
+        $this->assertSame(27500, $order->suggestedPartialVoucherAmount());
+    }
+
+    /** A leg-level NeedsReview (e.g. a Gamevion duplicate_reference) is real ambiguity, not a clean partial — never the carve-out. */
+    public function test_is_partial_combo_delivery_false_when_a_leg_is_itself_ambiguous(): void
+    {
+        $delivered = $this->componentPackage();
+        $ambiguous = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $ambiguous, DeliveryStatus::NeedsReview, 2);
+
+        $this->assertFalse($order->isPartialComboDelivery());
+        $this->assertNull($order->suggestedPartialVoucherAmount());
+    }
+
+    /** A leg still Pending is still in flight — not a resolved partial delivery yet. */
+    public function test_is_partial_combo_delivery_false_while_a_leg_is_still_pending(): void
+    {
+        $delivered = $this->componentPackage();
+        $pending = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $pending, DeliveryStatus::Pending, 2);
+
+        $this->assertFalse($order->isPartialComboDelivery());
+    }
+
+    /** A non-combo order (no legs at all) is never a partial-combo-delivery case. */
+    public function test_is_partial_combo_delivery_false_for_an_ordinary_order_with_no_legs(): void
+    {
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $this->assertFalse($order->isPartialComboDelivery());
+        $this->assertNull($order->suggestedPartialVoucherAmount());
+    }
+
+    /** Every leg Delivered means the order itself wouldn't be NeedsReview in practice, but the method's own guard is the delivery_status check, not the leg shape. */
+    public function test_is_partial_combo_delivery_false_when_delivery_status_is_not_needs_review(): void
+    {
+        $delivered = $this->componentPackage();
+        $failed = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::Failed->value]);
+        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $failed, DeliveryStatus::Failed, 2);
+
+        $this->assertFalse($order->isPartialComboDelivery());
     }
 }

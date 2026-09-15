@@ -8,6 +8,7 @@ use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Reseller;
@@ -326,6 +327,67 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('package.name', '100 Diamonds');
         $response->assertJsonPath('supplier.name', 'Gamevion');
         $response->assertJsonPath('supplier_response.supplier_ref', 'GV-123');
+    }
+
+    /**
+     * ADR-094 decision 12/9 (Phase 4): the admin detail screen's leg
+     * breakdown + Issue Voucher gating, for a genuine partial-delivery
+     * combo order.
+     */
+    public function test_show_includes_delivery_legs_and_partial_delivery_computed_fields(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia']);
+        $delivered = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $failed = Package::query()->create([
+            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500,
+        ]);
+        $order = $this->order(['package_id' => $combo->id, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('partial_combo_delivery', true);
+        $response->assertJsonPath('suggested_voucher_amount', 27500);
+        $response->assertJsonCount(2, 'delivery_legs');
+        $response->assertJsonPath('delivery_legs.0.leg_number', 1);
+        $response->assertJsonPath('delivery_legs.0.status', 'delivered');
+        $response->assertJsonPath('delivery_legs.0.component_package.name', '4810 Diamonds');
+        $response->assertJsonPath('delivery_legs.1.status', 'failed');
+        $response->assertJsonPath('delivery_legs.1.failure_reason', 'Insufficient balance');
+    }
+
+    /** An ordinary single-supplier order has no legs and never trips the partial-delivery carve-out. */
+    public function test_show_partial_combo_delivery_is_false_for_an_ordinary_order(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('partial_combo_delivery', false);
+        $response->assertJsonPath('suggested_voucher_amount', null);
+        $response->assertJsonCount(0, 'delivery_legs');
     }
 
     public function test_show_returns_404_for_a_nonexistent_order(): void
