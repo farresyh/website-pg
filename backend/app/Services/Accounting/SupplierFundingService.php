@@ -3,6 +3,7 @@
 namespace App\Services\Accounting;
 
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
@@ -110,17 +111,33 @@ final class SupplierFundingService
      * check (decision 6) is the backstop that surfaces it, not a retry
      * here. Never throws: a failure to record the drawdown must never
      * make an already-delivered order look failed.
+     *
+     * ADR-094 decision 18 (2026-09-15 addendum): the optional `$leg`
+     * makes the dedup key leg-aware — a combo order genuinely draws
+     * down the supplier balance once per leg (decision 11), and this
+     * method's own dedup guard (`exists()` below) would otherwise be
+     * satisfied by the *first* leg's row, silently swallowing every
+     * later leg's real drawdown for the same order. Passing a leg also
+     * resolves the supplier from the leg's own `supplier_id` — a combo
+     * `Order` has no `supplier_id`/`supplier` of its own (ADR-094
+     * decision 3), so the plain `$order->supplier` lookup below would
+     * always bail before a combo leg's drawdown was ever recorded.
      */
-    public function recordOrderDrawdown(Order $order, float $price): void
+    public function recordOrderDrawdown(Order $order, float $price, ?OrderDeliveryLeg $leg = null): void
     {
-        if ($order->supplier === null) {
+        $supplier = $leg?->supplier ?? $order->supplier;
+
+        if ($supplier === null) {
             return;
         }
 
+        $referenceType = $leg !== null ? 'order_delivery_leg' : 'order';
+        $referenceId = $leg?->id ?? $order->id;
+
         try {
             $alreadyRecorded = SupplierLedgerEntry::query()
-                ->where('reference_type', 'order')
-                ->where('reference_id', $order->id)
+                ->where('reference_type', $referenceType)
+                ->where('reference_id', $referenceId)
                 ->where('type', SupplierLedgerEntryType::OrderDrawdown->value)
                 ->exists();
 
@@ -129,17 +146,18 @@ final class SupplierFundingService
             }
 
             SupplierLedgerEntry::query()->create([
-                'supplier_id' => $order->supplier_id,
+                'supplier_id' => $supplier->id,
                 'type' => SupplierLedgerEntryType::OrderDrawdown->value,
                 'amount' => -$price,
-                'currency' => $order->supplier->currency,
-                'reference_type' => 'order',
-                'reference_id' => $order->id,
+                'currency' => $supplier->currency,
+                'reference_type' => $referenceType,
+                'reference_id' => $referenceId,
             ]);
         } catch (\Throwable $e) {
             Log::error('Failed to record supplier ledger drawdown — order delivery stands, drift check will catch the gap', [
                 'order_id' => $order->id,
-                'supplier_id' => $order->supplier_id,
+                'order_delivery_leg_id' => $leg?->id,
+                'supplier_id' => $supplier->id,
                 'price' => $price,
                 'exception' => $e->getMessage(),
             ]);

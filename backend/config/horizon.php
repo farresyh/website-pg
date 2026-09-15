@@ -99,6 +99,7 @@ return [
     'waits' => [
         'redis:revalidation' => 60,
         'redis:orders' => 60,
+        'redis:orders-combo' => 60,
         'redis:price-sync' => 300,
         'redis:backups' => 300,
         'redis:supplier-request-logs' => 300,
@@ -226,6 +227,29 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        // ADR-094 decision 8 (2026-09-15 addendum, decision 20's leg-count
+        // fix): a combo order's FulfillOrderJob makes up to 3 sequential
+        // supplier HTTP calls (decision 20's total-legs cap), not the one
+        // call supervisor-orders' 60s timeout was sized for — its own
+        // queue/timeout tier so Horizon never kills a job mid-leg-sequence,
+        // which would leave the order in a worse, unclassified state than
+        // the needs_review this design deliberately routes real failures
+        // to. tries=3 matches supervisor-orders — FulfillOrderJob's own
+        // combo branch is leg-idempotent, so a whole-job retry just
+        // resumes the not-yet-succeeded legs, never re-submits a
+        // already-delivered one.
+        'supervisor-orders-combo' => [
+            'connection' => 'redis',
+            'queue' => ['orders-combo'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 180,
+            'nice' => 0,
+        ],
         'supervisor-price-sync' => [
             'connection' => 'redis',
             'queue' => ['price-sync'],
@@ -323,6 +347,7 @@ return [
     'environments' => [
         'production' => [
             'supervisor-orders' => ['maxProcesses' => 1],
+            'supervisor-orders-combo' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
             'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
@@ -333,6 +358,7 @@ return [
 
         'local' => [
             'supervisor-orders' => ['maxProcesses' => 1],
+            'supervisor-orders-combo' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
             'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],

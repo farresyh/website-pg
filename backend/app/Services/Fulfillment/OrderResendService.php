@@ -152,6 +152,20 @@ final class OrderResendService
                 'package_id' => ['This package is not currently active.'],
             ]);
         }
+
+        // ADR-094 decision 10: this "swap to a different package/supplier"
+        // tool assumes exactly one supplier_product_ref to copy onto the
+        // Order below — nonsensical for a combo (multi-leg) entity, and
+        // doing nothing here would silently write a null/garbage
+        // supplier_product_ref onto a real order. The ordinary "Resend
+        // Delivery" retry (no package swap, OrderController::retryDelivery())
+        // stays fully usable for a combo order — it just calls fulfill()
+        // again, unaffected by this guard.
+        if ($order->package?->is_combo || $targetPackage->is_combo) {
+            throw ValidationException::withMessages([
+                'package_id' => ['A combo order cannot be resent to a different package — use the ordinary Resend Delivery retry instead.'],
+            ]);
+        }
     }
 
     /**

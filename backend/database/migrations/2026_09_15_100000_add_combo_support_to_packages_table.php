@@ -52,17 +52,24 @@ return new class extends Migration
         $this->recreateDependentViews();
     }
 
+    /**
+     * ADR-094 Phase 3 stress-test finding (2026-09-16): does NOT
+     * re-tighten `supplier_id`/`supplier_package_ref` back to NOT
+     * NULL — a real rollback would first need every existing combo
+     * Package (which has neither, by design) deleted or backfilled,
+     * a data-migration concern this schema-only `down()` has no
+     * business doing silently. Found via `DatabaseMigrations`-based
+     * concurrency tests: that trait runs a full `migrate:rollback`
+     * after every single test, and a combo Package row created by an
+     * earlier test in the same run made the naive `nullable(false)`
+     * rollback throw on real NULL data, cascading failures into every
+     * later test in the suite. Treating this relaxation as one-way is
+     * the correct call regardless of the test-infra trigger — the
+     * same "can't tighten NOT NULL over existing NULLs" problem would
+     * hit a real production rollback too.
+     */
     public function down(): void
     {
-        $this->dropDependentViews();
-
-        Schema::table('packages', function (Blueprint $table) {
-            $table->unsignedBigInteger('supplier_id')->nullable(false)->change();
-            $table->string('supplier_package_ref')->nullable(false)->change();
-        });
-
-        $this->recreateDependentViews();
-
         Schema::table('packages', function (Blueprint $table) {
             $table->dropColumn('is_combo');
         });
