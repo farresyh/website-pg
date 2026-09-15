@@ -726,8 +726,8 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-15. **ADR-094 — Combo Package — Phases 1-4 shipped 2026-09-14/15, admin-only
-    until decision 14's consuming channels are built.**
+15. **ADR-094 — Combo Package — Phases 1-4 shipped 2026-09-14/15; decision 14
+    (consuming channels) verified 2026-09-15, genuinely buyable today.**
     Assembles several existing catalog Packages into one opaque, sellable SKU
     above a game's native max denomination (e.g. MLBB Malaysia's 7502
     Diamonds), so a reseller/guest pays one CHIP FPX fee instead of two.
@@ -742,14 +742,21 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     per-leg webhook/poll), and the admin UI (`/admin/games` combo
     composition CRUD, Order-detail leg breakdown — decision 12, Issue
     Voucher custom-amount for a genuine partial-delivery order — decision 9,
-    and decision 13/22's component-churn guards). Full backend suite
-    1922/1922 green. Decision 21 (supplier-drift warn) turned out to have no
-    current UI trigger (no screen edits an already-promoted Package's
-    supplier) — nothing built for it, revisit only if that ever changes.
-    **Still to build:** decision 14's other 4 consuming channels
-    (storefront, Affiliate, Reseller portal, REST API, Bot — combo is
-    admin-only today). See `docs/adr.md` ADR-094 for the full 23-decision
-    design.
+    and decision 13/22's component-churn guards). Decision 21 (supplier-drift
+    warn) turned out to have no current UI trigger (no screen edits an
+    already-promoted Package's supplier) — nothing built for it, revisit only
+    if that ever changes. **Decision 14 needed zero new code** — a full audit
+    of all 5 consuming channels found every one already resolves/creates a
+    combo Order generically (no `is_combo` special-casing anywhere), and
+    every response shape was already narrow before this ADR existed. New
+    test `Adr094ComboConsumingChannelsTest` proves it by actually placing +
+    fulfilling a real combo order through storefront checkout, the Reseller
+    API, and the Reseller Bot — all 3 passed on first write. Reseller Portal
+    has no order-placement surface at all (confirmed by grep), nothing to
+    verify there. Full backend suite **1925/1925** green. **ADR-094 is now
+    functionally complete** on `staging` — combo is genuinely buyable through
+    every real channel, not just admin-creatable. See `docs/adr.md` ADR-094
+    for the full 23-decision design.
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 **CHIP credential `.env`→DB migration** — genuinely still open (confirmed
