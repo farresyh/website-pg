@@ -320,6 +320,24 @@ class DigiflazzWebhookControllerTest extends TestCase
     }
 
     /**
+     * Regression: found in prod 2026-09-15 — Digiflazz's `update` event
+     * lowercases buyer_sku_code even though `supplier_product_ref` (and
+     * their own `create` event) is uppercase. An exact `!==` compare
+     * rejected every real `update` callback, stranding delivery_status
+     * at Pending until the ~10-min reconcile poll caught up.
+     */
+    public function test_a_differently_cased_buyer_sku_code_still_matches(): void
+    {
+        $order = $this->pendingOrder(['supplier_product_ref' => 'MLBB_MY_14_PG1']);
+
+        $this->sendWebhook($this->suksesData($order, ['buyer_sku_code' => 'mlbb_my_14_pg1']))
+            ->assertOk()
+            ->assertJson(['message' => 'ok']);
+
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+    }
+
+    /**
      * ADR-094 decision 7 (Phase 3b): a combo leg's ref_id carries the
      * -L{n} suffix — parsed off before the order lookup, then routed
      * through finalizePendingDeliveryLeg() re-scoped to the leg's own
@@ -430,6 +448,28 @@ class DigiflazzWebhookControllerTest extends TestCase
         ])->assertStatus(409);
 
         $this->assertSame(DeliveryStatus::Pending, $leg->fresh()->status);
+    }
+
+    /**
+     * Regression: same prod 2026-09-15 bug as the plain-order case above,
+     * re-scoped to a combo leg's own component package ref.
+     */
+    public function test_a_differently_cased_combo_leg_buyer_sku_code_still_matches(): void
+    {
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg();
+        $component->update(['supplier_package_ref' => 'MLBB_MY_14_PG1']);
+
+        $this->sendWebhook([
+            'ref_id' => $order->reference_number.'-L1',
+            'customer_no' => '900000001.1234',
+            'buyer_sku_code' => 'mlbb_my_14_pg1',
+            'status' => 'Sukses',
+            'rc' => '00',
+            'sn' => 'SN-COMBO-LEG-CASE',
+            'buyer_last_saldo' => 3200,
+        ])->assertOk()->assertJson(['message' => 'ok']);
+
+        $this->assertSame(DeliveryStatus::Delivered, $leg->fresh()->status);
     }
 
     public function test_a_callback_for_a_nonexistent_leg_number_is_rejected_404(): void
