@@ -4,7 +4,10 @@ namespace Tests\Feature\Console;
 
 use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
+use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -194,6 +197,71 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
         $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
 
         $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        Bus::assertNotDispatched(CheckSupplierDeliveryJob::class);
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): a combo order has no `supplier`
+     * of its own — the stale-pending threshold reads from its
+     * components' shared supplier instead.
+     */
+    public function test_dispatches_a_status_check_for_a_stale_pending_combo_order(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $game = Game::query()->create(['name' => 'MLBB Reconcile Test', 'slug' => 'mlbb-reconcile-test-'.uniqid()]);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Component', 'denomination' => 50,
+            'cost_price' => 250, 'standard_selling_price' => 300, 'markup_percent' => 20,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'sku-1',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 50, 'cost_price' => 250, 'standard_selling_price' => 300, 'markup_percent' => 20,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+
+        $order = $this->order(['package_id' => $combo->id, 'supplier_id' => null, 'delivery_status' => DeliveryStatus::Pending->value]);
+        $order->forceFill(['updated_at' => now()->subMinutes(15)])->save();
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertDispatched(CheckSupplierDeliveryJob::class, fn ($job) => $job->order->id === $order->id);
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): the age-out branch cascades onto
+     * every still-Pending leg, not just the order row, so the leg
+     * breakdown stays accurate under an order already flagged for
+     * review.
+     */
+    public function test_ageing_out_a_pending_combo_order_also_flags_its_pending_legs(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $game = Game::query()->create(['name' => 'MLBB Reconcile Age Test', 'slug' => 'mlbb-reconcile-age-test-'.uniqid()]);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Component', 'denomination' => 50,
+            'cost_price' => 250, 'standard_selling_price' => 300, 'markup_percent' => 20,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'sku-1',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 50, 'cost_price' => 250, 'standard_selling_price' => 300, 'markup_percent' => 20,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+
+        $order = $this->order(['package_id' => $combo->id, 'supplier_id' => null, 'delivery_status' => DeliveryStatus::Pending->value]);
+        $order->forceFill(['created_at' => now()->subDays(91), 'updated_at' => now()->subDays(91)])->save();
+        $leg = OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $component->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Pending->value,
+        ]);
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $leg->fresh()->status);
         Bus::assertNotDispatched(CheckSupplierDeliveryJob::class);
     }
 }

@@ -382,7 +382,11 @@ final class OrderFulfillmentService
      * ADR-094 decision 9: rolls every leg's current status up into the
      * order's own delivery_status. Precedence, most conservative first:
      *
-     *  - any leg Pending → order Pending (still genuinely in flight).
+     *  - any leg Pending → order Pending (still genuinely in flight;
+     *    a no-op if the order is already sitting at Pending itself —
+     *    re-evaluating an incomplete leg set from a Phase 3b webhook/
+     *    poll call must never re-throw markPending()'s Processing-only
+     *    guard).
      *  - any leg NeedsReview → order NeedsReview (real ambiguity always
      *    wins — never guess a duplicate_reference leg either way).
      *  - every leg Delivered → order Delivered (credit profit once,
@@ -396,6 +400,15 @@ final class OrderFulfillmentService
      *    delivery case: the player already has some of the goods, a
      *    human must decide (Issue Voucher for the failed leg's value,
      *    never an automated partial compensation).
+     *
+     * Callable from two entry states — Processing (fulfillCombo()'s own
+     * synchronous pass) or Pending (Phase 3b's finalizePendingDeliveryLeg(),
+     * once a webhook/poll resolves one of possibly several Digiflazz
+     * legs an earlier pass left Pending) — so every Delivered/Failed
+     * transition dispatches to whichever of markDelivered()/
+     * finalizePendingSuccess() (or markDeliveryFailed()/
+     * finalizePendingFailure()) actually matches the order's current
+     * state, rather than assuming Processing.
      */
     private function resolveComboOutcome(Order $order): Order
     {
@@ -406,9 +419,17 @@ final class OrderFulfillmentService
             // first so `status` comes back as DeliveryStatus, not a bare
             // string the comparisons below would never match.
             $statuses = OrderDeliveryLeg::query()->where('order_id', $locked->id)->get()->pluck('status');
+            $enteringFromPending = $locked->delivery_status === DeliveryStatus::Pending;
 
             if ($statuses->contains(DeliveryStatus::Pending)) {
-                $locked->update(['delivery_status' => $this->orderStatus->markPending($locked->delivery_status)->value]);
+                // Still incomplete. Only Processing→Pending is a real
+                // transition; Pending re-evaluated as still-Pending
+                // (another leg resolved but at least one remains) is a
+                // deliberate no-op — markPending() only accepts
+                // Processing as its source.
+                if (! $enteringFromPending) {
+                    $locked->update(['delivery_status' => $this->orderStatus->markPending($locked->delivery_status)->value]);
+                }
 
                 return $locked->fresh();
             }
@@ -420,8 +441,12 @@ final class OrderFulfillmentService
             }
 
             if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Delivered)) {
+                $newStatus = $enteringFromPending
+                    ? $this->orderStatus->finalizePendingSuccess($locked->delivery_status)
+                    : $this->orderStatus->markDelivered($locked->delivery_status);
+
                 $locked->update([
-                    'delivery_status' => $this->orderStatus->markDelivered($locked->delivery_status)->value,
+                    'delivery_status' => $newStatus->value,
                     'delivered_at' => now(),
                 ]);
 
@@ -432,17 +457,91 @@ final class OrderFulfillmentService
             }
 
             if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Failed)) {
-                $locked->update(['delivery_status' => $this->orderStatus->markDeliveryFailed($locked->delivery_status)->value]);
+                $newStatus = $enteringFromPending
+                    ? $this->orderStatus->finalizePendingFailure($locked->delivery_status)
+                    : $this->orderStatus->markDeliveryFailed($locked->delivery_status);
+
+                $locked->update(['delivery_status' => $newStatus->value]);
 
                 return $locked->fresh();
             }
 
             // Mixed Delivered + Failed, no Pending/NeedsReview present —
-            // decision 9's partial-delivery case.
+            // decision 9's partial-delivery case. markNeedsReview()
+            // already accepts Processing, Failed, *and* Pending as a
+            // source, so no dispatch is needed here.
             $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
 
             return $locked->fresh();
         });
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): the leg-level counterpart to
+     * finalizePendingDelivery() — reached by DigiflazzWebhookController
+     * (primary, after parsing the -L{n} suffix) or
+     * CheckSupplierDeliveryJob's combo branch (poll backup), never
+     * called directly from fulfillCombo() itself. $outcome must be
+     * Success or Failure, same restriction finalizePendingDelivery()
+     * itself enforces.
+     *
+     * Idempotent by construction: OrderStatusService::finalizePendingSuccess()/
+     * finalizePendingFailure() both require the LEG to currently be
+     * Pending, so a duplicate webhook delivery for the same leg observes
+     * the already-advanced state and throws InvalidOrderTransitionException
+     * — same guard finalizePendingDelivery() already relies on at the
+     * order level, reused here unchanged since both operate on a plain
+     * DeliveryStatus value.
+     */
+    public function finalizePendingDeliveryLeg(OrderDeliveryLeg $leg, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null): Order
+    {
+        if ($outcome === SupplierOutcome::Pending) {
+            throw new OrderFulfillmentException(
+                "finalizePendingDeliveryLeg() cannot be called with outcome=pending for leg #{$leg->id} — a Pending leg is not yet finalized",
+            );
+        }
+
+        $order = $leg->order;
+        $drawdownPrice = null;
+
+        DB::transaction(function () use ($leg, $outcome, $supplierRef, $supplierResponse, &$drawdownPrice) {
+            $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
+
+            Log::withContext(['order_delivery_leg_id' => $lockedLeg->id, 'leg_number' => $lockedLeg->leg_number]);
+
+            if ($outcome === SupplierOutcome::Success) {
+                $deliveredStatus = $this->orderStatus->finalizePendingSuccess($lockedLeg->status);
+
+                $lockedLeg->update([
+                    'status' => $deliveredStatus->value,
+                    'supplier_reference' => $supplierRef ?? $lockedLeg->supplier_reference,
+                    'delivered_at' => now(),
+                ]);
+
+                Log::info('Combo leg finalized as delivered');
+
+                if (is_array($supplierResponse) && isset($supplierResponse['price'])) {
+                    $drawdownPrice = (float) $supplierResponse['price'];
+                }
+
+                return;
+            }
+
+            $failedStatus = $this->orderStatus->finalizePendingFailure($lockedLeg->status);
+
+            $lockedLeg->update([
+                'status' => $failedStatus->value,
+                'failure_reason' => is_array($supplierResponse) ? ($supplierResponse['error_message'] ?? null) : null,
+            ]);
+
+            Log::warning('Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
+        });
+
+        if ($drawdownPrice !== null) {
+            $this->supplierFunding->recordOrderDrawdown($order, $drawdownPrice, $leg->fresh());
+        }
+
+        return $this->resolveComboOutcome($order->fresh());
     }
 
     /**

@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOutcome;
@@ -48,6 +50,16 @@ final class CheckSupplierDeliveryJob implements ShouldQueue
     {
         Log::withContext(['order_number' => $this->order->order_number]);
 
+        // ADR-094 decision 7 (Phase 3b): a combo order has no
+        // supplier_id/supplier_product_ref of its own (decision 3) —
+        // each still-Pending leg gets its own checkStatus() call,
+        // scoped to that leg's own component package/supplier.
+        if ($this->order->package?->is_combo) {
+            $this->checkComboLegs($supplierAdapters, $fulfillment);
+
+            return;
+        }
+
         $adapter = $supplierAdapters->make($this->order->supplier->slug);
 
         // ADR-030 decision 1 / ADR-032 addendum: checkStatus() is a
@@ -89,6 +101,63 @@ final class CheckSupplierDeliveryJob implements ShouldQueue
             // a job failure. Same reasoning as FulfillOrderJob's own
             // already-advanced guard.
             Log::info('CheckSupplierDeliveryJob skipped: order already finalized', ['reason' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): one checkStatus() call per
+     * still-Pending leg — decision 4's same-supplier-only constraint
+     * means every leg resolves to the same adapter, but each carries
+     * its own reference (`{order.reference_number}-L{n}`) and
+     * component productRef, so a status check for one leg is never
+     * conflated with another.
+     */
+    private function checkComboLegs(SupplierAdapterFactory $supplierAdapters, OrderFulfillmentService $fulfillment): void
+    {
+        $pendingLegs = OrderDeliveryLeg::query()
+            ->where('order_id', $this->order->id)
+            ->where('status', DeliveryStatus::Pending->value)
+            ->with('componentPackage.supplier')
+            ->get();
+
+        foreach ($pendingLegs as $leg) {
+            $component = $leg->componentPackage;
+            $adapter = $supplierAdapters->make($component->supplier->slug);
+
+            $result = $adapter->checkStatus(new SupplierStatusCheckRequest(
+                supplierRef: "{$this->order->reference_number}-L{$leg->leg_number}",
+                productRef: $component->supplier_package_ref,
+                playerId: $this->order->player_id,
+                serverId: $this->order->server_id,
+                orderId: $this->order->id,
+            ));
+
+            try {
+                match ($result->outcome) {
+                    SupplierOutcome::Success => $fulfillment->finalizePendingDeliveryLeg(
+                        $leg,
+                        SupplierOutcome::Success,
+                        $result->data['supplier_ref'] ?? null,
+                        $result->data,
+                    ),
+                    SupplierOutcome::Failure => $fulfillment->finalizePendingDeliveryLeg(
+                        $leg,
+                        SupplierOutcome::Failure,
+                        null,
+                        ['error_code' => $result->errorCode, 'error_message' => $result->errorMessage],
+                    ),
+                    // Still-Pending stays for the next run — not an error.
+                    SupplierOutcome::Pending => null,
+                };
+            } catch (InvalidOrderTransitionException $e) {
+                // A webhook already finalized this leg before this
+                // poll's own lock acquisition — expected outcome, same
+                // reasoning as the plain-order branch above.
+                Log::info('CheckSupplierDeliveryJob skipped a combo leg: already finalized', [
+                    'leg_id' => $leg->id,
+                    'reason' => $e->getMessage(),
+                ]);
+            }
         }
     }
 }
