@@ -174,6 +174,45 @@ class OrderResendServiceTest extends TestCase
         $this->service($this->fakeSupplierAdapter(true))->resend($order, $inactivePackage, null, 'Admin');
     }
 
+    /**
+     * ADR-094 decision 10: this package-swap tool assumes exactly one
+     * supplier_product_ref to copy onto the Order — nonsensical for a
+     * combo. Rejected on either side of the swap; the ordinary "Resend
+     * Delivery" retry (no swap) stays the correct tool for a combo
+     * order instead.
+     */
+    public function test_rejects_swapping_a_combo_order_to_a_different_package(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $comboOrderPackage = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true, 'is_active' => true,
+            'denomination' => 100, 'cost_price' => 900, 'standard_selling_price' => 900, 'markup_percent' => 0,
+        ]);
+        $targetPackage = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $comboOrderPackage, $supplier, ['supplier_id' => null, 'supplier_product_ref' => null]);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))->resend($order, $targetPackage, null, 'Admin');
+    }
+
+    public function test_rejects_swapping_a_plain_order_to_a_combo_package(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $comboTarget = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true, 'is_active' => true,
+            'denomination' => 100, 'cost_price' => 900, 'standard_selling_price' => 900, 'markup_percent' => 0,
+        ]);
+        $order = $this->failedOrder($game, $package, $supplier);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))->resend($order, $comboTarget, null, 'Admin');
+    }
+
     public function test_rejects_an_order_that_is_not_currently_failed(): void
     {
         $supplier = $this->supplier();

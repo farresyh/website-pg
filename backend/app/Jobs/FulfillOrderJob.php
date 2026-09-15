@@ -46,7 +46,12 @@ final class FulfillOrderJob implements ShouldQueue
         // property — Queueable already declares that property, and PHP
         // rejects a class re-declaring a trait property with a
         // different default.
-        $this->onQueue('orders');
+        //
+        // ADR-094 decision 8: a combo order (up to 3 sequential supplier
+        // calls, decision 20) routes to its own queue/timeout tier
+        // (config/horizon.php's supervisor-orders-combo, 180s) instead of
+        // supervisor-orders' 60s — sized for one HTTP call.
+        $this->onQueue($order->package?->is_combo ? 'orders-combo' : 'orders');
     }
 
     public function backoff(): array

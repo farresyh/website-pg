@@ -3,9 +3,11 @@
 namespace App\Services\Fulfillment;
 
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -60,6 +62,14 @@ final class OrderFulfillmentService
      */
     public function fulfill(Order $order): Order
     {
+        // ADR-094 decision 7: a combo order (Order.package.is_combo)
+        // diverts to its own leg-loop sub-flow before any of the
+        // single-ref guards below — it has no supplier_product_ref/
+        // supplier_id of its own to check (ADR-094 decision 3).
+        if ($order->package?->is_combo) {
+            return $this->fulfillCombo($order);
+        }
+
         // ADR-083 decision 3 — captured here, written to the supplier
         // funding ledger only AFTER the transaction below commits (see
         // the bottom of this method). Stays null unless the Success
@@ -202,6 +212,237 @@ final class OrderFulfillmentService
         }
 
         return $delivered;
+    }
+
+    /**
+     * ADR-094 decision 7: the combo counterpart to fulfill()'s
+     * single-supplier-call path. Three short, separately-committed
+     * steps rather than one transaction spanning the whole order —
+     * holding lockForUpdate() across up to 3 outbound HTTP round-trips
+     * (decision 20's leg cap) would be the exact lock-contention class
+     * ADR-077 already fixed once in production:
+     *
+     *  1. Advance the order to Processing and seed `order_delivery_legs`
+     *     from `package->components` on the first attempt only (a retry
+     *     finds its legs already there and reuses them — decision 7's
+     *     idempotent-by-construction leg loop).
+     *  2. Attempt every not-yet-terminal leg exactly once, each its own
+     *     short lock+transaction+one-HTTP-call cycle, in `leg_number`
+     *     order.
+     *  3. Aggregate the legs' resulting statuses into the order's own
+     *     delivery_status (resolveComboOutcome()).
+     */
+    private function fulfillCombo(Order $order): Order
+    {
+        DB::transaction(function () use ($order) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            $processingStatus = $this->orderStatus->startDelivery($locked->payment_status, $locked->delivery_status);
+            $referenceNumber = $this->referenceNumbers->resolve($locked->reference_number);
+
+            Log::withContext(['reference_number' => $referenceNumber]);
+
+            $locked->update([
+                'reference_number' => $referenceNumber,
+                'delivery_status' => $processingStatus->value,
+            ]);
+
+            if (! OrderDeliveryLeg::query()->where('order_id', $locked->id)->exists()) {
+                $this->seedDeliveryLegs($locked);
+            }
+        });
+
+        $order = $order->fresh();
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+
+        foreach ($legs as $leg) {
+            // Delivered = already succeeded; Pending = already submitted,
+            // awaiting an async supplier confirmation (Digiflazz) —
+            // neither is ever re-submitted. Everything else (NotStarted,
+            // Failed) gets exactly one attempt this pass, same "one call
+            // per invocation" discipline fulfill() itself uses.
+            if (in_array($leg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
+                continue;
+            }
+
+            $this->attemptLeg($order, $leg);
+        }
+
+        return $this->resolveComboOutcome($order);
+    }
+
+    /**
+     * ADR-094 decision 1/4: one row per real leg — `package_components`
+     * quantity > 1 (a repeated component) expands into that many leg
+     * rows here, not a single row with a multiplier, so each one gets
+     * its own `leg_number`/idempotency key/supplier_reference.
+     */
+    private function seedDeliveryLegs(Order $order): void
+    {
+        $legNumber = 1;
+
+        foreach ($order->package->components as $component) {
+            $quantity = (int) $component->pivot->quantity;
+
+            for ($i = 0; $i < $quantity; $i++) {
+                OrderDeliveryLeg::query()->create([
+                    'order_id' => $order->id,
+                    'component_package_id' => $component->id,
+                    'supplier_id' => $component->supplier_id,
+                    'leg_number' => $legNumber,
+                    'status' => DeliveryStatus::NotStarted->value,
+                ]);
+
+                $legNumber++;
+            }
+        }
+    }
+
+    /**
+     * ADR-094 decision 7/26 (idempotency key): `{reference_number}-L{n}`
+     * extends the existing ORD-8 scheme rather than replacing it — one
+     * real supplier call, one leg row updated, its own short
+     * lock+transaction. ADR-026's duplicate_reference ambiguity applies
+     * per leg exactly as it does per order: routes to NeedsReview, never
+     * a plain Failed, since it's evidence a prior attempt for *this leg's*
+     * reference already reached the supplier.
+     */
+    private function attemptLeg(Order $order, OrderDeliveryLeg $leg): void
+    {
+        $drawdownPrice = null;
+        $legId = $leg->id;
+
+        DB::transaction(function () use ($order, $leg, &$drawdownPrice) {
+            $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
+
+            if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
+                // Lost a race with another attempt at this same leg —
+                // nothing to do, the other attempt already owns it.
+                return;
+            }
+
+            $component = $lockedLeg->componentPackage;
+            $adapter = $this->supplierAdapters->make($component->supplier->slug);
+            $legReferenceNumber = "{$order->reference_number}-L{$lockedLeg->leg_number}";
+
+            Log::withContext(['reference_number' => $legReferenceNumber]);
+
+            $result = $adapter->createOrder(new SupplierOrderRequest(
+                productRef: $component->supplier_package_ref,
+                referenceNumber: $legReferenceNumber,
+                playerId: $order->player_id,
+                serverId: $order->server_id,
+                customerPhone: $order->customer_phone,
+                orderId: $order->id,
+            ));
+
+            if ($result->outcome === SupplierOutcome::Pending) {
+                $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
+
+                Log::info('Combo leg pending — awaiting async supplier confirmation', ['leg_id' => $lockedLeg->id]);
+
+                return;
+            }
+
+            if ($result->outcome === SupplierOutcome::Failure) {
+                $isDuplicateReference = $result->errorCode === 'duplicate_reference';
+
+                $lockedLeg->update([
+                    'status' => $isDuplicateReference ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
+                    'failure_reason' => $result->errorMessage,
+                ]);
+
+                Log::warning($isDuplicateReference ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
+                    'leg_id' => $lockedLeg->id,
+                    'error_code' => $result->errorCode,
+                    'error_message' => $result->errorMessage,
+                ]);
+
+                return;
+            }
+
+            $lockedLeg->update([
+                'status' => DeliveryStatus::Delivered->value,
+                'supplier_reference' => $result->data['supplier_ref'] ?? null,
+                'delivered_at' => now(),
+            ]);
+
+            if (isset($result->data['price'])) {
+                $drawdownPrice = (float) $result->data['price'];
+            }
+        });
+
+        if ($drawdownPrice !== null) {
+            $this->supplierFunding->recordOrderDrawdown($order, $drawdownPrice, $leg->fresh());
+        }
+    }
+
+    /**
+     * ADR-094 decision 9: rolls every leg's current status up into the
+     * order's own delivery_status. Precedence, most conservative first:
+     *
+     *  - any leg Pending → order Pending (still genuinely in flight).
+     *  - any leg NeedsReview → order NeedsReview (real ambiguity always
+     *    wins — never guess a duplicate_reference leg either way).
+     *  - every leg Delivered → order Delivered (credit profit once,
+     *    commit any reserved voucher once — order-level, not per-leg,
+     *    since platform_profit/affiliate_profit were already frozen
+     *    onto the Order as one figure at checkout, ORD-9).
+     *  - every leg Failed → order Failed (clean, ordinary failure —
+     *    nothing was delivered, "Resend Delivery" retries normally).
+     *  - otherwise (a genuine mix of Delivered + Failed, no Pending/
+     *    NeedsReview) → order NeedsReview — decision 9's actual partial-
+     *    delivery case: the player already has some of the goods, a
+     *    human must decide (Issue Voucher for the failed leg's value,
+     *    never an automated partial compensation).
+     */
+    private function resolveComboOutcome(Order $order): Order
+    {
+        return DB::transaction(function () use ($order) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+            // A query-builder pluck() reads the raw column, bypassing the
+            // model's enum cast — get()->pluck() hydrates real models
+            // first so `status` comes back as DeliveryStatus, not a bare
+            // string the comparisons below would never match.
+            $statuses = OrderDeliveryLeg::query()->where('order_id', $locked->id)->get()->pluck('status');
+
+            if ($statuses->contains(DeliveryStatus::Pending)) {
+                $locked->update(['delivery_status' => $this->orderStatus->markPending($locked->delivery_status)->value]);
+
+                return $locked->fresh();
+            }
+
+            if ($statuses->contains(DeliveryStatus::NeedsReview)) {
+                $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
+
+                return $locked->fresh();
+            }
+
+            if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Delivered)) {
+                $locked->update([
+                    'delivery_status' => $this->orderStatus->markDelivered($locked->delivery_status)->value,
+                    'delivered_at' => now(),
+                ]);
+
+                $this->creditProfit($locked);
+                $this->vouchers->commit($locked->id);
+
+                return $locked->fresh();
+            }
+
+            if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Failed)) {
+                $locked->update(['delivery_status' => $this->orderStatus->markDeliveryFailed($locked->delivery_status)->value]);
+
+                return $locked->fresh();
+            }
+
+            // Mixed Delivered + Failed, no Pending/NeedsReview present —
+            // decision 9's partial-delivery case.
+            $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
+
+            return $locked->fresh();
+        });
     }
 
     /**
