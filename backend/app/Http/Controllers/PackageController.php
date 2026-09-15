@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Games\StoreComboPackageRequest;
+use App\Http\Requests\Games\UpdateComboPackageOverrideRequest;
 use App\Http\Requests\Games\UpdatePackageCatalogCodeRequest;
 use App\Http\Requests\Games\UpdatePackageDenominationRequest;
 use App\Http\Requests\Games\UpdatePackageMarkupRequest;
@@ -10,6 +11,7 @@ use App\Http\Requests\Games\UpdatePackageRequest;
 use App\Http\Requests\Games\UpdatePackageStatusRequest;
 use App\Models\Game;
 use App\Models\Package;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -26,55 +28,25 @@ use Illuminate\Support\Facades\DB;
 class PackageController extends Controller
 {
     /**
-     * ADR-094 decisions 1-6, 18-20: assembles a combo Package from its
+     * ADR-094 decisions 1-4, 18-20: assembles a combo Package from its
      * `components` — no supplier call, no `supplier_id`/
-     * `supplier_package_ref` of its own (decision 3). Pricing follows
-     * decision 5's hybrid default exactly: `cost_price`/`denomination`/
-     * `standard_selling_price` are the literal sum of each component's
-     * own already-computed value (×`quantity`); `markup_percent` is
-     * stored as the resulting cost-weighted blend (decision 5's own
-     * rationale — "a blend of the components' own markup_percent, not
-     * a new number"), purely for display/reporting consistency, never
-     * used to recompute `standard_selling_price` for a combo. The
-     * per-combo override (decision 5's second half) is a later admin
-     * edit, not part of creation.
+     * `supplier_package_ref` of its own (decision 3). Pricing itself
+     * is `ComboPricingService::recompute()`'s job (decision 5/6) — the
+     * same computation Price Sync's own per-component-change hook
+     * reuses, not duplicated here.
      */
-    public function storeCombo(StoreComboPackageRequest $request, Game $game): JsonResponse
+    public function storeCombo(StoreComboPackageRequest $request, Game $game, ComboPricingService $comboPricing): JsonResponse
     {
         $validated = $request->validated();
 
-        $componentPackages = Package::query()
-            ->whereIn('id', collect($validated['components'])->pluck('package_id'))
-            ->get()
-            ->keyBy('id');
-
-        $costPrice = 0;
-        $sellingPrice = 0;
-        $denomination = 0;
-        $supplierId = null;
-
-        foreach ($validated['components'] as $component) {
-            $package = $componentPackages->get($component['package_id']);
-            $quantity = $component['quantity'];
-
-            $costPrice += $package->cost_price * $quantity;
-            $sellingPrice += $package->standard_selling_price * $quantity;
-            $denomination += $package->denomination * $quantity;
-            $supplierId ??= $package->supplier_id;
-        }
-
-        $markupPercent = $costPrice > 0
-            ? round((($sellingPrice - $costPrice) / $costPrice) * 100, 2)
-            : 0;
-
-        $combo = DB::transaction(function () use ($game, $validated, $costPrice, $sellingPrice, $denomination, $markupPercent) {
+        $combo = DB::transaction(function () use ($game, $validated, $comboPricing) {
             $combo = Package::query()->create([
                 'game_id' => $game->id,
                 'name' => $validated['name'],
-                'denomination' => $denomination,
-                'cost_price' => $costPrice,
-                'standard_selling_price' => $sellingPrice,
-                'markup_percent' => $markupPercent,
+                'denomination' => 0,
+                'cost_price' => 0,
+                'standard_selling_price' => 0,
+                'markup_percent' => 0,
                 'is_active' => true,
                 'is_combo' => true,
                 'supplier_id' => null,
@@ -88,12 +60,29 @@ class PackageController extends Controller
                 ]);
             }
 
+            $comboPricing->recompute($combo);
+
             return $combo;
         });
 
         GameController::forgetPackagesCache($game->id);
 
         return response()->json($combo->load('components'), 201);
+    }
+
+    /**
+     * ADR-094 decision 5's second half: an admin deliberately prices a
+     * specific combo more aggressively or more profitably than the
+     * default sum-of-components price. Setting both fields to null
+     * reverts to that default on the next recompute (immediate, here).
+     */
+    public function updateComboOverride(UpdateComboPackageOverrideRequest $request, Package $package, ComboPricingService $comboPricing): JsonResponse
+    {
+        $package->update($request->validated());
+        $comboPricing->recompute($package);
+        GameController::forgetPackagesCache($package->game_id);
+
+        return response()->json($package->load('components'));
     }
 
     public function update(UpdatePackageRequest $request, Package $package): JsonResponse

@@ -123,6 +123,32 @@ class PendingPriceChangeControllerTest extends TestCase
         $this->assertSame(1600, $log->new_cost_price);
     }
 
+    /**
+     * ADR-094 decision 6: approve() bypasses PackagePriceSyncService's
+     * own propagatePrice() entirely — without its own explicit hook, a
+     * combo referencing this package would silently go stale.
+     */
+    public function test_approve_recomputes_a_dependent_combo(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->flaggedPackage($supplier, $game, ['denomination' => 14]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 14, 'cost_price' => 1000, 'standard_selling_price' => 1150, 'markup_percent' => 0,
+        ]);
+        $combo->components()->attach($package->id, ['quantity' => 1, 'sort_order' => 0]);
+        $pending = $this->pendingChange($package, ['proposed_cost_price' => 1600, 'proposed_standard_selling_price' => 1840]);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/middleware/price-sync/pending-price-changes/{$pending->id}/approve")->assertOk();
+
+        $combo->refresh();
+        $this->assertSame(1600, $combo->cost_price);
+        $this->assertSame(1840, $combo->standard_selling_price);
+        $this->assertSame(2, PriceChangeLog::query()->count()); // the component's own row + the combo's
+    }
+
     public function test_approve_rejects_a_row_that_is_not_pending(): void
     {
         $supplier = $this->supplier();

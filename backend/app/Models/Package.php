@@ -31,6 +31,8 @@ class Package extends Model
         'supplier_package_ref',
         'sort_order',
         'is_combo',
+        'combo_override_markup_percent',
+        'combo_override_price',
     ];
 
     protected $casts = [
@@ -42,6 +44,8 @@ class Package extends Model
         'deactivated_at' => 'datetime',
         'sort_order' => 'integer',
         'is_combo' => 'boolean',
+        'combo_override_markup_percent' => 'decimal:2',
+        'combo_override_price' => 'integer',
     ];
 
     public function game(): BelongsTo

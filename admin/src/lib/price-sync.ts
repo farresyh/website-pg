@@ -60,7 +60,7 @@ export interface PriceSyncStats {
 export interface SyncDetailsGame {
   game: { id: number; name: string } | null;
   price_changes: Array<{
-    package: { id: number; name: string };
+    package: { id: number; name: string; code: number | string | null; is_combo: boolean };
     old_cost_price: number;
     new_cost_price: number;
     old_standard_selling_price: number;
