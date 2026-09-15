@@ -20,7 +20,7 @@ final class OrderStatusService
         // ADR-026 decision 4b: NeedsReview allows re-entry so "Resend
         // Delivery" works from that state too, same as the existing
         // Failed retry path.
-        if (!in_array($currentDeliveryStatus, [DeliveryStatus::NotStarted, DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
+        if (! in_array($currentDeliveryStatus, [DeliveryStatus::NotStarted, DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
             throw new InvalidOrderTransitionException(
                 "Cannot start delivery: delivery_status is already {$currentDeliveryStatus->value}",
             );
@@ -65,7 +65,7 @@ final class OrderStatusService
      */
     public function markNeedsReview(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
     {
-        if (!in_array($currentDeliveryStatus, [DeliveryStatus::Processing, DeliveryStatus::Failed, DeliveryStatus::Pending], true)) {
+        if (! in_array($currentDeliveryStatus, [DeliveryStatus::Processing, DeliveryStatus::Failed, DeliveryStatus::Pending], true)) {
             throw new InvalidOrderTransitionException(
                 "Cannot mark needs review: delivery_status is {$currentDeliveryStatus->value}, must be processing, failed, or pending",
             );
@@ -92,6 +92,31 @@ final class OrderStatusService
         }
 
         return DeliveryStatus::Delivered;
+    }
+
+    /**
+     * ADR-026 addendum (2026-09-16, found shipping ADR-098) — the exit
+     * decision 4c's own rationale always assumed existed ("An admin
+     * must resolve the order to Delivered or a genuine Failed first")
+     * but was never actually built: retry (markNeedsReview's own
+     * Processing-reentry path) can structurally never resolve a
+     * transactionAlreadyFormed order (ADR-098) — the same reference
+     * only ever replays the stored result — and Mark Delivered would be
+     * a false claim. Deliberately only reachable from NeedsReview, same
+     * discipline as markDeliveredManually() above — an admin's own
+     * "I've confirmed this genuinely failed" claim is exactly as
+     * consequential as their "I've confirmed this was delivered" claim,
+     * and gets the same guarded, single-purpose transition.
+     */
+    public function markNeedsReviewAsFailed(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
+    {
+        if ($currentDeliveryStatus !== DeliveryStatus::NeedsReview) {
+            throw new InvalidOrderTransitionException(
+                "Cannot confirm delivery failed: delivery_status is {$currentDeliveryStatus->value}, must be needs_review",
+            );
+        }
+
+        return DeliveryStatus::Failed;
     }
 
     /**

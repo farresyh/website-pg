@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ConfirmOrderDeliveryFailedRequest;
 use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\Middleware\CreateSandboxOrderRequest;
 use App\Http\Requests\Middleware\ResendSandboxOrderDeliveryRequest;
@@ -202,6 +203,32 @@ class SandboxOrderController extends Controller
         $result = $fulfillment->markDeliveredManually(
             $order,
             $request->validated('supplier_ref'),
+            $request->validated('note'),
+            $request->user()?->name ?? 'Sandbox Tester',
+        );
+
+        return response()->json($result->fresh(['game', 'package', 'supplier', 'affiliate', 'resendAttempts']));
+    }
+
+    /**
+     * ADR-026 addendum (2026-09-16) sandbox counterpart — same
+     * OrderFulfillmentService::confirmDeliveryFailed() a real
+     * needs_review order uses. No voucher-exists check, no partial-
+     * combo-delivery check, unlike the real controller's — sandbox has
+     * no voucher feature and never builds a combo order.
+     */
+    public function confirmFailed(ConfirmOrderDeliveryFailedRequest $request, Order $order, OrderFulfillmentService $fulfillment): JsonResponse
+    {
+        $this->assertIsSandboxOrder($order);
+
+        if ($order->delivery_status !== DeliveryStatus::NeedsReview) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['Only a test order in needs-review can be confirmed failed.'],
+            ]);
+        }
+
+        $result = $fulfillment->confirmDeliveryFailed(
+            $order,
             $request->validated('note'),
             $request->user()?->name ?? 'Sandbox Tester',
         );

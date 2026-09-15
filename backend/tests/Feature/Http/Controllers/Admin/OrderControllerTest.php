@@ -390,6 +390,23 @@ class OrderControllerTest extends TestCase
         $response->assertJsonCount(0, 'delivery_legs');
     }
 
+    /** ADR-026 addendum (2026-09-16) — drives the admin panel's Resend Delivery futility warning. */
+    public function test_show_delivery_retry_likely_futile_true_for_a_digiflazz_terminal_rc(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('delivery_retry_likely_futile', true);
+    }
+
     public function test_show_returns_404_for_a_nonexistent_order(): void
     {
         $this->actingAsAdmin();
@@ -857,6 +874,151 @@ class OrderControllerTest extends TestCase
         $order = $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
 
         $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])->assertUnauthorized();
+    }
+
+    /**
+     * ADR-026 addendum (2026-09-16) — the exit decision 4c's own text
+     * always assumed existed but was never built: retry can never
+     * change a transactionAlreadyFormed order (ADR-098), so without
+     * this, that class of order has no way to ever unlock Issue
+     * Voucher.
+     */
+    public function test_confirm_failed_transitions_a_needs_review_order_to_failed(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", [
+            'note' => 'Same rc=02 replayed 3x on the same reference — confirmed dead via request logs.',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('delivery_status', 'failed');
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+        $this->assertSame('02', $order->fresh()->supplier_response['error_code']);
+        $response->assertJsonStructure(['game', 'package', 'supplier', 'affiliate', 'voucher']);
+    }
+
+    public function test_confirm_failed_requires_a_note(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", []);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('note');
+    }
+
+    public function test_confirm_failed_rejects_an_order_that_is_not_needs_review(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note']);
+
+        $response->assertUnprocessable();
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
+    public function test_confirm_failed_rejects_an_order_with_an_already_issued_voucher(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        Voucher::query()->create([
+            'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
+            'code' => 'KRS-CONFIRM-FAILED-GUARD',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note']);
+
+        $response->assertUnprocessable();
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    public function test_confirm_failed_404s_for_a_sandbox_order(): void
+    {
+        $order = $this->order([
+            'is_test' => true,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        $this->actingAsAdmin();
+
+        $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note'])->assertNotFound();
+    }
+
+    public function test_confirm_failed_requires_authentication(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note'])->assertUnauthorized();
+    }
+
+    /**
+     * ADR-094 decision 9's own carve-out (already established for Issue
+     * Voucher's custom-amount path) applies here too: a genuine
+     * partial-delivery combo order must never have "confirm failed"
+     * applied to the WHOLE order — some legs really did deliver.
+     */
+    public function test_confirm_failed_rejects_a_partial_combo_delivery_order(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-confirm-failed-test', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-confirm-failed-test']);
+        $delivered = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000, 'markup_percent' => 10,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $failed = Package::query()->create([
+            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
+            'cost_price' => 25000, 'standard_selling_price' => 27500, 'markup_percent' => 10,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500, 'markup_percent' => 10,
+        ]);
+        $order = $this->order([
+            'package_id' => $combo->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'final_amount' => 71500 + 90,
+            'transaction_fee' => 90,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note']);
+
+        $response->assertUnprocessable();
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
     }
 
     /** ADR-073 decision 7: makes a wallet Reseller + its ledger account, mirrors order()'s helper shape. */

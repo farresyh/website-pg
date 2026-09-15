@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
+use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -94,19 +95,37 @@ class ReconcilePendingDeliveriesCommand extends Command
     }
 
     /**
-     * Gap Y catch-up. Row-locked despite this command only ever running
-     * as a single scheduled instance — same discipline this codebase
-     * applies to every other order-state mutation (backend/CLAUDE.md).
+     * Gap Y catch-up — widened by ADR-098 to also catch a stale Failed
+     * order carrying one of Digiflazz's own "Terbentuk Transaksi=Ya"
+     * rc codes (`DigiflazzAdapter::TRANSACTION_ALREADY_FORMED_RC_CODES`,
+     * the single source of truth, never a second hand-copied list),
+     * not just Gamevion's literal `'duplicate_reference'` string. The
+     * rc-code branch is supplier-scoped (`whereHas('supplier', ...
+     * digiflazz)`) — Gamevion's own `failureFrom()` can set `error_code`
+     * from an arbitrary, unbounded string in Gamevion's own response
+     * body, so an unscoped `error_code IN (...)` match against
+     * Digiflazz's numeric codes risks misclassifying an unrelated
+     * Gamevion failure that happens to share the same string.
+     *
+     * Row-locked despite this command only ever running as a single
+     * scheduled instance — same discipline this codebase applies to
+     * every other order-state mutation (backend/CLAUDE.md).
      */
     private function flagStaleDuplicateReferences(int $staleAfterMinutes, OrderStatusService $orderStatus): void
     {
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Failed->value)
-            ->where('supplier_response->error_code', 'duplicate_reference')
             ->where('updated_at', '<=', now()->subMinutes($staleAfterMinutes))
+            ->where(function ($query) {
+                $query->where('supplier_response->error_code', 'duplicate_reference')
+                    ->orWhere(function ($query) {
+                        $query->whereIn('supplier_response->error_code', DigiflazzAdapter::TRANSACTION_ALREADY_FORMED_RC_CODES)
+                            ->whereHas('supplier', fn ($q) => $q->where('slug', 'digiflazz'));
+                    });
+            })
             ->get();
 
-        $this->info("Flagging {$orders->count()} stale duplicate-reference delivery(ies) for review...");
+        $this->info("Flagging {$orders->count()} stale unretriable delivery(ies) for review...");
 
         foreach ($orders as $order) {
             DB::transaction(function () use ($order, $orderStatus) {
@@ -121,7 +140,7 @@ class ReconcilePendingDeliveriesCommand extends Command
                 $locked->update(['delivery_status' => $needsReview->value]);
 
                 Log::withContext(['order_number' => $locked->order_number]);
-                Log::warning('Delivery reconciliation: flagged stale duplicate_reference for manual review');
+                Log::warning('Delivery reconciliation: flagged stale unretriable delivery for manual review');
             });
         }
     }

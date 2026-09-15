@@ -152,14 +152,36 @@ class DigiflazzWebhookControllerTest extends TestCase
         $this->assertEquals(1234, $this->digiflazzSupplier()->fresh()->balance);
     }
 
+    /** ADR-098 — rc=44 (Saldo tidak cukup) has Terbentuk Transaksi=Tidak, genuinely retriable, so it stays a plain Failed. */
     public function test_a_gagal_callback_finalizes_the_pending_order_as_failed(): void
+    {
+        $order = $this->pendingOrder();
+
+        $this->sendWebhook($this->suksesData($order, ['status' => 'Gagal', 'rc' => '44', 'message' => 'Saldo tidak cukup', 'sn' => null]))
+            ->assertOk();
+
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+        $this->assertDatabaseMissing('ledger_entries', [
+            'reference_id' => $order->id,
+            'type' => 'order_profit',
+        ]);
+    }
+
+    /**
+     * ADR-098 — rc=02 "Transaksi Gagal" has Terbentuk Transaksi=Ya:
+     * Digiflazz already recorded a transaction for this reference, so a
+     * resubmit can only replay it, never reprocess. Routes to
+     * needs_review, not a plain resendable Failed. Real incident: order
+     * PG-JLOMUJ1H23NE.
+     */
+    public function test_a_terminal_rc_gagal_callback_finalizes_the_pending_order_as_needs_review(): void
     {
         $order = $this->pendingOrder();
 
         $this->sendWebhook($this->suksesData($order, ['status' => 'Gagal', 'rc' => '02', 'sn' => null]))
             ->assertOk();
 
-        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
         $this->assertDatabaseMissing('ledger_entries', [
             'reference_id' => $order->id,
             'type' => 'order_profit',
@@ -417,6 +439,7 @@ class DigiflazzWebhookControllerTest extends TestCase
         ]);
     }
 
+    /** ADR-098 — rc=44 is genuinely retriable (Terbentuk Transaksi=Tidak), so it stays a plain Failed. */
     public function test_a_gagal_callback_for_a_combo_leg_finalizes_that_leg_as_failed(): void
     {
         [$order, $leg] = $this->comboOrderWithPendingLeg();
@@ -427,13 +450,32 @@ class DigiflazzWebhookControllerTest extends TestCase
             'customer_no' => '900000001.1234',
             'buyer_sku_code' => $component->supplier_package_ref,
             'status' => 'Gagal',
-            'rc' => '02',
-            'message' => 'Gagal',
+            'rc' => '44',
+            'message' => 'Saldo tidak cukup',
         ])->assertOk();
 
         $this->assertSame(DeliveryStatus::Failed, $leg->fresh()->status);
         // Sole leg, all-Failed — clean retryable Failed, not needs_review.
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
+    /** ADR-098 — rc=02 has Terbentuk Transaksi=Ya, routes the leg (and the whole order) to needs_review. */
+    public function test_a_terminal_rc_gagal_callback_for_a_combo_leg_finalizes_that_leg_as_needs_review(): void
+    {
+        [$order, $leg] = $this->comboOrderWithPendingLeg();
+        $component = $leg->componentPackage;
+
+        $this->sendWebhook([
+            'ref_id' => $order->reference_number.'-L1',
+            'customer_no' => '900000001.1234',
+            'buyer_sku_code' => $component->supplier_package_ref,
+            'status' => 'Gagal',
+            'rc' => '02',
+            'message' => 'Transaksi Gagal',
+        ])->assertOk();
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $leg->fresh()->status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
     }
 
     public function test_a_combo_leg_sku_mismatch_is_rejected_409(): void

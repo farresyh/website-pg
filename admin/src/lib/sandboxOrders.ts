@@ -75,6 +75,11 @@ export function markSandboxOrderDelivered(token: string, id: number, values: { s
   return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/mark-delivered`, { method: "POST", token, body: values });
 }
 
+/** ADR-026 addendum (2026-09-16) sandbox counterpart — mirrors confirmOrderDeliveryFailed() in lib/orders.ts. */
+export function confirmSandboxOrderDeliveryFailed(token: string, id: number, values: { note: string }) {
+  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/confirm-failed`, { method: "POST", token, body: values });
+}
+
 export function deleteSandboxOrder(token: string, id: number) {
   return apiFetch<{ message: string }>(`/api/middleware/sandbox/${id}`, { method: "DELETE", token });
 }
