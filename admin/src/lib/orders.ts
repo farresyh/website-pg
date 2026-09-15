@@ -48,7 +48,10 @@ export interface OrderResendAttempt {
   cost_price_sen: number;
   standard_selling_price_sen: number;
   price_diff_sen: number;
-  outcome: "success" | "failed";
+  // 2026-09-15 bugfix: "pending" self-corrects to success/failed the
+  // moment the real async outcome resolves — see
+  // OrderFulfillmentService::resolvePendingResendAttempt().
+  outcome: "success" | "failed" | "pending";
   supplier_response?: Record<string, unknown> | null;
   note: string | null;
   triggered_by: string | null;
@@ -260,4 +263,56 @@ export function refundOrderToWallet(token: string, id: number) {
  */
 export function markOrderDelivered(token: string, id: number, values: { supplier_ref: string; note?: string }) {
   return apiFetch<OrderDetail>(`/api/orders/${id}/mark-delivered`, { method: "POST", token, body: values });
+}
+
+/**
+ * ADR-096 — a single supplier/gateway status-check response, shown
+ * verbatim as a receipt of what the manual-poll button just did. `type`
+ * distinguishes a plain order (one `outcome`/`data` pair) from a combo
+ * order (one entry per still-Pending leg, decision 3 — one button
+ * checks every leg in one call).
+ */
+export interface ManualCheckResult {
+  type: "plain" | "combo";
+  outcome?: string;
+  applied?: boolean;
+  data?: unknown;
+  error_code?: string | null;
+  error_message?: string | null;
+  legs?: Array<{
+    leg_number: number;
+    outcome: string;
+    applied: boolean;
+    data?: unknown;
+    error_code?: string | null;
+    error_message?: string | null;
+  }>;
+}
+
+export interface ManualCheckSupplierResponse {
+  result: ManualCheckResult;
+  delivery_status: OrderDetail["delivery_status"];
+  delivered_at: string | null;
+  supplier_ref: string | null;
+}
+
+export interface ManualCheckGatewayResponse {
+  result: ManualCheckResult;
+  payment_status: OrderDetail["payment_status"];
+  paid_at: string | null;
+}
+
+/**
+ * ADR-096 decision 5 — synchronous on purpose: the raw supplier
+ * response is shown the moment this resolves, not via a queued job's
+ * delayed result. A 422 (cooldown active) carries `retry_after_seconds`
+ * on the thrown ApiError's `.payload`.
+ */
+export function checkOrderSupplier(token: string, id: number) {
+  return apiFetch<ManualCheckSupplierResponse>(`/api/orders/${id}/check-supplier`, { method: "POST", token });
+}
+
+/** ADR-096 — the payment-side counterpart to checkOrderSupplier() above. */
+export function checkOrderGateway(token: string, id: number) {
+  return apiFetch<ManualCheckGatewayResponse>(`/api/orders/${id}/check-gateway`, { method: "POST", token });
 }

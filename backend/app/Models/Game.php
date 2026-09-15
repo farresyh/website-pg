@@ -55,4 +55,33 @@ class Game extends Model
     {
         return $this->belongsTo(PlayerValidatorProfile::class);
     }
+
+    /**
+     * ADR-097 decision 15 — single source of truth for this array-key
+     * read, called identically at every SupplierOrderRequest/
+     * SupplierStatusCheckRequest call site instead of each one
+     * repeating the raw `validation_rules['customer_no_separator']`
+     * literal (typo-drift risk across the 4 real call sites).
+     * Digiflazz-specific; meaningless for any other supplier, but this
+     * accessor doesn't know or care who the game's current supplier
+     * is — the adapter that never reads it (Gamevion) just ignores it.
+     */
+    public function customerNoSeparatorOverride(): ?string
+    {
+        return $this->validation_rules['customer_no_separator'] ?? null;
+    }
+
+    /**
+     * ADR-097 decision 6/7 — the admin-curated Zone ID picklist. Empty
+     * array normalizes to null (same "unset preserves free text"
+     * behavior either way, one less shape for a caller to check).
+     *
+     * @return list<string>|null
+     */
+    public function zoneOptions(): ?array
+    {
+        $options = $this->validation_rules['zone_options'] ?? null;
+
+        return is_array($options) && $options !== [] ? $options : null;
+    }
 }

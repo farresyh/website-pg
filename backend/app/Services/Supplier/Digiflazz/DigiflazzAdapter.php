@@ -100,7 +100,7 @@ final class DigiflazzAdapter implements SupplierAdapter
         return $this->submitTransaction(
             refId: $request->referenceNumber,
             buyerSkuCode: $request->productRef,
-            customerNo: $this->normalizeCustomerNo($request->playerId, $request->serverId),
+            customerNo: $this->normalizeCustomerNo($request->playerId, $request->serverId, $request->customerNoSeparator),
             callType: 'createOrder',
             orderId: $request->orderId,
         );
@@ -116,7 +116,7 @@ final class DigiflazzAdapter implements SupplierAdapter
         return $this->submitTransaction(
             refId: $request->supplierRef,
             buyerSkuCode: (string) $request->productRef,
-            customerNo: $this->normalizeCustomerNo((string) $request->playerId, $request->serverId),
+            customerNo: $this->normalizeCustomerNo((string) $request->playerId, $request->serverId, $request->customerNoSeparator),
             callType: 'checkStatus',
             orderId: $request->orderId,
         );
@@ -291,12 +291,45 @@ final class DigiflazzAdapter implements SupplierAdapter
      * corrected at smoke-test time without touching this class. Mirrors
      * GamevionAdapter's own playerId|serverId convention as the
      * best-guess default, unconfirmed against a live game until then.
+     *
+     * ADR-097 decision 2/15: `$separatorOverride` is the GAME-level
+     * named enum ('concat'|'space'|'pipe'), never the literal char —
+     * this method is the one place that translates it, same as it
+     * already owns `$this->customerNoSeparator` (the supplier-level
+     * default, which stays a literal character, unchanged by this
+     * ADR — SupplierConfigSchema's own `customer_no_separator` field
+     * is still free text). A null override falls back to the supplier
+     * default exactly as it did before this ADR.
      */
-    private function normalizeCustomerNo(string $playerId, ?string $serverId): string
+    private function normalizeCustomerNo(string $playerId, ?string $serverId, ?string $separatorOverride = null): string
     {
-        return $serverId !== null
-            ? "{$playerId}{$this->customerNoSeparator}{$serverId}"
-            : $playerId;
+        if ($serverId === null) {
+            return $playerId;
+        }
+
+        $separator = $separatorOverride !== null
+            ? self::translateSeparator($separatorOverride)
+            : $this->customerNoSeparator;
+
+        return "{$playerId}{$separator}{$serverId}";
+    }
+
+    /**
+     * ADR-097 decision 2 — self-documenting named enum over a literal
+     * character, which risks silent whitespace/escaping confusion in
+     * JSON (`Game.validation_rules['customer_no_separator']`). Any
+     * value outside the enum (shouldn't reach here — `Rule::in()` at
+     * the admin FormRequest layer already guards it) falls back to
+     * concatenation rather than throwing — fail safe, never fail loud
+     * on a money-critical delivery path.
+     */
+    private static function translateSeparator(string $name): string
+    {
+        return match ($name) {
+            'space' => ' ',
+            'pipe' => '|',
+            default => '',
+        };
     }
 
     /**

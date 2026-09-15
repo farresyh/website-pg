@@ -25,6 +25,13 @@ const CatalogGameWireSchema = z.object({
   image_url: z.string().nullable(),
   banner_url: z.string().nullable().optional(),
   extra_field: z.enum(["server_id", "zone_id"]).nullable(),
+  /**
+   * ADR-097 decision 9/17 — flat sibling of extra_field, present only
+   * on the detail (`show()`) response, never the list — `.optional()`
+   * (genuinely absent on a list row, per CatalogController's own
+   * narrow-response-shape discipline), not `.nullable()`-only.
+   */
+  zone_options: z.array(z.string()).nullable().optional(),
   player_validator_enabled: z.boolean(),
   price_from_sen: z.number().nullable().optional(),
   created_at: z.string().optional(),
@@ -88,6 +95,13 @@ export interface GameDetail extends Game {
   schemaBrand: string | null;
   schemaCategory: string | null;
   noIndex: boolean;
+  /**
+   * ADR-097 decision 9 — admin-curated Zone ID picklist for this game.
+   * null/empty preserves the free-text <input> exactly (decision 7) —
+   * only a `zone_id` game with a real defined list switches to a
+   * <select>.
+   */
+  zoneOptions: string[] | null;
 }
 
 export interface GamePackage {
@@ -127,6 +141,7 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
     schemaBrand: wire.schema_brand ?? null,
     schemaCategory: wire.schema_category ?? null,
     noIndex: wire.no_index ?? false,
+    zoneOptions: wire.zone_options && wire.zone_options.length > 0 ? wire.zone_options : null,
   };
 }
 

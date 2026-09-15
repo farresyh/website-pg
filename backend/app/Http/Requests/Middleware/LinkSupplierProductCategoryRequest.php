@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Middleware;
 
+use App\Models\Supplier;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -23,12 +24,48 @@ use Illuminate\Validation\Rule;
  * /admin/games afterward. Structured/validated to a fixed enum (never
  * raw JSON), per legacy-reference-notes.md's "typo silently breaks
  * checkout" finding.
+ *
+ * `validation_rules.customer_no_separator` (ADR-097 decisions 2/20)
+ * rides along the same way — restricted server-side to a Digiflazz-
+ * linked category (decision 1's own scope), not just hidden client-
+ * side, so a value set on a non-Digiflazz game can't silently sit
+ * there never read by anything (the exact class of stale-config trap
+ * this ADR's own Finding 1 already found once).
+ *
+ * `validation_rules.zone_options` (ADR-097 decisions 6-8/20/21) —
+ * same pattern, restricted to `extra_field === 'zone_id'`, and
+ * trimmed/deduped/empty-dropped in `prepareForValidation()`: Digiflazz
+ * forwards whatever string an admin picks verbatim, so a stray space
+ * or a duplicate entry is a silent real-order failure risk, not a
+ * cosmetic one.
  */
 class LinkSupplierProductCategoryRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return true;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $options = $this->input('validation_rules.zone_options');
+
+        if (! is_array($options)) {
+            return;
+        }
+
+        $normalized = collect($options)
+            ->filter(fn ($value) => is_string($value))
+            ->map(fn (string $value) => trim($value))
+            ->filter(fn (string $value) => $value !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->merge(['validation_rules' => array_merge(
+            (array) $this->input('validation_rules', []),
+            ['zone_options' => $normalized],
+        )]);
     }
 
     /**
@@ -47,6 +84,9 @@ class LinkSupplierProductCategoryRequest extends FormRequest
             'new_game.category' => ['nullable', 'string', 'max:255'],
             'validation_rules' => ['nullable', 'array'],
             'validation_rules.extra_field' => ['nullable', Rule::in(['server_id', 'zone_id'])],
+            'validation_rules.customer_no_separator' => ['nullable', Rule::in(['concat', 'space', 'pipe'])],
+            'validation_rules.zone_options' => ['nullable', 'array'],
+            'validation_rules.zone_options.*' => ['string', 'max:255'],
         ];
     }
 
@@ -55,6 +95,25 @@ class LinkSupplierProductCategoryRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             if ($this->filled('game_id') && $this->filled('new_game.name')) {
                 $validator->errors()->add('game_id', 'Provide either game_id or new_game, not both.');
+            }
+
+            if ($this->filled('validation_rules.customer_no_separator')) {
+                $supplier = Supplier::query()->find($this->input('supplier_id'));
+
+                if ($supplier !== null && $supplier->slug !== 'digiflazz') {
+                    $validator->errors()->add(
+                        'validation_rules.customer_no_separator',
+                        'customer_no_separator only applies to a Digiflazz-linked game.',
+                    );
+                }
+            }
+
+            $zoneOptions = $this->input('validation_rules.zone_options', []);
+            if ($zoneOptions !== [] && $this->input('validation_rules.extra_field') !== 'zone_id') {
+                $validator->errors()->add(
+                    'validation_rules.zone_options',
+                    'zone_options only applies when extra_field is zone_id.',
+                );
             }
         });
     }

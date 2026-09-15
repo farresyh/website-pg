@@ -197,6 +197,50 @@ class ResellerBotServiceTest extends TestCase
         $this->assertSame(0, Order::query()->count());
     }
 
+    /** ADR-097 decision 10/19 — the Bot enforces the same zone value-restriction as storefront/Reseller API, not just presence. */
+    public function test_order_with_a_zone_id_value_outside_the_defined_list_is_rejected_and_logged(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-bot-zone', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-bot-zone-test', 'reseller_code' => 'MLZONE', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 1000, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLZONE-14 51049607 SEA', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'invalid_zone_id',
+        ]);
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_order_with_a_zone_id_value_matching_the_defined_list_is_placed(): void
+    {
+        Queue::fake();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-bot-zone-2', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-bot-zone-test-2', 'reseller_code' => 'MLZONE2', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 1000, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLZONE2-14 51049607 SouthEastAsia', 'msg-1');
+
+        $this->assertSame(1, Order::query()->where('wallet_reseller_id', $reseller->id)->count());
+    }
+
     public function test_order_with_an_unknown_product_code_is_rejected_and_logged(): void
     {
         $reseller = $this->makeLinkedReseller();

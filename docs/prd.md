@@ -584,12 +584,12 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end | ADR-056–061, 078 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13) | ADR-072–076, 084, 091, 093 |
-| Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC) | ADR-006, 030–032, 067, 069 |
+| Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. PR-1 merged to `staging`; PR-2 open | ADR-006, 030–032, 067, 069, 097 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived) | ADR-022 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
-| Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). ORD-5 export unbuilt | ADR-017, 026, 032, 092 |
+| Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). **"Check from Supplier"/"Check from Gateway" manual-poll buttons built (ADR-096, 2026-09-15)** — synchronous on-demand status check for a Pending order, shares logic with the scheduled reconcile jobs, cache-based cooldown. ORD-5 export unbuilt | ADR-017, 026, 032, 092, 096 |
 | Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. **ADR-087 built 2026-09-12** — Gemini Flash LLM assistant at `/admin/reports/assistant`, `super_admin`-only; needs `GEMINI_API_KEY` provisioned before it works in any real environment (same .env-only rollout as CHIP/Digiflazz) | ADR-086, 087, 088 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`) | — |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
@@ -770,6 +770,37 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     functionally complete** on `staging` — combo is genuinely buyable through
     every real channel, not just admin-creatable. See `docs/adr.md` ADR-094
     for the full 23-decision design.
+16. **Durable "Initial Delivery" audit row — needs its own ADR + grill.** Found
+    2026-09-15 while fixing the Delivery Logs outcome bugs (see
+    `docs/build-log.md`'s 2026-09-15 entry): `order_resend_attempts` (ADR-017
+    decision #4, "record every attempt, not just the latest") only ever logs
+    RESEND attempts — the very first/original fulfillment attempt has no
+    durable row of its own. The admin's "Initial Delivery" row is synthesized
+    live from `Order.supplier_response`/`delivery_status`, single mutable
+    columns overwritten by every later resend — accurate for an order that's
+    never been resent, but the true original response is unrecoverable the
+    moment a resend happens (confirmed live: a real order's "Initial
+    Delivery" row was showing a later resend's response under the wrong
+    label). The 2026-09-15 fix only made the *label* honest for an
+    already-resent order ("original response not retained") — it does not
+    yet capture initial attempts going forward. A real fix needs a schema
+    decision: reuse `order_resend_attempts` with a new discriminator (and
+    likely a rename — "resend" no longer describes every row) vs. a separate
+    table. Grill before building, not a trivial column add.
+17. **Combo order `retryDelivery()` has zero audit trail — needs a decision,
+    not urgent.** Found alongside item 16, same session: ADR-094 decision 10
+    routes every combo-order retry through the plain `retryDelivery()`
+    endpoint (`FulfillOrderJob::dispatch()` directly, no package picker,
+    since a combo can't swap package) — unlike `resend()`, this path writes
+    no `order_resend_attempts` row at all, for combo or plain orders alike.
+    A combo order's leg-level state is still visible via `ComboLegBreakdown`
+    (decision 12), so this isn't a total blind spot, but a combo retry
+    leaves no chronological "who clicked retry, when, what was the diff"
+    trail the way a plain-order resend does. Deliberately deferred (founder
+    decision, 2026-09-15) rather than folded into item 16's fix — different
+    root cause (a missing write, not a wrong label), worth its own pass once
+    item 16's schema shape is decided (the two likely share a table).
+
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 **CHIP credential `.env`→DB migration** — genuinely still open (confirmed

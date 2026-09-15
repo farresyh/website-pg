@@ -4,6 +4,7 @@ namespace App\Services\Fulfillment;
 
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
+use App\Models\OrderResendAttempt;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -130,6 +131,9 @@ final class OrderFulfillmentService
                 playerId: $locked->player_id,
                 serverId: $locked->server_id,
                 customerPhone: $locked->customer_phone,
+                // ADR-097 decision 15 — Digiflazz-specific, ignored by
+                // every other adapter.
+                customerNoSeparator: $locked->game?->customerNoSeparatorOverride(),
                 orderId: $locked->id,
             ));
 
@@ -352,6 +356,12 @@ final class OrderFulfillmentService
                     playerId: $order->player_id,
                     serverId: $order->server_id,
                     customerPhone: $order->customer_phone,
+                    // ADR-097 decision 15/14 — `$order->game`, not the
+                    // leg's component's own game: a combo's components
+                    // are enforced same-game at save time
+                    // (StoreComboPackageRequest), so they're identical
+                    // anyway, and $order already carries it.
+                    customerNoSeparator: $order->game?->customerNoSeparatorOverride(),
                     orderId: $order->id,
                 ));
 
@@ -641,6 +651,7 @@ final class OrderFulfillmentService
 
                 $this->creditProfit($locked);
                 $this->vouchers->commit($locked->id);
+                $this->resolvePendingResendAttempt($locked->id, 'success', $locked->supplier_response);
 
                 Log::info('Pending delivery finalized as delivered', ['supplier_ref' => $supplierRef]);
 
@@ -662,6 +673,7 @@ final class OrderFulfillmentService
                 'supplier_response' => $supplierResponse ?? $locked->supplier_response,
                 'delivery_status' => $failedStatus->value,
             ]);
+            $this->resolvePendingResendAttempt($locked->id, 'failed', $locked->supplier_response);
 
             // Deliberately no voucher/retail-ledger action here — a
             // Pending order finalized as Failed lands on the exact same
@@ -690,6 +702,45 @@ final class OrderFulfillmentService
         }
 
         return $finalized;
+    }
+
+    /**
+     * 2026-09-15 bugfix (Delivery Logs outcome bug A): a resend of a
+     * `Pending`-outcome async order (Digiflazz rc=03) used to record its
+     * `order_resend_attempts.outcome` as a hard 'failed' the moment the
+     * resend's own fulfill() call returned — coercing "not yet resolved"
+     * into "definitely failed" — and never revisited that row once the
+     * real outcome later arrived via webhook, the scheduled reconcile
+     * poll, or ADR-096's manual "Check from Supplier" button. All three
+     * of those callers funnel through this same finalizePendingDelivery(),
+     * so correcting the historical attempt row here (instead of in each
+     * caller separately) keeps it accurate regardless of which one
+     * actually resolved it.
+     *
+     * "The most recent still-pending attempt for this order" is
+     * unambiguous, not a guess: `reference_number` is reused (never
+     * regenerated) across every retry/resend of the same order
+     * (ReferenceNumberService's own doc comment), and `assertResendable()`
+     * blocks a NEW resend while the order is Pending — so at most one
+     * order_resend_attempts row for a given order can genuinely be
+     * "awaiting an async answer" at a time. A combo order never reaches
+     * here at all (OrderResendService::assertSameGamePackage() rejects
+     * every combo resend, ADR-094 decision 10), so no leg-side
+     * counterpart is needed.
+     *
+     * A no-op (correctly) when this order was never resent — the
+     * INITIAL attempt writes no order_resend_attempts row at all
+     * (docs/prd.md §16 backlog: that's a separate, deliberately deferred
+     * gap, not this fix's job).
+     */
+    private function resolvePendingResendAttempt(int $orderId, string $outcome, mixed $supplierResponse): void
+    {
+        OrderResendAttempt::query()
+            ->where('order_id', $orderId)
+            ->where('outcome', 'pending')
+            ->latest('id')
+            ->first()
+            ?->update(['outcome' => $outcome, 'supplier_response' => $supplierResponse]);
     }
 
     /**

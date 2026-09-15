@@ -164,7 +164,13 @@ class DigiflazzWebhookController extends Controller
             return response()->json(['message' => 'supplier mismatch'], 409);
         }
 
-        if (($data['buyer_sku_code'] ?? null) !== $order->supplier_product_ref) {
+        // Case-insensitive: confirmed in prod 2026-09-15 that Digiflazz's
+        // `update` event lowercases buyer_sku_code even though their
+        // `create` event and our own stored supplier_product_ref (synced
+        // from their product list) are uppercase — an exact `!==` here
+        // rejected every real `update` callback, silently stranding
+        // delivery_status at Pending until the ~10-min poll caught up.
+        if (! self::skuMatches($data['buyer_sku_code'] ?? null, $order->supplier_product_ref)) {
             Log::error('Rejected Digiflazz webhook: buyer_sku_code does not match the order', [
                 'expected' => $order->supplier_product_ref,
                 'received' => $data['buyer_sku_code'] ?? null,
@@ -240,7 +246,7 @@ class DigiflazzWebhookController extends Controller
             return response()->json(['message' => 'supplier mismatch'], 409);
         }
 
-        if (($data['buyer_sku_code'] ?? null) !== $component->supplier_package_ref) {
+        if (! self::skuMatches($data['buyer_sku_code'] ?? null, $component->supplier_package_ref)) {
             Log::error('Rejected Digiflazz webhook: buyer_sku_code does not match the leg\'s component package', [
                 'expected' => $component->supplier_package_ref,
                 'received' => $data['buyer_sku_code'] ?? null,
@@ -282,5 +288,16 @@ class DigiflazzWebhookController extends Controller
             'Gagal' => SupplierOutcome::Failure,
             default => null,
         };
+    }
+
+    /**
+     * Case-insensitive on purpose (see the callers' own comment): a real
+     * `mlbb_my_14_pg1` vs `MLBB_MY_14_PG1` mismatch here is Digiflazz's
+     * own casing inconsistency between events, not a genuine wrong-SKU
+     * payload — a null on either side never matches.
+     */
+    private static function skuMatches(?string $received, ?string $expected): bool
+    {
+        return $received !== null && $expected !== null && strcasecmp($received, $expected) === 0;
     }
 }
