@@ -189,6 +189,34 @@ class OrderFulfillmentServiceComboTest extends TestCase
     }
 
     /**
+     * 2026-09-16 addendum — decision 20's cap raised 3->5. The leg loop
+     * itself is leg-count-generic (proven by the 2-leg test above); this
+     * proves it actually holds at the new cap's max, not just that
+     * nothing in the code hardcodes 3.
+     */
+    public function test_full_success_at_the_five_leg_cap_delivers_every_leg(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-'.uniqid()])->id;
+        $components = collect(range(1, 5))->map(fn () => $this->componentPackage($supplier, $gameId));
+        $combo = $this->comboPackage($gameId, $components->map(fn (Package $p) => ['package' => $p, 'quantity' => 1])->all());
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter(
+            $components->map(fn (Package $p, int $i) => SupplierResponse::success(['supplier_ref' => "SREF-{$i}", 'price' => 480]))->all(),
+        );
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertCount(5, $legs);
+        $this->assertTrue($legs->every(fn (OrderDeliveryLeg $leg) => $leg->status === DeliveryStatus::Delivered));
+        $this->assertSame([1, 2, 3, 4, 5], $legs->pluck('leg_number')->all());
+        $this->assertSame(5, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
      * ADR-097 decision 15 — a combo leg resolves the separator from
      * `$order->game`, not the leg's own component's game: same-game-
      * only combos (`StoreComboPackageRequest`) mean they're identical,

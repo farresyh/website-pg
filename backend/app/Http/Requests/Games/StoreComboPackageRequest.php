@@ -7,13 +7,14 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 /**
- * ADR-094 decisions 1-4, 18-20 (2026-09-15 stress-test addendum):
- * creates a combo Package — the one deliberate exception to
- * PackageController's own doc comment that every Package traces back
- * to a real supplier item (`SupplierProductController::promote()`).
- * A combo has no `supplier_id`/`supplier_package_ref` of its own
- * (decision 3); it's assembled from `components` instead, each an
- * already-promoted Package on the same Game.
+ * ADR-094 decisions 1-4, 18-20 (2026-09-15 stress-test addendum),
+ * 2026-09-16 addendum (cap raised 3->5): creates a combo Package — the
+ * one deliberate exception to PackageController's own doc comment that
+ * every Package traces back to a real supplier item
+ * (`SupplierProductController::promote()`). A combo has no
+ * `supplier_id`/`supplier_package_ref` of its own (decision 3); it's
+ * assembled from `components` instead, each an already-promoted
+ * Package on the same Game.
  *
  * Cross-field rules live in `withValidator()` (need the resolved
  * `Package` rows and the route's `Game`, not just the raw input):
@@ -22,11 +23,14 @@ use Illuminate\Validation\Validator;
  * (decision 2 — combo identity is the *sum* of components' own
  * denomination, meaningless for a catalog_code-only bundle/pass), and
  * total legs (`sum(quantity)`, not row count — decision 20's
- * 2026-09-15 wording fix) capped at 3.
+ * 2026-09-15 wording fix) capped at 5 (raised from 3, 2026-09-16
+ * addendum — real usage, decision 20's own revisit bar). Raising this
+ * also requires `config/horizon.php`'s `supervisor-orders-combo`
+ * timeout to stay sized to the new max (60s/leg).
  */
 class StoreComboPackageRequest extends FormRequest
 {
-    public const MAX_TOTAL_LEGS = 3;
+    public const MAX_TOTAL_LEGS = 5;
 
     public function authorize(): bool
     {

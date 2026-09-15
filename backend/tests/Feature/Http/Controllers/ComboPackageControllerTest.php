@@ -121,7 +121,7 @@ class ComboPackageControllerTest extends TestCase
         $response->assertJsonPath('cost_price', 40000 * 2);
     }
 
-    public function test_store_combo_rejects_more_than_three_total_legs(): void
+    public function test_store_combo_rejects_more_than_five_total_legs(): void
     {
         $game = $this->game();
         $supplier = $this->supplier();
@@ -131,12 +131,58 @@ class ComboPackageControllerTest extends TestCase
         $response = $this->postJson("/api/games/{$game->id}/packages/combo", [
             'name' => 'Too Many Legs',
             'components' => [
-                ['package_id' => $a->id, 'quantity' => 4],
+                ['package_id' => $a->id, 'quantity' => 6],
             ],
         ]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['components']);
+    }
+
+    /**
+     * 2026-09-16 addendum: the per-field `quantity` max (5) alone can't
+     * catch this — two components each under that cap can still sum
+     * past it. Proves the `withValidator()` total-legs check, not just
+     * the field rule.
+     */
+    public function test_store_combo_rejects_five_max_reached_across_multiple_components(): void
+    {
+        $game = $this->game();
+        $supplier = $this->supplier();
+        $a = $this->package($game, $supplier);
+        $b = $this->package($game, $supplier, [
+            'name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson("/api/games/{$game->id}/packages/combo", [
+            'name' => 'Too Many Legs (split)',
+            'components' => [
+                ['package_id' => $a->id, 'quantity' => 3],
+                ['package_id' => $b->id, 'quantity' => 3],
+            ],
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['components']);
+    }
+
+    public function test_store_combo_accepts_exactly_five_total_legs(): void
+    {
+        $game = $this->game();
+        $supplier = $this->supplier();
+        $a = $this->package($game, $supplier);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson("/api/games/{$game->id}/packages/combo", [
+            'name' => 'Five Legs',
+            'components' => [
+                ['package_id' => $a->id, 'quantity' => 5],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('denomination', 4810 * 5);
     }
 
     public function test_store_combo_rejects_cross_supplier_components(): void

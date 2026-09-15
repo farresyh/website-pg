@@ -71,7 +71,8 @@ export interface OrderDeliveryLeg {
   supplier_reference: string | null;
   failure_reason: string | null;
   delivered_at: string | null;
-  component_package: { id: number; name: string; denomination: number | null } | null;
+  /** supplier_package_ref (2026-09-16 addendum): the actual SKU this leg submitted — distinct from `supplier_reference` above, which is the supplier's own transaction/response id, not the product code. */
+  component_package: { id: number; name: string; denomination: number | null; supplier_package_ref: string | null } | null;
   supplier: { id: number; name: string } | null;
 }
 
