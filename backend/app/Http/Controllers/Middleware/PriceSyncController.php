@@ -21,9 +21,7 @@ use Illuminate\Http\Request;
  */
 class PriceSyncController extends Controller
 {
-    public function __construct(private readonly PendingReactivationFinder $pendingReactivations)
-    {
-    }
+    public function __construct(private readonly PendingReactivationFinder $pendingReactivations) {}
 
     /**
      * ADR-016 decision #1: Sync History, most recent run first.
@@ -89,7 +87,16 @@ class PriceSyncController extends Controller
             return [
                 'game' => $gamePriceChanges->first()?->package->game ?? $gameDeactivations->first()?->package->game,
                 'price_changes' => $gamePriceChanges->values()->map(fn ($log) => [
-                    'package' => ['id' => $log->package->id, 'name' => $log->package->name],
+                    'package' => [
+                        'id' => $log->package->id,
+                        'name' => $log->package->name,
+                        // ADR-094 decision 6: shown so an admin can
+                        // tell packages with similar names apart at a
+                        // glance, and spot a combo's own recomputed
+                        // row (is_combo) among its component's.
+                        'code' => $log->package->denomination ?? $log->package->catalog_code,
+                        'is_combo' => $log->package->is_combo,
+                    ],
                     'old_cost_price' => $log->old_cost_price,
                     'new_cost_price' => $log->new_cost_price,
                     'old_standard_selling_price' => $log->old_standard_selling_price,

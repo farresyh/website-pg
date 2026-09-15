@@ -3,7 +3,9 @@
 namespace Tests\Feature\Jobs;
 
 use App\Jobs\FulfillOrderJob;
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
@@ -124,6 +126,30 @@ class FulfillOrderJobTest extends TestCase
         $job = new FulfillOrderJob($this->paidOrder());
 
         $this->assertSame('orders', $job->queue);
+    }
+
+    /**
+     * ADR-094 decision 8: a combo order routes to its own queue/timeout
+     * tier (config/horizon.php's supervisor-orders-combo, 180s) — sized
+     * for up to 3 sequential supplier calls, not the one call
+     * supervisor-orders' 60s was tuned for.
+     */
+    public function test_a_combo_order_runs_on_its_own_queue(): void
+    {
+        $game = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()]);
+        $supplier = Supplier::query()->firstOrCreate(
+            ['slug' => 'gamevion'],
+            ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
+        );
+        $comboPackage = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 100, 'cost_price' => 900, 'standard_selling_price' => 900, 'markup_percent' => 0,
+        ]);
+        $order = $this->paidOrder(['package_id' => $comboPackage->id, 'supplier_id' => null, 'supplier_product_ref' => null]);
+
+        $job = new FulfillOrderJob($order);
+
+        $this->assertSame('orders-combo', $job->queue);
     }
 
     public function test_handle_fulfills_the_order(): void

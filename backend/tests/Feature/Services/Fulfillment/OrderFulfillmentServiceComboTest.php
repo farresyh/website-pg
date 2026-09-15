@@ -1,0 +1,687 @@
+<?php
+
+namespace Tests\Feature\Services\Fulfillment;
+
+use App\Models\Game;
+use App\Models\LedgerEntry;
+use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
+use App\Models\Package;
+use App\Models\Supplier;
+use App\Models\SupplierLedgerEntry;
+use App\Services\Accounting\SupplierFundingService;
+use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Ledger\LedgerService;
+use App\Services\Order\DeliveryStatus;
+use App\Services\Order\InvalidOrderTransitionException;
+use App\Services\Order\OrderStatusService;
+use App\Services\Order\PaymentStatus;
+use App\Services\Order\ReferenceNumberService;
+use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierOrderRequest;
+use App\Services\Supplier\SupplierOutcome;
+use App\Services\Supplier\SupplierResponse;
+use App\Services\Supplier\SupplierStatusCheckRequest;
+use App\Services\Supplier\ValidationNotSupportedException;
+use App\Services\Voucher\VoucherService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use RuntimeException;
+use Tests\TestCase;
+
+/**
+ * ADR-094 decisions 7-11, 18-20 (Phase 3, core — synchronous legs
+ * only; Digiflazz's async Pending-then-webhook per-leg resolution is a
+ * separate follow-up phase, not built here).
+ */
+class OrderFulfillmentServiceComboTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private const DEFAULT_SUPPLIER_SLUG = 'test-supplier';
+
+    private function service(SupplierAdapter $adapter): OrderFulfillmentService
+    {
+        $this->app->bind('supplier-adapter.'.self::DEFAULT_SUPPLIER_SLUG, fn () => $adapter);
+
+        return new OrderFulfillmentService(
+            new OrderStatusService,
+            new ReferenceNumberService,
+            $this->app->make(SupplierAdapterFactory::class),
+            new LedgerService,
+            new VoucherService(new LedgerService),
+            new SupplierFundingService,
+        );
+    }
+
+    private function supplier(): Supplier
+    {
+        return Supplier::query()->firstOrCreate(
+            ['slug' => self::DEFAULT_SUPPLIER_SLUG],
+            ['name' => 'Test Supplier', 'api_config' => [], 'currency' => 'MYR'],
+        );
+    }
+
+    private function componentPackage(Supplier $supplier, int $gameId, array $overrides = []): Package
+    {
+        return Package::query()->create(array_merge([
+            'game_id' => $gameId, 'name' => 'Component', 'denomination' => 100,
+            'cost_price' => 500, 'standard_selling_price' => 600, 'markup_percent' => 20,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'REF-'.uniqid(),
+        ], $overrides));
+    }
+
+    private function comboPackage(int $gameId, array $components): Package
+    {
+        $combo = Package::query()->create([
+            'game_id' => $gameId, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 0, 'cost_price' => 0, 'standard_selling_price' => 0, 'markup_percent' => 0,
+        ]);
+
+        foreach ($components as $index => ['package' => $component, 'quantity' => $quantity]) {
+            $combo->components()->attach($component->id, ['quantity' => $quantity, 'sort_order' => $index]);
+        }
+
+        return $combo;
+    }
+
+    private function paidComboOrder(Package $combo, array $overrides = []): Order
+    {
+        return Order::query()->create(array_merge([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-COMBO-1',
+            'customer_email' => 'buyer@example.com',
+            'game_id' => $combo->game_id,
+            'package_id' => $combo->id,
+            'player_id' => '123456',
+            'server_id' => '1234',
+            'supplier_id' => null,
+            'supplier_product_ref' => null,
+            'cost_price' => $combo->cost_price,
+            'standard_selling_price' => $combo->standard_selling_price,
+            'selling_price' => 1500,
+            'transaction_fee' => 100,
+            'final_amount' => 1600,
+            'platform_profit' => 200,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NotStarted->value,
+        ], $overrides));
+    }
+
+    /**
+     * Consumes one queued SupplierResponse per createOrder() call, in
+     * call order — deterministic since attemptLeg() walks legs in
+     * ascending leg_number.
+     */
+    private function queuedAdapter(array $responses): SupplierAdapter
+    {
+        return new class($responses) implements SupplierAdapter
+        {
+            private int $index = 0;
+
+            public function __construct(private readonly array $responses) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                return $this->responses[$this->index++] ?? throw new RuntimeException('no more queued responses');
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+    }
+
+    public function test_full_success_delivers_the_order_and_records_a_leg_per_component(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 480]),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertNotNull($result->delivered_at);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertCount(2, $legs);
+        $this->assertSame(1, $legs[0]->leg_number);
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
+        $this->assertSame('SREF-A', $legs[0]->supplier_reference);
+        $this->assertSame(2, $legs[1]->leg_number);
+        $this->assertSame(DeliveryStatus::Delivered, $legs[1]->status);
+        $this->assertSame('SREF-B', $legs[1]->supplier_reference);
+
+        // Decision 11/18: one SupplierLedgerEntry per leg, not one per order.
+        $this->assertSame(2, SupplierLedgerEntry::query()->count());
+        $this->assertSame('order_delivery_leg', SupplierLedgerEntry::query()->first()->reference_type);
+
+        // Profit is credited once for the whole order (ORD-9's frozen figure).
+        $this->assertSame(1, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->count());
+    }
+
+    public function test_the_idempotency_key_extends_the_order_reference_number_per_leg(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo);
+
+        $capturedReferenceNumber = null;
+        $adapter = new class($capturedReferenceNumber) implements SupplierAdapter
+        {
+            public function __construct(private mixed &$captured) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->captured = $request->referenceNumber;
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF']);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('n/a');
+            }
+        };
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame($result->reference_number.'-L1', $capturedReferenceNumber);
+    }
+
+    public function test_one_leg_failing_lands_the_order_in_needs_review_when_the_other_succeeded(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::failure('insufficient_balance', 'No balance'),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $this->assertNull($result->delivered_at);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
+        $this->assertSame(DeliveryStatus::Failed, $legs[1]->status);
+
+        // No profit credited yet — a needs_review order is not a clean delivery.
+        $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
+        // The succeeded leg's own drawdown is still recorded — it's real.
+        $this->assertSame(1, SupplierLedgerEntry::query()->count());
+    }
+
+    public function test_every_leg_failing_lands_the_order_in_plain_failed(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::failure('invalid_product', 'Bad product'),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
+        $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    public function test_a_duplicate_reference_leg_lands_the_whole_order_in_needs_review(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::failure('duplicate_reference', 'Already submitted'),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::NeedsReview, $legs[1]->status);
+    }
+
+    /**
+     * ADR-094 2026-09-15 resilience addendum: a genuinely unexpected
+     * exception (not a clean SupplierResponse::failure()) used to
+     * strand the whole order at Processing forever — found live via a
+     * real local smoke test (an unconfigured supplier slug threw
+     * UnsupportedSupplierException, order never left Processing).
+     * attemptLeg() now catches this the same way duplicate_reference
+     * is already handled: NeedsReview, never Failed, since we don't
+     * know whether the supplier actually received the request.
+     */
+    public function test_a_leg_that_throws_unexpectedly_lands_in_needs_review_not_stranded_at_processing(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = new class implements SupplierAdapter
+        {
+            private int $calls = 0;
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->calls++;
+                if ($this->calls === 2) {
+                    throw new RuntimeException('Connection timed out');
+                }
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        // The order itself never gets stuck at Processing — it always
+        // resolves to a real outcome, same as if leg 2 had returned a
+        // clean SupplierResponse::failure().
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $legs[1]->status);
+        $this->assertStringContainsString('Connection timed out', $legs[1]->failure_reason);
+
+        // recordOrderDrawdown() must never fire for the leg that threw
+        // — only the genuinely delivered leg draws down the supplier
+        // funding ledger.
+        $this->assertSame(1, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * The retry path (decision 10's "ordinary Resend Delivery retry,
+     * no package swap") re-submits a NeedsReview-from-exception leg
+     * under the same idempotency key exactly like any other
+     * not-yet-succeeded leg — no special handling needed for it to
+     * recover once the underlying issue (e.g. connectivity) clears.
+     */
+    public function test_retrying_a_leg_that_previously_threw_completes_the_order_normally(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $throwingAdapter = new class implements SupplierAdapter
+        {
+            private int $calls = 0;
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->calls++;
+                if ($this->calls === 2) {
+                    throw new RuntimeException('Connection timed out');
+                }
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+        $this->service($throwingAdapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+
+        // Connectivity's fine now — the retry only re-attempts the one
+        // leg that isn't yet Delivered (decision 7's own idempotency).
+        $recoveredAdapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY', 'price' => 480]),
+        ]);
+
+        $result = $this->service($recoveredAdapter)->fulfill($order->fresh());
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame('SREF-A', $legs[0]->supplier_reference);
+        $this->assertSame('SREF-B-RETRY', $legs[1]->supplier_reference);
+        $this->assertSame(2, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * Decision 4's own example: the same component repeated (quantity 2)
+     * expands into 2 real legs, each its own supplier call/idempotency
+     * key/leg_number — not one call for "2 units".
+     */
+    public function test_a_repeated_component_expands_into_two_real_legs(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 2]]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-1']),
+            SupplierResponse::success(['supplier_ref' => 'SREF-2']),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertCount(2, $legs);
+        $this->assertSame([1, 2], $legs->pluck('leg_number')->all());
+        $this->assertSame([$a->id, $a->id], $legs->pluck('component_package_id')->all());
+    }
+
+    /**
+     * Decision 7/10: "Resend Delivery" is just calling fulfill() again —
+     * a needs_review combo whose failed leg now succeeds transitions
+     * cleanly to Delivered, crediting profit exactly once (not once per
+     * attempt).
+     */
+    public function test_resend_delivery_retries_only_the_not_yet_succeeded_leg(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $firstAttemptAdapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::failure('insufficient_balance', 'No balance'),
+        ]);
+        $firstResult = $this->service($firstAttemptAdapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::NeedsReview, $firstResult->delivery_status);
+
+        // Retry: only leg B (still Failed) should get a new supplier call.
+        $retryAdapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY']),
+        ]);
+        $secondResult = $this->service($retryAdapter)->fulfill($firstResult->fresh());
+
+        $this->assertSame(DeliveryStatus::Delivered, $secondResult->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame('SREF-A', $legs[0]->supplier_reference); // untouched by the retry
+        $this->assertSame('SREF-B-RETRY', $legs[1]->supplier_reference);
+        $this->assertSame(1, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->count());
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): a Digiflazz-shaped async leg lands
+     * the whole order in Pending, exactly like the single-order path.
+     */
+    public function test_a_pending_leg_lands_the_whole_order_in_pending(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
+        $this->assertSame(DeliveryStatus::Pending, $legs[1]->status);
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): finalizePendingDeliveryLeg() is the
+     * per-leg counterpart to finalizePendingDelivery() — a webhook/poll
+     * resolving the last still-Pending leg transitions the whole order
+     * out of Pending, crediting profit exactly once.
+     */
+    public function test_finalizing_the_last_pending_leg_as_delivered_completes_the_order(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+        $pendingResult = $this->service($adapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::Pending, $pendingResult->delivery_status);
+
+        $pendingLeg = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->firstOrFail();
+
+        $finalResult = $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $pendingLeg,
+            SupplierOutcome::Success,
+            'SREF-B-WEBHOOK',
+            ['price' => 480],
+        );
+
+        $this->assertSame(DeliveryStatus::Delivered, $finalResult->delivery_status);
+        $this->assertNotNull($finalResult->delivered_at);
+        $this->assertSame('SREF-B-WEBHOOK', $pendingLeg->fresh()->supplier_reference);
+        $this->assertSame(1, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->count());
+        $this->assertSame(2, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * A Pending leg resolving as Failed while its sibling already
+     * Delivered is decision 9's partial-delivery case, same as the
+     * synchronous path — just reached via webhook/poll instead.
+     */
+    public function test_finalizing_a_pending_leg_as_failed_lands_the_order_in_needs_review(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $pendingLeg = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->firstOrFail();
+
+        $finalResult = $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $pendingLeg,
+            SupplierOutcome::Failure,
+            null,
+            ['error_message' => 'Gagal'],
+        );
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $finalResult->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, $pendingLeg->fresh()->status);
+        $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
+    }
+
+    /**
+     * A leg still stuck Pending after one resolves must leave the order
+     * at Pending, not throw — resolveComboOutcome() re-evaluated from a
+     * Pending entry state with an incomplete leg set is a no-op.
+     */
+    public function test_finalizing_one_of_two_pending_legs_leaves_the_order_pending(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::pending(['status' => 'Pending']),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $legA = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 1)->firstOrFail();
+
+        $result = $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $legA,
+            SupplierOutcome::Success,
+            'SREF-A-WEBHOOK',
+        );
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+    }
+
+    /**
+     * Same idempotency-by-construction guard finalizePendingDelivery()
+     * relies on at the order level — a duplicate webhook delivery for
+     * an already-finalized leg throws, never double-credits.
+     */
+    public function test_finalizing_an_already_delivered_leg_throws(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo);
+
+        $this->service($this->queuedAdapter([SupplierResponse::success(['supplier_ref' => 'SREF'])]))->fulfill($order);
+        $leg = OrderDeliveryLeg::query()->where('order_id', $order->id)->firstOrFail();
+
+        $this->expectException(InvalidOrderTransitionException::class);
+
+        $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $leg,
+            SupplierOutcome::Success,
+            'SREF-DUPLICATE',
+        );
+    }
+}

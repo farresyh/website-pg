@@ -67,13 +67,20 @@ class OrderFulfillmentTestFulfill extends Command
             }
         };
 
-        app()->bind("supplier-adapter.{$order->supplier->slug}", fn () => $adapter);
+        // ADR-094: a combo order has no supplier_id/supplier of its own
+        // (decision 3) — bind under its components' shared supplier
+        // instead (decision 4: same-supplier-only in v1).
+        $supplierSlug = $order->package?->is_combo
+            ? $order->package->components->first()->supplier->slug
+            : $order->supplier->slug;
+
+        app()->bind("supplier-adapter.{$supplierSlug}", fn () => $adapter);
 
         $service = new OrderFulfillmentService(
-            new OrderStatusService(),
-            new ReferenceNumberService(),
+            new OrderStatusService,
+            new ReferenceNumberService,
             app(SupplierAdapterFactory::class),
-            new LedgerService(),
+            new LedgerService,
             app(VoucherService::class),
             app(SupplierFundingService::class),
         );

@@ -28,6 +28,8 @@ import {
   getDashboardFunnel,
   getDashboardTopGames,
   getDashboardHourlyActivity,
+  formatSupplierBalance,
+  formatMyrEquivalent,
   type DashboardSummary,
   type DashboardHealth,
   type DashboardFunnel,
@@ -229,14 +231,19 @@ export default function AdminDashboardPage() {
                         </Tag>
                       )}
                     </span>
-                    <span
-                      className={
-                        s.low_balance
-                          ? "tabular-nums font-medium text-warning-600 dark:text-warning-400"
-                          : "tabular-nums text-gray-500 dark:text-gray-400"
-                      }
-                    >
-                      {s.balance.toLocaleString()}
+                    <span className="text-right">
+                      <span
+                        className={
+                          s.low_balance
+                            ? "tabular-nums font-medium text-warning-600 dark:text-warning-400"
+                            : "tabular-nums text-gray-500 dark:text-gray-400"
+                        }
+                      >
+                        {formatSupplierBalance(s.balance, s.currency)}
+                      </span>
+                      {formatMyrEquivalent(s.balance_myr_equivalent) && (
+                        <span className="ml-1 text-theme-xs tabular-nums text-gray-400">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
+                      )}
                     </span>
                   </li>
                 ))}

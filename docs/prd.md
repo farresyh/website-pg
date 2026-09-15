@@ -596,15 +596,15 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ✅ Live — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. Host-agnostic. **2026-09-14: the restore-test had actually failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log` in prod) — both fixed, not yet re-verified against a real prod run | ADR-039 |
-| Image Gallery (IMG-1..2) | ✅ Live — upload/grid/search/copy-URL/delete, now WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning (ADR-095). In-modal picker not wired (paste URL). `GALLERY_DISK`/`BACKUP_DISK` can now point at real R2 buckets (`pekangame-gallery`/`pekangame-backups`, provisioned) — flip pending founder `.env` + one migration command | ADR-095 |
+| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
+| Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage | ADR-029 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork asset itself still placeholder | ADR-062–065, 071, 077–079, 089, 090 |
-| Internal Accounting (supplier funding ledger) | 🟡 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. PR-2 (CHIP `.xlsx` settlement recon, Monthly Accounting Summary) waits for real order flow | ADR-083 |
+| Internal Accounting (supplier funding ledger) | 🟡 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). PR-2 (CHIP `.xlsx` settlement recon, Monthly Accounting Summary) waits for real order flow | ADR-083 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
 TailAdmin primitive in `admin/` migrated or deleted; `RichTextEditor` is the one
@@ -617,7 +617,9 @@ kept. Screen-by-screen history in `docs/build-log.md`.
 Last walked with the founder 2026-09-09, re-verified against production 2026-09-11,
 spot-checked against real code again 2026-09-13 twice in the same day (Voucher/
 Blacklist/GAME-11/SEO-fields turned out already shipped; GAME-6 then shipped
-same-session, PR #192) — this list drifts easily, re-verify against real
+same-session, PR #192), and again 2026-09-14 (real logo/hero asset uploaded;
+`/admin/reviews` item found dormant — zero orders delivered yet, so zero
+reviews exist) — this list drifts easily, re-verify against real
 code/production before trusting an "open" line here, not just this doc's memory.
 Anything shipped and verified drops off this list into `docs/build-log.md`.
 
@@ -630,14 +632,18 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
 
 ## Polish (not blocking launch)
 
-2. **Real PekanGame logo + hero artwork** — the primary storefront mark is still
-   the SVG placeholder. The upload gap is closed (ADR-089 gave `/admin/settings`
-   a Logo + Favicon panel, same pipeline affiliates already had); the founder
-   still owes the actual asset file.
-3. **Founder-owed one-off:** open `/admin/reviews`, filter *approved*, read
-   through once — ADR-082 made every approved review public retroactively (the
-   approve bar used to mean "not spam", now means "shown to customers"); reject
-   anything not customer-appropriate.
+2. ~~Real PekanGame logo + hero artwork~~ — **DONE 2026-09-14.** Founder uploaded
+   the real asset via `/admin/settings`'s Logo + Favicon panel (ADR-089
+   pipeline). SVG placeholder replaced.
+3. **`/admin/reviews` approved-corpus re-read — DORMANT, not founder-owed
+   right now (re-checked 2026-09-14).** ADR-082 made every *approved* review
+   public retroactively (the approve bar used to mean "not spam", now means
+   "shown to customers"), which is real risk for a corpus approved under the
+   old bar — but REV-1..5 gates submission on an order reaching **Delivered**,
+   and the supplier-funding launch gate (item 1) means no order has been
+   delivered yet. Zero reviews exist, approved or otherwise — nothing to
+   read. Revisit only after the first real order is delivered and reviews
+   start coming in, not before.
 4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
    Bot channel works and every command is prod-verified; the webhook already has
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
@@ -699,23 +705,15 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     the partner portal's withdrawal balances get meaningful.
 11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
     deferral — a real operational risk once real traffic exists.
-12. **Founder-owed one-off:** confirm the next scheduled backup run (or an
-    on-demand "Backup Now") shows `status=success`/`restore_test_passed=true`
-    on `/middleware/backups` after `fix/backup-restore-test-gtid-privilege`
-    reaches `main` — the 2026-09-14 incident (14/14 restore-tests failed since
-    go-live, alert silently swallowed by `MAIL_MAILER=log`) is fixed but not
-    yet re-verified against a real production run. See `docs/adr.md`'s
-    ADR-039 addendum.
-
 ## Buildable now (design done, not started)
 
-13. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
+12. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
     Accounting Summary screen. Waits for real order flow + a real settlement
     file from the **PekanGame** CHIP account (PR-1 shipped 2026-09-11 — see
     `docs/build-log.md`).
-14. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
+13. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
-15. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
+14. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
     LLM Report Assistant (`/admin/reports/assistant`): a ChatGPT/Gemini-style
     sidebar (new chat, switch between past threads, delete a thread), the
     assistant still remembering a past thread's context when reopened. Reverses
@@ -728,28 +726,50 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-16. **ADR-094 — Combo Package.** Assembles several existing catalog Packages
-    into one opaque, sellable SKU above a game's native max denomination (e.g.
-    MLBB Malaysia's 7502 Diamonds), so a reseller/guest pays one CHIP FPX fee
-    instead of two. Design fully grilled + stress-tested 2026-09-13 (schema,
-    fulfillment leg-engine, partial-delivery policy, component-churn guards,
-    ledger/reporting/LLM-assistant impact all resolved) — **deliberately
-    parked**, not a build task yet. Revisit trigger: real recurring demand
-    detectable from existing order data (repeated same-`game_id`+`player_id`
-    checkouts in a short window), not assumed from one reseller conversation.
-17. **ADR-095 — Cloudflare R2 storage cutover — built 2026-09-14, one founder
-    step + one command left.** Both buckets (`pekangame-gallery` public via
-    `cdn.pekangame.space`, `pekangame-backups` private) + scoped tokens
-    provisioned live; Gallery WebP-at-upload (reuses `ImageIngestService`,
-    2000px cap) and delete referential safety (warn+confirm) shipped.
-    Resolved this list's former "gallery→WebP + delete referential safety"
-    line and ADR-039's droplet-backup single-point-of-failure. **Remaining:**
-    founder adds the new `R2_*`/`GALLERY_DISK`/`BACKUP_DISK` names to
-    `.env.example` (blocked by this session's own sandbox permissions on
-    `.env*` files) and, once this reaches `main` with `.env` flipped on both
-    ends, runs `php artisan gallery:migrate-to-r2` once against production to
-    move the 3 real existing files. See `docs/adr.md`'s build addendum.
-
+15. **ADR-094 — Combo Package — Phases 1-4 shipped 2026-09-14/15; decision 14
+    (consuming channels) verified 2026-09-15, genuinely buyable today.**
+    Assembles several existing catalog Packages into one opaque, sellable SKU
+    above a game's native max denomination (e.g. MLBB Malaysia's 7502
+    Diamonds), so a reseller/guest pays one CHIP FPX fee instead of two.
+    Design fully grilled + stress-tested 2026-09-13 (schema, fulfillment
+    leg-engine, partial-delivery policy, component-churn guards,
+    ledger/reporting/LLM-assistant impact all resolved). Decision 17's revisit
+    trigger explicitly overridden by the founder 2026-09-14 (see `docs/adr.md`
+    ADR-094's addendum). **Shipped:** data model + creation endpoint,
+    pricing override + Price Sync cadence, the fulfillment engine
+    (`OrderFulfillmentService` leg-sequencing, partial-delivery →
+    `needs_review`) for both suppliers (Gamevion sync, Digiflazz async
+    per-leg webhook/poll), and the admin UI (`/admin/games` combo
+    composition CRUD, Order-detail leg breakdown — decision 12, Issue
+    Voucher custom-amount for a genuine partial-delivery order — decision 9,
+    and decision 13/22's component-churn guards). Decision 21 (supplier-drift
+    warn) turned out to have no current UI trigger (no screen edits an
+    already-promoted Package's supplier) — nothing built for it, revisit only
+    if that ever changes. **Decision 14 needed zero new code** — a full audit
+    of all 5 consuming channels found every one already resolves/creates a
+    combo Order generically (no `is_combo` special-casing anywhere), and
+    every response shape was already narrow before this ADR existed. New
+    test `Adr094ComboConsumingChannelsTest` proves it by actually placing +
+    fulfilling a real combo order through storefront checkout, the Reseller
+    API, and the Reseller Bot — all 3 passed on first write. Reseller Portal
+    has no order-placement surface at all (confirmed by grep), nothing to
+    verify there. **A real local smoke test (3-component combo, real admin
+    API, simulated leg failure) then found 2 real bugs no automated test had
+    caught:** "Resend Delivery…" silently no-ops for a combo order (decision
+    10's guard only fires inside a queued job that swallows it — admin sees
+    a false success message, nothing happens), and a combo order could get
+    stuck at `Processing` forever if a leg attempt threw an unexpected
+    exception instead of a clean failure response. Both fixed 2026-09-15
+    (grilled first — the fulfillment-engine one touches the platform's
+    single most money-critical file): the admin panel now routes combo
+    orders to the plain retry action instead of the broken resend modal, and
+    `attemptLeg()` now catches any unexpected exception and marks the leg
+    NeedsReview (same ambiguity reasoning as the existing `duplicate_reference`
+    handling) instead of leaving the order stranded. Full backend suite
+    **1928/1928** green, concurrency suite green. **ADR-094 is now
+    functionally complete** on `staging` — combo is genuinely buyable through
+    every real channel, not just admin-creatable. See `docs/adr.md` ADR-094
+    for the full 23-decision design.
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 **CHIP credential `.env`→DB migration** — genuinely still open (confirmed

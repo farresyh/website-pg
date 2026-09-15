@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
 use App\Models\PendingPriceChange;
 use App\Models\PriceChangeLog;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 
@@ -17,9 +18,10 @@ use Illuminate\Http\JsonResponse;
  */
 class PendingPriceChangeController extends Controller
 {
-    public function __construct(private readonly PackageMarkupService $markup)
-    {
-    }
+    public function __construct(
+        private readonly PackageMarkupService $markup,
+        private readonly ComboPricingService $comboPricing,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -66,6 +68,15 @@ class PendingPriceChangeController extends Controller
         ]);
 
         $pendingPriceChange->update(['status' => 'approved']);
+
+        // ADR-094 decision 6: this is the *other* real "component
+        // cost_price changed" event besides PackagePriceSyncService's
+        // own propagation — approving here bypasses that service
+        // entirely, so any combo referencing this package would
+        // otherwise silently go stale until some unrelated future sync
+        // happened to touch it too.
+        $this->comboPricing->recomputeForComponentChange($package, $pendingPriceChange->price_sync_run_id);
+
         $this->forgetCaches($package->game_id);
 
         return response()->json($package);

@@ -6,6 +6,7 @@ use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use App\Services\Sync\PackagePriceSyncService;
 use App\Services\Sync\PendingReactivationFinder;
@@ -49,7 +50,8 @@ class PendingReactivationFinderTest extends TestCase
         // SupplierProduct row above is deliberately left untouched,
         // exactly matching what a real ProductSyncService::sync() call
         // would leave behind on a partial/incomplete response.
-        $service = new PackagePriceSyncService(new PackageMarkupService());
+        $markup = new PackageMarkupService;
+        $service = new PackagePriceSyncService($markup, new ComboPricingService($markup));
         $result = $service->apply($supplier, now(), priceSyncRunId: null);
 
         $this->assertSame(1, $result->deactivated);
@@ -60,7 +62,7 @@ class PendingReactivationFinderTest extends TestCase
         // The actual question: does the finder immediately re-flag it,
         // using the SAME already-stale 'active' record that predates
         // this exact deactivation?
-        $pending = (new PendingReactivationFinder())->find();
+        $pending = (new PendingReactivationFinder)->find();
 
         $this->assertFalse(
             $pending->contains('id', $package->id),
@@ -95,7 +97,7 @@ class PendingReactivationFinderTest extends TestCase
             'status_raw' => 'active', 'last_synced_at' => now(),
         ]);
 
-        $pending = (new PendingReactivationFinder())->find();
+        $pending = (new PendingReactivationFinder)->find();
 
         $this->assertTrue($pending->contains('id', $package->id));
     }

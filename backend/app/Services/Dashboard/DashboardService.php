@@ -6,6 +6,8 @@ use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\CircuitBreaker\CircuitBreaker;
+use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\CurrencyRateUnavailableException;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -34,6 +36,7 @@ final class DashboardService
     public function __construct(
         private readonly ReportService $reports,
         private readonly OpenWaSessionStatus $openWaSessionStatus,
+        private readonly CurrencyRateService $currencyRates,
     ) {}
 
     /**
@@ -120,6 +123,17 @@ final class DashboardService
                 'name' => $supplier->name,
                 'slug' => $supplier->slug,
                 'balance' => (float) $supplier->balance,
+                // Found live, 2026-09-15: this endpoint never carried
+                // `currency` at all — both this screen and the
+                // /middleware dashboard (same endpoint) either
+                // hardcoded "RM" or showed a bare, unlabeled number
+                // regardless of the real supplier currency (Digiflazz
+                // is IDR, not MYR). `balance_myr_equivalent` is a
+                // display-only convenience for comparing suppliers
+                // at a glance — `balance`/`currency` stay the real,
+                // receipt/dashboard-verifiable figures.
+                'currency' => $supplier->currency,
+                'balance_myr_equivalent' => $this->balanceInMyr($supplier),
                 'low_balance' => $lowBalance,
                 'drift' => $drift,
                 'circuit_state' => $breaker->state()->value,
@@ -156,7 +170,7 @@ final class DashboardService
 
         return [
             'suppliers' => $suppliers,
-            'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it). drift (ADR-083 decision 6) compares that same balance against SUM(supplier_ledger_entries) — null when no drift_threshold is configured for this supplier, meaning "not watched", not "not drifted".',
+            'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it), in that supplier\'s own currency — never assume MYR. balance_myr_equivalent is a display-only conversion (CurrencyRateService, cached ~24h) for comparing suppliers at a glance; null means the conversion is unavailable right now, not that the balance is zero. drift (ADR-083 decision 6) compares that same balance against SUM(supplier_ledger_entries) — null when no drift_threshold is configured for this supplier, meaning "not watched", not "not drifted".',
             // PR-F build addendum decision 5 — an active health signal
             // for the Reseller Bot channel's OpenWA session, reversed
             // from this screen's usual "no live ping" posture only in
@@ -347,5 +361,32 @@ final class DashboardService
         $fromKl = $toExclusiveKl->subDays($days);
 
         return [$fromKl->setTimezone('UTC'), $toExclusiveKl->setTimezone('UTC')];
+    }
+
+    /**
+     * 2026-09-15 addendum: a MYR-equivalent for `health()`'s per-
+     * supplier balance card — lets the founder compare a native-MYR
+     * supplier (Gamevion) against a foreign-currency one (Digiflazz,
+     * IDR) at a glance, without either being treated as the real
+     * figure (that's still `balance`/`currency`, unconverted). Never
+     * throws: `health()` is polled every 60s and must stay up even if
+     * the FX API is down and nothing was ever cached for this pair —
+     * null just means "comparison unavailable right now", not an error.
+     */
+    private function balanceInMyr(Supplier $supplier): ?float
+    {
+        if ($supplier->balance === null) {
+            return null;
+        }
+
+        if ($supplier->currency === 'MYR') {
+            return (float) $supplier->balance;
+        }
+
+        try {
+            return round((float) $supplier->balance * $this->currencyRates->rate($supplier->currency, 'MYR'), 2);
+        } catch (CurrencyRateUnavailableException) {
+            return null;
+        }
     }
 }

@@ -3,8 +3,11 @@
 namespace Tests\Feature\Jobs;
 
 use App\Jobs\CheckSupplierDeliveryJob;
+use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
+use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
@@ -177,5 +180,108 @@ class CheckSupplierDeliveryJobTest extends TestCase
         $job = new CheckSupplierDeliveryJob($this->pendingOrder());
 
         $this->assertSame('orders', $job->queue);
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): a combo order's still-Pending
+     * legs each get their own checkStatus() call, resolved through
+     * finalizePendingDeliveryLeg() — a Digiflazz-shaped supplier
+     * confirming Sukses on the last Pending leg completes the order.
+     */
+    private function comboOrderWithLegs(array $legStatuses): array
+    {
+        $supplier = Supplier::query()->firstOrCreate(
+            ['slug' => 'digiflazz-test'],
+            ['name' => 'Digiflazz Test', 'api_config' => [], 'currency' => 'IDR'],
+        );
+        $game = Game::query()->create(['name' => 'MLBB Poll Test', 'slug' => 'mlbb-poll-test-'.uniqid()]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 100, 'cost_price' => 500, 'standard_selling_price' => 600, 'markup_percent' => 20,
+        ]);
+
+        $order = Order::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-CHECK-COMBO-1',
+            'reference_number' => 'REF-CHECK-COMBO-1',
+            'customer_email' => 'buyer@example.com',
+            'game_id' => $game->id,
+            'package_id' => $combo->id,
+            'player_id' => '123456',
+            'supplier_id' => null,
+            'supplier_product_ref' => null,
+            'cost_price' => 500,
+            'standard_selling_price' => 600,
+            'selling_price' => 700,
+            'transaction_fee' => 100,
+            'final_amount' => 800,
+            'platform_profit' => 100,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Pending->value,
+        ]);
+
+        $legs = [];
+        foreach ($legStatuses as $i => $status) {
+            $component = Package::query()->create([
+                'game_id' => $game->id, 'name' => "Component {$i}", 'denomination' => 50,
+                'cost_price' => 250, 'standard_selling_price' => 300, 'markup_percent' => 20,
+                'supplier_id' => $supplier->id, 'supplier_package_ref' => "sku-{$i}",
+            ]);
+            $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => $i]);
+
+            $legs[] = OrderDeliveryLeg::query()->create([
+                'order_id' => $order->id,
+                'component_package_id' => $component->id,
+                'supplier_id' => $supplier->id,
+                'leg_number' => $i + 1,
+                'status' => $status,
+            ]);
+        }
+
+        return [$order, $legs];
+    }
+
+    public function test_a_combo_orders_pending_leg_completes_the_order_when_the_supplier_confirms_success(): void
+    {
+        [$order, $legs] = $this->comboOrderWithLegs([DeliveryStatus::Delivered->value, DeliveryStatus::Pending->value]);
+        $fulfillment = $this->fulfillmentService($this->checkStatusAdapter(
+            SupplierResponse::success(['supplier_ref' => 'DGFLZ-COMBO-LEG-2', 'price' => 250]),
+        ));
+
+        (new CheckSupplierDeliveryJob($order))->handle($this->app->make(SupplierAdapterFactory::class), $fulfillment);
+
+        $this->assertSame(DeliveryStatus::Delivered, $legs[1]->fresh()->status);
+        $this->assertSame('DGFLZ-COMBO-LEG-2', $legs[1]->fresh()->supplier_reference);
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+    }
+
+    public function test_a_combo_orders_pending_leg_failing_lands_the_order_in_needs_review(): void
+    {
+        [$order, $legs] = $this->comboOrderWithLegs([DeliveryStatus::Delivered->value, DeliveryStatus::Pending->value]);
+        $fulfillment = $this->fulfillmentService($this->checkStatusAdapter(
+            SupplierResponse::failure('Gagal', 'Transaction failed'),
+        ));
+
+        (new CheckSupplierDeliveryJob($order))->handle($this->app->make(SupplierAdapterFactory::class), $fulfillment);
+
+        $this->assertSame(DeliveryStatus::Failed, $legs[1]->fresh()->status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    public function test_a_combo_order_with_two_pending_legs_only_checks_the_ones_still_pending(): void
+    {
+        [$order, $legs] = $this->comboOrderWithLegs([DeliveryStatus::Pending->value, DeliveryStatus::Failed->value]);
+        // Only the Pending leg (leg 1) should get a checkStatus() call —
+        // the already-terminal Failed leg (leg 2) must never be re-checked.
+        $fulfillment = $this->fulfillmentService($this->checkStatusAdapter(
+            SupplierResponse::success(['supplier_ref' => 'DGFLZ-COMBO-LEG-1']),
+        ));
+
+        (new CheckSupplierDeliveryJob($order))->handle($this->app->make(SupplierAdapterFactory::class), $fulfillment);
+
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->fresh()->status);
+        $this->assertSame(DeliveryStatus::Failed, $legs[1]->fresh()->status); // untouched
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
     }
 }

@@ -681,6 +681,9 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::get('/supplier-transfers/{supplierTransfer}/receipt', [SupplierTransferController::class, 'downloadReceipt']);
+        // ADR-083 2026-09-15 addendum — correction actions, never an edit/delete on the transfer itself.
+        Route::post('/supplier-transfers/{supplierTransfer}/adjust', [SupplierTransferController::class, 'adjust']);
+        Route::post('/supplier-transfers/{supplierTransfer}/void', [SupplierTransferController::class, 'void']);
 
         // ADR-083 decision 9 — Transaction Register: read-only, plus a
         // CSV export, across orders/supplier transfers/supplier
@@ -906,12 +909,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
         Route::get('/games/{game}/packages', [GameController::class, 'packages']);
+        Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
 
         Route::put('/packages/{package}', [PackageController::class, 'update']);
         Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
         Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
         Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
         Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);
+        Route::patch('/packages/{package}/combo-override', [PackageController::class, 'updateComboOverride']);
         Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
     });
 });

@@ -35,27 +35,40 @@ function formatRm(sen: number): string {
 
 /**
  * ORD-7's other resolution path (ADR-004: retry-delivery or voucher,
- * never a cash refund) — the counterpart to ResendDeliveryModal.
- * Amount is never entered here: it's computed server-side from what
- * the customer actually paid (final_amount - transaction_fee), same
- * ORD-9 "never trust a client-submitted money value" principle as
- * everywhere else in checkout/resend. Rendered only while the dialog
- * is open — fresh state every open, same convention as
- * ResendDeliveryModal/CreateValidatorModal.
+ * never a cash refund) — the counterpart to ResendDeliveryModal. For
+ * an ordinary failed order, amount is never entered: it's computed
+ * server-side from what the customer actually paid (final_amount -
+ * transaction_fee), same ORD-9 "never trust a client-submitted money
+ * value" principle as everywhere else in checkout/resend. ADR-094
+ * decision 9's carve-out is the one exception — a genuine partial-
+ * delivery combo order (`order.partial_combo_delivery`) has no single
+ * correct auto-computed figure (the player already has some of the
+ * goods), so a custom amount is entered here, prefilled from the
+ * failed leg(s)' own price and admin-adjustable; the backend still
+ * caps whatever's sent at `final_amount` independently. Rendered only
+ * while the dialog is open — fresh state every open, same convention
+ * as ResendDeliveryModal/CreateValidatorModal.
  */
 function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVoucherModalProps, "isOpen">) {
   const [reason, setReason] = useState("");
+  const [customAmount, setCustomAmount] = useState(
+    order.suggested_voucher_amount !== null ? (order.suggested_voucher_amount / 100).toFixed(2) : "",
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const amount = order.final_amount - order.transaction_fee;
+  const isPartial = order.partial_combo_delivery;
+  const amount = isPartial ? Math.round(parseFloat(customAmount || "0") * 100) : order.final_amount - order.transaction_fee;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      const voucher = await issueVoucherFromOrder(token, order.id, { reason: reason.trim() || undefined });
+      const voucher = await issueVoucherFromOrder(token, order.id, {
+        reason: reason.trim() || undefined,
+        amount: isPartial ? amount : undefined,
+      });
       onIssued(voucher);
       onClose();
     } catch (err) {
@@ -67,11 +80,20 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
-        Issues a <span className="font-medium">{formatRm(amount)}</span> store-credit voucher to{" "}
-        <span className="font-medium">{order.customer_email}</span> — this platform never issues cash refunds
-        (ADR-004). One voucher per order; this cannot be undone once issued.
-      </p>
+      {isPartial ? (
+        <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+          This combo order partially delivered — the customer already received some of the goods. Set the
+          store-credit amount for the part that failed, for{" "}
+          <span className="font-medium">{order.customer_email}</span>. This platform never issues cash refunds
+          (ADR-004). One voucher per order; this cannot be undone once issued.
+        </p>
+      ) : (
+        <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+          Issues a <span className="font-medium">{formatRm(amount)}</span> store-credit voucher to{" "}
+          <span className="font-medium">{order.customer_email}</span> — this platform never issues cash refunds
+          (ADR-004). One voucher per order; this cannot be undone once issued.
+        </p>
+      )}
 
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
@@ -80,6 +102,28 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {isPartial && (
+          <div>
+            <Label htmlFor="voucher_amount">Amount (RM)</Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">RM</span>
+              <Input
+                id="voucher_amount"
+                type="text"
+                value={customAmount}
+                onChange={(e) => setCustomAmount(e.target.value)}
+                placeholder="e.g. 275.00"
+                required
+                className="pl-9"
+              />
+            </div>
+            <p className="mt-1 text-theme-xs text-gray-400">
+              Prefilled from the failed leg&apos;s own price — adjust if needed. Cannot exceed{" "}
+              {formatRm(order.final_amount)} (what the customer paid).
+            </p>
+          </div>
+        )}
+
         <div>
           <Label htmlFor="voucher_reason">Reason (Optional)</Label>
           <Input
@@ -94,7 +138,7 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
           <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || (isPartial && (!Number.isFinite(amount) || amount <= 0))}>
             {submitting ? "Issuing…" : "Issue Voucher"}
           </Button>
         </div>

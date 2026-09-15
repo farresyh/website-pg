@@ -2,24 +2,90 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Games\StoreComboPackageRequest;
+use App\Http\Requests\Games\UpdateComboPackageOverrideRequest;
 use App\Http\Requests\Games\UpdatePackageCatalogCodeRequest;
 use App\Http\Requests\Games\UpdatePackageDenominationRequest;
 use App\Http\Requests\Games\UpdatePackageMarkupRequest;
 use App\Http\Requests\Games\UpdatePackageRequest;
 use App\Http\Requests\Games\UpdatePackageStatusRequest;
+use App\Models\Game;
 use App\Models\Package;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * GAME-7/GAME-4: admin edits or removes an already-promoted Package.
  * Creation happens only via SupplierProductController::promote() —
- * there's no direct "create a Package from scratch" endpoint,
- * deliberately, since every Package must trace back to a real
- * supplier item (`supplier_package_ref`).
+ * every ordinary Package must trace back to a real supplier item
+ * (`supplier_package_ref`). `storeCombo()` (ADR-094) is the one
+ * deliberate exception: a combo Package is assembled from several
+ * already-promoted Packages instead, so it needs a genuine "create
+ * from scratch" entry point.
  */
 class PackageController extends Controller
 {
+    /**
+     * ADR-094 decisions 1-4, 18-20: assembles a combo Package from its
+     * `components` — no supplier call, no `supplier_id`/
+     * `supplier_package_ref` of its own (decision 3). Pricing itself
+     * is `ComboPricingService::recompute()`'s job (decision 5/6) — the
+     * same computation Price Sync's own per-component-change hook
+     * reuses, not duplicated here.
+     */
+    public function storeCombo(StoreComboPackageRequest $request, Game $game, ComboPricingService $comboPricing): JsonResponse
+    {
+        $validated = $request->validated();
+
+        $combo = DB::transaction(function () use ($game, $validated, $comboPricing) {
+            $combo = Package::query()->create([
+                'game_id' => $game->id,
+                'name' => $validated['name'],
+                'denomination' => 0,
+                'cost_price' => 0,
+                'standard_selling_price' => 0,
+                'markup_percent' => 0,
+                'is_active' => true,
+                'is_combo' => true,
+                'supplier_id' => null,
+                'supplier_package_ref' => null,
+            ]);
+
+            foreach ($validated['components'] as $index => $component) {
+                $combo->components()->attach($component['package_id'], [
+                    'quantity' => $component['quantity'],
+                    'sort_order' => $index,
+                ]);
+            }
+
+            $comboPricing->recompute($combo);
+
+            return $combo;
+        });
+
+        GameController::forgetPackagesCache($game->id);
+
+        return response()->json($combo->load('components'), 201);
+    }
+
+    /**
+     * ADR-094 decision 5's second half: an admin deliberately prices a
+     * specific combo more aggressively or more profitably than the
+     * default sum-of-components price. Setting both fields to null
+     * reverts to that default on the next recompute (immediate, here).
+     */
+    public function updateComboOverride(UpdateComboPackageOverrideRequest $request, Package $package, ComboPricingService $comboPricing): JsonResponse
+    {
+        $package->update($request->validated());
+        $comboPricing->recompute($package);
+        GameController::forgetPackagesCache($package->game_id);
+
+        return response()->json($package->load('components'));
+    }
+
     public function update(UpdatePackageRequest $request, Package $package): JsonResponse
     {
         $package->update($request->validated());
@@ -51,10 +117,56 @@ class PackageController extends Controller
      * Inline on/off toggle, same pattern as AdminUserController's own
      * updateStatus — a dedicated lightweight endpoint rather than
      * requiring the full edit form just to flip one flag.
+     *
+     * ADR-094 decisions 13/22 (2026-09-15 Phase 4): two combo-aware
+     * guards layered on top of the plain toggle —
+     *  - **deactivating** a component Package with active combo
+     *    dependents requires `acknowledge_cascade` (decision 13); once
+     *    acknowledged, the deactivation cascades onto every one of
+     *    them via the same `ComboPricingService::cascadeDeactivate()`
+     *    Price Sync's own automated path already uses.
+     *  - **reactivating** a combo Package itself is blocked while any
+     *    of its components are inactive (decision 22 — no
+     *    auto-reactivation of a combo whose composition can't
+     *    currently fulfill; reactivating a *component* never
+     *    auto-reactivates a combo that depends on it, satisfied simply
+     *    by this method never doing that).
      */
-    public function updateStatus(UpdatePackageStatusRequest $request, Package $package): JsonResponse
+    public function updateStatus(UpdatePackageStatusRequest $request, Package $package, ComboPricingService $comboPricing): JsonResponse
     {
-        $package->update(['is_active' => $request->validated('is_active')]);
+        $isActive = $request->validated('is_active');
+
+        if (! $isActive && $package->is_active) {
+            $activeDependents = $package->partOfCombos()->where('packages.is_active', true)->get(['packages.id', 'packages.name']);
+
+            if ($activeDependents->isNotEmpty() && ! $request->boolean('acknowledge_cascade')) {
+                throw ValidationException::withMessages([
+                    'acknowledge_cascade' => [
+                        $activeDependents->count().' active combo(s) use this package — deactivating will deactivate them too: '
+                        .$activeDependents->pluck('name')->implode(', '),
+                    ],
+                ]);
+            }
+        }
+
+        if ($isActive && ! $package->is_active && $package->is_combo) {
+            $inactiveComponents = $package->components()->where('packages.is_active', false)->get(['packages.id', 'packages.name']);
+
+            if ($inactiveComponents->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'is_active' => [
+                        'Cannot reactivate — inactive component(s): '.$inactiveComponents->pluck('name')->implode(', '),
+                    ],
+                ]);
+            }
+        }
+
+        $package->update(['is_active' => $isActive]);
+
+        if (! $isActive) {
+            $comboPricing->cascadeDeactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
+        }
+
         GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);

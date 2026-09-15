@@ -18,12 +18,8 @@ import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { getDashboardHealth, type DashboardHealthSupplier } from "@/lib/dashboard";
+import { getDashboardHealth, formatSupplierBalance, formatMyrEquivalent, type DashboardHealthSupplier } from "@/lib/dashboard";
 import { listRequestLogs, type SupplierRequestLog } from "@/lib/request-logs";
-
-function formatRm(sen: number): string {
-  return `RM ${(sen / 100).toFixed(2)}`;
-}
 
 export default function MiddlewareDashboardPage() {
   const router = useRouter();
@@ -113,7 +109,12 @@ export default function MiddlewareDashboardPage() {
                   {s.circuit_state === "closed" ? "Healthy" : "Circuit Open"}
                 </Tag>
               </div>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Balance: {formatRm(s.balance)}</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Balance: {formatSupplierBalance(s.balance, s.currency)}
+                {formatMyrEquivalent(s.balance_myr_equivalent) && (
+                  <span className="ml-1 text-theme-xs text-gray-400">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
+                )}
+              </p>
             </div>
           ))}
         </div>

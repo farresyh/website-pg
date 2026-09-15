@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Models\Supplier;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\InvalidOrderTransitionException;
@@ -45,7 +46,12 @@ use Illuminate\Support\Facades\Log;
  * Prepaid payload shape (developer.digiflazz.com/api/buyer/webhook):
  *   { data: { ref_id, customer_no, buyer_sku_code, message, status,
  *             rc, buyer_last_saldo, sn, price, tele, wa } }
- * `ref_id` is our own `orders.reference_number` (globally unique).
+ * `ref_id` is our own `orders.reference_number` (globally unique) —
+ * or, for a combo order (ADR-094 decision 7, Phase 3b), that same
+ * value with a `-L{n}` suffix identifying which `order_delivery_legs`
+ * row this call is for. The suffix is parsed off before the exact-
+ * column `Order` lookup below, which always matches on the bare
+ * reference_number either way.
  */
 class DigiflazzWebhookController extends Controller
 {
@@ -103,12 +109,24 @@ class DigiflazzWebhookController extends Controller
         }
 
         $data = $request->input('data');
-        $refId = is_array($data) ? ($data['ref_id'] ?? null) : null;
+        $rawRefId = is_array($data) ? ($data['ref_id'] ?? null) : null;
 
-        if ($refId === null) {
+        if ($rawRefId === null) {
             Log::warning('Rejected Digiflazz webhook: payload has no data.ref_id');
 
             return response()->json(['message' => 'bad request'], 400);
+        }
+
+        // ADR-094 decision 7 (Phase 3b): a combo leg's ref_id is the
+        // order's own reference_number plus -L{n} — parse it off before
+        // the exact-column lookup, which always matches on the bare
+        // value either way.
+        $refId = $rawRefId;
+        $legNumber = null;
+
+        if (preg_match('/^(.+)-L(\d+)$/', $rawRefId, $matches) === 1) {
+            $refId = $matches[1];
+            $legNumber = (int) $matches[2];
         }
 
         $order = Order::query()->with('supplier')->where('reference_number', $refId)->first();
@@ -122,7 +140,7 @@ class DigiflazzWebhookController extends Controller
             // event (after the txn commits) or the reconcile poll
             // finalizes it — nothing is lost, only delayed.
             Log::info('Digiflazz webhook: no order yet for ref_id — a create event likely raced fulfillment; the update event or poll will finalize', [
-                'ref_id' => $refId,
+                'ref_id' => $rawRefId,
             ]);
 
             return response()->json(['message' => 'order not found'], 404);
@@ -130,9 +148,13 @@ class DigiflazzWebhookController extends Controller
 
         Log::withContext([
             'order_number' => $order->order_number,
-            'ref_id' => $refId,
+            'ref_id' => $rawRefId,
             'digiflazz_event' => $event ?: '(none)',
         ]);
+
+        if ($legNumber !== null) {
+            return $this->handleComboLeg($order, $legNumber, $data);
+        }
 
         if ($order->supplier?->slug !== 'digiflazz') {
             Log::error('Rejected Digiflazz webhook: order belongs to another supplier', [
@@ -151,13 +173,7 @@ class DigiflazzWebhookController extends Controller
             return response()->json(['message' => 'sku mismatch'], 409);
         }
 
-        $status = $data['status'] ?? null;
-
-        $outcome = match ($status) {
-            'Sukses' => SupplierOutcome::Success,
-            'Gagal' => SupplierOutcome::Failure,
-            default => null,
-        };
+        $outcome = $this->outcomeFrom($data);
 
         // Fold-in (decision 7): a Sukses callback carries the balance
         // after the debit — keeps Dashboard Health fresh for the one
@@ -189,5 +205,82 @@ class DigiflazzWebhookController extends Controller
         }
 
         return response()->json(['message' => 'ok']);
+    }
+
+    /**
+     * ADR-094 decision 7 (Phase 3b): the combo counterpart to the plain
+     * flow above — every check re-scoped to the LEG's own component
+     * package (a combo `Order` has no `supplier_product_ref`/`supplier`
+     * of its own, decision 3) and finalization goes through
+     * finalizePendingDeliveryLeg(), not finalizePendingDelivery().
+     */
+    private function handleComboLeg(Order $order, int $legNumber, mixed $data): JsonResponse
+    {
+        $leg = OrderDeliveryLeg::query()
+            ->where('order_id', $order->id)
+            ->where('leg_number', $legNumber)
+            ->with('componentPackage.supplier')
+            ->first();
+
+        if ($leg === null) {
+            Log::warning('Rejected Digiflazz webhook: no matching order_delivery_legs row for this leg number', [
+                'leg_number' => $legNumber,
+            ]);
+
+            return response()->json(['message' => 'leg not found'], 404);
+        }
+
+        $component = $leg->componentPackage;
+
+        if ($component?->supplier?->slug !== 'digiflazz') {
+            Log::error('Rejected Digiflazz webhook: combo leg belongs to another supplier', [
+                'leg_supplier' => $component?->supplier?->slug,
+            ]);
+
+            return response()->json(['message' => 'supplier mismatch'], 409);
+        }
+
+        if (($data['buyer_sku_code'] ?? null) !== $component->supplier_package_ref) {
+            Log::error('Rejected Digiflazz webhook: buyer_sku_code does not match the leg\'s component package', [
+                'expected' => $component->supplier_package_ref,
+                'received' => $data['buyer_sku_code'] ?? null,
+            ]);
+
+            return response()->json(['message' => 'sku mismatch'], 409);
+        }
+
+        $outcome = $this->outcomeFrom($data);
+
+        if ($outcome === SupplierOutcome::Success && isset($data['buyer_last_saldo'])) {
+            $component->supplier->update(['balance' => (float) $data['buyer_last_saldo']]);
+        }
+
+        if ($outcome === null) {
+            return response()->json(['message' => 'acknowledged']);
+        }
+
+        try {
+            $this->fulfillment->finalizePendingDeliveryLeg(
+                $leg,
+                $outcome,
+                $outcome === SupplierOutcome::Success ? ($data['sn'] ?? null) : null,
+                $data,
+            );
+        } catch (InvalidOrderTransitionException $e) {
+            Log::info('Digiflazz webhook: combo leg already finalized, ignoring', ['reason' => $e->getMessage()]);
+
+            return response()->json(['message' => 'already finalized']);
+        }
+
+        return response()->json(['message' => 'ok']);
+    }
+
+    private function outcomeFrom(mixed $data): ?SupplierOutcome
+    {
+        return match ($data['status'] ?? null) {
+            'Sukses' => SupplierOutcome::Success,
+            'Gagal' => SupplierOutcome::Failure,
+            default => null,
+        };
     }
 }

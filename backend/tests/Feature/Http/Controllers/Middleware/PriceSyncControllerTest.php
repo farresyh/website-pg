@@ -11,6 +11,7 @@ use App\Models\PendingPriceChange;
 use App\Models\PriceChangeLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Models\SupplierProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
@@ -135,7 +136,7 @@ class PriceSyncControllerTest extends TestCase
         // last_synced_at must be AFTER deactivated_at — PendingReactivationFinder
         // only counts a supplier_products row as confirming reactivation when it
         // was touched by a sync run that happened after the package went offline.
-        \App\Models\SupplierProduct::query()->create([
+        SupplierProduct::query()->create([
             'supplier_id' => $supplier->id, 'external_ref' => 'GV2', 'name' => 'Pending', 'status_raw' => 'active', 'last_synced_at' => now(),
         ]);
         $run = PriceSyncRun::query()->create(['status' => 'success', 'finished_at' => now()]);
@@ -184,7 +185,7 @@ class PriceSyncControllerTest extends TestCase
         $supplier = $this->supplier();
         $game = $this->game();
         $repriced = Package::query()->create([
-            'game_id' => $game->id, 'name' => 'Repriced', 'cost_price' => 1200, 'standard_selling_price' => 1380,
+            'game_id' => $game->id, 'name' => 'Repriced', 'denomination' => 14, 'cost_price' => 1200, 'standard_selling_price' => 1380,
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV1',
         ]);
         $deactivated = Package::query()->create([
@@ -207,6 +208,8 @@ class PriceSyncControllerTest extends TestCase
         $response->assertJsonPath('games_touched', 1);
         $response->assertJsonPath('games.0.game.id', $game->id);
         $response->assertJsonPath('games.0.price_changes.0.package.id', $repriced->id);
+        $response->assertJsonPath('games.0.price_changes.0.package.code', 14);
+        $response->assertJsonPath('games.0.price_changes.0.package.is_combo', false);
         $response->assertJsonPath('games.0.deactivated_packages.0.id', $deactivated->id);
     }
 }
