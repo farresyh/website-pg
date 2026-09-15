@@ -228,14 +228,18 @@ return [
             'nice' => 0,
         ],
         // ADR-094 decision 8 (2026-09-15 addendum, decision 20's leg-count
-        // fix): a combo order's FulfillOrderJob makes up to 3 sequential
+        // fix; 2026-09-16 addendum — cap raised 3->5, timeout scaled with
+        // it): a combo order's FulfillOrderJob makes up to 5 sequential
         // supplier HTTP calls (decision 20's total-legs cap), not the one
         // call supervisor-orders' 60s timeout was sized for — its own
         // queue/timeout tier so Horizon never kills a job mid-leg-sequence,
         // which would leave the order in a worse, unclassified state than
         // the needs_review this design deliberately routes real failures
-        // to. tries=3 matches supervisor-orders — FulfillOrderJob's own
-        // combo branch is leg-idempotent, so a whole-job retry just
+        // to. 300s = 60s/leg x 5 legs, same per-leg headroom the original
+        // 180s (60s x 3) used — real adapter HTTP timeout is only 10s plus
+        // sub-second retries, so 60s/leg was already generous slack, not a
+        // tight budget. tries=3 matches supervisor-orders — FulfillOrderJob's
+        // own combo branch is leg-idempotent, so a whole-job retry just
         // resumes the not-yet-succeeded legs, never re-submits a
         // already-delivered one.
         'supervisor-orders-combo' => [
@@ -247,7 +251,7 @@ return [
             'maxJobs' => 0,
             'memory' => 128,
             'tries' => 3,
-            'timeout' => 180,
+            'timeout' => 300,
             'nice' => 0,
         ],
         'supervisor-price-sync' => [

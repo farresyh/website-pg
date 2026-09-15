@@ -372,6 +372,11 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('delivery_legs.0.leg_number', 1);
         $response->assertJsonPath('delivery_legs.0.status', 'delivered');
         $response->assertJsonPath('delivery_legs.0.component_package.name', '4810 Diamonds');
+        // 2026-09-16 addendum: the leg's own "supplier_reference" is the
+        // supplier's transaction/response ref, not the product SKU —
+        // admin needs the component's supplier_package_ref too, to know
+        // exactly which SKU this leg submitted.
+        $response->assertJsonPath('delivery_legs.0.component_package.supplier_package_ref', 'GV-4810');
         $response->assertJsonPath('delivery_legs.1.status', 'failed');
         $response->assertJsonPath('delivery_legs.1.failure_reason', 'Insufficient balance');
     }

@@ -573,7 +573,13 @@ class OrderController extends Controller
             // standard_selling_price is needed here, not just for
             // display — Order::suggestedPartialVoucherAmount() sums it
             // straight off this already-eager-loaded relation.
-            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price',
+            // supplier_package_ref (2026-09-16 addendum): the leg
+            // breakdown's own "Supplier Ref" column is the leg's
+            // supplier_reference (the supplier's transaction/response
+            // id), which doesn't tell admin WHICH product SKU was
+            // submitted for that leg — real gap when two components
+            // share a denomination across suppliers.
+            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price,supplier_package_ref',
             'deliveryLegs.supplier:id,name',
         ]);
 
