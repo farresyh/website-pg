@@ -115,6 +115,11 @@ final class GamevionAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 'duplicate_reference',
                 'Gamevion already has an order for this reference number',
+                // ADR-098 — the generic, supplier-agnostic signal this
+                // 409 case already represents: Gamevion has already
+                // recorded a transaction for this reference number, so
+                // a resubmit can only replay it, never reprocess.
+                transactionAlreadyFormed: true,
             );
         }
 

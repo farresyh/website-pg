@@ -88,6 +88,11 @@ final class SupplierDeliveryCheckService
                         SupplierOutcome::Failure,
                         null,
                         ['error_code' => $result->errorCode, 'error_message' => $result->errorMessage],
+                        // ADR-098 — this was the real gap the founder's
+                        // own Gangstar Mirage City incident went through:
+                        // a Pending order's terminal checkStatus() result
+                        // reaching here with no NeedsReview routing at all.
+                        transactionAlreadyFormed: $result->transactionAlreadyFormed,
                     );
                     $applied = true;
                     break;
@@ -164,6 +169,7 @@ final class SupplierDeliveryCheckService
                             SupplierOutcome::Failure,
                             null,
                             ['error_code' => $result->errorCode, 'error_message' => $result->errorMessage],
+                            transactionAlreadyFormed: $result->transactionAlreadyFormed,
                         );
                         $applied = true;
                         break;

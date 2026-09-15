@@ -156,17 +156,22 @@ final class OrderFulfillmentService
             }
 
             if ($result->outcome === SupplierOutcome::Failure) {
-                // ADR-026: duplicate_reference is structurally different
-                // from every other failure — it's evidence an order for
-                // this reference_number already reached Gamevion, not
-                // evidence it was rejected. Routes to needs_review, never
-                // failed, so it can never be mistaken for a plain
-                // resolvable failure (and, critically, never reaches
-                // VoucherController::storeFromOrder()'s Failed-only gate).
-                $isDuplicateReference = $result->errorCode === 'duplicate_reference';
+                // ADR-026 / ADR-098: a supplier that already formed a
+                // transaction record for this reference (Gamevion's
+                // 409/duplicate_reference; Digiflazz's own "Terbentuk
+                // Transaksi" rc table) is structurally different from
+                // every other failure — it's evidence an order for this
+                // reference_number already reached the supplier, not
+                // evidence it was cleanly rejected, and a resubmit can
+                // only replay that stored result, never reprocess.
+                // Routes to needs_review, never failed, so it can never
+                // be mistaken for a plain resolvable failure (and,
+                // critically, never reaches VoucherController::
+                // storeFromOrder()'s Failed-only gate).
+                $requiresManualReview = $result->transactionAlreadyFormed;
 
                 $locked->update([
-                    'delivery_status' => $isDuplicateReference
+                    'delivery_status' => $requiresManualReview
                         ? $this->orderStatus->markNeedsReview($processingStatus)->value
                         : $this->orderStatus->markDeliveryFailed($processingStatus)->value,
                     'supplier_response' => [
@@ -181,7 +186,7 @@ final class OrderFulfillmentService
                 // so without this line it would be silent until someone
                 // looks. Grep by reference_number/order_number to find
                 // the matching webhook/job lines for full context.
-                Log::warning($isDuplicateReference ? 'Delivery ambiguous — needs manual review' : 'Delivery failed', [
+                Log::warning($requiresManualReview ? 'Delivery ambiguous — needs manual review' : 'Delivery failed', [
                     'error_code' => $result->errorCode,
                     'error_message' => $result->errorMessage,
                 ]);
@@ -374,14 +379,16 @@ final class OrderFulfillmentService
                 }
 
                 if ($result->outcome === SupplierOutcome::Failure) {
-                    $isDuplicateReference = $result->errorCode === 'duplicate_reference';
+                    // ADR-098 — same generic transactionAlreadyFormed
+                    // signal fulfill()'s own Failure branch uses.
+                    $requiresManualReview = $result->transactionAlreadyFormed;
 
                     $lockedLeg->update([
-                        'status' => $isDuplicateReference ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
+                        'status' => $requiresManualReview ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
                         'failure_reason' => $result->errorMessage,
                     ]);
 
-                    Log::warning($isDuplicateReference ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
+                    Log::warning($requiresManualReview ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
                         'leg_id' => $lockedLeg->id,
                         'error_code' => $result->errorCode,
                         'error_message' => $result->errorMessage,
@@ -558,7 +565,7 @@ final class OrderFulfillmentService
      * order level, reused here unchanged since both operate on a plain
      * DeliveryStatus value.
      */
-    public function finalizePendingDeliveryLeg(OrderDeliveryLeg $leg, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null): Order
+    public function finalizePendingDeliveryLeg(OrderDeliveryLeg $leg, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $transactionAlreadyFormed = false): Order
     {
         if ($outcome === SupplierOutcome::Pending) {
             throw new OrderFulfillmentException(
@@ -569,7 +576,7 @@ final class OrderFulfillmentService
         $order = $leg->order;
         $drawdownPrice = null;
 
-        DB::transaction(function () use ($leg, $outcome, $supplierRef, $supplierResponse, &$drawdownPrice) {
+        DB::transaction(function () use ($leg, $outcome, $supplierRef, $supplierResponse, $transactionAlreadyFormed, &$drawdownPrice) {
             $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
             Log::withContext(['order_delivery_leg_id' => $lockedLeg->id, 'leg_number' => $lockedLeg->leg_number]);
@@ -592,14 +599,18 @@ final class OrderFulfillmentService
                 return;
             }
 
-            $failedStatus = $this->orderStatus->finalizePendingFailure($lockedLeg->status);
+            // ADR-098 — same generic routing as finalizePendingDelivery()'s
+            // own Failure branch.
+            $failedStatus = $transactionAlreadyFormed
+                ? $this->orderStatus->markNeedsReview($lockedLeg->status)
+                : $this->orderStatus->finalizePendingFailure($lockedLeg->status);
 
             $lockedLeg->update([
                 'status' => $failedStatus->value,
                 'failure_reason' => is_array($supplierResponse) ? ($supplierResponse['error_message'] ?? null) : null,
             ]);
 
-            Log::warning('Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
+            Log::warning($transactionAlreadyFormed ? 'Combo leg finalized as needs-review' : 'Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
         });
 
         if ($drawdownPrice !== null) {
@@ -624,7 +635,7 @@ final class OrderFulfillmentService
      * InvalidOrderTransitionException — same lock-then-guard pattern
      * fulfill() itself already uses for the identical PAY-2 reason.
      */
-    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null): Order
+    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $transactionAlreadyFormed = false): Order
     {
         if ($outcome === SupplierOutcome::Pending) {
             throw new OrderFulfillmentException(
@@ -634,7 +645,7 @@ final class OrderFulfillmentService
 
         $drawdownPrice = null;
 
-        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, &$drawdownPrice) {
+        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $transactionAlreadyFormed, &$drawdownPrice) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             Log::withContext(['reference_number' => $locked->reference_number]);
@@ -667,7 +678,19 @@ final class OrderFulfillmentService
                 return $locked->fresh();
             }
 
-            $failedStatus = $this->orderStatus->finalizePendingFailure($locked->delivery_status);
+            // ADR-098 — a Pending order's terminal Failure can itself be
+            // an ADR-098 "transaction already formed" case (this is
+            // exactly the path the real PG-JLOMUJ1H23NE incident took:
+            // createOrder() returned Pending, the reconcile poll's
+            // checkStatus() got a terminal rc the same resubmit can only
+            // ever replay). Routes to NeedsReview instead of Failed,
+            // same as fulfill()'s own synchronous Failure branch — this
+            // was the one real gap ADR-026 never actually reached, since
+            // Gamevion (the only adapter duplicate_reference existed
+            // for) never returns Pending in the first place.
+            $failedStatus = $transactionAlreadyFormed
+                ? $this->orderStatus->markNeedsReview($locked->delivery_status)
+                : $this->orderStatus->finalizePendingFailure($locked->delivery_status);
 
             $locked->update([
                 'supplier_response' => $supplierResponse ?? $locked->supplier_response,
@@ -676,10 +699,12 @@ final class OrderFulfillmentService
             $this->resolvePendingResendAttempt($locked->id, 'failed', $locked->supplier_response);
 
             // Deliberately no voucher/retail-ledger action here — a
-            // Pending order finalized as Failed lands on the exact same
-            // Failed state a synchronous rejection would, so the
+            // Pending order finalized as Failed (or NeedsReview) lands
+            // on a state a synchronous rejection would too, so the
             // existing Failed-only voucher-issuance gate
-            // (VoucherController::storeFromOrder()) applies unchanged.
+            // (VoucherController::storeFromOrder()) applies unchanged —
+            // and, for NeedsReview, is deliberately withheld until an
+            // admin looks, same as every other NeedsReview case.
             // No cash was ever taken from OUR ledger for this order, so
             // there is nothing to reverse (ADR-004).
             //
@@ -692,7 +717,7 @@ final class OrderFulfillmentService
             // `Pending` submission and restore it on `Gagal`, this needs
             // a deliberate `REFUND`/`MANUAL_ADJUSTMENT` branch added
             // here — don't assume it.
-            Log::warning('Pending delivery finalized as failed', ['supplier_response' => $supplierResponse]);
+            Log::warning($transactionAlreadyFormed ? 'Pending delivery finalized as needs-review' : 'Pending delivery finalized as failed', ['supplier_response' => $supplierResponse]);
 
             return $locked->fresh();
         });

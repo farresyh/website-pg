@@ -356,7 +356,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
         $adapter = $this->queuedAdapter([
             SupplierResponse::success(['supplier_ref' => 'SREF-A']),
-            SupplierResponse::failure('duplicate_reference', 'Already submitted'),
+            SupplierResponse::failure('duplicate_reference', 'Already submitted', transactionAlreadyFormed: true),
         ]);
 
         $result = $this->service($adapter)->fulfill($order);

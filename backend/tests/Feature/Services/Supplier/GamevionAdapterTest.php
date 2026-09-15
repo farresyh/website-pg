@@ -380,6 +380,8 @@ class GamevionAdapterTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertSame('duplicate_reference', $result->errorCode);
+        // ADR-098 — the generic signal that drives NeedsReview routing.
+        $this->assertTrue($result->transactionAlreadyFormed);
     }
 
     public function test_create_order_normalizes_insufficient_balance_failure(): void

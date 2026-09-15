@@ -94,14 +94,19 @@ class OrderFulfillmentServiceTest extends TestCase
         ?array $data = null,
         ?string $errorCode = null,
         ?string $errorMessage = null,
+        // ADR-098 — the generic signal driving NeedsReview routing;
+        // defaults false so every pre-existing plain-Failed test keeps
+        // its exact prior behavior.
+        bool $transactionAlreadyFormed = false,
     ): SupplierAdapter {
-        return new class($success, $data, $errorCode, $errorMessage) implements SupplierAdapter
+        return new class($success, $data, $errorCode, $errorMessage, $transactionAlreadyFormed) implements SupplierAdapter
         {
             public function __construct(
                 private readonly bool $success,
                 private readonly ?array $data,
                 private readonly ?string $errorCode,
                 private readonly ?string $errorMessage,
+                private readonly bool $transactionAlreadyFormed,
             ) {}
 
             public function checkBalance(): SupplierResponse
@@ -118,7 +123,7 @@ class OrderFulfillmentServiceTest extends TestCase
             {
                 return $this->success
                     ? SupplierResponse::success($this->data)
-                    : SupplierResponse::failure($this->errorCode, $this->errorMessage);
+                    : SupplierResponse::failure($this->errorCode, $this->errorMessage, transactionAlreadyFormed: $this->transactionAlreadyFormed);
             }
 
             public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
@@ -502,7 +507,7 @@ class OrderFulfillmentServiceTest extends TestCase
     {
         $order = $this->paidOrder();
 
-        $result = $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'Gamevion already has an order for this reference number'))
+        $result = $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'Gamevion already has an order for this reference number', transactionAlreadyFormed: true))
             ->fulfill($order);
 
         $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
@@ -510,12 +515,41 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertSame('duplicate_reference', $result->supplier_response['error_code']);
     }
 
+    /**
+     * ADR-098 — the routing decision reads the generic
+     * transactionAlreadyFormed flag, not a Gamevion-specific
+     * errorCode==='duplicate_reference' string match, so a Digiflazz
+     * terminal rc (e.g. '02') routes to NeedsReview too, not just
+     * Gamevion's own duplicate_reference case.
+     */
+    public function test_fulfill_marks_needs_review_on_any_transaction_already_formed_response(): void
+    {
+        $order = $this->paidOrder();
+
+        $result = $this->service($this->fakeSupplierAdapter(false, null, '02', 'Transaksi Gagal', transactionAlreadyFormed: true))
+            ->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $this->assertSame('02', $result->supplier_response['error_code']);
+    }
+
+    /** A plain Digiflazz retriable failure (e.g. rc='44', transactionAlreadyFormed=false) stays a plain Failed. */
+    public function test_fulfill_marks_delivery_failed_when_transaction_was_not_formed(): void
+    {
+        $order = $this->paidOrder();
+
+        $result = $this->service($this->fakeSupplierAdapter(false, null, '44', 'Saldo tidak cukup'))
+            ->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
+    }
+
     public function test_fulfill_logs_a_distinct_warning_for_needs_review(): void
     {
         Log::spy();
         $order = $this->paidOrder();
 
-        $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'dup'))
+        $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'dup', transactionAlreadyFormed: true))
             ->fulfill($order);
 
         Log::shouldHaveReceived('warning')

@@ -425,6 +425,80 @@ class DigiflazzAdapterTest extends TestCase
     }
 
     /**
+     * ADR-098 — rc=02 "Transaksi Gagal" has Terbentuk Transaksi=Ya per
+     * Digiflazz's own docs: a resubmit of the same ref_id can only
+     * replay this result, never reprocess. Confirmed live, order
+     * PG-JLOMUJ1H23NE.
+     */
+    public function test_create_order_flags_transaction_already_formed_for_a_terminal_rc(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '02', 'message' => 'Transaksi Gagal'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232',
+        ));
+
+        $this->assertTrue($result->transactionAlreadyFormed);
+    }
+
+    /**
+     * ADR-098 — rc=44 "Saldo tidak cukup" has Terbentuk Transaksi=Tidak:
+     * genuinely retriable once the underlying condition (balance)
+     * changes. Confirmed live, order PG-PYAYMRYNUYV0 (3x rc=44, then
+     * succeeded on a later attempt after the account was topped up).
+     */
+    public function test_create_order_does_not_flag_transaction_already_formed_for_a_retriable_rc(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '44', 'message' => 'Saldo tidak cukup'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232',
+        ));
+
+        $this->assertFalse($result->transactionAlreadyFormed);
+    }
+
+    /** ADR-098 decision 4 — an undocumented/future rc defaults to false, not a conservative true. */
+    public function test_create_order_does_not_flag_transaction_already_formed_for_an_unknown_rc(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '77', 'message' => 'Some future undocumented code'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232',
+        ));
+
+        $this->assertFalse($result->transactionAlreadyFormed);
+    }
+
+    /** ADR-098 — checkStatus() shares submitTransaction(), so the same classification applies there too. */
+    public function test_check_status_flags_transaction_already_formed_for_a_terminal_rc(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '02', 'message' => 'Transaksi Gagal'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->checkStatus(new SupplierStatusCheckRequest(
+            supplierRef: 'REF-1', productRef: 'xld10', playerId: '087800001232',
+        ));
+
+        $this->assertTrue($result->transactionAlreadyFormed);
+    }
+
+    /**
      * Official test cases 3/4: customer_no=087800001233/087800001234
      * both start Pending, rc 03 — ADR-032's Pending outcome, the exact
      * path the whole async-delivery mechanism exists for.

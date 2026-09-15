@@ -131,6 +131,56 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 
+    /** ADR-098 — the same catch-up now also covers Digiflazz's own "Terbentuk Transaksi=Ya" rc codes, not just Gamevion's duplicate_reference. */
+    public function test_flags_a_stale_digiflazz_terminal_rc_order_for_manual_review(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->stale($this->order([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]));
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    /** A retriable Digiflazz rc (Terbentuk Transaksi=Tidak) stays a plain Failed, exactly like today. */
+    public function test_does_not_flag_a_stale_digiflazz_retriable_rc_order(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->stale($this->order([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => '44', 'error_message' => 'Saldo tidak cukup'],
+        ]));
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
+    /**
+     * ADR-098 collision-safety check: a NON-Digiflazz order whose
+     * error_code happens to share a string with Digiflazz's own rc
+     * table must never be swept in — the rc-code branch of this query
+     * is supplier-scoped specifically to guard against this.
+     */
+    public function test_does_not_flag_a_stale_non_digiflazz_order_sharing_a_digiflazz_rc_string(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-reconcile-test', 'api_config' => [], 'currency' => 'MYR']);
+        $order = $this->stale($this->order([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Some unrelated Gamevion error'],
+        ]));
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
     public function test_does_not_touch_a_delivered_order(): void
     {
         Bus::fake();

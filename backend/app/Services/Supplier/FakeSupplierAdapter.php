@@ -20,8 +20,7 @@ final class FakeSupplierAdapter implements SupplierAdapter
         private readonly bool $simulateSuccess,
         private readonly ?string $errorCode = null,
         private readonly ?string $errorMessage = null,
-    ) {
-    }
+    ) {}
 
     public function checkBalance(): SupplierResponse
     {
@@ -44,6 +43,12 @@ final class FakeSupplierAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 $this->errorCode ?? 'sandbox_simulated_failure',
                 $this->errorMessage ?? 'Simulated delivery failure (sandbox).',
+                // ADR-098 — preserves the sandbox's existing, documented
+                // convention (typing 'duplicate_reference' into the
+                // Simulated Outcome picker reaches needs_review) now
+                // that routing reads this generic flag, not a bare
+                // errorCode string match.
+                transactionAlreadyFormed: $this->errorCode === 'duplicate_reference',
             );
         }
 
