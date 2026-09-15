@@ -131,6 +131,9 @@ final class OrderFulfillmentService
                 playerId: $locked->player_id,
                 serverId: $locked->server_id,
                 customerPhone: $locked->customer_phone,
+                // ADR-097 decision 15 — Digiflazz-specific, ignored by
+                // every other adapter.
+                customerNoSeparator: $locked->game?->customerNoSeparatorOverride(),
                 orderId: $locked->id,
             ));
 
@@ -353,6 +356,12 @@ final class OrderFulfillmentService
                     playerId: $order->player_id,
                     serverId: $order->server_id,
                     customerPhone: $order->customer_phone,
+                    // ADR-097 decision 15/14 — `$order->game`, not the
+                    // leg's component's own game: a combo's components
+                    // are enforced same-game at save time
+                    // (StoreComboPackageRequest), so they're identical
+                    // anyway, and $order already carries it.
+                    customerNoSeparator: $order->game?->customerNoSeparatorOverride(),
                     orderId: $order->id,
                 ));
 

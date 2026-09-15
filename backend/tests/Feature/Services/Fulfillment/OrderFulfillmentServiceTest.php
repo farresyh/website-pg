@@ -3,6 +3,7 @@
 namespace Tests\Feature\Services\Fulfillment;
 
 use App\Models\Affiliate;
+use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
@@ -263,6 +264,61 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
         $this->assertSame('GV-RAPI-1A2B3C4D5E6F', $result->supplier_ref);
         $this->assertNotNull($result->delivered_at);
+    }
+
+    /**
+     * ADR-097 decision 15 — fulfill() resolves the order's own Game's
+     * `validation_rules['customer_no_separator']` override and forwards
+     * it on the SupplierOrderRequest; the adapter that never reads it
+     * (any non-Digiflazz supplier) just ignores it, but the value must
+     * still reach it correctly.
+     */
+    public function test_fulfill_forwards_the_games_customer_no_separator_override_to_the_adapter(): void
+    {
+        $game = Game::query()->create([
+            'name' => 'Test Game', 'slug' => 'test-game-'.uniqid(),
+            'validation_rules' => ['customer_no_separator' => 'space'],
+        ]);
+        $order = $this->paidOrder(['game_id' => $game->id]);
+
+        $captured = null;
+        $adapter = new class($captured) implements SupplierAdapter
+        {
+            public ?SupplierOrderRequest $captured = null;
+
+            public function __construct(&$captured) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->captured = $request;
+
+                return SupplierResponse::success(['supplier_ref' => 'SEP-TEST']);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+
+        $this->service($adapter)->fulfill($order);
+
+        $this->assertSame('space', $adapter->captured?->customerNoSeparator);
     }
 
     /**

@@ -24,9 +24,14 @@ final class SupplierStatusCheckRequest
         public readonly ?string $productRef = null,
         public readonly ?string $playerId = null,
         public readonly ?string $serverId = null,
+        // ADR-097 decision 14/15 — same GAME-level separator override
+        // as SupplierOrderRequest::$customerNoSeparator, needed here
+        // too: Digiflazz's checkStatus is a literal re-submit of the
+        // original topup request, so a mismatched customer_no on the
+        // re-submit is as wrong as one on the original createOrder().
+        public readonly ?string $customerNoSeparator = null,
         // ADR-051 decision 6 — same request-log attribution as
         // SupplierOrderRequest::$orderId.
         public readonly ?int $orderId = null,
-    ) {
-    }
+    ) {}
 }

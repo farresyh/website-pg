@@ -188,6 +188,64 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame(1, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->count());
     }
 
+    /**
+     * ADR-097 decision 15 — a combo leg resolves the separator from
+     * `$order->game`, not the leg's own component's game: same-game-
+     * only combos (`StoreComboPackageRequest`) mean they're identical,
+     * and this proves the leg loop actually forwards it, not just the
+     * plain single-ref path.
+     */
+    public function test_attempt_leg_forwards_the_orders_game_customer_no_separator_override(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-'.uniqid(),
+            'validation_rules' => ['customer_no_separator' => 'pipe'],
+        ])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo);
+
+        $captured = null;
+        $adapter = new class($captured) implements SupplierAdapter
+        {
+            public ?SupplierOrderRequest $captured = null;
+
+            public function __construct(&$captured) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->captured = $request;
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+
+        $this->service($adapter)->fulfill($order);
+
+        $this->assertSame('pipe', $adapter->captured?->customerNoSeparator);
+    }
+
     public function test_the_idempotency_key_extends_the_order_reference_number_per_leg(): void
     {
         $supplier = $this->supplier();
