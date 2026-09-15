@@ -770,6 +770,37 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     functionally complete** on `staging` — combo is genuinely buyable through
     every real channel, not just admin-creatable. See `docs/adr.md` ADR-094
     for the full 23-decision design.
+16. **Durable "Initial Delivery" audit row — needs its own ADR + grill.** Found
+    2026-09-15 while fixing the Delivery Logs outcome bugs (see
+    `docs/build-log.md`'s 2026-09-15 entry): `order_resend_attempts` (ADR-017
+    decision #4, "record every attempt, not just the latest") only ever logs
+    RESEND attempts — the very first/original fulfillment attempt has no
+    durable row of its own. The admin's "Initial Delivery" row is synthesized
+    live from `Order.supplier_response`/`delivery_status`, single mutable
+    columns overwritten by every later resend — accurate for an order that's
+    never been resent, but the true original response is unrecoverable the
+    moment a resend happens (confirmed live: a real order's "Initial
+    Delivery" row was showing a later resend's response under the wrong
+    label). The 2026-09-15 fix only made the *label* honest for an
+    already-resent order ("original response not retained") — it does not
+    yet capture initial attempts going forward. A real fix needs a schema
+    decision: reuse `order_resend_attempts` with a new discriminator (and
+    likely a rename — "resend" no longer describes every row) vs. a separate
+    table. Grill before building, not a trivial column add.
+17. **Combo order `retryDelivery()` has zero audit trail — needs a decision,
+    not urgent.** Found alongside item 16, same session: ADR-094 decision 10
+    routes every combo-order retry through the plain `retryDelivery()`
+    endpoint (`FulfillOrderJob::dispatch()` directly, no package picker,
+    since a combo can't swap package) — unlike `resend()`, this path writes
+    no `order_resend_attempts` row at all, for combo or plain orders alike.
+    A combo order's leg-level state is still visible via `ComboLegBreakdown`
+    (decision 12), so this isn't a total blind spot, but a combo retry
+    leaves no chronological "who clicked retry, when, what was the diff"
+    trail the way a plain-order resend does. Deliberately deferred (founder
+    decision, 2026-09-15) rather than folded into item 16's fix — different
+    root cause (a missing write, not a wrong label), worth its own pass once
+    item 16's schema shape is decided (the two likely share a table).
+
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 **CHIP credential `.env`→DB migration** — genuinely still open (confirmed

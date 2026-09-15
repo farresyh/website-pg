@@ -63,6 +63,10 @@ function getOutcomeSeverity(outcome: string): "success" | "danger" | "warn" | "i
     case "needs_review":
     case "pending":
       return "warn";
+    // 2026-09-15 bugfix — the Initial Delivery row's own honest fallback
+    // once its real response is no longer recoverable (see the comment
+    // where this row is built below).
+    case "unknown":
     case "processing":
     default:
       return "info";
@@ -83,10 +87,25 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
   // 1. Initial delivery attempt
   if (order && (order.delivery_status !== "not_started" || order.paid_at !== null || order.supplier_response !== null)) {
     const hasResends = resendList.length > 0;
-    const initialOutcome = hasResends ? "failed" : order.delivery_status;
+
+    // 2026-09-15 bugfix: Order.supplier_response/delivery_status are the
+    // single, mutable "current state" fields — overwritten by every
+    // resend. For an order that's never been resent they ARE the
+    // initial attempt's true state (including through an async
+    // pending→resolved transition), so showing them here is accurate.
+    // But the moment a resend has happened, they reflect the LATEST
+    // attempt, not the original one — the true initial response is
+    // genuinely gone (order_resend_attempts, ADR-017 decision #4, only
+    // ever logged resends, never the first attempt; see docs/prd.md
+    // §16's backlog item for the real fix, capturing this going
+    // forward). Showing them under an "Initial Delivery" label with a
+    // guessed outcome would be lying twice over (found live: a
+    // Sukses/Delivered response mislabeled outcome=failed) — an honest
+    // "not retained" placeholder beats a wrong guess.
+    const initialOutcome = hasResends ? "unknown" : order.delivery_status;
 
     let initialNote: string | null = null;
-    if (order.supplier_response) {
+    if (!hasResends && order.supplier_response) {
       const resp = order.supplier_response as Record<string, unknown>;
       if (typeof resp.message === "string") {
         initialNote = resp.message;
@@ -105,8 +124,8 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
       priceDiffSen: null,
       outcome: initialOutcome,
       triggeredBy: "System (Auto)",
-      note: initialNote ?? "Initial checkout fulfillment",
-      response: (order.supplier_response as Record<string, unknown>) ?? null,
+      note: hasResends ? "Original response not retained — superseded by a later resend." : (initialNote ?? "Initial checkout fulfillment"),
+      response: hasResends ? null : ((order.supplier_response as Record<string, unknown>) ?? null),
     });
   }
 

@@ -115,7 +115,17 @@ final class OrderResendService
             'cost_price_sen' => $liveCostPrice,
             'standard_selling_price_sen' => $liveStandardSellingPrice,
             'price_diff_sen' => $priceDiff,
-            'outcome' => $result->delivery_status === DeliveryStatus::Delivered ? 'success' : 'failed',
+            // 2026-09-15 bugfix: a genuinely still-Pending async result
+            // (Digiflazz rc=03) is no longer coerced into a hard
+            // 'failed' — it self-corrects the moment the real outcome
+            // resolves, via OrderFulfillmentService::resolvePendingResendAttempt()
+            // (called from finalizePendingDelivery(), the one shared
+            // path a webhook/reconcile-poll/manual-check all use).
+            'outcome' => match ($result->delivery_status) {
+                DeliveryStatus::Delivered => 'success',
+                DeliveryStatus::Pending => 'pending',
+                default => 'failed',
+            },
             'supplier_response' => $result->supplier_response,
             'note' => $note,
             'triggered_by' => $triggeredBy,

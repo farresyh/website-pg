@@ -23,6 +23,7 @@ use App\Services\Pricing\PricingService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
+use App\Services\Supplier\SupplierOutcome;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
@@ -97,6 +98,56 @@ class OrderResendServiceTest extends TestCase
                 throw new ValidationNotSupportedException('not used in this test');
             }
         };
+    }
+
+    /**
+     * 2026-09-15 bugfix — an async supplier's own resend re-submit
+     * (Digiflazz rc=03/Pending) is a third, distinct outcome from plain
+     * success/failure.
+     */
+    private function pendingSupplierAdapter(array $data = []): SupplierAdapter
+    {
+        return new class($data) implements SupplierAdapter
+        {
+            public function __construct(private readonly array $data) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                return SupplierResponse::pending($this->data);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+    }
+
+    private function fulfillmentService(): OrderFulfillmentService
+    {
+        return new OrderFulfillmentService(
+            new OrderStatusService,
+            new ReferenceNumberService,
+            $this->app->make(SupplierAdapterFactory::class),
+            new LedgerService,
+            new VoucherService(new LedgerService),
+            new SupplierFundingService,
+        );
     }
 
     private function supplier(): Supplier
@@ -328,6 +379,102 @@ class OrderResendServiceTest extends TestCase
         $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
         $attempt = OrderResendAttempt::query()->sole();
         $this->assertSame('failed', $attempt->outcome);
+    }
+
+    /**
+     * 2026-09-15 bugfix (Bug A, part 1): a genuinely still-Pending async
+     * result (Digiflazz rc=03) is no longer coerced into a hard
+     * 'failed' the moment the resend call returns.
+     */
+    public function test_records_a_pending_outcome_for_an_async_supplier_resend(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier);
+
+        $result = $this->service($this->pendingSupplierAdapter(['status' => 'Pending']))->resend($order, $package, null, 'Admin');
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+        $attempt = OrderResendAttempt::query()->sole();
+        $this->assertSame('pending', $attempt->outcome);
+    }
+
+    /**
+     * 2026-09-15 bugfix (Bug A, part 2): the historical attempt row
+     * self-corrects the moment the real async outcome resolves — via
+     * finalizePendingDelivery(), the one shared path a webhook, the
+     * scheduled reconcile poll, and ADR-096's manual "Check from
+     * Supplier" button all funnel through.
+     */
+    public function test_a_pending_resend_attempt_self_corrects_to_success_once_the_order_finalizes(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier);
+
+        $this->service($this->pendingSupplierAdapter(['status' => 'Pending']))->resend($order, $package, null, 'Admin');
+        $attempt = OrderResendAttempt::query()->sole();
+        $this->assertSame('pending', $attempt->outcome);
+
+        $this->fulfillmentService()->finalizePendingDelivery(
+            $order->fresh(),
+            SupplierOutcome::Success,
+            'GV-RESOLVED-LATER',
+            ['status' => 'Sukses'],
+        );
+
+        $attempt->refresh();
+        $this->assertSame('success', $attempt->outcome);
+        $this->assertSame(['status' => 'Sukses'], $attempt->supplier_response);
+    }
+
+    /** Same self-correction, the Failure branch. */
+    public function test_a_pending_resend_attempt_self_corrects_to_failed_once_the_order_finalizes(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier);
+
+        $this->service($this->pendingSupplierAdapter(['status' => 'Pending']))->resend($order, $package, null, 'Admin');
+        $attempt = OrderResendAttempt::query()->sole();
+
+        $this->fulfillmentService()->finalizePendingDelivery(
+            $order->fresh(),
+            SupplierOutcome::Failure,
+            null,
+            ['status' => 'Gagal'],
+        );
+
+        $attempt->refresh();
+        $this->assertSame('failed', $attempt->outcome);
+        $this->assertSame(['status' => 'Gagal'], $attempt->supplier_response);
+    }
+
+    /**
+     * A resend of a supplier that never went Pending at all (the
+     * ordinary Gamevion sync case) must never accidentally "steal" an
+     * unrelated older order's pending attempt — the lookup is scoped by
+     * order_id.
+     */
+    public function test_finalizing_a_different_orders_pending_delivery_does_not_touch_this_orders_attempt(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier);
+
+        $this->service($this->pendingSupplierAdapter(['status' => 'Pending']))->resend($order, $package, null, 'Admin');
+        $attempt = OrderResendAttempt::query()->sole();
+
+        $otherOrder = $this->failedOrder($game, $package, $supplier, ['order_number' => 'KRS-RESEND-OTHER', 'delivery_status' => DeliveryStatus::Pending->value]);
+
+        $this->fulfillmentService()->finalizePendingDelivery($otherOrder, SupplierOutcome::Success, 'GV-OTHER', ['status' => 'Sukses']);
+
+        $attempt->refresh();
+        $this->assertSame('pending', $attempt->outcome);
     }
 
     /**
