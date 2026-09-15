@@ -32,10 +32,13 @@ import {
   getSupplierTransfers,
   recordSupplierTransfer,
   downloadSupplierTransferReceipt,
+  adjustSupplierTransfer,
+  voidSupplierTransfer,
   type SupplierFundingLedger,
   type SupplierTransfer,
 } from "@/lib/supplier-transfers";
 import type { Supplier } from "@/lib/suppliers";
+import { Tag } from "@/components/ui/tag";
 
 interface Props {
   isOpen: boolean;
@@ -59,6 +62,11 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+/** 2026-09-15 addendum: amount_foreign_received stays gross (receipt-verifiable) — this is the same net figure the ledger actually credited. */
+function netForeign(transfer: SupplierTransfer): number {
+  return Number(transfer.amount_foreign_received) - Number(transfer.supplier_fee ?? 0);
+}
+
 const sourceChannelLabel: Record<string, string> = {
   wise: "Wise",
   airwallex: "Airwallex",
@@ -72,10 +80,20 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
   const [amountMyr, setAmountMyr] = useState("");
   const [feeMyr, setFeeMyr] = useState("");
   const [amountForeign, setAmountForeign] = useState("");
+  const [supplierFee, setSupplierFee] = useState("");
   const [referenceNo, setReferenceNo] = useState("");
   const [receipt, setReceipt] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
+
+  // ADR-083 2026-09-15 addendum — Adjust / Void, expanded inline under the
+  // row being corrected rather than a nested dialog.
+  const [correctingId, setCorrectingId] = useState<number | null>(null);
+  const [correctionMode, setCorrectionMode] = useState<"adjust" | "void">("adjust");
+  const [correctionAmount, setCorrectionAmount] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correcting, setCorrecting] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
 
   function refresh() {
     return getSupplierTransfers(token, supplier.id)
@@ -111,12 +129,14 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
         fee_myr: feeSen,
         currency: supplier.currency,
         amount_foreign_received: amountForeign,
+        supplier_fee: supplierFee || null,
         reference_no: referenceNo || null,
         receipt,
       });
       setAmountMyr("");
       setFeeMyr("");
       setAmountForeign("");
+      setSupplierFee("");
       setReferenceNo("");
       setReceipt(null);
       await refresh();
@@ -124,6 +144,43 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function openCorrection(transfer: SupplierTransfer) {
+    setCorrectingId((current) => (current === transfer.id ? null : transfer.id));
+    setCorrectionMode("adjust");
+    setCorrectionAmount("");
+    setCorrectionReason("");
+    setCorrectionError(null);
+  }
+
+  async function handleCorrectionSubmit(e: React.FormEvent, transfer: SupplierTransfer) {
+    e.preventDefault();
+    setCorrectionError(null);
+
+    if (!correctionReason.trim()) {
+      setCorrectionError("Enter a reason — required for every correction.");
+      return;
+    }
+    if (correctionMode === "adjust" && (!correctionAmount || Number(correctionAmount) === 0)) {
+      setCorrectionError("Enter a non-zero adjustment amount.");
+      return;
+    }
+
+    setCorrecting(true);
+    try {
+      if (correctionMode === "void") {
+        await voidSupplierTransfer(token, transfer.id, correctionReason.trim());
+      } else {
+        await adjustSupplierTransfer(token, transfer.id, correctionAmount, correctionReason.trim());
+      }
+      setCorrectingId(null);
+      await refresh();
+    } catch (err) {
+      setCorrectionError(err instanceof ApiError ? err.message : "Something went wrong.");
+    } finally {
+      setCorrecting(false);
     }
   }
 
@@ -195,6 +252,17 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
               placeholder={supplier.currency === "IDR" ? "3700000" : "1000.00"}
               required
             />
+            <p className="mt-1 text-theme-xs text-gray-400">Gross — the literal &quot;total to supplier&quot; figure on the receipt, before the supplier&apos;s own fee below.</p>
+          </div>
+          <div>
+            <Label htmlFor="transfer_supplier_fee">Supplier&apos;s own fee ({supplier.currency}, optional)</Label>
+            <Input
+              id="transfer_supplier_fee"
+              value={supplierFee}
+              onChange={(e) => setSupplierFee(e.target.value)}
+              placeholder={supplier.currency === "IDR" ? "15000" : "0.00"}
+            />
+            <p className="mt-1 text-theme-xs text-gray-400">e.g. Digiflazz&apos;s own deposit-side cut — the ledger credits net (received − this fee), not the gross figure above.</p>
           </div>
           <div>
             <Label htmlFor="transfer_receipt">Receipt (optional)</Label>
@@ -224,39 +292,147 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</th>
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Via</th>
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Sent (RM)</th>
-                  <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Received</th>
+                  <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Received (net)</th>
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Rate</th>
                   <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reference / Receipt</th>
+                  <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {ledger.transfers.data.map((transfer) => (
-                  <tr key={transfer.id}>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatDate(transfer.created_at)}</td>
-                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{sourceChannelLabel[transfer.source_channel] ?? transfer.source_channel}</td>
-                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{formatRm(transfer.amount_myr_sent)}</td>
-                    <td className="px-4 py-2 font-medium text-success-600">{formatForeign(transfer.amount_foreign_received, transfer.currency)}</td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{transfer.effective_rate ?? "—"}</td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
-                      {transfer.reference_no ?? "—"}
-                      {transfer.receipt_path && (
-                        <Button
-                          type="button"
-                          size="small"
-                          variant="outlined"
-                          className="ml-2"
-                          disabled={downloading === transfer.id}
-                          onClick={() => handleDownload(transfer)}
-                        >
-                          {downloading === transfer.id ? "…" : "Receipt"}
-                        </Button>
+                {ledger.transfers.data.map((transfer) => {
+                  const isVoided = transfer.voided_at !== null;
+                  const hasFee = transfer.supplier_fee !== null && Number(transfer.supplier_fee) > 0;
+
+                  return (
+                    <React.Fragment key={transfer.id}>
+                      <tr className={isVoided ? "opacity-60" : undefined}>
+                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatDate(transfer.created_at)}</td>
+                        <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{sourceChannelLabel[transfer.source_channel] ?? transfer.source_channel}</td>
+                        <td className={`px-4 py-2 text-gray-700 dark:text-gray-300 ${isVoided ? "line-through" : ""}`}>{formatRm(transfer.amount_myr_sent)}</td>
+                        <td className="px-4 py-2">
+                          <span className={`font-medium ${isVoided ? "text-gray-400 line-through" : "text-success-600"}`}>
+                            {formatForeign(String(netForeign(transfer)), transfer.currency)}
+                          </span>
+                          {hasFee && !isVoided && (
+                            <div className="text-theme-xs text-gray-400">
+                              gross {formatForeign(transfer.amount_foreign_received, transfer.currency)} − fee {formatForeign(transfer.supplier_fee ?? "0", transfer.currency)}
+                            </div>
+                          )}
+                          {isVoided && <Tag severity="danger">Voided</Tag>}
+                        </td>
+                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{transfer.effective_rate ?? "—"}</td>
+                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                          {transfer.reference_no ?? "—"}
+                          {transfer.receipt_path && (
+                            <Button
+                              type="button"
+                              size="small"
+                              variant="outlined"
+                              className="ml-2"
+                              disabled={downloading === transfer.id}
+                              onClick={() => handleDownload(transfer)}
+                            >
+                              {downloading === transfer.id ? "…" : "Receipt"}
+                            </Button>
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          {!isVoided && (
+                            <Button type="button" size="small" variant="outlined" onClick={() => openCorrection(transfer)}>
+                              {correctingId === transfer.id ? "Cancel" : "Correct…"}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+
+                      {isVoided && transfer.void_reason && (
+                        <tr>
+                          <td colSpan={7} className="px-4 pb-2 text-theme-xs text-error-600 dark:text-error-400">
+                            Voided: {transfer.void_reason}
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                ))}
+
+                      {transfer.adjustments.map((adjustment) => (
+                        <tr key={`adj-${adjustment.id}`} className="bg-gray-50/50 dark:bg-white/[0.02]">
+                          <td colSpan={3} className="px-4 py-1.5 pl-8 text-theme-xs text-gray-400">
+                            ↳ {formatDate(adjustment.created_at)}
+                          </td>
+                          <td colSpan={4} className="px-4 py-1.5 text-theme-xs">
+                            <span className={Number(adjustment.amount) < 0 ? "text-error-600 dark:text-error-400" : "text-success-600 dark:text-success-400"}>
+                              {Number(adjustment.amount) > 0 ? "+" : ""}
+                              {formatForeign(adjustment.amount, adjustment.currency)}
+                            </span>
+                            <span className="ml-2 text-gray-500 dark:text-gray-400">{adjustment.reason}</span>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {correctingId === transfer.id && (
+                        <tr>
+                          <td colSpan={7} className="bg-gray-50 px-4 py-3 dark:bg-white/[0.02]">
+                            <form onSubmit={(e) => handleCorrectionSubmit(e, transfer)} className="space-y-2">
+                              <div className="flex gap-2">
+                                {(["adjust", "void"] as const).map((mode) => (
+                                  <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => setCorrectionMode(mode)}
+                                    className={`rounded-lg px-3 py-1.5 text-theme-xs capitalize ${correctionMode === mode ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+                                  >
+                                    {mode === "adjust" ? "Adjust" : "Void Entirely"}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {correctionError && (
+                                <p className="rounded-lg bg-error-50 px-3 py-2 text-theme-xs text-error-600 dark:bg-error-500/15 dark:text-error-400">{correctionError}</p>
+                              )}
+
+                              {correctionMode === "adjust" ? (
+                                <div>
+                                  <Label htmlFor={`adjust_amount_${transfer.id}`}>Adjustment ({transfer.currency}, signed)</Label>
+                                  <Input
+                                    id={`adjust_amount_${transfer.id}`}
+                                    value={correctionAmount}
+                                    onChange={(e) => setCorrectionAmount(e.target.value)}
+                                    placeholder="-15000"
+                                  />
+                                </div>
+                              ) : (
+                                <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                                  Reverses this transfer&apos;s full net credit ({formatForeign(String(netForeign(transfer)), transfer.currency)}) — the money never reached {supplier.name} at all.
+                                </p>
+                              )}
+
+                              <div>
+                                <Label htmlFor={`correction_reason_${transfer.id}`}>Reason (required)</Label>
+                                <Input
+                                  id={`correction_reason_${transfer.id}`}
+                                  value={correctionReason}
+                                  onChange={(e) => setCorrectionReason(e.target.value)}
+                                  placeholder={correctionMode === "void" ? "Wrong account number — confirmed with Wise support" : "Digiflazz deposit fee missed at entry time"}
+                                />
+                              </div>
+
+                              <div className="flex justify-end gap-2">
+                                <Button type="button" size="small" variant="outlined" onClick={() => setCorrectingId(null)} disabled={correcting}>
+                                  Cancel
+                                </Button>
+                                <Button type="submit" size="small" severity={correctionMode === "void" ? "danger" : undefined} disabled={correcting}>
+                                  {correcting ? "Saving…" : correctionMode === "void" ? "Void Entirely" : "Save Adjustment"}
+                                </Button>
+                              </div>
+                            </form>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
                 {ledger.transfers.data.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-gray-400">No transfers recorded yet.</td>
+                    <td colSpan={7} className="px-4 py-6 text-center text-gray-400">No transfers recorded yet.</td>
                   </tr>
                 )}
               </tbody>

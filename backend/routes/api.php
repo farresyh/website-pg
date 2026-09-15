@@ -681,6 +681,9 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::get('/supplier-transfers/{supplierTransfer}/receipt', [SupplierTransferController::class, 'downloadReceipt']);
+        // ADR-083 2026-09-15 addendum — correction actions, never an edit/delete on the transfer itself.
+        Route::post('/supplier-transfers/{supplierTransfer}/adjust', [SupplierTransferController::class, 'adjust']);
+        Route::post('/supplier-transfers/{supplierTransfer}/void', [SupplierTransferController::class, 'void']);
 
         // ADR-083 decision 9 — Transaction Register: read-only, plus a
         // CSV export, across orders/supplier transfers/supplier
