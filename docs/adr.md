@@ -106,7 +106,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-091** | Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers |
 | **ADR-092** | Admin Orders KPI cards — persistent, clickable status counts, closing the reseller-family audit's "no admin alert" gap without reopening ADR-073's manual-refund policy |
 | **ADR-093** | Reseller Bot `.order` fat-finger safety net — auto player-ID/region validation before placing, player ID echoed in the confirmation reply, no mandatory 2-step confirm |
-| **ADR-094** | Combo Package (design, parked) — assembling several existing catalog Packages into one opaque SKU above a game's native max denomination |
+| **ADR-094** | Combo Package — assembling several existing catalog Packages into one opaque SKU above a game's native max denomination. Phases 1-3b (data model, pricing, fulfillment engine both suppliers) LIVE; Phase 4 (admin UI) in progress |
 | **ADR-095** | Cloudflare R2 storage cutover — gallery images + DB backups (2 buckets, public/private split), WebP-at-upload for Gallery, delete referential safety |
 
 ---
@@ -5053,7 +5053,7 @@ Founder set the direction up front: the Bot channel exists specifically for B2B 
 
 ## ADR-094: Combo Package — assembling several existing catalog Packages into one opaque, sellable SKU above a game's native max denomination
 
-**Status:** Accepted (design) — grilled 2026-09-13, multiple rounds + a dedicated stress-test pass. **UNPARKED 2026-09-14** (decision 17's trigger explicitly overridden by the founder — see the 2026-09-14 addendum after Consequence to track). Build starts next session.
+**Status:** Accepted & building — grilled 2026-09-13, multiple rounds + a dedicated stress-test pass. **UNPARKED 2026-09-14** (decision 17's trigger explicitly overridden by the founder — see the 2026-09-14 addendum after Consequence to track). **Phases 1-3b shipped 2026-09-14/15** (PR #202-205, all merged to `staging`) — data model, pricing/Price Sync cadence, and the fulfillment engine (decisions 7-11) for both suppliers (Gamevion sync, Digiflazz async per-leg webhook/poll) are done and test-covered (49 tests green). **Phase 4 (admin UI — combo composition CRUD, Order-detail leg breakdown, decision 13's admin-manual partial-delivery half) starts this session.** Decision 14's other 4 consuming channels (storefront/Affiliate/Reseller portal/API/Bot) and decision 22 remain after Phase 4.
 
 **Context:**
 
