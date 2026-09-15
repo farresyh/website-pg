@@ -15,6 +15,7 @@ use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * GAME-7/GAME-4: admin edits or removes an already-promoted Package.
@@ -116,10 +117,56 @@ class PackageController extends Controller
      * Inline on/off toggle, same pattern as AdminUserController's own
      * updateStatus — a dedicated lightweight endpoint rather than
      * requiring the full edit form just to flip one flag.
+     *
+     * ADR-094 decisions 13/22 (2026-09-15 Phase 4): two combo-aware
+     * guards layered on top of the plain toggle —
+     *  - **deactivating** a component Package with active combo
+     *    dependents requires `acknowledge_cascade` (decision 13); once
+     *    acknowledged, the deactivation cascades onto every one of
+     *    them via the same `ComboPricingService::cascadeDeactivate()`
+     *    Price Sync's own automated path already uses.
+     *  - **reactivating** a combo Package itself is blocked while any
+     *    of its components are inactive (decision 22 — no
+     *    auto-reactivation of a combo whose composition can't
+     *    currently fulfill; reactivating a *component* never
+     *    auto-reactivates a combo that depends on it, satisfied simply
+     *    by this method never doing that).
      */
-    public function updateStatus(UpdatePackageStatusRequest $request, Package $package): JsonResponse
+    public function updateStatus(UpdatePackageStatusRequest $request, Package $package, ComboPricingService $comboPricing): JsonResponse
     {
-        $package->update(['is_active' => $request->validated('is_active')]);
+        $isActive = $request->validated('is_active');
+
+        if (! $isActive && $package->is_active) {
+            $activeDependents = $package->partOfCombos()->where('packages.is_active', true)->get(['packages.id', 'packages.name']);
+
+            if ($activeDependents->isNotEmpty() && ! $request->boolean('acknowledge_cascade')) {
+                throw ValidationException::withMessages([
+                    'acknowledge_cascade' => [
+                        $activeDependents->count().' active combo(s) use this package — deactivating will deactivate them too: '
+                        .$activeDependents->pluck('name')->implode(', '),
+                    ],
+                ]);
+            }
+        }
+
+        if ($isActive && ! $package->is_active && $package->is_combo) {
+            $inactiveComponents = $package->components()->where('packages.is_active', false)->get(['packages.id', 'packages.name']);
+
+            if ($inactiveComponents->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'is_active' => [
+                        'Cannot reactivate — inactive component(s): '.$inactiveComponents->pluck('name')->implode(', '),
+                    ],
+                ]);
+            }
+        }
+
+        $package->update(['is_active' => $isActive]);
+
+        if (! $isActive) {
+            $comboPricing->cascadeDeactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
+        }
+
         GameController::forgetPackagesCache($package->game_id);
 
         return response()->json($package);

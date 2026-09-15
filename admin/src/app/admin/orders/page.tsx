@@ -48,6 +48,7 @@ import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
+import ComboLegBreakdown from "@/components/orders/ComboLegBreakdown";
 
 // ADR-092: cards poll on this interval while the page is open — the one
 // piece of "proactive" behaviour kept from the dropped WhatsApp-alert
@@ -331,8 +332,8 @@ function OrdersPageInner() {
                   {refundingToWallet ? "Refunding…" : "Refund to Wallet…"}
                 </Button>
               )}
-              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for needs_review at all (ADR-026 decision 4c). */}
-              {selected.delivery_status === "failed" && !selected.wallet_reseller && !selected.voucher && (
+              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for the ordinary ambiguous needs_review case at all (ADR-026 decision 4c). ADR-094 decision 9's carve-out: a genuine partial-delivery combo order (`partial_combo_delivery`) is the one needs_review case this button does appear for. */}
+              {(selected.delivery_status === "failed" || selected.partial_combo_delivery) && !selected.wallet_reseller && !selected.voucher && (
                 <Button size="small" variant="outlined" onClick={() => setVoucherModalOpen(true)}>
                   Issue Voucher…
                 </Button>
@@ -370,6 +371,9 @@ function OrdersPageInner() {
         </div>
 
         <OrderDetailCards order={selected} />
+
+        {/* ADR-094 decision 12: empty/no-op for every ordinary order — only a combo order has legs to show. */}
+        <ComboLegBreakdown legs={selected.delivery_legs} />
 
         {/* ADR-017 decision #4: chronological delivery history (initial + resends) */}
         <DeliveryLogsTable order={selected} attempts={selected.resend_attempts} />

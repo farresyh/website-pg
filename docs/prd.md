@@ -726,7 +726,8 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-15. **ADR-094 — Combo Package — UNPARKED 2026-09-14, build in progress.**
+15. **ADR-094 — Combo Package — Phases 1-4 shipped 2026-09-14/15, admin-only
+    until decision 14's consuming channels are built.**
     Assembles several existing catalog Packages into one opaque, sellable SKU
     above a game's native max denomination (e.g. MLBB Malaysia's 7502
     Diamonds), so a reseller/guest pays one CHIP FPX fee instead of two.
@@ -734,17 +735,21 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     leg-engine, partial-delivery policy, component-churn guards,
     ledger/reporting/LLM-assistant impact all resolved). Decision 17's revisit
     trigger explicitly overridden by the founder 2026-09-14 (see `docs/adr.md`
-    ADR-094's addendum). **Phases 1-3b shipped 2026-09-14/15** (PR #202-205,
-    merged to `staging`, 49 tests green): data model + creation endpoint,
-    pricing override + Price Sync cadence, and the fulfillment engine
+    ADR-094's addendum). **Shipped:** data model + creation endpoint,
+    pricing override + Price Sync cadence, the fulfillment engine
     (`OrderFulfillmentService` leg-sequencing, partial-delivery →
     `needs_review`) for both suppliers (Gamevion sync, Digiflazz async
-    per-leg webhook/poll). **Phase 4 (admin UI) starts this session** —
-    combo composition CRUD, Order-detail leg breakdown, decision 13's
-    admin-manual partial-delivery resolution half. Still after Phase 4:
-    decision 14's other 4 consuming channels (storefront, Affiliate,
-    Reseller portal, REST API, Bot — combo is admin-only today) and
-    decision 22. See `docs/adr.md` ADR-094 for the full 23-decision design.
+    per-leg webhook/poll), and the admin UI (`/admin/games` combo
+    composition CRUD, Order-detail leg breakdown — decision 12, Issue
+    Voucher custom-amount for a genuine partial-delivery order — decision 9,
+    and decision 13/22's component-churn guards). Full backend suite
+    1922/1922 green. Decision 21 (supplier-drift warn) turned out to have no
+    current UI trigger (no screen edits an already-promoted Package's
+    supplier) — nothing built for it, revisit only if that ever changes.
+    **Still to build:** decision 14's other 4 consuming channels
+    (storefront, Affiliate, Reseller portal, REST API, Bot — combo is
+    admin-only today). See `docs/adr.md` ADR-094 for the full 23-decision
+    design.
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 **CHIP credential `.env`→DB migration** — genuinely still open (confirmed

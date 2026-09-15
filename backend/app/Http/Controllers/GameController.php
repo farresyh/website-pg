@@ -159,6 +159,39 @@ class GameController extends Controller
                 $packages->each(function (Package $package) use ($supplierStatuses) {
                     $status = $supplierStatuses->get("{$package->supplier_id}:{$package->supplier_package_ref}");
                     $package->supplier_active = $status?->status_raw === 'active';
+
+                    // ADR-094 Phase 4: this per-game listing is also
+                    // the combo composition/churn-guard data source —
+                    // a combo row's own components (name/denomination/
+                    // active), and every ordinary row's
+                    // active_combo_dependents (which combos would be
+                    // cascade-deactivated if this one were switched
+                    // off, decision 13's admin-panel warning). Same
+                    // N+1-but-small-dataset tradeoff this method
+                    // already made for supplier_active above — one
+                    // game's package list, not a bulk endpoint.
+                    // Plain arrays, not raw Eloquent Collections — same
+                    // "cache values are plain arrays" convention
+                    // this whole cached closure follows for $packages
+                    // itself (AGENTS.md).
+                    $package->components = $package->is_combo
+                        ? $package->components()
+                            ->get(['packages.id', 'packages.name', 'packages.denomination', 'packages.cost_price', 'packages.standard_selling_price', 'packages.is_active'])
+                            ->map(fn (Package $c) => [
+                                'id' => $c->id,
+                                'name' => $c->name,
+                                'denomination' => $c->denomination,
+                                'cost_price' => $c->cost_price,
+                                'standard_selling_price' => $c->standard_selling_price,
+                                'is_active' => $c->is_active,
+                                'quantity' => $c->pivot->quantity,
+                            ])->values()->all()
+                        : [];
+                    $package->active_combo_dependents = $package->partOfCombos()
+                        ->where('packages.is_active', true)
+                        ->get(['packages.id', 'packages.name'])
+                        ->map(fn (Package $c) => ['id' => $c->id, 'name' => $c->name])
+                        ->values()->all();
                 });
 
                 // ->toArray(), not the raw Collection — same

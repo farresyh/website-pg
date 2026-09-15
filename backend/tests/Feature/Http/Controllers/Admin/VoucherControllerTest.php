@@ -4,7 +4,11 @@ namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
 use App\Models\Affiliate;
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
+use App\Models\Package;
+use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerService;
@@ -37,6 +41,52 @@ class VoucherControllerTest extends TestCase
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ], $overrides));
+    }
+
+    /**
+     * ADR-094 decision 9 (Phase 4): a combo order whose legs genuinely
+     * split Delivered/Failed — needs_review, but not the ordinary
+     * ambiguous kind. Legs are created directly (not via the
+     * fulfillment engine itself, already covered by
+     * OrderFulfillmentServiceComboTest) since this suite is only
+     * exercising VoucherController's own gating logic.
+     */
+    private function makePartialComboOrder(): Order
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia']);
+        $delivered = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000, 'markup_percent' => 10,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $failed = Package::query()->create([
+            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
+            'cost_price' => 25000, 'standard_selling_price' => 27500, 'markup_percent' => 10,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500, 'markup_percent' => 10,
+        ]);
+
+        $order = $this->makeOrder([
+            'package_id' => $combo->id,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'final_amount' => 71500 + 90,
+            'transaction_fee' => 90,
+        ]);
+
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
+        ]);
+
+        return $order;
     }
 
     public function test_admin_can_create_a_standalone_voucher_below_threshold(): void
@@ -237,6 +287,62 @@ class VoucherControllerTest extends TestCase
 
         $response->assertUnprocessable();
         $this->assertDatabaseCount('vouchers', 1);
+    }
+
+    /**
+     * ADR-026 decision 4c still holds for the ordinary ambiguous case —
+     * decision 9's carve-out is narrow (a real Delivered+Failed split),
+     * not "any needs_review order". No legs at all is the ordinary
+     * single-supplier needs_review this test represents.
+     */
+    public function test_ordinary_needs_review_order_still_cannot_issue_a_voucher(): void
+    {
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseCount('vouchers', 0);
+    }
+
+    /** Decision 9's actual carve-out: a genuine partial-delivery combo order requires and accepts a custom amount. */
+    public function test_partial_combo_delivery_order_can_issue_a_voucher_with_a_custom_amount(): void
+    {
+        $order = $this->makePartialComboOrder();
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher", ['amount' => 27500]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('amount', 27500);
+        $this->assertDatabaseHas('vouchers', ['order_id' => $order->id, 'amount' => 27500]);
+    }
+
+    /** Without an amount, a partial-delivery order has no auto-computed default — it's required. */
+    public function test_partial_combo_delivery_order_requires_an_amount(): void
+    {
+        $order = $this->makePartialComboOrder();
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['amount']);
+        $this->assertDatabaseCount('vouchers', 0);
+    }
+
+    /** Decision 9's amount is admin-adjustable, but never past what the customer actually paid. */
+    public function test_partial_combo_delivery_amount_cannot_exceed_final_amount(): void
+    {
+        $order = $this->makePartialComboOrder();
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher", ['amount' => $order->final_amount + 1]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['amount']);
+        $this->assertDatabaseCount('vouchers', 0);
     }
 
     /**

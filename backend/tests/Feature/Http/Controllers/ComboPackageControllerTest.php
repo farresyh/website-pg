@@ -339,4 +339,127 @@ class ComboPackageControllerTest extends TestCase
         $this->assertNull($combo->combo_override_price);
         $this->assertSame(44000, $combo->standard_selling_price); // back to the component's own sum
     }
+
+    /**
+     * ADR-094 decision 13 (Phase 4): deactivating a component Package
+     * referenced by an active combo requires acknowledge_cascade — a
+     * plain toggle-off request is rejected, not silently applied.
+     */
+    public function test_deactivating_a_component_without_acknowledgement_is_rejected(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$component->id}/status", ['is_active' => false]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['acknowledge_cascade']);
+        $this->assertTrue($component->refresh()->is_active);
+        $this->assertTrue($combo->refresh()->is_active);
+    }
+
+    /**
+     * Decision 13's actual cascade, once acknowledged: the component
+     * deactivates and every active dependent combo deactivates with
+     * it, each carrying its own DeactivationLog row with the acting
+     * admin recorded (mirrors SupplierController's own manual bulk
+     * deactivate — the precedent for admin_user_id on a manual, not
+     * Price-Sync, deactivation).
+     */
+    public function test_deactivating_a_component_with_acknowledgement_cascades_to_dependent_combos(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        $response = $this->patchJson("/api/packages/{$component->id}/status", [
+            'is_active' => false,
+            'acknowledge_cascade' => true,
+        ]);
+
+        $response->assertOk();
+        $this->assertFalse($component->refresh()->is_active);
+        $combo->refresh();
+        $this->assertFalse($combo->is_active);
+        $this->assertSame('combo_component_deactivated', $combo->deactivated_reason);
+
+        $this->assertDatabaseHas('deactivation_logs', [
+            'package_id' => $combo->id,
+            'admin_user_id' => $admin->id,
+            'price_sync_run_id' => null,
+        ]);
+    }
+
+    /** A component with no active combo dependents deactivates as a plain toggle, no acknowledgement needed. */
+    public function test_deactivating_a_component_with_no_active_dependents_needs_no_acknowledgement(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$component->id}/status", ['is_active' => false])->assertOk();
+
+        $this->assertFalse($component->refresh()->is_active);
+    }
+
+    /**
+     * ADR-094 decision 22 (Phase 4): a combo can't be reactivated while
+     * any of its components are inactive — no auto-reactivation cascade
+     * exists in the other direction, so this is the one guard that
+     * actually has to block.
+     */
+    public function test_reactivating_a_combo_with_an_inactive_component_is_blocked(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $combo->update(['is_active' => false]);
+        $component->update(['is_active' => false]);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$combo->id}/status", ['is_active' => true]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['is_active']);
+        $this->assertFalse($combo->refresh()->is_active);
+    }
+
+    /** Reactivating a combo whose components are all active succeeds normally. */
+    public function test_reactivating_a_combo_with_all_active_components_succeeds(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $combo->update(['is_active' => false]);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$combo->id}/status", ['is_active' => true])->assertOk();
+
+        $this->assertTrue($combo->refresh()->is_active);
+    }
+
+    /**
+     * Decision 22's other half: reactivating a component never
+     * auto-reactivates a combo that depends on it — a deactivated
+     * combo stays deactivated until an admin explicitly reactivates it
+     * (and decision 13's cascade only ever runs on deactivate).
+     */
+    public function test_reactivating_a_component_does_not_auto_reactivate_a_dependent_combo(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $component->update(['is_active' => false]);
+        $combo->update(['is_active' => false, 'deactivated_reason' => 'combo_component_deactivated']);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$component->id}/status", ['is_active' => true])->assertOk();
+
+        $this->assertTrue($component->refresh()->is_active);
+        $this->assertFalse($combo->refresh()->is_active);
+    }
 }

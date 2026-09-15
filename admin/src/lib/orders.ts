@@ -55,6 +55,23 @@ export interface OrderResendAttempt {
   created_at: string;
 }
 
+/**
+ * ADR-094 decision 12 (Phase 4): one row per real outbound supplier
+ * call a combo order makes — empty for every ordinary single-supplier
+ * order. `component_package`/`supplier` are always present once a leg
+ * exists (both required at creation, decision 1).
+ */
+export interface OrderDeliveryLeg {
+  id: number;
+  leg_number: number;
+  status: "not_started" | "processing" | "delivered" | "failed" | "needs_review" | "pending";
+  supplier_reference: string | null;
+  failure_reason: string | null;
+  delivered_at: string | null;
+  component_package: { id: number; name: string; denomination: number | null } | null;
+  supplier: { id: number; name: string } | null;
+}
+
 export interface OrderDetail extends OrderListItem {
   reference_number: string | null;
   customer_phone: string | null;
@@ -87,6 +104,18 @@ export interface OrderDetail extends OrderListItem {
   // called for this order — the unique index on vouchers.order_id
   // guarantees at most one.
   voucher: Voucher | null;
+  // ADR-094 decision 12: empty for every ordinary order.
+  delivery_legs: OrderDeliveryLeg[];
+  // ADR-094 decision 9: true only for a combo order whose legs
+  // genuinely split Delivered/Failed (not the ordinary leg-level-
+  // ambiguity needs_review, which stays blocked exactly as ADR-026
+  // decision 4c always intended) — the one carve-out that lets Issue
+  // Voucher appear from a needs_review order.
+  partial_combo_delivery: boolean;
+  // Decision 9's prefill for that carve-out — the sum of every Failed
+  // leg's own component price, admin-adjustable, never trusted as-is
+  // (the backend re-derives and caps its own copy independently).
+  suggested_voucher_amount: number | null;
 }
 
 export interface OrderPage {
@@ -180,14 +209,19 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
 
 /**
  * ORD-7's other resolution path (ADR-004: retry-delivery or voucher,
- * never a cash refund). Backend computes and bounds the amount from
- * what the customer actually paid (`final_amount - transaction_fee`)
- * — this call never sends an amount. Backend also rejects (422)
- * unless delivery_status is already "failed" and no voucher has been
- * issued for this order yet (enforced by a real unique index, not
- * just this check).
+ * never a cash refund). For an ordinary failed order, the backend
+ * computes and bounds the amount itself (`final_amount -
+ * transaction_fee`) — `amount` here is ignored server-side. ADR-094
+ * decision 9's carve-out is the one exception: a genuine partial-
+ * delivery combo order (`OrderDetail.partial_combo_delivery`) has no
+ * single correct auto-computed figure, so `amount` is required there
+ * and admin-adjustable (still capped server-side at `final_amount`).
+ * Backend also rejects (422) unless delivery_status is already
+ * "failed" (or the partial-delivery carve-out applies) and no voucher
+ * has been issued for this order yet (enforced by a real unique
+ * index, not just this check).
  */
-export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string } = {}) {
+export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string; amount?: number } = {}) {
   return apiFetch<Voucher>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
 }
 

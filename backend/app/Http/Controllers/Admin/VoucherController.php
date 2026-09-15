@@ -187,9 +187,21 @@ class VoucherController extends Controller
         return response()->json($voucher, 201);
     }
 
+    /**
+     * ADR-094 decision 9 (2026-09-15 Phase 4): `isPartialComboDelivery()`
+     * is the one carve-out from the Failed-only gate below — a combo
+     * order whose legs genuinely split Delivered/Failed (not the
+     * ordinary leg-level-ambiguity needs_review, which stays blocked
+     * exactly as ADR-026 decision 4c always intended). That case has
+     * no single correct auto-computed amount (the player already has
+     * some of the goods), so `amount` is required and admin-supplied
+     * instead of derived from `final_amount - transaction_fee`.
+     */
     public function storeFromOrder(StoreVoucherFromOrderRequest $request, Order $order): JsonResponse
     {
-        if ($order->delivery_status !== DeliveryStatus::Failed) {
+        $isPartialComboDelivery = $order->isPartialComboDelivery();
+
+        if ($order->delivery_status !== DeliveryStatus::Failed && ! $isPartialComboDelivery) {
             throw ValidationException::withMessages([
                 'order' => ['A voucher can only be issued for an order with a failed delivery.'],
             ]);
@@ -201,7 +213,17 @@ class VoucherController extends Controller
             ]);
         }
 
-        $amount = $order->final_amount - $order->transaction_fee;
+        if ($isPartialComboDelivery) {
+            $amount = $request->validated('amount');
+
+            if ($amount === null) {
+                throw ValidationException::withMessages([
+                    'amount' => ['A custom amount is required to issue a voucher for a partial-delivery order.'],
+                ]);
+            }
+        } else {
+            $amount = $order->final_amount - $order->transaction_fee;
+        }
 
         // The existence check above is a friendly-error fast path, not
         // the real guarantee — two concurrent requests for the same

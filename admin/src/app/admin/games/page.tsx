@@ -38,6 +38,8 @@ import {
   type GamePackage,
   type UpdateGameValues,
   type UpdatePackageValues,
+  type CreateComboPackageValues,
+  type UpdateComboOverrideValues,
   listGames,
   listGamePackages,
   updateGame,
@@ -49,11 +51,99 @@ import {
   updatePackageCatalogCode,
   deletePackage,
   reorderGames,
+  createComboPackage,
+  updateComboOverride,
 } from "@/lib/games";
 import EditGameModal from "@/components/games/EditGameModal";
 import EditPackageModal from "@/components/games/EditPackageModal";
 import ReorderGamesView from "@/components/games/ReorderGamesView";
+import CreateComboModal from "@/components/games/CreateComboModal";
+import ComboOverrideModal from "@/components/games/ComboOverrideModal";
 import { type PlayerValidatorProfile, listPlayerValidatorProfiles } from "@/lib/player-validators";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { CloseIcon } from "@/icons";
+
+/**
+ * ADR-094 decision 13: the deactivate-cascade confirm — shown only
+ * when the package being switched off is an active component of one
+ * or more active combos (`active_combo_dependents`, already loaded
+ * with the package list, no extra fetch). Mirrors AffiliateFormModal's
+ * membership-disable warn-and-acknowledge pattern.
+ */
+function DeactivateCascadeDialog({
+  pkg,
+  onClose,
+  onConfirm,
+}: {
+  pkg: GamePackage | null;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleConfirm() {
+    setSubmitting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={pkg !== null} onOpenChange={(e) => { if (!e.value) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogPopup className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>Deactivate Package</DialogTitle>
+              <DialogHeaderActions>
+                <DialogClose aria-label="Close">
+                  <CloseIcon className="h-5 w-5" />
+                </DialogClose>
+              </DialogHeaderActions>
+            </DialogHeader>
+            <DialogContent>
+              {pkg && (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-medium">{pkg.active_combo_dependents.length}</span> active combo(s) use{" "}
+                    <span className="font-medium">{pkg.name}</span> — deactivating it will deactivate them too:
+                  </p>
+                  <ul className="list-inside list-disc text-sm text-gray-600 dark:text-gray-400">
+                    {pkg.active_combo_dependents.map((c) => (
+                      <li key={c.id}>{c.name}</li>
+                    ))}
+                  </ul>
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
+                      Cancel
+                    </Button>
+                    <Button type="button" severity="danger" onClick={handleConfirm} disabled={submitting}>
+                      {submitting ? "Deactivating…" : "Deactivate Anyway"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </DialogPopup>
+        </DialogPositioner>
+      </DialogPortal>
+    </Dialog>
+  );
+}
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -192,6 +282,11 @@ export default function GamesPage() {
   const [editingPackage, setEditingPackage] = useState<GamePackage | null>(null);
   const [validatorProfiles, setValidatorProfiles] = useState<PlayerValidatorProfile[]>([]);
 
+  // ADR-094 Phase 4 — combo composition CRUD + churn-guard confirm state.
+  const [creatingCombo, setCreatingCombo] = useState(false);
+  const [editingCombo, setEditingCombo] = useState<GamePackage | null>(null);
+  const [deactivateCascadeTarget, setDeactivateCascadeTarget] = useState<GamePackage | null>(null);
+
   // GAME-6 — null = not reordering; an array = reorder mode, loaded
   // unfiltered regardless of the list view's own search/status filter.
   const [reorderGamesList, setReorderGamesList] = useState<Game[] | null>(null);
@@ -296,15 +391,78 @@ export default function GamesPage() {
     await refreshGames(session.token);
   }
 
+  /**
+   * ADR-094 decisions 13/22: the two combo-aware guards are checked
+   * client-side first, from data the package list already carries —
+   * deactivating with active combo dependents opens the confirm
+   * dialog instead of calling the API immediately (decision 13);
+   * reactivating a combo with an inactive component is rejected
+   * inline, no API call at all (decision 22). The backend re-checks
+   * both regardless (defense in depth, not the primary discovery
+   * mechanism) — same division of labor as AffiliateFormModal's
+   * membership-disable warning.
+   */
   async function handleToggleStatus(pkg: GamePackage) {
     if (!session) return;
     setError(null);
+
+    const activating = !pkg.is_active;
+
+    if (!activating && pkg.active_combo_dependents.length > 0) {
+      setDeactivateCascadeTarget(pkg);
+      return;
+    }
+
+    if (activating && pkg.is_combo) {
+      const inactive = pkg.components.filter((c) => !c.is_active);
+      if (inactive.length > 0) {
+        setError(`Cannot reactivate — inactive component(s): ${inactive.map((c) => c.name).join(", ")}`);
+        return;
+      }
+    }
+
     try {
-      await updatePackageStatus(session.token, pkg.id, !pkg.is_active);
-      setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, is_active: !p.is_active } : p)) ?? null);
+      await updatePackageStatus(session.token, pkg.id, activating);
+      setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, is_active: activating } : p)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update status.");
     }
+  }
+
+  /** Decision 13's actual cascade, once acknowledged in the confirm dialog. */
+  async function handleConfirmDeactivateCascade() {
+    if (!session || !deactivateCascadeTarget || !selected) return;
+    try {
+      await updatePackageStatus(session.token, deactivateCascadeTarget.id, false, true);
+      setDeactivateCascadeTarget(null);
+      await openGame(session.token, selected);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not deactivate.");
+      setDeactivateCascadeTarget(null);
+    }
+  }
+
+  async function handleCreateCombo(values: CreateComboPackageValues) {
+    if (!session || !selected) return;
+    await createComboPackage(session.token, selected.id, values);
+    setCreatingCombo(false);
+    await openGame(session.token, selected);
+    await refreshGames(session.token);
+  }
+
+  async function handleUpdateComboOverride(values: UpdateComboOverrideValues) {
+    if (!session || !editingCombo || !selected) return;
+    await updateComboOverride(session.token, editingCombo.id, values);
+    setEditingCombo(null);
+    await openGame(session.token, selected);
+  }
+
+  async function handleDeleteCombo() {
+    if (!session || !editingCombo || !selected) return;
+    await deletePackage(session.token, editingCombo.id);
+    setEditingCombo(null);
+    await openGame(session.token, selected);
+    await refreshGames(session.token);
   }
 
   async function handleUpdateMarkup(pkg: GamePackage, markupPercent: number) {
@@ -372,7 +530,11 @@ export default function GamesPage() {
               {selected.category ?? "Uncategorized"} — {selected.is_active ? "Active" : "Inactive"}
             </p>
           </div>
-          <Button size="small" onClick={() => setEditingGame(selected)}>Edit Game</Button>
+          <div className="flex gap-2">
+            {/* ADR-094: assembles several of this game's own already-promoted packages into one combo SKU. */}
+            <Button size="small" variant="outlined" onClick={() => setCreatingCombo(true)}>Create Combo…</Button>
+            <Button size="small" onClick={() => setEditingGame(selected)}>Edit Game</Button>
+          </div>
         </div>
 
         {error && (
@@ -418,11 +580,23 @@ export default function GamesPage() {
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
                             <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>
-                            {!pkg.supplier_active && (
+                            {pkg.is_combo && <Tag severity="info">Combo</Tag>}
+                            {!pkg.is_combo && !pkg.supplier_active && (
                               <Tag severity="warn">Non-Active</Tag>
                             )}
                             <br />
-                            <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
+                            {/* ADR-094: a combo has no supplier of its own (decision 3) — show its component count instead. */}
+                            <span className="text-theme-xs text-gray-400">
+                              {pkg.is_combo ? `${pkg.components.length} component(s)` : `Supplier ID: ${pkg.supplier_package_ref}`}
+                            </span>
+                            {pkg.active_combo_dependents.length > 0 && (
+                              <>
+                                <br />
+                                <span className="text-theme-xs text-amber-600 dark:text-amber-400">
+                                  Used by {pkg.active_combo_dependents.length} combo(s)
+                                </span>
+                              </>
+                            )}
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
                             <DenominationCell
@@ -450,7 +624,13 @@ export default function GamesPage() {
                             {formatRm(pkg.standard_selling_price)}
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
-                            <Button size="small" variant="outlined" onClick={() => setEditingPackage(pkg)}>Edit</Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => (pkg.is_combo ? setEditingCombo(pkg) : setEditingPackage(pkg))}
+                            >
+                              Edit
+                            </Button>
                           </DataTableCell>
                         </DataTableRow>
                       );
@@ -482,6 +662,24 @@ export default function GamesPage() {
           onSubmit={handleEditPackageSubmit}
           onDelete={handleDeletePackage}
           pkg={editingPackage}
+        />
+        <CreateComboModal
+          isOpen={creatingCombo}
+          onClose={() => setCreatingCombo(false)}
+          onSubmit={handleCreateCombo}
+          packages={packages ?? []}
+        />
+        <ComboOverrideModal
+          isOpen={editingCombo !== null}
+          onClose={() => setEditingCombo(null)}
+          onSubmit={handleUpdateComboOverride}
+          onDelete={handleDeleteCombo}
+          pkg={editingCombo}
+        />
+        <DeactivateCascadeDialog
+          pkg={deactivateCascadeTarget}
+          onClose={() => setDeactivateCascadeTarget(null)}
+          onConfirm={handleConfirmDeactivateCascade}
         />
       </div>
     );
