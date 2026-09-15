@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { CheckCircle, WarningCircle, XCircle, ArrowSquareOut } from "@phosphor-icons/react/dist/ssr";
-import type { Game } from "@/lib/catalog";
+import type { GameDetail } from "@/lib/catalog";
 import type { ValidatePlayerResult } from "@/lib/checkout";
 import Button from "@/components/ui/Button";
 
 interface Step1AccountInfoProps {
-  game: Game;
+  /** ADR-097 decision 9 — needs GameDetail (not the narrower Game), for zoneOptions. */
+  game: GameDetail;
   playerId: string;
   setPlayerId: (value: string) => void;
   serverId: string;
@@ -70,14 +71,33 @@ export default function Step1AccountInfo({
             <label htmlFor="serverId" className={labelClass}>
               {EXTRA_FIELD_LABEL[game.extraField]}
             </label>
-            <input
-              id="serverId"
-              type="text"
-              value={serverId}
-              onChange={(e) => setServerId(e.target.value)}
-              placeholder="e.g. 1234"
-              className={`${inputClass} w-full font-mono`}
-            />
+            {/* ADR-097 decision 9/7 — a <select> once a real zone_options list exists for this game; unchanged free-text <input> otherwise (server_id, or a zone_id game with no list defined yet). */}
+            {game.extraField === "zone_id" && game.zoneOptions ? (
+              <select
+                id="serverId"
+                value={serverId}
+                onChange={(e) => setServerId(e.target.value)}
+                className={`${inputClass} w-full`}
+              >
+                <option value="" disabled>
+                  Select a zone…
+                </option>
+                {game.zoneOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="serverId"
+                type="text"
+                value={serverId}
+                onChange={(e) => setServerId(e.target.value)}
+                placeholder="e.g. 1234"
+                className={`${inputClass} w-full font-mono`}
+              />
+            )}
           </div>
         )}
       </div>

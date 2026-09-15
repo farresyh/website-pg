@@ -137,6 +137,33 @@ class CatalogControllerTest extends TestCase
         $response->assertJsonPath('seo_title', 'Top Up Free Fire Diamonds');
     }
 
+    /** ADR-097 decision 9 — the endpoint Step1AccountInfo.tsx actually calls. */
+    public function test_show_returns_the_games_zone_options(): void
+    {
+        Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-zone-test', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/mlbb-zone-test');
+
+        $response->assertOk();
+        $response->assertJsonPath('zone_options', ['SouthEastAsia', 'MENA']);
+    }
+
+    public function test_show_returns_null_zone_options_when_none_are_defined(): void
+    {
+        Game::query()->create([
+            'name' => 'Free Fire Global 2', 'slug' => 'free-fire-global-2', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'server_id'],
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global-2');
+
+        $response->assertOk();
+        $response->assertJsonPath('zone_options', null);
+    }
+
     public function test_show_404s_for_an_inactive_game(): void
     {
         Game::query()->create(['name' => 'Discontinued', 'slug' => 'discontinued', 'is_active' => false]);

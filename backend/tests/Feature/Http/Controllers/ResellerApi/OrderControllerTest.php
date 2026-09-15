@@ -130,6 +130,79 @@ class OrderControllerTest extends TestCase
             ->assertJsonPath('details.player_id.0', fn ($m) => is_string($m));
     }
 
+    /**
+     * ADR-097 decision 18/19 — the pre-existing presence-validation gap
+     * this ADR closes: `server_id` was `nullable` at the FormRequest
+     * layer with no game-aware check anywhere downstream.
+     */
+    public function test_rejects_a_zone_id_game_order_missing_server_id(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-zone-test', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-zone-api-test', 'reseller_code' => 'MLZONE', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 1000, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        [, $key] = $this->makeFundedReseller();
+
+        $response = $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLZONE-14', 'player_id' => '123456789', 'idempotency_key' => 'zone-missing-1',
+        ], $this->authHeaders($key));
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', 'VALIDATION_FAILED')
+            ->assertJsonPath('details.server_id.0', fn ($m) => is_string($m));
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_rejects_a_zone_id_game_order_with_a_value_outside_the_defined_list(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-zone-test-2', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-zone-api-test-2', 'reseller_code' => 'MLZONE2', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 1000, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        [, $key] = $this->makeFundedReseller();
+
+        $response = $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLZONE2-14', 'player_id' => '123456789', 'server_id' => 'SEA', 'idempotency_key' => 'zone-invalid-1',
+        ], $this->authHeaders($key));
+
+        $response->assertStatus(422)->assertJsonPath('error', 'VALIDATION_FAILED');
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_accepts_a_zone_id_game_order_with_a_value_matching_the_defined_list(): void
+    {
+        Queue::fake();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-zone-test-3', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create([
+            'name' => 'MLBB', 'slug' => 'mlbb-zone-api-test-3', 'reseller_code' => 'MLZONE3', 'is_active' => true,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['SouthEastAsia', 'MENA']],
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 1000, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        [, $key] = $this->makeFundedReseller();
+
+        $response = $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLZONE3-14', 'player_id' => '123456789', 'server_id' => 'SouthEastAsia', 'idempotency_key' => 'zone-valid-1',
+        ], $this->authHeaders($key));
+
+        $response->assertCreated();
+    }
+
     /** No manual pre-check in the controller for this — proves the NoResellerTierAssignedException path (thrown by placeOrder() itself) is actually wired to a 422, not just theoretically reachable. */
     public function test_422s_when_reseller_has_no_tier_assigned(): void
     {

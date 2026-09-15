@@ -18,6 +18,15 @@ export interface GameValidationRules {
    * to for Digiflazz — no effect on any other supplier.
    */
   customer_no_separator?: "concat" | "space" | "pipe" | null;
+  /**
+   * ADR-097 decisions 6/7 — admin-curated Zone ID picklist, only
+   * meaningful when extra_field is "zone_id". Plain string array — the
+   * literal wire value Digiflazz forwards verbatim, not a label/value
+   * pair (no evidence yet of a real game needing a friendlier display
+   * label distinct from the wire value). null/empty preserves today's
+   * free-text <input> exactly — no game is forced to migrate.
+   */
+  zone_options?: string[] | null;
 }
 
 /** Shared between LinkCategoryModal (set at link time) and the inline editor next to the Product Manager Catalog tab (correct it later). */

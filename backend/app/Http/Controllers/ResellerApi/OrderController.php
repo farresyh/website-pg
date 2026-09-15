@@ -5,7 +5,9 @@ namespace App\Http\Controllers\ResellerApi;
 use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Http\Requests\ResellerApi\IndexOrdersRequest;
 use App\Http\Requests\ResellerApi\PlaceOrderRequest;
+use App\Models\Game;
 use App\Models\Order;
+use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
@@ -50,6 +52,7 @@ class OrderController extends Controller
     public function __construct(
         private readonly ResellerCatalogService $catalog,
         private readonly ResellerOrderPlacementService $placement,
+        private readonly CheckoutInputValidator $checkoutInputValidator,
     ) {}
 
     #[Endpoint(
@@ -111,6 +114,18 @@ class OrderController extends Controller
         $package = $this->catalog->resolveByCode($data['product_code']);
         if ($package === null) {
             throw ResellerApiException::unknownProductCode();
+        }
+
+        // ADR-097 decision 18/19 — the same presence+value rule the
+        // storefront and the Bot enforce, run here (not in
+        // PlaceOrderRequest, which has no Game to check against yet —
+        // product_code only resolves above) and not inside
+        // ResellerOrderPlacementService::placeOrder() (which receives
+        // an already-resolved gameId, mirroring exactly where the Bot
+        // already does this same check today).
+        $game = Game::query()->find($package->game_id);
+        if ($game !== null && $error = $this->checkoutInputValidator->validate($game, $data['server_id'] ?? null)) {
+            throw ResellerApiException::validationFailed([$error['field'] => [$error['message']]]);
         }
 
         try {

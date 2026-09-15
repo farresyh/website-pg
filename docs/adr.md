@@ -109,7 +109,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-094** | Combo Package — assembling several existing catalog Packages into one opaque SKU above a game's native max denomination. Phases 1-4 LIVE; decision 14 (consuming channels) confirmed already satisfied by existing generic code, proven end-to-end — combo is genuinely buyable via storefront/Affiliate/Reseller API/Bot today |
 | **ADR-095** | Cloudflare R2 storage cutover — gallery images + DB backups (2 buckets, public/private split), WebP-at-upload for Gallery, delete referential safety |
 | **ADR-096** | Admin "Check from Supplier" / "Check from Gateway" manual poll — a deliberate, scoped ADR-014 exception for a single synchronous read-only status-check call, shared logic with the existing scheduled reconcile jobs, cache-based per-supplier cooldown |
-| **ADR-097** | Per-game checkout input — Digiflazz `customer_no` separator moves from per-supplier to per-game (concat/space/pipe), and a per-game admin-defined Zone ID picklist replaces free text, with matching value-validation added to the Reseller API and Bot (not just the storefront). Grilled + stress-tested against real code 2026-09-16 (14 more decisions, 1 real bug found in the existing admin save path + 2 unexposed API gaps). **PR-1 (separator, backend/admin-only) built 2026-09-16.** PR-2 (zone picklist, storefront+Reseller API+Bot) not yet built |
+| **ADR-097** | Per-game checkout input — Digiflazz `customer_no` separator moves from per-supplier to per-game (concat/space/pipe), and a per-game admin-defined Zone ID picklist replaces free text, with matching value-validation added to the Reseller API and Bot (not just the storefront). Grilled + stress-tested against real code 2026-09-16 (14 more decisions, 1 real bug found in the existing admin save path + 2 unexposed API gaps). **PR-1 (separator) merged to `staging` 2026-09-15. PR-2 (zone picklist) built 2026-09-16, PR open.** Neither released to `main`/production yet |
 
 ---
 
@@ -5255,7 +5255,7 @@ Founder's first question after the root-cause fix: could an admin-triggered manu
 
 ## ADR-097: Per-game checkout input — Digiflazz `customer_no` separator moves from per-supplier to per-game, and a Zone ID picklist replaces free text, with matching validation added to every channel
 
-**Status:** Accepted — grilled 2026-09-15, stress-tested against real code 2026-09-16 (see this entry's own addendum below). **PR-1 (Topic 1, separator) built 2026-09-16 on `feature/adr-097-digiflazz-customer-no-separator` — see `docs/build-log.md`.** PR-2 (Topic 2, zone picklist) not yet built.
+**Status:** Accepted — grilled 2026-09-15, stress-tested against real code 2026-09-16 (see this entry's own addendum below). **PR-1 (Topic 1, separator) merged to `staging` 2026-09-15 — see `docs/build-log.md`. PR-2 (Topic 2, zone picklist) built 2026-09-16 on `feature/adr-097-zone-id-picklist`, PR open, not yet merged.**
 
 **Context:**
 

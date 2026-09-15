@@ -157,6 +157,13 @@
                                                 {
                                                     "code": "MLMY",
                                                     "name": "Mobile Legends (Malaysia)",
+                                                    "checkout_input": {
+                                                        "field": "zone_id",
+                                                        "options": [
+                                                            "SouthEastAsia",
+                                                            "MENA"
+                                                        ]
+                                                    },
                                                     "packages": [
                                                         {
                                                             "code": "MLMY-14",
@@ -188,6 +195,30 @@
                                                     "name": {
                                                         "type": "string"
                                                     },
+                                                    "checkout_input": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "field": {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            "options": {
+                                                                "type": [
+                                                                    "array",
+                                                                    "null"
+                                                                ],
+                                                                "items": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "field",
+                                                            "options"
+                                                        ]
+                                                    },
                                                     "packages": {
                                                         "type": "array",
                                                         "items": {
@@ -214,6 +245,7 @@
                                                 "required": [
                                                     "code",
                                                     "name",
+                                                    "checkout_input",
                                                     "packages"
                                                 ]
                                             }

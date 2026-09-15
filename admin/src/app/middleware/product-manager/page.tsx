@@ -112,8 +112,20 @@ function CheckoutInputEditor({
 }) {
   const [extraField, setExtraField] = useState(initial?.extra_field ?? "");
   const [separator, setSeparator] = useState(initial?.customer_no_separator ?? "");
+  // ADR-097 decision 8 — comma-separated text, same house pattern
+  // EditSupplierModal already uses for a "list"-type api_config field
+  // (split/trim/filter on save), not a bespoke chip editor.
+  const [zoneOptionsText, setZoneOptionsText] = useState((initial?.zone_options ?? []).join(", "));
   const [saving, setSaving] = useState(false);
   const isDigiflazz = supplierSlug === "digiflazz";
+  const isZoneId = extraField === "zone_id";
+
+  function parsedZoneOptions(): string[] {
+    return zoneOptionsText
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
 
   async function handleUpdate() {
     setSaving(true);
@@ -123,6 +135,8 @@ function CheckoutInputEditor({
         // Never send a stale separator for a non-Digiflazz game, even
         // if local state somehow still holds one from a prior game.
         customer_no_separator: isDigiflazz && separator !== "" ? (separator as "concat" | "space" | "pipe") : null,
+        // Same discipline: never send a stale list for a non-zone_id game.
+        zone_options: isZoneId ? parsedZoneOptions() : null,
       });
     } finally {
       setSaving(false);
@@ -141,6 +155,24 @@ function CheckoutInputEditor({
           <SimpleSelect value={separator} onChange={setSeparator} options={CUSTOMER_NO_SEPARATOR_OPTIONS} className="w-56" />
         </div>
       )}
+      {isZoneId && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="w-40 text-sm text-gray-600 dark:text-gray-300">Zone ID options</label>
+            <input
+              type="text"
+              value={zoneOptionsText}
+              onChange={(e) => setZoneOptionsText(e.target.value)}
+              placeholder="e.g. SouthEastAsia, MENA, Europe"
+              className="w-96 rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-300 dark:border-gray-700 dark:text-white/90"
+            />
+          </div>
+          <p className="ml-[10.75rem] text-theme-xs text-gray-500 dark:text-gray-400">
+            Comma-separated. Whatever string is entered here is forwarded to the supplier verbatim — customers pick
+            from this exact list on checkout. Leave empty to keep today&apos;s free-text input for this game.
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <Button size="small" disabled={saving} onClick={handleUpdate}>
           {saving ? "Saving…" : "Update"}
@@ -149,6 +181,7 @@ function CheckoutInputEditor({
           {JSON.stringify({
             extra_field: extraField === "" ? null : extraField,
             ...(isDigiflazz ? { customer_no_separator: separator === "" ? null : separator } : {}),
+            ...(isZoneId ? { zone_options: parsedZoneOptions() } : {}),
           })}
         </code>
       </div>

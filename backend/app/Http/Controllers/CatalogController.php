@@ -256,6 +256,11 @@ class CatalogController extends Controller
             'image_url' => $game->image_url,
             'banner_url' => $game->banner_url,
             'extra_field' => $game->validation_rules['extra_field'] ?? null,
+            // ADR-097 decision 9/17 — flat sibling of extra_field, not
+            // nested (the Reseller API's own checkout_input object is
+            // a separately-designed public contract, decision 22).
+            // null/empty preserves today's free-text <input> exactly.
+            'zone_options' => $game->zoneOptions(),
             'player_validator_enabled' => $game->player_validator_enabled,
             'seo_title' => $game->seo_title,
             'seo_title_local' => $game->seo_title_local,

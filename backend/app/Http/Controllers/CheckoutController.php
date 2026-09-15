@@ -12,6 +12,7 @@ use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
 use App\Services\Checkout\CheckoutFailedException;
+use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Checkout\DuplicateCheckoutAttemptException;
@@ -60,6 +61,7 @@ class CheckoutController extends Controller
         private readonly CheckoutVelocityGuard $velocityGuard,
         private readonly MembershipSessionTokenService $membershipSessionTokens,
         private readonly StorefrontBrand $storefrontBrand,
+        private readonly CheckoutInputValidator $checkoutInputValidator,
     ) {}
 
     public function store(CreateCheckoutRequest $request): JsonResponse
@@ -95,12 +97,11 @@ class CheckoutController extends Controller
             ]);
         }
 
-        $extraField = $game->validation_rules['extra_field'] ?? null;
-
-        if ($extraField !== null && empty($data['server_id'])) {
-            throw ValidationException::withMessages([
-                'server_id' => ["This game requires a {$this->fieldLabel($extraField)}."],
-            ]);
+        // ADR-097 decision 19 — the same rule the Reseller API and Bot
+        // now enforce too (presence AND, for a zone_id game with a
+        // defined list, exact-match against it), not just presence.
+        if ($error = $this->checkoutInputValidator->validate($game, $data['server_id'] ?? null)) {
+            throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
         }
 
         // Guaranteed to exist + be active by CreateCheckoutRequest's
@@ -344,15 +345,6 @@ class CheckoutController extends Controller
             'payment_status' => $order->payment_status,
             'payment_actions' => $actions,
         ], $status);
-    }
-
-    private function fieldLabel(string $extraField): string
-    {
-        return match ($extraField) {
-            'zone_id' => 'Zone ID',
-            'server_id' => 'Server ID',
-            default => 'additional field',
-        };
     }
 
     /**

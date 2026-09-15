@@ -402,6 +402,45 @@ class SupplierProductControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
+    /** ADR-097 decision 21 — trimmed, empty-dropped, deduped server-side on save. */
+    public function test_link_category_normalizes_zone_options_on_save(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Mobile Legends']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Mobile Legends',
+            'new_game' => ['name' => 'Mobile Legends'],
+            'validation_rules' => [
+                'extra_field' => 'zone_id',
+                'zone_options' => [' SouthEastAsia ', 'MENA', 'MENA', '', '  '],
+            ],
+        ]);
+
+        $response->assertOk();
+        $game = Game::query()->where('name', 'Mobile Legends')->firstOrFail();
+        $this->assertSame(['SouthEastAsia', 'MENA'], $game->zoneOptions());
+    }
+
+    /** ADR-097 decision 20 — rejected server-side when extra_field isn't zone_id. */
+    public function test_link_category_rejects_zone_options_on_a_server_id_game(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Free Fire Global']);
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'supplier_id' => $supplier->id,
+            'group_label' => 'Free Fire Global',
+            'new_game' => ['name' => 'Free Fire Global'],
+            'validation_rules' => ['extra_field' => 'server_id', 'zone_options' => ['SouthEastAsia']],
+        ]);
+
+        $response->assertUnprocessable();
+    }
+
     public function test_link_category_rejects_both_game_id_and_new_game_given_together(): void
     {
         $supplier = $this->supplier();
