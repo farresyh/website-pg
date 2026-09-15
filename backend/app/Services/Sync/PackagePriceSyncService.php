@@ -8,6 +8,7 @@ use App\Models\PendingPriceChange;
 use App\Models\PriceChangeLog;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -48,9 +49,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class PackagePriceSyncService
 {
-    public function __construct(private readonly PackageMarkupService $markup)
-    {
-    }
+    public function __construct(
+        private readonly PackageMarkupService $markup,
+        private readonly ComboPricingService $comboPricing,
+    ) {}
 
     public function apply(Supplier $supplier, Carbon $syncedAt, ?int $priceSyncRunId): PackagePriceSyncResult
     {
@@ -82,6 +84,7 @@ final class PackagePriceSyncService
                 if ($this->deactivate($package, $priceSyncRunId)) {
                     $deactivated++;
                     $affectedGameIds[] = $package->game_id;
+                    $affectedGameIds = [...$affectedGameIds, ...$this->comboPricing->cascadeDeactivate($package, $priceSyncRunId)->all()];
                 }
 
                 continue;
@@ -100,11 +103,20 @@ final class PackagePriceSyncService
                 if ($outcome === 'applied' || $outcome === 'anomaly_flagged') {
                     $affectedGameIds[] = $package->game_id;
                 }
+
+                if ($outcome === 'applied') {
+                    // ADR-094 decision 6: this component's cost_price
+                    // actually moved — recompute every active combo
+                    // that references it (decision 5's stored,
+                    // Price-Sync-cadence pricing), not just its own row.
+                    $affectedGameIds = [...$affectedGameIds, ...$this->comboPricing->recomputeForComponentChange($package, $priceSyncRunId)->all()];
+                }
             }
 
             if ($product->status_raw !== 'active' && $this->deactivate($package, $priceSyncRunId)) {
                 $deactivated++;
                 $affectedGameIds[] = $package->game_id;
+                $affectedGameIds = [...$affectedGameIds, ...$this->comboPricing->cascadeDeactivate($package, $priceSyncRunId)->all()];
             }
         }
 

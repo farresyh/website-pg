@@ -249,4 +249,94 @@ class ComboPackageControllerTest extends TestCase
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['components.0.package_id', 'components.1.package_id']);
     }
+
+    private function combo(Game $game, Package $component, int $quantity = 1): Package
+    {
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 0, 'cost_price' => 0, 'standard_selling_price' => 0, 'markup_percent' => 0,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => $quantity, 'sort_order' => 0]);
+
+        return $combo;
+    }
+
+    public function test_update_combo_override_sets_a_custom_markup(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$combo->id}/combo-override", [
+            'combo_override_markup_percent' => 25,
+        ]);
+
+        $response->assertOk();
+        $combo->refresh();
+        $this->assertSame('25.00', (string) $combo->combo_override_markup_percent);
+        $this->assertSame(50000, $combo->standard_selling_price); // round(40000 * 1.25)
+    }
+
+    public function test_update_combo_override_sets_a_custom_fixed_price(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$combo->id}/combo-override", [
+            'combo_override_price' => 39900,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(39900, $combo->refresh()->standard_selling_price);
+    }
+
+    public function test_update_combo_override_rejects_both_fields_set_at_once(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$combo->id}/combo-override", [
+            'combo_override_markup_percent' => 25,
+            'combo_override_price' => 39900,
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['combo_override_price']);
+    }
+
+    public function test_update_combo_override_rejects_a_non_combo_package(): void
+    {
+        $game = $this->game();
+        $package = $this->package($game, $this->supplier());
+        $this->actingAsAdmin();
+
+        $response = $this->patchJson("/api/packages/{$package->id}/combo-override", [
+            'combo_override_markup_percent' => 25,
+        ]);
+
+        $response->assertUnprocessable();
+    }
+
+    public function test_update_combo_override_clearing_both_fields_reverts_to_the_default_sum(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $combo->update(['combo_override_price' => 1]);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$combo->id}/combo-override", [
+            'combo_override_markup_percent' => null,
+            'combo_override_price' => null,
+        ])->assertOk();
+
+        $combo->refresh();
+        $this->assertNull($combo->combo_override_price);
+        $this->assertSame(44000, $combo->standard_selling_price); // back to the component's own sum
+    }
 }

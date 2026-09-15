@@ -10,6 +10,7 @@ use App\Models\PriceChangeLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use App\Services\Sync\PackagePriceSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,7 +61,9 @@ class PackagePriceSyncServiceTest extends TestCase
 
     private function service(): PackagePriceSyncService
     {
-        return new PackagePriceSyncService(new PackageMarkupService());
+        $markup = new PackageMarkupService;
+
+        return new PackagePriceSyncService($markup, new ComboPricingService($markup));
     }
 
     public function test_propagates_a_price_increase_and_recomputes_standard_selling_price(): void
@@ -424,6 +427,61 @@ class PackagePriceSyncServiceTest extends TestCase
      * directly rather than divide by zero, same reasoning promote()
      * already uses for a first-time creation.
      */
+    /**
+     * ADR-094 decision 6: a component's cost_price actually propagating
+     * cascades into a recompute of every active combo referencing it —
+     * end-to-end through apply(), not just ComboPricingService in
+     * isolation.
+     */
+    public function test_a_propagated_price_change_recomputes_a_dependent_combo(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $component = $this->package($supplier, $game, ['cost_price' => 1000, 'standard_selling_price' => 1150, 'denomination' => 14]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 0, 'cost_price' => 0, 'standard_selling_price' => 0, 'markup_percent' => 0,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+        $combo->update(['denomination' => 14, 'cost_price' => 1000, 'standard_selling_price' => 1150]);
+        $syncedAt = now();
+        $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1200]);
+
+        $result = $this->service()->apply($supplier, $syncedAt, priceSyncRunId: null);
+
+        $this->assertContains($game->id, $result->affectedGameIds);
+        $combo->refresh();
+        $this->assertSame(1200, $combo->cost_price);
+        $this->assertSame(1380, $combo->standard_selling_price);
+        $this->assertSame(2, PriceChangeLog::query()->count()); // the component's own row + the combo's
+    }
+
+    /**
+     * ADR-094 decision 13's Price-Sync-automated half: a component
+     * Price Sync itself deactivates cascades onto every active combo
+     * referencing it, with its own DeactivationLog row.
+     */
+    public function test_a_supplier_deactivation_cascades_to_a_dependent_combo(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $component = $this->package($supplier, $game, ['is_active' => true]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true, 'is_active' => true,
+            'denomination' => 14, 'cost_price' => 1000, 'standard_selling_price' => 1150, 'markup_percent' => 0,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+        $run = PriceSyncRun::query()->create(['status' => 'running']);
+        $this->rawProduct($supplier, now(), ['status_raw' => 'inactive']);
+
+        $this->service()->apply($supplier, now(), priceSyncRunId: $run->id);
+
+        $combo->refresh();
+        $this->assertFalse($combo->is_active);
+        $this->assertSame('combo_component_deactivated', $combo->deactivated_reason);
+        $this->assertSame(2, DeactivationLog::query()->count()); // the component's own row + the combo's
+    }
+
     public function test_applies_directly_when_the_package_has_no_prior_cost_price_to_diff_against(): void
     {
         config(['packages.price_swing_threshold_percent' => 50]);

@@ -913,6 +913,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
         Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
         Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);
+        Route::patch('/packages/{package}/combo-override', [PackageController::class, 'updateComboOverride']);
         Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
     });
 });

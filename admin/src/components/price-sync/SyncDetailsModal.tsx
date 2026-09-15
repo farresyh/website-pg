@@ -96,6 +96,7 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
                         <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                           <DataTableTHeadRow>
                             <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Code</DataTableTHeadCell>
                             <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
                             <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate Price</DataTableTHeadCell>
                           </DataTableTHeadRow>
@@ -108,6 +109,14 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
                               <DataTableRow key={change.package.id}>
                                 <DataTableCell className="px-4 py-2 text-theme-sm text-gray-800 dark:text-white/90">
                                   {change.package.name}
+                                  {change.package.is_combo && (
+                                    <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-theme-xs font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+                                      Combo — recomputed
+                                    </span>
+                                  )}
+                                </DataTableCell>
+                                <DataTableCell className="px-4 py-2 text-theme-sm text-gray-500 dark:text-gray-400">
+                                  {change.package.code ?? "—"}
                                 </DataTableCell>
                                 <DataTableCell className="px-4 py-2 text-theme-sm">
                                   {formatRm(change.old_cost_price)} → {formatRm(change.new_cost_price)}
