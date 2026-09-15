@@ -906,6 +906,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
         Route::get('/games/{game}/packages', [GameController::class, 'packages']);
+        Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
 
         Route::put('/packages/{package}', [PackageController::class, 'update']);
         Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Collection;
 
 /**
@@ -29,6 +30,7 @@ class Package extends Model
         'supplier_id',
         'supplier_package_ref',
         'sort_order',
+        'is_combo',
     ];
 
     protected $casts = [
@@ -39,6 +41,7 @@ class Package extends Model
         'is_active' => 'boolean',
         'deactivated_at' => 'datetime',
         'sort_order' => 'integer',
+        'is_combo' => 'boolean',
     ];
 
     public function game(): BelongsTo
@@ -49,6 +52,36 @@ class Package extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    /**
+     * ADR-094 decision 1: this combo's own components, in fulfillment
+     * (leg) order. Empty for a non-combo Package.
+     */
+    public function components(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            self::class,
+            'package_components',
+            'combo_package_id',
+            'component_package_id',
+        )->withPivot(['quantity', 'sort_order'])->withTimestamps()->orderByPivot('sort_order');
+    }
+
+    /**
+     * ADR-094 decision 13/21 (2026-09-15 addendum): the reverse of
+     * components() — every combo that currently references this
+     * Package as a component. Used to warn-and-acknowledge before a
+     * deactivation/supplier-change cascades onto a dependent combo.
+     */
+    public function partOfCombos(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            self::class,
+            'package_components',
+            'component_package_id',
+            'combo_package_id',
+        )->withPivot(['quantity', 'sort_order'])->withTimestamps();
     }
 
     /**
