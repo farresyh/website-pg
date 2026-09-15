@@ -48,7 +48,10 @@ export interface OrderResendAttempt {
   cost_price_sen: number;
   standard_selling_price_sen: number;
   price_diff_sen: number;
-  outcome: "success" | "failed";
+  // 2026-09-15 bugfix: "pending" self-corrects to success/failed the
+  // moment the real async outcome resolves — see
+  // OrderFulfillmentService::resolvePendingResendAttempt().
+  outcome: "success" | "failed" | "pending";
   supplier_response?: Record<string, unknown> | null;
   note: string | null;
   triggered_by: string | null;
