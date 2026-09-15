@@ -1,11 +1,12 @@
 import OrderForm from "@/components/order/OrderForm";
-import { getGamePackages, type Game, type GamePackage } from "@/lib/catalog";
+import { getGamePackages, type GameDetail, type GamePackage } from "@/lib/catalog";
 import { getMe, type MembershipPlan } from "@/lib/membership";
 import { getServerMembershipToken } from "@/lib/membership-session-server";
 import type { PaymentChannel } from "@/lib/payment-methods";
 
 interface Props {
-  game: Game;
+  /** ADR-097 decision 9 — needs GameDetail (not the narrower Game), for zoneOptions. */
+  game: GameDetail;
   packages: GamePackage[];
   paymentChannels: PaymentChannel[];
   membershipPlans: MembershipPlan[];

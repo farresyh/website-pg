@@ -13,7 +13,7 @@ import {
   type ValidatePlayerResult,
   type CheckoutTotalPreview,
 } from "@/lib/checkout";
-import { getGamePackages, type Game, type GamePackage } from "@/lib/catalog";
+import { getGamePackages, type GameDetail, type GamePackage } from "@/lib/catalog";
 import { getMembershipToken } from "@/lib/membership-session";
 import { useMembershipToken } from "@/hooks/useMembershipToken";
 import { getMe, type MembershipPlan } from "@/lib/membership";
@@ -36,7 +36,8 @@ const CHANNEL_GROUPS: { key: string; label: string }[] = [
 ];
 
 interface OrderFormProps {
-  game: Game;
+  /** ADR-097 decision 9 — needs GameDetail (not the narrower Game), for zoneOptions. */
+  game: GameDetail;
   /** SSR-fetched, anonymous "best tier" anchor pricing. */
   packages: GamePackage[];
   paymentChannels: PaymentChannel[];
