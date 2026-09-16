@@ -764,6 +764,28 @@ drops off this list into `docs/build-log.md`.
     decision, 2026-09-15) rather than folded into item 16's fix — different
     root cause (a missing write, not a wrong label), worth its own pass once
     item 16's schema shape is decided (the two likely share a table).
+17. **Should Pending Reactivation ever auto-approve? — needs its own grill,
+    not decided.** Raised by the founder during a 2026-09-16 Pulse/Horizon
+    health-check session (a genuine intuition, not an incident) after noticing
+    packages land on `/middleware/price-sync`'s Pending Reactivation queue
+    almost every day. Checked against real production data, not assumed: the
+    daily 1-4-package trickle is genuine Digiflazz/Gamevion stock flapping
+    (exactly what ADR-015 decision #3's Deactivation Detection exists to
+    catch), unrelated to [ADR-099](./adr.md)'s backup-lock finding from the
+    same session. ADR-015 decision #3 made reactivation deliberately
+    manual — *"require a human for the direction that could silently...
+    act on a possibly-bad signal"* — because a supplier's "active again"
+    report can itself be noisy. That risk isn't hypothetical: this same
+    session found two real outlier spikes (82 packages deactivated in one
+    sync on 2026-09-12, 13 on 2026-09-13) from Digiflazz flapping status
+    across 11+ unrelated games in a single run — exactly the kind of noisy
+    signal an unguarded auto-approve could re-list on. A middle ground raised
+    but not designed: auto-approve only after N consecutive syncs confirm
+    "active" (a stability threshold), preserving ADR-015's own signal-safety
+    intent while cutting manual admin clicks for the genuinely-stable case.
+    Needs its own grill (threshold shape, per-supplier scope given Digiflazz's
+    demonstrated flakiness vs. Gamevion, safety net if an auto-reactivated
+    package still fails to deliver, audit/notification) before any code.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
