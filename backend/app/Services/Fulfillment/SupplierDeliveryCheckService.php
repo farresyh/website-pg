@@ -124,9 +124,13 @@ final class SupplierDeliveryCheckService
      * ADR-094 decision 7 (Phase 3b): one checkStatus() call per
      * still-Pending leg — decision 4's same-supplier-only constraint
      * means every leg resolves to the same adapter, but each carries
-     * its own reference (`{order.reference_number}-L{n}`) and
-     * component productRef, so a status check for one leg is never
-     * conflated with another.
+     * its own reference and component productRef, so a status check
+     * for one leg is never conflated with another.
+     *
+     * ADR-103 decision 5: reads the leg's own stored `reference_number`
+     * rather than re-deriving it — "check status" means asking about an
+     * attempt already made, never minting a new one. Only `attemptLeg()`
+     * (the retry path) does that.
      *
      * @return array<int, array{leg_number: int, outcome: string, applied: bool, data: mixed, error_code: ?string, error_message: ?string}>
      */
@@ -143,7 +147,7 @@ final class SupplierDeliveryCheckService
         foreach ($pendingLegs as $leg) {
             $component = $leg->componentPackage;
             $result = $this->supplierAdapters->make($component->supplier->slug)->checkStatus(new SupplierStatusCheckRequest(
-                supplierRef: "{$order->reference_number}-L{$leg->leg_number}",
+                supplierRef: $leg->reference_number,
                 productRef: $component->supplier_package_ref,
                 playerId: $order->player_id,
                 serverId: $order->server_id,
