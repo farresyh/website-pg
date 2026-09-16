@@ -36,7 +36,7 @@ interface ConfirmFailedModalProps {
  * needs_review exit decision 4c's own text always assumed existed:
  * "An admin must resolve the order to Delivered or a genuine Failed
  * first" before Issue Voucher becomes available. Structurally
- * necessary for a `delivery_retry_likely_futile` order — retry can
+ * necessary for a `delivery_retry_unsafe_with_same_reference` order — retry can
  * never change that outcome, so without this the order has no exit at
  * all. Lands on plain Failed; Issue Voucher is a deliberately separate
  * second step, not collapsed into this one. `note` is required — this
@@ -74,7 +74,7 @@ function ConfirmFailedFields({ onClose, onConfirmed, order, token, sandbox }: Om
         ) : (
           <>
             Only use this once you&apos;ve confirmed the supplier genuinely never delivered this order — resending
-            {order.delivery_retry_likely_futile
+            {order.delivery_retry_unsafe_with_same_reference
               ? " won't change the outcome for this order (the supplier already recorded a final result for this reference)."
               : "."}{" "}
             This moves the order to <span className="font-medium">Failed</span>, unlocking Issue Voucher as a

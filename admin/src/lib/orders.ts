@@ -120,11 +120,17 @@ export interface OrderDetail extends OrderListItem {
   // leg's own component price, admin-adjustable, never trusted as-is
   // (the backend re-derives and caps its own copy independently).
   suggested_voucher_amount: number | null;
-  // ADR-026 addendum (2026-09-16) — computed server-side from the
-  // persisted error_code (Digiflazz's own rc table / Gamevion's
-  // duplicate_reference), never a second hand-copied rc list here.
-  // Drives the Resend Delivery futility warning.
-  delivery_retry_likely_futile: boolean;
+  // ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 —
+  // computed server-side from the persisted error_code (Digiflazz's
+  // own rc table / Gamevion's duplicate_reference), never a second
+  // hand-copied rc list here. The raw signal: drives the Resend
+  // Delivery futility warning text.
+  delivery_retry_unsafe_with_same_reference: boolean;
+  // ADR-102 decision 3 — the SCOPED rule (non-combo: only from
+  // needs_review; combo: regardless of failed/needs_review) that
+  // actually disables the Resend/Retry button and requires a logged
+  // override_reason to proceed anyway.
+  resend_unsafe_to_override: boolean;
 }
 
 export interface OrderPage {
@@ -190,7 +196,11 @@ export function getOrder(token: string, id: number) {
  * `POST /api/orders/{order}/retry-delivery` endpoint (ADR-014) still
  * exists on the backend, just isn't called from this UI anymore.
  */
-export function resendOrderDelivery(token: string, id: number, values: { package_id: number; note?: string }) {
+export function resendOrderDelivery(
+  token: string,
+  id: number,
+  values: { package_id: number; note?: string; override_reason?: string },
+) {
   return apiFetch<{ message: string }>(`/api/orders/${id}/resend`, { method: "POST", token, body: values });
 }
 
@@ -226,8 +236,8 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
  * multi-leg combo. The orders page routes combo orders (`delivery_legs.
  * length > 0`) here instead of opening ResendDeliveryModal.
  */
-export function retryOrderDelivery(token: string, id: number) {
-  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", token });
+export function retryOrderDelivery(token: string, id: number, values: { override_reason?: string } = {}) {
+  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", token, body: values });
 }
 
 /**
