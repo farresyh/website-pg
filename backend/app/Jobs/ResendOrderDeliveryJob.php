@@ -32,6 +32,11 @@ final class ResendOrderDeliveryJob implements ShouldQueue
         public readonly int $packageId,
         public readonly ?string $note,
         public readonly ?string $triggeredBy,
+        // ADR-102 decision 10 — the optional Player ID/Server ID
+        // correction, carried through the queue same as every other
+        // resend field.
+        public readonly ?string $playerId = null,
+        public readonly ?string $serverId = null,
     ) {
         // ADR-020 decision #5 — same queue as FulfillOrderJob, same
         // reasoning. onQueue(), not a redeclared $queue property — see
@@ -61,7 +66,7 @@ final class ResendOrderDeliveryJob implements ShouldQueue
         }
 
         try {
-            $resend->resend($this->order, $package, $this->note, $this->triggeredBy);
+            $resend->resend($this->order, $package, $this->note, $this->triggeredBy, $this->playerId, $this->serverId);
         } catch (ValidationException $e) {
             // A guard (same-game, active, resendable, player-ID
             // window) that held at request time but no longer does by
