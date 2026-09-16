@@ -33,6 +33,17 @@ class ResendOrderDeliveryRequest extends FormRequest
             // required-ness is enforced in OrderController::guardResendUnsafeOverride(),
             // not here. Just a plain optional string at the FormRequest layer.
             'override_reason' => ['nullable', 'string', 'max:255'],
+            // ADR-102 decision 10 — an optional correction to a
+            // customer-typo'd Player ID/Server ID, extending ADR-017's
+            // package-swap pattern with a second, independent
+            // correction. Only structural (format) validation here,
+            // same 'string'/'max:255' shape as every other player_id/
+            // server_id field this codebase validates (e.g.
+            // CreateCheckoutRequest) — OrderResendService applies the
+            // override onto the order and re-runs the same player-ID
+            // validation check the package-swap path already enforces.
+            'player_id' => ['nullable', 'string', 'max:255'],
+            'server_id' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

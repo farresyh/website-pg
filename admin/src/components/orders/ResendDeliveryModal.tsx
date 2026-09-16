@@ -70,6 +70,15 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   const [overrideReason, setOverrideReason] = useState("");
   const overrideRequired = order.resend_unsafe_to_override;
 
+  // ADR-102 decision 10 — optional correction to a customer-typo'd
+  // Player ID/Server ID (Context point 7: today the only fix for a
+  // wrong-ID failure is Issue Voucher + a brand new customer-placed
+  // order). Blank means "no correction" for both — kept separate from
+  // `note`/`overrideReason` since these actually change what's sent to
+  // the supplier, not just the audit trail.
+  const [playerIdCorrection, setPlayerIdCorrection] = useState("");
+  const [serverIdCorrection, setServerIdCorrection] = useState("");
+
   // ADR-018 decision #5: only meaningful in sandbox mode — the admin
   // picks what FakeSupplierAdapter should return this attempt.
   const [simulateSuccess, setSimulateSuccess] = useState(true);
@@ -109,13 +118,21 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   const isSamePackage = packageId !== null && packageId === originalPackageId;
   const originalPackageNoLongerActive = packages !== null && originalPackageId !== null && !packages.some((p) => p.id === originalPackageId);
 
+  // ADR-102 decision 10 — the effective (possibly corrected) Player/
+  // Server ID this resend will actually validate against and submit —
+  // mirrors OrderResendService::resend()'s own "blank = no correction"
+  // rule exactly, so what the admin sees verified here is what the
+  // backend re-validates at attempt time.
+  const effectivePlayerId = playerIdCorrection.trim() || order.player_id;
+  const effectiveServerId = serverIdCorrection.trim() !== "" ? serverIdCorrection.trim() : order.server_id;
+
   async function handleVerify() {
     if (!gameId) return;
     setVerifying(true);
     setVerifyResult(null);
     setError(null);
     try {
-      const result = await validatePlayerForResend(gameId, order.player_id, order.server_id);
+      const result = await validatePlayerForResend(gameId, effectivePlayerId, effectiveServerId);
       setVerifyResult(result.status === "valid" ? "valid" : "invalid");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not verify this Player ID.");
@@ -146,6 +163,8 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           package_id: packageId,
           note: note.trim() || undefined,
           override_reason: overrideReason.trim() || undefined,
+          player_id: playerIdCorrection.trim() || undefined,
+          server_id: serverIdCorrection.trim() || undefined,
         });
       }
       onResent();
@@ -227,12 +246,41 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           </div>
         )}
 
+        {/* ADR-102 decision 10 — closes the "a wrong-ID failure can only be resolved by Issue Voucher + a brand new customer-placed order" gap. Available regardless of whether this game requires validation — a typo'd ID can cause a plain supplier rejection too. */}
+        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <Label>Player ID / Server ID Correction (Optional)</Label>
+          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+            Currently on this order: <span className="font-medium">{order.player_id}</span>
+            {order.server_id ? ` / ${order.server_id}` : ""}. Leave blank to resend unchanged.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Input
+              aria-label="Corrected Player ID"
+              placeholder="Corrected Player ID"
+              value={playerIdCorrection}
+              onChange={(e) => {
+                setPlayerIdCorrection(e.target.value);
+                setVerifyResult(null);
+              }}
+            />
+            <Input
+              aria-label="Corrected Server ID"
+              placeholder="Corrected Server ID"
+              value={serverIdCorrection}
+              onChange={(e) => {
+                setServerIdCorrection(e.target.value);
+                setVerifyResult(null);
+              }}
+            />
+          </div>
+        </div>
+
         {requiresPlayerValidation && (
           <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
             <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
               This game requires Player ID validation before resending — Player ID{" "}
-              <span className="font-medium">{order.player_id}</span>
-              {order.server_id ? ` / Server ${order.server_id}` : ""}.
+              <span className="font-medium">{effectivePlayerId}</span>
+              {effectiveServerId ? ` / Server ${effectiveServerId}` : ""}.
             </p>
             <div className="flex items-center gap-3">
               <Button type="button" size="small" variant="outlined" onClick={handleVerify} disabled={verifying}>

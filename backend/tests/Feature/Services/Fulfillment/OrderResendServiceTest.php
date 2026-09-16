@@ -724,4 +724,86 @@ class OrderResendServiceTest extends TestCase
 
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
     }
+
+    /**
+     * ADR-102 decision 10 — the optional Player ID/Server ID correction
+     * closes Context point 7: today, a wrong-ID failure can only be
+     * resolved via Issue Voucher + a brand new customer-placed order.
+     * The corrected value is what actually gets persisted and sent to
+     * the supplier.
+     */
+    public function test_applies_a_player_id_correction_before_resending(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier, ['player_id' => 'typo-id']);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $package, null, 'Admin', playerId: 'corrected-id', serverId: 'srv-2');
+
+        $this->assertSame('corrected-id', $result->player_id);
+        $this->assertSame('srv-2', $result->server_id);
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+    }
+
+    /**
+     * The player-ID validation gate (decision #6, unchanged) must
+     * re-check against the CORRECTED id, not the order's original one
+     * — a validation row that only covers the typo'd original id must
+     * not let a resend through for a still-unvalidated corrected id.
+     */
+    public function test_blocks_resend_when_validation_is_only_on_file_for_the_original_not_the_corrected_player_id(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $game->update([
+            'player_validator_enabled' => true,
+            'player_validator_profile_id' => PlayerValidatorProfile::query()->create([
+                'name' => 'MLBB Validator', 'key' => 'mlbb',
+            ])->id,
+        ]);
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier, ['player_id' => 'typo-id']);
+        PlayerValidation::query()->create([
+            'game_id' => $game->id,
+            'player_id' => 'typo-id',
+            'server_id' => $order->server_id,
+            'status' => 'valid',
+            'validated_at' => now(),
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->resend($order, $package, null, 'Admin', playerId: 'corrected-id');
+    }
+
+    /** An empty-string player_id is "no correction given", not a literal blank value to submit — the original is kept. */
+    public function test_an_empty_player_id_correction_is_ignored(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier, ['player_id' => 'original-id']);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $package, null, 'Admin', playerId: '');
+
+        $this->assertSame('original-id', $result->player_id);
+    }
+
+    /** An empty-string server_id, unlike player_id, IS a real correction — clears it (some games have none). */
+    public function test_an_empty_server_id_correction_clears_it(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier, ['server_id' => 'wrong-server']);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $package, null, 'Admin', serverId: '');
+
+        $this->assertNull($result->server_id);
+    }
 }

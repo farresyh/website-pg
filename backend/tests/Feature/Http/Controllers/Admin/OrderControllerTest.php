@@ -691,6 +691,36 @@ class OrderControllerTest extends TestCase
             && $job->note === 'Bigger pack');
     }
 
+    /** ADR-102 decision 10 — the optional Player ID/Server ID correction is carried through the queued job. */
+    public function test_resend_carries_a_player_id_and_server_id_correction_through_to_the_job(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'player_id' => 'typo-id',
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", [
+            'package_id' => $package->id,
+            'player_id' => 'corrected-id',
+            'server_id' => 'srv-9',
+        ]);
+
+        $response->assertOk();
+        Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
+            && $job->playerId === 'corrected-id'
+            && $job->serverId === 'srv-9');
+    }
+
     /**
      * ADR-024 decision #8 — see the identical retryDelivery() guard
      * test above for the full reasoning.
@@ -1208,6 +1238,137 @@ class OrderControllerTest extends TestCase
             'owner_type' => 'reseller_wallet', 'owner_id' => $reseller->id,
             'type' => 'wallet_refund', 'amount' => 945, 'reference_type' => 'order', 'reference_id' => $order->id,
         ]);
+    }
+
+    /** ADR-102 decision 11 (b) — the "Wallet Refund" card needs the underlying LedgerEntry's amount/created_at, not just the wallet_refunded boolean. */
+    public function test_show_exposes_the_wallet_refund_ledger_entrys_amount_and_created_at(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk()->assertJsonPath('wallet_refund.amount', 945);
+        $this->assertNotNull($response->json('wallet_refund.created_at'));
+    }
+
+    /** An order with no wallet refund at all exposes null, not a missing key or a zeroed-out object. */
+    public function test_show_exposes_a_null_wallet_refund_when_none_exists(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk()->assertJsonPath('wallet_refund', null);
+    }
+
+    /**
+     * ADR-102 decision 11 (a) — the voucher this order was PAID WITH
+     * (orders.voucher_id) is a real, distinct fact from the
+     * compensation `voucher` relation (issued because delivery
+     * failed) — never exposed anywhere before this.
+     */
+    public function test_show_exposes_the_voucher_this_order_was_paid_with(): void
+    {
+        $this->actingAsAdmin();
+        $paidWith = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-PAID-WITH',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 300,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->order(['voucher_id' => $paidWith->id]);
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk()
+            ->assertJsonPath('paid_with_voucher.code', 'KRS-PAID-WITH')
+            ->assertJsonPath('paid_with_voucher.remaining', 300);
+    }
+
+    /** ADR-102 decision 12 — show() mirrors the same three badge booleans index() exposes, so OrderDetail's shape (extending the list's) is never inconsistent between the two endpoints. */
+    public function test_show_exposes_the_same_compensation_badges_as_index(): void
+    {
+        $this->actingAsAdmin();
+        $paidWith = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-USED-2',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->order(['voucher_id' => $paidWith->id]);
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk()
+            ->assertJsonPath('has_used_voucher', true)
+            ->assertJsonPath('has_compensation_voucher', false)
+            ->assertJsonPath('has_wallet_refund', false);
+    }
+
+    /** ADR-102 decision 12 — the list's compensation badges: cheap booleans, never an N+1 per row. */
+    public function test_index_exposes_the_compensation_badges(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+
+        $plainOrder = $this->order(['delivery_status' => DeliveryStatus::Delivered->value]);
+
+        $paidWith = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-USED-1',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $usedVoucherOrder = $this->order(['voucher_id' => $paidWith->id, 'delivery_status' => DeliveryStatus::Delivered->value]);
+
+        $failedOrder = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+        Voucher::query()->create([
+            'order_id' => $failedOrder->id,
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-ISSUED-1',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $walletRefundedOrder = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 500,
+        ]);
+        $this->postJson("/api/orders/{$walletRefundedOrder->id}/refund-to-wallet")->assertOk();
+
+        $response = $this->getJson('/api/orders');
+
+        $response->assertOk();
+        $byId = collect($response->json('data'))->keyBy('id');
+        $this->assertFalse((bool) $byId[$plainOrder->id]['has_used_voucher']);
+        $this->assertFalse((bool) $byId[$plainOrder->id]['has_compensation_voucher']);
+        $this->assertFalse((bool) $byId[$plainOrder->id]['has_wallet_refund']);
+        $this->assertTrue((bool) $byId[$usedVoucherOrder->id]['has_used_voucher']);
+        $this->assertTrue((bool) $byId[$failedOrder->id]['has_compensation_voucher']);
+        $this->assertTrue((bool) $byId[$walletRefundedOrder->id]['has_wallet_refund']);
     }
 
     public function test_refund_to_wallet_rejects_a_non_wallet_order(): void

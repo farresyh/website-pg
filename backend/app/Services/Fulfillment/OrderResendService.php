@@ -41,10 +41,26 @@ final class OrderResendService
      *                             requires player-ID validation that hasn't happened
      *                             recently (decision #6).
      */
-    public function resend(Order $order, Package $targetPackage, ?string $note, ?string $triggeredBy): Order
+    public function resend(Order $order, Package $targetPackage, ?string $note, ?string $triggeredBy, ?string $playerId = null, ?string $serverId = null): Order
     {
         $this->assertResendable($order);
         $this->assertSameGamePackage($order, $targetPackage);
+
+        // ADR-102 decision 10: applied in-memory (not yet persisted)
+        // BEFORE the player-ID validation check below, so a corrected
+        // ID is what actually gets validated and, further down, what
+        // actually gets sent to the supplier — not the original
+        // customer-typo'd value. An empty string clears server_id
+        // (some games have none); an empty player_id is treated as "no
+        // correction given" (a blank Player ID is never a legitimate
+        // value to submit).
+        if ($playerId !== null && $playerId !== '') {
+            $order->player_id = $playerId;
+        }
+        if ($serverId !== null) {
+            $order->server_id = $serverId !== '' ? $serverId : null;
+        }
+
         $this->assertPlayerIdIsValidatedIfRequired($order);
 
         // Decision #3: the live reconciliation figures, captured at
@@ -103,6 +119,13 @@ final class OrderResendService
             'package_id' => $targetPackage->id,
             'supplier_id' => $targetPackage->supplier_id,
             'supplier_product_ref' => $targetPackage->supplier_package_ref,
+            // ADR-102 decision 10 — already applied in-memory above;
+            // listed explicitly here (rather than left to the
+            // already-dirty attribute) so this update() call remains
+            // the one place that documents every field a resend can
+            // change.
+            'player_id' => $order->player_id,
+            'server_id' => $order->server_id,
             'platform_profit' => $platformProfit,
             'affiliate_profit' => $affiliateProfit,
         ]);
