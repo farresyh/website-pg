@@ -35,15 +35,24 @@ final class PendingReactivationFinder
     /**
      * @return Collection<int, Package>
      */
-    public function find(): Collection
+    public function find(?int $supplierId = null): Collection
     {
         $packages = Package::query()
             ->with('game', 'supplier')
             ->where('is_active', false)
             ->where('deactivated_reason', 'supplier_sync')
+            ->when($supplierId !== null, fn ($query) => $query->where('supplier_id', $supplierId))
             ->get();
 
         $confirmedActiveSince = SupplierProduct::query()
+            // ADR-100 — scoped by supplier whenever the caller gives
+            // one (PendingReactivationAutoApprover always does), since
+            // `external_ref` is only unique *per supplier*
+            // (`supplier_products`' own unique key is
+            // `[supplier_id, external_ref]`) — left unscoped for the
+            // default/no-argument call to keep every existing caller's
+            // behavior byte-for-byte unchanged.
+            ->when($supplierId !== null, fn ($query) => $query->where('supplier_id', $supplierId))
             ->whereIn('external_ref', $packages->pluck('supplier_package_ref'))
             ->where('status_raw', 'active')
             ->get(['external_ref', 'last_synced_at'])

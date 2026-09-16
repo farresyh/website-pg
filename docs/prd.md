@@ -394,6 +394,14 @@ MUI-11 is the same screen as DEV-1/2 (§6.18 Admin — Developer Tools) — both
 6. Admin reviews Pending Reactivation table and approves/dismisses packages.
 7. Approved packages are reactivated in the catalog with updated prices.
 
+**Addendum, 2026-09-16 ([ADR-100](./adr.md)):** step 6 can optionally happen
+automatically instead — off by default (`PENDING_REACTIVATION_AUTO_APPROVE`).
+When on, a package confirmed active again either inside its own Digiflazz
+cutoff window, or after enough consecutive syncs confirm it with no recent
+unexplained flapping, skips the admin queue entirely and reactivates on its
+own; every other case still lands in the manual queue exactly as steps 1-7
+describe.
+
 ## 7.4 Withdrawal (ledger-based, per ADR-002)
 
 1. Platform owner (Phase 2: reseller) accrues profit from delivered orders — each order's profit is written as a **credit entry** in the ledger, not added to a mutable balance field.
@@ -764,28 +772,20 @@ drops off this list into `docs/build-log.md`.
     decision, 2026-09-15) rather than folded into item 16's fix — different
     root cause (a missing write, not a wrong label), worth its own pass once
     item 16's schema shape is decided (the two likely share a table).
-17. **Should Pending Reactivation ever auto-approve? — needs its own grill,
-    not decided.** Raised by the founder during a 2026-09-16 Pulse/Horizon
-    health-check session (a genuine intuition, not an incident) after noticing
-    packages land on `/middleware/price-sync`'s Pending Reactivation queue
-    almost every day. Checked against real production data, not assumed: the
-    daily 1-4-package trickle is genuine Digiflazz/Gamevion stock flapping
-    (exactly what ADR-015 decision #3's Deactivation Detection exists to
-    catch), unrelated to [ADR-099](./adr.md)'s backup-lock finding from the
-    same session. ADR-015 decision #3 made reactivation deliberately
-    manual — *"require a human for the direction that could silently...
-    act on a possibly-bad signal"* — because a supplier's "active again"
-    report can itself be noisy. That risk isn't hypothetical: this same
-    session found two real outlier spikes (82 packages deactivated in one
-    sync on 2026-09-12, 13 on 2026-09-13) from Digiflazz flapping status
-    across 11+ unrelated games in a single run — exactly the kind of noisy
-    signal an unguarded auto-approve could re-list on. A middle ground raised
-    but not designed: auto-approve only after N consecutive syncs confirm
-    "active" (a stability threshold), preserving ADR-015's own signal-safety
-    intent while cutting manual admin clicks for the genuinely-stable case.
-    Needs its own grill (threshold shape, per-supplier scope given Digiflazz's
-    demonstrated flakiness vs. Gamevion, safety net if an auto-reactivated
-    package still fails to deliver, audit/notification) before any code.
+17. ~~Should Pending Reactivation ever auto-approve?~~ — **grilled + BUILT
+    2026-09-16, [ADR-100](./adr.md).** Off by default
+    (`PENDING_REACTIVATION_AUTO_APPROVE=false` — today's fully-manual
+    behavior is unchanged until a founder opts in). Two triggers when on:
+    a Digiflazz product back inside its own documented `start_cut_off`/
+    `end_cut_off` window (real API fields this project was discarding,
+    found live via the founder's own dashboard + Digiflazz's docs)
+    approves immediately; every other case needs a consecutive-active-sync
+    streak plus a 14-day flap-history gate (reusing `deactivation_logs`) —
+    a cutoff-explained flap never counts against that gate. Founder-owed:
+    `.env.example` entries (agent write-permission gap) and a live
+    spot-check of `HOK_GB_16_PG2`'s real cutoff API value once Digiflazz's
+    pricelist rate limit isn't a concern (the code's fallback fails safe
+    either way).
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

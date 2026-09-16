@@ -415,6 +415,12 @@ final class DigiflazzAdapter implements SupplierAdapter
             // line in the Product Manager.
             rawPrice: isset($item['price']) ? (float) $item['price'] : null,
             rawCurrency: isset($item['price']) ? 'IDR' : null,
+            // ADR-100 — carried raw, "hh:mm" or absent; validated/used
+            // only downstream (PendingReactivationAutoApprover), never
+            // here (Stage 1 stays a pure mirror, per this class's own
+            // docblock).
+            cutOffStart: $item['start_cut_off'] ?? null,
+            cutOffEnd: $item['end_cut_off'] ?? null,
         );
     }
 
