@@ -384,4 +384,78 @@ class ProductSyncServiceTest extends TestCase
 
         $this->assertSame(0, SupplierProduct::query()->count());
     }
+
+    /**
+     * ADR-100 — Digiflazz's own `start_cut_off`/`end_cut_off`, carried
+     * from the adapter's `SupplierCatalogItem` straight onto the row,
+     * unvalidated (PendingReactivationAutoApprover decides what an
+     * ambiguous value means, not this pure-mirror stage).
+     */
+    public function test_sync_persists_the_cutoff_window_fields(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => []]);
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem(
+                'xld10', 'MLBB 10 Diamonds', 'Mobile Legends', 3200.0, 'active',
+                cutOffStart: '23:00', cutOffEnd: '01:00',
+            ),
+        ]);
+
+        (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
+
+        $row = SupplierProduct::query()->where('external_ref', 'xld10')->firstOrFail();
+        $this->assertSame('23:00', $row->cutoff_start);
+        $this->assertSame('01:00', $row->cutoff_end);
+    }
+
+    /**
+     * ADR-100 — `consecutive_active_syncs` climbs by one per run while
+     * a row stays 'active', starting from 0 on first creation.
+     */
+    public function test_sync_increments_the_consecutive_active_streak_across_runs(): void
+    {
+        $supplier = $this->supplier();
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]);
+        $service = new ProductSyncService(new CurrencyRateService);
+
+        $service->sync($supplier, $adapter);
+        $this->assertSame(1, SupplierProduct::query()->where('external_ref', 'FFP5')->value('consecutive_active_syncs'));
+
+        $service->sync($supplier, $adapter);
+        $this->assertSame(2, SupplierProduct::query()->where('external_ref', 'FFP5')->value('consecutive_active_syncs'));
+
+        $service->sync($supplier, $adapter);
+        $this->assertSame(3, SupplierProduct::query()->where('external_ref', 'FFP5')->value('consecutive_active_syncs'));
+    }
+
+    /**
+     * ADR-100 — a single 'inactive' run resets the streak to 0
+     * outright, not a decrement — the N-consecutive-sync gate needs an
+     * unbroken run, not a rolling average.
+     */
+    public function test_sync_resets_the_consecutive_active_streak_the_moment_status_flips_inactive(): void
+    {
+        $supplier = $this->supplier();
+        $service = new ProductSyncService(new CurrencyRateService);
+
+        $service->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]));
+        $service->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]));
+        $this->assertSame(2, SupplierProduct::query()->where('external_ref', 'FFP5')->value('consecutive_active_syncs'));
+
+        $service->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'inactive'),
+        ]));
+        $this->assertSame(0, SupplierProduct::query()->where('external_ref', 'FFP5')->value('consecutive_active_syncs'));
+
+        $service->sync($supplier, $this->fakeAdapter(true, [
+            new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),
+        ]));
+        $this->assertSame(1, SupplierProduct::query()->where('external_ref', 'FFP5')->value('consecutive_active_syncs'));
+    }
 }

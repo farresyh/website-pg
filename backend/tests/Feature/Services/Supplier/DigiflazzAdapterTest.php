@@ -136,6 +136,8 @@ class DigiflazzAdapterTest extends TestCase
                         'price' => 3200,
                         'buyer_product_status' => true,
                         'seller_product_status' => true,
+                        'start_cut_off' => '23:00',
+                        'end_cut_off' => '01:00',
                     ],
                 ],
             ], 200),
@@ -157,6 +159,32 @@ class DigiflazzAdapterTest extends TestCase
         // figure is kept for a Product Manager sanity line.
         $this->assertSame(3200.0, $result->data[0]->rawPrice);
         $this->assertSame('IDR', $result->data[0]->rawCurrency);
+        // ADR-100 — carried raw for PendingReactivationAutoApprover.
+        $this->assertSame('23:00', $result->data[0]->cutOffStart);
+        $this->assertSame('01:00', $result->data[0]->cutOffEnd);
+    }
+
+    /**
+     * ADR-100 — a product with no cutoff fields in the response at all
+     * (Digiflazz omits them for some catalog entries, not just an
+     * empty string) maps to null, not an empty/missing-key crash.
+     */
+    public function test_list_products_maps_absent_cutoff_fields_to_null(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => [[
+                    'product_name' => 'Racing Master 100 Gold', 'category' => 'Games',
+                    'brand' => 'Racing Master', 'buyer_sku_code' => 'rm100', 'price' => 9000,
+                    'buyer_product_status' => true, 'seller_product_status' => true,
+                ]],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->listProducts();
+
+        $this->assertNull($result->data[0]->cutOffStart);
+        $this->assertNull($result->data[0]->cutOffEnd);
     }
 
     /**
