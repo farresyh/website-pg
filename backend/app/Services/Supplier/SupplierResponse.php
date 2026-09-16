@@ -16,16 +16,33 @@ final class SupplierResponse
         public readonly ?string $errorMessage,
         public readonly bool $isServerError = false,
         public readonly SupplierOutcome $outcome = SupplierOutcome::Failure,
-        // ADR-098 — a FACT about the supplier's own state ("did they
-        // already record a transaction against this reference"), not a
-        // business consequence: OrderFulfillmentService, not this
-        // class, decides that a true value means route to NeedsReview
-        // (same ADAPT-2 split as $outcome itself). Supplier-agnostic —
-        // any adapter can set it (Gamevion's existing 409/
-        // duplicate_reference case does; Digiflazz's rc table does)
-        // rather than business logic string-matching a per-supplier
-        // errorCode value.
-        public readonly bool $transactionAlreadyFormed = false,
+        // ADR-098, split by ADR-102 decision 5 into two independent
+        // FACTS about the supplier's own state that a single
+        // $transactionAlreadyFormed boolean used to conflate:
+        //
+        //  - $resendUnsafeWithSameReference: "a resubmit of this same
+        //    reference can only replay a stored result, never
+        //    reprocess" — Gamevion's 409/duplicate_reference, or
+        //    Digiflazz's own 20-code "Terbentuk Transaksi=Ya" table.
+        //    Drives the admin Resend/Retry button's futile-to-click
+        //    signal (decision 3), never routing.
+        //  - $outcomeConfirmedFailed: "the supplier's own status field
+        //    definitively said Gagal" — true for Digiflazz's Gagal
+        //    branch, always false for Gamevion (a 409 carries no status
+        //    field to confirm anything). Drives decision 4's routing:
+        //    a confirmed-Gagal failure goes straight to Failed even
+        //    when resendUnsafeWithSameReference is also true, since
+        //    "can't safely resubmit" and "outcome unknown" are
+        //    different facts — only the combination of unsafe-to-resend
+        //    AND NOT confirmed-failed is genuinely ambiguous (Gamevion's
+        //    409, or an exception/timeout with no response at all).
+        //
+        // Neither is a business consequence itself — OrderFulfillmentService,
+        // not this class, decides what routing follows (same ADAPT-2
+        // split as $outcome itself). Supplier-agnostic: any adapter can
+        // set either.
+        public readonly bool $resendUnsafeWithSameReference = false,
+        public readonly bool $outcomeConfirmedFailed = false,
     ) {}
 
     public static function success(mixed $data): self
@@ -57,8 +74,8 @@ final class SupplierResponse
      * evidence the supplier is down, and tripping the breaker on those
      * would block healthy orders for no reason.
      */
-    public static function failure(string $errorCode, string $errorMessage, bool $isServerError = false, bool $transactionAlreadyFormed = false): self
+    public static function failure(string $errorCode, string $errorMessage, bool $isServerError = false, bool $resendUnsafeWithSameReference = false, bool $outcomeConfirmedFailed = false): self
     {
-        return new self(false, null, $errorCode, $errorMessage, $isServerError, SupplierOutcome::Failure, $transactionAlreadyFormed);
+        return new self(false, null, $errorCode, $errorMessage, $isServerError, SupplierOutcome::Failure, $resendUnsafeWithSameReference, $outcomeConfirmedFailed);
     }
 }

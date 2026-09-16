@@ -94,19 +94,21 @@ class OrderFulfillmentServiceTest extends TestCase
         ?array $data = null,
         ?string $errorCode = null,
         ?string $errorMessage = null,
-        // ADR-098 — the generic signal driving NeedsReview routing;
-        // defaults false so every pre-existing plain-Failed test keeps
-        // its exact prior behavior.
-        bool $transactionAlreadyFormed = false,
+        // ADR-098, split by ADR-102 decision 5 — both default false so
+        // every pre-existing plain-Failed test keeps its exact prior
+        // behavior.
+        bool $resendUnsafeWithSameReference = false,
+        bool $outcomeConfirmedFailed = false,
     ): SupplierAdapter {
-        return new class($success, $data, $errorCode, $errorMessage, $transactionAlreadyFormed) implements SupplierAdapter
+        return new class($success, $data, $errorCode, $errorMessage, $resendUnsafeWithSameReference, $outcomeConfirmedFailed) implements SupplierAdapter
         {
             public function __construct(
                 private readonly bool $success,
                 private readonly ?array $data,
                 private readonly ?string $errorCode,
                 private readonly ?string $errorMessage,
-                private readonly bool $transactionAlreadyFormed,
+                private readonly bool $resendUnsafeWithSameReference,
+                private readonly bool $outcomeConfirmedFailed,
             ) {}
 
             public function checkBalance(): SupplierResponse
@@ -123,7 +125,12 @@ class OrderFulfillmentServiceTest extends TestCase
             {
                 return $this->success
                     ? SupplierResponse::success($this->data)
-                    : SupplierResponse::failure($this->errorCode, $this->errorMessage, transactionAlreadyFormed: $this->transactionAlreadyFormed);
+                    : SupplierResponse::failure(
+                        $this->errorCode,
+                        $this->errorMessage,
+                        resendUnsafeWithSameReference: $this->resendUnsafeWithSameReference,
+                        outcomeConfirmedFailed: $this->outcomeConfirmedFailed,
+                    );
             }
 
             public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
@@ -447,10 +454,18 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
-     * ORD-8's whole point: a retry after a prior failure must reuse
-     * the same idempotency key, never regenerate it.
+     * ORD-8, narrowed by ADR-102 decision 9: a retry initiated from
+     * Failed now gets a FRESH reference — deliberate, since Failed
+     * (post decision 4) always means confirmed non-delivery, so there's
+     * no double-delivery risk a fresh reference could create, and it
+     * makes a package swap (ADR-017) genuinely effective again (a
+     * resubmitted already-formed reference would otherwise just replay
+     * the stored result). This supersedes the old "never regenerate"
+     * behavior for exactly this case — see the NeedsReview sibling test
+     * below for the case where reuse is still the deliberate safety
+     * mechanism.
      */
-    public function test_fulfill_reuses_the_same_reference_number_on_a_retry_after_failure(): void
+    public function test_fulfill_generates_a_fresh_reference_number_on_a_retry_from_failed(): void
     {
         $order = $this->paidOrder();
 
@@ -458,10 +473,35 @@ class OrderFulfillmentServiceTest extends TestCase
             ->fulfill($order);
         $firstReference = $failed->reference_number;
 
-        $failed->update(['delivery_status' => DeliveryStatus::Failed->value]); // admin retries
+        $this->assertSame(DeliveryStatus::Failed, $failed->delivery_status); // admin retries from here
 
         $delivered = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->fulfill($failed->fresh());
+
+        $this->assertNotSame($firstReference, $delivered->reference_number);
+        $this->assertStringStartsWith('REF-', $delivered->reference_number);
+    }
+
+    /**
+     * ADR-102 decision 9 — the deliberate carve-out: a retry initiated
+     * from NeedsReview keeps reusing the SAME reference, exactly as
+     * ORD-8 always specified. Reuse IS the safety mechanism here — if a
+     * genuinely-unknown-outcome order actually did succeed silently,
+     * the supplier's own dedup on the same reference prevents a real
+     * second delivery. Regenerating here would remove that protection.
+     */
+    public function test_fulfill_reuses_the_same_reference_number_on_a_retry_from_needs_review(): void
+    {
+        $order = $this->paidOrder();
+
+        $needsReview = $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'dup', resendUnsafeWithSameReference: true))
+            ->fulfill($order);
+        $firstReference = $needsReview->reference_number;
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $needsReview->delivery_status); // admin retries from here
+
+        $delivered = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->fulfill($needsReview->fresh());
 
         $this->assertSame($firstReference, $delivered->reference_number);
     }
@@ -534,7 +574,7 @@ class OrderFulfillmentServiceTest extends TestCase
     {
         $order = $this->paidOrder();
 
-        $result = $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'Gamevion already has an order for this reference number', transactionAlreadyFormed: true))
+        $result = $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'Gamevion already has an order for this reference number', resendUnsafeWithSameReference: true))
             ->fulfill($order);
 
         $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
@@ -543,29 +583,34 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
-     * ADR-098 — the routing decision reads the generic
-     * transactionAlreadyFormed flag, not a Gamevion-specific
-     * errorCode==='duplicate_reference' string match, so a Digiflazz
-     * terminal rc (e.g. '02') routes to NeedsReview too, not just
-     * Gamevion's own duplicate_reference case.
+     * ADR-102 decision 4 — the actual fix: a Digiflazz terminal rc
+     * (e.g. '02', "Terbentuk Transaksi=Ya") is unsafe to resubmit but
+     * Digiflazz's own `status` field DID confirm the outcome (Gagal) —
+     * a known result, not an ambiguous one. This now routes straight
+     * to Failed (Issue Voucher immediately available), superseding
+     * ADR-098 decision 6's original "any already-formed response routes
+     * to NeedsReview" rule, which conflated "can't safely resubmit"
+     * with "outcome unknown". Only Gamevion's duplicate_reference (no
+     * status field to confirm anything) still routes to NeedsReview —
+     * see the sibling test above.
      */
-    public function test_fulfill_marks_needs_review_on_any_transaction_already_formed_response(): void
+    public function test_fulfill_marks_delivery_failed_on_a_confirmed_gagal_digiflazz_rc(): void
     {
         $order = $this->paidOrder();
 
-        $result = $this->service($this->fakeSupplierAdapter(false, null, '02', 'Transaksi Gagal', transactionAlreadyFormed: true))
+        $result = $this->service($this->fakeSupplierAdapter(false, null, '02', 'Transaksi Gagal', resendUnsafeWithSameReference: true, outcomeConfirmedFailed: true))
             ->fulfill($order);
 
-        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
         $this->assertSame('02', $result->supplier_response['error_code']);
     }
 
-    /** A plain Digiflazz retriable failure (e.g. rc='44', transactionAlreadyFormed=false) stays a plain Failed. */
-    public function test_fulfill_marks_delivery_failed_when_transaction_was_not_formed(): void
+    /** A plain Digiflazz retriable failure (e.g. rc='44') stays a plain Failed — unaffected by decision 4, unchanged from before this ADR. */
+    public function test_fulfill_marks_delivery_failed_when_resend_is_not_unsafe(): void
     {
         $order = $this->paidOrder();
 
-        $result = $this->service($this->fakeSupplierAdapter(false, null, '44', 'Saldo tidak cukup'))
+        $result = $this->service($this->fakeSupplierAdapter(false, null, '44', 'Saldo tidak cukup', outcomeConfirmedFailed: true))
             ->fulfill($order);
 
         $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
@@ -576,7 +621,7 @@ class OrderFulfillmentServiceTest extends TestCase
         Log::spy();
         $order = $this->paidOrder();
 
-        $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'dup', transactionAlreadyFormed: true))
+        $this->service($this->fakeSupplierAdapter(false, null, 'duplicate_reference', 'dup', resendUnsafeWithSameReference: true))
             ->fulfill($order);
 
         Log::shouldHaveReceived('warning')

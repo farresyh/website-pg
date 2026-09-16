@@ -115,11 +115,15 @@ final class GamevionAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 'duplicate_reference',
                 'Gamevion already has an order for this reference number',
-                // ADR-098 — the generic, supplier-agnostic signal this
-                // 409 case already represents: Gamevion has already
-                // recorded a transaction for this reference number, so
-                // a resubmit can only replay it, never reprocess.
-                transactionAlreadyFormed: true,
+                // ADR-098, renamed by ADR-102 decision 5 — the generic,
+                // supplier-agnostic signal this 409 case already
+                // represents: Gamevion has already recorded a
+                // transaction for this reference number, so a resubmit
+                // can only replay it, never reprocess. outcomeConfirmedFailed
+                // stays false (default) — a 409 carries no status field
+                // confirming anything, so this is a genuinely unknown
+                // outcome, not a confirmed one (ADR-102 decision 4).
+                resendUnsafeWithSameReference: true,
             );
         }
 

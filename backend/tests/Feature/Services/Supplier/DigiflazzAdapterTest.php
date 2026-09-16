@@ -458,7 +458,7 @@ class DigiflazzAdapterTest extends TestCase
      * replay this result, never reprocess. Confirmed live, order
      * PG-JLOMUJ1H23NE.
      */
-    public function test_create_order_flags_transaction_already_formed_for_a_terminal_rc(): void
+    public function test_create_order_flags_resend_unsafe_with_same_reference_for_a_terminal_rc(): void
     {
         Http::fake([
             'api.digiflazz.com/*' => Http::response([
@@ -470,7 +470,11 @@ class DigiflazzAdapterTest extends TestCase
             productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232',
         ));
 
-        $this->assertTrue($result->transactionAlreadyFormed);
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        // ADR-102 decision 4 — the actual fix: Digiflazz's own `status`
+        // field confirmed Gagal here, so this is a KNOWN outcome, not
+        // an ambiguous one, even though resubmitting is unsafe.
+        $this->assertTrue($result->outcomeConfirmedFailed);
     }
 
     /**
@@ -479,7 +483,7 @@ class DigiflazzAdapterTest extends TestCase
      * changes. Confirmed live, order PG-PYAYMRYNUYV0 (3x rc=44, then
      * succeeded on a later attempt after the account was topped up).
      */
-    public function test_create_order_does_not_flag_transaction_already_formed_for_a_retriable_rc(): void
+    public function test_create_order_does_not_flag_resend_unsafe_with_same_reference_for_a_retriable_rc(): void
     {
         Http::fake([
             'api.digiflazz.com/*' => Http::response([
@@ -491,11 +495,14 @@ class DigiflazzAdapterTest extends TestCase
             productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232',
         ));
 
-        $this->assertFalse($result->transactionAlreadyFormed);
+        $this->assertFalse($result->resendUnsafeWithSameReference);
+        // ADR-102 decision 4 — still a confirmed Gagal (the `status`
+        // field said so), just safe to resubmit.
+        $this->assertTrue($result->outcomeConfirmedFailed);
     }
 
     /** ADR-098 decision 4 — an undocumented/future rc defaults to false, not a conservative true. */
-    public function test_create_order_does_not_flag_transaction_already_formed_for_an_unknown_rc(): void
+    public function test_create_order_does_not_flag_resend_unsafe_with_same_reference_for_an_unknown_rc(): void
     {
         Http::fake([
             'api.digiflazz.com/*' => Http::response([
@@ -507,11 +514,12 @@ class DigiflazzAdapterTest extends TestCase
             productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232',
         ));
 
-        $this->assertFalse($result->transactionAlreadyFormed);
+        $this->assertFalse($result->resendUnsafeWithSameReference);
+        $this->assertTrue($result->outcomeConfirmedFailed);
     }
 
     /** ADR-098 — checkStatus() shares submitTransaction(), so the same classification applies there too. */
-    public function test_check_status_flags_transaction_already_formed_for_a_terminal_rc(): void
+    public function test_check_status_flags_resend_unsafe_with_same_reference_for_a_terminal_rc(): void
     {
         Http::fake([
             'api.digiflazz.com/*' => Http::response([
@@ -523,7 +531,8 @@ class DigiflazzAdapterTest extends TestCase
             supplierRef: 'REF-1', productRef: 'xld10', playerId: '087800001232',
         ));
 
-        $this->assertTrue($result->transactionAlreadyFormed);
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        $this->assertTrue($result->outcomeConfirmedFailed);
     }
 
     /**

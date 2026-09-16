@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -139,6 +140,10 @@ function OrdersPageInner() {
   // direct action instead of ResendDeliveryModal.
   const [retryingDelivery, setRetryingDelivery] = useState(false);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  // ADR-102 decision 3 — the mandatory free-text reason required to
+  // override a scoped-unsafe Retry (combo path only; the non-combo
+  // Resend Delivery modal has its own copy of this field).
+  const [retryOverrideReason, setRetryOverrideReason] = useState("");
 
   async function openOrder(token: string, id: number) {
     setSelected(null);
@@ -264,7 +269,10 @@ function OrdersPageInner() {
     setRetryingDelivery(true);
     setRetryMessage(null);
     try {
-      await retryOrderDelivery(session.token, selected.id);
+      await retryOrderDelivery(session.token, selected.id, {
+        override_reason: retryOverrideReason.trim() || undefined,
+      });
+      setRetryOverrideReason("");
       setRetryMessage("Delivery retry queued — refresh in a moment to see the result.");
     } catch (err) {
       setRetryMessage(err instanceof ApiError ? err.message : "Could not queue the retry.");
@@ -375,19 +383,35 @@ function OrdersPageInner() {
               {/* ADR-102 decision 1: hidden once this order is already compensated (voucher issued or wallet refunded) — mirrors the backend's own hard block, so an admin never sees a button that would just 400. */}
               {!selected.voucher && !selected.wallet_refunded && (
                 selected.delivery_legs.length > 0 ? (
-                  <Button size="small" disabled={retryingDelivery} onClick={handleRetryDelivery}>
-                    {retryingDelivery ? "Retrying…" : "Retry Delivery…"}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* ADR-102 decision 3: a combo order still checks the futile flag regardless of failed/needs_review — the plain Retry button requires the same mandatory override reason the Resend Delivery modal collects for a non-combo order. */}
+                    {selected.resend_unsafe_to_override && (
+                      <Input
+                        aria-label="Override reason"
+                        placeholder="Reason to override and retry anyway (required)"
+                        value={retryOverrideReason}
+                        onChange={(e) => setRetryOverrideReason(e.target.value)}
+                        className="w-72"
+                      />
+                    )}
+                    <Button
+                      size="small"
+                      disabled={retryingDelivery || (selected.resend_unsafe_to_override && retryOverrideReason.trim() === "")}
+                      onClick={handleRetryDelivery}
+                    >
+                      {retryingDelivery ? "Retrying…" : "Retry Delivery…"}
+                    </Button>
+                  </div>
                 ) : (
                   <Button size="small" onClick={() => setResendModalOpen(true)}>
                     Resend Delivery…
                   </Button>
                 )
               )}
-              {/* ADR-026 addendum (2026-09-16) — server-computed from the persisted error_code (ADR-098's own rc table), never a second hand-copied list here. */}
-              {selected.delivery_retry_likely_futile && (
+              {/* ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — server-computed from the persisted error_code (ADR-098's own rc table), never a second hand-copied list here. */}
+              {selected.delivery_retry_unsafe_with_same_reference && (
                 <span className="text-sm text-warning-600 dark:text-orange-400">
-                  Resending is unlikely to change this outcome — the supplier already recorded a final result for this reference.
+                  Resending is unlikely to change this outcome — the supplier already recorded a final result for this reference. A package swap does not escape this either.
                 </span>
               )}
               {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both, Voucher's email-keyed mechanism has no meaning for a B2B wallet account. */}

@@ -168,20 +168,24 @@ class DigiflazzWebhookControllerTest extends TestCase
     }
 
     /**
-     * ADR-098 — rc=02 "Transaksi Gagal" has Terbentuk Transaksi=Ya:
-     * Digiflazz already recorded a transaction for this reference, so a
-     * resubmit can only replay it, never reprocess. Routes to
-     * needs_review, not a plain resendable Failed. Real incident: order
-     * PG-JLOMUJ1H23NE.
+     * ADR-098, reclassified by ADR-102 decision 4 — rc=02 "Transaksi
+     * Gagal" has Terbentuk Transaksi=Ya: unsafe to resubmit the same
+     * reference, but Digiflazz's own `status` field DID confirm the
+     * outcome (Gagal) — a known result, not an ambiguous one. Now
+     * routes straight to Failed (Issue Voucher immediately available),
+     * superseding this test's own original ADR-098 expectation. Real
+     * incident this originally fixed: order PG-JLOMUJ1H23NE — see
+     * ADR-102's Context for why needs_review was the wrong landing
+     * spot for a genuinely-known outcome.
      */
-    public function test_a_terminal_rc_gagal_callback_finalizes_the_pending_order_as_needs_review(): void
+    public function test_a_terminal_rc_gagal_callback_finalizes_the_pending_order_as_failed(): void
     {
         $order = $this->pendingOrder();
 
         $this->sendWebhook($this->suksesData($order, ['status' => 'Gagal', 'rc' => '02', 'sn' => null]))
             ->assertOk();
 
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
         $this->assertDatabaseMissing('ledger_entries', [
             'reference_id' => $order->id,
             'type' => 'order_profit',
@@ -459,8 +463,15 @@ class DigiflazzWebhookControllerTest extends TestCase
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 
-    /** ADR-098 — rc=02 has Terbentuk Transaksi=Ya, routes the leg (and the whole order) to needs_review. */
-    public function test_a_terminal_rc_gagal_callback_for_a_combo_leg_finalizes_that_leg_as_needs_review(): void
+    /**
+     * ADR-098, reclassified by ADR-102 decision 4/8 — rc=02 has
+     * Terbentuk Transaksi=Ya (unsafe to resubmit), but Digiflazz's own
+     * `status` field confirmed the outcome, so this leg (and, being the
+     * sole leg here, the whole order) now lands on Failed instead of
+     * needs_review — no new per-leg infra needed, this falls straight
+     * out of decision 4's split-flag routing.
+     */
+    public function test_a_terminal_rc_gagal_callback_for_a_combo_leg_finalizes_that_leg_as_failed(): void
     {
         [$order, $leg] = $this->comboOrderWithPendingLeg();
         $component = $leg->componentPackage;
@@ -474,8 +485,8 @@ class DigiflazzWebhookControllerTest extends TestCase
             'message' => 'Transaksi Gagal',
         ])->assertOk();
 
-        $this->assertSame(DeliveryStatus::NeedsReview, $leg->fresh()->status);
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, $leg->fresh()->status);
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 
     public function test_a_combo_leg_sku_mismatch_is_rejected_409(): void

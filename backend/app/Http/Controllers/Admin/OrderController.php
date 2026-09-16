@@ -175,7 +175,7 @@ class OrderController extends Controller
      * rejection instead of a job that's silently a no-op. needs_review
      * added by ADR-026 decision 4b — same retry mechanism resolves it.
      */
-    public function retryDelivery(Order $order): JsonResponse
+    public function retryDelivery(Request $request, Order $order): JsonResponse
     {
         // ADR-018 decision #2: a sandbox order id must never reach the
         // real, queued GamevionAdapter path — it exists only for the
@@ -208,9 +208,41 @@ class OrderController extends Controller
             ]);
         }
 
+        $this->guardResendUnsafeOverride($request, $order);
+
         FulfillOrderJob::dispatch($order);
 
         return response()->json(['message' => 'Delivery retry queued.']);
+    }
+
+    /**
+     * ADR-102 decision 3 — an admin can still click Resend/Retry on a
+     * scoped-unsafe order (Order::resendUnsafeToOverride()), but only
+     * with a mandatory free-text reason, logged: this is money-critical
+     * (the resubmit really is unlikely to change anything), so an
+     * override needs an audit trail, not a silent bypass. Shared by
+     * both retryDelivery() and resend() so the two never drift on this
+     * rule.
+     */
+    private function guardResendUnsafeOverride(Request $request, Order $order): void
+    {
+        if (! $order->resendUnsafeToOverride()) {
+            return;
+        }
+
+        $reason = trim((string) $request->input('override_reason', ''));
+
+        if ($reason === '') {
+            throw ValidationException::withMessages([
+                'override_reason' => ['This order already has a final, confirmed result for its reference — a package swap does not escape this either. Provide a reason to override and resend anyway.'],
+            ]);
+        }
+
+        Log::warning('Admin overrode the resend-unsafe-with-same-reference guard', [
+            'order_number' => $order->order_number,
+            'admin' => $request->user()->name,
+            'override_reason' => $reason,
+        ]);
     }
 
     /**
@@ -241,6 +273,8 @@ class OrderController extends Controller
                 'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
             ]);
         }
+
+        $this->guardResendUnsafeOverride($request, $order);
 
         $targetPackage = Package::query()->findOrFail($request->validated('package_id'));
 
@@ -615,11 +649,17 @@ class OrderController extends Controller
             // VoucherController::storeFromOrder() re-derives its own
             // cap independently).
             'partial_combo_delivery' => $order->isPartialComboDelivery(),
-            // ADR-026 addendum (2026-09-16) — drives the "Resending is
-            // unlikely to change this outcome" warning next to the
-            // Resend Delivery button, computed server-side so the
-            // frontend never hand-copies Digiflazz's own rc table.
-            'delivery_retry_likely_futile' => $order->deliveryRetryLikelyFutile(),
+            // ADR-026 addendum (2026-09-16), renamed by ADR-102 decision
+            // 3/5 — drives the "Resending is unlikely to change this
+            // outcome" warning next to the Resend Delivery button,
+            // computed server-side so the frontend never hand-copies
+            // Digiflazz's own rc table.
+            'delivery_retry_unsafe_with_same_reference' => $order->deliveryRetryUnsafeWithSameReference(),
+            // ADR-102 decision 3 — the SCOPED rule (non-combo: NeedsReview
+            // only; combo: regardless of Failed/NeedsReview) that
+            // actually disables the Resend/Retry button and requires a
+            // logged override reason to proceed anyway.
+            'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
             'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
         ]);
     }

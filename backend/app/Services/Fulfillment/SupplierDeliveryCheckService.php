@@ -91,8 +91,12 @@ final class SupplierDeliveryCheckService
                         // ADR-098 — this was the real gap the founder's
                         // own Gangstar Mirage City incident went through:
                         // a Pending order's terminal checkStatus() result
-                        // reaching here with no NeedsReview routing at all.
-                        transactionAlreadyFormed: $result->transactionAlreadyFormed,
+                        // reaching here with no NeedsReview routing at
+                        // all. ADR-102 decision 5/6: pass through both
+                        // split flags straight from the adapter's own
+                        // SupplierResponse.
+                        resendUnsafeWithSameReference: $result->resendUnsafeWithSameReference,
+                        outcomeConfirmedFailed: $result->outcomeConfirmedFailed,
                     );
                     $applied = true;
                     break;
@@ -169,7 +173,8 @@ final class SupplierDeliveryCheckService
                             SupplierOutcome::Failure,
                             null,
                             ['error_code' => $result->errorCode, 'error_message' => $result->errorMessage],
-                            transactionAlreadyFormed: $result->transactionAlreadyFormed,
+                            resendUnsafeWithSameReference: $result->resendUnsafeWithSameReference,
+                            outcomeConfirmedFailed: $result->outcomeConfirmedFailed,
                         );
                         $applied = true;
                         break;

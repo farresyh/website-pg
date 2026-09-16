@@ -384,7 +384,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
         $adapter = $this->queuedAdapter([
             SupplierResponse::success(['supplier_ref' => 'SREF-A']),
-            SupplierResponse::failure('duplicate_reference', 'Already submitted', transactionAlreadyFormed: true),
+            SupplierResponse::failure('duplicate_reference', 'Already submitted', resendUnsafeWithSameReference: true),
         ]);
 
         $result = $this->service($adapter)->fulfill($order);
@@ -392,6 +392,40 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
         $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
         $this->assertSame(DeliveryStatus::NeedsReview, $legs[1]->status);
+    }
+
+    /**
+     * ADR-102 decision 4/8 — a confirmed-Gagal leg (Digiflazz's own
+     * status field said so, unlike Gamevion's ambiguous duplicate_reference
+     * above) lands that leg on Failed, not NeedsReview — no new
+     * per-leg infra needed, this falls straight out of decision 4's
+     * split-flag routing (also used by isPartialComboDelivery()'s
+     * already-existing "clean Delivered+Failed mix" bucket).
+     */
+    public function test_a_confirmed_gagal_leg_lands_that_leg_in_failed_not_needs_review(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::failure('02', 'Transaksi Gagal', resendUnsafeWithSameReference: true, outcomeConfirmedFailed: true),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        // Mixed Delivered + Failed, no Pending/NeedsReview leg present —
+        // decision 9's existing partial-delivery bucket, unchanged.
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Failed, $legs[1]->status);
     }
 
     /**
