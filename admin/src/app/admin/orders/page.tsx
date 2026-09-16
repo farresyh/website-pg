@@ -47,6 +47,7 @@ import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
 import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
 import ConfirmFailedModal from "@/components/orders/ConfirmFailedModal";
 import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
+import RefundInformationCards from "@/components/orders/RefundInformationCards";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
@@ -464,16 +465,8 @@ function OrdersPageInner() {
           {confirmFailedMessage && (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{confirmFailedMessage}</p>
           )}
-          {selected.voucher && (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              Voucher <span className="font-medium text-gray-800 dark:text-white/90">{selected.voucher.code}</span> already issued for this order.
-            </p>
-          )}
-          {selected.wallet_refunded && (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              Already refunded to <span className="font-medium text-gray-800 dark:text-white/90">{selected.wallet_reseller?.business_name}</span>&apos;s wallet.
-            </p>
-          )}
+          {/* ADR-102 decision 11 — three independent cards (Voucher Used to Pay / Compensation Voucher Issued / Wallet Refund), replacing the old single-line mentions. */}
+          <RefundInformationCards order={selected} />
         </div>
 
         <OrderDetailCards order={selected} />
@@ -604,7 +597,13 @@ function OrdersPageInner() {
                           <Tag severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Tag severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Tag severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
+                            {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). */}
+                            {order.has_used_voucher && <span title="Paid with a voucher">🎫</span>}
+                            {order.has_compensation_voucher && <span title="Compensation voucher issued">🎟️</span>}
+                            {order.has_wallet_refund && <span title="Refunded to wallet">💰</span>}
+                          </div>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {new Date(order.created_at).toLocaleString()}
