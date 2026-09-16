@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { GamePackage, CreateComboPackageValues } from "@/lib/games";
 
-const MAX_TOTAL_LEGS = 3; // StoreComboPackageRequest::MAX_TOTAL_LEGS — client mirror, server is the real cap.
+const MAX_TOTAL_LEGS = 5; // StoreComboPackageRequest::MAX_TOTAL_LEGS — client mirror, server is the real cap.
 
 interface ComboRow {
   packageId: number;
@@ -35,12 +35,16 @@ interface CreateComboModalProps {
 }
 
 /**
- * ADR-094 decisions 1-4: assembles a combo from up to 3 total legs
- * (sum of quantities, decision 20's fix) worth of this game's own
- * already-promoted, denominated, non-combo packages. Same-supplier-
- * only and no-nested-combo are enforced server-side
- * (StoreComboPackageRequest) — this form doesn't duplicate that
- * client-side, it just surfaces whatever the server rejects.
+ * ADR-094 decisions 1-4: assembles a combo from up to 5 total legs
+ * (sum of quantities, decision 20's fix, raised from 3 in the
+ * 2026-09-16 addendum) worth of this game's own already-promoted,
+ * denominated, non-combo packages. Same-supplier-only and
+ * no-nested-combo are enforced server-side (StoreComboPackageRequest)
+ * — this form doesn't duplicate that client-side, it just surfaces
+ * whatever the server rejects. Each option shows the component's own
+ * supplier SKU (2026-09-16 addendum) — two packages can share a
+ * denomination across suppliers, so name+denomination alone doesn't
+ * tell admin which product is actually being picked.
  */
 function CreateComboFields({ onClose, onSubmit, packages }: Omit<CreateComboModalProps, "isOpen">) {
   const [name, setName] = useState("");
@@ -128,7 +132,7 @@ function CreateComboFields({ onClose, onSubmit, packages }: Omit<CreateComboModa
                 >
                   {pickable.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.denomination})
+                      {p.name} ({p.denomination}) — {p.supplier_package_ref}
                     </option>
                   ))}
                 </select>

@@ -44,6 +44,7 @@ import type { Voucher } from "@/lib/vouchers";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
 import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
+import ConfirmFailedModal from "@/components/orders/ConfirmFailedModal";
 import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
@@ -128,6 +129,8 @@ function OrdersPageInner() {
   const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
   const [markDeliveredModalOpen, setMarkDeliveredModalOpen] = useState(false);
   const [markDeliveredMessage, setMarkDeliveredMessage] = useState<string | null>(null);
+  const [confirmFailedModalOpen, setConfirmFailedModalOpen] = useState(false);
+  const [confirmFailedMessage, setConfirmFailedMessage] = useState<string | null>(null);
   const [refundingToWallet, setRefundingToWallet] = useState(false);
   const [refundMessage, setRefundMessage] = useState<string | null>(null);
   // ADR-094 decision 10: a combo order's only working recovery path —
@@ -231,6 +234,11 @@ function OrdersPageInner() {
 
   function handleMarkedDelivered(updated: OrderDetail) {
     setMarkDeliveredMessage("Delivery confirmed manually — ledger profit credited.");
+    setSelected(updated);
+  }
+
+  function handleConfirmedFailed(updated: OrderDetail) {
+    setConfirmFailedMessage("Delivery confirmed genuinely failed — Issue Voucher is now available.");
     setSelected(updated);
   }
 
@@ -373,6 +381,12 @@ function OrdersPageInner() {
                   Resend Delivery…
                 </Button>
               )}
+              {/* ADR-026 addendum (2026-09-16) — server-computed from the persisted error_code (ADR-098's own rc table), never a second hand-copied list here. */}
+              {selected.delivery_retry_likely_futile && (
+                <span className="text-sm text-warning-600 dark:text-orange-400">
+                  Resending is unlikely to change this outcome — the supplier already recorded a final result for this reference.
+                </span>
+              )}
               {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both, Voucher's email-keyed mechanism has no meaning for a B2B wallet account. */}
               {selected.delivery_status === "failed" && selected.wallet_reseller && !selected.wallet_refunded && (
                 <Button size="small" variant="outlined" disabled={refundingToWallet} onClick={handleRefundToWallet}>
@@ -389,6 +403,12 @@ function OrdersPageInner() {
               {selected.delivery_status === "needs_review" && (
                 <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
                   Mark as Delivered…
+                </Button>
+              )}
+              {/* ADR-026 addendum (2026-09-16) — the other exit decision 4c's own text always assumed existed. Excluded for a genuine partial-combo-delivery needs_review order — that case has its own custom-amount Issue Voucher path instead (some legs really did deliver). */}
+              {selected.delivery_status === "needs_review" && !selected.partial_combo_delivery && (
+                <Button size="small" variant="outlined" severity="danger" onClick={() => setConfirmFailedModalOpen(true)}>
+                  Confirm Failed…
                 </Button>
               )}
               {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
@@ -409,6 +429,13 @@ function OrdersPageInner() {
               ADR-023 admin-mark-delivered E2E spec). */}
           {markDeliveredMessage && (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</p>
+          )}
+          {/* Rendered outside the failed/needs_review-gated block above,
+              deliberately — same reasoning as markDeliveredMessage above:
+              a successful Confirm Failed moves delivery_status to
+              "failed" in the same render that sets this message. */}
+          {confirmFailedMessage && (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{confirmFailedMessage}</p>
           )}
           {selected.voucher && (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
@@ -451,6 +478,13 @@ function OrdersPageInner() {
             isOpen={markDeliveredModalOpen}
             onClose={() => setMarkDeliveredModalOpen(false)}
             onConfirmed={handleMarkedDelivered}
+            order={selected}
+            token={session.token}
+          />
+          <ConfirmFailedModal
+            isOpen={confirmFailedModalOpen}
+            onClose={() => setConfirmFailedModalOpen(false)}
+            onConfirmed={handleConfirmedFailed}
             order={selected}
             token={session.token}
           />

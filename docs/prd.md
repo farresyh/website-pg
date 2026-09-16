@@ -394,6 +394,14 @@ MUI-11 is the same screen as DEV-1/2 (§6.18 Admin — Developer Tools) — both
 6. Admin reviews Pending Reactivation table and approves/dismisses packages.
 7. Approved packages are reactivated in the catalog with updated prices.
 
+**Addendum, 2026-09-16 ([ADR-100](./adr.md)):** step 6 can optionally happen
+automatically instead — off by default (`PENDING_REACTIVATION_AUTO_APPROVE`).
+When on, a package confirmed active again either inside its own Digiflazz
+cutoff window, or after enough consecutive syncs confirm it with no recent
+unexplained flapping, skips the admin queue entirely and reactivates on its
+own; every other case still lands in the manual queue exactly as steps 1-7
+describe.
+
 ## 7.4 Withdrawal (ledger-based, per ADR-002)
 
 1. Platform owner (Phase 2: reseller) accrues profit from delivered orders — each order's profit is written as a **credit entry** in the ledger, not added to a mutable balance field.
@@ -557,14 +565,16 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-09-11).** The platform is feature-complete and live in
+**Where things stand (2026-09-16).** The platform is feature-complete and live in
 production — storefront, admin panel, reseller/affiliate portal, and the
 developer-docs site all deployed; CHIP FPX payments and the CHIP + Digiflazz
-webhooks proven end-to-end with real money (order `PG-PYAYMRYNUYV0`). The one
-remaining commercial-launch gate is **funding a supplier** — Digiflazz and
-Gamevion both sit at zero balance by a deliberate founder hold, so orders can be
-paid but not delivered until then. Everything else outstanding is polish or a
-deliberately-parked ADR — see §16.
+webhooks proven end-to-end with real money (order `PG-PYAYMRYNUYV0`).
+**Digiflazz was funded 2026-09-15** — real orders are now placed and delivered
+(5 non-test orders as of that date, `PG-PYAYMRYNUYV0` itself later resent and
+delivered once balance landed). **Gamevion remains at zero balance**, still a
+deliberate founder hold — Gamevion-routed orders can be paid but not delivered
+until funded. Everything else outstanding is polish or a deliberately-parked
+ADR — see §16.
 
 - **Per-feature-area status:** §15 below.
 - **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md`.
@@ -584,9 +594,10 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end | ADR-056–061, 078 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13) | ADR-072–076, 084, 091, 093 |
-| Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. PR-1 merged to `staging`; PR-2 open | ADR-006, 030–032, 067, 069, 097 |
+| Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. PR-1 merged to `staging`; PR-2 open. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve. PR open | ADR-006, 030–032, 067, 069, 097, 098 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived) | ADR-022 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
+| Combo Package | 🟢 Live in prod as of `staging` (functionally complete) — several existing catalog Packages assembled into one opaque, sellable SKU above a game's native max denomination, so a reseller/guest pays one CHIP FPX fee instead of two. Data model + creation endpoint, pricing (sum-of-components, override optional) on the same Price Sync cadence, fulfillment leg-engine (both suppliers, partial-delivery → `needs_review`), admin UI (`/admin/games` composition CRUD, Order-detail leg breakdown, custom-amount Voucher for partial delivery, component-churn guards). Verified genuinely buyable through storefront, Affiliate, and Reseller API/Bot (Reseller Portal has no order-placement surface). **2026-09-16:** max legs raised 3→5 (real usage, decision 20's own revisit bar), component SKU (`supplier_package_ref`) now shown in the composition picker and the Order-detail leg breakdown — previously only the component name/denomination, ambiguous when two components share a denomination across suppliers. Open, deliberately deferred: no per-leg `retryDelivery()` audit trail (§16), no edit-composition UI (delete-and-recreate only) | ADR-094 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). **"Check from Supplier"/"Check from Gateway" manual-poll buttons built (ADR-096, 2026-09-15)** — synchronous on-demand status check for a Pending order, shares logic with the scheduled reconcile jobs, cache-based cooldown. ORD-5 export unbuilt | ADR-017, 026, 032, 092, 096 |
@@ -617,33 +628,38 @@ kept. Screen-by-screen history in `docs/build-log.md`.
 Last walked with the founder 2026-09-09, re-verified against production 2026-09-11,
 spot-checked against real code again 2026-09-13 twice in the same day (Voucher/
 Blacklist/GAME-11/SEO-fields turned out already shipped; GAME-6 then shipped
-same-session, PR #192), and again 2026-09-14 (real logo/hero asset uploaded;
-`/admin/reviews` item found dormant — zero orders delivered yet, so zero
-reviews exist) — this list drifts easily, re-verify against real
-code/production before trusting an "open" line here, not just this doc's memory.
-Anything shipped and verified drops off this list into `docs/build-log.md`.
+same-session, PR #192), again 2026-09-14 (real logo/hero asset uploaded), and
+again 2026-09-16 (Digiflazz confirmed funded 2026-09-15, real orders now
+delivering — see §14 and item 1 below; `/admin/reviews` item's "zero orders
+delivered" premise is now stale, re-check its corpus next session) — this list
+drifts easily, re-verify against real code/production before trusting an
+"open" line here, not just this doc's memory. Anything shipped and verified
+drops off this list into `docs/build-log.md`.
 
 ## The one launch gate
 
-1. **Fund a supplier — Digiflazz + Gamevion both at zero balance.** Deliberate
-   founder hold, not a task to chase. Catalogue is sufficient (founder-confirmed);
-   everything else below is polish. Until funded, orders can be paid but not
-   delivered.
+1. **Fund Gamevion — still at zero balance.** Digiflazz was funded 2026-09-15
+   and is now delivering real orders (see §14) — this gate is half-cleared,
+   not fully. Deliberate founder hold on Gamevion, not a task to chase.
+   Catalogue is sufficient (founder-confirmed); everything else below is
+   polish. Until Gamevion is funded, orders for Gamevion-only games can be
+   paid but not delivered.
 
 ## Polish (not blocking launch)
 
 2. ~~Real PekanGame logo + hero artwork~~ — **DONE 2026-09-14.** Founder uploaded
    the real asset via `/admin/settings`'s Logo + Favicon panel (ADR-089
    pipeline). SVG placeholder replaced.
-3. **`/admin/reviews` approved-corpus re-read — DORMANT, not founder-owed
-   right now (re-checked 2026-09-14).** ADR-082 made every *approved* review
+3. **`/admin/reviews` approved-corpus re-read — premise now STALE, needs
+   re-check (flagged 2026-09-16).** ADR-082 made every *approved* review
    public retroactively (the approve bar used to mean "not spam", now means
    "shown to customers"), which is real risk for a corpus approved under the
-   old bar — but REV-1..5 gates submission on an order reaching **Delivered**,
-   and the supplier-funding launch gate (item 1) means no order has been
-   delivered yet. Zero reviews exist, approved or otherwise — nothing to
-   read. Revisit only after the first real order is delivered and reviews
-   start coming in, not before.
+   old bar. Previously marked dormant because REV-1..5 gates submission on an
+   order reaching **Delivered**, and no order had been delivered yet — that's
+   no longer true: Digiflazz was funded 2026-09-15 and real orders are
+   delivering (see §14). Whether any guest has actually submitted a review
+   since is unverified — check `/admin/reviews`'s real row count next
+   session before deciding this is still dormant.
 4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
    Bot channel works and every command is prod-verified; the webhook already has
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
@@ -726,51 +742,7 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-15. **ADR-094 — Combo Package — Phases 1-4 shipped 2026-09-14/15; decision 14
-    (consuming channels) verified 2026-09-15, genuinely buyable today.**
-    Assembles several existing catalog Packages into one opaque, sellable SKU
-    above a game's native max denomination (e.g. MLBB Malaysia's 7502
-    Diamonds), so a reseller/guest pays one CHIP FPX fee instead of two.
-    Design fully grilled + stress-tested 2026-09-13 (schema, fulfillment
-    leg-engine, partial-delivery policy, component-churn guards,
-    ledger/reporting/LLM-assistant impact all resolved). Decision 17's revisit
-    trigger explicitly overridden by the founder 2026-09-14 (see `docs/adr.md`
-    ADR-094's addendum). **Shipped:** data model + creation endpoint,
-    pricing override + Price Sync cadence, the fulfillment engine
-    (`OrderFulfillmentService` leg-sequencing, partial-delivery →
-    `needs_review`) for both suppliers (Gamevion sync, Digiflazz async
-    per-leg webhook/poll), and the admin UI (`/admin/games` combo
-    composition CRUD, Order-detail leg breakdown — decision 12, Issue
-    Voucher custom-amount for a genuine partial-delivery order — decision 9,
-    and decision 13/22's component-churn guards). Decision 21 (supplier-drift
-    warn) turned out to have no current UI trigger (no screen edits an
-    already-promoted Package's supplier) — nothing built for it, revisit only
-    if that ever changes. **Decision 14 needed zero new code** — a full audit
-    of all 5 consuming channels found every one already resolves/creates a
-    combo Order generically (no `is_combo` special-casing anywhere), and
-    every response shape was already narrow before this ADR existed. New
-    test `Adr094ComboConsumingChannelsTest` proves it by actually placing +
-    fulfilling a real combo order through storefront checkout, the Reseller
-    API, and the Reseller Bot — all 3 passed on first write. Reseller Portal
-    has no order-placement surface at all (confirmed by grep), nothing to
-    verify there. **A real local smoke test (3-component combo, real admin
-    API, simulated leg failure) then found 2 real bugs no automated test had
-    caught:** "Resend Delivery…" silently no-ops for a combo order (decision
-    10's guard only fires inside a queued job that swallows it — admin sees
-    a false success message, nothing happens), and a combo order could get
-    stuck at `Processing` forever if a leg attempt threw an unexpected
-    exception instead of a clean failure response. Both fixed 2026-09-15
-    (grilled first — the fulfillment-engine one touches the platform's
-    single most money-critical file): the admin panel now routes combo
-    orders to the plain retry action instead of the broken resend modal, and
-    `attemptLeg()` now catches any unexpected exception and marks the leg
-    NeedsReview (same ambiguity reasoning as the existing `duplicate_reference`
-    handling) instead of leaving the order stranded. Full backend suite
-    **1928/1928** green, concurrency suite green. **ADR-094 is now
-    functionally complete** on `staging` — combo is genuinely buyable through
-    every real channel, not just admin-creatable. See `docs/adr.md` ADR-094
-    for the full 23-decision design.
-16. **Durable "Initial Delivery" audit row — needs its own ADR + grill.** Found
+15. **Durable "Initial Delivery" audit row — needs its own ADR + grill.** Found
     2026-09-15 while fixing the Delivery Logs outcome bugs (see
     `docs/build-log.md`'s 2026-09-15 entry): `order_resend_attempts` (ADR-017
     decision #4, "record every attempt, not just the latest") only ever logs
@@ -787,7 +759,7 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     decision: reuse `order_resend_attempts` with a new discriminator (and
     likely a rename — "resend" no longer describes every row) vs. a separate
     table. Grill before building, not a trivial column add.
-17. **Combo order `retryDelivery()` has zero audit trail — needs a decision,
+16. **Combo order `retryDelivery()` has zero audit trail — needs a decision,
     not urgent.** Found alongside item 16, same session: ADR-094 decision 10
     routes every combo-order retry through the plain `retryDelivery()`
     endpoint (`FulfillOrderJob::dispatch()` directly, no package picker,
@@ -800,6 +772,20 @@ Anything shipped and verified drops off this list into `docs/build-log.md`.
     decision, 2026-09-15) rather than folded into item 16's fix — different
     root cause (a missing write, not a wrong label), worth its own pass once
     item 16's schema shape is decided (the two likely share a table).
+17. ~~Should Pending Reactivation ever auto-approve?~~ — **grilled + BUILT
+    2026-09-16, [ADR-100](./adr.md).** Off by default
+    (`PENDING_REACTIVATION_AUTO_APPROVE=false` — today's fully-manual
+    behavior is unchanged until a founder opts in). Two triggers when on:
+    a Digiflazz product back inside its own documented `start_cut_off`/
+    `end_cut_off` window (real API fields this project was discarding,
+    found live via the founder's own dashboard + Digiflazz's docs)
+    approves immediately; every other case needs a consecutive-active-sync
+    streak plus a 14-day flap-history gate (reusing `deactivation_logs`) —
+    a cutoff-explained flap never counts against that gate. Founder-owed:
+    `.env.example` entries (agent write-permission gap) and a live
+    spot-check of `HOK_GB_16_PG2`'s real cutoff API value once Digiflazz's
+    pricelist rate limit isn't a concern (the code's fallback fails safe
+    either way).
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

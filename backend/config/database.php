@@ -87,6 +87,24 @@ return [
             'dump' => [
                 'exclude_tables' => ['player_validations'],
                 'mysql_gtid_purged' => 'OFF',
+                // `useSingleTransaction` — found 2026-09-16 via Pulse's
+                // own slow-query log (UPDATE `supplier_products` 6.4s,
+                // INSERT `supplier_request_logs` 4.9s) plus a
+                // performance_schema confirmation in prod: without this
+                // flag, mysqldump's default behaviour issues `LOCK
+                // TABLES <every table> READ LOCAL` across the whole
+                // live schema before dumping, and the daily backup
+                // (`dailyAt('02:00')`) collides with every `:00`-
+                // aligned scheduled job (price-sync included, `*/60`).
+                // `--single-transaction` makes mysqldump take an InnoDB
+                // consistent snapshot instead — no table lock, so no
+                // writer stall — and is safe here: every real table in
+                // this schema is InnoDB (confirmed via
+                // `information_schema.tables`). Restore-test
+                // (`BackupRestoreTester`) and the GTID handling above
+                // are both unaffected — this only changes how the
+                // *source* dump acquires consistency.
+                'useSingleTransaction' => true,
             ],
         ],
 

@@ -68,7 +68,24 @@ final class ProductSyncService
         $updated = 0;
         $seenRefs = [];
 
+        // ADR-100 — the one piece of history this table has ever kept
+        // across a run: how many syncs in a row a row was 'active',
+        // for PendingReactivationAutoApprover's N-consecutive-sync
+        // gate. `updateOrCreate` below is a blind upsert with no read
+        // of the row it's about to overwrite, so the previous streak
+        // has to be fetched up front — one bulk query per supplier per
+        // run (same shape PackagePriceSyncService::apply() already
+        // uses), not one extra query per item.
+        $existingStreaks = SupplierProduct::query()
+            ->where('supplier_id', $supplier->id)
+            ->pluck('consecutive_active_syncs', 'external_ref');
+
         foreach ($items as $item) {
+            $isActive = $item->status === 'active';
+            $consecutiveActiveSyncs = $isActive
+                ? ($existingStreaks->get($item->productRef) ?? 0) + 1
+                : 0;
+
             $row = SupplierProduct::query()->updateOrCreate(
                 [
                     'supplier_id' => $supplier->id,
@@ -90,6 +107,13 @@ final class ProductSyncService
                     'raw_price' => $item->rawPrice,
                     'raw_currency' => $item->rawCurrency,
                     'status_raw' => $item->status,
+                    // ADR-100 — Digiflazz-only (null on every other
+                    // adapter); PendingReactivationAutoApprover decides
+                    // what an ambiguous `cutoff_start === cutoff_end`
+                    // means, not this pure-mirror stage.
+                    'cutoff_start' => $item->cutOffStart,
+                    'cutoff_end' => $item->cutOffEnd,
+                    'consecutive_active_syncs' => $consecutiveActiveSyncs,
                     'last_synced_at' => $syncedAt,
                 ],
             );

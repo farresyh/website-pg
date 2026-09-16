@@ -533,6 +533,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/check-gateway', [OrderController::class, 'checkGateway']);
         // ADR-026 decision 4a — the one needs_review exit that isn't a retry.
         Route::post('/{order}/mark-delivered', [OrderController::class, 'markDelivered']);
+        // ADR-026 addendum (2026-09-16) — the other needs_review exit
+        // decision 4a's own text always assumed existed.
+        Route::post('/{order}/confirm-failed', [OrderController::class, 'confirmFailed']);
         // ADR-073 decision 7 — the wallet-order counterpart to
         // /vouchers/{order} (VoucherController::storeFromOrder), never
         // both offered for the same order.
@@ -553,6 +556,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/resend', [SandboxOrderController::class, 'resend']);
         // ADR-026 decision 4a's sandbox counterpart.
         Route::post('/{order}/mark-delivered', [SandboxOrderController::class, 'markDelivered']);
+        // ADR-026 addendum (2026-09-16) sandbox counterpart.
+        Route::post('/{order}/confirm-failed', [SandboxOrderController::class, 'confirmFailed']);
         Route::delete('/{order}', [SandboxOrderController::class, 'destroy']);
         Route::delete('/', [SandboxOrderController::class, 'destroyAll']);
     });

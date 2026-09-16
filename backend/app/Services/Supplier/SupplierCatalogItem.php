@@ -37,5 +37,12 @@ final class SupplierCatalogItem
         // downstream uses.
         public readonly ?float $rawPrice = null,
         public readonly ?string $rawCurrency = null,
+        // ADR-100 — Digiflazz's own `start_cut_off`/`end_cut_off`
+        // ("hh:mm", Asia/Jakarta local time), a seller's documented
+        // daily maintenance window. `null` for every other supplier
+        // (no adapter maps these but Digiflazz's) and for a Digiflazz
+        // product with no cutoff set.
+        public readonly ?string $cutOffStart = null,
+        public readonly ?string $cutOffEnd = null,
     ) {}
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ConfirmOrderDeliveryFailedRequest;
 use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
@@ -408,6 +409,54 @@ class OrderController extends Controller
     }
 
     /**
+     * ADR-026 addendum (2026-09-16, found shipping ADR-098) — the
+     * NeedsReview exit decision 4c's own rationale always assumed
+     * existed but was never built. Lands on plain Failed; Issue Voucher
+     * (VoucherController::storeFromOrder(), Failed-only gate, unchanged)
+     * is a deliberately separate admin-triggered second step.
+     * Explicitly excludes a genuine partial-combo-delivery needs_review
+     * order (ADR-094 decision 9 already has its own custom-amount
+     * voucher path there — some legs DID deliver, so confirming the
+     * WHOLE order "failed" would be wrong).
+     */
+    public function confirmFailed(ConfirmOrderDeliveryFailedRequest $request, Order $order, OrderFulfillmentService $fulfillment): JsonResponse
+    {
+        // ADR-018 decision #2: same reasoning as retryDelivery()/resend() above.
+        if ($order->is_test) {
+            abort(404);
+        }
+
+        if ($order->delivery_status !== DeliveryStatus::NeedsReview) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['Only an order in needs-review can be confirmed failed.'],
+            ]);
+        }
+
+        if ($order->isPartialComboDelivery()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['This order has a partial delivery — issue a custom-amount voucher for the failed leg(s) instead of confirming the whole order failed.'],
+            ]);
+        }
+
+        // ADR-024 decision #8 — see retryDelivery()'s identical guard
+        // for the full reasoning. Structurally shouldn't be reachable,
+        // kept as the same defensive check its siblings carry.
+        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['A voucher has already been issued for this order.'],
+            ]);
+        }
+
+        $result = $fulfillment->confirmDeliveryFailed(
+            $order,
+            $request->validated('note'),
+            $request->user()->name,
+        );
+
+        return $this->orderDetailResponse($result);
+    }
+
+    /**
      * ADR-073 decision 7: the wallet-order counterpart to
      * VoucherController::storeFromOrder() — for a `wallet_reseller_id`-
      * owned order, this REPLACES Issue Voucher entirely in that order's
@@ -524,7 +573,13 @@ class OrderController extends Controller
             // standard_selling_price is needed here, not just for
             // display — Order::suggestedPartialVoucherAmount() sums it
             // straight off this already-eager-loaded relation.
-            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price',
+            // supplier_package_ref (2026-09-16 addendum): the leg
+            // breakdown's own "Supplier Ref" column is the leg's
+            // supplier_reference (the supplier's transaction/response
+            // id), which doesn't tell admin WHICH product SKU was
+            // submitted for that leg — real gap when two components
+            // share a denomination across suppliers.
+            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price,supplier_package_ref',
             'deliveryLegs.supplier:id,name',
         ]);
 
@@ -542,6 +597,11 @@ class OrderController extends Controller
             // VoucherController::storeFromOrder() re-derives its own
             // cap independently).
             'partial_combo_delivery' => $order->isPartialComboDelivery(),
+            // ADR-026 addendum (2026-09-16) — drives the "Resending is
+            // unlikely to change this outcome" warning next to the
+            // Resend Delivery button, computed server-side so the
+            // frontend never hand-copies Digiflazz's own rc table.
+            'delivery_retry_likely_futile' => $order->deliveryRetryLikelyFutile(),
             'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
         ]);
     }

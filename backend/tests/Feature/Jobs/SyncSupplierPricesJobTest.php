@@ -5,6 +5,7 @@ namespace Tests\Feature\Jobs;
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PackageReactivationLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Services\Supplier\SupplierAdapter;
@@ -15,6 +16,7 @@ use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Sync\PackagePriceSyncService;
+use App\Services\Sync\PendingReactivationAutoApprover;
 use App\Services\Sync\ProductSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -97,6 +99,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -139,6 +142,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -160,6 +164,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -208,6 +213,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -249,6 +255,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -269,6 +276,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -292,6 +300,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -325,6 +334,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $run->refresh();
@@ -341,6 +351,7 @@ class SyncSupplierPricesJobTest extends TestCase
             app(ProductSyncService::class),
             app(PackagePriceSyncService::class),
             app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
         );
 
         $this->assertDatabaseMissing('suppliers', ['slug' => 'gamevion']);
@@ -363,5 +374,83 @@ class SyncSupplierPricesJobTest extends TestCase
         $this->assertSame('failed', $run->status);
         $this->assertSame('worker timed out', $run->error_message);
         $this->assertNotNull($run->finished_at);
+    }
+
+    /**
+     * ADR-100 — end-to-end wiring: with the toggle on, a package
+     * already confirmed active + stable enough gets auto-approved as
+     * part of this same run, and the run itself still succeeds.
+     */
+    public function test_job_auto_approves_a_stability_confirmed_pending_reactivation_when_enabled(): void
+    {
+        config([
+            'packages.pending_reactivation_auto_approve' => true,
+            'packages.reactivation_stability_syncs' => 1,
+        ]);
+
+        $supplier = Supplier::query()->create([
+            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR',
+        ]);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now()->subHour(),
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV733',
+        ]);
+
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 12.0, 'active'),
+        ]);
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
+        );
+
+        $this->assertSame('success', $run->refresh()->status);
+        $this->assertTrue($package->fresh()->is_active);
+        $this->assertDatabaseHas('package_reactivation_logs', [
+            'package_id' => $package->id, 'trigger' => 'stability_confirmed', 'price_sync_run_id' => $run->id,
+        ]);
+    }
+
+    /**
+     * ADR-100 — the same scenario as above, toggle off (the real
+     * default): the run still succeeds, but nothing gets auto-approved.
+     */
+    public function test_job_leaves_pending_reactivation_untouched_when_auto_approve_is_disabled(): void
+    {
+        config(['packages.pending_reactivation_auto_approve' => false]);
+
+        $supplier = Supplier::query()->create([
+            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR',
+        ]);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now()->subHour(),
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV733',
+        ]);
+
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 12.0, 'active'),
+        ]);
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
+        );
+
+        $this->assertSame('success', $run->refresh()->status);
+        $this->assertFalse($package->fresh()->is_active);
+        $this->assertSame(0, PackageReactivationLog::query()->count());
     }
 }

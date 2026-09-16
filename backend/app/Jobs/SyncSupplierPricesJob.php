@@ -7,6 +7,7 @@ use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Sync\PackagePriceSyncService;
+use App\Services\Sync\PendingReactivationAutoApprover;
 use App\Services\Sync\ProductSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -60,7 +61,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
      * whole run is only marked 'failed' if every active supplier
      * failed; a partial success still records real, useful stats.
      */
-    public function handle(ProductSyncService $productSync, PackagePriceSyncService $packageSync, SupplierAdapterFactory $supplierAdapters): void
+    public function handle(ProductSyncService $productSync, PackagePriceSyncService $packageSync, SupplierAdapterFactory $supplierAdapters, PendingReactivationAutoApprover $autoApprover): void
     {
         $this->run->update(['status' => 'running', 'started_at' => now()]);
 
@@ -124,6 +125,23 @@ final class SyncSupplierPricesJob implements ShouldQueue
             }
 
             $affectedGameIds = [...$affectedGameIds, ...$stage2->affectedGameIds];
+
+            // ADR-100 — deliberately its OWN try/catch, separate from
+            // stage 1/2's above: off by default and best-effort
+            // automation layered on top of an already-successful sync,
+            // so a failure here must never turn this supplier's
+            // otherwise-successful run into a logged failure or (worse)
+            // drop it out of $succeeded — sharing stage 1/2's catch
+            // would do both.
+            try {
+                $autoApprover->run($supplier, $this->run->id);
+            } catch (Throwable $e) {
+                Log::error('SyncSupplierPricesJob: PendingReactivationAutoApprover failed', [
+                    'run_id' => $this->run->id,
+                    'supplier_slug' => $supplier->slug,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
         }
 
         if ($succeeded === 0 && $suppliers->isNotEmpty()) {

@@ -191,4 +191,57 @@ class OrderTest extends TestCase
 
         $this->assertFalse($order->isPartialComboDelivery());
     }
+
+    /** ADR-026 addendum (2026-09-16) — the same generic signal ADR-098 wired into fulfillment, reconstructed from the persisted error_code alone. */
+    public function test_delivery_retry_likely_futile_true_for_a_digiflazz_terminal_rc(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->makeOrder([
+            'supplier_id' => $supplier->id,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+
+        $this->assertTrue($order->deliveryRetryLikelyFutile());
+    }
+
+    public function test_delivery_retry_likely_futile_false_for_a_digiflazz_retriable_rc(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->makeOrder([
+            'supplier_id' => $supplier->id,
+            'supplier_response' => ['error_code' => '44', 'error_message' => 'Saldo tidak cukup'],
+        ]);
+
+        $this->assertFalse($order->deliveryRetryLikelyFutile());
+    }
+
+    public function test_delivery_retry_likely_futile_true_for_gamevion_duplicate_reference(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $order = $this->makeOrder([
+            'supplier_id' => $supplier->id,
+            'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
+        ]);
+
+        $this->assertTrue($order->deliveryRetryLikelyFutile());
+    }
+
+    /** Collision-safety: a non-Digiflazz order sharing a Digiflazz rc string must never be flagged. */
+    public function test_delivery_retry_likely_futile_false_for_a_non_digiflazz_order_sharing_a_digiflazz_rc_string(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $order = $this->makeOrder([
+            'supplier_id' => $supplier->id,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Some unrelated Gamevion error'],
+        ]);
+
+        $this->assertFalse($order->deliveryRetryLikelyFutile());
+    }
+
+    public function test_delivery_retry_likely_futile_false_when_no_error_code_is_recorded(): void
+    {
+        $order = $this->makeOrder();
+
+        $this->assertFalse($order->deliveryRetryLikelyFutile());
+    }
 }

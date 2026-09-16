@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToAffiliate;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
+use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -144,6 +145,33 @@ class Order extends Model
         }
 
         return $statuses->contains(DeliveryStatus::Delivered) && $statuses->contains(DeliveryStatus::Failed);
+    }
+
+    /**
+     * ADR-026 addendum (2026-09-16, found shipping ADR-098) — drives
+     * the admin panel's "Resending is unlikely to change this outcome"
+     * warning on a needs_review order. Reconstructs the same
+     * transactionAlreadyFormed classification `ReconcilePendingDeliveriesCommand`'s
+     * catch-up query uses, from the persisted `error_code` alone (the
+     * original `SupplierResponse` itself is long gone by the time an
+     * admin is looking at this order) — never a second hand-copied rc
+     * list, `DigiflazzAdapter::transactionAlreadyFormed()` stays the
+     * single source of truth.
+     */
+    public function deliveryRetryLikelyFutile(): bool
+    {
+        $errorCode = $this->supplier_response['error_code'] ?? null;
+
+        if ($errorCode === null) {
+            return false;
+        }
+
+        if ($errorCode === 'duplicate_reference') {
+            return true;
+        }
+
+        return $this->supplier?->slug === 'digiflazz'
+            && DigiflazzAdapter::transactionAlreadyFormed((string) $errorCode);
     }
 
     /**

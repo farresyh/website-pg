@@ -25,12 +25,16 @@ class SupplierProduct extends Model
         'raw_price',
         'raw_currency',
         'status_raw',
+        'cutoff_start',
+        'cutoff_end',
+        'consecutive_active_syncs',
         'last_synced_at',
     ];
 
     protected $casts = [
         'price_sen' => 'integer',
         'raw_price' => 'decimal:2',
+        'consecutive_active_syncs' => 'integer',
         'last_synced_at' => 'datetime',
     ];
 

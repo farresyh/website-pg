@@ -8,6 +8,7 @@ use App\Models\OrderDeliveryLeg;
 use App\Models\Supplier;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\InvalidOrderTransitionException;
+use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\SupplierOutcome;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -199,6 +200,13 @@ class DigiflazzWebhookController extends Controller
                 $outcome,
                 $outcome === SupplierOutcome::Success ? ($data['sn'] ?? null) : null,
                 $data,
+                // ADR-098 — the webhook payload is raw Digiflazz data,
+                // not a SupplierResponse, so it classifies rc itself via
+                // the adapter's own table (single source of truth, no
+                // second copy of the code list).
+                transactionAlreadyFormed: $outcome === SupplierOutcome::Failure
+                    && isset($data['rc'])
+                    && DigiflazzAdapter::transactionAlreadyFormed((string) $data['rc']),
             );
         } catch (InvalidOrderTransitionException $e) {
             // Already finalized — synchronously at order time, by the
@@ -271,6 +279,9 @@ class DigiflazzWebhookController extends Controller
                 $outcome,
                 $outcome === SupplierOutcome::Success ? ($data['sn'] ?? null) : null,
                 $data,
+                transactionAlreadyFormed: $outcome === SupplierOutcome::Failure
+                    && isset($data['rc'])
+                    && DigiflazzAdapter::transactionAlreadyFormed((string) $data['rc']),
             );
         } catch (InvalidOrderTransitionException $e) {
             Log::info('Digiflazz webhook: combo leg already finalized, ignoring', ['reason' => $e->getMessage()]);

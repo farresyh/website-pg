@@ -16,8 +16,17 @@ final class SupplierResponse
         public readonly ?string $errorMessage,
         public readonly bool $isServerError = false,
         public readonly SupplierOutcome $outcome = SupplierOutcome::Failure,
-    ) {
-    }
+        // ADR-098 — a FACT about the supplier's own state ("did they
+        // already record a transaction against this reference"), not a
+        // business consequence: OrderFulfillmentService, not this
+        // class, decides that a true value means route to NeedsReview
+        // (same ADAPT-2 split as $outcome itself). Supplier-agnostic —
+        // any adapter can set it (Gamevion's existing 409/
+        // duplicate_reference case does; Digiflazz's rc table does)
+        // rather than business logic string-matching a per-supplier
+        // errorCode value.
+        public readonly bool $transactionAlreadyFormed = false,
+    ) {}
 
     public static function success(mixed $data): self
     {
@@ -48,8 +57,8 @@ final class SupplierResponse
      * evidence the supplier is down, and tripping the breaker on those
      * would block healthy orders for no reason.
      */
-    public static function failure(string $errorCode, string $errorMessage, bool $isServerError = false): self
+    public static function failure(string $errorCode, string $errorMessage, bool $isServerError = false, bool $transactionAlreadyFormed = false): self
     {
-        return new self(false, null, $errorCode, $errorMessage, $isServerError, SupplierOutcome::Failure);
+        return new self(false, null, $errorCode, $errorMessage, $isServerError, SupplierOutcome::Failure, $transactionAlreadyFormed);
     }
 }

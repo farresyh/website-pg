@@ -101,4 +101,49 @@ class PendingReactivationFinderTest extends TestCase
 
         $this->assertTrue($pending->contains('id', $package->id));
     }
+
+    /**
+     * ADR-100 — the optional $supplierId scope PendingReactivationAutoApprover
+     * relies on. Also proves the confirming-SupplierProduct lookup is
+     * itself supplier-scoped when a supplier is given: `external_ref`
+     * is only unique per supplier, so two different suppliers legitimately
+     * reusing the same raw code must never cross-match.
+     */
+    public function test_find_scoped_to_a_supplier_excludes_another_suppliers_pending_package(): void
+    {
+        $digiflazz = Supplier::query()->create([
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR',
+        ]);
+        $gamevion = Supplier::query()->create([
+            'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR',
+        ]);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+
+        $digiflazzPackage = Package::query()->create([
+            'game_id' => $game->id, 'name' => '16 Tokens', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now()->subHour(),
+            'supplier_id' => $digiflazz->id, 'supplier_package_ref' => 'SHARED_REF',
+        ]);
+        $gamevionPackage = Package::query()->create([
+            'game_id' => $game->id, 'name' => '16 Tokens (Gamevion)', 'cost_price' => 1000, 'standard_selling_price' => 1150,
+            'is_active' => false, 'deactivated_reason' => 'supplier_sync', 'deactivated_at' => now()->subHour(),
+            'supplier_id' => $gamevion->id, 'supplier_package_ref' => 'SHARED_REF',
+        ]);
+
+        // Both suppliers happen to share the same raw external_ref
+        // string — only Digiflazz's is confirmed active again.
+        SupplierProduct::query()->create([
+            'supplier_id' => $digiflazz->id, 'external_ref' => 'SHARED_REF', 'name' => '16 Tokens',
+            'status_raw' => 'active', 'last_synced_at' => now(),
+        ]);
+        SupplierProduct::query()->create([
+            'supplier_id' => $gamevion->id, 'external_ref' => 'SHARED_REF', 'name' => '16 Tokens (Gamevion)',
+            'status_raw' => 'inactive', 'last_synced_at' => now(),
+        ]);
+
+        $pending = (new PendingReactivationFinder)->find($digiflazz->id);
+
+        $this->assertTrue($pending->contains('id', $digiflazzPackage->id));
+        $this->assertFalse($pending->contains('id', $gamevionPackage->id));
+    }
 }

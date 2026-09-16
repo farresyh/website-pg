@@ -42,6 +42,43 @@ use Illuminate\Support\Facades\Http;
  */
 final class DigiflazzAdapter implements SupplierAdapter
 {
+    /**
+     * ADR-098 — the rc codes where Digiflazz's own docs
+     * (developer.digiflazz.com/api/buyer/response-code/, fetched live
+     * 2026-09-16 — raw table quoted verbatim, not a summarizer's
+     * inference) mark BOTH `Status = Gagal` AND `Terbentuk Transaksi =
+     * Ya`: a transaction record was already created against the ref_id
+     * before failing, so ANY resubmit of the same ref_id (checkStatus,
+     * or a resend's createOrder re-submit — both hit the same endpoint)
+     * can only replay that stored result, never genuinely reprocess.
+     * Every other Gagal code (Terbentuk Transaksi = Tidak, e.g. `44`
+     * "Saldo tidak cukup") is genuinely retriable once the underlying
+     * condition changes — confirmed live: order PG-PYAYMRYNUYV0 failed
+     * 3x on `44`, then succeeded on a 4th attempt, same reference,
+     * after the Digiflazz account was topped up.
+     *
+     * Deliberately NOT admin-editable/config — this is Digiflazz's own
+     * documented protocol fact, not a business policy the founder
+     * tunes. Re-verify against the real docs URL above if this table
+     * is ever suspected stale.
+     */
+    public const TRANSACTION_ALREADY_FORMED_RC_CODES = [
+        '01', '02', '50', '51', '52', '53', '54', '55', '57', '58', '59',
+        '60', '70', '71', '72', '73', '74', '84', '85', '86',
+    ];
+
+    /**
+     * Public + static so every caller that needs this classification
+     * (this adapter's own submitTransaction(), DigiflazzWebhookController
+     * classifying a raw webhook payload's rc, ReconcilePendingDeliveriesCommand's
+     * stale-Failed catch-up query) shares this ONE table — never a
+     * second hand-copied list.
+     */
+    public static function transactionAlreadyFormed(string $rc): bool
+    {
+        return in_array($rc, self::TRANSACTION_ALREADY_FORMED_RC_CODES, true);
+    }
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $username,
@@ -212,6 +249,7 @@ final class DigiflazzAdapter implements SupplierAdapter
                 default => SupplierResponse::failure(
                     (string) ($data['rc'] ?? 'unknown'),
                     $data['message'] ?? 'Unknown Digiflazz error',
+                    transactionAlreadyFormed: self::transactionAlreadyFormed((string) ($data['rc'] ?? '')),
                 ),
             };
         }
@@ -222,6 +260,7 @@ final class DigiflazzAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 (string) $data['rc'],
                 $data['message'] ?? 'Unknown Digiflazz error',
+                transactionAlreadyFormed: self::transactionAlreadyFormed((string) $data['rc']),
             );
         }
 
@@ -376,6 +415,12 @@ final class DigiflazzAdapter implements SupplierAdapter
             // line in the Product Manager.
             rawPrice: isset($item['price']) ? (float) $item['price'] : null,
             rawCurrency: isset($item['price']) ? 'IDR' : null,
+            // ADR-100 — carried raw, "hh:mm" or absent; validated/used
+            // only downstream (PendingReactivationAutoApprover), never
+            // here (Stage 1 stays a pure mirror, per this class's own
+            // docblock).
+            cutOffStart: $item['start_cut_off'] ?? null,
+            cutOffEnd: $item['end_cut_off'] ?? null,
         );
     }
 
