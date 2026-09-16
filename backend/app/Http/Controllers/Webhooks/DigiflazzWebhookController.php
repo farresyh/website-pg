@@ -200,13 +200,19 @@ class DigiflazzWebhookController extends Controller
                 $outcome,
                 $outcome === SupplierOutcome::Success ? ($data['sn'] ?? null) : null,
                 $data,
-                // ADR-098 — the webhook payload is raw Digiflazz data,
-                // not a SupplierResponse, so it classifies rc itself via
-                // the adapter's own table (single source of truth, no
-                // second copy of the code list).
-                transactionAlreadyFormed: $outcome === SupplierOutcome::Failure
+                // ADR-098 / ADR-102 decision 5/6 — the webhook payload is
+                // raw Digiflazz data, not a SupplierResponse, so it
+                // classifies rc itself via the adapter's own table
+                // (single source of truth, no second copy of the code
+                // list). outcomeConfirmedFailed is simply "$outcome is
+                // Failure" — outcomeFrom() below only ever maps to
+                // Failure when Digiflazz's own `status` field said
+                // Gagal, so reaching this branch at all already IS the
+                // confirmation (decision 4: routes straight to Failed).
+                resendUnsafeWithSameReference: $outcome === SupplierOutcome::Failure
                     && isset($data['rc'])
-                    && DigiflazzAdapter::transactionAlreadyFormed((string) $data['rc']),
+                    && DigiflazzAdapter::resendUnsafeWithSameReference((string) $data['rc']),
+                outcomeConfirmedFailed: $outcome === SupplierOutcome::Failure,
             );
         } catch (InvalidOrderTransitionException $e) {
             // Already finalized — synchronously at order time, by the
@@ -279,9 +285,11 @@ class DigiflazzWebhookController extends Controller
                 $outcome,
                 $outcome === SupplierOutcome::Success ? ($data['sn'] ?? null) : null,
                 $data,
-                transactionAlreadyFormed: $outcome === SupplierOutcome::Failure
+                // ADR-102 decision 5/6 — same reasoning as the plain-order branch above.
+                resendUnsafeWithSameReference: $outcome === SupplierOutcome::Failure
                     && isset($data['rc'])
-                    && DigiflazzAdapter::transactionAlreadyFormed((string) $data['rc']),
+                    && DigiflazzAdapter::resendUnsafeWithSameReference((string) $data['rc']),
+                outcomeConfirmedFailed: $outcome === SupplierOutcome::Failure,
             );
         } catch (InvalidOrderTransitionException $e) {
             Log::info('Digiflazz webhook: combo leg already finalized, ignoring', ['reason' => $e->getMessage()]);

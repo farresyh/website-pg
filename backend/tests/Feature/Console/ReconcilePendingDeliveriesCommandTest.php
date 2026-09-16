@@ -131,8 +131,16 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 
-    /** ADR-098 — the same catch-up now also covers Digiflazz's own "Terbentuk Transaksi=Ya" rc codes, not just Gamevion's duplicate_reference. */
-    public function test_flags_a_stale_digiflazz_terminal_rc_order_for_manual_review(): void
+    /**
+     * ADR-102 decision 4 — REMOVES the ADR-098-era widening that used
+     * to flip a stale Failed Digiflazz-terminal-rc order to NeedsReview:
+     * that code is now a confirmed-Gagal outcome that belongs on Failed
+     * permanently (Issue Voucher already available there). A stale
+     * Failed order carrying one now stays exactly where it is — only
+     * Gamevion's own duplicate_reference (still genuinely ambiguous)
+     * gets the Failed→NeedsReview catch-up below.
+     */
+    public function test_does_not_flag_a_stale_digiflazz_terminal_rc_order(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
         $order = $this->stale($this->order([
@@ -143,7 +151,7 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
 
         $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
 
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 
     /** A retriable Digiflazz rc (Terbentuk Transaksi=Tidak) stays a plain Failed, exactly like today. */
@@ -162,23 +170,66 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
     }
 
     /**
-     * ADR-098 collision-safety check: a NON-Digiflazz order whose
-     * error_code happens to share a string with Digiflazz's own rc
-     * table must never be swept in — the rc-code branch of this query
-     * is supplier-scoped specifically to guard against this.
+     * ADR-102 decision 7 — the new, PERMANENT catch-up in the opposite
+     * direction: any needs_review order carrying one of Digiflazz's 20
+     * confirmed-Gagal codes gets reclassified straight to Failed, no
+     * staleness window (this is a live classification correction, not
+     * "wait and see"). Covers both a legacy row stuck there from before
+     * decision 4 shipped, and any future misroute (a new bug, a
+     * webhook race).
      */
-    public function test_does_not_flag_a_stale_non_digiflazz_order_sharing_a_digiflazz_rc_string(): void
+    public function test_reclassifies_a_needs_review_order_with_a_digiflazz_terminal_rc_back_to_failed(): void
     {
-        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-reconcile-test', 'api_config' => [], 'currency' => 'MYR']);
-        $order = $this->stale($this->order([
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order([
             'supplier_id' => $supplier->id,
-            'delivery_status' => DeliveryStatus::Failed->value,
-            'supplier_response' => ['error_code' => '02', 'error_message' => 'Some unrelated Gamevion error'],
-        ]));
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
 
         $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
 
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
+    /**
+     * Gamevion's duplicate_reference is still genuinely ambiguous (no
+     * status field confirms anything) — must never be reclassified by
+     * this new clause, unlike a Digiflazz confirmed-Gagal code.
+     */
+    public function test_does_not_reclassify_a_needs_review_order_with_gamevion_duplicate_reference(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-reconcile-test', 'api_config' => [], 'currency' => 'MYR']);
+        $order = $this->order([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
+        ]);
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    /**
+     * Collision-safety, same reasoning as the old Gap-Y guard: a
+     * NON-Digiflazz order whose error_code happens to share a string
+     * with Digiflazz's own rc table must never be swept in — this
+     * clause's query is supplier-scoped specifically to guard against
+     * that.
+     */
+    public function test_does_not_reclassify_a_needs_review_order_from_a_non_digiflazz_supplier_sharing_a_digiflazz_rc_string(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-reconcile-test-2', 'api_config' => [], 'currency' => 'MYR']);
+        $order = $this->order([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Some unrelated Gamevion error'],
+        ]);
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
     }
 
     public function test_does_not_touch_a_delivered_order(): void
