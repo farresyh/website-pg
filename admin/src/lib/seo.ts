@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api-client";
 
-/** ADR-029 — SEO Management: Overview, Global Settings/Templates, Game SEO, Redirects, Scripts, Crawler. */
+/** ADR-029 — SEO Management: Overview, Global Settings/Templates, Game SEO, Redirects, Crawler. `Scripts` removed by ADR-101 decision 9. */
 
 export interface SeoOverview {
   games: {
@@ -94,18 +94,6 @@ export interface Redirect {
 
 export type SaveRedirectValues = Pick<Redirect, "from_path" | "to_path" | "status_code">;
 
-export interface SeoScript {
-  id: number;
-  affiliate_id: number | null;
-  name: string;
-  location: "head" | "body_end";
-  code: string;
-  priority: number;
-  is_active: boolean;
-}
-
-export type SaveSeoScriptValues = Omit<SeoScript, "id">;
-
 export interface CrawlerRule {
   id: number;
   bot_name: string;
@@ -161,22 +149,6 @@ export function updateRedirect(token: string, id: number, values: SaveRedirectVa
 
 export function deleteRedirect(token: string, id: number) {
   return apiFetch<null>(`/api/seo/redirects/${id}`, { method: "DELETE", token });
-}
-
-export function listSeoScripts(token: string) {
-  return apiFetch<SeoScript[]>("/api/seo/scripts", { token });
-}
-
-export function createSeoScript(token: string, values: SaveSeoScriptValues) {
-  return apiFetch<SeoScript>("/api/seo/scripts", { method: "POST", token, body: values });
-}
-
-export function updateSeoScript(token: string, id: number, values: SaveSeoScriptValues) {
-  return apiFetch<SeoScript>(`/api/seo/scripts/${id}`, { method: "PUT", token, body: values });
-}
-
-export function deleteSeoScript(token: string, id: number) {
-  return apiFetch<null>(`/api/seo/scripts/${id}`, { method: "DELETE", token });
 }
 
 export function listCrawlerRules(token: string) {
