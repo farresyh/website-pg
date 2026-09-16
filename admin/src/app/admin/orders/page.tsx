@@ -372,14 +372,17 @@ function OrdersPageInner() {
               ADR-094 decision 10 (found live, 2026-09-15): a combo order (`delivery_legs.length > 0`) can never swap package — resendOrderDelivery() always 422s for one — so it gets the plain retry action instead, never this modal. */}
           {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {selected.delivery_legs.length > 0 ? (
-                <Button size="small" disabled={retryingDelivery} onClick={handleRetryDelivery}>
-                  {retryingDelivery ? "Retrying…" : "Retry Delivery…"}
-                </Button>
-              ) : (
-                <Button size="small" onClick={() => setResendModalOpen(true)}>
-                  Resend Delivery…
-                </Button>
+              {/* ADR-102 decision 1: hidden once this order is already compensated (voucher issued or wallet refunded) — mirrors the backend's own hard block, so an admin never sees a button that would just 400. */}
+              {!selected.voucher && !selected.wallet_refunded && (
+                selected.delivery_legs.length > 0 ? (
+                  <Button size="small" disabled={retryingDelivery} onClick={handleRetryDelivery}>
+                    {retryingDelivery ? "Retrying…" : "Retry Delivery…"}
+                  </Button>
+                ) : (
+                  <Button size="small" onClick={() => setResendModalOpen(true)}>
+                    Resend Delivery…
+                  </Button>
+                )
               )}
               {/* ADR-026 addendum (2026-09-16) — server-computed from the persisted error_code (ADR-098's own rc table), never a second hand-copied list here. */}
               {selected.delivery_retry_likely_futile && (
@@ -399,14 +402,14 @@ function OrdersPageInner() {
                   Issue Voucher…
                 </Button>
               )}
-              {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. */}
-              {selected.delivery_status === "needs_review" && (
+              {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
+              {selected.delivery_status === "needs_review" && !selected.voucher && !selected.wallet_refunded && (
                 <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
                   Mark as Delivered…
                 </Button>
               )}
-              {/* ADR-026 addendum (2026-09-16) — the other exit decision 4c's own text always assumed existed. Excluded for a genuine partial-combo-delivery needs_review order — that case has its own custom-amount Issue Voucher path instead (some legs really did deliver). */}
-              {selected.delivery_status === "needs_review" && !selected.partial_combo_delivery && (
+              {/* ADR-026 addendum (2026-09-16) — the other exit decision 4c's own text always assumed existed. Excluded for a genuine partial-combo-delivery needs_review order — that case has its own custom-amount Issue Voucher path instead (some legs really did deliver). ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
+              {selected.delivery_status === "needs_review" && !selected.partial_combo_delivery && !selected.voucher && !selected.wallet_refunded && (
                 <Button size="small" variant="outlined" severity="danger" onClick={() => setConfirmFailedModalOpen(true)}>
                   Confirm Failed…
                 </Button>
