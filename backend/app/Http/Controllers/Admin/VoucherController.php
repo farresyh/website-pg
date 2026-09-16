@@ -232,6 +232,17 @@ class VoucherController extends Controller
         // the actual serialization point; a second request that loses
         // the race hits it here instead of double-issuing a voucher.
         //
+        // ADR-102 decision 1: the row lock below is a second, wider
+        // serialization point on top of the unique index above — it
+        // makes this transaction contend on the exact same
+        // `Order::lockForUpdate()` that `OrderFulfillmentService::
+        // fulfill()`/`fulfillCombo()`/`markDeliveredManually()`/
+        // `confirmDeliveryFailed()` already all acquire, so an
+        // in-flight resend and a concurrent Issue Voucher on the same
+        // order can never both commit — one blocks until the other's
+        // transaction (and its own `isAlreadyCompensated()` check)
+        // finishes, rather than racing on two independent locks.
+        //
         // ADR-024 decision #7: if this order itself spent a different
         // voucher (X) to pay part of its own price, giving up on
         // delivery must restore X's balance in the same transaction as
@@ -241,6 +252,7 @@ class VoucherController extends Controller
         // one, so it's always safe to call unconditionally here.
         try {
             $voucher = DB::transaction(function () use ($order, $amount, $request) {
+                Order::query()->lockForUpdate()->findOrFail($order->id);
                 $this->vouchers->restore($order->id);
 
                 return $this->vouchers->issue(

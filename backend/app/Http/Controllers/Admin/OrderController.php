@@ -8,11 +8,9 @@ use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
-use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\ResellerBotOrderNotification;
-use App\Models\Voucher;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\SupplierDeliveryCheckService;
 use App\Services\Ledger\LedgerOwnerType;
@@ -28,6 +26,7 @@ use App\Services\Supplier\SupplierAdapterFactory;
 use App\Support\ManualCheckCooldown;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -192,14 +191,20 @@ class OrderController extends Controller
             ]);
         }
 
-        // ADR-024 decision #8: once a voucher has been issued for this
-        // order (the admin's own "give up" decision — VoucherController
-        // ::storeFromOrder()), Resend Delivery must never succeed again
-        // — a later successful resend would double-compensate the
-        // customer (goods delivered *and* a voucher already in hand).
-        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+        // ADR-024 decision #8 / ADR-102 decision 1: once this order is
+        // already compensated — a voucher issued (the admin's own
+        // "give up" decision — VoucherController::storeFromOrder()) OR
+        // a reseller-wallet refund already paid out — Resend Delivery
+        // must never succeed again: a later successful resend would
+        // double-compensate the customer (goods delivered *and*
+        // compensation already in hand). `isAlreadyCompensated()` is
+        // the single source of truth every one of these guards reads,
+        // closing a real gap the voucher-only check never covered
+        // (order `PG-CGDZOLEHAIR8`, wallet-refunded, `failed`, resend
+        // was never blocked).
+        if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['A voucher has already been issued for this order — it cannot be resent.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
             ]);
         }
 
@@ -229,11 +234,11 @@ class OrderController extends Controller
             ]);
         }
 
-        // ADR-024 decision #8 — see retryDelivery()'s identical guard
-        // for the full reasoning.
-        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+        // ADR-024 decision #8 / ADR-102 decision 1 — see retryDelivery()'s
+        // identical guard for the full reasoning.
+        if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['A voucher has already been issued for this order — it cannot be resent.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
             ]);
         }
 
@@ -382,13 +387,13 @@ class OrderController extends Controller
             ]);
         }
 
-        // ADR-024 decision #8 — see retryDelivery()'s identical guard
-        // for the full reasoning. Structurally shouldn't be reachable
-        // (Issue Voucher is blocked from needs_review, ADR-026 decision
-        // 4c), kept as the same defensive check its siblings carry.
-        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+        // ADR-024 decision #8 / ADR-102 decision 1 — see retryDelivery()'s
+        // identical guard for the full reasoning. Structurally shouldn't
+        // be reachable (Issue Voucher is blocked from needs_review, ADR-026
+        // decision 4c), kept as the same defensive check its siblings carry.
+        if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['A voucher has already been issued for this order — it cannot be marked delivered.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be marked delivered.'],
             ]);
         }
 
@@ -438,12 +443,12 @@ class OrderController extends Controller
             ]);
         }
 
-        // ADR-024 decision #8 — see retryDelivery()'s identical guard
-        // for the full reasoning. Structurally shouldn't be reachable,
-        // kept as the same defensive check its siblings carry.
-        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+        // ADR-024 decision #8 / ADR-102 decision 1 — see retryDelivery()'s
+        // identical guard for the full reasoning. Structurally shouldn't
+        // be reachable, kept as the same defensive check its siblings carry.
+        if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['A voucher has already been issued for this order.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded).'],
             ]);
         }
 
@@ -485,24 +490,37 @@ class OrderController extends Controller
             ]);
         }
 
-        // The same "did this already happen" guard Issue Voucher has
-        // (a unique index there; here the ledger reference pair is the
-        // structural backstop) — a repeat request against an already-
-        // refunded order is a no-op-safe rejection, not a second credit.
-        if ($this->alreadyRefundedToWallet($order)) {
-            throw ValidationException::withMessages([
-                'order' => ['This order has already been refunded to the reseller\'s wallet.'],
-            ]);
-        }
+        // ADR-102 finding (mid-build, not in the original grill):
+        // `ledger_entries` has no unique index on the
+        // (type, reference_type, reference_id) tuple — unlike Voucher's
+        // real `vouchers.order_id` unique index, there was never an
+        // actual structural backstop here, only this pre-check. Two
+        // concurrent refundToWallet() requests for the same order could
+        // both pass it and both credit. Fixed the same way as
+        // VoucherController::storeFromOrder() — an `Order::lockForUpdate()`
+        // inside the transaction, contending on the exact same lock
+        // `fulfill()`/`storeFromOrder()`/`markDeliveredManually()`/
+        // `confirmDeliveryFailed()` already all acquire, so this
+        // check-then-credit can no longer race against itself or
+        // against a resend/voucher-issue on the same order.
+        DB::transaction(function () use ($order, $ledger) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-        $ledger->credit(
-            LedgerOwnerType::ResellerWallet,
-            $order->wallet_reseller_id,
-            $order->final_amount,
-            'wallet_refund',
-            referenceType: 'order',
-            referenceId: $order->id,
-        );
+            if ($locked->isAlreadyRefundedToWallet()) {
+                throw ValidationException::withMessages([
+                    'order' => ['This order has already been refunded to the reseller\'s wallet.'],
+                ]);
+            }
+
+            $ledger->credit(
+                LedgerOwnerType::ResellerWallet,
+                $locked->wallet_reseller_id,
+                $locked->final_amount,
+                'wallet_refund',
+                referenceType: 'order',
+                referenceId: $locked->id,
+            );
+        });
 
         Log::info('Order refunded to reseller wallet', [
             'order_id' => $order->id,
@@ -589,7 +607,7 @@ class OrderController extends Controller
             // the frontend disable/hide the Refund to Wallet button on
             // a fresh page load too, not just right after a successful
             // action in the same session.
-            'wallet_refunded' => $this->alreadyRefundedToWallet($order),
+            'wallet_refunded' => $order->isAlreadyRefundedToWallet(),
             // ADR-094 decision 9: gates the admin panel's Issue Voucher
             // button for the one needs_review case that's actually a
             // genuine partial delivery, with a starting-point amount
@@ -604,21 +622,5 @@ class OrderController extends Controller
             'delivery_retry_likely_futile' => $order->deliveryRetryLikelyFutile(),
             'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
         ]);
-    }
-
-    /** The structural "did this already happen" check refundToWallet() itself also uses as its guard. */
-    private function alreadyRefundedToWallet(Order $order): bool
-    {
-        if ($order->wallet_reseller_id === null) {
-            return false;
-        }
-
-        return LedgerEntry::query()
-            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
-            ->where('owner_id', $order->wallet_reseller_id)
-            ->where('type', 'wallet_refund')
-            ->where('reference_type', 'order')
-            ->where('reference_id', $order->id)
-            ->exists();
     }
 }

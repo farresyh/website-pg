@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToAffiliate;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
@@ -189,6 +190,50 @@ class Order extends Model
         return (int) $this->deliveryLegs
             ->where('status', DeliveryStatus::Failed)
             ->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->standard_selling_price ?? 0);
+    }
+
+    /**
+     * ADR-102 decision 1 — the single source of truth for "this order
+     * is already settled, leave delivery alone": true when a
+     * compensation voucher exists for it (`voucher()`, VCH-7) OR a
+     * reseller-wallet refund has already been paid out
+     * (`isAlreadyRefundedToWallet()`). Every guard that used to
+     * hand-roll `Voucher::where('order_id', ...)->exists()` alone
+     * (`OrderController::retryDelivery()`/`resend()`/`markDelivered()`/
+     * `confirmFailed()`, `OrderResendService::assertResendable()`)
+     * reads this instead — the wallet-refund half was a real gap none
+     * of them checked before (order `PG-CGDZOLEHAIR8`, refunded to
+     * wallet, `delivery_status=failed`, nothing stopped a further
+     * resend from delivering the goods on top of the refund already
+     * given).
+     */
+    public function isAlreadyCompensated(): bool
+    {
+        return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet();
+    }
+
+    /**
+     * ADR-073: true once a `wallet_refund` ledger entry exists for
+     * this order's reseller-wallet account. Always false for a
+     * non-wallet order (`wallet_reseller_id` null). Promoted out of
+     * `OrderController::alreadyRefundedToWallet()` (ADR-102 decision 1)
+     * so both the admin-detail response and every resend/retry guard
+     * share the exact same check, computed fresh (never cached/stored)
+     * since it's a cheap indexed lookup and must never go stale.
+     */
+    public function isAlreadyRefundedToWallet(): bool
+    {
+        if ($this->wallet_reseller_id === null) {
+            return false;
+        }
+
+        return LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('owner_id', $this->wallet_reseller_id)
+            ->where('type', 'wallet_refund')
+            ->where('reference_type', 'order')
+            ->where('reference_id', $this->id)
+            ->exists();
     }
 
     /**
