@@ -71,10 +71,14 @@ final class DigiflazzAdapter implements SupplierAdapter
      * Public + static so every caller that needs this classification
      * (this adapter's own submitTransaction(), DigiflazzWebhookController
      * classifying a raw webhook payload's rc, ReconcilePendingDeliveriesCommand's
-     * stale-Failed catch-up query) shares this ONE table — never a
-     * second hand-copied list.
+     * catch-up queries) shares this ONE table — never a second
+     * hand-copied list. Renamed from transactionAlreadyFormed() by
+     * ADR-102 decision 5 — this is specifically the "resubmitting this
+     * reference can only replay a stored result" fact, now a distinct
+     * concern from whether Digiflazz's status field confirmed Gagal
+     * (see SupplierResponse::$outcomeConfirmedFailed).
      */
-    public static function transactionAlreadyFormed(string $rc): bool
+    public static function resendUnsafeWithSameReference(string $rc): bool
     {
         return in_array($rc, self::TRANSACTION_ALREADY_FORMED_RC_CODES, true);
     }
@@ -246,21 +250,34 @@ final class DigiflazzAdapter implements SupplierAdapter
                     'rc' => $data['rc'] ?? null,
                     'message' => $data['message'] ?? null,
                 ]),
+                // ADR-102 decision 4/5: reaching this arm means
+                // Digiflazz's own `status` field definitively said
+                // Gagal — a known, final outcome, whether or not this
+                // particular rc is in the 20-code resend-unsafe table.
+                // outcomeConfirmedFailed is therefore always true here;
+                // resendUnsafeWithSameReference stays scoped to the
+                // table, since that's the orthogonal "is a resubmit
+                // safe" fact, not "is the outcome known".
                 default => SupplierResponse::failure(
                     (string) ($data['rc'] ?? 'unknown'),
                     $data['message'] ?? 'Unknown Digiflazz error',
-                    transactionAlreadyFormed: self::transactionAlreadyFormed((string) ($data['rc'] ?? '')),
+                    resendUnsafeWithSameReference: self::resendUnsafeWithSameReference((string) ($data['rc'] ?? '')),
+                    outcomeConfirmedFailed: true,
                 ),
             };
         }
 
         // An envelope carrying an `rc` but no `status` can only be a
         // failure — Pending is impossible to assert without `status`.
+        // ADR-102 decision 5: no `status` field means no confirmation
+        // of Gagal either — outcomeConfirmedFailed stays false here
+        // (genuinely unknown outcome, same bucket as Gamevion's 409),
+        // unlike the `status`-present branch above.
         if (is_array($data) && isset($data['rc'])) {
             return SupplierResponse::failure(
                 (string) $data['rc'],
                 $data['message'] ?? 'Unknown Digiflazz error',
-                transactionAlreadyFormed: self::transactionAlreadyFormed((string) $data['rc']),
+                resendUnsafeWithSameReference: self::resendUnsafeWithSameReference((string) $data['rc']),
             );
         }
 
