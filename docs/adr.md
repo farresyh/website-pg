@@ -5521,7 +5521,7 @@ Re-examined against what decision 9 already bought: the report's real fear (Mage
 
 ## ADR-102: Order delivery-failure guard unification + Digiflazz `rc`-classification correction + admin refund-clarity UI
 
-**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) 2026-09-16. **Phase 1 (decisions 1-2) built + merged to `staging` same day** (PR #225). **Phase 2 (decisions 3-9) built same session** — see the 2026-09-16 addendum below. Decisions 10-13 (player/server-ID resend correction, admin refund-info UI) and sibling ADR-103 (combo per-leg reference independence) not yet built.
+**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) 2026-09-16. **Phase 1 (decisions 1-2) built + merged to `staging` same day** (PR #225). **Phase 2 (decisions 3-9) built + merged to `staging`** (PR #226) — see the 2026-09-16 addendum below. Decisions 10-13 (player/server-ID resend correction, admin refund-info UI) and sibling ADR-103 (combo per-leg reference independence) not yet built.
 
 **Context:** Founder walked 4 real production orders end-to-end (`PG-CGDZOLEHAIR8`/id 5, `PG-JLOMUJ1H23NE`/id 9, `PG-LXC90WQ8KQFC`/id 12, `PG-HHHRXLG1AR0N`/id 13) while reviewing Digiflazz `rc`-code handling, and found the guard logic around Resend Delivery / Issue Voucher / Refund to Wallet has real gaps a live customer-service hire (not the founder) would not be able to reason about from the UI alone:
 
