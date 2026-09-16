@@ -395,8 +395,8 @@ class OrderControllerTest extends TestCase
         $response->assertJsonCount(0, 'delivery_legs');
     }
 
-    /** ADR-026 addendum (2026-09-16) — drives the admin panel's Resend Delivery futility warning. */
-    public function test_show_delivery_retry_likely_futile_true_for_a_digiflazz_terminal_rc(): void
+    /** ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — drives the admin panel's Resend Delivery futility warning. */
+    public function test_show_delivery_retry_unsafe_with_same_reference_true_for_a_digiflazz_terminal_rc(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
         $order = $this->order([
@@ -409,7 +409,33 @@ class OrderControllerTest extends TestCase
         $response = $this->getJson("/api/orders/{$order->id}");
 
         $response->assertOk();
-        $response->assertJsonPath('delivery_retry_likely_futile', true);
+        $response->assertJsonPath('delivery_retry_unsafe_with_same_reference', true);
+        // ADR-102 decision 3 — NeedsReview + non-combo is exactly the
+        // scoped-unsafe case, so the button-gating flag is true too.
+        $response->assertJsonPath('resend_unsafe_to_override', true);
+    }
+
+    /**
+     * ADR-102 decision 3 — the scoped rule's actual point: a Failed
+     * non-combo order is NEVER scoped-unsafe (decision 9 always
+     * regenerates its reference on resend), even when the raw signal
+     * is true.
+     */
+    public function test_show_resend_unsafe_to_override_false_for_a_failed_non_combo_order_with_the_raw_signal_true(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('delivery_retry_unsafe_with_same_reference', true);
+        $response->assertJsonPath('resend_unsafe_to_override', false);
     }
 
     public function test_show_returns_404_for_a_nonexistent_order(): void
@@ -524,6 +550,74 @@ class OrderControllerTest extends TestCase
         $order = $this->order([
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
+    }
+
+    /**
+     * ADR-102 decision 3 — a scoped-unsafe order (non-combo, NeedsReview,
+     * raw signal true) requires a logged override_reason; omitting it
+     * is a 422, never a silent no-op.
+     */
+    public function test_retry_delivery_requires_an_override_reason_for_a_scoped_unsafe_needs_review_order(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order([
+            'supplier_id' => $supplier->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    /** ADR-102 decision 3 — the override is real, not just gatekept: a reason lets it through and queues the job. */
+    public function test_retry_delivery_proceeds_with_an_override_reason_for_a_scoped_unsafe_needs_review_order(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order([
+            'supplier_id' => $supplier->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery", [
+            'override_reason' => 'Founder confirmed via Digiflazz dashboard this is worth retrying.',
+        ]);
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
+    }
+
+    /**
+     * ADR-102 decision 3 — the scoped rule's whole point: a Failed
+     * non-combo order is NEVER scoped-unsafe (decision 9 always
+     * regenerates its reference), so no override is required even with
+     * the raw signal true.
+     */
+    public function test_retry_delivery_does_not_require_an_override_reason_for_a_failed_non_combo_order(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order([
+            'supplier_id' => $supplier->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
         ]);
 
         $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");

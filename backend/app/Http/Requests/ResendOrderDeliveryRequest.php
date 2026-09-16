@@ -27,6 +27,12 @@ class ResendOrderDeliveryRequest extends FormRequest
         return [
             'package_id' => ['required', 'integer', 'exists:packages,id'],
             'note' => ['nullable', 'string', 'max:255'],
+            // ADR-102 decision 3 — required only when the order is
+            // scoped-unsafe to resend (Order::resendUnsafeToOverride());
+            // that check needs the Order itself, so the actual
+            // required-ness is enforced in OrderController::guardResendUnsafeOverride(),
+            // not here. Just a plain optional string at the FormRequest layer.
+            'override_reason' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

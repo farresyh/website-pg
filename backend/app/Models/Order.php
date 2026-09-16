@@ -149,17 +149,20 @@ class Order extends Model
     }
 
     /**
-     * ADR-026 addendum (2026-09-16, found shipping ADR-098) — drives
+     * ADR-026 addendum (2026-09-16, found shipping ADR-098), renamed by
+     * ADR-102 decision 3/5 — the raw "resubmitting this reference is
+     * unsafe" signal (never routing — see SupplierResponse's own
+     * doc comment for the split from outcomeConfirmedFailed). Drives
      * the admin panel's "Resending is unlikely to change this outcome"
-     * warning on a needs_review order. Reconstructs the same
-     * transactionAlreadyFormed classification `ReconcilePendingDeliveriesCommand`'s
-     * catch-up query uses, from the persisted `error_code` alone (the
-     * original `SupplierResponse` itself is long gone by the time an
-     * admin is looking at this order) — never a second hand-copied rc
-     * list, `DigiflazzAdapter::transactionAlreadyFormed()` stays the
+     * warning text. Reconstructs the same classification
+     * `ReconcilePendingDeliveriesCommand`'s catch-up queries use, from
+     * the persisted `error_code` alone (the original `SupplierResponse`
+     * itself is long gone by the time an admin is looking at this
+     * order) — never a second hand-copied rc list,
+     * `DigiflazzAdapter::resendUnsafeWithSameReference()` stays the
      * single source of truth.
      */
-    public function deliveryRetryLikelyFutile(): bool
+    public function deliveryRetryUnsafeWithSameReference(): bool
     {
         $errorCode = $this->supplier_response['error_code'] ?? null;
 
@@ -172,7 +175,41 @@ class Order extends Model
         }
 
         return $this->supplier?->slug === 'digiflazz'
-            && DigiflazzAdapter::transactionAlreadyFormed((string) $errorCode);
+            && DigiflazzAdapter::resendUnsafeWithSameReference((string) $errorCode);
+    }
+
+    /**
+     * ADR-102 decision 3 — the SCOPED rule that actually disables the
+     * Resend/Retry button (as opposed to deliveryRetryUnsafeWithSameReference()
+     * above, the raw underlying signal): a non-combo order only
+     * disables from NeedsReview, since a non-combo Failed order always
+     * gets a fresh reference on resend (decision 9) and is therefore
+     * NEVER genuinely futile there — consulting the flag for a Failed
+     * non-combo order would wrongly disable a perfectly resendable
+     * order (e.g. one that just correctly landed on Failed via decision
+     * 4's reclassification) forever. A combo order keeps checking the
+     * flag regardless of Failed/NeedsReview, unchanged from today —
+     * decision 9 is explicitly non-combo-only (ADR-103 covers the
+     * combo case), so a combo order can still be genuinely futile even
+     * while sitting at Failed. In practice this combo branch is
+     * currently quiet — a real combo order never populates this
+     * Order's own `supplier_response` (only its legs carry
+     * `failure_reason`), so the raw signal above is always false for
+     * one today. It stays here, correctly scoped, so it activates the
+     * moment ADR-103's per-leg signal rolls up onto it, rather than
+     * needing a second pass to re-derive this rule later.
+     */
+    public function resendUnsafeToOverride(): bool
+    {
+        if (! $this->deliveryRetryUnsafeWithSameReference()) {
+            return false;
+        }
+
+        if ($this->deliveryLegs->isNotEmpty()) {
+            return true;
+        }
+
+        return $this->delivery_status === DeliveryStatus::NeedsReview;
     }
 
     /**
