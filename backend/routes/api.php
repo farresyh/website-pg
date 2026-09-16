@@ -25,7 +25,6 @@ use App\Http\Controllers\Admin\ResellerWebhookController;
 use App\Http\Controllers\Admin\ResellerWhatsAppGroupController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
-use App\Http\Controllers\Admin\SeoScriptController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SupplierTransferController;
 use App\Http\Controllers\Admin\TransactionRegisterController;
@@ -279,12 +278,11 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
 
     // ADR-029 — public SEO data: settings/templates/pixel IDs for
     // generateMetadata(), redirects for middleware.ts's in-memory
-    // cache, scripts for layout injection, crawler rules for
-    // app/robots.ts.
+    // cache, crawler rules for app/robots.ts. `/seo/scripts` (addendum 2
+    // decision 13) removed by ADR-101 decision 9 — see SeoController.
     Route::get('/seo/settings', [SeoController::class, 'settings']);
     Route::get('/seo/redirects', [SeoController::class, 'redirects']);
     Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1,redirect-hit');
-    Route::get('/seo/scripts', [SeoController::class, 'scripts']);
     Route::get('/seo/robots', [SeoController::class, 'robots']);
 
     // ADR-060 PR-5 — the storefront `proxy.ts` hits this once per Host to
@@ -830,10 +828,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/redirects/{redirect}', [RedirectController::class, 'update']);
         Route::delete('/redirects/{redirect}', [RedirectController::class, 'destroy']);
 
-        Route::get('/scripts', [SeoScriptController::class, 'index']);
-        Route::post('/scripts', [SeoScriptController::class, 'store']);
-        Route::put('/scripts/{seo_script}', [SeoScriptController::class, 'update']);
-        Route::delete('/scripts/{seo_script}', [SeoScriptController::class, 'destroy']);
+        // ADR-101 decision 9: reverses ADR-029 addendum 2 decision 13 —
+        // admin-authored free-text <script> injection (`/scripts` CRUD,
+        // SeoScriptController) removed. It defeated any CSP allowlist by
+        // design; GA/fb_pixel_id/tiktok_pixel_id (AffiliateSeoSettings,
+        // above) already cover the only three vendors this was ever
+        // actually used for. The `seo_scripts` table/model stay (harmless
+        // dead data, nothing reads them anymore) rather than a destructive
+        // drop.
 
         Route::get('/crawler-rules', [CrawlerRuleController::class, 'index']);
         Route::post('/crawler-rules', [CrawlerRuleController::class, 'store']);

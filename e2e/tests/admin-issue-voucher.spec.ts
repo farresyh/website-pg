@@ -22,6 +22,9 @@ test("admin login -> failed order -> Issue Voucher", async ({ page }) => {
 
   // The button is hidden once a voucher exists for this order — the
   // real guard this test proves, not just the happy-path submission.
+  // ADR-102 decision 11: the old single-line "already issued for this
+  // order" mention was replaced by RefundInformationCards' own
+  // "Compensation Voucher Issued" card.
   await expect(page.getByRole("button", { name: "Issue Voucher…" })).toHaveCount(0);
-  await expect(page.getByText(/already issued for this order/)).toBeVisible();
+  await expect(page.getByText("Compensation Voucher Issued")).toBeVisible();
 });

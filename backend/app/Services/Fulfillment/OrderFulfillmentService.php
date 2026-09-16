@@ -17,6 +17,7 @@ use App\Services\Supplier\SupplierOutcome;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -81,6 +82,21 @@ final class OrderFulfillmentService
         $delivered = DB::transaction(function () use ($order, &$drawdownPrice) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
+            // ADR-102 decision 1: the real, final defense-in-depth
+            // check — everything upstream (OrderController's guards,
+            // OrderResendService::assertResendable()) is a friendly
+            // pre-check that can still go stale between "admin clicked
+            // resend" and "this job actually acquired the row lock" (an
+            // admin issuing a voucher/wallet-refund in that exact gap).
+            // Checked inside the lock, before anything else, so a
+            // resend can never deliver on top of compensation already
+            // given regardless of which entry point raced which.
+            if ($locked->isAlreadyCompensated()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} has already been compensated (voucher issued or wallet refunded) — refusing to fulfill",
+                );
+            }
+
             // ORD-11's central guard: delivery may only start once
             // payment is genuinely paid. OrderStatusService throws
             // otherwise — the single most direct path to giving away
@@ -107,10 +123,24 @@ final class OrderFulfillmentService
 
             $adapter = $this->supplierAdapters->make($locked->supplier->slug);
 
-            // ORD-8: generated once, reused on every retry of this
-            // order — resolve() returns the existing value unchanged
-            // if this is a retry after a prior failure.
-            $referenceNumber = $this->referenceNumbers->resolve($locked->reference_number);
+            // ORD-8, narrowed by ADR-102 decision 9: reused on every
+            // retry EXCEPT one deliberate case — a resend initiated
+            // from Failed always gets a fresh reference. Safe because
+            // Failed (post decision 4) always means confirmed
+            // non-delivery, so there's no ambiguity a fresh reference
+            // could double up on; it also makes a package swap (ADR-017)
+            // genuinely effective again, since a fresh reference is
+            // never subject to the replay behavior a resubmitted
+            // already-formed reference has. A resend from NeedsReview
+            // keeps reusing the stored value unchanged (resolve()) —
+            // reuse IS the safety mechanism there, so Digiflazz's/
+            // Gamevion's own dedup on the same reference still protects
+            // a genuinely-unknown-outcome order from a real double
+            // delivery. Combo orders never reach this line (fulfillCombo()
+            // diverts before it) — decision 9 excludes them, see ADR-103.
+            $referenceNumber = $locked->delivery_status === DeliveryStatus::Failed
+                ? $this->referenceNumbers->generate()
+                : $this->referenceNumbers->resolve($locked->reference_number);
 
             // ADR-014: extends whatever context the caller already set
             // (order_number, from the webhook/job) with the ORD-8 key
@@ -156,19 +186,22 @@ final class OrderFulfillmentService
             }
 
             if ($result->outcome === SupplierOutcome::Failure) {
-                // ADR-026 / ADR-098: a supplier that already formed a
-                // transaction record for this reference (Gamevion's
-                // 409/duplicate_reference; Digiflazz's own "Terbentuk
-                // Transaksi" rc table) is structurally different from
-                // every other failure — it's evidence an order for this
-                // reference_number already reached the supplier, not
-                // evidence it was cleanly rejected, and a resubmit can
-                // only replay that stored result, never reprocess.
-                // Routes to needs_review, never failed, so it can never
-                // be mistaken for a plain resolvable failure (and,
-                // critically, never reaches VoucherController::
-                // storeFromOrder()'s Failed-only gate).
-                $requiresManualReview = $result->transactionAlreadyFormed;
+                // ADR-026 / ADR-098, reclassified by ADR-102 decision 4:
+                // needs_review is narrowed to a GENUINELY unknown
+                // outcome — unsafe to resubmit with the same reference
+                // AND not a confirmed Gagal. Gamevion's 409/
+                // duplicate_reference is exactly that (unsafe, not
+                // confirmed) and still routes here unchanged. Digiflazz's
+                // own 20-code "Terbentuk Transaksi=Ya" table used to
+                // route here too, but that was ADR-098's own modeling
+                // flaw: Digiflazz's `status` field already told the
+                // platform the definitive outcome (Gagal) for those
+                // codes — "can't safely resubmit" isn't the same fact
+                // as "outcome unknown". A confirmed Gagal now always
+                // reaches Failed instead, whether or not resubmitting
+                // is unsafe, so Issue Voucher is available immediately
+                // instead of needing a Confirm-Failed detour first.
+                $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
 
                 $locked->update([
                     'delivery_status' => $requiresManualReview
@@ -246,6 +279,15 @@ final class OrderFulfillmentService
     {
         DB::transaction(function () use ($order) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            // ADR-102 decision 1 — see fulfill()'s identical guard for
+            // the full reasoning; the combo path needs the same
+            // final-defense check inside its own lock.
+            if ($locked->isAlreadyCompensated()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} has already been compensated (voucher issued or wallet refunded) — refusing to fulfill",
+                );
+            }
 
             $processingStatus = $this->orderStatus->startDelivery($locked->payment_status, $locked->delivery_status);
             $referenceNumber = $this->referenceNumbers->resolve($locked->reference_number);
@@ -339,8 +381,16 @@ final class OrderFulfillmentService
         $drawdownPrice = null;
         $legId = $leg->id;
 
+        // ADR-103 decision 3 — captured OUTSIDE the transaction below by
+        // reference: a thrown exception mid-call rolls back everything
+        // written inside that transaction, including the reference
+        // persist, but this PHP variable survives the rollback — the
+        // catch block re-persists it in its own (committed) transaction
+        // so a genuinely-attempted reference is never silently lost.
+        $legReferenceNumber = null;
+
         try {
-            DB::transaction(function () use ($order, $leg, &$drawdownPrice) {
+            DB::transaction(function () use ($order, $leg, &$drawdownPrice, &$legReferenceNumber) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
@@ -349,11 +399,28 @@ final class OrderFulfillmentService
                     return;
                 }
 
-                $component = $lockedLeg->componentPackage;
-                $adapter = $this->supplierAdapters->make($component->supplier->slug);
-                $legReferenceNumber = "{$order->reference_number}-L{$lockedLeg->leg_number}";
+                // ADR-103 decision 3 — mirrors ADR-102 decision 9 at leg
+                // granularity: NotStarted keeps today's derived value
+                // (now persisted instead of re-derived every call);
+                // Failed mints a fresh reference (decision 4's ULID
+                // suffix — safe, this leg is confirmed non-delivered);
+                // NeedsReview reuses the stored value unchanged (the
+                // double-delivery protection, same reasoning as
+                // ORD-8/decision 9). Persisted BEFORE the supplier call
+                // (not after) so a thrown exception below still leaves
+                // this attempt's reference queryable.
+                $legReferenceNumber = match ($lockedLeg->status) {
+                    DeliveryStatus::Failed => "{$order->reference_number}-L{$lockedLeg->leg_number}-".Str::ulid(),
+                    DeliveryStatus::NeedsReview => $lockedLeg->reference_number,
+                    default => $lockedLeg->reference_number ?? "{$order->reference_number}-L{$lockedLeg->leg_number}",
+                };
 
                 Log::withContext(['reference_number' => $legReferenceNumber]);
+
+                $lockedLeg->update(['reference_number' => $legReferenceNumber]);
+
+                $component = $lockedLeg->componentPackage;
+                $adapter = $this->supplierAdapters->make($component->supplier->slug);
 
                 $result = $adapter->createOrder(new SupplierOrderRequest(
                     productRef: $component->supplier_package_ref,
@@ -379,14 +446,22 @@ final class OrderFulfillmentService
                 }
 
                 if ($result->outcome === SupplierOutcome::Failure) {
-                    // ADR-098 — same generic transactionAlreadyFormed
-                    // signal fulfill()'s own Failure branch uses.
-                    $requiresManualReview = $result->transactionAlreadyFormed;
+                    // ADR-098 / ADR-102 decision 4 — same split-flag
+                    // routing fulfill()'s own Failure branch uses.
+                    $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
 
-                    $lockedLeg->update([
+                    $lockedLeg->update(array_merge([
                         'status' => $requiresManualReview ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
                         'failure_reason' => $result->errorMessage,
-                    ]);
+                    ], $requiresManualReview ? [
+                        // ADR-103 decision 2 — populated only when this
+                        // leg actually lands on NeedsReview, feeding
+                        // decision 8's OR-rollup. A Failed leg never
+                        // needs it: decision 3 always mints it a fresh
+                        // reference on retry, so it can never be
+                        // genuinely futile the way a NeedsReview leg can.
+                        'resend_unsafe_with_same_reference' => true,
+                    ] : []));
 
                     Log::warning($requiresManualReview ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
                         'leg_id' => $lockedLeg->id,
@@ -427,7 +502,7 @@ final class OrderFulfillmentService
                 'exception' => $e->getMessage(),
             ]);
 
-            DB::transaction(function () use ($legId, $e) {
+            DB::transaction(function () use ($legId, $e, $legReferenceNumber) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($legId);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
@@ -436,10 +511,18 @@ final class OrderFulfillmentService
                     return;
                 }
 
-                $lockedLeg->update([
+                $lockedLeg->update(array_merge([
                     'status' => DeliveryStatus::NeedsReview->value,
                     'failure_reason' => 'Delivery attempt failed unexpectedly: '.$e->getMessage(),
-                ]);
+                ], $legReferenceNumber !== null ? [
+                    // ADR-103 decisions 1/3 — the transaction that
+                    // computed this reference and attempted the actual
+                    // supplier call rolled back with the exception;
+                    // re-persisted here so a NeedsReview leg reached via
+                    // this path still reuses the SAME reference it was
+                    // genuinely attempted under, not a stale/null one.
+                    'reference_number' => $legReferenceNumber,
+                ] : []));
             });
 
             return;
@@ -565,7 +648,7 @@ final class OrderFulfillmentService
      * order level, reused here unchanged since both operate on a plain
      * DeliveryStatus value.
      */
-    public function finalizePendingDeliveryLeg(OrderDeliveryLeg $leg, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $transactionAlreadyFormed = false): Order
+    public function finalizePendingDeliveryLeg(OrderDeliveryLeg $leg, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $resendUnsafeWithSameReference = false, bool $outcomeConfirmedFailed = false): Order
     {
         if ($outcome === SupplierOutcome::Pending) {
             throw new OrderFulfillmentException(
@@ -576,7 +659,7 @@ final class OrderFulfillmentService
         $order = $leg->order;
         $drawdownPrice = null;
 
-        DB::transaction(function () use ($leg, $outcome, $supplierRef, $supplierResponse, $transactionAlreadyFormed, &$drawdownPrice) {
+        DB::transaction(function () use ($leg, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice) {
             $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
             Log::withContext(['order_delivery_leg_id' => $lockedLeg->id, 'leg_number' => $lockedLeg->leg_number]);
@@ -599,18 +682,26 @@ final class OrderFulfillmentService
                 return;
             }
 
-            // ADR-098 — same generic routing as finalizePendingDelivery()'s
-            // own Failure branch.
-            $failedStatus = $transactionAlreadyFormed
+            // ADR-098 / ADR-102 decision 4 — same split-flag routing as
+            // finalizePendingDelivery()'s own Failure branch.
+            $requiresManualReview = $resendUnsafeWithSameReference && ! $outcomeConfirmedFailed;
+
+            $failedStatus = $requiresManualReview
                 ? $this->orderStatus->markNeedsReview($lockedLeg->status)
                 : $this->orderStatus->finalizePendingFailure($lockedLeg->status);
 
-            $lockedLeg->update([
+            $lockedLeg->update(array_merge([
                 'status' => $failedStatus->value,
                 'failure_reason' => is_array($supplierResponse) ? ($supplierResponse['error_message'] ?? null) : null,
-            ]);
+            ], $requiresManualReview ? [
+                // ADR-103 decision 2 — same leg-level flag attemptLeg()
+                // writes, populated here for the async (webhook/poll)
+                // finalize path too, only when this leg actually lands
+                // on NeedsReview (see attemptLeg()'s identical comment).
+                'resend_unsafe_with_same_reference' => true,
+            ] : []));
 
-            Log::warning($transactionAlreadyFormed ? 'Combo leg finalized as needs-review' : 'Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
+            Log::warning($requiresManualReview ? 'Combo leg finalized as needs-review' : 'Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
         });
 
         if ($drawdownPrice !== null) {
@@ -635,7 +726,7 @@ final class OrderFulfillmentService
      * InvalidOrderTransitionException — same lock-then-guard pattern
      * fulfill() itself already uses for the identical PAY-2 reason.
      */
-    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $transactionAlreadyFormed = false): Order
+    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $resendUnsafeWithSameReference = false, bool $outcomeConfirmedFailed = false): Order
     {
         if ($outcome === SupplierOutcome::Pending) {
             throw new OrderFulfillmentException(
@@ -645,7 +736,7 @@ final class OrderFulfillmentService
 
         $drawdownPrice = null;
 
-        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $transactionAlreadyFormed, &$drawdownPrice) {
+        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             Log::withContext(['reference_number' => $locked->reference_number]);
@@ -678,17 +769,21 @@ final class OrderFulfillmentService
                 return $locked->fresh();
             }
 
-            // ADR-098 — a Pending order's terminal Failure can itself be
-            // an ADR-098 "transaction already formed" case (this is
-            // exactly the path the real PG-JLOMUJ1H23NE incident took:
-            // createOrder() returned Pending, the reconcile poll's
-            // checkStatus() got a terminal rc the same resubmit can only
-            // ever replay). Routes to NeedsReview instead of Failed,
-            // same as fulfill()'s own synchronous Failure branch — this
-            // was the one real gap ADR-026 never actually reached, since
-            // Gamevion (the only adapter duplicate_reference existed
-            // for) never returns Pending in the first place.
-            $failedStatus = $transactionAlreadyFormed
+            // ADR-098 / ADR-102 decision 4 — a Pending order's terminal
+            // Failure can itself be a confirmed-Gagal or genuinely-
+            // ambiguous case (this is exactly the path the real
+            // PG-JLOMUJ1H23NE incident took: createOrder() returned
+            // Pending, the reconcile poll's checkStatus() got a terminal
+            // rc). Same split-flag routing as fulfill()'s own
+            // synchronous Failure branch — a confirmed Gagal (Digiflazz)
+            // routes to Failed even when the same reference is unsafe
+            // to resubmit; only a genuinely unknown outcome (Gamevion's
+            // duplicate_reference — which never reaches Pending in the
+            // first place — or an unexpected exception) routes to
+            // NeedsReview.
+            $requiresManualReview = $resendUnsafeWithSameReference && ! $outcomeConfirmedFailed;
+
+            $failedStatus = $requiresManualReview
                 ? $this->orderStatus->markNeedsReview($locked->delivery_status)
                 : $this->orderStatus->finalizePendingFailure($locked->delivery_status);
 
@@ -717,7 +812,7 @@ final class OrderFulfillmentService
             // `Pending` submission and restore it on `Gagal`, this needs
             // a deliberate `REFUND`/`MANUAL_ADJUSTMENT` branch added
             // here — don't assume it.
-            Log::warning($transactionAlreadyFormed ? 'Pending delivery finalized as needs-review' : 'Pending delivery finalized as failed', ['supplier_response' => $supplierResponse]);
+            Log::warning($requiresManualReview ? 'Pending delivery finalized as needs-review' : 'Pending delivery finalized as failed', ['supplier_response' => $supplierResponse]);
 
             return $locked->fresh();
         });

@@ -12,7 +12,63 @@ const apiHost = process.env.NEXT_PUBLIC_API_URL
   ? new URL(process.env.NEXT_PUBLIC_API_URL).hostname
   : null;
 
+/**
+ * The CSP below needs the real scheme, not an assumed `https://` — e2e's
+ * throwaway backend (`e2e/tests/constants.ts` `BACKEND_URL`) and local
+ * dev's Herd/`php artisan serve` both run on plain `http://`. Hardcoding
+ * `https://` here silently CSP-blocks every browser fetch to the backend
+ * on any non-https `NEXT_PUBLIC_API_URL` — found live via the e2e suite
+ * (5 Playwright specs failed on this exact bug, PR #224).
+ */
+const apiOrigin = process.env.NEXT_PUBLIC_API_URL
+  ? new URL(process.env.NEXT_PUBLIC_API_URL).origin
+  : null;
+
+/**
+ * ADR-101 decision 8 (narrowed, see the ADR's 2026-09-16 addendum 3):
+ * a static `headers()` CSP, not a per-request nonce — a nonce forces
+ * every page to render dynamically (Next's own bundled CSP guide),
+ * which would reverse ADR-071 PR1's whole point (removing
+ * `force-dynamic` from this same root layout so pages stay
+ * static/ISR-cached). Decision 9 already removed the one known
+ * inline-script-injection vector (the admin free-text SeoScript
+ * field), so a source allowlist alone — no `strict-dynamic`/nonce
+ * needed — already delivers the report's real ask (block an
+ * unauthorized script *origin*, the Magecart/skimmer case).
+ * `'unsafe-inline'` stays on script-src/style-src because Next's own
+ * hydration payload, the JSON-LD/theme-preset inline tags
+ * (`app/layout.tsx`), and the FB/TikTok pixel init snippets are all
+ * inline by construction — none of them are the threat this CSP
+ * exists to stop, an unrecognised *source* is.
+ */
+// React needs eval() in development mode for stack-trace reconstruction
+// (Next's own CSP guide) — never used in production, so this only ever
+// loosens dev/e2e, not the deployed policy.
+const isDev = process.env.NODE_ENV !== "production";
+
+const cspDirectives = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://www.googletagmanager.com https://connect.facebook.net https://analytics.tiktok.com`,
+  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob: https://cdn.pekangame.space${apiOrigin ? ` ${apiOrigin}` : ""}`,
+  "font-src 'self'",
+  `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ""} https://www.google-analytics.com https://analytics.google.com https://analytics.tiktok.com`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  "upgrade-insecure-requests",
+].join("; ");
+
 const nextConfig: NextConfig = {
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [{ key: "Content-Security-Policy", value: cspDirectives }],
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       ...(apiHost

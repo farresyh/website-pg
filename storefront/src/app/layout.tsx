@@ -11,7 +11,7 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import BottomNav from "@/components/layout/BottomNav";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
-import { getSeoSettings, getSeoScripts, renderTemplate } from "@/lib/seo";
+import { getSeoSettings, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 import { getThemePreset, generateThemeCss } from "@/lib/theme-presets";
 
@@ -71,19 +71,15 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [branding, settings, scripts, plans] = await Promise.all([
+  const [branding, settings, plans] = await Promise.all([
     getBranding(),
     getSeoSettings(),
-    getSeoScripts(),
     listPlans(),
   ]);
   const membershipEnabled = plans.length > 0;
 
   const themePreset = getThemePreset(branding.themePreset);
   const themeCss = generateThemeCss(themePreset, branding.themeMode);
-
-  const headScripts = scripts.filter((s) => s.location === "head").sort((a, b) => a.priority - b.priority);
-  const bodyEndScripts = scripts.filter((s) => s.location === "body_end").sort((a, b) => a.priority - b.priority);
 
   // ADR-029 addendum decision 12: Organization JSON-LD, toggled per
   // reseller_seo_settings.schema_organization_enabled.
@@ -106,10 +102,11 @@ export default async function RootLayout({
         {organizationJsonLd && (
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }} />
         )}
-        {/* ADR-029 addendum decision 13: admin-authored head scripts, injected verbatim in priority order. */}
-        {headScripts.map((s, i) => (
-          <Script key={`head-script-${i}`} id={`seo-head-script-${i}`} strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: s.code }} />
-        ))}
+        {/* ADR-101 decision 9: ADR-029 addendum decision 13's admin-authored
+          * free-text head/body_end <script> feed is removed (reversed) — it
+          * defeated any CSP allowlist by design. The FB/TikTok pixels below
+          * (and GA, end of body) are the only three vendors it was ever
+          * used for, and they're already named fields, not raw script. */}
         {/* SEO-6/decision 14's FB Pixel + TikTok Pixel — next/script, not @next/third-parties (no official package exists for either).
           * ADR-060 PR-6: the pixel id is now an affiliate-editable field
           * (charset-gated server-side to `[A-Za-z0-9._-]`), and it lands
@@ -152,10 +149,6 @@ export default async function RootLayout({
             <BottomNav />
           </SearchProvider>
         </SiteConfigProvider>
-        {/* ADR-029 addendum decision 13: admin-authored end-of-body scripts, injected verbatim in priority order. */}
-        {bodyEndScripts.map((s, i) => (
-          <Script key={`body-end-script-${i}`} id={`seo-body-end-script-${i}`} strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: s.code }} />
-        ))}
         {settings.ga_measurement_id && <GoogleAnalytics gaId={settings.ga_measurement_id} />}
         {/* ADR-071 PR4 decision 12 — Core Web Vitals. SpeedInsights is
           * the dashboard; WebVitals mirrors every measurement to

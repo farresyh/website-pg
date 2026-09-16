@@ -32,6 +32,14 @@ export default function NeedsReviewBanner({ order, sandbox }: { order: OrderDeta
           {errorCode && errorMessage && <span className="text-gray-400"> ({errorCode})</span>}
         </p>
       )}
+      {/* ADR-102 decision 13 — plain-language explanation for why the Resend/Retry button below is disabled (or requires an override reason), on top of the raw error_code/message above. */}
+      {order.delivery_retry_unsafe_with_same_reference && (
+        <p className="mt-1 text-gray-600 dark:text-gray-400">
+          {supplierName} already recorded a final result for this exact reference — resending under the same reference is
+          unlikely to change the outcome, and swapping the package does not escape this either. Resolve via the supplier&apos;s
+          own records first, or use the mandatory override reason below if you&apos;re certain it&apos;s worth retrying anyway.
+        </p>
+      )}
       <p className="mt-1 text-gray-600 dark:text-gray-400">
         {sandbox ? (
           "In a real order these same fields would be used to cross-reference the supplier's own dashboard:"

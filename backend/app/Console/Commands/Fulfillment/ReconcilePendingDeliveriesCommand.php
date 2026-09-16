@@ -66,6 +66,7 @@ class ReconcilePendingDeliveriesCommand extends Command
 
         $this->retryStuckProcessing($staleAfterMinutes);
         $this->flagStaleDuplicateReferences($staleAfterMinutes, $orderStatus);
+        $this->reclassifyConfirmedFailedNeedsReview($orderStatus);
         $this->checkStalePending($orderStatus);
 
         return self::SUCCESS;
@@ -95,17 +96,20 @@ class ReconcilePendingDeliveriesCommand extends Command
     }
 
     /**
-     * Gap Y catch-up — widened by ADR-098 to also catch a stale Failed
-     * order carrying one of Digiflazz's own "Terbentuk Transaksi=Ya"
-     * rc codes (`DigiflazzAdapter::TRANSACTION_ALREADY_FORMED_RC_CODES`,
-     * the single source of truth, never a second hand-copied list),
-     * not just Gamevion's literal `'duplicate_reference'` string. The
-     * rc-code branch is supplier-scoped (`whereHas('supplier', ...
-     * digiflazz)`) — Gamevion's own `failureFrom()` can set `error_code`
-     * from an arbitrary, unbounded string in Gamevion's own response
-     * body, so an unscoped `error_code IN (...)` match against
-     * Digiflazz's numeric codes risks misclassifying an unrelated
-     * Gamevion failure that happens to share the same string.
+     * Gap Y catch-up. Was widened by ADR-098 to also catch a stale
+     * Failed order carrying one of Digiflazz's own "Terbentuk
+     * Transaksi=Ya" rc codes — ADR-102 decision 4 REMOVES that
+     * Digiflazz branch again: those codes are now a confirmed-Gagal
+     * outcome that belongs on Failed permanently (Issue Voucher
+     * already available there), so detouring one through NeedsReview
+     * here would just be immediately reversed by
+     * reclassifyConfirmedFailedNeedsReview() below in the very same
+     * command run — a pointless flip-flop, not a correctness bug, but
+     * confusing to read in the logs. Only Gamevion's own
+     * `'duplicate_reference'` stays here: it is still genuinely
+     * ambiguous (no status field confirms anything), so a stale Failed
+     * row carrying it still needs the same Failed→NeedsReview catch-up
+     * Gap Y always existed for.
      *
      * Row-locked despite this command only ever running as a single
      * scheduled instance — same discipline this codebase applies to
@@ -116,13 +120,7 @@ class ReconcilePendingDeliveriesCommand extends Command
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Failed->value)
             ->where('updated_at', '<=', now()->subMinutes($staleAfterMinutes))
-            ->where(function ($query) {
-                $query->where('supplier_response->error_code', 'duplicate_reference')
-                    ->orWhere(function ($query) {
-                        $query->whereIn('supplier_response->error_code', DigiflazzAdapter::TRANSACTION_ALREADY_FORMED_RC_CODES)
-                            ->whereHas('supplier', fn ($q) => $q->where('slug', 'digiflazz'));
-                    });
-            })
+            ->where('supplier_response->error_code', 'duplicate_reference')
             ->get();
 
         $this->info("Flagging {$orders->count()} stale unretriable delivery(ies) for review...");
@@ -141,6 +139,54 @@ class ReconcilePendingDeliveriesCommand extends Command
 
                 Log::withContext(['order_number' => $locked->order_number]);
                 Log::warning('Delivery reconciliation: flagged stale unretriable delivery for manual review');
+            });
+        }
+    }
+
+    /**
+     * ADR-102 decision 7 — a PERMANENT safety net, not a one-time
+     * cleanup: reclassifies any existing needs_review order whose
+     * stored error_code is one of Digiflazz's 20 confirmed-Gagal
+     * codes (`DigiflazzAdapter::TRANSACTION_ALREADY_FORMED_RC_CODES`,
+     * the single source of truth) back to Failed. Decision 4's fix
+     * already stops any FUTURE such order from ever reaching
+     * needs_review in the first place — this clause exists for
+     * anything already stuck there before the fix shipped, and as a
+     * guard against a future misroute (a new bug, a webhook race)
+     * landing one there again. Scoped to `supplier.slug = digiflazz`
+     * for the exact same reason flagStaleDuplicateReferences() above
+     * scopes its own rc-code branch — Gamevion's error_code is an
+     * arbitrary, unbounded string that could coincidentally collide
+     * with one of Digiflazz's numeric codes. No staleness window: this
+     * is a live classification correction, not "wait and see if it
+     * resolves itself" — a combo order's own order-level
+     * supplier_response.error_code is never set (only its legs carry
+     * failure_reason), so this query naturally never touches one.
+     */
+    private function reclassifyConfirmedFailedNeedsReview(OrderStatusService $orderStatus): void
+    {
+        $orders = Order::query()
+            ->where('delivery_status', DeliveryStatus::NeedsReview->value)
+            ->whereIn('supplier_response->error_code', DigiflazzAdapter::TRANSACTION_ALREADY_FORMED_RC_CODES)
+            ->whereHas('supplier', fn ($q) => $q->where('slug', 'digiflazz'))
+            ->get();
+
+        $this->info("Reclassifying {$orders->count()} confirmed-Gagal delivery(ies) from needs_review to failed...");
+
+        foreach ($orders as $order) {
+            DB::transaction(function () use ($order, $orderStatus) {
+                $locked = Order::query()->lockForUpdate()->find($order->id);
+
+                if ($locked === null || $locked->delivery_status !== DeliveryStatus::NeedsReview) {
+                    return;
+                }
+
+                $failed = $orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
+
+                $locked->update(['delivery_status' => $failed->value]);
+
+                Log::withContext(['order_number' => $locked->order_number]);
+                Log::warning('Delivery reconciliation: reclassified confirmed-Gagal delivery from needs_review to failed (ADR-102 decision 4)');
             });
         }
     }

@@ -36,6 +36,16 @@ export interface OrderListItem {
   // that actually answers "where did this order come from".
   affiliate: { id: number; business_name: string } | null;
   wallet_reseller: { id: number; business_name: string } | null;
+  // ADR-102 decision 12 — small compensation badges next to the
+  // existing payment/delivery status tags, computed server-side (cheap
+  // correlated-subquery booleans, never an N+1 per row) from the same
+  // underlying facts decision 11's Order Detail cards show. An order
+  // can carry more than one at once (e.g. paid with a voucher AND
+  // later had a compensation voucher issued) — deliberately not folded
+  // into `delivery_status`, an orthogonal axis (ADR-102 decision 12).
+  has_used_voucher: boolean;
+  has_compensation_voucher: boolean;
+  has_wallet_refund: boolean;
 }
 
 /**
@@ -103,11 +113,21 @@ export interface OrderDetail extends OrderListItem {
   // ADR-073 decision 7: computed server-side (not a stored column) —
   // true once a wallet_refund ledger entry exists for this order.
   wallet_refunded: boolean;
+  // ADR-102 decision 11 (b) — the underlying LedgerEntry's own
+  // amount/created_at, not just the boolean above. Null whenever
+  // wallet_refunded is false.
+  wallet_refund: { amount: number; created_at: string } | null;
   resend_attempts: OrderResendAttempt[];
   // VCH-7: null until VoucherController::storeFromOrder() has been
   // called for this order — the unique index on vouchers.order_id
-  // guarantees at most one.
+  // guarantees at most one. This is the COMPENSATION voucher (issued
+  // because this order failed) — see paid_with_voucher below for the
+  // other, unrelated direction.
   voucher: Voucher | null;
+  // ADR-102 decision 11 (a) — the voucher this order was PAID WITH
+  // (orders.voucher_id, set at checkout) — a real, distinct fact from
+  // `voucher` above, never exposed anywhere before this ADR.
+  paid_with_voucher: Voucher | null;
   // ADR-094 decision 12: empty for every ordinary order.
   delivery_legs: OrderDeliveryLeg[];
   // ADR-094 decision 9: true only for a combo order whose legs
@@ -120,11 +140,18 @@ export interface OrderDetail extends OrderListItem {
   // leg's own component price, admin-adjustable, never trusted as-is
   // (the backend re-derives and caps its own copy independently).
   suggested_voucher_amount: number | null;
-  // ADR-026 addendum (2026-09-16) — computed server-side from the
-  // persisted error_code (Digiflazz's own rc table / Gamevion's
-  // duplicate_reference), never a second hand-copied rc list here.
-  // Drives the Resend Delivery futility warning.
-  delivery_retry_likely_futile: boolean;
+  // ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 —
+  // computed server-side from the persisted error_code (Digiflazz's
+  // own rc table / Gamevion's duplicate_reference), never a second
+  // hand-copied rc list here. The raw signal: drives the Resend
+  // Delivery futility warning text.
+  delivery_retry_unsafe_with_same_reference: boolean;
+  // ADR-102 decision 3, folded by ADR-103 decision 8 — the SCOPED rule
+  // that actually disables the Resend/Retry button and requires a
+  // logged override_reason to proceed anyway: non-combo only from
+  // needs_review; combo via an OR-rollup across legs (unsafe if any
+  // leg is currently needs_review with its own unsafe flag set).
+  resend_unsafe_to_override: boolean;
 }
 
 export interface OrderPage {
@@ -190,7 +217,19 @@ export function getOrder(token: string, id: number) {
  * `POST /api/orders/{order}/retry-delivery` endpoint (ADR-014) still
  * exists on the backend, just isn't called from this UI anymore.
  */
-export function resendOrderDelivery(token: string, id: number, values: { package_id: number; note?: string }) {
+export function resendOrderDelivery(
+  token: string,
+  id: number,
+  values: {
+    package_id: number;
+    note?: string;
+    override_reason?: string;
+    // ADR-102 decision 10 — an optional correction to a customer-typo'd
+    // Player ID/Server ID, applied before resubmitting.
+    player_id?: string;
+    server_id?: string;
+  },
+) {
   return apiFetch<{ message: string }>(`/api/orders/${id}/resend`, { method: "POST", token, body: values });
 }
 
@@ -226,8 +265,8 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
  * multi-leg combo. The orders page routes combo orders (`delivery_legs.
  * length > 0`) here instead of opening ResendDeliveryModal.
  */
-export function retryOrderDelivery(token: string, id: number) {
-  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", token });
+export function retryOrderDelivery(token: string, id: number, values: { override_reason?: string } = {}) {
+  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", token, body: values });
 }
 
 /**

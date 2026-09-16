@@ -318,6 +318,11 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $result = $this->service($adapter)->fulfill($order);
 
         $this->assertSame($result->reference_number.'-L1', $capturedReferenceNumber);
+
+        // ADR-103 decision 1 — the value is now PERSISTED on the leg
+        // itself, not just derived on the fly for this one call.
+        $leg = OrderDeliveryLeg::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame($capturedReferenceNumber, $leg->reference_number);
     }
 
     public function test_one_leg_failing_lands_the_order_in_needs_review_when_the_other_succeeded(): void
@@ -368,6 +373,11 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
         $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
         $this->assertSame(0, SupplierLedgerEntry::query()->count());
+
+        // ADR-103 decision 2 — a plain Failed leg never writes the
+        // unsafe flag (only a NeedsReview outcome does).
+        $leg = OrderDeliveryLeg::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertNull($leg->resend_unsafe_with_same_reference);
     }
 
     public function test_a_duplicate_reference_leg_lands_the_whole_order_in_needs_review(): void
@@ -384,7 +394,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
         $adapter = $this->queuedAdapter([
             SupplierResponse::success(['supplier_ref' => 'SREF-A']),
-            SupplierResponse::failure('duplicate_reference', 'Already submitted', transactionAlreadyFormed: true),
+            SupplierResponse::failure('duplicate_reference', 'Already submitted', resendUnsafeWithSameReference: true),
         ]);
 
         $result = $this->service($adapter)->fulfill($order);
@@ -392,6 +402,40 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
         $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
         $this->assertSame(DeliveryStatus::NeedsReview, $legs[1]->status);
+    }
+
+    /**
+     * ADR-102 decision 4/8 — a confirmed-Gagal leg (Digiflazz's own
+     * status field said so, unlike Gamevion's ambiguous duplicate_reference
+     * above) lands that leg on Failed, not NeedsReview — no new
+     * per-leg infra needed, this falls straight out of decision 4's
+     * split-flag routing (also used by isPartialComboDelivery()'s
+     * already-existing "clean Delivered+Failed mix" bucket).
+     */
+    public function test_a_confirmed_gagal_leg_lands_that_leg_in_failed_not_needs_review(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::failure('02', 'Transaksi Gagal', resendUnsafeWithSameReference: true, outcomeConfirmedFailed: true),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        // Mixed Delivered + Failed, no Pending/NeedsReview leg present —
+        // decision 9's existing partial-delivery bucket, unchanged.
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Failed, $legs[1]->status);
     }
 
     /**
@@ -606,6 +650,139 @@ class OrderFulfillmentServiceComboTest extends TestCase
     }
 
     /**
+     * ADR-103 decisions 3/4 — a Failed leg is confirmed non-delivered,
+     * so a retry mints it a genuinely fresh reference (ULID-suffixed),
+     * never reusing the one the failed attempt already used — mirrors
+     * ADR-102 decision 9 at leg granularity.
+     */
+    public function test_retrying_a_failed_leg_mints_a_fresh_reference(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo);
+
+        $firstAttemptAdapter = $this->queuedAdapter([
+            SupplierResponse::failure('invalid_product', 'Bad product'),
+        ]);
+        $this->service($firstAttemptAdapter)->fulfill($order);
+
+        $leg = OrderDeliveryLeg::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame(DeliveryStatus::Failed, $leg->status);
+        $firstReference = $leg->reference_number;
+        $this->assertSame($order->fresh()->reference_number.'-L1', $firstReference);
+
+        $capturedReferenceNumber = null;
+        $retryAdapter = new class($capturedReferenceNumber) implements SupplierAdapter
+        {
+            public function __construct(private mixed &$captured) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->captured = $request->referenceNumber;
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-RETRY']);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('n/a');
+            }
+        };
+
+        $this->service($retryAdapter)->fulfill($order->fresh());
+
+        $this->assertNotSame($firstReference, $capturedReferenceNumber);
+        $this->assertStringStartsWith($firstReference.'-', $capturedReferenceNumber);
+        $this->assertSame($capturedReferenceNumber, $leg->fresh()->reference_number);
+    }
+
+    /**
+     * ADR-103 decisions 2/3 — a NeedsReview leg reuses its stored
+     * reference unchanged (the double-delivery protection), and only a
+     * NeedsReview outcome ever writes the leg-level
+     * `resend_unsafe_with_same_reference` flag — a plain Failed leg
+     * never does, since decision 3 always gives it a fresh reference
+     * regardless of that flag's value.
+     */
+    public function test_a_needs_review_leg_reuses_its_stored_reference_and_sets_the_unsafe_flag(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::failure('duplicate_reference', 'Already submitted', resendUnsafeWithSameReference: true),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $leg = OrderDeliveryLeg::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame(DeliveryStatus::NeedsReview, $leg->status);
+        $this->assertTrue($leg->resend_unsafe_with_same_reference);
+        $storedReference = $leg->reference_number;
+
+        $capturedReferenceNumber = null;
+        $retryAdapter = new class($capturedReferenceNumber) implements SupplierAdapter
+        {
+            public function __construct(private mixed &$captured) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->captured = $request->referenceNumber;
+
+                return SupplierResponse::failure('duplicate_reference', 'Still ambiguous', resendUnsafeWithSameReference: true);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('n/a');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('n/a');
+            }
+        };
+
+        $this->service($retryAdapter)->fulfill($order->fresh());
+
+        $this->assertSame($storedReference, $capturedReferenceNumber);
+
+        // ADR-103 decision 8 — the order-level OR-rollup now reflects
+        // this leg's own unsafe flag, retiring the old combo branch
+        // that read the (always-empty) Order.supplier_response instead.
+        $this->assertTrue($order->fresh()->resendUnsafeToOverride());
+    }
+
+    /**
      * ADR-094 decision 7 (Phase 3b): a Digiflazz-shaped async leg lands
      * the whole order in Pending, exactly like the single-order path.
      */
@@ -710,6 +887,46 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame(DeliveryStatus::NeedsReview, $finalResult->delivery_status);
         $this->assertSame(DeliveryStatus::Failed, $pendingLeg->fresh()->status);
         $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
+    }
+
+    /**
+     * ADR-103 decision 2 — the async (webhook/poll) finalize path also
+     * writes the leg-level unsafe flag, same as the synchronous
+     * attemptLeg() path, whenever the outcome is genuinely ambiguous.
+     */
+    public function test_finalizing_a_pending_leg_as_needs_review_sets_the_unsafe_flag(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::pending(['status' => 'Pending']),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $pendingLeg = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->firstOrFail();
+
+        $finalResult = $this->service($this->queuedAdapter([]))->finalizePendingDeliveryLeg(
+            $pendingLeg,
+            SupplierOutcome::Failure,
+            null,
+            ['error_message' => 'duplicate'],
+            resendUnsafeWithSameReference: true,
+            outcomeConfirmedFailed: false,
+        );
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $finalResult->delivery_status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $pendingLeg->fresh()->status);
+        $this->assertTrue($pendingLeg->fresh()->resend_unsafe_with_same_reference);
+        $this->assertTrue($order->fresh()->resendUnsafeToOverride());
     }
 
     /**

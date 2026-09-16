@@ -91,8 +91,12 @@ final class SupplierDeliveryCheckService
                         // ADR-098 — this was the real gap the founder's
                         // own Gangstar Mirage City incident went through:
                         // a Pending order's terminal checkStatus() result
-                        // reaching here with no NeedsReview routing at all.
-                        transactionAlreadyFormed: $result->transactionAlreadyFormed,
+                        // reaching here with no NeedsReview routing at
+                        // all. ADR-102 decision 5/6: pass through both
+                        // split flags straight from the adapter's own
+                        // SupplierResponse.
+                        resendUnsafeWithSameReference: $result->resendUnsafeWithSameReference,
+                        outcomeConfirmedFailed: $result->outcomeConfirmedFailed,
                     );
                     $applied = true;
                     break;
@@ -120,9 +124,13 @@ final class SupplierDeliveryCheckService
      * ADR-094 decision 7 (Phase 3b): one checkStatus() call per
      * still-Pending leg — decision 4's same-supplier-only constraint
      * means every leg resolves to the same adapter, but each carries
-     * its own reference (`{order.reference_number}-L{n}`) and
-     * component productRef, so a status check for one leg is never
-     * conflated with another.
+     * its own reference and component productRef, so a status check
+     * for one leg is never conflated with another.
+     *
+     * ADR-103 decision 5: reads the leg's own stored `reference_number`
+     * rather than re-deriving it — "check status" means asking about an
+     * attempt already made, never minting a new one. Only `attemptLeg()`
+     * (the retry path) does that.
      *
      * @return array<int, array{leg_number: int, outcome: string, applied: bool, data: mixed, error_code: ?string, error_message: ?string}>
      */
@@ -139,7 +147,7 @@ final class SupplierDeliveryCheckService
         foreach ($pendingLegs as $leg) {
             $component = $leg->componentPackage;
             $result = $this->supplierAdapters->make($component->supplier->slug)->checkStatus(new SupplierStatusCheckRequest(
-                supplierRef: "{$order->reference_number}-L{$leg->leg_number}",
+                supplierRef: $leg->reference_number,
                 productRef: $component->supplier_package_ref,
                 playerId: $order->player_id,
                 serverId: $order->server_id,
@@ -169,7 +177,8 @@ final class SupplierDeliveryCheckService
                             SupplierOutcome::Failure,
                             null,
                             ['error_code' => $result->errorCode, 'error_message' => $result->errorMessage],
-                            transactionAlreadyFormed: $result->transactionAlreadyFormed,
+                            resendUnsafeWithSameReference: $result->resendUnsafeWithSameReference,
+                            outcomeConfirmedFailed: $result->outcomeConfirmedFailed,
                         );
                         $applied = true;
                         break;

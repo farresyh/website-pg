@@ -43,12 +43,17 @@ final class FakeSupplierAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 $this->errorCode ?? 'sandbox_simulated_failure',
                 $this->errorMessage ?? 'Simulated delivery failure (sandbox).',
-                // ADR-098 — preserves the sandbox's existing, documented
-                // convention (typing 'duplicate_reference' into the
-                // Simulated Outcome picker reaches needs_review) now
-                // that routing reads this generic flag, not a bare
-                // errorCode string match.
-                transactionAlreadyFormed: $this->errorCode === 'duplicate_reference',
+                // ADR-098, split by ADR-102 decision 6 into two typed
+                // conventions the sandbox's Simulated Outcome picker
+                // supports:
+                //  - 'duplicate_reference' — Gamevion-409-alike: unsafe
+                //    to resubmit, outcome NOT confirmed → needs_review.
+                //  - 'confirmed_failed' — Digiflazz-20-code-table-alike:
+                //    unsafe to resubmit AND the outcome IS confirmed →
+                //    Failed (decision 4's actual fix), letting this be
+                //    sandbox-tested without a real Digiflazz call.
+                resendUnsafeWithSameReference: in_array($this->errorCode, ['duplicate_reference', 'confirmed_failed'], true),
+                outcomeConfirmedFailed: $this->errorCode === 'confirmed_failed',
             );
         }
 

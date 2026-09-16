@@ -119,11 +119,12 @@ class OrderTest extends TestCase
         ], $overrides));
     }
 
-    private function leg(Order $order, Package $component, DeliveryStatus $status, int $legNumber): OrderDeliveryLeg
+    private function leg(Order $order, Package $component, DeliveryStatus $status, int $legNumber, ?bool $resendUnsafeWithSameReference = null): OrderDeliveryLeg
     {
         return OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $component->id,
             'supplier_id' => $component->supplier_id, 'leg_number' => $legNumber, 'status' => $status->value,
+            'resend_unsafe_with_same_reference' => $resendUnsafeWithSameReference,
         ]);
     }
 
@@ -192,8 +193,8 @@ class OrderTest extends TestCase
         $this->assertFalse($order->isPartialComboDelivery());
     }
 
-    /** ADR-026 addendum (2026-09-16) — the same generic signal ADR-098 wired into fulfillment, reconstructed from the persisted error_code alone. */
-    public function test_delivery_retry_likely_futile_true_for_a_digiflazz_terminal_rc(): void
+    /** ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — the same generic signal ADR-098 wired into fulfillment, reconstructed from the persisted error_code alone. */
+    public function test_delivery_retry_unsafe_with_same_reference_true_for_a_digiflazz_terminal_rc(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
         $order = $this->makeOrder([
@@ -201,10 +202,10 @@ class OrderTest extends TestCase
             'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
         ]);
 
-        $this->assertTrue($order->deliveryRetryLikelyFutile());
+        $this->assertTrue($order->deliveryRetryUnsafeWithSameReference());
     }
 
-    public function test_delivery_retry_likely_futile_false_for_a_digiflazz_retriable_rc(): void
+    public function test_delivery_retry_unsafe_with_same_reference_false_for_a_digiflazz_retriable_rc(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
         $order = $this->makeOrder([
@@ -212,10 +213,10 @@ class OrderTest extends TestCase
             'supplier_response' => ['error_code' => '44', 'error_message' => 'Saldo tidak cukup'],
         ]);
 
-        $this->assertFalse($order->deliveryRetryLikelyFutile());
+        $this->assertFalse($order->deliveryRetryUnsafeWithSameReference());
     }
 
-    public function test_delivery_retry_likely_futile_true_for_gamevion_duplicate_reference(): void
+    public function test_delivery_retry_unsafe_with_same_reference_true_for_gamevion_duplicate_reference(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $order = $this->makeOrder([
@@ -223,11 +224,11 @@ class OrderTest extends TestCase
             'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
         ]);
 
-        $this->assertTrue($order->deliveryRetryLikelyFutile());
+        $this->assertTrue($order->deliveryRetryUnsafeWithSameReference());
     }
 
     /** Collision-safety: a non-Digiflazz order sharing a Digiflazz rc string must never be flagged. */
-    public function test_delivery_retry_likely_futile_false_for_a_non_digiflazz_order_sharing_a_digiflazz_rc_string(): void
+    public function test_delivery_retry_unsafe_with_same_reference_false_for_a_non_digiflazz_order_sharing_a_digiflazz_rc_string(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $order = $this->makeOrder([
@@ -235,13 +236,105 @@ class OrderTest extends TestCase
             'supplier_response' => ['error_code' => '02', 'error_message' => 'Some unrelated Gamevion error'],
         ]);
 
-        $this->assertFalse($order->deliveryRetryLikelyFutile());
+        $this->assertFalse($order->deliveryRetryUnsafeWithSameReference());
     }
 
-    public function test_delivery_retry_likely_futile_false_when_no_error_code_is_recorded(): void
+    public function test_delivery_retry_unsafe_with_same_reference_false_when_no_error_code_is_recorded(): void
     {
         $order = $this->makeOrder();
 
-        $this->assertFalse($order->deliveryRetryLikelyFutile());
+        $this->assertFalse($order->deliveryRetryUnsafeWithSameReference());
+    }
+
+    /**
+     * ADR-102 decision 3 — the SCOPED rule: a non-combo order only
+     * disables from NeedsReview. A Failed non-combo order is NEVER
+     * scoped-unsafe, even when the raw signal is true, since decision
+     * 9 always regenerates its reference on resend — consulting the
+     * flag there would wrongly disable a perfectly resendable order.
+     */
+    public function test_resend_unsafe_to_override_false_for_a_non_combo_failed_order_even_when_the_raw_signal_is_true(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->makeOrder([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+
+        $this->assertTrue($order->deliveryRetryUnsafeWithSameReference());
+        $this->assertFalse($order->resendUnsafeToOverride());
+    }
+
+    public function test_resend_unsafe_to_override_true_for_a_non_combo_needs_review_order_with_the_raw_signal_true(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $order = $this->makeOrder([
+            'supplier_id' => $supplier->id,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
+        ]);
+
+        $this->assertTrue($order->resendUnsafeToOverride());
+    }
+
+    /**
+     * ADR-103 decision 8 — a combo order's own "combo" branch is
+     * retired: it no longer consults Order.supplier_response (always
+     * empty for a real combo order anyway, ADR-094 decision 3) at all.
+     * Instead it's an OR-rollup across legs' own
+     * resend_unsafe_with_same_reference flag, checked only for a leg
+     * currently NeedsReview — a Failed leg is never genuinely futile
+     * (decision 3 always mints it a fresh reference on retry), so this
+     * stays false even with a stale/irrelevant Order-level signal set.
+     */
+    public function test_resend_unsafe_to_override_false_for_a_combo_failed_order_regardless_of_the_stale_order_level_signal(): void
+    {
+        $component = $this->componentPackage();
+        $order = $this->makeOrder([
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
+        ]);
+        $this->leg($order, $component, DeliveryStatus::Failed, 1);
+
+        $this->assertFalse($order->resendUnsafeToOverride());
+    }
+
+    public function test_resend_unsafe_to_override_true_for_a_combo_order_with_a_needs_review_leg_flagged_unsafe(): void
+    {
+        $component = $this->componentPackage();
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $component, DeliveryStatus::NeedsReview, 1, resendUnsafeWithSameReference: true);
+
+        $this->assertTrue($order->resendUnsafeToOverride());
+    }
+
+    public function test_resend_unsafe_to_override_false_for_a_combo_order_with_a_needs_review_leg_not_flagged_unsafe(): void
+    {
+        $component = $this->componentPackage();
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        // A NeedsReview leg reached via an unexpected exception
+        // (OrderFulfillmentService::attemptLeg()'s catch block) never
+        // sets the flag — genuinely worth retrying, not confirmed
+        // futile.
+        $this->leg($order, $component, DeliveryStatus::NeedsReview, 1, resendUnsafeWithSameReference: null);
+
+        $this->assertFalse($order->resendUnsafeToOverride());
+    }
+
+    /**
+     * One click retries every outstanding leg together — a second,
+     * unflagged Delivered leg alongside a genuinely unsafe NeedsReview
+     * one must not mask the rollup.
+     */
+    public function test_resend_unsafe_to_override_true_when_only_one_of_several_legs_is_flagged_unsafe(): void
+    {
+        $componentA = $this->componentPackage(['supplier_package_ref' => 'GV-4810-A']);
+        $componentB = $this->componentPackage(['supplier_package_ref' => 'GV-4810-B']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $componentA, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $componentB, DeliveryStatus::NeedsReview, 2, resendUnsafeWithSameReference: true);
+
+        $this->assertTrue($order->resendUnsafeToOverride());
     }
 }

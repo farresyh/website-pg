@@ -233,7 +233,9 @@ class OrderManualCheckTest extends TestCase
         $order = $this->pendingOrder(['package_id' => $combo->id, 'supplier_id' => null, 'supplier_product_ref' => null]);
         $leg = OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $component->id,
-            'supplier_id' => $supplier->id, 'leg_number' => 1, 'status' => DeliveryStatus::Pending->value,
+            'supplier_id' => $supplier->id, 'leg_number' => 1,
+            'reference_number' => $order->reference_number.'-L1',
+            'status' => DeliveryStatus::Pending->value,
         ]);
         $this->bindSupplierAdapter(SupplierResponse::success(['supplier_ref' => 'DGFLZ-COMBO-MANUAL-1']));
 

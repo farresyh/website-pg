@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToAffiliate;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
@@ -148,17 +149,20 @@ class Order extends Model
     }
 
     /**
-     * ADR-026 addendum (2026-09-16, found shipping ADR-098) — drives
+     * ADR-026 addendum (2026-09-16, found shipping ADR-098), renamed by
+     * ADR-102 decision 3/5 — the raw "resubmitting this reference is
+     * unsafe" signal (never routing — see SupplierResponse's own
+     * doc comment for the split from outcomeConfirmedFailed). Drives
      * the admin panel's "Resending is unlikely to change this outcome"
-     * warning on a needs_review order. Reconstructs the same
-     * transactionAlreadyFormed classification `ReconcilePendingDeliveriesCommand`'s
-     * catch-up query uses, from the persisted `error_code` alone (the
-     * original `SupplierResponse` itself is long gone by the time an
-     * admin is looking at this order) — never a second hand-copied rc
-     * list, `DigiflazzAdapter::transactionAlreadyFormed()` stays the
+     * warning text. Reconstructs the same classification
+     * `ReconcilePendingDeliveriesCommand`'s catch-up queries use, from
+     * the persisted `error_code` alone (the original `SupplierResponse`
+     * itself is long gone by the time an admin is looking at this
+     * order) — never a second hand-copied rc list,
+     * `DigiflazzAdapter::resendUnsafeWithSameReference()` stays the
      * single source of truth.
      */
-    public function deliveryRetryLikelyFutile(): bool
+    public function deliveryRetryUnsafeWithSameReference(): bool
     {
         $errorCode = $this->supplier_response['error_code'] ?? null;
 
@@ -171,7 +175,46 @@ class Order extends Model
         }
 
         return $this->supplier?->slug === 'digiflazz'
-            && DigiflazzAdapter::transactionAlreadyFormed((string) $errorCode);
+            && DigiflazzAdapter::resendUnsafeWithSameReference((string) $errorCode);
+    }
+
+    /**
+     * ADR-102 decision 3 — the SCOPED rule that actually disables the
+     * Resend/Retry button (as opposed to deliveryRetryUnsafeWithSameReference()
+     * above, the raw underlying signal): a non-combo order only
+     * disables from NeedsReview, since a non-combo Failed order always
+     * gets a fresh reference on resend (decision 9) and is therefore
+     * NEVER genuinely futile there — consulting the flag for a Failed
+     * non-combo order would wrongly disable a perfectly resendable
+     * order (e.g. one that just correctly landed on Failed via decision
+     * 4's reclassification) forever.
+     *
+     * ADR-103 decision 8 — a combo order's own "combo" branch (this
+     * method used to short-circuit true for ANY combo order whose own
+     * `supplier_response` looked unsafe, which in practice was always
+     * false — a real combo order never populates that column, only its
+     * legs do) is retired and folded into the same NeedsReview-only
+     * rule via an OR-rollup: unsafe if ANY leg is currently NeedsReview
+     * with its own `resend_unsafe_with_same_reference` flag set. One
+     * Retry click retries every outstanding leg together (decision 7 —
+     * no per-leg admin UI), so one genuinely unsafe leg is enough to
+     * warrant the same disable+override-reason treatment. A Failed leg
+     * is never checked here, same reasoning as the non-combo case above
+     * — decision 3 always mints it a fresh reference on retry.
+     */
+    public function resendUnsafeToOverride(): bool
+    {
+        if ($this->deliveryLegs->isNotEmpty()) {
+            return $this->deliveryLegs
+                ->where('status', DeliveryStatus::NeedsReview)
+                ->contains(fn (OrderDeliveryLeg $leg) => $leg->resend_unsafe_with_same_reference === true);
+        }
+
+        if (! $this->deliveryRetryUnsafeWithSameReference()) {
+            return false;
+        }
+
+        return $this->delivery_status === DeliveryStatus::NeedsReview;
     }
 
     /**
@@ -189,6 +232,67 @@ class Order extends Model
         return (int) $this->deliveryLegs
             ->where('status', DeliveryStatus::Failed)
             ->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->standard_selling_price ?? 0);
+    }
+
+    /**
+     * ADR-102 decision 1 — the single source of truth for "this order
+     * is already settled, leave delivery alone": true when a
+     * compensation voucher exists for it (`voucher()`, VCH-7) OR a
+     * reseller-wallet refund has already been paid out
+     * (`isAlreadyRefundedToWallet()`). Every guard that used to
+     * hand-roll `Voucher::where('order_id', ...)->exists()` alone
+     * (`OrderController::retryDelivery()`/`resend()`/`markDelivered()`/
+     * `confirmFailed()`, `OrderResendService::assertResendable()`)
+     * reads this instead — the wallet-refund half was a real gap none
+     * of them checked before (order `PG-CGDZOLEHAIR8`, refunded to
+     * wallet, `delivery_status=failed`, nothing stopped a further
+     * resend from delivering the goods on top of the refund already
+     * given).
+     */
+    public function isAlreadyCompensated(): bool
+    {
+        return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet();
+    }
+
+    /**
+     * ADR-073: true once a `wallet_refund` ledger entry exists for
+     * this order's reseller-wallet account. Always false for a
+     * non-wallet order (`wallet_reseller_id` null). Promoted out of
+     * `OrderController::alreadyRefundedToWallet()` (ADR-102 decision 1)
+     * so both the admin-detail response and every resend/retry guard
+     * share the exact same check, computed fresh (never cached/stored)
+     * since it's a cheap indexed lookup and must never go stale.
+     */
+    public function isAlreadyRefundedToWallet(): bool
+    {
+        return $this->walletRefundQuery()->exists();
+    }
+
+    /**
+     * ADR-102 decision 11 (b) — the underlying `LedgerEntry` itself,
+     * not just the boolean above: the admin Order Detail "Wallet
+     * Refund" card needs the actual `amount`/`created_at`, not just a
+     * yes/no. Same query `isAlreadyRefundedToWallet()` already runs,
+     * shared so the two can never drift on what counts as "the" refund
+     * entry for this order.
+     */
+    public function walletRefundLedgerEntry(): ?LedgerEntry
+    {
+        return $this->walletRefundQuery()->first();
+    }
+
+    private function walletRefundQuery(): Builder
+    {
+        if ($this->wallet_reseller_id === null) {
+            return LedgerEntry::query()->whereRaw('1 = 0');
+        }
+
+        return LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('owner_id', $this->wallet_reseller_id)
+            ->where('type', 'wallet_refund')
+            ->where('reference_type', 'order')
+            ->where('reference_id', $this->id);
     }
 
     /**
@@ -232,6 +336,18 @@ class Order extends Model
     public function voucher(): HasOne
     {
         return $this->hasOne(Voucher::class);
+    }
+
+    /**
+     * ADR-102 decision 11 (a) — the voucher this order itself was PAID
+     * WITH (`orders.voucher_id`, set by `VoucherService::redeem()` at
+     * checkout), not the compensation voucher `voucher()` above
+     * represents. Never eager-loaded/exposed anywhere before this —
+     * the admin Order Detail "Voucher Used to Pay" card needs it.
+     */
+    public function paidWithVoucher(): BelongsTo
+    {
+        return $this->belongsTo(Voucher::class, 'voucher_id');
     }
 
     /**

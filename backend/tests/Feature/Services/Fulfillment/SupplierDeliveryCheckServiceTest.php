@@ -149,6 +149,7 @@ class SupplierDeliveryCheckServiceTest extends TestCase
             'component_package_id' => $component->id,
             'supplier_id' => $supplier->id,
             'leg_number' => 1,
+            'reference_number' => $order->reference_number.'-L1',
             'status' => DeliveryStatus::Pending->value,
         ]);
 
@@ -158,5 +159,8 @@ class SupplierDeliveryCheckServiceTest extends TestCase
         $this->app->make(SupplierDeliveryCheckService::class)->check($order);
 
         $this->assertSame('pipe', $adapter->captured?->customerNoSeparator);
+        // ADR-103 decision 5 — reads the leg's own stored reference_number,
+        // never re-derives it.
+        $this->assertSame($order->reference_number.'-L1', $adapter->captured?->supplierRef);
     }
 }

@@ -62,7 +62,6 @@ const sections: PanelNavSection[] = [
           { name: "Meta Templates", href: "/admin/seo/templates" },
           { name: "Game SEO", href: "/admin/seo/games" },
           { name: "Redirects", href: "/admin/seo/redirects" },
-          { name: "Scripts", href: "/admin/seo/scripts" },
           { name: "Crawler", href: "/admin/seo/crawler" },
         ],
       },

@@ -7,16 +7,16 @@ use App\Models\Affiliate;
 use App\Models\AffiliateSeoSettings;
 use App\Models\CrawlerRule;
 use App\Models\Redirect;
-use App\Models\SeoScript;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
  * ADR-029: public, guest-callable SEO data consumed by the storefront
- * (generateMetadata(), middleware.ts's redirect cache, script injection,
- * app/robots.ts). No admin auth on any of these routes, mirroring
- * BrandingControllerTest's same no-auth reasoning (ADR-011).
+ * (generateMetadata(), middleware.ts's redirect cache, app/robots.ts).
+ * No admin auth on any of these routes, mirroring BrandingControllerTest's
+ * same no-auth reasoning (ADR-011). `/seo/scripts` removed by ADR-101
+ * decision 9.
  */
 class SeoControllerTest extends TestCase
 {
@@ -104,18 +104,12 @@ class SeoControllerTest extends TestCase
         $this->postJson('/api/catalog/seo/redirects/record-hit', ['from_path' => '/does-not-exist'])->assertNoContent();
     }
 
-    public function test_scripts_returns_only_active_global_and_affiliate_scoped_rows_ordered_by_priority(): void
+    /** ADR-101 decision 9: `/seo/scripts` (admin-authored free-text <script> feed) is removed — proves it, not just relies on the route file being edited. */
+    public function test_scripts_route_no_longer_exists(): void
     {
-        $affiliate = $this->primaryAffiliate();
-        SeoScript::query()->create(['affiliate_id' => null, 'name' => 'GA', 'location' => 'head', 'code' => '<script>ga()</script>', 'priority' => 2, 'is_active' => true]);
-        SeoScript::query()->create(['affiliate_id' => $affiliate->id, 'name' => 'Pixel', 'location' => 'head', 'code' => '<script>fb()</script>', 'priority' => 1, 'is_active' => true]);
-        SeoScript::query()->create(['affiliate_id' => null, 'name' => 'Disabled', 'location' => 'head', 'code' => '<script>x()</script>', 'priority' => 0, 'is_active' => false]);
+        $this->primaryAffiliate();
 
-        $response = $this->getJson('/api/catalog/seo/scripts');
-
-        $response->assertOk();
-        $this->assertCount(2, $response->json());
-        $this->assertSame([1, 2], collect($response->json())->pluck('priority')->all());
+        $this->getJson('/api/catalog/seo/scripts')->assertNotFound();
     }
 
     public function test_robots_merges_default_disallow_paths_into_every_allowed_bot_but_not_disallowed_ones(): void
@@ -143,19 +137,17 @@ class SeoControllerTest extends TestCase
         $this->assertSame([], $bad['disallow_paths']);
     }
 
-    public function test_forget_cache_clears_settings_redirects_and_scripts_but_not_robots(): void
+    public function test_forget_cache_clears_settings_and_redirects_but_not_robots(): void
     {
         $affiliate = $this->primaryAffiliate();
         Cache::put("catalog.public.seo.{$affiliate->id}", ['stale' => true], 60);
         Cache::put("catalog.public.redirects.{$affiliate->id}", ['stale' => true], 60);
-        Cache::put("catalog.public.seo_scripts.{$affiliate->id}", ['stale' => true], 60);
         Cache::put('catalog.public.crawler_rules', ['stale' => true], 60);
 
         SeoController::forgetCache($affiliate->id);
 
         $this->assertFalse(Cache::has("catalog.public.seo.{$affiliate->id}"));
         $this->assertFalse(Cache::has("catalog.public.redirects.{$affiliate->id}"));
-        $this->assertFalse(Cache::has("catalog.public.seo_scripts.{$affiliate->id}"));
         $this->assertTrue(Cache::has('catalog.public.crawler_rules'));
     }
 
