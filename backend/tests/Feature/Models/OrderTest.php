@@ -119,11 +119,12 @@ class OrderTest extends TestCase
         ], $overrides));
     }
 
-    private function leg(Order $order, Package $component, DeliveryStatus $status, int $legNumber): OrderDeliveryLeg
+    private function leg(Order $order, Package $component, DeliveryStatus $status, int $legNumber, ?bool $resendUnsafeWithSameReference = null): OrderDeliveryLeg
     {
         return OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $component->id,
             'supplier_id' => $component->supplier_id, 'leg_number' => $legNumber, 'status' => $status->value,
+            'resend_unsafe_with_same_reference' => $resendUnsafeWithSameReference,
         ]);
     }
 
@@ -278,24 +279,61 @@ class OrderTest extends TestCase
     }
 
     /**
-     * ADR-102 decision 3 — a combo order keeps checking the flag
-     * regardless of Failed/NeedsReview (decision 9 excludes combo from
-     * reference regeneration, see ADR-103), unlike the non-combo case
-     * above.
+     * ADR-103 decision 8 — a combo order's own "combo" branch is
+     * retired: it no longer consults Order.supplier_response (always
+     * empty for a real combo order anyway, ADR-094 decision 3) at all.
+     * Instead it's an OR-rollup across legs' own
+     * resend_unsafe_with_same_reference flag, checked only for a leg
+     * currently NeedsReview — a Failed leg is never genuinely futile
+     * (decision 3 always mints it a fresh reference on retry), so this
+     * stays false even with a stale/irrelevant Order-level signal set.
      */
-    public function test_resend_unsafe_to_override_true_for_a_combo_failed_order_with_the_raw_signal_true(): void
+    public function test_resend_unsafe_to_override_false_for_a_combo_failed_order_regardless_of_the_stale_order_level_signal(): void
     {
         $component = $this->componentPackage();
-        // 'duplicate_reference' doesn't depend on Order.supplier
-        // (always null for a real combo order, ADR-094 decision 3) —
-        // the realistic shape a combo order's raw signal could take,
-        // unlike a Digiflazz rc which needs a supplier this model
-        // never has.
         $order = $this->makeOrder([
             'delivery_status' => DeliveryStatus::Failed->value,
             'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
         ]);
         $this->leg($order, $component, DeliveryStatus::Failed, 1);
+
+        $this->assertFalse($order->resendUnsafeToOverride());
+    }
+
+    public function test_resend_unsafe_to_override_true_for_a_combo_order_with_a_needs_review_leg_flagged_unsafe(): void
+    {
+        $component = $this->componentPackage();
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $component, DeliveryStatus::NeedsReview, 1, resendUnsafeWithSameReference: true);
+
+        $this->assertTrue($order->resendUnsafeToOverride());
+    }
+
+    public function test_resend_unsafe_to_override_false_for_a_combo_order_with_a_needs_review_leg_not_flagged_unsafe(): void
+    {
+        $component = $this->componentPackage();
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        // A NeedsReview leg reached via an unexpected exception
+        // (OrderFulfillmentService::attemptLeg()'s catch block) never
+        // sets the flag — genuinely worth retrying, not confirmed
+        // futile.
+        $this->leg($order, $component, DeliveryStatus::NeedsReview, 1, resendUnsafeWithSameReference: null);
+
+        $this->assertFalse($order->resendUnsafeToOverride());
+    }
+
+    /**
+     * One click retries every outstanding leg together — a second,
+     * unflagged Delivered leg alongside a genuinely unsafe NeedsReview
+     * one must not mask the rollup.
+     */
+    public function test_resend_unsafe_to_override_true_when_only_one_of_several_legs_is_flagged_unsafe(): void
+    {
+        $componentA = $this->componentPackage(['supplier_package_ref' => 'GV-4810-A']);
+        $componentB = $this->componentPackage(['supplier_package_ref' => 'GV-4810-B']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $componentA, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $componentB, DeliveryStatus::NeedsReview, 2, resendUnsafeWithSameReference: true);
 
         $this->assertTrue($order->resendUnsafeToOverride());
     }

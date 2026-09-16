@@ -187,26 +187,31 @@ class Order extends Model
      * NEVER genuinely futile there — consulting the flag for a Failed
      * non-combo order would wrongly disable a perfectly resendable
      * order (e.g. one that just correctly landed on Failed via decision
-     * 4's reclassification) forever. A combo order keeps checking the
-     * flag regardless of Failed/NeedsReview, unchanged from today —
-     * decision 9 is explicitly non-combo-only (ADR-103 covers the
-     * combo case), so a combo order can still be genuinely futile even
-     * while sitting at Failed. In practice this combo branch is
-     * currently quiet — a real combo order never populates this
-     * Order's own `supplier_response` (only its legs carry
-     * `failure_reason`), so the raw signal above is always false for
-     * one today. It stays here, correctly scoped, so it activates the
-     * moment ADR-103's per-leg signal rolls up onto it, rather than
-     * needing a second pass to re-derive this rule later.
+     * 4's reclassification) forever.
+     *
+     * ADR-103 decision 8 — a combo order's own "combo" branch (this
+     * method used to short-circuit true for ANY combo order whose own
+     * `supplier_response` looked unsafe, which in practice was always
+     * false — a real combo order never populates that column, only its
+     * legs do) is retired and folded into the same NeedsReview-only
+     * rule via an OR-rollup: unsafe if ANY leg is currently NeedsReview
+     * with its own `resend_unsafe_with_same_reference` flag set. One
+     * Retry click retries every outstanding leg together (decision 7 —
+     * no per-leg admin UI), so one genuinely unsafe leg is enough to
+     * warrant the same disable+override-reason treatment. A Failed leg
+     * is never checked here, same reasoning as the non-combo case above
+     * — decision 3 always mints it a fresh reference on retry.
      */
     public function resendUnsafeToOverride(): bool
     {
-        if (! $this->deliveryRetryUnsafeWithSameReference()) {
-            return false;
+        if ($this->deliveryLegs->isNotEmpty()) {
+            return $this->deliveryLegs
+                ->where('status', DeliveryStatus::NeedsReview)
+                ->contains(fn (OrderDeliveryLeg $leg) => $leg->resend_unsafe_with_same_reference === true);
         }
 
-        if ($this->deliveryLegs->isNotEmpty()) {
-            return true;
+        if (! $this->deliveryRetryUnsafeWithSameReference()) {
+            return false;
         }
 
         return $this->delivery_status === DeliveryStatus::NeedsReview;

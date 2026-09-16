@@ -364,10 +364,15 @@ class DigiflazzWebhookControllerTest extends TestCase
     }
 
     /**
-     * ADR-094 decision 7 (Phase 3b): a combo leg's ref_id carries the
-     * -L{n} suffix — parsed off before the order lookup, then routed
-     * through finalizePendingDeliveryLeg() re-scoped to the leg's own
-     * component package, never the order's own (null) supplier fields.
+     * ADR-094 decision 7 (Phase 3b) / ADR-103 decision 1: a combo leg's
+     * ref_id is its own stored `reference_number` (not derived/parsed
+     * off the order's) — resolved via a direct OrderDeliveryLeg lookup,
+     * then routed through finalizePendingDeliveryLeg() re-scoped to the
+     * leg's own component package, never the order's own (null)
+     * supplier fields. The stored value still matches what a real
+     * attemptLeg() call would have produced on first attempt
+     * (`{order.reference_number}-L{leg_number}`), same as decision 1's
+     * backfill.
      */
     private function comboOrderWithPendingLeg(array $overrides = []): array
     {
@@ -411,6 +416,7 @@ class DigiflazzWebhookControllerTest extends TestCase
             'component_package_id' => $component->id,
             'supplier_id' => $supplier->id,
             'leg_number' => 1,
+            'reference_number' => $order->reference_number.'-L1',
             'status' => DeliveryStatus::Pending->value,
         ]);
 

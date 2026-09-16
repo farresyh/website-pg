@@ -146,10 +146,11 @@ export interface OrderDetail extends OrderListItem {
   // hand-copied rc list here. The raw signal: drives the Resend
   // Delivery futility warning text.
   delivery_retry_unsafe_with_same_reference: boolean;
-  // ADR-102 decision 3 — the SCOPED rule (non-combo: only from
-  // needs_review; combo: regardless of failed/needs_review) that
-  // actually disables the Resend/Retry button and requires a logged
-  // override_reason to proceed anyway.
+  // ADR-102 decision 3, folded by ADR-103 decision 8 — the SCOPED rule
+  // that actually disables the Resend/Retry button and requires a
+  // logged override_reason to proceed anyway: non-combo only from
+  // needs_review; combo via an OR-rollup across legs (unsafe if any
+  // leg is currently needs_review with its own unsafe flag set).
   resend_unsafe_to_override: boolean;
 }
 

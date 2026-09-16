@@ -17,6 +17,7 @@ use App\Services\Supplier\SupplierOutcome;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -380,8 +381,16 @@ final class OrderFulfillmentService
         $drawdownPrice = null;
         $legId = $leg->id;
 
+        // ADR-103 decision 3 — captured OUTSIDE the transaction below by
+        // reference: a thrown exception mid-call rolls back everything
+        // written inside that transaction, including the reference
+        // persist, but this PHP variable survives the rollback — the
+        // catch block re-persists it in its own (committed) transaction
+        // so a genuinely-attempted reference is never silently lost.
+        $legReferenceNumber = null;
+
         try {
-            DB::transaction(function () use ($order, $leg, &$drawdownPrice) {
+            DB::transaction(function () use ($order, $leg, &$drawdownPrice, &$legReferenceNumber) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
@@ -390,11 +399,28 @@ final class OrderFulfillmentService
                     return;
                 }
 
-                $component = $lockedLeg->componentPackage;
-                $adapter = $this->supplierAdapters->make($component->supplier->slug);
-                $legReferenceNumber = "{$order->reference_number}-L{$lockedLeg->leg_number}";
+                // ADR-103 decision 3 — mirrors ADR-102 decision 9 at leg
+                // granularity: NotStarted keeps today's derived value
+                // (now persisted instead of re-derived every call);
+                // Failed mints a fresh reference (decision 4's ULID
+                // suffix — safe, this leg is confirmed non-delivered);
+                // NeedsReview reuses the stored value unchanged (the
+                // double-delivery protection, same reasoning as
+                // ORD-8/decision 9). Persisted BEFORE the supplier call
+                // (not after) so a thrown exception below still leaves
+                // this attempt's reference queryable.
+                $legReferenceNumber = match ($lockedLeg->status) {
+                    DeliveryStatus::Failed => "{$order->reference_number}-L{$lockedLeg->leg_number}-".Str::ulid(),
+                    DeliveryStatus::NeedsReview => $lockedLeg->reference_number,
+                    default => $lockedLeg->reference_number ?? "{$order->reference_number}-L{$lockedLeg->leg_number}",
+                };
 
                 Log::withContext(['reference_number' => $legReferenceNumber]);
+
+                $lockedLeg->update(['reference_number' => $legReferenceNumber]);
+
+                $component = $lockedLeg->componentPackage;
+                $adapter = $this->supplierAdapters->make($component->supplier->slug);
 
                 $result = $adapter->createOrder(new SupplierOrderRequest(
                     productRef: $component->supplier_package_ref,
@@ -424,10 +450,18 @@ final class OrderFulfillmentService
                     // routing fulfill()'s own Failure branch uses.
                     $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
 
-                    $lockedLeg->update([
+                    $lockedLeg->update(array_merge([
                         'status' => $requiresManualReview ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
                         'failure_reason' => $result->errorMessage,
-                    ]);
+                    ], $requiresManualReview ? [
+                        // ADR-103 decision 2 — populated only when this
+                        // leg actually lands on NeedsReview, feeding
+                        // decision 8's OR-rollup. A Failed leg never
+                        // needs it: decision 3 always mints it a fresh
+                        // reference on retry, so it can never be
+                        // genuinely futile the way a NeedsReview leg can.
+                        'resend_unsafe_with_same_reference' => true,
+                    ] : []));
 
                     Log::warning($requiresManualReview ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
                         'leg_id' => $lockedLeg->id,
@@ -468,7 +502,7 @@ final class OrderFulfillmentService
                 'exception' => $e->getMessage(),
             ]);
 
-            DB::transaction(function () use ($legId, $e) {
+            DB::transaction(function () use ($legId, $e, $legReferenceNumber) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($legId);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
@@ -477,10 +511,18 @@ final class OrderFulfillmentService
                     return;
                 }
 
-                $lockedLeg->update([
+                $lockedLeg->update(array_merge([
                     'status' => DeliveryStatus::NeedsReview->value,
                     'failure_reason' => 'Delivery attempt failed unexpectedly: '.$e->getMessage(),
-                ]);
+                ], $legReferenceNumber !== null ? [
+                    // ADR-103 decisions 1/3 — the transaction that
+                    // computed this reference and attempted the actual
+                    // supplier call rolled back with the exception;
+                    // re-persisted here so a NeedsReview leg reached via
+                    // this path still reuses the SAME reference it was
+                    // genuinely attempted under, not a stale/null one.
+                    'reference_number' => $legReferenceNumber,
+                ] : []));
             });
 
             return;
@@ -648,10 +690,16 @@ final class OrderFulfillmentService
                 ? $this->orderStatus->markNeedsReview($lockedLeg->status)
                 : $this->orderStatus->finalizePendingFailure($lockedLeg->status);
 
-            $lockedLeg->update([
+            $lockedLeg->update(array_merge([
                 'status' => $failedStatus->value,
                 'failure_reason' => is_array($supplierResponse) ? ($supplierResponse['error_message'] ?? null) : null,
-            ]);
+            ], $requiresManualReview ? [
+                // ADR-103 decision 2 — same leg-level flag attemptLeg()
+                // writes, populated here for the async (webhook/poll)
+                // finalize path too, only when this leg actually lands
+                // on NeedsReview (see attemptLeg()'s identical comment).
+                'resend_unsafe_with_same_reference' => true,
+            ] : []));
 
             Log::warning($requiresManualReview ? 'Combo leg finalized as needs-review' : 'Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
         });

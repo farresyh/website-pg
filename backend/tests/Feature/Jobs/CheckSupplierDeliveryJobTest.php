@@ -235,6 +235,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
                 'component_package_id' => $component->id,
                 'supplier_id' => $supplier->id,
                 'leg_number' => $i + 1,
+                'reference_number' => $order->reference_number.'-L'.($i + 1),
                 'status' => $status,
             ]);
         }
