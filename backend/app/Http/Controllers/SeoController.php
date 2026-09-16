@@ -6,7 +6,6 @@ use App\Models\Affiliate;
 use App\Models\AffiliateSeoSettings;
 use App\Models\CrawlerRule;
 use App\Models\Redirect;
-use App\Models\SeoScript;
 use App\Services\Cache\NextRevalidation;
 use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
@@ -16,14 +15,18 @@ use Illuminate\Support\Facades\Cache;
 /**
  * ADR-029: public, guest-callable storefront SEO data — settings/
  * templates/pixel IDs for generateMetadata(), redirects for
- * middleware.ts's in-memory cache (decision 9), scripts for layout
- * injection (addendum 2 decision 13), crawler rules for app/robots.ts
- * (addendum 2 decision 14). Same no-auth reasoning as BrandingController
- * (ADR-011). Brand resolved per `Host` (ADR-060, `storefront.brand`
- * middleware); the per-cache-key `{affiliate->id}` already isolates
- * brands. Merging the primary's admin-central meta templates with a
- * third-party brand's own pixel IDs (ADR-060 addendum) is PR-6 — PR-2
- * just resolves the right row.
+ * middleware.ts's in-memory cache (decision 9), crawler rules for
+ * app/robots.ts (addendum 2 decision 14). Same no-auth reasoning as
+ * BrandingController (ADR-011). Brand resolved per `Host` (ADR-060,
+ * `storefront.brand` middleware); the per-cache-key `{affiliate->id}`
+ * already isolates brands. Merging the primary's admin-central meta
+ * templates with a third-party brand's own pixel IDs (ADR-060 addendum)
+ * is PR-6 — PR-2 just resolves the right row.
+ *
+ * `scripts()` (addendum 2 decision 13's admin-authored <script> feed)
+ * removed by ADR-101 decision 9 — it defeated any CSP allowlist by
+ * design; the `ga_measurement_id`/`fb_pixel_id`/`tiktok_pixel_id` fields
+ * above already cover the only three vendors it was ever used for.
  */
 class SeoController extends Controller
 {
@@ -106,24 +109,6 @@ class SeoController extends Controller
         return response()->json(null, 204);
     }
 
-    public function scripts(): JsonResponse
-    {
-        $affiliate = $this->brand->get();
-
-        $payload = Cache::remember(
-            "catalog.public.seo_scripts.{$affiliate->id}",
-            self::CACHE_TTL_SECONDS,
-            fn () => SeoScript::query()
-                ->where('is_active', true)
-                ->where(fn ($q) => $q->whereNull('affiliate_id')->orWhere('affiliate_id', $affiliate->id))
-                ->orderBy('priority')
-                ->get(['location', 'code', 'priority'])
-                ->toArray(),
-        );
-
-        return response()->json($payload);
-    }
-
     /**
      * Consumed by storefront app/robots.ts (addendum 2 decision 14).
      * `crawler_default_disallow_paths` (2026-08-22 refinement, founder
@@ -174,7 +159,6 @@ class SeoController extends Controller
     {
         Cache::forget("catalog.public.seo.{$affiliateId}");
         Cache::forget("catalog.public.redirects.{$affiliateId}");
-        Cache::forget("catalog.public.seo_scripts.{$affiliateId}");
 
         $primary = Affiliate::query()->where('is_primary', true)->first();
         if ($primary && $affiliateId === $primary->id) {

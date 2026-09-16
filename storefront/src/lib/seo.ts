@@ -5,11 +5,12 @@ import { catalogCache, safeRead } from "@/lib/cache";
 
 /**
  * ADR-029 — public SEO data consumed server-side: settings/templates/
- * pixel IDs for generateMetadata()/layout scripts, redirects for
- * proxy.ts's in-memory cache (decision 9 — Next.js 16 renamed
- * middleware.ts to proxy.ts, confirmed against this project's own
- * bundled docs per storefront/AGENTS.md), scripts for layout
- * injection, crawler rules for app/robots.ts.
+ * pixel IDs for generateMetadata()/layout, redirects for proxy.ts's
+ * in-memory cache (decision 9 — Next.js 16 renamed middleware.ts to
+ * proxy.ts, confirmed against this project's own bundled docs per
+ * storefront/AGENTS.md), crawler rules for app/robots.ts.
+ * `getSeoScripts` (addendum 2 decision 13's admin-authored free-text
+ * <script> feed) removed by ADR-101 decision 9.
  *
  * ADR-044: schemas are the source of truth for the wire shapes below.
  */
@@ -29,14 +30,6 @@ const SeoSettingsSchema = z.object({
 });
 
 export type SeoSettings = z.infer<typeof SeoSettingsSchema>;
-
-const SeoScriptWireSchema = z.object({
-  location: z.enum(["head", "body_end"]),
-  code: z.string(),
-  priority: z.number(),
-});
-
-export type SeoScriptWire = z.infer<typeof SeoScriptWireSchema>;
 
 const CrawlerRuleWireSchema = z.object({
   bot_name: z.string(),
@@ -63,7 +56,7 @@ const SEO_SETTINGS_FALLBACK: SeoSettings = {
 };
 
 /**
- * ADR-071 PR1: `getSeoSettings` / `getSeoScripts` feed the root layout,
+ * ADR-071 PR1: `getSeoSettings` feeds the root layout,
  * which no longer carries `force-dynamic` (so `loading.tsx` and RSC
  * prefetch work). They join the shared `catalog` Data-Cache tag — an
  * admin SEO save purges it via the PR2 revalidation webhook (mirroring
@@ -84,18 +77,6 @@ export async function getSeoSettings(): Promise<SeoSettings> {
       return parseResponse(SeoSettingsSchema, raw, "SeoSettings", path);
     },
     SEO_SETTINGS_FALLBACK,
-  );
-}
-
-export async function getSeoScripts(): Promise<SeoScriptWire[]> {
-  const path = "/api/catalog/seo/scripts";
-  return safeRead(
-    "getSeoScripts",
-    async () => {
-      const raw = await apiFetch<unknown>(path, { next: catalogCache });
-      return parseResponse(z.array(SeoScriptWireSchema), raw, "SeoScriptWire[]", path);
-    },
-    [],
   );
 }
 
