@@ -260,8 +260,26 @@ class Order extends Model
      */
     public function isAlreadyRefundedToWallet(): bool
     {
+        return $this->walletRefundQuery()->exists();
+    }
+
+    /**
+     * ADR-102 decision 11 (b) — the underlying `LedgerEntry` itself,
+     * not just the boolean above: the admin Order Detail "Wallet
+     * Refund" card needs the actual `amount`/`created_at`, not just a
+     * yes/no. Same query `isAlreadyRefundedToWallet()` already runs,
+     * shared so the two can never drift on what counts as "the" refund
+     * entry for this order.
+     */
+    public function walletRefundLedgerEntry(): ?LedgerEntry
+    {
+        return $this->walletRefundQuery()->first();
+    }
+
+    private function walletRefundQuery(): Builder
+    {
         if ($this->wallet_reseller_id === null) {
-            return false;
+            return LedgerEntry::query()->whereRaw('1 = 0');
         }
 
         return LedgerEntry::query()
@@ -269,8 +287,7 @@ class Order extends Model
             ->where('owner_id', $this->wallet_reseller_id)
             ->where('type', 'wallet_refund')
             ->where('reference_type', 'order')
-            ->where('reference_id', $this->id)
-            ->exists();
+            ->where('reference_id', $this->id);
     }
 
     /**
@@ -314,6 +331,18 @@ class Order extends Model
     public function voucher(): HasOne
     {
         return $this->hasOne(Voucher::class);
+    }
+
+    /**
+     * ADR-102 decision 11 (a) — the voucher this order itself was PAID
+     * WITH (`orders.voucher_id`, set by `VoucherService::redeem()` at
+     * checkout), not the compensation voucher `voucher()` above
+     * represents. Never eager-loaded/exposed anywhere before this —
+     * the admin Order Detail "Voucher Used to Pay" card needs it.
+     */
+    public function paidWithVoucher(): BelongsTo
+    {
+        return $this->belongsTo(Voucher::class, 'voucher_id');
     }
 
     /**

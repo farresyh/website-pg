@@ -8,6 +8,7 @@ use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\ResellerBotOrderNotification;
@@ -69,7 +70,16 @@ class OrderController extends Controller
         $query = Order::query()->where('is_test', false)->with([
             'game:id,name', 'package:id,name',
             'affiliate:id,business_name', 'walletReseller:id,business_name',
-        ]);
+        ])
+            // ADR-102 decision 12 — cheap correlated-subquery booleans
+            // (never an N+1 per row) powering the list's compensation
+            // badges: 🎫 Used Voucher / 🎟️ Voucher Issued. `wallet_refunded`'s
+            // own badge is computed separately below (no plain
+            // relation exists for it — see the batched query there).
+            ->withExists([
+                'voucher as has_compensation_voucher',
+                'paidWithVoucher as has_used_voucher',
+            ]);
 
         match ($request->query('status')) {
             'need_action' => $query
@@ -95,9 +105,26 @@ class OrderController extends Controller
 
         $perPage = (int) $request->query('per_page', 25);
 
-        return response()->json(
-            $query->orderBy('created_at', 'desc')->paginate($perPage)->withQueryString(),
+        $page = $query->orderBy('created_at', 'desc')->paginate($perPage)->withQueryString();
+
+        // ADR-102 decision 12 — one batched query for the 💰 Refunded to
+        // Wallet badge, not a per-row lookup: no plain Eloquent relation
+        // exists from Order to its wallet-refund LedgerEntry (see
+        // Order::walletRefundLedgerEntry()'s own correlated-query
+        // reasoning), and this page's order ids are already known after
+        // pagination, so a single whereIn() covers the whole page.
+        $walletRefundedOrderIds = LedgerEntry::query()
+            ->where('type', 'wallet_refund')
+            ->where('reference_type', 'order')
+            ->whereIn('reference_id', $page->getCollection()->pluck('id'))
+            ->pluck('reference_id')
+            ->all();
+
+        $page->getCollection()->each(
+            fn (Order $order) => $order->setAttribute('has_wallet_refund', in_array($order->id, $walletRefundedOrderIds, true)),
         );
+
+        return response()->json($page);
     }
 
     /**
@@ -289,6 +316,9 @@ class OrderController extends Controller
             $targetPackage->id,
             $request->validated('note'),
             $request->user()->name,
+            // ADR-102 decision 10 — the optional Player ID/Server ID correction.
+            $request->validated('player_id'),
+            $request->validated('server_id'),
         );
 
         return response()->json(['message' => 'Resend queued.']);
@@ -603,6 +633,11 @@ class OrderController extends Controller
     {
         $order->load([
             'game', 'package', 'supplier', 'affiliate', 'voucher',
+            // ADR-102 decision 11 (a) — the voucher this order was PAID
+            // WITH, distinct from `voucher` above (the compensation
+            // voucher issued because this order failed). Powers the
+            // Order Detail "Voucher Used to Pay" refund-information card.
+            'paidWithVoucher',
             // ADR-073 decision 7: which Reseller (wallet) account placed
             // this order, if any — the admin detail screen swaps "Issue
             // Voucher" for "Refund to Wallet" when this is set.
@@ -642,6 +677,22 @@ class OrderController extends Controller
             // a fresh page load too, not just right after a successful
             // action in the same session.
             'wallet_refunded' => $order->isAlreadyRefundedToWallet(),
+            // ADR-102 decision 11 (b) — the underlying LedgerEntry's own
+            // amount/created_at, not just the boolean above: the "Wallet
+            // Refund" card needs to show more than a yes/no.
+            'wallet_refund' => ($entry = $order->walletRefundLedgerEntry()) !== null ? [
+                'amount' => $entry->amount,
+                'created_at' => $entry->created_at?->toISOString(),
+            ] : null,
+            // ADR-102 decision 12 — the same three badge booleans
+            // index() computes via cheap correlated subqueries, mirrored
+            // here from already-loaded relations/values (free — no
+            // extra query) so OrderDetail (which extends the list's
+            // shape) never has to special-case a field only present on
+            // one of the two endpoints.
+            'has_used_voucher' => $order->paidWithVoucher !== null,
+            'has_compensation_voucher' => $order->voucher !== null,
+            'has_wallet_refund' => $entry !== null,
             // ADR-094 decision 9: gates the admin panel's Issue Voucher
             // button for the one needs_review case that's actually a
             // genuine partial delivery, with a starting-point amount
