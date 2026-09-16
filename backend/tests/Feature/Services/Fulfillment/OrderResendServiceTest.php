@@ -10,6 +10,7 @@ use App\Models\Package;
 use App\Models\PlayerValidation;
 use App\Models\PlayerValidatorProfile;
 use App\Models\Supplier;
+use App\Models\Voucher;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
@@ -270,6 +271,35 @@ class OrderResendServiceTest extends TestCase
         $game = $this->game();
         $package = $this->package($game, $supplier);
         $order = $this->failedOrder($game, $package, $supplier, ['delivery_status' => DeliveryStatus::Delivered->value]);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))->resend($order, $package, null, 'Admin');
+    }
+
+    /**
+     * ADR-102 decision 1: before this ADR, `assertResendable()` never
+     * checked compensation at all — only `OrderController::resend()`
+     * did, at click time. This proves the actual attempt-time re-check
+     * closes the TOCTOU gap that let a voucher get issued for an order
+     * between the click and the job running.
+     */
+    public function test_rejects_an_order_with_an_already_issued_voucher(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier);
+        Voucher::query()->create([
+            'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
+            'code' => 'KRS-RESEND-GUARD',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
 
         $this->expectException(ValidationException::class);
 

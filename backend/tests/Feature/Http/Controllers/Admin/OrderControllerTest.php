@@ -487,6 +487,33 @@ class OrderControllerTest extends TestCase
     }
 
     /**
+     * ADR-102 decision 1/2 — a real prod gap this closes: the old
+     * guard only ever checked `Voucher::exists()`, never a
+     * reseller-wallet refund already paid out (order `PG-CGDZOLEHAIR8`
+     * was refunded to wallet, `failed`, and nothing stopped a further
+     * resend from also delivering the goods). No override exists for
+     * this one, unlike the RC-futile case — it's a hard block.
+     */
+    public function test_retry_delivery_rejects_an_order_that_has_been_refunded_to_wallet(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    /**
      * ADR-026 decision 4b — the same retry mechanism resolves a
      * needs_review order, not just a plain Failed one.
      */
@@ -599,6 +626,37 @@ class OrderControllerTest extends TestCase
             'status' => 'active',
             'reason' => 'test',
         ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    /**
+     * ADR-102 decision 1/2 — see the identical retry-delivery test
+     * above for the full reasoning; the resend (package-swap) entry
+     * point needs the same hard block.
+     */
+    public function test_resend_rejects_an_order_that_has_been_refunded_to_wallet(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'game_id' => $game->id,
+            'wallet_reseller_id' => $reseller->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
 
         $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
 

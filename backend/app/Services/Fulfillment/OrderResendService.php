@@ -140,11 +140,27 @@ final class OrderResendService
      * on top of the same "only a failed (or, per ADR-026, needs_review)
      * delivery can be resent" rule.
      */
+    /**
+     * ADR-102 decision 1: this is the actual attempt-time re-check —
+     * `OrderController::resend()`'s own guard is only a fast, friendly
+     * pre-check that can pass and then go stale before this job
+     * actually runs (an admin issues a voucher for this order in the
+     * gap between the click and the queue picking it up). Found this
+     * was a real, previously-unguarded gap here specifically: this
+     * method never checked `Voucher::exists()`/wallet-refund at all
+     * before ADR-102 — only the controller did.
+     */
     private function assertResendable(Order $order): void
     {
         if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
             throw ValidationException::withMessages([
                 'delivery_status' => ['Only an order with a failed or needs-review delivery can be resent.'],
+            ]);
+        }
+
+        if ($order->isAlreadyCompensated()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
             ]);
         }
     }

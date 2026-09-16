@@ -242,6 +242,33 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
+     * ADR-102 decision 1: the real, final defense-in-depth check —
+     * inside `fulfill()`'s own row lock, not just the controller's
+     * pre-check or `OrderResendService::assertResendable()`'s
+     * job-time re-check. Proves a resend can never deliver on top of
+     * a compensation voucher already issued, even if every guard
+     * upstream of this method were somehow bypassed or raced.
+     */
+    public function test_fulfill_rejects_an_order_with_an_already_issued_voucher(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Failed->value]);
+        Voucher::query()->create([
+            'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
+            'code' => 'KRS-FULFILL-GUARD',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $this->expectException(OrderFulfillmentException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))->fulfill($order);
+    }
+
+    /**
      * Fails fast with a clear internal error instead of silently
      * sending an empty product_code to the supplier.
      */

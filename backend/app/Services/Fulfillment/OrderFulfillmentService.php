@@ -81,6 +81,21 @@ final class OrderFulfillmentService
         $delivered = DB::transaction(function () use ($order, &$drawdownPrice) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
+            // ADR-102 decision 1: the real, final defense-in-depth
+            // check — everything upstream (OrderController's guards,
+            // OrderResendService::assertResendable()) is a friendly
+            // pre-check that can still go stale between "admin clicked
+            // resend" and "this job actually acquired the row lock" (an
+            // admin issuing a voucher/wallet-refund in that exact gap).
+            // Checked inside the lock, before anything else, so a
+            // resend can never deliver on top of compensation already
+            // given regardless of which entry point raced which.
+            if ($locked->isAlreadyCompensated()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} has already been compensated (voucher issued or wallet refunded) — refusing to fulfill",
+                );
+            }
+
             // ORD-11's central guard: delivery may only start once
             // payment is genuinely paid. OrderStatusService throws
             // otherwise — the single most direct path to giving away
@@ -246,6 +261,15 @@ final class OrderFulfillmentService
     {
         DB::transaction(function () use ($order) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            // ADR-102 decision 1 — see fulfill()'s identical guard for
+            // the full reasoning; the combo path needs the same
+            // final-defense check inside its own lock.
+            if ($locked->isAlreadyCompensated()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} has already been compensated (voucher issued or wallet refunded) — refusing to fulfill",
+                );
+            }
 
             $processingStatus = $this->orderStatus->startDelivery($locked->payment_status, $locked->delivery_status);
             $referenceNumber = $this->referenceNumbers->resolve($locked->reference_number);
