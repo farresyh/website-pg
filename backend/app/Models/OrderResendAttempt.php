@@ -11,11 +11,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * is what the Admin Orders detail page renders as "Delivery Logs"
  * history, since `Order.supplier_response` alone is overwritten on
  * every attempt and can't show anything before the latest one.
+ *
+ * ADR-106 decision 2: widened beyond admin resends — `attempt_type`
+ * (`initial`/`resend`/`manual_confirm`) now discriminates which of
+ * OrderFulfillmentService::fulfill()/markDeliveredManually() or
+ * OrderResendService::resend() wrote a given row. Same table, no
+ * rename, no second model — a query like
+ * `resolvePendingResendAttempt()`'s stays entirely type-agnostic.
  */
 class OrderResendAttempt extends Model
 {
     protected $fillable = [
         'order_id',
+        'attempt_type',
         'package_id',
         'cost_price_sen',
         'standard_selling_price_sen',

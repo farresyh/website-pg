@@ -97,6 +97,15 @@ final class OrderFulfillmentService
                 );
             }
 
+            // ADR-106 decision 3 — captured BEFORE this call's own
+            // update() advances delivery_status past NotStarted, so it
+            // genuinely reflects "was this order's very first
+            // fulfillment attempt" rather than re-deriving it later from
+            // an already-mutated value. A resend/retry always arrives
+            // here from Failed/NeedsReview/Pending, never NotStarted, so
+            // this is false on every call except a true first attempt.
+            $wasNotStarted = $locked->delivery_status === DeliveryStatus::NotStarted;
+
             // ORD-11's central guard: delivery may only start once
             // payment is genuinely paid. OrderStatusService throws
             // otherwise — the single most direct path to giving away
@@ -178,6 +187,8 @@ final class OrderFulfillmentService
                     'supplier_response' => $result->data,
                 ]);
 
+                $this->recordInitialAttemptIfFirst($locked, $wasNotStarted);
+
                 Log::info('Delivery pending — awaiting async supplier confirmation', [
                     'supplier_response' => $result->data,
                 ]);
@@ -213,6 +224,8 @@ final class OrderFulfillmentService
                     ],
                 ]);
 
+                $this->recordInitialAttemptIfFirst($locked, $wasNotStarted);
+
                 // ADR-014: the one line a file-log admin actually needs
                 // to notice without watching the Admin Orders screen —
                 // a business-level failure (this branch) never throws,
@@ -233,6 +246,8 @@ final class OrderFulfillmentService
                 'delivery_status' => $this->orderStatus->markDelivered($processingStatus)->value,
                 'delivered_at' => now(),
             ]);
+
+            $this->recordInitialAttemptIfFirst($locked, $wasNotStarted);
 
             $this->creditProfit($locked);
 
@@ -893,10 +908,15 @@ final class OrderFulfillmentService
      * every combo resend, ADR-094 decision 10), so no leg-side
      * counterpart is needed.
      *
-     * A no-op (correctly) when this order was never resent — the
-     * INITIAL attempt writes no order_resend_attempts row at all
-     * (docs/prd.md §16 backlog: that's a separate, deliberately deferred
-     * gap, not this fix's job).
+     * ADR-106 decision 2 (2026-09-18): this query is entirely
+     * type-agnostic (no `attempt_type` filter), so it keeps working
+     * unchanged now that an `initial` attempt can also land on
+     * `outcome=pending` (a first-ever call that happens to hit
+     * Digiflazz's async rc=03) — `recordInitialAttemptIfFirst()` below
+     * writes that row, this method resolves it exactly like it always
+     * resolved a resend's pending row. Still a genuine no-op for an
+     * order whose very first attempt landed on a terminal outcome
+     * (nothing pending to resolve).
      */
     private function resolvePendingResendAttempt(int $orderId, string $outcome, mixed $supplierResponse): void
     {
@@ -906,6 +926,52 @@ final class OrderFulfillmentService
             ->latest('id')
             ->first()
             ?->update(['outcome' => $outcome, 'supplier_response' => $supplierResponse]);
+    }
+
+    /**
+     * ADR-106 decision 3: the durable counterpart to the admin's
+     * synthesized "Initial Delivery" row — writes an `attempt_type=initial`
+     * `order_resend_attempts` row for a genuinely first-ever fulfillment
+     * attempt, called from inside fulfill()'s own transaction (all three
+     * outcome branches) right after $locked's delivery_status/
+     * supplier_response have been updated for this call's real outcome,
+     * so it only ever commits alongside that outcome — never orphaned by
+     * a mid-flight exception, and never double-written by a retry
+     * ($wasNotStarted is computed once, before this call's own update()
+     * advanced the order past NotStarted).
+     *
+     * `package_id`/`cost_price_sen`/`standard_selling_price_sen` are the
+     * order's own checkout-frozen values — a first attempt always uses
+     * the order's own package (only a resend can swap it, ADR-017).
+     * `price_diff_sen` is null (decision 4): no live-cost comparison is
+     * ever made on a first attempt, unlike a resend's real diff.
+     */
+    private function recordInitialAttemptIfFirst(Order $locked, bool $wasNotStarted): void
+    {
+        if (! $wasNotStarted) {
+            return;
+        }
+
+        OrderResendAttempt::query()->create([
+            'order_id' => $locked->id,
+            'attempt_type' => 'initial',
+            'package_id' => $locked->package_id,
+            'cost_price_sen' => $locked->cost_price,
+            'standard_selling_price_sen' => $locked->standard_selling_price,
+            'price_diff_sen' => null,
+            'outcome' => match ($locked->delivery_status) {
+                DeliveryStatus::Delivered => 'success',
+                DeliveryStatus::Pending => 'pending',
+                // Mirrors OrderResendService::resend()'s own match —
+                // NeedsReview collapses into 'failed' here too, the
+                // same established convention this table's outcome
+                // column already uses for a resend attempt.
+                default => 'failed',
+            },
+            'supplier_response' => $locked->supplier_response,
+            'note' => null,
+            'triggered_by' => null,
+        ]);
     }
 
     /**
@@ -921,6 +987,15 @@ final class OrderFulfillmentService
      * calls a normal successful delivery makes — this order genuinely
      * is delivered now, just confirmed by a human instead of a live API
      * response.
+     *
+     * ADR-106 decision 3 (2026-09-18) — the third gap this ADR found:
+     * this method overwrites `Order.supplier_response`/`delivery_status`
+     * exactly like fulfill() does, via a third code path with no
+     * `order_resend_attempts` row of its own before now. Writes an
+     * `attempt_type=manual_confirm` row so the durable log shows how a
+     * needs_review order actually reached Delivered — outcome is always
+     * 'success' (this method exists only to confirm a delivery, never a
+     * failure), `note`/`triggered_by` come from this call's own params.
      */
     public function markDeliveredManually(Order $order, string $supplierRef, ?string $note, string $confirmedBy): Order
     {
@@ -941,6 +1016,19 @@ final class OrderFulfillmentService
                 ],
                 'delivery_status' => $deliveredStatus->value,
                 'delivered_at' => now(),
+            ]);
+
+            OrderResendAttempt::query()->create([
+                'order_id' => $locked->id,
+                'attempt_type' => 'manual_confirm',
+                'package_id' => $locked->package_id,
+                'cost_price_sen' => $locked->cost_price,
+                'standard_selling_price_sen' => $locked->standard_selling_price,
+                'price_diff_sen' => null,
+                'outcome' => 'success',
+                'supplier_response' => $locked->supplier_response,
+                'note' => $note,
+                'triggered_by' => $confirmedBy,
             ]);
 
             $this->creditProfit($locked);

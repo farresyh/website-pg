@@ -790,23 +790,23 @@ drops off this list into `docs/build-log.md`.
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
 15. ~~Durable "Initial Delivery" audit row — needs its own ADR + grill.~~ —
-    **grilled + ACCEPTED 2026-09-17, [ADR-106](./adr.md), not yet built.**
+    **grilled + BUILT 2026-09-18, [ADR-106](./adr.md)**, on
+    `feature/adr-106-107-combo-delivery-logs` off `staging` (not yet merged).
     Found 2026-09-15 while fixing the Delivery Logs outcome bugs (see
     `docs/build-log.md`'s 2026-09-15 entry): `order_resend_attempts` (ADR-017
-    decision #4, "record every attempt, not just the latest") only ever logs
-    RESEND attempts — the very first/original fulfillment attempt has no
-    durable row of its own. The admin's "Initial Delivery" row is synthesized
-    live from `Order.supplier_response`/`delivery_status`, single mutable
-    columns overwritten by every later resend — accurate for an order that's
-    never been resent, but the true original response is unrecoverable the
-    moment a resend happens (confirmed live: a real order's "Initial
-    Delivery" row was showing a later resend's response under the wrong
-    label). The 2026-09-15 fix only made the *label* honest for an
-    already-resent order ("original response not retained") — it does not
-    yet capture initial attempts going forward. ADR-106's shape: reuse
-    `order_resend_attempts` (no rename — see its own decision 2) with a new
-    `attempt_type` discriminator (`initial`/`resend`/`manual_confirm`),
-    written from inside `OrderFulfillmentService::fulfill()` itself.
+    decision #4, "record every attempt, not just the latest") used to only
+    ever log RESEND attempts — the very first/original fulfillment attempt
+    had no durable row of its own, and neither did a `markDeliveredManually()`
+    confirmation (a third gap found while grilling this ADR). Both now write
+    a real row (`attempt_type` = `initial`/`manual_confirm`, alongside the
+    existing `resend`), from inside `OrderFulfillmentService::fulfill()`/
+    `markDeliveredManually()` themselves — no rename, no new table, same
+    `order_resend_attempts`. The admin's "Initial Delivery" row now reads
+    the real durable row once one exists for an order; the 2026-09-15
+    honest-fallback synthesis stays unchanged for any order created before
+    this shipped (its true initial data is already unrecoverably gone).
+    Non-combo only for now (decision 1) — see item 16 below, deferred for
+    the same reason.
 16. **Combo order `retryDelivery()` has zero audit trail — deliberately
     deferred, non-combo only for now.** Found alongside item 15, same
     session: ADR-094 decision 10 routes every combo-order retry through the

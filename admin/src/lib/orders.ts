@@ -58,13 +58,23 @@ export interface OrderListItem {
 /**
  * ADR-017 decision #4: one row per admin resend attempt — the
  * "Delivery Logs" history table renders this, most recent first.
+ *
+ * ADR-106 decision 2: widened beyond admin resends — `attempt_type`
+ * discriminates which write site produced a given row. `initial` is
+ * the durable counterpart to what DeliveryLogsTable.tsx used to
+ * synthesize live from mutable Order columns; `manual_confirm` is
+ * markDeliveredManually()'s own attempt. `price_diff_sen` is `null`
+ * for both (decision 4 — no live-cost comparison is ever made on a
+ * first attempt or a manual confirmation), genuinely different from a
+ * resend's real `0` diff.
  */
 export interface OrderResendAttempt {
   id: number;
+  attempt_type: "initial" | "resend" | "manual_confirm";
   package: { id: number; name: string; supplier_package_ref?: string } | null;
   cost_price_sen: number;
   standard_selling_price_sen: number;
-  price_diff_sen: number;
+  price_diff_sen: number | null;
   // 2026-09-15 bugfix: "pending" self-corrects to success/failed the
   // moment the real async outcome resolves — see
   // OrderFulfillmentService::resolvePendingResendAttempt().

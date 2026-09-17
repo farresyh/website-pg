@@ -2,6 +2,17 @@
  * ADR-017 decision #4 + Order Journey Logs:
  * Chronological history of delivery attempts for an order, including
  * the initial fulfillment attempt and any subsequent resends.
+ *
+ * ADR-106 decision 5: once a real `attempt_type=initial` row exists
+ * for an order, the "Initial Delivery" row is built from IT — real
+ * timestamp, real package/SKU, real response — instead of being
+ * synthesized live from Order.supplier_response/delivery_status (the
+ * 2026-09-15 bugfix's own honest fallback). That fallback is kept
+ * exactly as-is for any order with no `initial` row (created before
+ * this shipped) — its true initial data is already unrecoverably
+ * gone, nothing to switch to. `manual_confirm` rows (decision 3, from
+ * markDeliveredManually()) render alongside `resend` rows in the same
+ * history list, their own icon/label.
  */
 import { useState } from "react";
 import {
@@ -32,6 +43,7 @@ import {
 import { Times as CloseIcon } from "@primeicons/react/times";
 import { Send } from "@primeicons/react/send";
 import { Refresh } from "@primeicons/react/refresh";
+import { Verified } from "@primeicons/react/verified";
 import { Code } from "@primeicons/react/code";
 import type { OrderDetail, OrderResendAttempt } from "@/lib/orders";
 
@@ -42,7 +54,7 @@ function formatRm(sen: number): string {
 interface DeliveryLogEntry {
   id: string;
   date: string;
-  type: "initial" | "resend";
+  type: "initial" | "resend" | "manual_confirm";
   typeLabel: string;
   packageName: string;
   sku: string;
@@ -81,15 +93,51 @@ interface DeliveryLogsTableProps {
   attempts?: OrderResendAttempt[];
 }
 
+/** Shared by every row type below: pull a human note out of a raw supplier_response when the row's own `note` field is empty. */
+function deriveNoteFromResponse(response: Record<string, unknown> | null | undefined): string | null {
+  if (!response) return null;
+  if (typeof response.message === "string") return response.message;
+  if (response.rc !== undefined) return `rc: ${String(response.rc)}`;
+  return null;
+}
+
 export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogsTableProps) {
   const [activeResponse, setActiveResponse] = useState<{ title: string; data: Record<string, unknown> } | null>(null);
 
   const resendList = order?.resend_attempts ?? attempts ?? [];
+  // ADR-106 decision 5: a real durable row, once one exists for this
+  // order — at most one 'initial' row can ever exist (fulfill()'s own
+  // $wasNotStarted guard).
+  const initialAttempt = resendList.find((a) => a.attempt_type === "initial") ?? null;
+  // Every other row (resend + manual_confirm) renders in the history
+  // list below, unchanged in shape from before this ADR.
+  const historyList = resendList.filter((a) => a.attempt_type !== "initial");
   const entries: DeliveryLogEntry[] = [];
 
   // 1. Initial delivery attempt
-  if (order && (order.delivery_status !== "not_started" || order.paid_at !== null || order.supplier_response !== null)) {
-    const hasResends = resendList.length > 0;
+  if (initialAttempt) {
+    // The durable row exists — real timestamp, real package/SKU, real
+    // response, not a live guess off Order's own mutable columns.
+    entries.push({
+      id: "initial-delivery",
+      date: initialAttempt.created_at,
+      type: "initial",
+      typeLabel: "Initial Delivery",
+      packageName: initialAttempt.package?.name ?? order?.package?.name ?? "—",
+      sku: initialAttempt.package?.supplier_package_ref ?? order?.supplier_product_ref ?? "—",
+      priceDiffSen: null,
+      outcome: initialAttempt.outcome,
+      triggeredBy: initialAttempt.triggered_by ?? "System (Auto)",
+      note: initialAttempt.note ?? deriveNoteFromResponse(initialAttempt.supplier_response) ?? "Initial checkout fulfillment",
+      response: (initialAttempt.supplier_response as Record<string, unknown>) ?? null,
+    });
+  } else if (order && (order.delivery_status !== "not_started" || order.paid_at !== null || order.supplier_response !== null)) {
+    // No durable row exists (an order created before ADR-106 shipped) —
+    // the exact 2026-09-15 bugfix's own honest-fallback synthesis,
+    // unchanged: the true initial response is already unrecoverably
+    // gone the moment a resend has happened, so this is a "not
+    // retained" placeholder rather than a guess.
+    const hasResends = historyList.length > 0;
 
     // 2026-09-15 bugfix: Order.supplier_response/delivery_status are the
     // single, mutable "current state" fields — overwritten by every
@@ -98,24 +146,12 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
     // pending→resolved transition), so showing them here is accurate.
     // But the moment a resend has happened, they reflect the LATEST
     // attempt, not the original one — the true initial response is
-    // genuinely gone (order_resend_attempts, ADR-017 decision #4, only
-    // ever logged resends, never the first attempt; see docs/prd.md
-    // §16's backlog item for the real fix, capturing this going
-    // forward). Showing them under an "Initial Delivery" label with a
-    // guessed outcome would be lying twice over (found live: a
+    // genuinely gone. Showing them under an "Initial Delivery" label
+    // with a guessed outcome would be lying twice over (found live: a
     // Sukses/Delivered response mislabeled outcome=failed) — an honest
     // "not retained" placeholder beats a wrong guess.
     const initialOutcome = hasResends ? "unknown" : order.delivery_status;
-
-    let initialNote: string | null = null;
-    if (!hasResends && order.supplier_response) {
-      const resp = order.supplier_response as Record<string, unknown>;
-      if (typeof resp.message === "string") {
-        initialNote = resp.message;
-      } else if (resp.rc !== undefined) {
-        initialNote = `rc: ${String(resp.rc)}`;
-      }
-    }
+    const initialNote = hasResends ? null : deriveNoteFromResponse(order.supplier_response as Record<string, unknown> | null);
 
     entries.push({
       id: "initial-delivery",
@@ -132,23 +168,15 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
     });
   }
 
-  // 2. Resend delivery attempts
-  for (const attempt of resendList) {
-    let attemptNote = attempt.note;
-    if (!attemptNote && attempt.supplier_response) {
-      const resp = attempt.supplier_response as Record<string, unknown>;
-      if (typeof resp.message === "string") {
-        attemptNote = resp.message;
-      } else if (resp.rc !== undefined) {
-        attemptNote = `rc: ${String(resp.rc)}`;
-      }
-    }
+  // 2. Resend + manual-confirm history
+  for (const attempt of historyList) {
+    const attemptNote = attempt.note ?? deriveNoteFromResponse(attempt.supplier_response);
 
     entries.push({
-      id: `resend-${attempt.id}`,
+      id: `${attempt.attempt_type}-${attempt.id}`,
       date: attempt.created_at,
-      type: "resend",
-      typeLabel: "Resend Delivery",
+      type: attempt.attempt_type === "manual_confirm" ? "manual_confirm" : "resend",
+      typeLabel: attempt.attempt_type === "manual_confirm" ? "Manual Confirmation" : "Resend Delivery",
       packageName: attempt.package?.name ?? order?.package?.name ?? "—",
       sku: attempt.package?.supplier_package_ref ?? order?.supplier_product_ref ?? "—",
       priceDiffSen: attempt.price_diff_sen,
@@ -203,6 +231,8 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                             <div className="flex items-center gap-1.5 font-medium text-ink">
                               {entry.type === "initial" ? (
                                 <Send className="w-3.5 h-3.5 text-primary-500 shrink-0" />
+                              ) : entry.type === "manual_confirm" ? (
+                                <Verified className="w-3.5 h-3.5 text-success-500 shrink-0" />
                               ) : (
                                 <Refresh className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                               )}

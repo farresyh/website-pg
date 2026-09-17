@@ -1098,7 +1098,16 @@ class OrderControllerTest extends TestCase
         // (not null), which crashed the admin panel's own
         // DeliveryLogsTable on the now-undefined resend_attempts once
         // it replaced the full OrderDetail with this response.
-        $response->assertJsonPath('resend_attempts', []);
+        //
+        // ADR-106 decision 3: markDeliveredManually() now writes a real
+        // attempt_type=manual_confirm row (the third gap this ADR
+        // found) — resend_attempts is no longer empty for this action.
+        $response->assertJsonCount(1, 'resend_attempts');
+        $response->assertJsonPath('resend_attempts.0.attempt_type', 'manual_confirm');
+        $response->assertJsonPath('resend_attempts.0.outcome', 'success');
+        $response->assertJsonPath('resend_attempts.0.price_diff_sen', null);
+        $response->assertJsonPath('resend_attempts.0.note', 'Confirmed via Gamevion dashboard, TARGET/SERVICE/date matched.');
+        $this->assertNotNull($response->json('resend_attempts.0.triggered_by'));
         $response->assertJsonStructure(['game', 'package', 'supplier', 'affiliate', 'voucher']);
     }
 
