@@ -38,9 +38,19 @@ return new class extends Migration
 
     public function down(): void
     {
+        // price_diff_sen is deliberately left nullable on rollback, NOT
+        // restored to NOT NULL — an `initial`/`manual_confirm` row (this
+        // migration's own up()) genuinely stores NULL there, so
+        // re-tightening the constraint here would throw the moment any
+        // such row exists (found live: broke the CI concurrency suite —
+        // DatabaseMigrations rolls back between test classes, hit a
+        // real NULL row OrderFulfillmentService had already written,
+        // aborted mid-rollback, and left `llm_report_orders`'s VIEW
+        // migration un-rolled-back for every later test class to crash
+        // into as "already exists"). An asymmetric down() here is
+        // strictly safer than a down() that can fail depending on data.
         Schema::table('order_resend_attempts', function (Blueprint $table) {
             $table->dropColumn('attempt_type');
-            $table->integer('price_diff_sen')->nullable(false)->change();
         });
     }
 };
