@@ -79,6 +79,9 @@ class OrderController extends Controller
             ->withExists([
                 'voucher as has_compensation_voucher',
                 'paidWithVoucher as has_used_voucher',
+                // ADR-024 addendum (2026-09-17, restore-only) — the 4th
+                // badge, mirroring show()'s own has_voucher_restored.
+                'voucherRedemption as has_voucher_restored' => fn ($query) => $query->where('status', 'restored'),
             ]);
 
         match ($request->query('status')) {
@@ -231,7 +234,7 @@ class OrderController extends Controller
         // was never blocked).
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be resent.'],
             ]);
         }
 
@@ -297,7 +300,7 @@ class OrderController extends Controller
         // identical guard for the full reasoning.
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be resent.'],
             ]);
         }
 
@@ -457,7 +460,7 @@ class OrderController extends Controller
         // decision 4c), kept as the same defensive check its siblings carry.
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be marked delivered.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be marked delivered.'],
             ]);
         }
 
@@ -512,7 +515,7 @@ class OrderController extends Controller
         // be reachable, kept as the same defensive check its siblings carry.
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded).'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded).'],
             ]);
         }
 
@@ -632,7 +635,7 @@ class OrderController extends Controller
     private function orderDetailResponse(Order $order): JsonResponse
     {
         $order->load([
-            'game', 'package', 'supplier', 'affiliate', 'voucher',
+            'game', 'package', 'supplier', 'affiliate', 'voucher', 'voucherRedemption',
             // ADR-102 decision 11 (a) — the voucher this order was PAID
             // WITH, distinct from `voucher` above (the compensation
             // voucher issued because this order failed). Powers the
@@ -693,6 +696,12 @@ class OrderController extends Controller
             'has_used_voucher' => $order->paidWithVoucher !== null,
             'has_compensation_voucher' => $order->voucher !== null,
             'has_wallet_refund' => $entry !== null,
+            // ADR-024 addendum (2026-09-17, restore-only) — the 4th
+            // compensation badge: true once this order's own redemption
+            // is 'restored', independent of has_compensation_voucher
+            // (a full-cover-by-voucher order restores but mints no new
+            // voucher, so that one alone would stay false forever).
+            'has_voucher_restored' => $order->voucherRedemption?->status === 'restored',
             // ADR-094 decision 9: gates the admin panel's Issue Voucher
             // button for the one needs_review case that's actually a
             // genuine partial delivery, with a starting-point amount

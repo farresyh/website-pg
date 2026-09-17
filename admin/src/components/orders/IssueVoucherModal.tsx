@@ -18,19 +18,30 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
-import { issueVoucherFromOrder, type OrderDetail } from "@/lib/orders";
-import type { Voucher } from "@/lib/vouchers";
+import { issueVoucherFromOrder, type IssueVoucherResult, type OrderDetail } from "@/lib/orders";
 
 interface IssueVoucherModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onIssued: (voucher: Voucher) => void;
+  onIssued: (result: IssueVoucherResult) => void;
   order: OrderDetail;
   token: string;
 }
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
+}
+
+/**
+ * ADR-024 addendum (2026-09-17, restore-only) — true only for the
+ * ordinary (non-partial-combo) branch, where the amount is entirely
+ * server-computed (`final_amount - transaction_fee`) and can genuinely
+ * land on 0 for a full-cover-by-voucher order. The partial-combo
+ * amount is always admin-typed and floored at RM0.01 server-side
+ * (`StoreVoucherFromOrderRequest`'s `min:1`), so it can never be this.
+ */
+export function isRestoreOnly(order: OrderDetail): boolean {
+  return !order.partial_combo_delivery && order.final_amount - order.transaction_fee === 0;
 }
 
 /**
@@ -48,6 +59,15 @@ function formatRm(sen: number): string {
  * caps whatever's sent at `final_amount` independently. Rendered only
  * while the dialog is open — fresh state every open, same convention
  * as ResendDeliveryModal/CreateValidatorModal.
+ *
+ * ADR-024 addendum (2026-09-17, restore-only) — a full-cover-by-voucher
+ * order's cash portion is genuinely 0: this one slot auto-routes to a
+ * "Restore Voucher" mode instead of minting a pointless RM0.00 voucher
+ * — same button, label/copy/action decided from `order` before the
+ * admin ever sees it, not a separate manual choice. The Reason field
+ * is dropped in that mode: nothing gets created for it to attach to
+ * (restore() writes no ledger entry of its own), so keeping the field
+ * would just silently discard whatever the admin typed.
  */
 function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVoucherModalProps, "isOpen">) {
   const [reason, setReason] = useState("");
@@ -58,6 +78,7 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
   const [error, setError] = useState<string | null>(null);
 
   const isPartial = order.partial_combo_delivery;
+  const restoreOnly = isRestoreOnly(order);
   const amount = isPartial ? Math.round(parseFloat(customAmount || "0") * 100) : order.final_amount - order.transaction_fee;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -65,14 +86,14 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
     setSubmitting(true);
     setError(null);
     try {
-      const voucher = await issueVoucherFromOrder(token, order.id, {
-        reason: reason.trim() || undefined,
+      const result = await issueVoucherFromOrder(token, order.id, {
+        reason: restoreOnly ? undefined : reason.trim() || undefined,
         amount: isPartial ? amount : undefined,
       });
-      onIssued(voucher);
+      onIssued(result);
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not issue the voucher.");
+      setError(err instanceof ApiError ? err.message : "Could not complete this action.");
     } finally {
       setSubmitting(false);
     }
@@ -86,6 +107,12 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
           store-credit amount for the part that failed, for{" "}
           <span className="font-medium">{order.customer_email}</span>. This platform never issues cash refunds
           (ADR-004). One voucher per order; this cannot be undone once issued.
+        </p>
+      ) : restoreOnly ? (
+        <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+          This order was fully covered by a voucher — its cash portion is RM0.00. Restoring gives that voucher&apos;s
+          spent balance back to <span className="font-medium">{order.customer_email}</span>; no new voucher is
+          issued, since there is nothing left over to compensate.
         </p>
       ) : (
         <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
@@ -124,22 +151,24 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
           </div>
         )}
 
-        <div>
-          <Label htmlFor="voucher_reason">Reason (Optional)</Label>
-          <Input
-            id="voucher_reason"
-            placeholder="e.g. Customer requested a refund after repeated delivery failures"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-        </div>
+        {!restoreOnly && (
+          <div>
+            <Label htmlFor="voucher_reason">Reason (Optional)</Label>
+            <Input
+              id="voucher_reason"
+              placeholder="e.g. Customer requested a refund after repeated delivery failures"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting || (isPartial && (!Number.isFinite(amount) || amount <= 0))}>
-            {submitting ? "Issuing…" : "Issue Voucher"}
+            {submitting ? (restoreOnly ? "Restoring…" : "Issuing…") : restoreOnly ? "Restore Voucher" : "Issue Voucher"}
           </Button>
         </div>
       </form>
@@ -155,7 +184,7 @@ export default function IssueVoucherModal({ isOpen, onClose, onIssued, order, to
         <DialogPositioner>
           <DialogPopup className="w-full max-w-lg">
             <DialogHeader>
-              <DialogTitle>Issue Voucher</DialogTitle>
+              <DialogTitle>{isRestoreOnly(order) ? "Restore Voucher" : "Issue Voucher"}</DialogTitle>
               <DialogHeaderActions>
                 <DialogClose aria-label="Close">
                   <CloseIcon className="h-5 w-5" />

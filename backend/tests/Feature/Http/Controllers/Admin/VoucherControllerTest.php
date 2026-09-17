@@ -223,8 +223,9 @@ class VoucherControllerTest extends TestCase
         $response = $this->postJson("/api/orders/{$order->id}/voucher");
 
         $response->assertCreated();
-        $response->assertJsonPath('amount', 1000); // final_amount(1090) - transaction_fee(90)
-        $response->assertJsonPath('customer_email', 'buyer@example.com');
+        $response->assertJsonPath('restored_only', false);
+        $response->assertJsonPath('voucher.amount', 1000); // final_amount(1090) - transaction_fee(90)
+        $response->assertJsonPath('voucher.customer_email', 'buyer@example.com');
         $this->assertDatabaseHas('vouchers', ['order_id' => $order->id, 'amount' => 1000]);
     }
 
@@ -265,6 +266,110 @@ class VoucherControllerTest extends TestCase
         $this->assertSame(500, $originalVoucher->fresh()->remaining);
         $this->assertSame('active', $originalVoucher->fresh()->status);
         $this->assertSame('restored', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+    }
+
+    /**
+     * ADR-024 addendum (2026-09-17, restore-only) — a full-cover-by-
+     * voucher order (ADR-024 decision 5: transaction_fee=0, final_amount=0)
+     * that later fails delivery must still give back the ORIGINAL
+     * voucher's spent balance, but must never mint a pointless RM0.00
+     * compensation voucher on top of it — the amount this order's own
+     * "cash portion" comes to is genuinely zero.
+     */
+    public function test_full_cover_by_voucher_order_restores_without_minting_a_zero_amount_voucher(): void
+    {
+        $originalVoucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-FULLCOVER',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 1000,
+            'remaining' => 0,
+            'status' => 'exhausted',
+            'reason' => 'earlier compensation',
+        ]);
+        $order = $this->makeOrder([
+            'voucher_id' => $originalVoucher->id,
+            'voucher_discount' => 1000,
+            'transaction_fee' => 0,
+            'final_amount' => 0,
+        ]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $originalVoucher->id,
+            'order_id' => $order->id,
+            'amount' => 1000,
+            'status' => 'reserved',
+        ]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $response->assertCreated();
+        $response->assertJsonPath('restored_only', true);
+        $response->assertJsonPath('voucher', null);
+        $this->assertDatabaseCount('vouchers', 1); // only the original — no new row
+        $this->assertSame(1000, $originalVoucher->fresh()->remaining);
+        $this->assertSame('active', $originalVoucher->fresh()->status);
+        $this->assertSame('restored', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+        // No ledger entry for a voucher that was never issued.
+        $this->assertSame(0, app(LedgerService::class)->balance('platform', null));
+    }
+
+    /**
+     * The click is safe to repeat — restore() is idempotent (no-op once
+     * the redemption is already 'restored'), and no Voucher row exists
+     * to trip the "already issued" guard either, so a second click must
+     * not double-credit the original voucher or error out.
+     */
+    public function test_restore_only_action_is_idempotent_on_a_repeated_click(): void
+    {
+        $originalVoucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-FULLCOVER-2',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 1000,
+            'remaining' => 0,
+            'status' => 'exhausted',
+            'reason' => 'earlier compensation',
+        ]);
+        $order = $this->makeOrder([
+            'voucher_id' => $originalVoucher->id,
+            'voucher_discount' => 1000,
+            'transaction_fee' => 0,
+            'final_amount' => 0,
+        ]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $originalVoucher->id,
+            'order_id' => $order->id,
+            'amount' => 1000,
+            'status' => 'reserved',
+        ]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->postJson("/api/orders/{$order->id}/voucher")->assertCreated();
+        $second = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $second->assertCreated();
+        $second->assertJsonPath('restored_only', true);
+        $this->assertDatabaseCount('vouchers', 1);
+        $this->assertSame(1000, $originalVoucher->fresh()->remaining); // not double-credited
+    }
+
+    /**
+     * A full-cover order that never actually redeemed a voucher (edge
+     * case — shouldn't happen given ADR-024 decision 5, but the amount
+     * computation alone must never depend on a redemption existing) is
+     * still a no-mint restore-only response, not an error.
+     */
+    public function test_zero_amount_order_with_no_prior_redemption_is_still_restore_only_with_no_error(): void
+    {
+        $order = $this->makeOrder(['transaction_fee' => 0, 'final_amount' => 0]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $response->assertCreated();
+        $response->assertJsonPath('restored_only', true);
+        $this->assertDatabaseCount('vouchers', 0);
     }
 
     public function test_cannot_issue_order_voucher_for_a_non_failed_order(): void
@@ -315,7 +420,8 @@ class VoucherControllerTest extends TestCase
         $response = $this->postJson("/api/orders/{$order->id}/voucher", ['amount' => 27500]);
 
         $response->assertCreated();
-        $response->assertJsonPath('amount', 27500);
+        $response->assertJsonPath('restored_only', false);
+        $response->assertJsonPath('voucher.amount', 27500);
         $this->assertDatabaseHas('vouchers', ['order_id' => $order->id, 'amount' => 27500]);
     }
 

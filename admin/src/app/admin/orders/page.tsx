@@ -40,10 +40,9 @@ import { Input } from "@/components/ui/input";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, listOrders, getOrder, getOrderSummary, refundOrderToWallet, retryOrderDelivery } from "@/lib/orders";
-import type { Voucher } from "@/lib/vouchers";
+import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, type IssueVoucherResult, listOrders, getOrder, getOrderSummary, refundOrderToWallet, retryOrderDelivery } from "@/lib/orders";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
-import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
+import IssueVoucherModal, { isRestoreOnly } from "@/components/orders/IssueVoucherModal";
 import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
 import ConfirmFailedModal from "@/components/orders/ConfirmFailedModal";
 import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
@@ -233,9 +232,23 @@ function OrdersPageInner() {
     });
   }
 
-  function handleVoucherIssued(voucher: Voucher) {
-    setVoucherMessage(`Voucher ${voucher.code} issued.`);
-    setSelected((current) => (current ? { ...current, voucher } : current));
+  /**
+   * ADR-024 addendum (2026-09-17, restore-only) — `restored_only`
+   * branches the success message and local state update: a full-cover
+   * order restores its original voucher but mints no new one, so
+   * `voucher` stays null and `has_voucher_restored` is what flips
+   * (mirroring the backend's own `has_voucher_restored` badge) — that's
+   * what hides the button on this same render, not `voucher`.
+   */
+  function handleVoucherIssued({ restored_only, voucher }: IssueVoucherResult) {
+    setVoucherMessage(
+      restored_only
+        ? "Voucher restored — order fully covered by voucher, no new voucher issued."
+        : `Voucher ${voucher?.code} issued.`,
+    );
+    setSelected((current) =>
+      current ? { ...current, voucher, has_voucher_restored: restored_only || current.has_voucher_restored } : current,
+    );
   }
 
   function handleMarkedDelivered(updated: OrderDetail) {
@@ -421,10 +434,10 @@ function OrdersPageInner() {
                   {refundingToWallet ? "Refunding…" : "Refund to Wallet…"}
                 </Button>
               )}
-              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for the ordinary ambiguous needs_review case at all (ADR-026 decision 4c). ADR-094 decision 9's carve-out: a genuine partial-delivery combo order (`partial_combo_delivery`) is the one needs_review case this button does appear for. */}
-              {(selected.delivery_status === "failed" || selected.partial_combo_delivery) && !selected.wallet_reseller && !selected.voucher && (
+              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for the ordinary ambiguous needs_review case at all (ADR-026 decision 4c). ADR-094 decision 9's carve-out: a genuine partial-delivery combo order (`partial_combo_delivery`) is the one needs_review case this button does appear for. ADR-024 addendum (2026-09-17, restore-only): also hidden once `has_voucher_restored` — a full-cover order never gets a `voucher` row, so that check alone would leave this button visible forever; label swaps to "Restore Voucher…" for the same case, decided before the admin clicks anything. */}
+              {(selected.delivery_status === "failed" || selected.partial_combo_delivery) && !selected.wallet_reseller && !selected.voucher && !selected.has_voucher_restored && (
                 <Button size="small" variant="outlined" onClick={() => setVoucherModalOpen(true)}>
-                  Issue Voucher…
+                  {isRestoreOnly(selected) ? "Restore Voucher…" : "Issue Voucher…"}
                 </Button>
               )}
               {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
@@ -599,10 +612,11 @@ function OrdersPageInner() {
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <Tag severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
-                            {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). */}
-                            {order.has_used_voucher && <span title="Paid with a voucher">🎫</span>}
-                            {order.has_compensation_voucher && <span title="Compensation voucher issued">🎟️</span>}
-                            {order.has_wallet_refund && <span title="Refunded to wallet">💰</span>}
+                            {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). ADR-024 addendum (2026-09-17): plain-text Tag pills, not emoji — founder feedback, 2026-09-17 — plus a 4th ("Restored") for the restore-only case, which never sets has_compensation_voucher. */}
+                            {order.has_used_voucher && <Tag severity="secondary">Voucher Paid</Tag>}
+                            {order.has_compensation_voucher && <Tag severity="warn">Voucher Issued</Tag>}
+                            {order.has_wallet_refund && <Tag severity="info">Wallet Refunded</Tag>}
+                            {order.has_voucher_restored && <Tag severity="success">Restored</Tag>}
                           </div>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
