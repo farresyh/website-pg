@@ -789,8 +789,9 @@ drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-15. **Durable "Initial Delivery" audit row — needs its own ADR + grill.** Found
-    2026-09-15 while fixing the Delivery Logs outcome bugs (see
+15. ~~Durable "Initial Delivery" audit row — needs its own ADR + grill.~~ —
+    **grilled + ACCEPTED 2026-09-17, [ADR-106](./adr.md), not yet built.**
+    Found 2026-09-15 while fixing the Delivery Logs outcome bugs (see
     `docs/build-log.md`'s 2026-09-15 entry): `order_resend_attempts` (ADR-017
     decision #4, "record every attempt, not just the latest") only ever logs
     RESEND attempts — the very first/original fulfillment attempt has no
@@ -802,23 +803,25 @@ drops off this list into `docs/build-log.md`.
     Delivery" row was showing a later resend's response under the wrong
     label). The 2026-09-15 fix only made the *label* honest for an
     already-resent order ("original response not retained") — it does not
-    yet capture initial attempts going forward. A real fix needs a schema
-    decision: reuse `order_resend_attempts` with a new discriminator (and
-    likely a rename — "resend" no longer describes every row) vs. a separate
-    table. Grill before building, not a trivial column add.
-16. **Combo order `retryDelivery()` has zero audit trail — needs a decision,
-    not urgent.** Found alongside item 16, same session: ADR-094 decision 10
-    routes every combo-order retry through the plain `retryDelivery()`
-    endpoint (`FulfillOrderJob::dispatch()` directly, no package picker,
-    since a combo can't swap package) — unlike `resend()`, this path writes
-    no `order_resend_attempts` row at all, for combo or plain orders alike.
-    A combo order's leg-level state is still visible via `ComboLegBreakdown`
-    (decision 12), so this isn't a total blind spot, but a combo retry
-    leaves no chronological "who clicked retry, when, what was the diff"
-    trail the way a plain-order resend does. Deliberately deferred (founder
-    decision, 2026-09-15) rather than folded into item 16's fix — different
-    root cause (a missing write, not a wrong label), worth its own pass once
-    item 16's schema shape is decided (the two likely share a table).
+    yet capture initial attempts going forward. ADR-106's shape: reuse
+    `order_resend_attempts` (no rename — see its own decision 2) with a new
+    `attempt_type` discriminator (`initial`/`resend`/`manual_confirm`),
+    written from inside `OrderFulfillmentService::fulfill()` itself.
+16. **Combo order `retryDelivery()` has zero audit trail — deliberately
+    deferred, non-combo only for now.** Found alongside item 15, same
+    session: ADR-094 decision 10 routes every combo-order retry through the
+    plain `retryDelivery()` endpoint (`FulfillOrderJob::dispatch()` directly,
+    no package picker, since a combo can't swap package) — unlike
+    `resend()`, this path writes no `order_resend_attempts` row at all, for
+    combo or plain orders alike. A combo order's leg-level state is still
+    visible via `ComboLegBreakdown` (decision 12), so this isn't a total
+    blind spot, but a combo retry leaves no chronological "who clicked
+    retry, when, what was the diff" trail the way a plain-order resend does.
+    ADR-106 (which fixes item 15's non-combo half) explicitly keeps this
+    deferred in its own decision 1 — combo's `order_delivery_legs` has the
+    identical symptom but zero live incidents to date, same non-combo-first
+    split as ADR-094/102/103. Revisit once real combo volume exists, same
+    trigger ADR-107 (item 18) is watching for on the money side.
 17. ~~Should Pending Reactivation ever auto-approve?~~ — **grilled + BUILT
     2026-09-16, [ADR-100](./adr.md).** Off by default
     (`PENDING_REACTIVATION_AUTO_APPROVE=false` — today's fully-manual
@@ -833,6 +836,41 @@ drops off this list into `docs/build-log.md`.
     spot-check of `HOK_GB_16_PG2`'s real cutoff API value once Digiflazz's
     pricelist rate limit isn't a concern (the code's fallback fails safe
     either way).
+18. **Combo order profit never reconciles on retry, and its partial-delivery
+    voucher suggestion reads a live price — grilled + ACCEPTED 2026-09-17,
+    [ADR-107](./adr.md), not yet built.** Found the same session as
+    ADR-105/106, while confirming ADR-105's fix covers every pricing basis:
+    a combo order's `platform_profit`/`affiliate_profit` are frozen once at
+    checkout (ORD-9) and never touched again — `OrderFulfillmentService::
+    attemptLeg()`/`resolveComboOutcome()` credit whatever was frozen
+    regardless of what a retried leg's live cost actually turned out to be,
+    even though the real cash paid to the supplier (`SupplierFundingService::
+    recordOrderDrawdown()`, per leg) is already tracked correctly and
+    separately — same root family as ADR-105's bug (a reported figure
+    decoupled from live cost), different mechanism (no reconciliation at
+    all, vs. reconciling with the wrong formula). A second, lower-severity
+    finding in the same area: `Order::suggestedPartialVoucherAmount()`
+    (ADR-094 decision 9's partial-combo compensation prefill) sums each
+    failed leg's *current* `componentPackage->standard_selling_price`
+    instead of a frozen checkout-time snapshot — bounded by
+    `StoreVoucherFromOrderRequest`'s hard cap (never exceeds
+    `order.final_amount`) and always admin-reviewed before submission, so
+    not a silent-overpay risk, but still a misleading suggestion. ADR-107's
+    shape: new `order_delivery_legs.cost_price_sen`/`selling_price_sen`
+    snapshot columns (frozen at `seedDeliveryLegs()`); `platformProfit`
+    reconciled once, at final all-legs-Delivered resolution, as the same
+    money-conservation residual ADR-105 decision 8 established (frozen
+    total revenue − actual total cost across all legs − affiliateProfit);
+    a resulting loss is never blocked (a combo can resolve via webhook/
+    scheduled poll with no admin present to supply an override reason) —
+    delivered anyway, recorded as-is, flagged for admin visibility after
+    the fact; the voucher suggestion apportions `final_amount −
+    transaction_fee` proportionally across failed legs' frozen
+    `selling_price_sen` weights, never a live price. Zero real combo
+    resends/partial-deliveries exist in prod to date (one combo order ever,
+    delivered clean) — latent, not yet touched real money. Sequenced to
+    build together with ADR-106 (same session's PR/sprint), since both add
+    columns to `order_delivery_legs` and touch `attemptLeg()`.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
