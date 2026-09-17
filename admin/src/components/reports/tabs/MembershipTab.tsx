@@ -5,7 +5,10 @@ import { type ReportFilters, type ReportMembershipBreakdown, getMembershipBreakd
 import { StatCard } from "../StatCard";
 import { HorizontalBarList } from "../HorizontalBarList";
 import { formatRm, toRm } from "../format";
-import { TagIcon, TrendUpIcon, UserCircleIcon, ListIcon } from "@/icons";
+import { Tag as TagIcon } from "@primeicons/react/tag";
+import { ChartLine as TrendUpIcon } from "@primeicons/react/chart-line";
+import { User as UserCircleIcon } from "@primeicons/react/user";
+import { List as ListIcon } from "@primeicons/react/list";
 
 export function MembershipTab({ token, filters }: { token: string; filters: ReportFilters }) {
   const [row, setRow] = useState<ReportMembershipBreakdown | null>(null);

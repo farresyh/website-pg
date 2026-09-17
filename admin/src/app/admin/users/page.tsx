@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
-import { PlusIcon, PencilIcon } from "@/icons";
+import { Plus as PlusIcon } from "@primeicons/react/plus";
+import { Pencil as PencilIcon } from "@primeicons/react/pencil";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";

@@ -4,16 +4,26 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * ADR-038: PrimeReact-Tailwind design tokens — the Backups screen
- * (BAK-1..5, ADR-039) is the first screen built with these components,
- * per ADR-038 decision 3. `--p-primary-*` is wired to this app's own
- * `--color-brand-*` scale (below, in @theme) rather than PrimeReact's
- * default grayscale — brand-matched 2026-08-28 once the Table
- * migration put PrimeReact components on 21 screens sitting directly
- * next to this admin's existing brand-colored TailAdmin UI (sidebar,
- * headers), the exact trigger this comment used to say to wait for.
- * Before that, every default-severity Button/Tag rendered pure gray
- * (oklch chroma 0) instead of the brand blue.
+ * ADR-038 / ADR-104: PrimeReact-Tailwind design tokens — the Backups
+ * screen (BAK-1..5, ADR-039) is the first screen built with these
+ * components, per ADR-038 decision 3. `--p-primary-*` is wired to this
+ * app's own `--color-brand-*` scale (below, in @theme) rather than
+ * PrimeReact's default grayscale — brand-matched 2026-08-28 once the
+ * Table migration put PrimeReact components on 21 screens sitting
+ * directly next to this admin's existing brand-colored TailAdmin UI
+ * (sidebar, headers), the exact trigger this comment used to say to
+ * wait for. Before that, every default-severity Button/Tag rendered
+ * pure gray (oklch chroma 0) instead of the brand blue.
+ *
+ * ADR-104 (2026-09-17): `--p-surface-*` is now wired the same way, to
+ * this app's own `--color-gray-*` scale — it previously sat as
+ * hardcoded achromatic OKLCH, independent of any app token, which is
+ * one likely source of the pre-existing dark-mode contrast/wording
+ * defects flagged going into this redesign (a warm-toned app rendering
+ * PrimeReact surfaces in cold pure gray). `--color-brand-*`/`--color-gray-*`
+ * themselves are retinted below to the new cyan/warm-neutral system —
+ * this bridge's mechanism is unchanged, only the values flowing through
+ * it are.
  */
 :root {
   --p-primary-50: var(--color-brand-50);
@@ -27,18 +37,18 @@
   --p-primary-800: var(--color-brand-800);
   --p-primary-900: var(--color-brand-900);
   --p-primary-950: var(--color-brand-950);
-  --p-surface-0: oklch(100% 0 0);
-  --p-surface-50: oklch(98.5% 0 0);
-  --p-surface-100: oklch(97% 0 0);
-  --p-surface-200: oklch(92.2% 0 0);
-  --p-surface-300: oklch(87% 0 0);
-  --p-surface-400: oklch(70.8% 0 0);
-  --p-surface-500: oklch(55.6% 0 0);
-  --p-surface-600: oklch(43.9% 0 0);
-  --p-surface-700: oklch(37.1% 0 0);
-  --p-surface-800: oklch(26.9% 0 0);
-  --p-surface-900: oklch(20.5% 0 0);
-  --p-surface-950: oklch(14.5% 0 0);
+  --p-surface-0: var(--color-white);
+  --p-surface-50: var(--color-gray-50);
+  --p-surface-100: var(--color-gray-100);
+  --p-surface-200: var(--color-gray-200);
+  --p-surface-300: var(--color-gray-300);
+  --p-surface-400: var(--color-gray-400);
+  --p-surface-500: var(--color-gray-500);
+  --p-surface-600: var(--color-gray-600);
+  --p-surface-700: var(--color-gray-700);
+  --p-surface-800: var(--color-gray-800);
+  --p-surface-900: var(--color-gray-900);
+  --p-surface-950: var(--color-gray-950);
   --p-content-border-radius: 6px;
   --p-primary-color: var(--p-primary-500);
   --p-primary-contrast-color: var(--p-surface-0);
@@ -73,11 +83,67 @@
   --p-text-hover-color: var(--p-surface-0);
   --p-text-muted-color: var(--p-surface-400);
   --p-text-hover-muted-color: var(--p-surface-300);
+
+  /*
+   * ADR-104: the app's own semantic tokens below (bg/ink/accent/status)
+   * that the artifact specifies as genuinely DIFFERENT hex per mode
+   * (not just a different stop of the same ramp, unlike brand/gray/
+   * surface above) get their dark values here. Anything not listed —
+   * on-cyan, info-*, chart-negative, focus-ring — is documented in the
+   * artifact as "inherits light", i.e. deliberately the same hex in
+   * both modes, so it has no entry here by design, not by omission.
+   */
+  --color-canvas: #121110;
+  --color-surface: #1a1917;
+  --color-subtle: #22211e;
+  --color-overlay: rgb(242 239 233 / 5%);
+  --color-ink: #f2efe9;
+  --color-ink-muted: #bdb7ad;
+
+  --color-cyan-50: #12303a;
+  --color-cyan-600: #4cc3d4;
+  --color-cyan-700: #6fd0de;
+  --color-cyan-ink: #7dd5e1;
+
+  --color-purple-50: #26213d;
+  --color-purple-200: #40386a;
+  --color-purple-600: #a592f0;
+  --color-purple-ink: #bcaef5;
+
+  --color-nude-100: #2b251e;
+  --color-nude-ink: #d9bf9d;
+
+  --color-success-surface: #12301f;
+  --color-success-ink: #7fd6a0;
+  --color-warning-surface: #35270f;
+  --color-warning-ink: #f0bd6a;
+  --color-danger-surface: #3a1714;
+  --color-danger-ink: #f59c93;
+  --color-review-surface: #3a2012;
+  --color-review-ink: #f5a877;
+  --color-neutral-surface: #282622;
+  --color-neutral-ink: #c4beb4;
+
+  --shadow-xs: 0px 1px 2px 0px rgb(0 0 0 / 40%);
+  --shadow-md:
+    0px 4px 12px 0px rgb(0 0 0 / 50%);
+  --shadow-theme-xs: var(--shadow-xs);
+  --shadow-theme-sm: var(--shadow-xs);
+  --shadow-theme-md: var(--shadow-md);
+  --shadow-theme-lg: var(--shadow-md);
 }
 
 @theme {
+  /*
+   * ADR-104: Outfit -> Figtree (UI) + new JetBrains Mono (data/code —
+   * fixes a pre-existing gap where 12 files already used the `font-mono`
+   * utility class expecting a monospace font, but `--font-*: initial`
+   * below had never defined `--font-mono`, so it silently fell through
+   * to the body's own sans font this whole time).
+   */
   --font-*: initial;
-  --font-outfit: Outfit, sans-serif;
+  --font-figtree: Figtree, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --breakpoint-*: initial;
   --breakpoint-2xsm: 375px;
@@ -89,6 +155,10 @@
   --breakpoint-xl: 1280px;
   --breakpoint-2xl: 1536px;
 
+  /* Legacy scale, kept as-is — already close to the artifact's body/caption
+     sizes (14/20 and 12/18) and used in 63 and 83 files respectively;
+     not worth the diff of a values-only rename. New named sizes below are
+     additive, for anything PR-2/3 writes fresh against the artifact. */
   --text-theme-xl: 20px;
   --text-theme-xl--line-height: 30px;
   --text-theme-sm: 14px;
@@ -96,63 +166,159 @@
   --text-theme-xs: 12px;
   --text-theme-xs--line-height: 18px;
 
+  --text-page-title: 26px;
+  --text-page-title--line-height: 32px;
+  --text-metric-lg: 30px;
+  --text-metric-lg--line-height: 36px;
+  --text-section-title: 15px;
+  --text-section-title--line-height: 20px;
+  --text-overline: 11px;
+  --text-overline--line-height: 14px;
+  --text-code-id: 13px;
+  --text-code-id--line-height: 18px;
+
   --color-current: currentColor;
   --color-transparent: transparent;
   --color-white: #ffffff;
-  --color-black: #101828;
+  --color-black: #1b1a17;
 
-  --color-brand-25: #f2f7ff;
-  --color-brand-50: #ecf3ff;
-  --color-brand-100: #dde9ff;
-  --color-brand-200: #c2d6ff;
-  --color-brand-300: #9cb9ff;
-  --color-brand-400: #7592ff;
-  --color-brand-500: #465fff;
-  --color-brand-600: #3641f5;
-  --color-brand-700: #2a31d8;
-  --color-brand-800: #252dae;
-  --color-brand-900: #262e89;
-  --color-brand-950: #161950;
+  /*
+   * ADR-104: `brand-*`/`gray-*`/`error-*`/`success-*`/`warning-*` are
+   * TailAdmin's own original token names, still referenced across ~130
+   * not-yet-visually-migrated files (see ADR-104's Consequence-to-track).
+   * Rather than a 130-file mechanical rewrite in this foundation PR,
+   * these keep their old names but are retinted to the new cyan/warm-
+   * neutral/status hues below, so every unmigrated page inherits the new
+   * palette immediately (ADR-104 decision 7). Orders/Reports (PR-2/3)
+   * use the new named tokens further down directly, not these aliases.
+   */
+  --color-brand-25: #fafdfe;
+  --color-brand-50: #e6f4f6;
+  --color-brand-100: #cde9ed;
+  --color-brand-200: #a3d6dd;
+  --color-brand-300: #74bfc9;
+  --color-brand-400: #3fa3b0;
+  --color-brand-500: #17879a;
+  --color-brand-600: #0b7285;
+  --color-brand-700: #095e6d;
+  --color-brand-800: #0a4b57;
+  --color-brand-900: #0c3c45;
+  --color-brand-950: #07262c;
 
-  --color-blue-light-50: #f0f9ff;
-  --color-blue-light-500: #0ba5ec;
+  --color-blue-light-50: #e6f4f6;
+  --color-blue-light-500: #0b7285;
 
-  --color-gray-25: #fcfcfd;
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f2f4f7;
-  --color-gray-200: #e4e7ec;
-  --color-gray-300: #d0d5dd;
-  --color-gray-400: #98a2b3;
-  --color-gray-500: #667085;
-  --color-gray-600: #475467;
-  --color-gray-700: #344054;
-  --color-gray-800: #1d2939;
-  --color-gray-900: #101828;
-  --color-gray-950: #0c111d;
-  --color-gray-dark: #1a2231;
+  --color-gray-25: #fdfcfa;
+  --color-gray-50: #f6f4f0;
+  --color-gray-100: #f0eee9;
+  --color-gray-200: #e4e0d8;
+  --color-gray-300: #d0cac0;
+  --color-gray-400: #a8a192;
+  --color-gray-500: #837c6e;
+  --color-gray-600: #635d52;
+  --color-gray-700: #4a453d;
+  --color-gray-800: #33302a;
+  --color-gray-900: #221f1b;
+  --color-gray-950: #14120f;
+  --color-gray-dark: #1a1917;
 
-  --color-success-50: #ecfdf3;
-  --color-success-500: #12b76a;
-  --color-success-600: #039855;
+  --color-success-50: #e7f5ec;
+  --color-success-500: #1c6b3d;
+  --color-success-600: #155a32;
 
-  --color-error-50: #fef3f2;
-  --color-error-500: #f04438;
-  --color-error-600: #d92d20;
+  --color-error-50: #fcebea;
+  --color-error-500: #b42318;
+  --color-error-600: #8f1c13;
 
-  --color-warning-50: #fffaeb;
-  --color-warning-500: #f79009;
-  --color-warning-600: #dc6803;
+  --color-warning-50: #fdf1dc;
+  --color-warning-500: #8a5100;
+  --color-warning-600: #6e4100;
 
-  --shadow-theme-md:
-    0px 4px 8px -2px rgba(16, 24, 40, 0.1),
-    0px 2px 4px -2px rgba(16, 24, 40, 0.06);
-  --shadow-theme-lg:
-    0px 12px 16px -4px rgba(16, 24, 40, 0.08),
-    0px 4px 6px -2px rgba(16, 24, 40, 0.03);
-  --shadow-theme-sm:
-    0px 1px 3px 0px rgba(16, 24, 40, 0.1),
-    0px 1px 2px 0px rgba(16, 24, 40, 0.06);
-  --shadow-theme-xs: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  /*
+   * ADR-104: the "PekanGame Admin" design-system artifact's own named
+   * tokens (https://claude.ai/artifact/Jr2dGDUAFasPMedVayHPHe, verified
+   * across all 9 of its sections before this ADR was grilled). Light
+   * values here; dark overrides live in the `.dark{}` block above for
+   * every token the artifact defines a genuinely different dark hex for
+   * — the rest (on-cyan, info-*, chart-negative, focus-ring) are
+   * deliberately "inherits light" per the artifact, so they have no
+   * `.dark` entry. "surface"/"ink" suffixes (not "bg") avoid a
+   * bg-x-bg-style stutter in the generated Tailwind utility names.
+   */
+  --color-canvas: #f6f4f0;
+  --color-surface: #ffffff;
+  --color-subtle: #f2efea;
+  --color-overlay: rgb(27 26 23 / 4%);
+
+  --color-ink: #1b1a17;
+  --color-ink-muted: #56514a;
+
+  --color-cyan-50: #e6f4f6;
+  --color-cyan-600: #0b7285;
+  --color-cyan-700: #095e6d;
+  --color-cyan-ink: #0a6374;
+  --color-on-cyan: #ffffff;
+
+  --color-purple-50: #f1edfb;
+  --color-purple-200: #d9cff5;
+  --color-purple-600: #6b4fcf;
+  --color-purple-ink: #5a3fbb;
+
+  --color-nude-100: #efe5d8;
+  --color-nude-ink: #7a5b3a;
+
+  --color-success-surface: #e7f5ec;
+  --color-success-ink: #1c6b3d;
+  --color-warning-surface: #fdf1dc;
+  --color-warning-ink: #8a5100;
+  --color-danger-surface: #fcebea;
+  --color-danger-ink: #b42318;
+  --color-review-surface: #fdece0;
+  --color-review-ink: #a3410b;
+  --color-neutral-surface: #f0eee9;
+  --color-neutral-ink: #56514a;
+  --color-info-surface: #e6f4f6;
+  --color-info-ink: #0a6374;
+
+  --color-chart-negative: #b42318;
+  --color-focus-ring: #0b7285;
+
+  /*
+   * ADR-104: repoint Tailwind's own native radius scale instead of
+   * inventing new custom names — `rounded-sm/md/lg` used anywhere
+   * (old or new code) now resolve to the artifact's tighter scale, and
+   * `rounded-2xl` (139 existing files) collapses onto the same `lg`
+   * value rather than keeping its old 16px, per ADR-104 decision 2.
+   */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-2xl: 12px;
+
+  /*
+   * ADR-104: restrained 2-level shadow scale, both as the legacy
+   * `shadow-theme-*` custom names (18/1/2 existing usages — collapsed
+   * from 4 levels to 2) and as overrides of Tailwind's own native
+   * `shadow-xs`/`shadow-md` utilities, so PR-2/3 can use plain Tailwind
+   * shadow classes going forward instead of the bespoke `-theme-` name.
+   */
+  --shadow-xs: 0px 1px 2px 0px rgb(27 26 23 / 5%);
+  --shadow-md:
+    0px 2px 4px -2px rgb(27 26 23 / 4%),
+    0px 4px 8px -2px rgb(27 26 23 / 8%);
+  --shadow-theme-xs: var(--shadow-xs);
+  --shadow-theme-sm: var(--shadow-xs);
+  --shadow-theme-md: var(--shadow-md);
+  --shadow-theme-lg: var(--shadow-md);
+
+  /* ADR-104: layout constants from the artifact's Size tab. Spacing
+     itself needed no token changes — Tailwind v4's default --spacing
+     (0.25rem = 4px) already produces 4/8/12/16/20/24/32px at 1/2/3/4/5/6/8,
+     an exact match for the artifact's space-1..8 scale. */
+  --width-sidebar: 248px;
+  --height-topbar: 60px;
+  --height-control: 36px;
+  --height-row: 60px;
 
   --z-index-99: 99;
   --z-index-999: 999;
@@ -178,7 +344,7 @@
     cursor: pointer;
   }
   body {
-    @apply relative font-normal font-outfit bg-gray-50;
+    @apply relative font-normal font-figtree bg-canvas;
   }
 }
 

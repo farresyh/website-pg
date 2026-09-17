@@ -18,7 +18,10 @@ import { TrendChart } from "../TrendChart";
 import { HorizontalBarList } from "../HorizontalBarList";
 import { DailyBreakdownTable } from "../DailyBreakdownTable";
 import { formatRm, toRm } from "../format";
-import { ChartLineIcon, ListIcon, TrendUpIcon, UserCircleIcon, TagIcon } from "@/icons";
+import { ChartLine as ChartLineIcon, ChartLine as TrendUpIcon } from "@primeicons/react/chart-line";
+import { List as ListIcon } from "@primeicons/react/list";
+import { User as UserCircleIcon } from "@primeicons/react/user";
+import { Tag as TagIcon } from "@primeicons/react/tag";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();

@@ -4,7 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
-import { ChevronDownIcon, HorizontaLDots } from "@/icons";
+import { ChevronDown as ChevronDownIcon } from "@primeicons/react/chevron-down";
+import { EllipsisH as HorizontaLDots } from "@primeicons/react/ellipsis-h";
 
 /**
  * The shared collapsible/drawer sidebar for both the Admin Panel

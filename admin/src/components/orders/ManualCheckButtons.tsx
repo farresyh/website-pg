@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogContent,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { checkOrderSupplier, checkOrderGateway, type OrderDetail, type ManualCheckResult } from "@/lib/orders";

@@ -32,7 +32,7 @@ import {
   DialogContent,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
 import { useClientSession } from "@/hooks/useClientSession";
