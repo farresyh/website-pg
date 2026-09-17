@@ -674,8 +674,12 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        // ADR-105: kept under the order's own standard_selling_price
+        // (900, the order() default) so this resend doesn't trip
+        // decision 4's below-cost guard — this test is about job
+        // dispatch, not that guard.
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 850, 'standard_selling_price' => 850,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         $order = $this->order([
@@ -699,8 +703,12 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        // ADR-105: kept under the order's own standard_selling_price
+        // (900, the order() default) so this resend doesn't trip
+        // decision 4's below-cost guard — this test is about the
+        // player-ID correction, not that guard.
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 850, 'standard_selling_price' => 850,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         $order = $this->order([
@@ -720,6 +728,62 @@ class OrderControllerTest extends TestCase
         Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
             && $job->playerId === 'corrected-id'
             && $job->serverId === 'srv-9');
+    }
+
+    /**
+     * ADR-105 decision 4 — fast, same-request echo of the guard
+     * `OrderResendService::resend()` enforces for real: a package whose
+     * live cost now exceeds what the customer already paid is a 422
+     * without an override reason, never a silently-queued job that
+     * fails later.
+     */
+    public function test_resend_requires_an_override_reason_when_the_swap_packages_cost_exceeds_what_the_customer_paid(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    /** ADR-105 decision 4 — the override is real, not just gatekept: a reason lets it through and queues the job, carried through to the service. */
+    public function test_resend_proceeds_with_an_override_reason_when_the_swap_packages_cost_exceeds_what_the_customer_paid(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", [
+            'package_id' => $package->id,
+            'override_reason' => 'Customer already paid, deliver anyway per founder instruction.',
+        ]);
+
+        $response->assertOk();
+        Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
+            && $job->overrideReason === 'Customer already paid, deliver anyway per founder instruction.');
     }
 
     /**

@@ -336,7 +336,10 @@ class OrderResendServiceTest extends TestCase
         $supplier = $this->supplier();
         $game = $this->game();
         $original = $this->package($game, $supplier);
-        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1900, 'standard_selling_price' => 1900]);
+        // ADR-105: kept under the order's own standard_selling_price
+        // (900, the failedOrder() default) so this resend doesn't trip
+        // decision 4's below-cost guard — this test isn't about that.
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 850, 'standard_selling_price' => 850]);
         $order = $this->failedOrder($game, $original, $supplier);
 
         $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
@@ -358,7 +361,10 @@ class OrderResendServiceTest extends TestCase
         $supplier = $this->supplier();
         $game = $this->game();
         $original = $this->package($game, $supplier);
-        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1900, 'standard_selling_price' => 1900]);
+        // ADR-105: kept under the order's own standard_selling_price
+        // (900) so this resend doesn't trip decision 4's below-cost
+        // guard — this test isn't about that.
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 850, 'standard_selling_price' => 850]);
         $order = $this->failedOrder($game, $original, $supplier);
 
         $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
@@ -381,7 +387,11 @@ class OrderResendServiceTest extends TestCase
         $game = $this->game();
         $original = $this->package($game, $supplier);
         $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1200, 'standard_selling_price' => 1200]);
-        $order = $this->failedOrder($game, $original, $supplier);
+        // ADR-105: standard_selling_price raised above the swap's live
+        // cost (1200) so this absorbed-cost-increase scenario doesn't
+        // also trip decision 4's below-cost guard — this test is about
+        // the attempt row, not that guard.
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1300]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, 'Customer requested a bigger pack', 'Admin User');
@@ -518,30 +528,126 @@ class OrderResendServiceTest extends TestCase
     {
         $supplier = $this->supplier();
         $game = $this->game();
-        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
-        // Live cost is now higher than what the customer's snapshot assumed.
-        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1300, 'standard_selling_price' => 1300]);
-        $order = $this->failedOrder($game, $original, $supplier, ['affiliate_markup_pct' => 0]);
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 1000]);
+        // Live cost is now higher than what the original package cost —
+        // still safely under the order's own frozen standard_selling_price
+        // (1000), so the platform absorbs it out of the existing margin
+        // rather than tripping decision 4's below-cost guard.
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 950, 'standard_selling_price' => 1045]);
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1000, 'affiliate_markup_pct' => 0]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, null, 'Admin');
 
-        // PricingService: platformProfit = standardSellingPrice - costPrice = 1300 - 1300 = 0 (markup 0%, affiliate=platform owner).
-        $this->assertSame(0, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
-        $this->assertSame(0, $order->fresh()->platform_profit);
+        // ADR-105 decision 1: platformProfit = order's OWN frozen
+        // standard_selling_price (1000) - live cost (950) = 50 — not the
+        // swap package's own live standard_selling_price (1045), which
+        // would give a different, un-reconciled 95.
+        $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
+        $this->assertSame(50, $order->fresh()->platform_profit);
     }
 
     /**
-     * ADR-027 Phase 6: a member-priced order's resend must recompute
-     * via the member formula, not the standard chain — live cost_price
-     * from the swap package, but the order's own frozen
-     * member_discount_percent (never a live tier lookup).
+     * ADR-105's own regression case — reproduces the real bug found live
+     * on order PG-KWKBUHNDMKQT (order id 15, 2026-09-17): a resend swaps
+     * to a package whose own `standard_selling_price` has ALSO
+     * independently drifted (a routine price-sync, unrelated to this
+     * resend) between the order's checkout and this resend attempt.
+     * Pre-fix, profit was computed against that drifted live standard
+     * price (392→402 in the real incident) and came out HIGHER despite
+     * the platform absorbing more cost. Post-fix, it correctly reflects
+     * the order's own frozen price minus the live cost.
+     */
+    public function test_platform_profit_reconciles_against_the_orders_own_frozen_price_not_the_swapped_packages_drifted_live_price(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        // Mirrors the real order: cost 356, standard/selling 392 at
+        // checkout (a ~10% markup).
+        $original = $this->package($game, $supplier, ['cost_price' => 356, 'standard_selling_price' => 392]);
+        // Mirrors the real swap target: live cost rose to 365 (the real
+        // +9 sen absorbed) AND its own standard_selling_price
+        // independently drifted 398 -> 402 that same morning, via an
+        // unrelated price-sync — the exact drift that decoupled profit
+        // from reality pre-fix.
+        $swap = $this->package($game, $supplier, [
+            'name' => 'PUBGG 60 UC', 'supplier_package_ref' => 'PUBGG_60_PG1',
+            'cost_price' => 365, 'standard_selling_price' => 402,
+        ]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'cost_price' => 356,
+            'standard_selling_price' => 392,
+            'selling_price' => 392,
+            'affiliate_markup_pct' => 0,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'MG-1']))
+            ->resend($order, $swap, null, 'Admin');
+
+        // Pre-fix (the real bug): 402 (swap's live standard) - 365 (live
+        // cost) = 37 — profit rose despite absorbing +9 sen of cost.
+        // Post-fix: 392 (order's own frozen standard) - 365 (live cost)
+        // = 27 — a real 9-sen decrease, matching the absorbed amount 1:1.
+        $this->assertSame(27, $order->fresh()->platform_profit);
+        $this->assertSame(27, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
+
+        $attempt = OrderResendAttempt::query()->sole();
+        $this->assertSame(9, $attempt->price_diff_sen);
+    }
+
+    /**
+     * ADR-105 decision 4: a resend whose live cost now exceeds what the
+     * customer already paid (frozen) is a genuine loss — blocked without
+     * an explicit override reason, distinguishing an admin's deliberate
+     * "deliver anyway, eat the loss" decision from silent data
+     * corruption.
+     */
+    public function test_resend_that_would_sell_below_the_orders_frozen_price_requires_an_override_reason(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 1000]);
+        // Live cost (1100) now exceeds the order's frozen standard_selling_price (1000).
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1100, 'standard_selling_price' => 1210]);
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1000]);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))->resend($order, $swap, null, 'Admin');
+    }
+
+    /** Same scenario as above, but with an override reason — proceeds and records the real (negative) loss. */
+    public function test_resend_that_would_sell_below_the_orders_frozen_price_proceeds_with_an_override_reason(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 1000]);
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1100, 'standard_selling_price' => 1210]);
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1000, 'affiliate_markup_pct' => 0]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, null, 'Admin', overrideReason: 'Customer already paid, deliver anyway per founder instruction');
+
+        // 1000 (frozen) - 1100 (live cost) = -100, a real loss, stored as-is.
+        $this->assertSame(-100, $result->platform_profit);
+        $this->assertSame(-100, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
+    }
+
+    /**
+     * ADR-027 Phase 6 / ADR-105 decision 3: a member-priced order's
+     * resend must recompute via the member formula, not the standard
+     * chain — live cost_price from the swap package, but the order's
+     * own frozen member_discount_percent AND markup_percent (never a
+     * live tier lookup, never the swap package's own current
+     * markup_percent). The swap package's live markup_percent (20%) is
+     * deliberately different from the order's frozen one (15%) to prove
+     * the frozen value wins.
      */
     public function test_resend_of_a_member_priced_order_recomputes_via_the_member_formula(): void
     {
         $supplier = $this->supplier();
         $game = $this->game();
-        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900, 'markup_percent' => 15]);
         $swap = $this->package($game, $supplier, [
             'name' => '210 Diamonds', 'supplier_package_ref' => 'D',
             'cost_price' => 1200, 'markup_percent' => 20, 'standard_selling_price' => 1440,
@@ -549,14 +655,17 @@ class OrderResendServiceTest extends TestCase
         $order = $this->failedOrder($game, $original, $supplier, [
             'pricing_basis' => 'member',
             'member_discount_percent' => 80.00,
+            'markup_percent' => 15.00,
             'affiliate_profit' => 0,
         ]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, null, 'Admin');
 
-        // effectiveMarkup = 20 * (1 - 0.8) = 4%; memberPrice = 1200 * 1.04 = 1248; platformProfit = 1248 - 1200 = 48.
-        $this->assertSame(48, $order->fresh()->platform_profit);
+        // effectiveMarkup = 15 (order's frozen, NOT the swap's live 20)
+        // * (1 - 0.8) = 3%; memberPrice = 1200 * 1.03 = 1236;
+        // platformProfit = 1236 - 1200 = 36.
+        $this->assertSame(36, $order->fresh()->platform_profit);
         $this->assertSame(0, $order->fresh()->affiliate_profit);
     }
 
@@ -571,7 +680,7 @@ class OrderResendServiceTest extends TestCase
     {
         $supplier = $this->supplier();
         $game = $this->game();
-        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900]);
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900, 'markup_percent' => 15]);
         $swap = $this->package($game, $supplier, [
             'name' => '210 Diamonds', 'supplier_package_ref' => 'D',
             'cost_price' => 1200, 'markup_percent' => 20, 'standard_selling_price' => 1440,
@@ -579,6 +688,7 @@ class OrderResendServiceTest extends TestCase
         $order = $this->failedOrder($game, $original, $supplier, [
             'pricing_basis' => 'member',
             'member_discount_percent' => 80.00,
+            'markup_percent' => 15.00,
             'affiliate_markup_pct' => 10.00,
             'affiliate_profit' => 0,
         ]);
@@ -586,8 +696,38 @@ class OrderResendServiceTest extends TestCase
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, null, 'Admin');
 
-        $this->assertSame(48, $order->fresh()->platform_profit);
+        $this->assertSame(36, $order->fresh()->platform_profit);
         $this->assertSame(0, $order->fresh()->affiliate_profit);
+    }
+
+    /**
+     * ADR-105 decision 3 fallback: an order created before this ADR
+     * shipped has no frozen `markup_percent` at all (migration backfill
+     * couldn't recover one — e.g. a 100% member discount, see the
+     * migration's own doc comment). Resend falls back to the swap
+     * package's live markup_percent rather than crashing on a null.
+     */
+    public function test_resend_of_a_member_priced_order_falls_back_to_the_swap_packages_live_markup_when_the_order_has_none_frozen(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 900, 'markup_percent' => 15]);
+        $swap = $this->package($game, $supplier, [
+            'name' => '210 Diamonds', 'supplier_package_ref' => 'D',
+            'cost_price' => 1200, 'markup_percent' => 20, 'standard_selling_price' => 1440,
+        ]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'member',
+            'member_discount_percent' => 80.00,
+            'markup_percent' => null,
+            'affiliate_profit' => 0,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, null, 'Admin');
+
+        // effectiveMarkup = 20 (swap's live, the only value available) * (1 - 0.8) = 4%; memberPrice = 1200 * 1.04 = 1248; platformProfit = 48.
+        $this->assertSame(48, $order->fresh()->platform_profit);
     }
 
     /**

@@ -83,6 +83,12 @@ final class OrderPricingResolver
                 normalSellingPriceSen: $breakdown->sellingPrice,
                 membershipId: $member['membershipId'],
                 memberDiscountPercent: $member['discountPercent'],
+                // ADR-105 decision 3 — freeze the package's own
+                // markup_percent at this moment, so a later resend
+                // reconciles against what this order was actually priced
+                // on, not whatever the package's markup_percent happens
+                // to be by then.
+                markupPercent: $packageMarkupPercent,
             );
         }
 

@@ -63,12 +63,14 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ADR-102 decision 3 — mandatory free-text reason, required only
-  // when the backend's own scoped rule (Order::resendUnsafeToOverride())
-  // says so: non-combo orders only from needs_review (a Failed order
-  // is never futile — decision 9 always regenerates its reference).
+  // ADR-102 decision 3 — mandatory free-text reason, required when the
+  // backend's own scoped rule (Order::resendUnsafeToOverride()) says
+  // so: non-combo orders only from needs_review (a Failed order is
+  // never futile — decision 9 always regenerates its reference). ADR-
+  // 105 decision 4 adds a second, independent trigger below
+  // (`wouldSellBelowCost`) — same field, same mechanism, a different
+  // reason to need it.
   const [overrideReason, setOverrideReason] = useState("");
-  const overrideRequired = order.resend_unsafe_to_override;
 
   // ADR-102 decision 10 — optional correction to a customer-typo'd
   // Player ID/Server ID (Context point 7: today the only fix for a
@@ -117,6 +119,22 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   const priceDiff = selectedPackage ? selectedPackage.cost_price - order.cost_price : null;
   const isSamePackage = packageId !== null && packageId === originalPackageId;
   const originalPackageNoLongerActive = packages !== null && originalPackageId !== null && !packages.some((p) => p.id === originalPackageId);
+
+  // ADR-105 decision 4 — a fast, same-request echo of the guard
+  // OrderResendService::resend() enforces for real: this basis's
+  // profit formula reconciles against the order's own frozen
+  // standard_selling_price (decision 1), so a package whose live cost
+  // now exceeds that is a genuine loss, not just an absorbed markup
+  // dip. Never true for a tier-affiliate/reseller-wallet or member
+  // order — those price proportionally off live cost and can't go
+  // negative this way (decision 2/3).
+  const wouldSellBelowCost = Boolean(
+    selectedPackage
+      && order.pricing_basis !== "member"
+      && !order.wholesale_markup_pct
+      && selectedPackage.cost_price > order.standard_selling_price,
+  );
+  const overrideRequired = order.resend_unsafe_to_override || wouldSellBelowCost;
 
   // ADR-102 decision 10 — the effective (possibly corrected) Player/
   // Server ID this resend will actually validate against and submit —
@@ -199,7 +217,17 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           This order&apos;s original package is no longer active — choose a replacement package below.
         </p>
       )}
-      {overrideRequired && (
+      {wouldSellBelowCost && selectedPackage && (
+        // ADR-105 decision 4 — a genuine loss, distinct from ADR-102's
+        // "unlikely to help" warning above: this one is about money,
+        // not futility, so it gets its own copy and its own error tone.
+        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          This package&apos;s live cost ({formatRm(selectedPackage.cost_price)}) now exceeds what the customer already paid
+          ({formatRm(order.standard_selling_price)}) — this resend would be a real loss on top of anything already absorbed.
+          Provide a reason below to proceed anyway.
+        </p>
+      )}
+      {order.resend_unsafe_to_override && (
         // ADR-104 decision 3 — same "review" semantic as NeedsReviewBanner's
         // matching copy, not "warning".
         <p className="mb-4 rounded-lg bg-review-surface px-3 py-2 text-sm text-review-ink">
@@ -220,7 +248,14 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
               onChange={(value) => setPackageId(value ? Number(value) : null)}
               options={[
                 { value: "", label: "Select a package…" },
-                ...packages.map((p) => ({ value: String(p.id), label: `${p.name} — ${formatRm(p.cost_price)}` })),
+                // ADR-105 decision 5 — the supplier ref is what
+                // actually distinguishes two same-named packages (e.g.
+                // PUBGG_60_PG1 vs PG2) that a cost-only label can't;
+                // without it an admin has to guess which is which.
+                ...packages.map((p) => ({
+                  value: String(p.id),
+                  label: `${p.name} — ${p.supplier_package_ref} — ${formatRm(p.cost_price)}`,
+                })),
               ]}
             />
           )}
