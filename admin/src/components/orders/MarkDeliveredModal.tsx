@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogContent,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Om
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-5 text-sm text-ink-muted">
         {sandbox ? (
           <>Sandbox mode — no real Gamevion order exists to look up. Enter any value to exercise this flow.</>
         ) : (

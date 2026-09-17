@@ -21,7 +21,7 @@
  * a later pass.
  */
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DataTable,
@@ -40,10 +40,9 @@ import { Input } from "@/components/ui/input";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, listOrders, getOrder, getOrderSummary, refundOrderToWallet, retryOrderDelivery } from "@/lib/orders";
-import type { Voucher } from "@/lib/vouchers";
+import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, type IssueVoucherResult, listOrders, getOrder, getOrderSummary, refundOrderToWallet, retryOrderDelivery } from "@/lib/orders";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
-import IssueVoucherModal from "@/components/orders/IssueVoucherModal";
+import IssueVoucherModal, { isRestoreOnly } from "@/components/orders/IssueVoucherModal";
 import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
 import ConfirmFailedModal from "@/components/orders/ConfirmFailedModal";
 import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
@@ -81,21 +80,50 @@ const paymentStatusSeverity: Record<OrderListItem["payment_status"], "warn" | "s
   failed: "danger",
 };
 
-const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondary" | "warn" | "success" | "danger" | "info"> = {
+const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondary" | "warn" | "success" | "danger" | "info" | "review"> = {
   not_started: "secondary",
   processing: "warn",
   delivered: "success",
   failed: "danger",
-  needs_review: "warn",
+  // ADR-104 decision 3: the artifact's own distinct "review" token, not
+  // "warn" — closes the exact ADR-032 gap the comment below already
+  // flagged (needs_review and processing used to share one color).
+  needs_review: "review",
   // ADR-032 — a distinct color from "processing" so an admin can tell
   // at a glance this is waiting on an async supplier, not a normal
   // in-flight delivery attempt.
   pending: "info",
 };
 
+// ADR-104: payment/delivery status specifically render as a dot + plain
+// text (no pill background), matching the artifact's own OrderDetailFailed/
+// OrdersPage mockups — every other Tag usage on this page (compensation
+// badges, pricing-basis badges, combo-leg/outcome tags) keeps the shared
+// `Tag` component's pill styling untouched. Same severity values already
+// computed above, just a different renderer — no status/label/data change.
+const STATUS_TEXT_COLOR: Record<string, string> = {
+  default: "text-cyan-ink",
+  secondary: "text-neutral-ink",
+  info: "text-info-ink",
+  success: "text-success-ink",
+  warn: "text-warning-ink",
+  danger: "text-danger-ink",
+  review: "text-review-ink",
+};
+
+function StatusText({ severity, children }: { severity: string; children: ReactNode }) {
+  const color = STATUS_TEXT_COLOR[severity] ?? "text-ink-muted";
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${color}`}>
+      <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+      {children}
+    </span>
+  );
+}
+
 export default function OrdersPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>
       <OrdersPageInner />
     </Suspense>
   );
@@ -233,9 +261,23 @@ function OrdersPageInner() {
     });
   }
 
-  function handleVoucherIssued(voucher: Voucher) {
-    setVoucherMessage(`Voucher ${voucher.code} issued.`);
-    setSelected((current) => (current ? { ...current, voucher } : current));
+  /**
+   * ADR-024 addendum (2026-09-17, restore-only) — `restored_only`
+   * branches the success message and local state update: a full-cover
+   * order restores its original voucher but mints no new one, so
+   * `voucher` stays null and `has_voucher_restored` is what flips
+   * (mirroring the backend's own `has_voucher_restored` badge) — that's
+   * what hides the button on this same render, not `voucher`.
+   */
+  function handleVoucherIssued({ restored_only, voucher }: IssueVoucherResult) {
+    setVoucherMessage(
+      restored_only
+        ? "Voucher restored — order fully covered by voucher, no new voucher issued."
+        : `Voucher ${voucher?.code} issued.`,
+    );
+    setSelected((current) =>
+      current ? { ...current, voucher, has_voucher_restored: restored_only || current.has_voucher_restored } : current,
+    );
   }
 
   function handleMarkedDelivered(updated: OrderDetail) {
@@ -359,96 +401,155 @@ function OrdersPageInner() {
             // would still point at this same order on refresh/re-mount.
             if (orderIdParam) router.replace("/admin/orders");
           }}
-          className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+          className="mb-4 text-sm text-ink-muted hover:text-ink"
         >
           ← Back to orders
         </button>
 
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{selected.order_number}</h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Tag severity={paymentStatusSeverity[selected.payment_status]}>
-              payment: {selected.payment_status}
-            </Tag>
-            <Tag severity={deliveryStatusSeverity[selected.delivery_status]}>
-              delivery: {selected.delivery_status}
-            </Tag>
-          </p>
+          {/* ADR-104 PR-2b: header action-bar — every conditional action
+              button below (labels/conditions/handlers all byte-for-byte
+              unchanged from before this PR) now renders next to the
+              title/tags instead of scattered in a row further down the
+              page. Pure repositioning, grilled + approved as layout-only —
+              no button added/removed/relabeled, no condition touched. */}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-page-title font-semibold text-ink">{selected.order_number}</h1>
+              <p className="mt-1 flex items-center gap-3 text-sm text-ink-muted">
+                <StatusText severity={paymentStatusSeverity[selected.payment_status]}>
+                  payment: {selected.payment_status}
+                </StatusText>
+                <StatusText severity={deliveryStatusSeverity[selected.delivery_status]}>
+                  delivery: {selected.delivery_status}
+                </StatusText>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. A failed or needs_review delivery can be resent (ADR-026 decision 4b) — mirrors the backend guard exactly.
+                  ADR-094 decision 10 (found live, 2026-09-15): a combo order (`delivery_legs.length > 0`) can never swap package — resendOrderDelivery() always 422s for one — so it gets the plain retry action instead, never this modal. */}
+              {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
+                <>
+                  {/* ADR-102 decision 1: hidden once this order is already compensated (voucher issued or wallet refunded) — mirrors the backend's own hard block, so an admin never sees a button that would just 400. */}
+                  {!selected.voucher && !selected.wallet_refunded && (
+                    selected.delivery_legs.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* ADR-102 decision 3: a combo order still checks the futile flag regardless of failed/needs_review — the plain Retry button requires the same mandatory override reason the Resend Delivery modal collects for a non-combo order. */}
+                        {selected.resend_unsafe_to_override && (
+                          <Input
+                            aria-label="Override reason"
+                            placeholder="Reason to override and retry anyway (required)"
+                            value={retryOverrideReason}
+                            onChange={(e) => setRetryOverrideReason(e.target.value)}
+                            className="w-72"
+                          />
+                        )}
+                        {/* ADR-104: outlined, matching the mockup's uniform
+                            neutral header-button treatment — same handler/
+                            label/disabled logic, appearance only. */}
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={retryingDelivery || (selected.resend_unsafe_to_override && retryOverrideReason.trim() === "")}
+                          onClick={handleRetryDelivery}
+                        >
+                          {retryingDelivery ? "Retrying…" : "Retry Delivery…"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button size="small" variant="outlined" onClick={() => setResendModalOpen(true)}>
+                        Resend Delivery…
+                      </Button>
+                    )
+                  )}
+                  {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both, Voucher's email-keyed mechanism has no meaning for a B2B wallet account. */}
+                  {selected.delivery_status === "failed" && selected.wallet_reseller && !selected.wallet_refunded && (
+                    <Button size="small" variant="outlined" disabled={refundingToWallet} onClick={handleRefundToWallet}>
+                      {refundingToWallet ? "Refunding…" : "Refund to Wallet…"}
+                    </Button>
+                  )}
+                  {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for the ordinary ambiguous needs_review case at all (ADR-026 decision 4c). ADR-094 decision 9's carve-out: a genuine partial-delivery combo order (`partial_combo_delivery`) is the one needs_review case this button does appear for. ADR-024 addendum (2026-09-17, restore-only): also hidden once `has_voucher_restored` — a full-cover order never gets a `voucher` row, so that check alone would leave this button visible forever; label swaps to "Restore Voucher…" for the same case, decided before the admin clicks anything. */}
+                  {(selected.delivery_status === "failed" || selected.partial_combo_delivery) && !selected.wallet_reseller && !selected.voucher && !selected.has_voucher_restored && (
+                    <Button size="small" variant="outlined" onClick={() => setVoucherModalOpen(true)}>
+                      {isRestoreOnly(selected) ? "Restore Voucher…" : "Issue Voucher…"}
+                    </Button>
+                  )}
+                  {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
+                  {selected.delivery_status === "needs_review" && !selected.voucher && !selected.wallet_refunded && (
+                    <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
+                      Mark as Delivered…
+                    </Button>
+                  )}
+                  {/* ADR-026 addendum (2026-09-16) — the other exit decision 4c's own text always assumed existed. Excluded for a genuine partial-combo-delivery needs_review order — that case has its own custom-amount Issue Voucher path instead (some legs really did deliver). ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
+                  {selected.delivery_status === "needs_review" && !selected.partial_combo_delivery && !selected.voucher && !selected.wallet_refunded && (
+                    <Button size="small" variant="outlined" severity="danger" onClick={() => setConfirmFailedModalOpen(true)}>
+                      Confirm Failed…
+                    </Button>
+                  )}
+                </>
+              )}
+              {/* ADR-096 — independent of the failed/needs_review block above:
+                  a Pending delivery_status/payment_status is an async supplier/
+                  gateway awaiting confirmation, not a failure needing retry. */}
+              {session && <ManualCheckButtons order={selected} token={session.token} onChecked={refreshSelected} />}
+            </div>
+          </div>
+
+          {/* ADR-104 PR-2b: compact summary strip — the same fields already
+              shown in the cards below (Customer Details / Game·Package /
+              Pricing Details, plus created_at), just surfaced at a glance
+              next to the header. No new data, no new fetch, no new field. */}
+          <div className="mt-4 grid grid-cols-2 gap-4 rounded-lg border border-gray-200 bg-subtle p-4 dark:border-gray-800 sm:grid-cols-5">
+            <div>
+              <p className="text-theme-xs text-ink-muted">Customer</p>
+              <p className="text-theme-sm font-medium text-ink">{selected.customer_email}</p>
+            </div>
+            <div>
+              <p className="text-theme-xs text-ink-muted">Game · Package</p>
+              <p className="text-theme-sm font-medium text-ink">
+                {selected.game?.name ?? "—"}
+                {selected.package?.name && <span className="text-ink-muted"> · {selected.package.name}</span>}
+              </p>
+            </div>
+            <div>
+              <p className="text-theme-xs text-ink-muted">Amount</p>
+              <p className="text-theme-sm font-medium text-ink">
+                {formatRm(selected.final_amount)}
+                {selected.payment_method && <span className="text-ink-muted"> · {selected.payment_method}</span>}
+              </p>
+            </div>
+            {/* ADR-104: same derived value OrderDetailCards' "Channel" row
+                already computes (wallet_reseller presence — no new data,
+                no new logic) surfaced here too for the 5-column strip. */}
+            <div>
+              <p className="text-theme-xs text-ink-muted">Channel</p>
+              <p className="text-theme-sm font-medium text-ink">{selected.wallet_reseller ? "Reseller" : "Direct"}</p>
+            </div>
+            <div>
+              <p className="text-theme-xs text-ink-muted">Created</p>
+              <p className="text-theme-sm font-medium text-ink">{new Date(selected.created_at).toLocaleString()}</p>
+            </div>
+          </div>
+
           {/* ADR-026: the ambiguous-outcome case — cross-reference banner, plus "Mark as Delivered" instead of "Issue Voucher" (decision 4c: voucher issuance is deliberately never available from this state). */}
           {selected.delivery_status === "needs_review" && <NeedsReviewBanner order={selected} />}
 
-          {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. A failed or needs_review delivery can be resent (ADR-026 decision 4b) — mirrors the backend guard exactly.
-              ADR-094 decision 10 (found live, 2026-09-15): a combo order (`delivery_legs.length > 0`) can never swap package — resendOrderDelivery() always 422s for one — so it gets the plain retry action instead, never this modal. */}
-          {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
+          {/* ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — server-computed from the persisted error_code (ADR-098's own rc table), never a second hand-copied list here. Text only now — its Retry/Resend button moved into the header action-bar above (PR-2b). */}
+          {selected.delivery_retry_unsafe_with_same_reference && (
+            <p className="mt-3 text-sm text-warning-600 dark:text-orange-400">
+              Resending is unlikely to change this outcome — the supplier already recorded a final result for this reference. A package swap does not escape this either.
+            </p>
+          )}
+
+          {(resendMessage || voucherMessage || refundMessage || retryMessage) && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {/* ADR-102 decision 1: hidden once this order is already compensated (voucher issued or wallet refunded) — mirrors the backend's own hard block, so an admin never sees a button that would just 400. */}
-              {!selected.voucher && !selected.wallet_refunded && (
-                selected.delivery_legs.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* ADR-102 decision 3: a combo order still checks the futile flag regardless of failed/needs_review — the plain Retry button requires the same mandatory override reason the Resend Delivery modal collects for a non-combo order. */}
-                    {selected.resend_unsafe_to_override && (
-                      <Input
-                        aria-label="Override reason"
-                        placeholder="Reason to override and retry anyway (required)"
-                        value={retryOverrideReason}
-                        onChange={(e) => setRetryOverrideReason(e.target.value)}
-                        className="w-72"
-                      />
-                    )}
-                    <Button
-                      size="small"
-                      disabled={retryingDelivery || (selected.resend_unsafe_to_override && retryOverrideReason.trim() === "")}
-                      onClick={handleRetryDelivery}
-                    >
-                      {retryingDelivery ? "Retrying…" : "Retry Delivery…"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button size="small" onClick={() => setResendModalOpen(true)}>
-                    Resend Delivery…
-                  </Button>
-                )
-              )}
-              {/* ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — server-computed from the persisted error_code (ADR-098's own rc table), never a second hand-copied list here. */}
-              {selected.delivery_retry_unsafe_with_same_reference && (
-                <span className="text-sm text-warning-600 dark:text-orange-400">
-                  Resending is unlikely to change this outcome — the supplier already recorded a final result for this reference. A package swap does not escape this either.
-                </span>
-              )}
-              {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both, Voucher's email-keyed mechanism has no meaning for a B2B wallet account. */}
-              {selected.delivery_status === "failed" && selected.wallet_reseller && !selected.wallet_refunded && (
-                <Button size="small" variant="outlined" disabled={refundingToWallet} onClick={handleRefundToWallet}>
-                  {refundingToWallet ? "Refunding…" : "Refund to Wallet…"}
-                </Button>
-              )}
-              {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for the ordinary ambiguous needs_review case at all (ADR-026 decision 4c). ADR-094 decision 9's carve-out: a genuine partial-delivery combo order (`partial_combo_delivery`) is the one needs_review case this button does appear for. */}
-              {(selected.delivery_status === "failed" || selected.partial_combo_delivery) && !selected.wallet_reseller && !selected.voucher && (
-                <Button size="small" variant="outlined" onClick={() => setVoucherModalOpen(true)}>
-                  Issue Voucher…
-                </Button>
-              )}
-              {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
-              {selected.delivery_status === "needs_review" && !selected.voucher && !selected.wallet_refunded && (
-                <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
-                  Mark as Delivered…
-                </Button>
-              )}
-              {/* ADR-026 addendum (2026-09-16) — the other exit decision 4c's own text always assumed existed. Excluded for a genuine partial-combo-delivery needs_review order — that case has its own custom-amount Issue Voucher path instead (some legs really did deliver). ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
-              {selected.delivery_status === "needs_review" && !selected.partial_combo_delivery && !selected.voucher && !selected.wallet_refunded && (
-                <Button size="small" variant="outlined" severity="danger" onClick={() => setConfirmFailedModalOpen(true)}>
-                  Confirm Failed…
-                </Button>
-              )}
-              {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
-              {voucherMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{voucherMessage}</span>}
-              {refundMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{refundMessage}</span>}
-              {retryMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{retryMessage}</span>}
+              {resendMessage && <span className="text-sm text-ink-muted">{resendMessage}</span>}
+              {voucherMessage && <span className="text-sm text-ink-muted">{voucherMessage}</span>}
+              {refundMessage && <span className="text-sm text-ink-muted">{refundMessage}</span>}
+              {retryMessage && <span className="text-sm text-ink-muted">{retryMessage}</span>}
             </div>
           )}
-          {/* ADR-096 — independent of the failed/needs_review block above:
-              a Pending delivery_status/payment_status is an async supplier/
-              gateway awaiting confirmation, not a failure needing retry. */}
-          {session && <ManualCheckButtons order={selected} token={session.token} onChecked={refreshSelected} />}
           {/* Rendered outside the failed/needs_review-gated block above,
               deliberately — unlike resend/voucher, a successful Mark as
               Delivered moves delivery_status to "delivered" in the same
@@ -456,14 +557,14 @@ function OrdersPageInner() {
               unmount it before an admin ever saw it (found live via the
               ADR-023 admin-mark-delivered E2E spec). */}
           {markDeliveredMessage && (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</p>
+            <p className="mt-3 text-sm text-ink-muted">{markDeliveredMessage}</p>
           )}
           {/* Rendered outside the failed/needs_review-gated block above,
               deliberately — same reasoning as markDeliveredMessage above:
               a successful Confirm Failed moves delivery_status to
               "failed" in the same render that sets this message. */}
           {confirmFailedMessage && (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{confirmFailedMessage}</p>
+            <p className="mt-3 text-sm text-ink-muted">{confirmFailedMessage}</p>
           )}
           {/* ADR-102 decision 11 — three independent cards (Voucher Used to Pay / Compensation Voucher Issued / Wallet Refund), replacing the old single-line mentions. */}
           <RefundInformationCards order={selected} />
@@ -517,8 +618,8 @@ function OrdersPageInner() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Orders</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-page-title font-semibold text-ink">Orders</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Every order created via checkout — real customer purchases only.
         </p>
       </div>
@@ -537,14 +638,20 @@ function OrdersPageInner() {
           placeholder="Search order # or customer email…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-cyan-600 focus:outline-hidden focus:ring-3 focus:ring-focus-ring/10 dark:border-gray-700 dark:bg-gray-900 dark:text-ink"
         />
-        <div className="flex gap-2">
+        {/* ADR-104: underline-tab style, not a filled pill — same values/
+            labels/onClick as before, matching the artifact's FilterBar. */}
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
               onClick={() => setStatus(f.value)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${status === f.value ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+              className={`border-b-2 px-3 py-1.5 text-sm font-medium ${
+                status === f.value
+                  ? "border-cyan-600 text-cyan-ink"
+                  : "border-transparent text-ink-muted hover:text-ink"
+              }`}
             >
               {f.label}
             </button>
@@ -552,22 +659,22 @@ function OrdersPageInner() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={page?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order #</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game / Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Amount</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Payment</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Delivery</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Order #</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Customer</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game / Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Source</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Final Amount</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Payment</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Delivery</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Date</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
                 <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -576,40 +683,59 @@ function OrdersPageInner() {
 
                     return (
                       <DataTableRow key={order.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{order.order_number}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{order.customer_email}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 font-mono text-code-id font-medium text-ink">{order.order_number}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{order.customer_email}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {order.game?.name ?? "—"}
                           {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {/* A wallet order's own affiliate is always the platform's primary brand (ADR-073 decision 5) — wallet_reseller is the one that actually answers "where from". */}
                           {order.wallet_reseller ? (
                             <span>
-                              Reseller: <span className="font-medium text-gray-700 dark:text-gray-300">{order.wallet_reseller.business_name}</span>
+                              Reseller: <span className="font-medium text-ink">{order.wallet_reseller.business_name}</span>
                             </span>
                           ) : (
                             order.affiliate?.business_name ?? "—"
                           )}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</DataTableCell>
+                        {/* ADR-104: two-line cell (main value + a quiet sub-line) —
+                            same fields already on OrderListItem, no data/label
+                            change, just how the existing payment_method reads
+                            here. */}
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Tag severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</Tag>
+                          <span className="font-medium text-ink">{formatRm(order.final_amount)}</span>
+                          {order.payment_method && (
+                            <div className="text-theme-xs text-ink-muted">{order.payment_method}</div>
+                          )}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <StatusText severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</StatusText>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <Tag severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
-                            {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). */}
-                            {order.has_used_voucher && <span title="Paid with a voucher">🎫</span>}
-                            {order.has_compensation_voucher && <span title="Compensation voucher issued">🎟️</span>}
-                            {order.has_wallet_refund && <span title="Refunded to wallet">💰</span>}
+                            <StatusText severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</StatusText>
+                            {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). ADR-024 addendum (2026-09-17): plain-text Tag pills, not emoji — founder feedback, 2026-09-17 — plus a 4th ("Restored") for the restore-only case, which never sets has_compensation_voucher. */}
+                            {order.has_used_voucher && <Tag severity="secondary">Voucher Paid</Tag>}
+                            {order.has_compensation_voucher && <Tag severity="warn">Voucher Issued</Tag>}
+                            {order.has_wallet_refund && <Tag severity="info">Wallet Refunded</Tag>}
+                            {order.has_voucher_restored && <Tag severity="success">Restored</Tag>}
                           </div>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {new Date(order.created_at).toLocaleString()}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Button size="small" variant="outlined" onClick={() => session && openOrder(session.token, order.id)}>
+                          {/* ADR-104: label stays "View" — same button, same
+                              action, same destination — only its emphasis
+                              (filled vs outlined) follows the delivery
+                              status, matching the artifact's own Failed-row
+                              treatment. No new button, no relabel. */}
+                          <Button
+                            size="small"
+                            variant={order.delivery_status === "failed" ? undefined : "outlined"}
+                            onClick={() => session && openOrder(session.token, order.id)}
+                          >
                             View
                           </Button>
                         </DataTableCell>
@@ -622,16 +748,16 @@ function OrdersPageInner() {
           </DataTable>
 
           {page?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No orders found.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No orders found.</p>
           )}
           {page === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
 
       {page && page.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">
           <span>Page {page.current_page} of {page.last_page} ({page.total} total)</span>
           <div className="flex gap-2">
             <Button size="small" variant="outlined" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>

@@ -46,18 +46,35 @@ export interface OrderListItem {
   has_used_voucher: boolean;
   has_compensation_voucher: boolean;
   has_wallet_refund: boolean;
+  // ADR-024 addendum (2026-09-17, restore-only): true once this order's
+  // own voucher redemption is 'restored' — independent of
+  // has_compensation_voucher, which stays false for a full-cover-by-
+  // voucher order (it restores the original voucher, but its own cash
+  // portion is 0, so no new voucher is minted). Also gates the "Issue
+  // Voucher…"/"Restore Voucher…" button off, same reasoning as `voucher`.
+  has_voucher_restored: boolean;
 }
 
 /**
  * ADR-017 decision #4: one row per admin resend attempt — the
  * "Delivery Logs" history table renders this, most recent first.
+ *
+ * ADR-106 decision 2: widened beyond admin resends — `attempt_type`
+ * discriminates which write site produced a given row. `initial` is
+ * the durable counterpart to what DeliveryLogsTable.tsx used to
+ * synthesize live from mutable Order columns; `manual_confirm` is
+ * markDeliveredManually()'s own attempt. `price_diff_sen` is `null`
+ * for both (decision 4 — no live-cost comparison is ever made on a
+ * first attempt or a manual confirmation), genuinely different from a
+ * resend's real `0` diff.
  */
 export interface OrderResendAttempt {
   id: number;
+  attempt_type: "initial" | "resend" | "manual_confirm";
   package: { id: number; name: string; supplier_package_ref?: string } | null;
   cost_price_sen: number;
   standard_selling_price_sen: number;
-  price_diff_sen: number;
+  price_diff_sen: number | null;
   // 2026-09-15 bugfix: "pending" self-corrects to success/failed the
   // moment the real async outcome resolves — see
   // OrderFulfillmentService::resolvePendingResendAttempt().
@@ -97,6 +114,11 @@ export interface OrderDetail extends OrderListItem {
   affiliate_profit: number;
   pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate";
   member_discount_percent: string | null;
+  // ADR-105 decision 3 — the package's own markup_percent at checkout
+  // time, frozen for a Member-basis order only (null for every other
+  // basis); OrderResendService reconciles a resend against this instead
+  // of the target package's current one.
+  markup_percent: string | null;
   normal_selling_price: number | null;
   membership: { id: number; email: string; membership_plan: { name: string } } | null;
   payment_ref: string | null;
@@ -152,6 +174,11 @@ export interface OrderDetail extends OrderListItem {
   // needs_review; combo via an OR-rollup across legs (unsafe if any
   // leg is currently needs_review with its own unsafe flag set).
   resend_unsafe_to_override: boolean;
+  // ADR-107 decision 3 — true only once a combo order actually delivered
+  // with a reconciled negative platform_profit (never blocks delivery;
+  // this is the after-the-fact visibility signal instead, so an admin
+  // notices without watching every combo resend).
+  combo_profit_reconciled_negative: boolean;
 }
 
 export interface OrderPage {
@@ -282,9 +309,23 @@ export function retryOrderDelivery(token: string, id: number, values: { override
  * "failed" (or the partial-delivery carve-out applies) and no voucher
  * has been issued for this order yet (enforced by a real unique
  * index, not just this check).
+ *
+ * ADR-024 addendum (2026-09-17, restore-only): a full-cover-by-voucher
+ * order has a genuinely zero cash portion — the backend restores the
+ * order's original voucher but mints no new one, and the response
+ * reflects that (`restored_only: true`, `voucher: null`) instead of
+ * pretending a Voucher was created. `IssueVoucherModal` decides its
+ * own title/copy from `OrderDetail`'s already-known amount before the
+ * request even fires; this return shape is what the success handler
+ * branches on afterwards.
  */
+export interface IssueVoucherResult {
+  restored_only: boolean;
+  voucher: Voucher | null;
+}
+
 export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string; amount?: number } = {}) {
-  return apiFetch<Voucher>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
+  return apiFetch<IssueVoucherResult>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
 }
 
 /**

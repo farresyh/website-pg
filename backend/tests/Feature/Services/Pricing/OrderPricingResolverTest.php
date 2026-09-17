@@ -130,6 +130,10 @@ class OrderPricingResolverTest extends TestCase
         $this->assertSame($membership->id, $resolution->membershipId);
         $this->assertSame(80.0, $resolution->memberDiscountPercent);
         $this->assertNull($resolution->wholesaleMarkupPct); // member price is not tier-derived
+        // ADR-105 decision 3 — the package's own markup_percent, frozen
+        // for a later resend to reconcile against instead of whatever
+        // the package's markup_percent happens to be by then.
+        $this->assertSame(15.0, $resolution->markupPercent);
     }
 
     public function test_a_member_priced_out_of_quota_falls_back_to_standard(): void

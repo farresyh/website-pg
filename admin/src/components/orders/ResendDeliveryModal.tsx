@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogContent,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/select";
@@ -44,6 +44,55 @@ function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
+interface ResendImpact {
+  newAffiliateProfit: number | null;
+  newPlatformProfit: number;
+}
+
+/**
+ * ADR-105 decision 8 (addendum) — a preview of the resend picker's
+ * package choice, mirroring `OrderResendService::resend()`'s own
+ * formulas exactly (never re-derived independently — the founder-facing
+ * bug ADR-105 exists to fix was born from two "equivalent-looking"
+ * formulas quietly drifting apart). Kept as a small pure function, not
+ * inline in the component, so it stays a direct 1:1 mirror that's easy
+ * to diff against the backend if either ever changes.
+ */
+function computeResendImpact(order: OrderDetail, targetPackage: GamePackage): ResendImpact {
+  const liveCostPrice = targetPackage.cost_price;
+
+  if (order.pricing_basis === "member") {
+    const packageMarkupPercent = order.markup_percent !== null ? parseFloat(order.markup_percent) : parseFloat(targetPackage.markup_percent);
+    const discountPercent = order.member_discount_percent !== null ? parseFloat(order.member_discount_percent) : 0;
+    const effectiveMarkupPercent = Math.max(0, packageMarkupPercent * (1 - discountPercent / 100));
+    const newMemberPrice = Math.round(liveCostPrice * (1 + effectiveMarkupPercent / 100));
+
+    return { newAffiliateProfit: null, newPlatformProfit: newMemberPrice - liveCostPrice };
+  }
+
+  const affiliateMarkupPct = parseFloat(order.affiliate_markup_pct);
+
+  if (order.wholesale_markup_pct !== null && order.wholesale_markup_pct !== undefined) {
+    // Tier-affiliate/ResellerWallet basis (decision 2's formula,
+    // unchanged) — affiliateProfit still scales with live cost via the
+    // tier multiplier; platformProfit is the residual against the
+    // order's own frozen selling_price (decision 8), never wholesaleBase
+    // - liveCost directly.
+    const tierMarkupPct = parseFloat(order.wholesale_markup_pct);
+    const wholesaleBase = Math.round(liveCostPrice * (1 + tierMarkupPct / 100));
+    const newAffiliateProfit = Math.round(wholesaleBase * (affiliateMarkupPct / 100));
+
+    return { newAffiliateProfit, newPlatformProfit: order.selling_price - liveCostPrice - newAffiliateProfit };
+  }
+
+  // Standard/lapsed-affiliate basis (decision 1) — both figures
+  // reconcile against the order's own frozen standard_selling_price,
+  // never the target package's live one.
+  const newAffiliateProfit = Math.round(order.standard_selling_price * (affiliateMarkupPct / 100));
+
+  return { newAffiliateProfit, newPlatformProfit: order.standard_selling_price - liveCostPrice - newAffiliateProfit };
+}
+
 /**
  * ADR-017, merged with ORD-7's original plain retry (founder feedback,
  * 2026-07-27 — two separate buttons for "fix a failed delivery" was
@@ -63,12 +112,14 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ADR-102 decision 3 — mandatory free-text reason, required only
-  // when the backend's own scoped rule (Order::resendUnsafeToOverride())
-  // says so: non-combo orders only from needs_review (a Failed order
-  // is never futile — decision 9 always regenerates its reference).
+  // ADR-102 decision 3 — mandatory free-text reason, required when the
+  // backend's own scoped rule (Order::resendUnsafeToOverride()) says
+  // so: non-combo orders only from needs_review (a Failed order is
+  // never futile — decision 9 always regenerates its reference). ADR-
+  // 105 decision 4 adds a second, independent trigger below
+  // (`wouldSellBelowCost`) — same field, same mechanism, a different
+  // reason to need it.
   const [overrideReason, setOverrideReason] = useState("");
-  const overrideRequired = order.resend_unsafe_to_override;
 
   // ADR-102 decision 10 — optional correction to a customer-typo'd
   // Player ID/Server ID (Context point 7: today the only fix for a
@@ -114,9 +165,27 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   }, [gameId]);
 
   const selectedPackage = packages?.find((p) => p.id === packageId) ?? null;
-  const priceDiff = selectedPackage ? selectedPackage.cost_price - order.cost_price : null;
   const isSamePackage = packageId !== null && packageId === originalPackageId;
   const originalPackageNoLongerActive = packages !== null && originalPackageId !== null && !packages.some((p) => p.id === originalPackageId);
+
+  // ADR-105 decision 8 (addendum) — a basis-aware preview of what this
+  // attempt would actually record, mirroring OrderResendService::resend()'s
+  // own formulas exactly rather than a raw cost-diff that's only
+  // accurate for the Standard/lapsed-affiliate basis. A tier-affiliate
+  // order's affiliateProfit moves with live cost too (the tier
+  // multiplier), so a raw cost diff understates what the platform
+  // actually absorbs — the founder-facing bug this preview exists to
+  // avoid.
+  const impact = selectedPackage ? computeResendImpact(order, selectedPackage) : null;
+
+  // ADR-105 decision 4 — a fast, same-request echo of the guard
+  // OrderResendService::resend() enforces for real: any non-Member
+  // basis whose projected platformProfit would go negative is a
+  // genuine loss, not just an absorbed markup dip. Never true for a
+  // Member order — memberPrice = cost × (1 + markup%) with markup% ≥ 0
+  // can never sell below cost (decision 3).
+  const wouldSellBelowCost = Boolean(impact && order.pricing_basis !== "member" && impact.newPlatformProfit < 0);
+  const overrideRequired = order.resend_unsafe_to_override || wouldSellBelowCost;
 
   // ADR-102 decision 10 — the effective (possibly corrected) Player/
   // Server ID this resend will actually validate against and submit —
@@ -178,7 +247,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-5 text-sm text-ink-muted">
         Defaults to resending the same package this order already has — change the selection below only if you want to
         deliver a different package from the same game (<span className="font-medium">{order.game?.name ?? "—"}</span>).
         Any live cost difference is absorbed by the platform and recorded, never re-charged to the customer.
@@ -199,8 +268,20 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           This order&apos;s original package is no longer active — choose a replacement package below.
         </p>
       )}
-      {overrideRequired && (
-        <p className="mb-4 rounded-lg bg-warning-50 px-3 py-2 text-sm text-warning-600 dark:bg-warning-500/15 dark:text-orange-400">
+      {wouldSellBelowCost && impact && (
+        // ADR-105 decision 4/8 — a genuine loss, distinct from
+        // ADR-102's "unlikely to help" warning above: this one is about
+        // money, not futility, so it gets its own copy and its own
+        // error tone.
+        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          This resend would record a platform loss of {formatRm(Math.abs(impact.newPlatformProfit))} — live cost now exceeds
+          what was actually collected for this order. Provide a reason below to proceed anyway and accept the loss.
+        </p>
+      )}
+      {order.resend_unsafe_to_override && (
+        // ADR-104 decision 3 — same "review" semantic as NeedsReviewBanner's
+        // matching copy, not "warning".
+        <p className="mb-4 rounded-lg bg-review-surface px-3 py-2 text-sm text-review-ink">
           Resending is unlikely to change this outcome — the supplier already recorded a final result for this reference. A
           package swap does not escape this either. Provide a reason below to override and resend anyway.
         </p>
@@ -210,7 +291,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         <div>
           <Label htmlFor="resend_package">Package</Label>
           {packages === null ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading packages…</p>
+            <p className="text-sm text-ink-muted">Loading packages…</p>
           ) : (
             <SimpleSelect
               id="resend_package"
@@ -218,29 +299,53 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
               onChange={(value) => setPackageId(value ? Number(value) : null)}
               options={[
                 { value: "", label: "Select a package…" },
-                ...packages.map((p) => ({ value: String(p.id), label: `${p.name} — ${formatRm(p.cost_price)}` })),
+                // ADR-105 decision 5 — the supplier ref is what
+                // actually distinguishes two same-named packages (e.g.
+                // PUBGG_60_PG1 vs PG2) that a cost-only label can't;
+                // without it an admin has to guess which is which.
+                ...packages.map((p) => ({
+                  value: String(p.id),
+                  label: `${p.name} — ${p.supplier_package_ref} — ${formatRm(p.cost_price)}`,
+                })),
               ]}
             />
           )}
         </div>
 
-        {selectedPackage && priceDiff !== null && (
-          <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-white/5">
-            <div className="flex justify-between text-gray-500 dark:text-gray-400">
+        {selectedPackage && impact && (
+          // ADR-105 decision 8 (addendum) — basis-aware, mirrors
+          // OrderResendService::resend()'s own formulas (see
+          // computeResendImpact() above) rather than a raw cost diff,
+          // which understates the real impact on a tier-affiliate
+          // order (the tier multiplier moves affiliateProfit too).
+          <div className="rounded-lg bg-subtle px-3 py-2 text-sm space-y-1">
+            <div className="flex justify-between text-ink-muted">
               <span>Original cost (snapshot)</span>
               <span>{formatRm(order.cost_price)}</span>
             </div>
-            <div className="flex justify-between text-gray-500 dark:text-gray-400">
+            <div className="flex justify-between text-ink-muted">
               <span>Live cost (this package now)</span>
               <span>{formatRm(selectedPackage.cost_price)}</span>
             </div>
+            {impact.newAffiliateProfit !== null && order.pricing_basis !== "reseller-wallet" && (
+              <div className="flex justify-between text-ink-muted">
+                <span>Affiliate profit (this attempt)</span>
+                <span>{formatRm(impact.newAffiliateProfit)}</span>
+              </div>
+            )}
             <div
-              className={`mt-1 flex justify-between font-medium ${priceDiff > 0 ? "text-error-600 dark:text-error-400" : priceDiff < 0 ? "text-success-600 dark:text-success-400" : "text-gray-800 dark:text-white/90"}`}
+              className={`flex justify-between font-medium ${impact.newPlatformProfit < 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}
             >
-              <span>Platform absorbs</span>
+              <span>Platform profit (this attempt)</span>
+              <span>{impact.newPlatformProfit < 0 ? formatRm(impact.newPlatformProfit) : `+${formatRm(impact.newPlatformProfit)}`}</span>
+            </div>
+            <div
+              className={`flex justify-between font-medium ${impact.newPlatformProfit < order.platform_profit ? "text-error-600 dark:text-error-400" : impact.newPlatformProfit > order.platform_profit ? "text-success-600 dark:text-success-400" : "text-ink-muted"}`}
+            >
+              <span>Change vs current ({formatRm(order.platform_profit)})</span>
               <span>
-                {priceDiff > 0 ? "+" : ""}
-                {formatRm(priceDiff)}
+                {impact.newPlatformProfit - order.platform_profit >= 0 ? "+" : ""}
+                {formatRm(impact.newPlatformProfit - order.platform_profit)}
               </span>
             </div>
           </div>
@@ -249,7 +354,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         {/* ADR-102 decision 10 — closes the "a wrong-ID failure can only be resolved by Issue Voucher + a brand new customer-placed order" gap. Available regardless of whether this game requires validation — a typo'd ID can cause a plain supplier rejection too. */}
         <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
           <Label>Player ID / Server ID Correction (Optional)</Label>
-          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-2 text-sm text-ink-muted">
             Currently on this order: <span className="font-medium">{order.player_id}</span>
             {order.server_id ? ` / ${order.server_id}` : ""}. Leave blank to resend unchanged.
           </p>
@@ -277,7 +382,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
 
         {requiresPlayerValidation && (
           <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
+            <p className="mb-2 text-sm text-ink-muted">
               This game requires Player ID validation before resending — Player ID{" "}
               <span className="font-medium">{effectivePlayerId}</span>
               {effectiveServerId ? ` / Server ${effectiveServerId}` : ""}.
@@ -299,14 +404,14 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
               <button
                 type="button"
                 onClick={() => setSimulateSuccess(true)}
-                className={`rounded-lg px-3 py-1.5 text-sm ${simulateSuccess ? "bg-success-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+                className={`rounded-lg px-3 py-1.5 text-sm ${simulateSuccess ? "bg-success-500 text-white" : "bg-subtle text-ink-muted"}`}
               >
                 Simulate Success
               </button>
               <button
                 type="button"
                 onClick={() => setSimulateSuccess(false)}
-                className={`rounded-lg px-3 py-1.5 text-sm ${!simulateSuccess ? "bg-error-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+                className={`rounded-lg px-3 py-1.5 text-sm ${!simulateSuccess ? "bg-error-500 text-white" : "bg-subtle text-ink-muted"}`}
               >
                 Simulate Failure
               </button>

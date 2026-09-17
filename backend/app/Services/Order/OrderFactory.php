@@ -59,6 +59,7 @@ final class OrderFactory
                 'pricing_basis' => $draft->pricing->basis->value,
                 'membership_id' => $draft->pricing->membershipId,
                 'member_discount_percent' => $draft->pricing->memberDiscountPercent,
+                'markup_percent' => $draft->pricing->markupPercent,
                 'normal_selling_price' => $draft->pricing->normalSellingPriceSen,
                 'cost_price' => $draft->pricing->costPriceSen,
                 'standard_selling_price' => $draft->pricing->standardSellingPriceSen,

@@ -16,6 +16,7 @@ use App\Models\ResellerBotOrderNotification;
 use App\Models\ResellerWebhookDelivery;
 use App\Models\Supplier;
 use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -356,10 +357,12 @@ class OrderControllerTest extends TestCase
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
             'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+            'selling_price_sen' => $delivered->standard_selling_price,
         ]);
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
             'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
+            'selling_price_sen' => $failed->standard_selling_price,
         ]);
         $this->actingAsAdmin();
 
@@ -367,7 +370,11 @@ class OrderControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('partial_combo_delivery', true);
-        $response->assertJsonPath('suggested_voucher_amount', 27500);
+        // ADR-107 decision 4: order()'s defaults give compensableAmount
+        // 1000 (final_amount 1100 - transaction_fee 100); apportioned by
+        // frozen selling_price_sen weight (27500 of 71500 total) ->
+        // 1000 * 27500/71500 ≈ 384.6, rounds to 385.
+        $response->assertJsonPath('suggested_voucher_amount', 385);
         $response->assertJsonCount(2, 'delivery_legs');
         $response->assertJsonPath('delivery_legs.0.leg_number', 1);
         $response->assertJsonPath('delivery_legs.0.status', 'delivered');
@@ -379,6 +386,45 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('delivery_legs.0.component_package.supplier_package_ref', 'GV-4810');
         $response->assertJsonPath('delivery_legs.1.status', 'failed');
         $response->assertJsonPath('delivery_legs.1.failure_reason', 'Insufficient balance');
+        // ADR-107 decision 3 — a NeedsReview (partial-delivery) combo
+        // order is never the negative-profit case (that's a Delivered-
+        // only signal, see Order::hasNegativeComboProfit()).
+        $response->assertJsonPath('combo_profit_reconciled_negative', false);
+    }
+
+    /**
+     * ADR-107 decision 3 — the Order Detail visibility signal: true only
+     * once a combo order actually delivered with a reconciled negative
+     * platform_profit already stored on it.
+     */
+    public function test_show_flags_a_delivered_combo_order_with_reconciled_negative_profit(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia']);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 4810, 'cost_price' => 40000, 'standard_selling_price' => 44000,
+        ]);
+        $order = $this->order([
+            'package_id' => $combo->id, 'delivery_status' => DeliveryStatus::Delivered->value,
+            'platform_profit' => -500,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $component->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+            'selling_price_sen' => $component->standard_selling_price,
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('combo_profit_reconciled_negative', true);
     }
 
     /** An ordinary single-supplier order has no legs and never trips the partial-delivery carve-out. */
@@ -673,8 +719,12 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        // ADR-105: kept under the order's own standard_selling_price
+        // (900, the order() default) so this resend doesn't trip
+        // decision 4's below-cost guard — this test is about job
+        // dispatch, not that guard.
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 850, 'standard_selling_price' => 850,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         $order = $this->order([
@@ -698,8 +748,12 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        // ADR-105: kept under the order's own standard_selling_price
+        // (900, the order() default) so this resend doesn't trip
+        // decision 4's below-cost guard — this test is about the
+        // player-ID correction, not that guard.
         $package = Package::query()->create([
-            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 850, 'standard_selling_price' => 850,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
         ]);
         $order = $this->order([
@@ -719,6 +773,62 @@ class OrderControllerTest extends TestCase
         Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
             && $job->playerId === 'corrected-id'
             && $job->serverId === 'srv-9');
+    }
+
+    /**
+     * ADR-105 decision 4 — fast, same-request echo of the guard
+     * `OrderResendService::resend()` enforces for real: a package whose
+     * live cost now exceeds what the customer already paid is a 422
+     * without an override reason, never a silently-queued job that
+     * fails later.
+     */
+    public function test_resend_requires_an_override_reason_when_the_swap_packages_cost_exceeds_what_the_customer_paid(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    /** ADR-105 decision 4 — the override is real, not just gatekept: a reason lets it through and queues the job, carried through to the service. */
+    public function test_resend_proceeds_with_an_override_reason_when_the_swap_packages_cost_exceeds_what_the_customer_paid(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", [
+            'package_id' => $package->id,
+            'override_reason' => 'Customer already paid, deliver anyway per founder instruction.',
+        ]);
+
+        $response->assertOk();
+        Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
+            && $job->overrideReason === 'Customer already paid, deliver anyway per founder instruction.');
     }
 
     /**
@@ -988,7 +1098,16 @@ class OrderControllerTest extends TestCase
         // (not null), which crashed the admin panel's own
         // DeliveryLogsTable on the now-undefined resend_attempts once
         // it replaced the full OrderDetail with this response.
-        $response->assertJsonPath('resend_attempts', []);
+        //
+        // ADR-106 decision 3: markDeliveredManually() now writes a real
+        // attempt_type=manual_confirm row (the third gap this ADR
+        // found) — resend_attempts is no longer empty for this action.
+        $response->assertJsonCount(1, 'resend_attempts');
+        $response->assertJsonPath('resend_attempts.0.attempt_type', 'manual_confirm');
+        $response->assertJsonPath('resend_attempts.0.outcome', 'success');
+        $response->assertJsonPath('resend_attempts.0.price_diff_sen', null);
+        $response->assertJsonPath('resend_attempts.0.note', 'Confirmed via Gamevion dashboard, TARGET/SERVICE/date matched.');
+        $this->assertNotNull($response->json('resend_attempts.0.triggered_by'));
         $response->assertJsonStructure(['game', 'package', 'supplier', 'affiliate', 'voucher']);
     }
 
@@ -1369,6 +1488,86 @@ class OrderControllerTest extends TestCase
         $this->assertTrue((bool) $byId[$usedVoucherOrder->id]['has_used_voucher']);
         $this->assertTrue((bool) $byId[$failedOrder->id]['has_compensation_voucher']);
         $this->assertTrue((bool) $byId[$walletRefundedOrder->id]['has_wallet_refund']);
+    }
+
+    /**
+     * ADR-024 addendum (2026-09-17, restore-only) — the 4th compensation
+     * badge: true once this order's own voucher redemption is
+     * 'restored', independent of whether a new compensation Voucher was
+     * also minted (it wasn't, for a full-cover-by-voucher order).
+     */
+    public function test_index_and_show_expose_the_voucher_restored_badge(): void
+    {
+        $this->actingAsAdmin();
+        $originalVoucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-RESTORED-1',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->order(['voucher_id' => $originalVoucher->id, 'delivery_status' => DeliveryStatus::Failed->value]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $originalVoucher->id,
+            'order_id' => $order->id,
+            'amount' => 500,
+            'status' => 'restored',
+        ]);
+        $plainOrder = $this->order(['delivery_status' => DeliveryStatus::Delivered->value]);
+
+        $show = $this->getJson("/api/orders/{$order->id}");
+        $show->assertOk()->assertJsonPath('has_voucher_restored', true);
+
+        $index = $this->getJson('/api/orders');
+        $byId = collect($index->json('data'))->keyBy('id');
+        $this->assertTrue((bool) $byId[$order->id]['has_voucher_restored']);
+        $this->assertFalse((bool) $byId[$plainOrder->id]['has_voucher_restored']);
+    }
+
+    /**
+     * ADR-024 addendum — the guard gap this closes: a full-cover order
+     * that already had its voucher restored must be just as untouchable
+     * as one with a Voucher row or wallet refund, or a further resend
+     * could deliver goods on top of a refund already given back.
+     */
+    public function test_resend_rejects_an_order_whose_voucher_has_already_been_restored(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $originalVoucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-RESTORED-2',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'voucher_id' => $originalVoucher->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $originalVoucher->id,
+            'order_id' => $order->id,
+            'amount' => 500,
+            'status' => 'restored',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
     }
 
     public function test_refund_to_wallet_rejects_a_non_wallet_order(): void

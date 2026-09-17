@@ -28,6 +28,13 @@ namespace App\Services\Pricing;
  *                          wholesale_markup_pct` snapshot, ORD-9, read
  *                          back by OrderResendService); null for Standard
  *                          and Member.
+ *  - `markupPercent`      the *package's own* `markup_percent` this order
+ *                          was priced against — set only for the Member
+ *                          basis (the `orders.markup_percent` snapshot,
+ *                          ADR-105 decision 3, read back by
+ *                          OrderResendService instead of re-fetching the
+ *                          package's current, possibly-since-changed
+ *                          markup_percent); null for every other basis.
  */
 final readonly class PricingResolution
 {
@@ -42,5 +49,6 @@ final readonly class PricingResolution
         public ?int $membershipId = null,
         public ?float $memberDiscountPercent = null,
         public ?float $wholesaleMarkupPct = null,
+        public ?float $markupPercent = null,
     ) {}
 }

@@ -20,6 +20,7 @@ use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use App\Services\Reseller\Webhook\ResellerWebhookDispatcher;
 use App\Services\Reseller\Webhook\ResellerWebhookEvent;
@@ -79,6 +80,9 @@ class OrderController extends Controller
             ->withExists([
                 'voucher as has_compensation_voucher',
                 'paidWithVoucher as has_used_voucher',
+                // ADR-024 addendum (2026-09-17, restore-only) — the 4th
+                // badge, mirroring show()'s own has_voucher_restored.
+                'voucherRedemption as has_voucher_restored' => fn ($query) => $query->where('status', 'restored'),
             ]);
 
         match ($request->query('status')) {
@@ -231,7 +235,7 @@ class OrderController extends Controller
         // was never blocked).
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be resent.'],
             ]);
         }
 
@@ -250,25 +254,50 @@ class OrderController extends Controller
      * override needs an audit trail, not a silent bypass. Shared by
      * both retryDelivery() and resend() so the two never drift on this
      * rule.
+     *
+     * ADR-105 decision 4 — extended with a second, independent trigger:
+     * a package swap (never a same-package retry, hence `$targetPackage`
+     * is null from retryDelivery()) whose live cost now exceeds what
+     * the customer already paid. This is purely a fast, same-request
+     * echo of the check `OrderResendService::resend()` makes for real at
+     * attempt time (same reasoning as this whole method's own doc
+     * comment above it in resend() — a controller-side check can go
+     * stale, the job re-checks everything itself) — its only job is
+     * giving the admin an immediate, clear rejection instead of a
+     * queued job that silently fails later.
      */
-    private function guardResendUnsafeOverride(Request $request, Order $order): void
+    private function guardResendUnsafeOverride(Request $request, Order $order, ?Package $targetPackage = null): void
     {
-        if (! $order->resendUnsafeToOverride()) {
+        $unsafeReference = $order->resendUnsafeToOverride();
+
+        $wouldSellBelowCost = $targetPackage !== null
+            && $order->pricing_basis !== PricingBasis::Member
+            && $order->wholesale_markup_pct === null
+            && $targetPackage->cost_price > $order->standard_selling_price;
+
+        if (! $unsafeReference && ! $wouldSellBelowCost) {
             return;
         }
 
         $reason = trim((string) $request->input('override_reason', ''));
 
         if ($reason === '') {
-            throw ValidationException::withMessages([
-                'override_reason' => ['This order already has a final, confirmed result for its reference — a package swap does not escape this either. Provide a reason to override and resend anyway.'],
-            ]);
+            $message = $wouldSellBelowCost
+                ? sprintf(
+                    "This package's live cost (RM%s) now exceeds what the customer already paid (RM%s) — provide a reason to resend anyway and accept the loss.",
+                    number_format($targetPackage->cost_price / 100, 2),
+                    number_format($order->standard_selling_price / 100, 2),
+                )
+                : 'This order already has a final, confirmed result for its reference — a package swap does not escape this either. Provide a reason to override and resend anyway.';
+
+            throw ValidationException::withMessages(['override_reason' => [$message]]);
         }
 
-        Log::warning('Admin overrode the resend-unsafe-with-same-reference guard', [
+        Log::warning('Admin overrode a resend guard', [
             'order_number' => $order->order_number,
             'admin' => $request->user()->name,
             'override_reason' => $reason,
+            'guard' => $unsafeReference ? 'resend_unsafe_reference' : 'sell_below_cost',
         ]);
     }
 
@@ -297,11 +326,9 @@ class OrderController extends Controller
         // identical guard for the full reasoning.
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be resent.'],
             ]);
         }
-
-        $this->guardResendUnsafeOverride($request, $order);
 
         $targetPackage = Package::query()->findOrFail($request->validated('package_id'));
 
@@ -311,6 +338,11 @@ class OrderController extends Controller
             ]);
         }
 
+        // ADR-105 decision 4: resolved above, not before, since this
+        // guard now also needs $targetPackage for its sell-below-cost
+        // check.
+        $this->guardResendUnsafeOverride($request, $order, $targetPackage);
+
         ResendOrderDeliveryJob::dispatch(
             $order,
             $targetPackage->id,
@@ -319,6 +351,7 @@ class OrderController extends Controller
             // ADR-102 decision 10 — the optional Player ID/Server ID correction.
             $request->validated('player_id'),
             $request->validated('server_id'),
+            trim((string) $request->input('override_reason', '')) ?: null,
         );
 
         return response()->json(['message' => 'Resend queued.']);
@@ -457,7 +490,7 @@ class OrderController extends Controller
         // decision 4c), kept as the same defensive check its siblings carry.
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be marked delivered.'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be marked delivered.'],
             ]);
         }
 
@@ -512,7 +545,7 @@ class OrderController extends Controller
         // be reachable, kept as the same defensive check its siblings carry.
         if ($order->isAlreadyCompensated()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded).'],
+                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded).'],
             ]);
         }
 
@@ -632,7 +665,7 @@ class OrderController extends Controller
     private function orderDetailResponse(Order $order): JsonResponse
     {
         $order->load([
-            'game', 'package', 'supplier', 'affiliate', 'voucher',
+            'game', 'package', 'supplier', 'affiliate', 'voucher', 'voucherRedemption',
             // ADR-102 decision 11 (a) — the voucher this order was PAID
             // WITH, distinct from `voucher` above (the compensation
             // voucher issued because this order failed). Powers the
@@ -693,6 +726,12 @@ class OrderController extends Controller
             'has_used_voucher' => $order->paidWithVoucher !== null,
             'has_compensation_voucher' => $order->voucher !== null,
             'has_wallet_refund' => $entry !== null,
+            // ADR-024 addendum (2026-09-17, restore-only) — the 4th
+            // compensation badge: true once this order's own redemption
+            // is 'restored', independent of has_compensation_voucher
+            // (a full-cover-by-voucher order restores but mints no new
+            // voucher, so that one alone would stay false forever).
+            'has_voucher_restored' => $order->voucherRedemption?->status === 'restored',
             // ADR-094 decision 9: gates the admin panel's Issue Voucher
             // button for the one needs_review case that's actually a
             // genuine partial delivery, with a starting-point amount
@@ -712,6 +751,12 @@ class OrderController extends Controller
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
             'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
+            // ADR-107 decision 3 — true only once a combo order actually
+            // delivered with a reconciled negative platform_profit
+            // (never blocks delivery; this is the after-the-fact
+            // visibility signal instead). Drives the Order Detail
+            // "Combo Profit Adjusted" info card.
+            'combo_profit_reconciled_negative' => $order->hasNegativeComboProfit(),
         ]);
     }
 }

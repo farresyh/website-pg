@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
-import { PlusIcon } from "@/icons";
+import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";

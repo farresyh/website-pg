@@ -7,9 +7,11 @@ use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\PlayerValidation;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Pricing\InvalidPricingConfigException;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Pricing\PricingService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -35,13 +37,23 @@ final class OrderResendService
     ) {}
 
     /**
+     * @param  $overrideReason  ADR-105 decision 4 — required only when
+     *                          this attempt's live cost would sell below
+     *                          what the customer already paid (Standard/
+     *                          lapsed-affiliate basis only; see the guard
+     *                          below). Reuses the same field/mechanism
+     *                          ADR-102 decision 3 already threads through
+     *                          this call for its own, unrelated guard.
+     *
      * @throws ValidationException when the target package isn't a
      *                             same-game swap (decision #1), isn't active, the order
-     *                             isn't currently in a resendable state, or the game
+     *                             isn't currently in a resendable state, the game
      *                             requires player-ID validation that hasn't happened
-     *                             recently (decision #6).
+     *                             recently (decision #6), or this attempt's live cost
+     *                             would sell below the order's frozen price with no
+     *                             override reason supplied (decision #4).
      */
-    public function resend(Order $order, Package $targetPackage, ?string $note, ?string $triggeredBy, ?string $playerId = null, ?string $serverId = null): Order
+    public function resend(Order $order, Package $targetPackage, ?string $note, ?string $triggeredBy, ?string $playerId = null, ?string $serverId = null, ?string $overrideReason = null): Order
     {
         $this->assertResendable($order);
         $this->assertSameGamePackage($order, $targetPackage);
@@ -63,56 +75,150 @@ final class OrderResendService
 
         $this->assertPlayerIdIsValidatedIfRequired($order);
 
-        // Decision #3: the live reconciliation figures, captured at
-        // the moment of this attempt — never the order's own frozen
-        // cost_price/standard_selling_price (decision #2, untouched).
+        // Decision #3: live cost is the one figure this reconciliation
+        // ever reads off the *target* package — the order's own frozen
+        // cost_price/standard_selling_price (decision #2, untouched) is
+        // what everything else below reconciles against.
+        //
+        // ADR-105: `$liveStandardSellingPrice` is still recorded on the
+        // `order_resend_attempts` audit row below (what this package's
+        // own retail price happened to be at this moment) but is
+        // deliberately never fed into a profit formula — that field
+        // drifts independently of this resend (routine Digiflazz
+        // price-syncs), so using it there decoupled recorded profit
+        // from what the customer actually paid (found live on order 15
+        // — see ADR-105's Context). Every profit formula below
+        // reconciles live cost against the order's own frozen figures
+        // instead.
         $liveCostPrice = $targetPackage->cost_price;
         $liveStandardSellingPrice = $targetPackage->standard_selling_price;
         $priceDiff = $liveCostPrice - $order->cost_price;
 
         // Decision #5: platform_profit/affiliate_profit are recomputed
-        // from this attempt's live package economics — same formula
-        // PricingService already applies at checkout, reused here
-        // rather than invented fresh — and set on Order *before*
-        // calling fulfill(), so that if (and only if) this attempt is
-        // the one that actually succeeds, creditProfit() inside
-        // fulfill() credits the ledger with these exact figures.
-        // final_amount/selling_price/transaction_fee are never part
-        // of this update — decision #2/#5's immutability line.
+        // from this attempt's live cost — same formula PricingService
+        // already applies at checkout, reused here rather than invented
+        // fresh — and set on Order *before* calling fulfill(), so that
+        // if (and only if) this attempt is the one that actually
+        // succeeds, creditProfit() inside fulfill() credits the ledger
+        // with these exact figures. final_amount/selling_price/
+        // transaction_fee are never part of this update — decision
+        // #2/#5's immutability line.
         //
-        // ADR-027 Phase 6: a member-priced order recomputes via the
-        // member formula instead — live cost_price (things a resync
-        // can change), but the order's own frozen member_discount_percent
-        // (never a live tier lookup), exactly mirroring how the standard
-        // chain below already treats affiliate_markup_pct as frozen off
-        // the order while only cost_price is re-fetched live.
+        // ADR-027 Phase 6 / ADR-105 decision 3: a member-priced order
+        // recomputes via the member formula instead — live cost_price
+        // (things a resync can change), the order's own frozen
+        // member_discount_percent (never a live tier lookup), AND the
+        // order's own frozen markup_percent (the *package's*
+        // markup_percent at checkout time — falls back to the target
+        // package's current value only for a pre-ADR-105 order that was
+        // never backfilled, since no frozen value exists to read).
         //
-        // ADR-060 PR-4b: every non-member basis — Standard, Affiliate and
-        // ResellerWallet — recomputes through the supplier-cost chain
+        // ADR-060 PR-4b / ADR-105 decisions 1-2: every non-member basis —
+        // Standard, Affiliate and ResellerWallet — computes
+        // `affiliateProfit` through the supplier-cost chain
         // (`calculateForAffiliate`). The frozen `wholesale_markup_pct` is
         // null for a plain Standard order (so `calculateForAffiliate`
-        // delegates to `calculate` — byte-identical to the pre-PR-4b
-        // code) and the snapshotted tier markup for an Affiliate or
-        // ResellerWallet order. This closes the gap where a resent
-        // reseller-wallet order recomputed profit at standard retail
-        // instead of its tier rate (a latent bug, live before this PR).
+        // delegates to `calculate`, reconciling live cost against the
+        // order's own frozen `standard_selling_price` rather than the
+        // target package's live one — ADR-105 decision 1) and the
+        // snapshotted tier markup for an Affiliate or ResellerWallet
+        // order (unchanged by ADR-105 — decision 2 keeps this basis's
+        // live-cost-proportional-margin `affiliateProfit` formula on
+        // purpose).
+        //
+        // ADR-105 decision 8 (addendum, found while explaining decision
+        // 2 to the founder): `platformProfit` itself is NOT read off
+        // `calculateForAffiliate()`'s own breakdown for either branch —
+        // it's always derived afterward as one money-conservation
+        // identity, `order.selling_price (frozen total) - liveCostPrice
+        // - affiliateProfit`. The pre-addendum code computed
+        // platformProfit independently for the tier branch
+        // (`wholesaleBase - liveCostPrice`), which is never reconciled
+        // against what was actually collected — `wholesaleBase >=
+        // liveCostPrice` always holds by construction for a
+        // non-negative tier%, so that formula could never "sell below
+        // cost," but nothing stopped `liveCostPrice + affiliateProfit +
+        // platformProfit` from exceeding `order.selling_price`, silently
+        // crediting both the platform and the affiliate more than the
+        // order ever actually collected. The residual formula below
+        // can't do that: it's derived FROM the frozen total, so the
+        // three pieces always sum back to exactly it.
         if ($order->pricing_basis === PricingBasis::Member) {
             $liveMemberPrice = $this->membershipPricing->calculateMemberPrice(
                 $liveCostPrice,
-                (float) $targetPackage->markup_percent,
+                $order->markup_percent !== null ? (float) $order->markup_percent : (float) $targetPackage->markup_percent,
                 (float) $order->member_discount_percent,
             );
             $platformProfit = $liveMemberPrice - $liveCostPrice;
             $affiliateProfit = 0;
         } else {
-            $breakdown = $this->pricing->calculateForAffiliate(
-                $liveCostPrice,
-                $liveStandardSellingPrice,
-                $order->wholesale_markup_pct !== null ? (float) $order->wholesale_markup_pct : null,
-                (float) $order->affiliate_markup_pct,
-            );
-            $platformProfit = $breakdown->platformProfit;
-            $affiliateProfit = $breakdown->affiliateProfit;
+            // `calculateForAffiliate()`'s own `standardSellingPrice <
+            // costPrice` guard runs unconditionally, before it even
+            // branches on `$tierMarkupPct` — so which value is safe to
+            // pass here differs by basis. For a tier-affiliate/
+            // ResellerWallet order, the target package's own live
+            // standard price is always >= its own live cost by package
+            // curation (a package-data-integrity check, unrelated to
+            // decision 8's residual below) — passing it here keeps this
+            // branch's `affiliateProfit` formula byte-identical to
+            // pre-ADR-105 behavior. For a Standard/lapsed-affiliate
+            // order, the order's own frozen standard_selling_price is
+            // what both this guard AND (via `calculate()`) the real
+            // `affiliateProfit` formula reconcile against instead
+            // (decision 1).
+            $standardSellingPriceForGuard = $order->wholesale_markup_pct !== null
+                ? $liveStandardSellingPrice
+                : $order->standard_selling_price;
+
+            try {
+                $affiliateProfit = $this->pricing->calculateForAffiliate(
+                    $liveCostPrice,
+                    $standardSellingPriceForGuard,
+                    $order->wholesale_markup_pct !== null ? (float) $order->wholesale_markup_pct : null,
+                    (float) $order->affiliate_markup_pct,
+                )->affiliateProfit;
+            } catch (InvalidPricingConfigException) {
+                // Standard/lapsed-affiliate basis only — the tier
+                // branch's own guard argument is always safe, per the
+                // note above. This package's live cost already exceeds
+                // the order's frozen standard_selling_price before
+                // affiliateProfit is even subtracted, so affiliateProfit
+                // is computed the same way `calculate()` would have: a
+                // flat percentage of the order's own frozen
+                // standard_selling_price, untouched by live cost.
+                $affiliateProfit = (int) round($order->standard_selling_price * (float) $order->affiliate_markup_pct / 100);
+            }
+
+            $platformProfit = $order->selling_price - $liveCostPrice - $affiliateProfit;
+        }
+
+        // ADR-105 decision 4 (Standard/lapsed-affiliate) + decision 8
+        // addendum (extended to Affiliate/ResellerWallet): a resend
+        // whose live cost drives platformProfit negative is a genuine
+        // loss — on top of whatever's already been absorbed, or landing
+        // straight on a loss for the first time. A manual admin resend
+        // may still proceed and take it, but only with an explicit
+        // override reason; the automatic reconcile-driven retry path
+        // never reaches this method with a package swap at all
+        // (ResendOrderDeliveryJob is admin-dispatched only), so there is
+        // no unattended path that can hit this silently. Never reachable
+        // for Member (memberPrice = cost × (1 + markup%) with markup% ≥
+        // 0 can never sell below cost, decision 3, unchanged).
+        if ($order->pricing_basis !== PricingBasis::Member && $platformProfit < 0) {
+            if ($overrideReason === null || trim($overrideReason) === '') {
+                throw ValidationException::withMessages([
+                    'override_reason' => ['This resend would result in a loss — live cost now exceeds what was actually collected for this order. Provide an override reason to proceed anyway and accept the loss.'],
+                ]);
+            }
+
+            Log::warning('Admin resend accepted a loss below cost', [
+                'order_id' => $order->id,
+                'pricing_basis' => $order->pricing_basis?->value,
+                'live_cost_price' => $liveCostPrice,
+                'affiliate_profit' => $affiliateProfit,
+                'resulting_platform_profit' => $platformProfit,
+                'override_reason' => $overrideReason,
+            ]);
         }
 
         $order->update([
@@ -134,6 +240,10 @@ final class OrderResendService
 
         OrderResendAttempt::query()->create([
             'order_id' => $result->id,
+            // ADR-106 decision 2 — this write site only ever produces a
+            // genuine admin-triggered resend; 'initial'/'manual_confirm'
+            // are written from inside OrderFulfillmentService instead.
+            'attempt_type' => 'resend',
             'package_id' => $targetPackage->id,
             'cost_price_sen' => $liveCostPrice,
             'standard_selling_price_sen' => $liveStandardSellingPrice,

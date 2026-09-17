@@ -45,6 +45,7 @@ class Order extends Model
         'pricing_basis',
         'membership_id',
         'member_discount_percent',
+        'markup_percent',
         'normal_selling_price',
         'cost_price',
         'standard_selling_price',
@@ -72,6 +73,7 @@ class Order extends Model
         'is_test' => 'boolean',
         'pricing_basis' => PricingBasis::class,
         'member_discount_percent' => 'decimal:2',
+        'markup_percent' => 'decimal:2',
         'normal_selling_price' => 'integer',
         'cost_price' => 'integer',
         'standard_selling_price' => 'integer',
@@ -129,6 +131,22 @@ class Order extends Model
      * never a refund. Non-combo orders (`deliveryLegs` empty) are
      * always false here — their own needs_review path is unchanged.
      */
+    /**
+     * ADR-107 decision 3 — the UI-facing half of the "never block, flag
+     * after the fact" signal. Derived from the already-stored
+     * `platform_profit` (OrderFulfillmentService::resolveComboOutcome()
+     * writes the reconciled figure there, including when negative — see
+     * its own doc comment), never a separate column: a combo order's
+     * `platform_profit` genuinely IS negative once this is true, not
+     * just flagged as such.
+     */
+    public function hasNegativeComboProfit(): bool
+    {
+        return $this->deliveryLegs->isNotEmpty()
+            && $this->delivery_status === DeliveryStatus::Delivered
+            && $this->platform_profit < 0;
+    }
+
     public function isPartialComboDelivery(): bool
     {
         if ($this->delivery_status !== DeliveryStatus::NeedsReview) {
@@ -218,10 +236,22 @@ class Order extends Model
     }
 
     /**
-     * Decision 9's prefill: the sum of every Failed leg's own component
-     * price — an admin-adjustable starting point for Issue Voucher's
-     * custom amount, not the final word (`standard_selling_price` may
-     * have moved since this order was placed).
+     * Decision 9's prefill: an admin-adjustable starting point for Issue
+     * Voucher's custom amount, not the final word.
+     *
+     * ADR-107 decision 4 (build-time revision — see the ADR's own build
+     * addendum): apportions what the customer actually paid for the
+     * failed portion — `(final_amount − transaction_fee)` × each Failed
+     * leg's frozen `selling_price_sen` weight — rather than summing each
+     * Failed leg's CURRENT `componentPackage->standard_selling_price`
+     * (a live catalog read, the original bug this ADR found: no longer
+     * reflects what was actually collected if that price moved since
+     * checkout). Proportional so the suggestion correctly scales down
+     * when the order was voucher-discounted or affiliate-marked-up
+     * relative to guest retail. Still just a prefill —
+     * `StoreVoucherFromOrderRequest`'s `final_amount` hard cap and the
+     * admin-typed `amount` field are unchanged, this only fixes the
+     * suggestion's accuracy.
      */
     public function suggestedPartialVoucherAmount(): ?int
     {
@@ -229,9 +259,38 @@ class Order extends Model
             return null;
         }
 
-        return (int) $this->deliveryLegs
-            ->where('status', DeliveryStatus::Failed)
-            ->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->standard_selling_price ?? 0);
+        $legs = $this->deliveryLegs;
+        $totalSellingPriceSen = (int) $legs->sum('selling_price_sen');
+
+        // Guards a leg seeded before this column existed (backfilled
+        // approximately by the owning migration, so should never
+        // actually be 0/null post-migration) — no correct proportion is
+        // derivable from an all-zero denominator, so fall back to no
+        // suggestion rather than a divide-by-zero or a silently-wrong one.
+        if ($totalSellingPriceSen <= 0) {
+            return null;
+        }
+
+        $failedSellingPriceSen = (int) $legs->where('status', DeliveryStatus::Failed)->sum('selling_price_sen');
+        $compensableAmount = $this->final_amount - $this->transaction_fee;
+
+        return (int) round($compensableAmount * $failedSellingPriceSen / $totalSellingPriceSen);
+    }
+
+    /**
+     * ADR-024 addendum (2026-09-17, restore-only) — true once this
+     * order's own voucher redemption has been given back (Path B's
+     * "restore" trigger), independent of whether a compensation Voucher
+     * row was also minted. A full-cover-by-voucher order that later
+     * fails delivery restores the original voucher but issues no new
+     * one (its cash portion is 0) — `voucher()` alone stays null
+     * forever for that order, so `isAlreadyCompensated()` below folds
+     * this in too, or a resend/retry could still slip through after
+     * the original voucher's balance was already given back.
+     */
+    public function isVoucherRestored(): bool
+    {
+        return $this->voucherRedemption()->where('status', 'restored')->exists();
     }
 
     /**
@@ -251,7 +310,7 @@ class Order extends Model
      */
     public function isAlreadyCompensated(): bool
     {
-        return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet();
+        return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet() || $this->isVoucherRestored();
     }
 
     /**

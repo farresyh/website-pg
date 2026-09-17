@@ -4,7 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
-import { ChevronDownIcon, HorizontaLDots } from "@/icons";
+import { ChevronDown as ChevronDownIcon } from "@primeicons/react/chevron-down";
+import { EllipsisH as HorizontaLDots } from "@primeicons/react/ellipsis-h";
 
 /**
  * The shared collapsible/drawer sidebar for both the Admin Panel
@@ -56,15 +57,21 @@ export default function PanelSidebar({ homeHref, brandLabel, shortLabel, section
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 mt-16 flex h-[calc(100dvh-4rem)] flex-col border-r border-gray-200 bg-white px-5 text-gray-900 transition-all duration-300 ease-in-out lg:mt-0 lg:h-screen lg:translate-x-0 dark:border-gray-800 dark:bg-gray-900
+      className={`fixed left-0 top-0 z-50 mt-16 flex h-[calc(100dvh-4rem)] flex-col border-r border-gray-200 bg-surface px-5 text-ink transition-all duration-300 ease-in-out lg:mt-0 lg:h-screen lg:translate-x-0 dark:border-gray-800
         ${showLabels ? "w-[290px]" : "w-[90px]"}
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`flex py-8 ${!showLabels ? "lg:justify-center" : "justify-start"}`}>
-        <Link href={homeHref} className="text-lg font-semibold text-gray-900 dark:text-white">
-          {showLabels ? brandLabel : shortLabel}
+      {/* ADR-104 Phase 4: logo-box treatment (short-label in a filled
+          square, matching the artifact) — same homeHref/brandLabel prop
+          values, no new content. */}
+      <div className={`flex items-center gap-2.5 py-8 ${!showLabels ? "lg:justify-center" : "justify-start"}`}>
+        <Link href={homeHref} className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink text-sm font-bold text-canvas">
+            {shortLabel}
+          </span>
+          {showLabels && <span className="text-lg font-semibold text-ink">{brandLabel}</span>}
         </Link>
       </div>
 
@@ -89,7 +96,7 @@ function PanelSection({
   return (
     <nav>
       <h2
-        className={`mb-4 flex text-xs uppercase leading-[20px] text-gray-400 ${
+        className={`mb-4 flex text-overline font-medium uppercase tracking-wide text-ink-muted ${
           !showLabels ? "lg:justify-center" : "justify-start"
         }`}
       >

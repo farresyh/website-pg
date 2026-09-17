@@ -6,6 +6,7 @@ use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\OrderResendAttempt;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\Voucher;
@@ -421,6 +422,73 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
+     * ADR-106 decision 3 — a genuinely first-ever fulfillment attempt
+     * (order starts at NotStarted) now writes a durable
+     * `attempt_type=initial` row, closing the gap where the admin's
+     * "Initial Delivery" row was previously synthesized live from
+     * mutable Order columns and permanently lost the moment any resend
+     * happened. price_diff_sen is null (decision 4) — no live-cost
+     * comparison is ever made on a first attempt.
+     */
+    public function test_fulfill_writes_a_durable_initial_attempt_row_on_success(): void
+    {
+        $order = $this->paidOrder(['cost_price' => 900, 'standard_selling_price' => 950]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($order);
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->sole();
+        $this->assertSame('initial', $attempt->attempt_type);
+        $this->assertSame('success', $attempt->outcome);
+        $this->assertSame($order->package_id, $attempt->package_id);
+        $this->assertSame(900, $attempt->cost_price_sen);
+        $this->assertSame(950, $attempt->standard_selling_price_sen);
+        $this->assertNull($attempt->price_diff_sen);
+        $this->assertNull($attempt->triggered_by);
+    }
+
+    public function test_fulfill_writes_a_durable_initial_attempt_row_on_failure(): void
+    {
+        $order = $this->paidOrder();
+
+        $result = $this->service($this->fakeSupplierAdapter(false, null, 'insufficient_balance', 'No balance'))
+            ->fulfill($order);
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->sole();
+        $this->assertSame('initial', $attempt->attempt_type);
+        $this->assertSame('failed', $attempt->outcome);
+    }
+
+    public function test_fulfill_writes_a_durable_initial_attempt_row_on_pending(): void
+    {
+        $order = $this->paidOrder();
+
+        $result = $this->service($this->fakePendingSupplierAdapter(['trx_id' => 'DGFLZ-1']))->fulfill($order);
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->sole();
+        $this->assertSame('initial', $attempt->attempt_type);
+        $this->assertSame('pending', $attempt->outcome);
+    }
+
+    /**
+     * A retry (order not starting at NotStarted) must never write a
+     * SECOND 'initial' row — $wasNotStarted is computed once, before
+     * this call's own update() advances the order, so a retry from
+     * Failed correctly sees it as false.
+     */
+    public function test_fulfill_does_not_write_a_second_initial_attempt_row_on_a_retry(): void
+    {
+        $order = $this->paidOrder();
+
+        $failed = $this->service($this->fakeSupplierAdapter(false, null, 'timeout', 'Supplier timed out'))
+            ->fulfill($order);
+        $this->assertSame(1, OrderResendAttempt::query()->where('order_id', $failed->id)->count());
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($failed->fresh());
+
+        $this->assertSame(1, OrderResendAttempt::query()->where('order_id', $failed->id)->where('attempt_type', 'initial')->count());
+    }
+
+    /**
      * ADR-018 decision #6: the single, explicit guard that keeps a
      * sandbox order from ever reaching the real ledger, even though
      * every other line of fulfill() runs completely unchanged against
@@ -663,6 +731,37 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
+     * ADR-106 decision 3 — the third gap this ADR found:
+     * markDeliveredManually() overwrites Order.supplier_response/
+     * delivery_status via a third code path with no order_resend_attempts
+     * row of its own before now. outcome is always 'success' (this
+     * method exists only to confirm a delivery), note/triggered_by come
+     * from the call's own params, price_diff_sen is null (no comparison
+     * was made).
+     */
+    public function test_mark_delivered_manually_writes_a_durable_manual_confirm_attempt_row(): void
+    {
+        $order = $this->paidOrder([
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'cost_price' => 900, 'standard_selling_price' => 950,
+        ]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true))
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL3', 'TARGET/SERVICE matched', 'Jane Admin');
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->sole();
+        $this->assertSame('manual_confirm', $attempt->attempt_type);
+        $this->assertSame('success', $attempt->outcome);
+        $this->assertSame($order->package_id, $attempt->package_id);
+        $this->assertSame(900, $attempt->cost_price_sen);
+        $this->assertSame(950, $attempt->standard_selling_price_sen);
+        $this->assertNull($attempt->price_diff_sen);
+        $this->assertSame('TARGET/SERVICE matched', $attempt->note);
+        $this->assertSame('Jane Admin', $attempt->triggered_by);
+        $this->assertTrue($attempt->supplier_response['manually_confirmed']);
+    }
+
+    /**
      * ADR-026 decision 4a: deliberately only reachable from
      * needs_review — no other state lets an admin's own claim
      * substitute for a real supplier confirmation.
@@ -746,6 +845,36 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'affiliate')->sum('amount'));
         $this->assertNotNull($result->delivered_at);
+    }
+
+    /**
+     * ADR-106's own "Consequence to track" — resolvePendingResendAttempt()
+     * was verified to be entirely type-agnostic (no attempt_type filter),
+     * but this is a genuinely new code path worth its own explicit case:
+     * a first-ever attempt (not a resend) that lands on Digiflazz's async
+     * Pending, later resolved by a webhook/poll through the SAME
+     * finalizePendingDelivery() every other caller shares. The durable
+     * 'initial' row — not a 'resend' one — must self-correct from
+     * outcome=pending to the real resolved outcome.
+     */
+    public function test_finalize_pending_delivery_resolves_an_initial_attempts_pending_row(): void
+    {
+        $order = $this->paidOrder();
+        $pending = $this->service($this->fakePendingSupplierAdapter(['trx_id' => 'DGFLZ-1']))->fulfill($order);
+
+        $initialAttempt = OrderResendAttempt::query()->where('order_id', $pending->id)->sole();
+        $this->assertSame('initial', $initialAttempt->attempt_type);
+        $this->assertSame('pending', $initialAttempt->outcome);
+
+        $this->service($this->fakeSupplierAdapter(true))
+            ->finalizePendingDelivery($pending->fresh(), SupplierOutcome::Success, 'DGFLZ-FINAL-1', ['status' => 'Sukses']);
+
+        // Still exactly one row — resolvePendingResendAttempt() UPDATEs
+        // the existing 'initial' row in place, never inserts a second one.
+        $attempt = OrderResendAttempt::query()->where('order_id', $pending->id)->sole();
+        $this->assertSame('initial', $attempt->attempt_type);
+        $this->assertSame('success', $attempt->outcome);
+        $this->assertSame(['status' => 'Sukses'], $attempt->supplier_response);
     }
 
     /**

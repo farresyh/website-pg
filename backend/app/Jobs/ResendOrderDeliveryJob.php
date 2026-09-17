@@ -37,6 +37,12 @@ final class ResendOrderDeliveryJob implements ShouldQueue
         // resend field.
         public readonly ?string $playerId = null,
         public readonly ?string $serverId = null,
+        // ADR-105 decision 4 — required only when this attempt's live
+        // cost would sell below what the customer already paid;
+        // `OrderController::guardResendUnsafeOverride()` already
+        // validated it's non-empty by the time this reaches here, for
+        // any request that actually needed it.
+        public readonly ?string $overrideReason = null,
     ) {
         // ADR-020 decision #5 — same queue as FulfillOrderJob, same
         // reasoning. onQueue(), not a redeclared $queue property — see
@@ -66,7 +72,7 @@ final class ResendOrderDeliveryJob implements ShouldQueue
         }
 
         try {
-            $resend->resend($this->order, $package, $this->note, $this->triggeredBy, $this->playerId, $this->serverId);
+            $resend->resend($this->order, $package, $this->note, $this->triggeredBy, $this->playerId, $this->serverId, $this->overrideReason);
         } catch (ValidationException $e) {
             // A guard (same-game, active, resendable, player-ID
             // window) that held at request time but no longer does by
