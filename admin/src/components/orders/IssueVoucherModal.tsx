@@ -102,20 +102,20 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
   return (
     <>
       {isPartial ? (
-        <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+        <p className="mb-5 text-sm text-ink-muted">
           This combo order partially delivered — the customer already received some of the goods. Set the
           store-credit amount for the part that failed, for{" "}
           <span className="font-medium">{order.customer_email}</span>. This platform never issues cash refunds
           (ADR-004). One voucher per order; this cannot be undone once issued.
         </p>
       ) : restoreOnly ? (
-        <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+        <p className="mb-5 text-sm text-ink-muted">
           This order was fully covered by a voucher — its cash portion is RM0.00. Restoring gives that voucher&apos;s
           spent balance back to <span className="font-medium">{order.customer_email}</span>; no new voucher is
           issued, since there is nothing left over to compensate.
         </p>
       ) : (
-        <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+        <p className="mb-5 text-sm text-ink-muted">
           Issues a <span className="font-medium">{formatRm(amount)}</span> store-credit voucher to{" "}
           <span className="font-medium">{order.customer_email}</span> — this platform never issues cash refunds
           (ADR-004). One voucher per order; this cannot be undone once issued.

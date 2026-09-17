@@ -130,8 +130,8 @@ export default function ManualCheckButtons({ order, token, onChecked }: ManualCh
 
 function ManualCheckOutcomeLine({ outcome, applied }: { outcome: string; applied: boolean }) {
   return (
-    <p className="mb-2 text-sm font-medium text-gray-800 dark:text-white/90">
-      Outcome: {outcome} {applied ? <span className="text-success-600 dark:text-success-400">(applied)</span> : <span className="text-gray-500 dark:text-gray-400">(unchanged)</span>}
+    <p className="mb-2 text-sm font-medium text-ink">
+      Outcome: {outcome} {applied ? <span className="text-success-600 dark:text-success-400">(applied)</span> : <span className="text-ink-muted">(unchanged)</span>}
     </p>
   );
 }
@@ -140,7 +140,7 @@ function ManualCheckJson({ data, errorCode, errorMessage }: { data: unknown; err
   const body = data ?? (errorCode || errorMessage ? { error_code: errorCode, error_message: errorMessage } : {});
 
   return (
-    <pre className="max-h-72 overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-300">
+    <pre className="max-h-72 overflow-auto rounded-lg bg-subtle p-3 text-xs text-ink">
       {JSON.stringify(body, null, 2)}
     </pre>
   );
@@ -149,7 +149,7 @@ function ManualCheckJson({ data, errorCode, errorMessage }: { data: unknown; err
 function ManualCheckResultView({ result }: { result: ManualCheckResult }) {
   if (result.type === "combo") {
     if (!result.legs || result.legs.length === 0) {
-      return <p className="text-sm text-gray-500 dark:text-gray-400">No Pending leg left to check.</p>;
+      return <p className="text-sm text-ink-muted">No Pending leg left to check.</p>;
     }
 
     return (

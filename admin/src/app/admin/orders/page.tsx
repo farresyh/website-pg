@@ -80,12 +80,15 @@ const paymentStatusSeverity: Record<OrderListItem["payment_status"], "warn" | "s
   failed: "danger",
 };
 
-const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondary" | "warn" | "success" | "danger" | "info"> = {
+const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondary" | "warn" | "success" | "danger" | "info" | "review"> = {
   not_started: "secondary",
   processing: "warn",
   delivered: "success",
   failed: "danger",
-  needs_review: "warn",
+  // ADR-104 decision 3: the artifact's own distinct "review" token, not
+  // "warn" — closes the exact ADR-032 gap the comment below already
+  // flagged (needs_review and processing used to share one color).
+  needs_review: "review",
   // ADR-032 — a distinct color from "processing" so an admin can tell
   // at a glance this is waiting on an async supplier, not a normal
   // in-flight delivery attempt.
@@ -94,7 +97,7 @@ const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondar
 
 export default function OrdersPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>
       <OrdersPageInner />
     </Suspense>
   );
@@ -372,18 +375,18 @@ function OrdersPageInner() {
             // would still point at this same order on refresh/re-mount.
             if (orderIdParam) router.replace("/admin/orders");
           }}
-          className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+          className="mb-4 text-sm text-ink-muted hover:text-ink"
         >
           ← Back to orders
         </button>
 
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{selected.order_number}</h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <Tag severity={paymentStatusSeverity[selected.payment_status]}>
+          <h1 className="text-page-title font-semibold text-ink">{selected.order_number}</h1>
+          <p className="mt-1 flex items-center gap-2 text-sm text-ink-muted">
+            <Tag dot severity={paymentStatusSeverity[selected.payment_status]}>
               payment: {selected.payment_status}
             </Tag>
-            <Tag severity={deliveryStatusSeverity[selected.delivery_status]}>
+            <Tag dot severity={deliveryStatusSeverity[selected.delivery_status]}>
               delivery: {selected.delivery_status}
             </Tag>
           </p>
@@ -452,10 +455,10 @@ function OrdersPageInner() {
                   Confirm Failed…
                 </Button>
               )}
-              {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
-              {voucherMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{voucherMessage}</span>}
-              {refundMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{refundMessage}</span>}
-              {retryMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{retryMessage}</span>}
+              {resendMessage && <span className="text-sm text-ink-muted">{resendMessage}</span>}
+              {voucherMessage && <span className="text-sm text-ink-muted">{voucherMessage}</span>}
+              {refundMessage && <span className="text-sm text-ink-muted">{refundMessage}</span>}
+              {retryMessage && <span className="text-sm text-ink-muted">{retryMessage}</span>}
             </div>
           )}
           {/* ADR-096 — independent of the failed/needs_review block above:
@@ -469,14 +472,14 @@ function OrdersPageInner() {
               unmount it before an admin ever saw it (found live via the
               ADR-023 admin-mark-delivered E2E spec). */}
           {markDeliveredMessage && (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</p>
+            <p className="mt-3 text-sm text-ink-muted">{markDeliveredMessage}</p>
           )}
           {/* Rendered outside the failed/needs_review-gated block above,
               deliberately — same reasoning as markDeliveredMessage above:
               a successful Confirm Failed moves delivery_status to
               "failed" in the same render that sets this message. */}
           {confirmFailedMessage && (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{confirmFailedMessage}</p>
+            <p className="mt-3 text-sm text-ink-muted">{confirmFailedMessage}</p>
           )}
           {/* ADR-102 decision 11 — three independent cards (Voucher Used to Pay / Compensation Voucher Issued / Wallet Refund), replacing the old single-line mentions. */}
           <RefundInformationCards order={selected} />
@@ -530,8 +533,8 @@ function OrdersPageInner() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Orders</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-page-title font-semibold text-ink">Orders</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Every order created via checkout — real customer purchases only.
         </p>
       </div>
@@ -550,14 +553,14 @@ function OrdersPageInner() {
           placeholder="Search order # or customer email…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-cyan-600 focus:outline-hidden focus:ring-3 focus:ring-focus-ring/10 dark:border-gray-700 dark:bg-gray-900 dark:text-ink"
         />
         <div className="flex gap-2">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
               onClick={() => setStatus(f.value)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${status === f.value ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+              className={`rounded-lg px-3 py-1.5 text-sm ${status === f.value ? "bg-cyan-600 text-on-cyan" : "bg-subtle text-ink-muted"}`}
             >
               {f.label}
             </button>
@@ -565,22 +568,22 @@ function OrdersPageInner() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={page?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order #</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Customer</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game / Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Amount</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Payment</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Delivery</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Order #</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Customer</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game / Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Source</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Final Amount</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Payment</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Delivery</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Date</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
                 <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -589,29 +592,29 @@ function OrdersPageInner() {
 
                     return (
                       <DataTableRow key={order.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{order.order_number}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{order.customer_email}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 font-mono text-code-id font-medium text-ink">{order.order_number}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{order.customer_email}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {order.game?.name ?? "—"}
                           {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {/* A wallet order's own affiliate is always the platform's primary brand (ADR-073 decision 5) — wallet_reseller is the one that actually answers "where from". */}
                           {order.wallet_reseller ? (
                             <span>
-                              Reseller: <span className="font-medium text-gray-700 dark:text-gray-300">{order.wallet_reseller.business_name}</span>
+                              Reseller: <span className="font-medium text-ink">{order.wallet_reseller.business_name}</span>
                             </span>
                           ) : (
                             order.affiliate?.business_name ?? "—"
                           )}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">{formatRm(order.final_amount)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Tag severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</Tag>
+                          <Tag dot severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <Tag severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
+                            <Tag dot severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
                             {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). ADR-024 addendum (2026-09-17): plain-text Tag pills, not emoji — founder feedback, 2026-09-17 — plus a 4th ("Restored") for the restore-only case, which never sets has_compensation_voucher. */}
                             {order.has_used_voucher && <Tag severity="secondary">Voucher Paid</Tag>}
                             {order.has_compensation_voucher && <Tag severity="warn">Voucher Issued</Tag>}
@@ -619,7 +622,7 @@ function OrdersPageInner() {
                             {order.has_voucher_restored && <Tag severity="success">Restored</Tag>}
                           </div>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {new Date(order.created_at).toLocaleString()}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -636,16 +639,16 @@ function OrdersPageInner() {
           </DataTable>
 
           {page?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No orders found.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No orders found.</p>
           )}
           {page === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
 
       {page && page.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">
           <span>Page {page.current_page} of {page.last_page} ({page.total} total)</span>
           <div className="flex gap-2">
             <Button size="small" variant="outlined" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>

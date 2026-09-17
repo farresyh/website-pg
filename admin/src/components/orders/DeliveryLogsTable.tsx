@@ -53,14 +53,17 @@ interface DeliveryLogEntry {
   response: Record<string, unknown> | null;
 }
 
-function getOutcomeSeverity(outcome: string): "success" | "danger" | "warn" | "info" {
+function getOutcomeSeverity(outcome: string): "success" | "danger" | "warn" | "info" | "review" {
   switch (outcome) {
     case "success":
     case "delivered":
       return "success";
     case "failed":
       return "danger";
+    // ADR-104 decision 3 — the artifact's own distinct review token,
+    // same reasoning as the order-level delivery_status map.
     case "needs_review":
+      return "review";
     case "pending":
       return "warn";
     // 2026-09-15 bugfix — the Initial Delivery row's own honest fallback
@@ -158,16 +161,16 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
 
   return (
     <>
-      <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
         <div className="border-b border-gray-100 p-6 pb-4 dark:border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Delivery & Activity Logs</h2>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <h2 className="text-section-title font-semibold text-ink">Delivery & Activity Logs</h2>
+          <p className="mt-1 text-xs text-ink-muted">
             Chronological audit trail of all automated and manual supplier delivery attempts.
           </p>
         </div>
 
         {entries.length === 0 ? (
-          <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+          <div className="p-6 text-center text-sm text-ink-muted">
             No delivery attempts recorded yet. Delivery will be initiated once payment is confirmed.
           </div>
         ) : (
@@ -177,13 +180,13 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                 <DataTableTable>
                   <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                     <DataTableTHeadRow>
-                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date & Time</DataTableTHeadCell>
-                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Event</DataTableTHeadCell>
-                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package & SKU</DataTableTHeadCell>
-                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Price Diff</DataTableTHeadCell>
-                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Outcome</DataTableTHeadCell>
-                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Note / Reason</DataTableTHeadCell>
-                      <DataTableTHeadCell className="px-3 py-2 text-end text-theme-xs font-medium text-gray-500 dark:text-gray-400">Details</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Date & Time</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Event</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Package & SKU</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Price Diff</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Outcome</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Note / Reason</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-end text-theme-xs font-medium text-ink-muted">Details</DataTableTHeadCell>
                     </DataTableTHeadRow>
                   </DataTableTHead>
                   <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -192,12 +195,12 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
 
                       return (
                         <DataTableRow key={entry.id}>
-                          <DataTableCell className="px-3 py-3 text-theme-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          <DataTableCell className="px-3 py-3 text-theme-xs text-ink-muted whitespace-nowrap">
                             {new Date(entry.date).toLocaleString()}
                           </DataTableCell>
 
                           <DataTableCell className="px-3 py-3 text-theme-sm">
-                            <div className="flex items-center gap-1.5 font-medium text-gray-800 dark:text-white/90">
+                            <div className="flex items-center gap-1.5 font-medium text-ink">
                               {entry.type === "initial" ? (
                                 <Send className="w-3.5 h-3.5 text-primary-500 shrink-0" />
                               ) : (
@@ -213,7 +216,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                           </DataTableCell>
 
                           <DataTableCell className="px-3 py-3 text-theme-sm">
-                            <div className="font-medium text-gray-800 dark:text-white/90">{entry.packageName}</div>
+                            <div className="font-medium text-ink">{entry.packageName}</div>
                             <div className="font-mono text-theme-xs text-gray-400">{entry.sku}</div>
                           </DataTableCell>
 
@@ -227,7 +230,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                                     ? "font-medium text-error-600 dark:text-error-400"
                                     : entry.priceDiffSen < 0
                                       ? "font-medium text-success-600 dark:text-success-400"
-                                      : "text-gray-500 dark:text-gray-400"
+                                      : "text-ink-muted"
                                 }
                               >
                                 {entry.priceDiffSen > 0 ? "+" : ""}
@@ -237,12 +240,12 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                           </DataTableCell>
 
                           <DataTableCell className="px-3 py-3 text-theme-sm">
-                            <Tag severity={getOutcomeSeverity(entry.outcome)}>
+                            <Tag dot severity={getOutcomeSeverity(entry.outcome)}>
                               {entry.outcome}
                             </Tag>
                           </DataTableCell>
 
-                          <DataTableCell className="px-3 py-3 text-theme-xs text-gray-600 dark:text-gray-300 max-w-xs truncate" title={entry.note ?? undefined}>
+                          <DataTableCell className="px-3 py-3 text-theme-xs text-ink-muted max-w-xs truncate" title={entry.note ?? undefined}>
                             {entry.note ?? "—"}
                           </DataTableCell>
 
@@ -291,7 +294,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
               </DialogHeader>
               <DialogContent>
                 <div className="max-h-96 overflow-y-auto">
-                  <pre className="rounded-lg bg-gray-100 p-4 font-mono text-xs text-gray-800 dark:bg-white/5 dark:text-gray-200">
+                  <pre className="rounded-lg bg-subtle p-4 font-mono text-xs text-ink">
                     {JSON.stringify(activeResponse?.data, null, 2)}
                   </pre>
                 </div>

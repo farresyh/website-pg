@@ -37,12 +37,12 @@ export default function OrderSummaryCards({
             onClick={() => onSelect(card.value)}
             className={`rounded-2xl border p-4 text-left transition-colors ${
               active
-                ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/10"
-                : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-white/[0.03] dark:hover:border-gray-700"
+                ? "border-cyan-600 bg-cyan-50 dark:border-cyan-600"
+                : "border-gray-200 bg-surface hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700"
             }`}
           >
-            <p className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">{card.label}</p>
-            <p className="mt-1 text-2xl font-semibold text-gray-800 dark:text-white/90">
+            <p className="text-overline font-medium uppercase tracking-wide text-ink-muted">{card.label}</p>
+            <p className="mt-1 text-metric-lg font-semibold text-ink">
               {summary ? summary[card.key] : "—"}
             </p>
           </button>
