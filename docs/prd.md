@@ -566,7 +566,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-09-16).** The platform is feature-complete and live in
+**Where things stand (2026-09-18).** The platform is feature-complete and live in
 production — storefront, admin panel, reseller/affiliate portal, and the
 developer-docs site all deployed; CHIP FPX payments and the CHIP + Digiflazz
 webhooks proven end-to-end with real money (order `PG-PYAYMRYNUYV0`).
@@ -574,8 +574,10 @@ webhooks proven end-to-end with real money (order `PG-PYAYMRYNUYV0`).
 (5 non-test orders as of that date, `PG-PYAYMRYNUYV0` itself later resent and
 delivered once balance landed). **Gamevion remains at zero balance**, still a
 deliberate founder hold — Gamevion-routed orders can be paid but not delivered
-until funded. Everything else outstanding is polish or a deliberately-parked
-ADR — see §16.
+until funded. ADR-105/106/107 (resend profit-recompute + durable delivery-
+attempt audit + combo profit reconciliation) built 2026-09-17/18, merged to
+`staging` — not yet released to `main`. Everything else outstanding is polish
+or a deliberately-parked ADR — see §16.
 
 - **Per-feature-area status:** §15 below.
 - **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md`.
