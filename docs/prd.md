@@ -790,8 +790,8 @@ drops off this list into `docs/build-log.md`.
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
 15. ~~Durable "Initial Delivery" audit row — needs its own ADR + grill.~~ —
-    **grilled + BUILT 2026-09-18, [ADR-106](./adr.md)**, on
-    `feature/adr-106-107-combo-delivery-logs` off `staging` (not yet merged).
+    **grilled + BUILT 2026-09-18, [ADR-106](./adr.md)** — merged to `staging`
+    2026-09-17 (PR #237, bundled with ADR-107 below).
     Found 2026-09-15 while fixing the Delivery Logs outcome bugs (see
     `docs/build-log.md`'s 2026-09-15 entry): `order_resend_attempts` (ADR-017
     decision #4, "record every attempt, not just the latest") used to only
@@ -838,8 +838,8 @@ drops off this list into `docs/build-log.md`.
     either way).
 18. ~~Combo order profit never reconciles on retry, and its partial-delivery
     voucher suggestion reads a live price~~ — **grilled + BUILT 2026-09-17,
-    [ADR-107](./adr.md)**, on `feature/adr-106-107-combo-delivery-logs` off
-    `staging` (not yet merged). `platform_profit` now reconciles once at
+    [ADR-107](./adr.md)** — merged to `staging` 2026-09-17 (PR #237, bundled
+    with ADR-106 above). `platform_profit` now reconciles once at
     final all-legs-Delivered resolution as a money-conservation residual
     (`order.selling_price (frozen) − Σ live componentPackage->cost_price
     across every leg − affiliate_profit`, same identity ADR-105 decision 8
