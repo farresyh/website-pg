@@ -868,9 +868,11 @@ drops off this list into `docs/build-log.md`.
     transaction_fee` proportionally across failed legs' frozen
     `selling_price_sen` weights, never a live price. Zero real combo
     resends/partial-deliveries exist in prod to date (one combo order ever,
-    delivered clean) — latent, not yet touched real money. Sequenced to
-    build together with ADR-106 (same session's PR/sprint), since both add
-    columns to `order_delivery_legs` and touch `attemptLeg()`.
+    delivered clean) — latent, not yet touched real money. Independent of
+    ADR-106 (item 15) — ADR-106 decision 1 defers combo entirely, so the two
+    touch disjoint tables/methods and can build in either order. Recommended
+    next-session order: this one (107) first, money-critical same as
+    ADR-105; ADR-106 after, audit-trail only.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
