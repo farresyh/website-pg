@@ -30,11 +30,18 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
         <h2 className="mb-4 text-section-title font-semibold text-ink">Customer Details</h2>
+        {/* ADR-104 D1 fix: every <dd> here now carries an explicit
+            `text-ink` color — unstyled, it silently inherited the
+            browser's plain-black default (no dark-mode override exists
+            for "no class at all"), which is invisible-contrast on a
+            dark card. Confirmed via getComputedStyle before this fix:
+            color was literally rgb(0,0,0) on a rgb(26,25,23) card. Pure
+            color-token addition — no layout/label/data/function change. */}
         <dl className="space-y-2 text-sm">
-          <div className="flex justify-between"><dt className="text-ink-muted">Email</dt><dd>{order.customer_email}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Phone</dt><dd>{order.customer_phone ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Player ID</dt><dd>{order.player_id}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Server/Zone ID</dt><dd>{order.server_id ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Email</dt><dd className="text-ink">{order.customer_email}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Phone</dt><dd className="text-ink">{order.customer_phone ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Player ID</dt><dd className="text-ink">{order.player_id}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Server/Zone ID</dt><dd className="text-ink">{order.server_id ?? "—"}</dd></div>
         </dl>
       </div>
 
@@ -46,21 +53,23 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           a Reseller-channel order apart from a Direct one) — no new data. */}
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
         <h2 className="mb-4 text-section-title font-semibold text-ink">Game & fulfillment</h2>
+        {/* ADR-104 D1 fix: same explicit `text-ink` addition as Customer
+            Details above — same confirmed rgb(0,0,0)-on-dark-card bug. */}
         <dl className="space-y-2 text-sm">
-          <div className="flex justify-between"><dt className="text-ink-muted">Game</dt><dd>{order.game?.name ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Package</dt><dd>{order.package?.name ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Game</dt><dd className="text-ink">{order.game?.name ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Package</dt><dd className="text-ink">{order.package?.name ?? "—"}</dd></div>
           <div className="flex justify-between">
             <dt className="text-ink-muted">Product Code (SKU)</dt>
             <dd className="font-mono text-xs font-medium text-ink">
               {order.supplier_product_ref ?? order.package?.supplier_package_ref ?? "—"}
             </dd>
           </div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Supplier</dt><dd>{order.supplier?.name ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Channel</dt><dd>{order.wallet_reseller ? "Reseller" : "Direct"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Affiliate</dt><dd>{order.affiliate?.business_name ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Supplier</dt><dd className="text-ink">{order.supplier?.name ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Channel</dt><dd className="text-ink">{order.wallet_reseller ? "Reseller" : "Direct"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Affiliate</dt><dd className="text-ink">{order.affiliate?.business_name ?? "—"}</dd></div>
           {/* ADR-074/075: only set for an order placed via the Reseller API/Bot channel — the platform's own primary affiliate above stays the storefront brand either way. */}
           {order.wallet_reseller && (
-            <div className="flex justify-between"><dt className="text-ink-muted">Reseller (wallet)</dt><dd>{order.wallet_reseller.business_name}</dd></div>
+            <div className="flex justify-between"><dt className="text-ink-muted">Reseller (wallet)</dt><dd className="text-ink">{order.wallet_reseller.business_name}</dd></div>
           )}
         </dl>
       </div>
@@ -198,16 +207,18 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           native <details> disclosure instead of permanently visible. */}
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
         <h2 className="mb-4 text-section-title font-semibold text-ink">Payment & supplier</h2>
+        {/* ADR-104 D1 fix: same explicit `text-ink` addition as the cards
+            above — same confirmed rgb(0,0,0)-on-dark-card bug. */}
         <dl className="space-y-2 text-sm">
-          <div className="flex justify-between"><dt className="text-ink-muted">Payment Method</dt><dd>{order.payment_method ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Payment Ref (CHIP)</dt><dd>{order.payment_ref ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Reference # (ORD-8)</dt><dd className="font-mono text-code-id">{order.reference_number ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Payment Method</dt><dd className="text-ink">{order.payment_method ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Payment Ref (CHIP)</dt><dd className="text-ink">{order.payment_ref ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Reference # (ORD-8)</dt><dd className="font-mono text-code-id text-ink">{order.reference_number ?? "—"}</dd></div>
         </dl>
 
         <p className="mb-2 mt-5 text-theme-xs font-medium uppercase tracking-wide text-ink-muted">Fulfilment</p>
         <dl className="space-y-2 text-sm">
-          <div className="flex justify-between"><dt className="text-ink-muted">Supplier</dt><dd>{order.supplier?.name ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Supplier Ref</dt><dd>{order.supplier_ref ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Supplier</dt><dd className="text-ink">{order.supplier?.name ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Supplier Ref</dt><dd className="text-ink">{order.supplier_ref ?? "—"}</dd></div>
         </dl>
 
         {order.supplier_response && (() => {
