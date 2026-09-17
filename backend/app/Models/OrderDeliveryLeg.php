@@ -18,6 +18,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * `resend_unsafe_with_same_reference` is the leg-level twin of
  * ADR-102 decision 5's `SupplierResponse` flag — set only when this
  * leg lands on NeedsReview.
+ *
+ * ADR-107 decision 1: `selling_price_sen` freezes this leg's own
+ * component-package `standard_selling_price` at `seedDeliveryLegs()`
+ * time (checkout) — feeds decision 4's partial-combo voucher
+ * apportionment. No `cost_price_sen` twin: decision 2's platformProfit
+ * reconciliation reads `componentPackage->cost_price` LIVE at final
+ * resolution instead (see the owning migration's doc comment for why).
  */
 class OrderDeliveryLeg extends Model
 {
@@ -32,6 +39,7 @@ class OrderDeliveryLeg extends Model
         'delivered_at',
         'failure_reason',
         'resend_unsafe_with_same_reference',
+        'selling_price_sen',
     ];
 
     protected $casts = [
@@ -39,6 +47,7 @@ class OrderDeliveryLeg extends Model
         'status' => DeliveryStatus::class,
         'delivered_at' => 'datetime',
         'resend_unsafe_with_same_reference' => 'boolean',
+        'selling_price_sen' => 'integer',
     ];
 
     public function order(): BelongsTo

@@ -12,6 +12,13 @@
  * Without this card, that order's detail page would show nothing at
  * all about its resolution, unlike every other compensated order.
  *
+ * ADR-107 decision 3 — a 5th variant, not a compensation fact but the
+ * same "an admin should see this at a glance" principle: a combo order
+ * that delivered with a reconciled negative platform_profit (the
+ * platform absorbed more live cost on a retried leg than the order ever
+ * collected). Delivery was never blocked over this — it's purely
+ * after-the-fact visibility.
+ *
  * ADR-104 (visual pass): icons swap from emoji to the shared
  * @primeicons/react set (matches decision 6's icon system elsewhere on
  * this page); the wrapper becomes a responsive grid — 2 columns when 2+
@@ -24,6 +31,7 @@ import { Ticket } from "@primeicons/react/ticket";
 import { Receipt } from "@primeicons/react/receipt";
 import { Wallet } from "@primeicons/react/wallet";
 import { Reply } from "@primeicons/react/reply";
+import { ExclamationTriangle } from "@primeicons/react/exclamation-triangle";
 import type { OrderDetail } from "@/lib/orders";
 import type { ComponentType, ReactNode } from "react";
 
@@ -43,12 +51,29 @@ function Card({ icon: Icon, title, children }: { icon: ComponentType<{ className
   );
 }
 
+// ADR-107 decision 3 — the one card in this family that's a warning, not
+// a plain fact, so it uses the project's established error-tone surface
+// (matching middleware/*'s own `bg-error-50`/`text-error-600` pattern)
+// instead of Card()'s neutral `bg-subtle`.
+function WarningCard({ icon: Icon, title, children }: { icon: ComponentType<{ className?: string }>; title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-error-500/20 bg-error-50 p-3 text-sm dark:border-error-500/30 dark:bg-error-500/15">
+      <p className="flex items-center gap-1.5 font-medium text-error-600 dark:text-error-400">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+        {title}
+      </p>
+      <div className="mt-1 text-ink-muted">{children}</div>
+    </div>
+  );
+}
+
 export default function RefundInformationCards({ order }: { order: OrderDetail }) {
   const cardCount =
     Number(!!order.paid_with_voucher) +
     Number(!!order.voucher) +
     Number(!!order.wallet_refund) +
-    Number(order.has_voucher_restored);
+    Number(order.has_voucher_restored) +
+    Number(order.combo_profit_reconciled_negative);
 
   if (cardCount === 0) return null;
 
@@ -88,6 +113,14 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
           {order.voucher_discount !== null && <> — {formatRm(order.voucher_discount)} given back to it</>}. No new
           voucher was issued: its cash portion was RM0.00.
         </Card>
+      )}
+      {order.combo_profit_reconciled_negative && (
+        <WarningCard icon={ExclamationTriangle} title="Combo Profit Adjusted">
+          This combo order delivered, but its reported platform profit reconciled to{" "}
+          <span className="font-mono font-medium">{formatRm(order.platform_profit)}</span> — live supplier cost on a
+          retried leg exceeded what this order ever collected. The platform absorbed the difference; delivery was never
+          blocked over it.
+        </WarningCard>
       )}
     </div>
   );

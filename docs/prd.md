@@ -598,7 +598,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. PR-1 merged to `staging`; PR-2 open. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve. PR open | ADR-006, 030–032, 067, 069, 097, 098 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived) | ADR-022 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
-| Combo Package | 🟢 Live in prod as of `staging` (functionally complete) — several existing catalog Packages assembled into one opaque, sellable SKU above a game's native max denomination, so a reseller/guest pays one CHIP FPX fee instead of two. Data model + creation endpoint, pricing (sum-of-components, override optional) on the same Price Sync cadence, fulfillment leg-engine (both suppliers, partial-delivery → `needs_review`), admin UI (`/admin/games` composition CRUD, Order-detail leg breakdown, custom-amount Voucher for partial delivery, component-churn guards). Verified genuinely buyable through storefront, Affiliate, and Reseller API/Bot (Reseller Portal has no order-placement surface). **2026-09-16:** max legs raised 3→5 (real usage, decision 20's own revisit bar), component SKU (`supplier_package_ref`) now shown in the composition picker and the Order-detail leg breakdown — previously only the component name/denomination, ambiguous when two components share a denomination across suppliers. Open, deliberately deferred: no per-leg `retryDelivery()` audit trail (§16), no edit-composition UI (delete-and-recreate only) | ADR-094 |
+| Combo Package | 🟢 Live in prod as of `staging` (functionally complete) — several existing catalog Packages assembled into one opaque, sellable SKU above a game's native max denomination, so a reseller/guest pays one CHIP FPX fee instead of two. Data model + creation endpoint, pricing (sum-of-components, override optional) on the same Price Sync cadence, fulfillment leg-engine (both suppliers, partial-delivery → `needs_review`), admin UI (`/admin/games` composition CRUD, Order-detail leg breakdown, custom-amount Voucher for partial delivery, component-churn guards). Verified genuinely buyable through storefront, Affiliate, and Reseller API/Bot (Reseller Portal has no order-placement surface). **2026-09-16:** max legs raised 3→5 (real usage, decision 20's own revisit bar), component SKU (`supplier_package_ref`) now shown in the composition picker and the Order-detail leg breakdown — previously only the component name/denomination, ambiguous when two components share a denomination across suppliers. **2026-09-17:** `platform_profit` now reconciles as a money-conservation residual on final delivery instead of staying frozen through a leg retry (ADR-107, §16 item 18). Open, deliberately deferred: no per-leg `retryDelivery()` audit trail (§16), no edit-composition UI (delete-and-recreate only) | ADR-094, ADR-107 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). **"Check from Supplier"/"Check from Gateway" manual-poll buttons built (ADR-096, 2026-09-15)** — synchronous on-demand status check for a Pending order, shares logic with the scheduled reconcile jobs, cache-based cooldown. **ADR-102 Phase 1 built 2026-09-16** — `Order::isAlreadyCompensated()` unifies every Resend/Retry/Mark-Delivered/Confirm-Failed guard against a voucher OR a wallet refund already given (was voucher-only), checked inside `fulfill()`/`fulfillCombo()`'s own row lock as the real final defense, not just a controller pre-check. Also fixed mid-build: `refundToWallet()` had no DB-level backstop against a double wallet-refund (unlike Voucher's real unique index) — now locks the same way, proven via a new concurrency test. **ADR-102 Phase 2 built 2026-09-16 (decisions 3-9)** — a Digiflazz confirmed-Gagal `rc` (even one unsafe to resubmit) now routes straight to `Failed` instead of `needs_review` (Issue Voucher immediately available, superseding ADR-098 decision 6); a non-combo resend from `Failed` regenerates its `reference_number` (safe — confirmed non-delivery), reuse preserved from `needs_review`; Resend/Retry button disables with a mandatory logged override reason when genuinely futile (non-combo: `needs_review` only; combo: regardless of status); `ReconcilePendingDeliveriesCommand` permanently self-corrects any stuck `needs_review` row. **ADR-102 Phase 3 built 2026-09-16 (decisions 10-13, closes out ADR-102's own decision list)** — an optional Player ID/Server ID correction on Resend (re-validated before resubmitting); Order Detail's 3 independent Refund Information cards (Voucher Used to Pay / Compensation Voucher Issued / Wallet Refund) replace the old single-line mentions; `/admin/orders` gains 🎫/🎟️/💰 compensation badges; `NeedsReviewBanner` explains in plain language why Resend/Retry is disabled. **ADR-103 built 2026-09-17** — a combo leg now gets its own independently-regenerable `reference_number` (was derived/regex-parsed off the order's), closing the combo scope ADR-102 decision 9 explicitly deferred: a `Failed` leg mints a fresh (ULID-suffixed) reference on retry, a `NeedsReview` leg keeps reusing its stored one; the Digiflazz webhook resolves `ref_id` via two direct lookups (Order, then OrderDeliveryLeg) instead of a regex parse; the combo-wide Retry button's futility warning is now an OR-rollup across legs' own unsafe flag, retiring ADR-102 decision 3's old (always-quiet) combo branch. This family is now fully built. **ADR-024 restore-only addendum built 2026-09-17** — a full-cover-by-voucher order that later fails delivery no longer mints a pointless RM0.00 compensation voucher (button auto-labels "Restore Voucher," restores the original voucher only); found and fixed the same session: `isAlreadyCompensated()`'s guard had a real gap for this exact order shape. The 🎫/🎟️/💰 badges above are now plain-text `<Tag>` pills (founder feedback — emoji read as noisy next to the status tags), plus a 4th "Restored" pill/card. **ADR-104 PR-2 + PR-2b + a founder-driven live-browser audit, all 2026-09-17** — header action-bar + compact 5-column summary strip (incl. Channel), card-merge (Game & fulfillment / Payment & supplier), card-heading icons, `RefundInformationCards` emoji→icon + responsive 2-col grid, sidebar regrouped into 6 titled sections (app shell newly brought into ADR-104 scope), plus 2 real dark-mode token bugs found+fixed (D1: unstyled `<dd>` rendering `rgb(0,0,0)` on dark cards; D2: `info-surface`/`info-ink` missing a `.dark` override entirely) — see the ADR-038/104 note below the table. ORD-5 export unbuilt | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104 |
@@ -789,36 +789,39 @@ drops off this list into `docs/build-log.md`.
     not a system-load concern either way — Gemini's own per-message cost already
     scales with resent history length today, persisting it doesn't add API cost,
     only cheap DB storage for a handful of `super_admin` accounts.
-15. **Durable "Initial Delivery" audit row — needs its own ADR + grill.** Found
-    2026-09-15 while fixing the Delivery Logs outcome bugs (see
+15. ~~Durable "Initial Delivery" audit row — needs its own ADR + grill.~~ —
+    **grilled + BUILT 2026-09-18, [ADR-106](./adr.md)**, on
+    `feature/adr-106-107-combo-delivery-logs` off `staging` (not yet merged).
+    Found 2026-09-15 while fixing the Delivery Logs outcome bugs (see
     `docs/build-log.md`'s 2026-09-15 entry): `order_resend_attempts` (ADR-017
-    decision #4, "record every attempt, not just the latest") only ever logs
-    RESEND attempts — the very first/original fulfillment attempt has no
-    durable row of its own. The admin's "Initial Delivery" row is synthesized
-    live from `Order.supplier_response`/`delivery_status`, single mutable
-    columns overwritten by every later resend — accurate for an order that's
-    never been resent, but the true original response is unrecoverable the
-    moment a resend happens (confirmed live: a real order's "Initial
-    Delivery" row was showing a later resend's response under the wrong
-    label). The 2026-09-15 fix only made the *label* honest for an
-    already-resent order ("original response not retained") — it does not
-    yet capture initial attempts going forward. A real fix needs a schema
-    decision: reuse `order_resend_attempts` with a new discriminator (and
-    likely a rename — "resend" no longer describes every row) vs. a separate
-    table. Grill before building, not a trivial column add.
-16. **Combo order `retryDelivery()` has zero audit trail — needs a decision,
-    not urgent.** Found alongside item 16, same session: ADR-094 decision 10
-    routes every combo-order retry through the plain `retryDelivery()`
-    endpoint (`FulfillOrderJob::dispatch()` directly, no package picker,
-    since a combo can't swap package) — unlike `resend()`, this path writes
-    no `order_resend_attempts` row at all, for combo or plain orders alike.
-    A combo order's leg-level state is still visible via `ComboLegBreakdown`
-    (decision 12), so this isn't a total blind spot, but a combo retry
-    leaves no chronological "who clicked retry, when, what was the diff"
-    trail the way a plain-order resend does. Deliberately deferred (founder
-    decision, 2026-09-15) rather than folded into item 16's fix — different
-    root cause (a missing write, not a wrong label), worth its own pass once
-    item 16's schema shape is decided (the two likely share a table).
+    decision #4, "record every attempt, not just the latest") used to only
+    ever log RESEND attempts — the very first/original fulfillment attempt
+    had no durable row of its own, and neither did a `markDeliveredManually()`
+    confirmation (a third gap found while grilling this ADR). Both now write
+    a real row (`attempt_type` = `initial`/`manual_confirm`, alongside the
+    existing `resend`), from inside `OrderFulfillmentService::fulfill()`/
+    `markDeliveredManually()` themselves — no rename, no new table, same
+    `order_resend_attempts`. The admin's "Initial Delivery" row now reads
+    the real durable row once one exists for an order; the 2026-09-15
+    honest-fallback synthesis stays unchanged for any order created before
+    this shipped (its true initial data is already unrecoverably gone).
+    Non-combo only for now (decision 1) — see item 16 below, deferred for
+    the same reason.
+16. **Combo order `retryDelivery()` has zero audit trail — deliberately
+    deferred, non-combo only for now.** Found alongside item 15, same
+    session: ADR-094 decision 10 routes every combo-order retry through the
+    plain `retryDelivery()` endpoint (`FulfillOrderJob::dispatch()` directly,
+    no package picker, since a combo can't swap package) — unlike
+    `resend()`, this path writes no `order_resend_attempts` row at all, for
+    combo or plain orders alike. A combo order's leg-level state is still
+    visible via `ComboLegBreakdown` (decision 12), so this isn't a total
+    blind spot, but a combo retry leaves no chronological "who clicked
+    retry, when, what was the diff" trail the way a plain-order resend does.
+    ADR-106 (which fixes item 15's non-combo half) explicitly keeps this
+    deferred in its own decision 1 — combo's `order_delivery_legs` has the
+    identical symptom but zero live incidents to date, same non-combo-first
+    split as ADR-094/102/103. Revisit once real combo volume exists, same
+    trigger ADR-107 (item 18) is watching for on the money side.
 17. ~~Should Pending Reactivation ever auto-approve?~~ — **grilled + BUILT
     2026-09-16, [ADR-100](./adr.md).** Off by default
     (`PENDING_REACTIVATION_AUTO_APPROVE=false` — today's fully-manual
@@ -833,6 +836,30 @@ drops off this list into `docs/build-log.md`.
     spot-check of `HOK_GB_16_PG2`'s real cutoff API value once Digiflazz's
     pricelist rate limit isn't a concern (the code's fallback fails safe
     either way).
+18. ~~Combo order profit never reconciles on retry, and its partial-delivery
+    voucher suggestion reads a live price~~ — **grilled + BUILT 2026-09-17,
+    [ADR-107](./adr.md)**, on `feature/adr-106-107-combo-delivery-logs` off
+    `staging` (not yet merged). `platform_profit` now reconciles once at
+    final all-legs-Delivered resolution as a money-conservation residual
+    (`order.selling_price (frozen) − Σ live componentPackage->cost_price
+    across every leg − affiliate_profit`, same identity ADR-105 decision 8
+    established) — `affiliate_profit` itself is never touched. A resulting
+    loss is never blocked (decision 3): the order still delivers, the
+    figure is recorded as-is, and a new Order Detail card
+    (`combo_profit_reconciled_negative`) flags it for admin visibility
+    after the fact. `Order::suggestedPartialVoucherAmount()` now apportions
+    `final_amount − transaction_fee` proportionally across failed legs'
+    frozen `order_delivery_legs.selling_price_sen` weights, never a live
+    price. **Build-time revision** (found in plan-review, before code): the
+    ADR's original decision 2 would have reused the raw supplier-currency
+    drawdown price for reconciliation — a real currency-scale bug against
+    MYR-sen `selling_price`/`affiliate_profit`; revised to read each leg's
+    `cost_price` LIVE instead (matching ADR-105 decision 1's precedent),
+    so the originally-planned frozen `cost_price_sen` column was dropped
+    (only `selling_price_sen` is built) — see ADR-107's own build addendum
+    in `docs/adr.md`. Zero real combo resends/partial-deliveries exist in
+    prod to date — latent fix, not yet touched real money. Independent of
+    ADR-106 (item 15), which is sequenced next on the same branch.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

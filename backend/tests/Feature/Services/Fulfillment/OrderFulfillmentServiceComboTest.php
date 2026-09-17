@@ -968,6 +968,138 @@ class OrderFulfillmentServiceComboTest extends TestCase
      * relies on at the order level — a duplicate webhook delivery for
      * an already-finalized leg throws, never double-credits.
      */
+    /**
+     * ADR-107 decision 2 — platform_profit is reconciled to the
+     * money-conservation residual on final delivery: order.selling_price
+     * (frozen) − Σ live componentPackage->cost_price across every leg −
+     * affiliate_profit. Both components here default to cost_price=500,
+     * so live cost total = 1000; order fixture selling_price=1500,
+     * affiliate_profit=0 -> expected platform_profit = 500 (overriding
+     * the fixture's own hardcoded 200).
+     */
+    public function test_platform_profit_reconciles_to_the_money_conservation_residual_on_full_delivery(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['affiliate_profit' => 0]);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 480]),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame(500, $result->platform_profit);
+        $this->assertSame(500, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->sole()->amount);
+    }
+
+    /**
+     * ADR-107 decision 2 — reconciliation reads LIVE cost at final
+     * resolution, not the cost each leg had when it individually
+     * delivered: leg B's component cost_price is bumped (simulating a
+     * routine SyncSupplierPricesJob run) between the first attempt and
+     * the retry that finally delivers it, and the platform absorbs the
+     * difference in its own reported profit.
+     */
+    public function test_platform_profit_reconciliation_reflects_a_live_cost_change_between_attempts(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId); // cost_price 500
+        $b = $this->componentPackage($supplier, $gameId); // cost_price 500
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['affiliate_profit' => 0]);
+
+        $firstAttemptAdapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::failure('insufficient_balance', 'No balance'),
+        ]);
+        $firstResult = $this->service($firstAttemptAdapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::NeedsReview, $firstResult->delivery_status);
+
+        // A price sync lands between the first attempt and the retry —
+        // package B's real cost has genuinely risen.
+        $b->update(['cost_price' => 700]);
+
+        $retryAdapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY', 'price' => 700]),
+        ]);
+        $secondResult = $this->service($retryAdapter)->fulfill($firstResult->fresh());
+
+        $this->assertSame(DeliveryStatus::Delivered, $secondResult->delivery_status);
+        // selling_price 1500 - (liveCost 500 + 700) - affiliate_profit 0 = 300
+        $this->assertSame(300, $secondResult->platform_profit);
+    }
+
+    /**
+     * ADR-107 decision 3 — a resulting loss is never blocked: the order
+     * still delivers, the reconciled (negative) platform_profit is
+     * recorded as-is, and Order::hasNegativeComboProfit() (the Order
+     * Detail visibility signal) becomes true. No exception, no
+     * override-reason gate (unlike ADR-105 decision 4's synchronous-
+     * admin-only mechanism, deliberately not reused here).
+     */
+    public function test_a_resulting_loss_never_blocks_delivery_and_flags_the_order(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 1000]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 1000]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        // selling_price 1500 stays below the 2000 total live cost.
+        $order = $this->paidComboOrder($combo, ['affiliate_profit' => 0]);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 1000]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 1000]),
+        ]);
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame(-500, $result->platform_profit);
+        $this->assertTrue($result->hasNegativeComboProfit());
+        // The customer still got their goods, and the ledger still
+        // credits whatever was reconciled — a real, logged loss, not a
+        // silently clamped-to-zero one.
+        $this->assertSame(-500, LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->sole()->amount);
+    }
+
+    /**
+     * ADR-107 decision 2 — affiliate_profit is never touched by
+     * reconciliation, even when the platform absorbs a real cost
+     * increase: it keeps the exact value frozen at checkout.
+     */
+    public function test_affiliate_profit_is_never_reconciled_by_a_combo_retry(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo, ['affiliate_profit' => 50, 'selling_price' => 900]);
+
+        $adapter = $this->queuedAdapter([SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 500])]);
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(50, $result->affiliate_profit);
+        // selling_price 900 - liveCost 500 - affiliate_profit 50 = 350
+        $this->assertSame(350, $result->platform_profit);
+    }
+
     public function test_finalizing_an_already_delivered_leg_throws(): void
     {
         $supplier = $this->supplier();

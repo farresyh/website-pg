@@ -240,6 +240,10 @@ final class OrderResendService
 
         OrderResendAttempt::query()->create([
             'order_id' => $result->id,
+            // ADR-106 decision 2 — this write site only ever produces a
+            // genuine admin-triggered resend; 'initial'/'manual_confirm'
+            // are written from inside OrderFulfillmentService instead.
+            'attempt_type' => 'resend',
             'package_id' => $targetPackage->id,
             'cost_price_sen' => $liveCostPrice,
             'standard_selling_price_sen' => $liveStandardSellingPrice,
