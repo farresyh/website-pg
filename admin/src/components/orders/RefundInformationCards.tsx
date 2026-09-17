@@ -11,18 +11,32 @@
  * but mints no new one, so `order.voucher` stays null forever for it.
  * Without this card, that order's detail page would show nothing at
  * all about its resolution, unlike every other compensated order.
+ *
+ * ADR-104 (visual pass): icons swap from emoji to the shared
+ * @primeicons/react set (matches decision 6's icon system elsewhere on
+ * this page); the wrapper becomes a responsive grid — 2 columns when 2+
+ * of these cards are visible at once (matches the artifact's own
+ * side-by-side layout for that case), 1 column (full width) when only
+ * one applies, stacking on narrow viewports either way. Labels, data,
+ * and conditions are all unchanged from before this pass.
  */
+import { Ticket } from "@primeicons/react/ticket";
+import { Receipt } from "@primeicons/react/receipt";
+import { Wallet } from "@primeicons/react/wallet";
+import { Reply } from "@primeicons/react/reply";
 import type { OrderDetail } from "@/lib/orders";
+import type { ComponentType, ReactNode } from "react";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
-function Card({ emoji, title, children }: { emoji: string; title: string; children: React.ReactNode }) {
+function Card({ icon: Icon, title, children }: { icon: ComponentType<{ className?: string }>; title: string; children: ReactNode }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-subtle p-3 text-sm dark:border-gray-800">
-      <p className="font-medium text-ink">
-        {emoji} {title}
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+        {title}
       </p>
       <div className="mt-1 text-ink-muted">{children}</div>
     </div>
@@ -30,12 +44,18 @@ function Card({ emoji, title, children }: { emoji: string; title: string; childr
 }
 
 export default function RefundInformationCards({ order }: { order: OrderDetail }) {
-  if (!order.paid_with_voucher && !order.voucher && !order.wallet_refund && !order.has_voucher_restored) return null;
+  const cardCount =
+    Number(!!order.paid_with_voucher) +
+    Number(!!order.voucher) +
+    Number(!!order.wallet_refund) +
+    Number(order.has_voucher_restored);
+
+  if (cardCount === 0) return null;
 
   return (
-    <div className="mt-3 space-y-2">
+    <div className={`mt-3 grid grid-cols-1 gap-2 ${cardCount >= 2 ? "lg:grid-cols-2" : ""}`}>
       {order.paid_with_voucher && (
-        <Card emoji="🎫" title="Voucher Used to Pay">
+        <Card icon={Receipt} title="Voucher Used to Pay">
           <span className="font-medium text-ink">{order.paid_with_voucher.code}</span>
           {" — "}
           {formatRm(order.paid_with_voucher.amount)} original, {formatRm(order.paid_with_voucher.remaining)} remaining (
@@ -43,21 +63,21 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
         </Card>
       )}
       {order.voucher && (
-        <Card emoji="🎟️" title="Compensation Voucher Issued">
+        <Card icon={Ticket} title="Compensation Voucher Issued">
           <span className="font-medium text-ink">{order.voucher.code}</span>
           {" — "}
           {formatRm(order.voucher.amount)} issued, {formatRm(order.voucher.remaining)} remaining ({order.voucher.status})
         </Card>
       )}
       {order.wallet_refund && (
-        <Card emoji="💰" title="Wallet Refund">
+        <Card icon={Wallet} title="Wallet Refund">
           {formatRm(order.wallet_refund.amount)} refunded to{" "}
           <span className="font-medium text-ink">{order.wallet_reseller?.business_name ?? "—"}</span>
           &apos;s wallet on {new Date(order.wallet_refund.created_at).toLocaleString()}.
         </Card>
       )}
       {order.has_voucher_restored && (
-        <Card emoji="↩️" title="Voucher Restored">
+        <Card icon={Reply} title="Voucher Restored">
           This order was fully covered by voucher
           {order.paid_with_voucher && (
             <>
