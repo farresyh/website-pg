@@ -445,8 +445,12 @@ function OrdersPageInner() {
                             className="w-72"
                           />
                         )}
+                        {/* ADR-104: outlined, matching the mockup's uniform
+                            neutral header-button treatment — same handler/
+                            label/disabled logic, appearance only. */}
                         <Button
                           size="small"
+                          variant="outlined"
                           disabled={retryingDelivery || (selected.resend_unsafe_to_override && retryOverrideReason.trim() === "")}
                           onClick={handleRetryDelivery}
                         >
@@ -454,7 +458,7 @@ function OrdersPageInner() {
                         </Button>
                       </div>
                     ) : (
-                      <Button size="small" onClick={() => setResendModalOpen(true)}>
+                      <Button size="small" variant="outlined" onClick={() => setResendModalOpen(true)}>
                         Resend Delivery…
                       </Button>
                     )
@@ -496,7 +500,7 @@ function OrdersPageInner() {
               shown in the cards below (Customer Details / Game·Package /
               Pricing Details, plus created_at), just surfaced at a glance
               next to the header. No new data, no new fetch, no new field. */}
-          <div className="mt-4 grid grid-cols-2 gap-4 rounded-lg border border-gray-200 bg-subtle p-4 dark:border-gray-800 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-4 rounded-lg border border-gray-200 bg-subtle p-4 dark:border-gray-800 sm:grid-cols-5">
             <div>
               <p className="text-theme-xs text-ink-muted">Customer</p>
               <p className="text-theme-sm font-medium text-ink">{selected.customer_email}</p>
@@ -514,6 +518,13 @@ function OrdersPageInner() {
                 {formatRm(selected.final_amount)}
                 {selected.payment_method && <span className="text-ink-muted"> · {selected.payment_method}</span>}
               </p>
+            </div>
+            {/* ADR-104: same derived value OrderDetailCards' "Channel" row
+                already computes (wallet_reseller presence — no new data,
+                no new logic) surfaced here too for the 5-column strip. */}
+            <div>
+              <p className="text-theme-xs text-ink-muted">Channel</p>
+              <p className="text-theme-sm font-medium text-ink">{selected.wallet_reseller ? "Reseller" : "Direct"}</p>
             </div>
             <div>
               <p className="text-theme-xs text-ink-muted">Created</p>

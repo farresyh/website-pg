@@ -5,6 +5,10 @@
  * apart over time.
  */
 import { Tag } from "@/components/ui/tag";
+import { User } from "@primeicons/react/user";
+import { Box } from "@primeicons/react/box";
+import { Tag as TagIcon } from "@primeicons/react/tag";
+import { CreditCard } from "@primeicons/react/credit-card";
 import type { OrderDetail } from "@/lib/orders";
 
 function formatRm(sen: number): string {
@@ -29,7 +33,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
-        <h2 className="mb-4 text-section-title font-semibold text-ink">Customer Details</h2>
+        <h2 className="mb-4 flex items-center gap-2 text-section-title font-semibold text-ink"><User className="h-4 w-4 text-ink-muted" />Customer Details</h2>
         {/* ADR-104 D1 fix: every <dd> here now carries an explicit
             `text-ink` color — unstyled, it silently inherited the
             browser's plain-black default (no dark-mode override exists
@@ -52,7 +56,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           (already fetched, already used elsewhere on this page to tell
           a Reseller-channel order apart from a Direct one) — no new data. */}
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
-        <h2 className="mb-4 text-section-title font-semibold text-ink">Game & fulfillment</h2>
+        <h2 className="mb-4 flex items-center gap-2 text-section-title font-semibold text-ink"><Box className="h-4 w-4 text-ink-muted" />Game & fulfillment</h2>
         {/* ADR-104 D1 fix: same explicit `text-ink` addition as Customer
             Details above — same confirmed rgb(0,0,0)-on-dark-card bug. */}
         <dl className="space-y-2 text-sm">
@@ -76,7 +80,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
 
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-section-title font-semibold text-ink">Pricing Details</h2>
+          <h2 className="flex items-center gap-2 text-section-title font-semibold text-ink"><TagIcon className="h-4 w-4 text-ink-muted" />Pricing Details</h2>
           <div className="flex items-center gap-1.5">
             {isMemberOrder && (
               <Tag severity="info">
@@ -206,7 +210,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           always-open raw dump. The raw JSON itself is kept, just behind a
           native <details> disclosure instead of permanently visible. */}
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
-        <h2 className="mb-4 text-section-title font-semibold text-ink">Payment & supplier</h2>
+        <h2 className="mb-4 flex items-center gap-2 text-section-title font-semibold text-ink"><CreditCard className="h-4 w-4 text-ink-muted" />Payment & supplier</h2>
         {/* ADR-104 D1 fix: same explicit `text-ink` addition as the cards
             above — same confirmed rgb(0,0,0)-on-dark-card bug. */}
         <dl className="space-y-2 text-sm">
