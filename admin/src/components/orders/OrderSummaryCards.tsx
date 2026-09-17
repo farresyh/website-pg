@@ -8,15 +8,22 @@
  * decision").
  */
 import { Clock } from "@primeicons/react/clock";
+import { Refresh } from "@primeicons/react/refresh";
+import { CheckCircle } from "@primeicons/react/check-circle";
+import { Calendar } from "@primeicons/react/calendar";
+import { List } from "@primeicons/react/list";
+import type { ComponentType } from "react";
 import type { OrderStatusFilter, OrderSummary } from "@/lib/orders";
 
-const CARDS: { value: OrderStatusFilter; label: string; key: keyof OrderSummary }[] = [
-  { value: "need_action", label: "Need Action", key: "need_action" },
-  { value: "needs_review", label: "Needs Review", key: "needs_review" },
-  { value: "processing", label: "Processing", key: "processing" },
-  { value: "completed", label: "Completed", key: "completed" },
-  { value: "today", label: "Today", key: "today" },
-  { value: "all", label: "All Orders", key: "all" },
+// ADR-104: one icon per card, matching decision 6's icon system — purely
+// decorative/visual-hierarchy, same values/labels/onClick as before.
+const CARDS: { value: OrderStatusFilter; label: string; key: keyof OrderSummary; icon: ComponentType<{ className?: string }> | null }[] = [
+  { value: "need_action", label: "Need Action", key: "need_action", icon: null }, // its own dot, not this icon set
+  { value: "needs_review", label: "Needs Review", key: "needs_review", icon: Clock },
+  { value: "processing", label: "Processing", key: "processing", icon: Refresh },
+  { value: "completed", label: "Completed", key: "completed", icon: CheckCircle },
+  { value: "today", label: "Today", key: "today", icon: Calendar },
+  { value: "all", label: "All Orders", key: "all", icon: List },
 ];
 
 export default function OrderSummaryCards({
@@ -39,6 +46,7 @@ export default function OrderSummaryCards({
         // picks up the cyan "act here"/selected treatment when it happens
         // to be the active filter — the same behavior this already had.
         const isNeedAction = card.value === "need_action";
+        const Icon = card.icon;
         return (
           <button
             key={card.value}
@@ -52,7 +60,7 @@ export default function OrderSummaryCards({
             }`}
           >
             {isNeedAction && <span aria-hidden="true" className="absolute right-4 top-4 h-2 w-2 rounded-full bg-purple-600" />}
-            {card.value === "needs_review" && <Clock className="absolute right-4 top-4 h-3.5 w-3.5 text-ink-muted" />}
+            {Icon && <Icon className="absolute right-4 top-4 h-3.5 w-3.5 text-ink-muted" />}
             <p className={`text-overline font-medium uppercase tracking-wide ${isNeedAction ? "text-purple-ink" : "text-ink-muted"}`}>{card.label}</p>
             <p className={`mt-1 text-metric-lg font-semibold ${isNeedAction ? "text-purple-ink" : "text-ink"}`}>
               {summary ? summary[card.key] : "—"}
