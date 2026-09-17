@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogContent,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
 import { ApiError } from "@/lib/api-client";

@@ -72,7 +72,7 @@ import {
   DialogTitle,
   DialogContent,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 
 /**
  * ADR-094 decision 13: the deactivate-cascade confirm — shown only

@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogContent,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import {
   DataTable,
   DataTableTableContainer,

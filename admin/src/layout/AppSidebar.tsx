@@ -2,20 +2,18 @@
 
 import React from "react";
 import PanelSidebar, { type PanelNavSection } from "@/layout/PanelSidebar";
-import {
-  GridIcon,
-  UserCircleIcon,
-  DollarLineIcon,
-  BoxLineIcon,
-  PencilIcon,
-  ListIcon,
-  ImageIcon,
-  BlockIcon,
-  SettingsIcon,
-  ChartLineIcon,
-  TrendUpIcon,
-  TagIcon,
-} from "@/icons";
+import { Grid2 as GridIcon } from "@primeicons/react/grid-2";
+import { User as UserCircleIcon } from "@primeicons/react/user";
+import { Dollar as DollarLineIcon } from "@primeicons/react/dollar";
+import { Box as BoxLineIcon } from "@primeicons/react/box";
+import { Pencil as PencilIcon } from "@primeicons/react/pencil";
+import { List as ListIcon } from "@primeicons/react/list";
+import { Image as ImageIcon } from "@primeicons/react/image";
+import { Ban as BlockIcon } from "@primeicons/react/ban";
+import { Cog as SettingsIcon } from "@primeicons/react/cog";
+import { ChartLine as ChartLineIcon } from "@primeicons/react/chart-line";
+import { ArrowCircleUp as TrendUpIcon } from "@primeicons/react/arrow-circle-up";
+import { Tag as TagIcon } from "@primeicons/react/tag";
 
 /**
  * Admin Panel nav. Items reflect only screens that actually exist —

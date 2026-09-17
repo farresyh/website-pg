@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { Outfit } from "next/font/google";
+import { Figtree } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { SidebarProvider } from "@/context/SidebarContext";
 import { PrimeProvider } from "@/components/prime-provider";
 
-const outfit = Outfit({ subsets: ["latin"] });
+// ADR-104: Outfit -> Figtree
+const figtree = Figtree({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "PekanGame — Admin",
@@ -19,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${outfit.className} dark:bg-gray-900`}>
+      <body className={`${figtree.className} dark:bg-gray-900`}>
         <PrimeProvider>
           <ThemeProvider>
             <SidebarProvider>{children}</SidebarProvider>

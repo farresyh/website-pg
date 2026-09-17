@@ -24,7 +24,7 @@ import { Tag } from "@/components/ui/tag";
 import { SimpleSelect } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { PlusIcon } from "@/icons";
+import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { ApiError } from "@/lib/api-client";
 import {
   listMemberships,

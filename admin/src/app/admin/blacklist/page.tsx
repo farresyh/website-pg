@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
-import { PlusIcon } from "@/icons";
+import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";

@@ -29,7 +29,7 @@ import {
   DialogTitle,
   DialogContent,
 } from "@/components/ui/dialog";
-import { CloseIcon } from "@/icons";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import { Send } from "@primeicons/react/send";
 import { Refresh } from "@primeicons/react/refresh";
 import { Code } from "@primeicons/react/code";

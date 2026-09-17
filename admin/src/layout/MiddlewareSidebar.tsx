@@ -4,18 +4,16 @@ import React, { useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { mintOpsLink, type OpsTarget } from "@/lib/ops";
 import PanelSidebar, { type PanelNavSection } from "@/layout/PanelSidebar";
-import {
-  GridIcon,
-  BoxLineIcon,
-  ListIcon,
-  DollarLineIcon,
-  TrendUpIcon,
-  BlockIcon,
-  PencilIcon,
-  SettingsIcon,
-  UserCircleIcon,
-  ChartLineIcon,
-} from "@/icons";
+import { Grid2 as GridIcon } from "@primeicons/react/grid-2";
+import { Box as BoxLineIcon } from "@primeicons/react/box";
+import { List as ListIcon } from "@primeicons/react/list";
+import { Dollar as DollarLineIcon } from "@primeicons/react/dollar";
+import { ArrowCircleUp as TrendUpIcon } from "@primeicons/react/arrow-circle-up";
+import { Ban as BlockIcon } from "@primeicons/react/ban";
+import { Pencil as PencilIcon } from "@primeicons/react/pencil";
+import { Cog as SettingsIcon } from "@primeicons/react/cog";
+import { User as UserCircleIcon } from "@primeicons/react/user";
+import { ChartLine as ChartLineIcon } from "@primeicons/react/chart-line";
 
 /**
  * Middleware Panel nav — same shell as the Admin Panel (PanelSidebar),
