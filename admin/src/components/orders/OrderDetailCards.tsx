@@ -38,8 +38,14 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         </dl>
       </div>
 
+      {/* ADR-104: "Game & fulfillment" — merges the old "Game / Package"
+          card's fields under the artifact's own card boundary/heading.
+          Every field is the same one that card already showed; `channel`
+          is newly surfaced here but derived from `wallet_reseller`
+          (already fetched, already used elsewhere on this page to tell
+          a Reseller-channel order apart from a Direct one) — no new data. */}
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
-        <h2 className="mb-4 text-section-title font-semibold text-ink">Game / Package</h2>
+        <h2 className="mb-4 text-section-title font-semibold text-ink">Game & fulfillment</h2>
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-ink-muted">Game</dt><dd>{order.game?.name ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Package</dt><dd>{order.package?.name ?? "—"}</dd></div>
@@ -50,6 +56,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
             </dd>
           </div>
           <div className="flex justify-between"><dt className="text-ink-muted">Supplier</dt><dd>{order.supplier?.name ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Channel</dt><dd>{order.wallet_reseller ? "Reseller" : "Direct"}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Affiliate</dt><dd>{order.affiliate?.business_name ?? "—"}</dd></div>
           {/* ADR-074/075: only set for an order placed via the Reseller API/Bot channel — the platform's own primary affiliate above stays the storefront brand either way. */}
           {order.wallet_reseller && (
@@ -180,22 +187,70 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         </dl>
       </div>
 
+      {/* ADR-104: "Payment & supplier" gains a "Fulfilment" sub-section —
+          Supplier/Supplier Ref moved here (still the same two fields the
+          old "Payment / Supplier" card already showed), plus a structured
+          "Latest supplier result" reading the same `order.supplier_response`
+          object other components already parse the same keys from
+          (`error_code`/`error_message`, see NeedsReviewBanner.tsx) — no
+          new data, just this card's own presentation of it instead of an
+          always-open raw dump. The raw JSON itself is kept, just behind a
+          native <details> disclosure instead of permanently visible. */}
       <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
-        <h2 className="mb-4 text-section-title font-semibold text-ink">Payment / Supplier</h2>
+        <h2 className="mb-4 text-section-title font-semibold text-ink">Payment & supplier</h2>
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-ink-muted">Payment Method</dt><dd>{order.payment_method ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Payment Ref (CHIP)</dt><dd>{order.payment_ref ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Reference # (ORD-8)</dt><dd className="font-mono text-code-id">{order.reference_number ?? "—"}</dd></div>
+        </dl>
+
+        <p className="mb-2 mt-5 text-theme-xs font-medium uppercase tracking-wide text-ink-muted">Fulfilment</p>
+        <dl className="space-y-2 text-sm">
+          <div className="flex justify-between"><dt className="text-ink-muted">Supplier</dt><dd>{order.supplier?.name ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Supplier Ref</dt><dd>{order.supplier_ref ?? "—"}</dd></div>
         </dl>
-        {order.supplier_response && (
-          <>
-            <p className="mt-4 mb-1 text-theme-xs text-gray-400">Supplier response</p>
-            <pre className="overflow-x-auto rounded-lg bg-subtle p-3 text-theme-xs text-ink-muted">
-              {JSON.stringify(order.supplier_response, null, 2)}
-            </pre>
-          </>
-        )}
+
+        {order.supplier_response && (() => {
+          const response = order.supplier_response as Record<string, unknown>;
+          const errorCode = response.error_code as string | undefined;
+          const errorMessage = response.error_message as string | undefined;
+          const note = response.note as string | undefined;
+          const confirmedAt = response.confirmed_at as string | undefined;
+          const confirmedBy = response.confirmed_failed_by as string | undefined;
+
+          return (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-subtle p-3 dark:border-gray-800">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-ink">Latest supplier result</p>
+                {order.delivery_status === "failed" && (
+                  <span className="inline-flex items-center gap-1.5 text-sm font-medium text-danger-ink">
+                    <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                    Failed
+                  </span>
+                )}
+              </div>
+              {(errorCode || errorMessage || note || confirmedAt) && (
+                <dl className="mt-2 space-y-1.5 text-sm">
+                  {errorCode && <div className="flex justify-between"><dt className="text-ink-muted">Error code</dt><dd className="font-mono text-ink">{errorCode}</dd></div>}
+                  {errorMessage && <div className="flex justify-between"><dt className="text-ink-muted">Message</dt><dd className="text-ink">{errorMessage}</dd></div>}
+                  {note && <div className="flex justify-between"><dt className="text-ink-muted">Note</dt><dd className="text-ink">{note}</dd></div>}
+                  {confirmedAt && (
+                    <div className="flex justify-between">
+                      <dt className="text-ink-muted">Confirmed</dt>
+                      <dd className="text-ink">{new Date(confirmedAt).toLocaleString()}{confirmedBy ? ` by ${confirmedBy}` : ""}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+              <details className="mt-2">
+                <summary className="cursor-pointer text-theme-xs text-ink-muted">Raw supplier response</summary>
+                <pre className="mt-1 overflow-x-auto rounded-lg bg-subtle p-3 text-theme-xs text-ink-muted">
+                  {JSON.stringify(order.supplier_response, null, 2)}
+                </pre>
+              </details>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

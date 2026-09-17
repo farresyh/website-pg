@@ -21,7 +21,7 @@
  * a later pass.
  */
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DataTable,
@@ -94,6 +94,32 @@ const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondar
   // in-flight delivery attempt.
   pending: "info",
 };
+
+// ADR-104: payment/delivery status specifically render as a dot + plain
+// text (no pill background), matching the artifact's own OrderDetailFailed/
+// OrdersPage mockups — every other Tag usage on this page (compensation
+// badges, pricing-basis badges, combo-leg/outcome tags) keeps the shared
+// `Tag` component's pill styling untouched. Same severity values already
+// computed above, just a different renderer — no status/label/data change.
+const STATUS_TEXT_COLOR: Record<string, string> = {
+  default: "text-cyan-ink",
+  secondary: "text-neutral-ink",
+  info: "text-info-ink",
+  success: "text-success-ink",
+  warn: "text-warning-ink",
+  danger: "text-danger-ink",
+  review: "text-review-ink",
+};
+
+function StatusText({ severity, children }: { severity: string; children: ReactNode }) {
+  const color = STATUS_TEXT_COLOR[severity] ?? "text-ink-muted";
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${color}`}>
+      <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+      {children}
+    </span>
+  );
+}
 
 export default function OrdersPage() {
   return (
@@ -390,13 +416,13 @@ function OrdersPageInner() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-page-title font-semibold text-ink">{selected.order_number}</h1>
-              <p className="mt-1 flex items-center gap-2 text-sm text-ink-muted">
-                <Tag dot severity={paymentStatusSeverity[selected.payment_status]}>
+              <p className="mt-1 flex items-center gap-3 text-sm text-ink-muted">
+                <StatusText severity={paymentStatusSeverity[selected.payment_status]}>
                   payment: {selected.payment_status}
-                </Tag>
-                <Tag dot severity={deliveryStatusSeverity[selected.delivery_status]}>
+                </StatusText>
+                <StatusText severity={deliveryStatusSeverity[selected.delivery_status]}>
                   delivery: {selected.delivery_status}
-                </Tag>
+                </StatusText>
               </p>
             </div>
 
@@ -603,12 +629,18 @@ function OrdersPageInner() {
           onChange={(e) => setSearch(e.target.value)}
           className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-cyan-600 focus:outline-hidden focus:ring-3 focus:ring-focus-ring/10 dark:border-gray-700 dark:bg-gray-900 dark:text-ink"
         />
-        <div className="flex gap-2">
+        {/* ADR-104: underline-tab style, not a filled pill — same values/
+            labels/onClick as before, matching the artifact's FilterBar. */}
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
               onClick={() => setStatus(f.value)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${status === f.value ? "bg-cyan-600 text-on-cyan" : "bg-subtle text-ink-muted"}`}
+              className={`border-b-2 px-3 py-1.5 text-sm font-medium ${
+                status === f.value
+                  ? "border-cyan-600 text-cyan-ink"
+                  : "border-transparent text-ink-muted hover:text-ink"
+              }`}
             >
               {f.label}
             </button>
@@ -667,11 +699,11 @@ function OrdersPageInner() {
                           )}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Tag dot severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</Tag>
+                          <StatusText severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</StatusText>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <Tag dot severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
+                            <StatusText severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</StatusText>
                             {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). ADR-024 addendum (2026-09-17): plain-text Tag pills, not emoji — founder feedback, 2026-09-17 — plus a 4th ("Restored") for the restore-only case, which never sets has_compensation_voucher. */}
                             {order.has_used_voucher && <Tag severity="secondary">Voucher Paid</Tag>}
                             {order.has_compensation_voucher && <Tag severity="warn">Voucher Issued</Tag>}
