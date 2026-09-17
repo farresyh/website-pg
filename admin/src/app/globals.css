@@ -89,9 +89,12 @@
    * that the artifact specifies as genuinely DIFFERENT hex per mode
    * (not just a different stop of the same ramp, unlike brand/gray/
    * surface above) get their dark values here. Anything not listed —
-   * on-cyan, info-*, chart-negative, focus-ring — is documented in the
-   * artifact as "inherits light", i.e. deliberately the same hex in
-   * both modes, so it has no entry here by design, not by omission.
+   * on-cyan, chart-negative, focus-ring — is documented in the artifact
+   * as "inherits light", i.e. deliberately the same hex in both modes,
+   * so it has no entry here by design, not by omission. `info-*` USED
+   * to be filed under that same "inherits light" bucket — a founder
+   * live-browser audit (D2) found that reading wrong, see its own entry
+   * below.
    */
   --color-canvas: #121110;
   --color-surface: #1a1917;
@@ -127,6 +130,16 @@
   --color-review-ink: #f5a877;
   --color-neutral-surface: #282622;
   --color-neutral-ink: #c4beb4;
+  /* ADR-104 D2 fix: `info-surface`/`info-ink` are literally the cyan-50/
+     cyan-ink hex values reused under the "info" name (see their light
+     values below) — PR-1's extraction filed them under "inherits light"
+     alongside chart-negative/focus-ring, but that reading was wrong for
+     this one: a founder live-browser audit found the info-tinted Member
+     Discount box rendering as a bright light-cyan island on an otherwise
+     all-dark page. Mirrors cyan's own dark pair exactly, not a one-off
+     hardcode — same derivation the light values already use. */
+  --color-info-surface: #12303a;
+  --color-info-ink: #7dd5e1;
 
   --shadow-xs: 0px 1px 2px 0px rgb(0 0 0 / 40%);
   --shadow-md:
