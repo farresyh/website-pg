@@ -387,11 +387,13 @@ class OrderResendServiceTest extends TestCase
         $game = $this->game();
         $original = $this->package($game, $supplier);
         $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1200, 'standard_selling_price' => 1200]);
-        // ADR-105: standard_selling_price raised above the swap's live
-        // cost (1200) so this absorbed-cost-increase scenario doesn't
-        // also trip decision 4's below-cost guard — this test is about
-        // the attempt row, not that guard.
-        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1300]);
+        // ADR-105: standard_selling_price (and selling_price, since the
+        // negative-profit guard now reconciles against selling_price —
+        // decision 8) raised above the swap's live cost (1200) so this
+        // absorbed-cost-increase scenario doesn't also trip decision 4's
+        // below-cost guard — this test is about the attempt row, not
+        // that guard.
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1300, 'selling_price' => 1300]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, 'Customer requested a bigger pack', 'Admin User');
@@ -731,9 +733,18 @@ class OrderResendServiceTest extends TestCase
     }
 
     /**
-     * ADR-060 PR-4b: a reseller-wallet order's resend recomputes profit
-     * at the order's own frozen `wholesale_markup_pct` (the tier rate),
-     * not the standard retail chain — the latent bug this PR fixes.
+     * ADR-060 PR-4b: a reseller-wallet order's resend recomputes
+     * affiliateProfit (always 0 here) at the order's own frozen
+     * `wholesale_markup_pct` (the tier rate), not the standard retail
+     * chain — the latent bug PR-4b fixed. ADR-105 decision 8: unlike
+     * PR-4b's own original assertion, platformProfit itself is now the
+     * money-conservation residual (order's frozen selling_price - live
+     * cost - affiliateProfit) rather than wholesaleBase - liveCost
+     * directly — `selling_price` is set here to what the order's real
+     * original checkout would have produced (900 cost * 1.20 tier =
+     * 1080, matching wholesaleBase at THAT cost), so this resend's
+     * absorbed-cost story is realistic, not an arbitrary leftover
+     * default.
      */
     public function test_resend_of_a_reseller_wallet_order_recomputes_at_the_frozen_tier_rate(): void
     {
@@ -748,21 +759,28 @@ class OrderResendServiceTest extends TestCase
             'pricing_basis' => 'reseller-wallet',
             'wholesale_markup_pct' => 20.00,
             'affiliate_markup_pct' => 0,
+            'selling_price' => 1080,
         ]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, null, 'Admin');
 
-        // wholesale base = 1000 * 1.20 = 1200; platformProfit = 1200 - 1000 = 200.
-        // NOT the standard chain (1500 - 1000 = 500) the pre-PR-4b `else`
-        // branch produced.
-        $this->assertSame(200, $order->fresh()->platform_profit);
+        // affiliateProfit = wholesaleBase(1000*1.20=1200)*0% = 0 — the
+        // frozen tier rate, NOT the standard chain (1500-1000=500) the
+        // pre-PR-4b `else` branch produced. platformProfit = 1080
+        // (frozen) - 1000 (live cost) - 0 = 80.
+        $this->assertSame(80, $order->fresh()->platform_profit);
         $this->assertSame(0, $order->fresh()->affiliate_profit);
     }
 
     /**
      * ADR-060 PR-4b: an affiliate-basis order (PR-4c wires these) resends
-     * at frozen `wholesale_markup_pct` + frozen `affiliate_markup_pct`.
+     * at frozen `wholesale_markup_pct` + frozen `affiliate_markup_pct`
+     * for affiliateProfit. ADR-105 decision 8: `selling_price` set to
+     * what original checkout (cost 900) would have actually produced —
+     * 900*1.20=1080 wholesale, +10% affiliate markup = 1188 — so
+     * platformProfit's residual formula has a realistic frozen total to
+     * reconcile against.
      */
     public function test_resend_of_an_affiliate_basis_order_recomputes_at_frozen_wholesale_and_affiliate_markup(): void
     {
@@ -777,15 +795,118 @@ class OrderResendServiceTest extends TestCase
             'pricing_basis' => 'affiliate',
             'wholesale_markup_pct' => 20.00,
             'affiliate_markup_pct' => 10.00,
+            'selling_price' => 1188,
         ]);
 
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
             ->resend($order, $swap, null, 'Admin');
 
-        // wholesale base = 1000 * 1.20 = 1200; platformProfit = 200;
-        // affiliateProfit = 1200 * 10% = 120.
-        $this->assertSame(200, $order->fresh()->platform_profit);
+        // affiliateProfit = wholesaleBase(1000*1.20=1200)*10% = 120 —
+        // unaffected by ADR-105 (affiliate's own formula never changed).
+        // platformProfit = 1188 (frozen) - 1000 (live cost) - 120 = 68 —
+        // NOT 200 (1200-1000), which is what the pre-addendum formula
+        // would have produced by ignoring the frozen total entirely.
+        $this->assertSame(68, $order->fresh()->platform_profit);
         $this->assertSame(120, $order->fresh()->affiliate_profit);
+    }
+
+    /**
+     * ADR-105 decision 8 (addendum) — the phantom-profit scenario found
+     * while explaining decision 2 to the founder: pre-addendum, a
+     * tier-affiliate resend's platformProfit was computed independently
+     * of what was actually collected (wholesaleBase - liveCost), so a
+     * big enough live-cost jump could make platformProfit +
+     * affiliateProfit together exceed the order's own frozen
+     * selling_price — crediting both platform and affiliate more than
+     * the order ever actually collected, with nothing catching it
+     * (wholesaleBase >= liveCost always holds for a non-negative tier%,
+     * so the old code's only guard never tripped).
+     */
+    public function test_platform_profit_never_exceeds_what_the_order_actually_collected_on_a_tier_affiliate_resend(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        // Mirrors a real tier-affiliate order: cost 356, tier 20%,
+        // affiliate markup 5% -> wholesaleBase 427, affiliateProfit 21,
+        // frozen selling_price (what the affiliate's own customer paid) 448.
+        $original = $this->package($game, $supplier, ['cost_price' => 356, 'standard_selling_price' => 900]);
+        // Live cost rises to 400 on resend.
+        $swap = $this->package($game, $supplier, [
+            'name' => 'PUBGG 60 UC', 'supplier_package_ref' => 'PUBGG_60_PG1',
+            'cost_price' => 400, 'standard_selling_price' => 900,
+        ]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'affiliate',
+            'wholesale_markup_pct' => 20.00,
+            'affiliate_markup_pct' => 5.00,
+            'selling_price' => 448,
+        ]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'MG-1']))
+            ->resend($order, $swap, null, 'Admin');
+
+        // affiliateProfit = wholesaleBase(400*1.20=480)*5% = 24 —
+        // unaffected, same as always. platformProfit = 448 - 400 - 24 =
+        // 24 — NOT 80 (480-400), which would have made
+        // cost(400)+affiliateProfit(24)+platformProfit(80)=504 exceed
+        // the 448 the order ever actually collected.
+        $order->refresh();
+        $this->assertSame(24, $order->affiliate_profit);
+        $this->assertSame(24, $order->platform_profit);
+        // The conservation identity itself: live cost + affiliate's cut
+        // + platform's cut must sum to exactly what was collected — 400
+        // + 24 + 24 = 448, never more.
+        $this->assertSame(448, 400 + $order->platform_profit + $order->affiliate_profit);
+    }
+
+    /**
+     * ADR-105 decision 8 (addendum): the negative-profit override gate
+     * (decision 4) extends to the tier-affiliate/ResellerWallet basis
+     * too, now that platformProfit is a residual against the order's
+     * own frozen total rather than an always-non-negative
+     * wholesaleBase-liveCost figure.
+     */
+    public function test_tier_affiliate_resend_that_would_result_in_a_platform_loss_requires_an_override_reason(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 356, 'standard_selling_price' => 900]);
+        // Live cost rises far enough that even after accounting for the
+        // affiliate's own (unaffected) cut, nothing is left for the
+        // platform: affiliateProfit = 430*1.20*5% = 25.8 -> 26;
+        // 448 (frozen) - 430 (live cost) - 26 = -8.
+        $swap = $this->package($game, $supplier, ['name' => 'PUBGG 60 UC', 'supplier_package_ref' => 'PUBGG_60_PG1', 'cost_price' => 430, 'standard_selling_price' => 900]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'affiliate',
+            'wholesale_markup_pct' => 20.00,
+            'affiliate_markup_pct' => 5.00,
+            'selling_price' => 448,
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        $this->service($this->fakeSupplierAdapter(true))->resend($order, $swap, null, 'Admin');
+    }
+
+    /** Same scenario, with an override reason — proceeds, affiliate's cut untouched, platform absorbs the negative. */
+    public function test_tier_affiliate_resend_that_would_result_in_a_platform_loss_proceeds_with_an_override_reason(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 356, 'standard_selling_price' => 900]);
+        $swap = $this->package($game, $supplier, ['name' => 'PUBGG 60 UC', 'supplier_package_ref' => 'PUBGG_60_PG1', 'cost_price' => 430, 'standard_selling_price' => 900]);
+        $order = $this->failedOrder($game, $original, $supplier, [
+            'pricing_basis' => 'affiliate',
+            'wholesale_markup_pct' => 20.00,
+            'affiliate_markup_pct' => 5.00,
+            'selling_price' => 448,
+        ]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'MG-1']))
+            ->resend($order, $swap, null, 'Admin', overrideReason: 'Founder-approved: deliver anyway, absorb the loss');
+
+        $this->assertSame(26, $result->affiliate_profit);
+        $this->assertSame(-8, $result->platform_profit);
     }
 
     public function test_does_not_credit_the_ledger_when_the_resend_fails(): void

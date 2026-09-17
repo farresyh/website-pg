@@ -104,6 +104,11 @@ export interface OrderDetail extends OrderListItem {
   affiliate_profit: number;
   pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate";
   member_discount_percent: string | null;
+  // ADR-105 decision 3 — the package's own markup_percent at checkout
+  // time, frozen for a Member-basis order only (null for every other
+  // basis); OrderResendService reconciles a resend against this instead
+  // of the target package's current one.
+  markup_percent: string | null;
   normal_selling_price: number | null;
   membership: { id: number; email: string; membership_plan: { name: string } } | null;
   payment_ref: string | null;
