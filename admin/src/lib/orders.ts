@@ -46,6 +46,13 @@ export interface OrderListItem {
   has_used_voucher: boolean;
   has_compensation_voucher: boolean;
   has_wallet_refund: boolean;
+  // ADR-024 addendum (2026-09-17, restore-only): true once this order's
+  // own voucher redemption is 'restored' — independent of
+  // has_compensation_voucher, which stays false for a full-cover-by-
+  // voucher order (it restores the original voucher, but its own cash
+  // portion is 0, so no new voucher is minted). Also gates the "Issue
+  // Voucher…"/"Restore Voucher…" button off, same reasoning as `voucher`.
+  has_voucher_restored: boolean;
 }
 
 /**
@@ -282,9 +289,23 @@ export function retryOrderDelivery(token: string, id: number, values: { override
  * "failed" (or the partial-delivery carve-out applies) and no voucher
  * has been issued for this order yet (enforced by a real unique
  * index, not just this check).
+ *
+ * ADR-024 addendum (2026-09-17, restore-only): a full-cover-by-voucher
+ * order has a genuinely zero cash portion — the backend restores the
+ * order's original voucher but mints no new one, and the response
+ * reflects that (`restored_only: true`, `voucher: null`) instead of
+ * pretending a Voucher was created. `IssueVoucherModal` decides its
+ * own title/copy from `OrderDetail`'s already-known amount before the
+ * request even fires; this return shape is what the success handler
+ * branches on afterwards.
  */
+export interface IssueVoucherResult {
+  restored_only: boolean;
+  voucher: Voucher | null;
+}
+
 export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string; amount?: number } = {}) {
-  return apiFetch<Voucher>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
+  return apiFetch<IssueVoucherResult>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
 }
 
 /**
