@@ -22,13 +22,16 @@ import {
 import { Tag } from "@/components/ui/tag";
 import type { OrderDeliveryLeg } from "@/lib/orders";
 
-function severityFor(status: OrderDeliveryLeg["status"]): "success" | "danger" | "warn" | "info" {
+function severityFor(status: OrderDeliveryLeg["status"]): "success" | "danger" | "warn" | "info" | "review" {
   switch (status) {
     case "delivered":
       return "success";
     case "failed":
       return "danger";
+    // ADR-104 decision 3 — the artifact's own distinct review token,
+    // same reasoning as the order-level delivery_status map.
     case "needs_review":
+      return "review";
     case "pending":
       return "warn";
     default:
@@ -40,10 +43,10 @@ export default function ComboLegBreakdown({ legs }: { legs: OrderDeliveryLeg[] }
   if (legs.length === 0) return null;
 
   return (
-    <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+    <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
       <div className="border-b border-gray-100 p-6 pb-4 dark:border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Combo Delivery Legs</h2>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <h2 className="text-section-title font-semibold text-ink">Combo Delivery Legs</h2>
+        <p className="mt-1 text-xs text-ink-muted">
           This order is a combo package — one real supplier call per component.
         </p>
       </div>
@@ -54,12 +57,12 @@ export default function ComboLegBreakdown({ legs }: { legs: OrderDeliveryLeg[] }
             <DataTableTable>
               <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                 <DataTableTHeadRow>
-                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Leg</DataTableTHeadCell>
-                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Component</DataTableTHeadCell>
-                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier</DataTableTHeadCell>
-                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
-                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier Ref</DataTableTHeadCell>
-                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Failure Reason</DataTableTHeadCell>
+                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Leg</DataTableTHeadCell>
+                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Component</DataTableTHeadCell>
+                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Supplier</DataTableTHeadCell>
+                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Status</DataTableTHeadCell>
+                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Supplier Ref</DataTableTHeadCell>
+                  <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Failure Reason</DataTableTHeadCell>
                 </DataTableTHeadRow>
               </DataTableTHead>
               <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -68,9 +71,9 @@ export default function ComboLegBreakdown({ legs }: { legs: OrderDeliveryLeg[] }
 
                   return (
                     <DataTableRow key={leg.id}>
-                      <DataTableCell className="px-3 py-3 text-theme-sm text-gray-500 dark:text-gray-400">#{leg.leg_number}</DataTableCell>
+                      <DataTableCell className="px-3 py-3 text-theme-sm text-ink-muted">#{leg.leg_number}</DataTableCell>
                       <DataTableCell className="px-3 py-3 text-theme-sm">
-                        <span className="font-medium text-gray-800 dark:text-white/90">{leg.component_package?.name ?? "—"}</span>
+                        <span className="font-medium text-ink">{leg.component_package?.name ?? "—"}</span>
                         {leg.component_package?.denomination !== null && leg.component_package?.denomination !== undefined && (
                           <span className="ml-1 text-theme-xs text-gray-400">({leg.component_package.denomination})</span>
                         )}
@@ -79,12 +82,12 @@ export default function ComboLegBreakdown({ legs }: { legs: OrderDeliveryLeg[] }
                           <div className="font-mono text-theme-xs text-gray-400">{leg.component_package.supplier_package_ref}</div>
                         )}
                       </DataTableCell>
-                      <DataTableCell className="px-3 py-3 text-theme-sm text-gray-500 dark:text-gray-400">{leg.supplier?.name ?? "—"}</DataTableCell>
+                      <DataTableCell className="px-3 py-3 text-theme-sm text-ink-muted">{leg.supplier?.name ?? "—"}</DataTableCell>
                       <DataTableCell className="px-3 py-3 text-theme-sm">
-                        <Tag severity={severityFor(leg.status)}>{leg.status}</Tag>
+                        <Tag dot severity={severityFor(leg.status)}>{leg.status}</Tag>
                       </DataTableCell>
-                      <DataTableCell className="px-3 py-3 font-mono text-theme-xs text-gray-600 dark:text-gray-300">{leg.supplier_reference ?? "—"}</DataTableCell>
-                      <DataTableCell className="px-3 py-3 text-theme-xs text-gray-600 dark:text-gray-300 max-w-xs truncate" title={leg.failure_reason ?? undefined}>
+                      <DataTableCell className="px-3 py-3 font-mono text-theme-xs text-ink-muted">{leg.supplier_reference ?? "—"}</DataTableCell>
+                      <DataTableCell className="px-3 py-3 text-theme-xs text-ink-muted max-w-xs truncate" title={leg.failure_reason ?? undefined}>
                         {leg.failure_reason ?? "—"}
                       </DataTableCell>
                     </DataTableRow>

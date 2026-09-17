@@ -68,7 +68,7 @@ function ConfirmFailedFields({ onClose, onConfirmed, order, token, sandbox }: Om
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-5 text-sm text-ink-muted">
         {sandbox ? (
           <>Sandbox mode — no real supplier order exists to look up. Enter any note to exercise this flow.</>
         ) : (

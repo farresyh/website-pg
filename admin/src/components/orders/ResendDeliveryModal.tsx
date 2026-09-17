@@ -178,7 +178,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-5 text-sm text-ink-muted">
         Defaults to resending the same package this order already has — change the selection below only if you want to
         deliver a different package from the same game (<span className="font-medium">{order.game?.name ?? "—"}</span>).
         Any live cost difference is absorbed by the platform and recorded, never re-charged to the customer.
@@ -200,7 +200,9 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         </p>
       )}
       {overrideRequired && (
-        <p className="mb-4 rounded-lg bg-warning-50 px-3 py-2 text-sm text-warning-600 dark:bg-warning-500/15 dark:text-orange-400">
+        // ADR-104 decision 3 — same "review" semantic as NeedsReviewBanner's
+        // matching copy, not "warning".
+        <p className="mb-4 rounded-lg bg-review-surface px-3 py-2 text-sm text-review-ink">
           Resending is unlikely to change this outcome — the supplier already recorded a final result for this reference. A
           package swap does not escape this either. Provide a reason below to override and resend anyway.
         </p>
@@ -210,7 +212,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         <div>
           <Label htmlFor="resend_package">Package</Label>
           {packages === null ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading packages…</p>
+            <p className="text-sm text-ink-muted">Loading packages…</p>
           ) : (
             <SimpleSelect
               id="resend_package"
@@ -225,17 +227,17 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         </div>
 
         {selectedPackage && priceDiff !== null && (
-          <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-white/5">
-            <div className="flex justify-between text-gray-500 dark:text-gray-400">
+          <div className="rounded-lg bg-subtle px-3 py-2 text-sm">
+            <div className="flex justify-between text-ink-muted">
               <span>Original cost (snapshot)</span>
               <span>{formatRm(order.cost_price)}</span>
             </div>
-            <div className="flex justify-between text-gray-500 dark:text-gray-400">
+            <div className="flex justify-between text-ink-muted">
               <span>Live cost (this package now)</span>
               <span>{formatRm(selectedPackage.cost_price)}</span>
             </div>
             <div
-              className={`mt-1 flex justify-between font-medium ${priceDiff > 0 ? "text-error-600 dark:text-error-400" : priceDiff < 0 ? "text-success-600 dark:text-success-400" : "text-gray-800 dark:text-white/90"}`}
+              className={`mt-1 flex justify-between font-medium ${priceDiff > 0 ? "text-error-600 dark:text-error-400" : priceDiff < 0 ? "text-success-600 dark:text-success-400" : "text-ink"}`}
             >
               <span>Platform absorbs</span>
               <span>
@@ -249,7 +251,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         {/* ADR-102 decision 10 — closes the "a wrong-ID failure can only be resolved by Issue Voucher + a brand new customer-placed order" gap. Available regardless of whether this game requires validation — a typo'd ID can cause a plain supplier rejection too. */}
         <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
           <Label>Player ID / Server ID Correction (Optional)</Label>
-          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-2 text-sm text-ink-muted">
             Currently on this order: <span className="font-medium">{order.player_id}</span>
             {order.server_id ? ` / ${order.server_id}` : ""}. Leave blank to resend unchanged.
           </p>
@@ -277,7 +279,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
 
         {requiresPlayerValidation && (
           <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
+            <p className="mb-2 text-sm text-ink-muted">
               This game requires Player ID validation before resending — Player ID{" "}
               <span className="font-medium">{effectivePlayerId}</span>
               {effectiveServerId ? ` / Server ${effectiveServerId}` : ""}.
@@ -299,14 +301,14 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
               <button
                 type="button"
                 onClick={() => setSimulateSuccess(true)}
-                className={`rounded-lg px-3 py-1.5 text-sm ${simulateSuccess ? "bg-success-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+                className={`rounded-lg px-3 py-1.5 text-sm ${simulateSuccess ? "bg-success-500 text-white" : "bg-subtle text-ink-muted"}`}
               >
                 Simulate Success
               </button>
               <button
                 type="button"
                 onClick={() => setSimulateSuccess(false)}
-                className={`rounded-lg px-3 py-1.5 text-sm ${!simulateSuccess ? "bg-error-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+                className={`rounded-lg px-3 py-1.5 text-sm ${!simulateSuccess ? "bg-error-500 text-white" : "bg-subtle text-ink-muted"}`}
               >
                 Simulate Failure
               </button>
