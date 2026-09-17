@@ -357,10 +357,12 @@ class OrderControllerTest extends TestCase
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
             'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+            'selling_price_sen' => $delivered->standard_selling_price,
         ]);
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
             'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
+            'selling_price_sen' => $failed->standard_selling_price,
         ]);
         $this->actingAsAdmin();
 
@@ -368,7 +370,11 @@ class OrderControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('partial_combo_delivery', true);
-        $response->assertJsonPath('suggested_voucher_amount', 27500);
+        // ADR-107 decision 4: order()'s defaults give compensableAmount
+        // 1000 (final_amount 1100 - transaction_fee 100); apportioned by
+        // frozen selling_price_sen weight (27500 of 71500 total) ->
+        // 1000 * 27500/71500 ≈ 384.6, rounds to 385.
+        $response->assertJsonPath('suggested_voucher_amount', 385);
         $response->assertJsonCount(2, 'delivery_legs');
         $response->assertJsonPath('delivery_legs.0.leg_number', 1);
         $response->assertJsonPath('delivery_legs.0.status', 'delivered');
@@ -380,6 +386,45 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('delivery_legs.0.component_package.supplier_package_ref', 'GV-4810');
         $response->assertJsonPath('delivery_legs.1.status', 'failed');
         $response->assertJsonPath('delivery_legs.1.failure_reason', 'Insufficient balance');
+        // ADR-107 decision 3 — a NeedsReview (partial-delivery) combo
+        // order is never the negative-profit case (that's a Delivered-
+        // only signal, see Order::hasNegativeComboProfit()).
+        $response->assertJsonPath('combo_profit_reconciled_negative', false);
+    }
+
+    /**
+     * ADR-107 decision 3 — the Order Detail visibility signal: true only
+     * once a combo order actually delivered with a reconciled negative
+     * platform_profit already stored on it.
+     */
+    public function test_show_flags_a_delivered_combo_order_with_reconciled_negative_profit(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia']);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 4810, 'cost_price' => 40000, 'standard_selling_price' => 44000,
+        ]);
+        $order = $this->order([
+            'package_id' => $combo->id, 'delivery_status' => DeliveryStatus::Delivered->value,
+            'platform_profit' => -500,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $component->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+            'selling_price_sen' => $component->standard_selling_price,
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('combo_profit_reconciled_negative', true);
     }
 
     /** An ordinary single-supplier order has no legs and never trips the partial-delivery carve-out. */

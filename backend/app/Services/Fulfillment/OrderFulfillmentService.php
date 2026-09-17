@@ -344,6 +344,14 @@ final class OrderFulfillmentService
                     'supplier_id' => $component->supplier_id,
                     'leg_number' => $legNumber,
                     'status' => DeliveryStatus::NotStarted->value,
+                    // ADR-107 decision 1 — frozen at the one moment this
+                    // leg is created (checkout, synchronous inside
+                    // fulfillCombo()'s first pass); feeds decision 4's
+                    // partial-combo voucher apportionment. Each expanded
+                    // leg already represents one unit (the quantity loop
+                    // above), so this is the component's own per-unit
+                    // price, never multiplied by $quantity.
+                    'selling_price_sen' => $component->standard_selling_price,
                 ]);
 
                 $legNumber++;
@@ -544,10 +552,17 @@ final class OrderFulfillmentService
      *    guard).
      *  - any leg NeedsReview → order NeedsReview (real ambiguity always
      *    wins — never guess a duplicate_reference leg either way).
-     *  - every leg Delivered → order Delivered (credit profit once,
-     *    commit any reserved voucher once — order-level, not per-leg,
-     *    since platform_profit/affiliate_profit were already frozen
-     *    onto the Order as one figure at checkout, ORD-9).
+     *  - every leg Delivered → order Delivered. ADR-107 decision 2:
+     *    `platform_profit` is reconciled once, right here, as a
+     *    money-conservation residual (`order.selling_price (frozen) −
+     *    Σ live componentPackage->cost_price across every leg −
+     *    affiliate_profit`) — the same identity ADR-105 decision 8
+     *    established for the single-package case, aggregated across
+     *    legs. `affiliate_profit` itself is never touched — it keeps
+     *    the exact value frozen at checkout (decision 2's own call:
+     *    combo has no single "target package" resend concept to
+     *    reconcile it against). Credit profit once, commit any reserved
+     *    voucher once — order-level, not per-leg, matching ORD-9.
      *  - every leg Failed → order Failed (clean, ordinary failure —
      *    nothing was delivered, "Resend Delivery" retries normally).
      *  - otherwise (a genuine mix of Delivered + Failed, no Pending/
@@ -569,11 +584,14 @@ final class OrderFulfillmentService
     {
         return DB::transaction(function () use ($order) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
-            // A query-builder pluck() reads the raw column, bypassing the
-            // model's enum cast — get()->pluck() hydrates real models
-            // first so `status` comes back as DeliveryStatus, not a bare
-            // string the comparisons below would never match.
-            $statuses = OrderDeliveryLeg::query()->where('order_id', $locked->id)->get()->pluck('status');
+            // componentPackage:cost_price eager-loaded here (not a
+            // separate query below) — ADR-107 decision 2 needs each
+            // leg's live cost at exactly this moment, and a
+            // query-builder pluck() would bypass the model's enum cast
+            // anyway (real models needed so `status` compares against
+            // DeliveryStatus below, not a bare string).
+            $legs = OrderDeliveryLeg::query()->where('order_id', $locked->id)->with('componentPackage:id,cost_price')->get();
+            $statuses = $legs->pluck('status');
             $enteringFromPending = $locked->delivery_status === DeliveryStatus::Pending;
 
             if ($statuses->contains(DeliveryStatus::Pending)) {
@@ -600,9 +618,36 @@ final class OrderFulfillmentService
                     ? $this->orderStatus->finalizePendingSuccess($locked->delivery_status)
                     : $this->orderStatus->markDelivered($locked->delivery_status);
 
+                // ADR-107 decision 2 — see this method's own doc comment.
+                // Reads live cost, never a frozen snapshot (there isn't
+                // one for cost — only `selling_price_sen`, decision 1).
+                $liveCostTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
+                $reconciledPlatformProfit = $locked->selling_price - $liveCostTotal - $locked->affiliate_profit;
+
+                // Decision 3: never block delivery over this — a combo
+                // can finalize via webhook/scheduled poll with no admin
+                // present to supply an override reason (ADR-105 decision
+                // 4's gate is deliberately NOT reused here). The order
+                // still delivers, the (possibly negative) figure is
+                // recorded as-is, and this line is the after-the-fact
+                // signal an admin needs to actually notice it — the
+                // Order Detail response's `combo_profit_reconciled_negative`
+                // flag (derived from the stored value, not a separate
+                // column) is the UI-facing half of the same signal.
+                if ($reconciledPlatformProfit < 0) {
+                    Log::warning('Combo order platform profit reconciled negative on final delivery', [
+                        'order_id' => $locked->id,
+                        'reconciled_platform_profit' => $reconciledPlatformProfit,
+                        'live_cost_total' => $liveCostTotal,
+                        'affiliate_profit' => $locked->affiliate_profit,
+                        'frozen_selling_price' => $locked->selling_price,
+                    ]);
+                }
+
                 $locked->update([
                     'delivery_status' => $newStatus->value,
                     'delivered_at' => now(),
+                    'platform_profit' => $reconciledPlatformProfit,
                 ]);
 
                 $this->creditProfit($locked);

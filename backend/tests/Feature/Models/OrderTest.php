@@ -125,12 +125,23 @@ class OrderTest extends TestCase
             'order_id' => $order->id, 'component_package_id' => $component->id,
             'supplier_id' => $component->supplier_id, 'leg_number' => $legNumber, 'status' => $status->value,
             'resend_unsafe_with_same_reference' => $resendUnsafeWithSameReference,
+            // ADR-107 decision 1 — mirrors what seedDeliveryLegs() itself
+            // freezes at checkout, so this fixture matches real behavior.
+            'selling_price_sen' => $component->standard_selling_price,
         ]);
     }
 
     /**
      * ADR-094 decision 9 (Phase 4): the actual partial-delivery case —
      * a real Delivered+Failed split, nothing Pending/NeedsReview left.
+     *
+     * ADR-107 decision 4 (build-time revision): the suggested amount is
+     * now `(final_amount − transaction_fee)` apportioned by each leg's
+     * frozen `selling_price_sen` weight, not a live sum of the Failed
+     * leg's own component price. makeOrder()'s defaults give
+     * compensableAmount=1000; delivered leg carries selling_price_sen
+     * 44000, failed leg 27500 (total 71500) — 1000 × 27500/71500 ≈
+     * 384.6, rounds to 385.
      */
     public function test_is_partial_combo_delivery_true_for_a_genuine_delivered_and_failed_split(): void
     {
@@ -144,7 +155,46 @@ class OrderTest extends TestCase
         $this->leg($order, $failed, DeliveryStatus::Failed, 2);
 
         $this->assertTrue($order->isPartialComboDelivery());
-        $this->assertSame(27500, $order->suggestedPartialVoucherAmount());
+        $this->assertSame(385, $order->suggestedPartialVoucherAmount());
+    }
+
+    /**
+     * ADR-107 decision 4 — proportional, not a flat sum: two Failed legs
+     * of different weight get apportioned differently, and the total
+     * never exceeds compensableAmount regardless of the legs' own
+     * (unrelated-scale) selling prices.
+     */
+    public function test_suggested_partial_voucher_amount_apportions_proportionally_across_multiple_failed_legs(): void
+    {
+        $delivered = $this->componentPackage(['standard_selling_price' => 20000]);
+        $failedSmall = $this->componentPackage(['name' => 'Small', 'supplier_package_ref' => 'GV-SMALL', 'standard_selling_price' => 10000]);
+        $failedLarge = $this->componentPackage(['name' => 'Large', 'supplier_package_ref' => 'GV-LARGE', 'standard_selling_price' => 30000]);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value, 'final_amount' => 2090]);
+        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $failedSmall, DeliveryStatus::Failed, 2);
+        $this->leg($order, $failedLarge, DeliveryStatus::Failed, 3);
+
+        // compensableAmount = 2090 - 90 = 2000; failed weight = 10000+30000=40000
+        // of total 60000 -> 2000 * 40000/60000 = 1333.33 -> rounds to 1333.
+        $this->assertSame(1333, $order->suggestedPartialVoucherAmount());
+    }
+
+    /** A leg missing its frozen snapshot (pre-ADR-107 legacy row) never yields a divide-by-zero or a silently-wrong figure — no suggestion instead. */
+    public function test_suggested_partial_voucher_amount_null_when_no_leg_has_a_frozen_selling_price(): void
+    {
+        $delivered = $this->componentPackage();
+        $failed = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $delivered->id,
+            'supplier_id' => $delivered->supplier_id, 'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $failed->id,
+            'supplier_id' => $failed->supplier_id, 'leg_number' => 2, 'status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $this->assertNull($order->suggestedPartialVoucherAmount());
     }
 
     /** A leg-level NeedsReview (e.g. a Gamevion duplicate_reference) is real ambiguity, not a clean partial — never the carve-out. */
