@@ -182,10 +182,17 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
               purple is Reports' profit-chart convention, not an Orders one.
               Plain neutral text here, matching the artifact's own
               OrderDetailFailed mockup ("Owner profit" in neutral ink). */}
+          {/* ADR-105 decision 4/8: a manual admin resend can now record a
+              genuine loss (override_reason-gated), so platform_profit is
+              no longer always non-negative — the old hardcoded "+"
+              prefix would have rendered "+RM -1.00" (a double sign) the
+              first time that happened. A loss reads in the same error
+              tone the resend guard itself uses, not the neutral tone a
+              normal profit gets. */}
           <div className="flex justify-between items-center">
             <dt className="text-ink-muted text-xs">Platform Profit</dt>
-            <dd className="font-semibold font-mono text-ink">
-              +{formatRm(order.platform_profit)}
+            <dd className={`font-semibold font-mono ${order.platform_profit < 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}>
+              {order.platform_profit < 0 ? formatRm(order.platform_profit) : `+${formatRm(order.platform_profit)}`}
             </dd>
           </div>
           {/* Always 0 by construction for a wallet order (no affiliate markup layered on top, ADR-073 decision 1) — Platform Profit above already carries the whole margin, so this row would only ever read as a dead zero here. */}

@@ -118,6 +118,7 @@ class OrderFactoryTest extends TestCase
                 normalSellingPriceSen: 1000,
                 membershipId: $membership->id,
                 memberDiscountPercent: 80.0,
+                markupPercent: 15.0,
             ),
         ]));
 
@@ -126,6 +127,9 @@ class OrderFactoryTest extends TestCase
         $this->assertSame('80.00', (string) $order->member_discount_percent);
         $this->assertSame(1000, $order->normal_selling_price);
         $this->assertSame(930, $order->selling_price);
+        // ADR-105 decision 3 — the package's own markup_percent, frozen
+        // for OrderResendService to reconcile a later resend against.
+        $this->assertSame('15.00', (string) $order->markup_percent);
     }
 
     public function test_snapshots_wholesale_markup_pct_from_the_resolution(): void

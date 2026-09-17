@@ -20,6 +20,7 @@ use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use App\Services\Reseller\Webhook\ResellerWebhookDispatcher;
 use App\Services\Reseller\Webhook\ResellerWebhookEvent;
@@ -253,25 +254,50 @@ class OrderController extends Controller
      * override needs an audit trail, not a silent bypass. Shared by
      * both retryDelivery() and resend() so the two never drift on this
      * rule.
+     *
+     * ADR-105 decision 4 — extended with a second, independent trigger:
+     * a package swap (never a same-package retry, hence `$targetPackage`
+     * is null from retryDelivery()) whose live cost now exceeds what
+     * the customer already paid. This is purely a fast, same-request
+     * echo of the check `OrderResendService::resend()` makes for real at
+     * attempt time (same reasoning as this whole method's own doc
+     * comment above it in resend() — a controller-side check can go
+     * stale, the job re-checks everything itself) — its only job is
+     * giving the admin an immediate, clear rejection instead of a
+     * queued job that silently fails later.
      */
-    private function guardResendUnsafeOverride(Request $request, Order $order): void
+    private function guardResendUnsafeOverride(Request $request, Order $order, ?Package $targetPackage = null): void
     {
-        if (! $order->resendUnsafeToOverride()) {
+        $unsafeReference = $order->resendUnsafeToOverride();
+
+        $wouldSellBelowCost = $targetPackage !== null
+            && $order->pricing_basis !== PricingBasis::Member
+            && $order->wholesale_markup_pct === null
+            && $targetPackage->cost_price > $order->standard_selling_price;
+
+        if (! $unsafeReference && ! $wouldSellBelowCost) {
             return;
         }
 
         $reason = trim((string) $request->input('override_reason', ''));
 
         if ($reason === '') {
-            throw ValidationException::withMessages([
-                'override_reason' => ['This order already has a final, confirmed result for its reference — a package swap does not escape this either. Provide a reason to override and resend anyway.'],
-            ]);
+            $message = $wouldSellBelowCost
+                ? sprintf(
+                    "This package's live cost (RM%s) now exceeds what the customer already paid (RM%s) — provide a reason to resend anyway and accept the loss.",
+                    number_format($targetPackage->cost_price / 100, 2),
+                    number_format($order->standard_selling_price / 100, 2),
+                )
+                : 'This order already has a final, confirmed result for its reference — a package swap does not escape this either. Provide a reason to override and resend anyway.';
+
+            throw ValidationException::withMessages(['override_reason' => [$message]]);
         }
 
-        Log::warning('Admin overrode the resend-unsafe-with-same-reference guard', [
+        Log::warning('Admin overrode a resend guard', [
             'order_number' => $order->order_number,
             'admin' => $request->user()->name,
             'override_reason' => $reason,
+            'guard' => $unsafeReference ? 'resend_unsafe_reference' : 'sell_below_cost',
         ]);
     }
 
@@ -304,8 +330,6 @@ class OrderController extends Controller
             ]);
         }
 
-        $this->guardResendUnsafeOverride($request, $order);
-
         $targetPackage = Package::query()->findOrFail($request->validated('package_id'));
 
         if ($targetPackage->game_id !== $order->game_id) {
@@ -313,6 +337,11 @@ class OrderController extends Controller
                 'package_id' => ['The selected package must belong to the same game as this order.'],
             ]);
         }
+
+        // ADR-105 decision 4: resolved above, not before, since this
+        // guard now also needs $targetPackage for its sell-below-cost
+        // check.
+        $this->guardResendUnsafeOverride($request, $order, $targetPackage);
 
         ResendOrderDeliveryJob::dispatch(
             $order,
@@ -322,6 +351,7 @@ class OrderController extends Controller
             // ADR-102 decision 10 — the optional Player ID/Server ID correction.
             $request->validated('player_id'),
             $request->validated('server_id'),
+            trim((string) $request->input('override_reason', '')) ?: null,
         );
 
         return response()->json(['message' => 'Resend queued.']);
