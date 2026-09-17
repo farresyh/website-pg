@@ -100,6 +100,10 @@
   --color-ink: #f2efe9;
   --color-ink-muted: #bdb7ad;
 
+  --color-border: #2e2c28;
+  --color-border-strong: #3a3833;
+  --color-border-control: #6e695f;
+
   --color-cyan-50: #12303a;
   --color-cyan-600: #4cc3d4;
   --color-cyan-700: #6fd0de;
@@ -282,6 +286,17 @@
 
   --color-chart-negative: #b42318;
   --color-focus-ring: #0b7285;
+
+  /*
+   * ADR-104: the artifact's own named border tokens — missed in PR-1's
+   * extraction, found re-verifying the artifact live for PR-2's table/
+   * detail-page work. Existing `border-gray-200`/`border-gray-800`
+   * usages are untouched (that alias is separately retinted, close in
+   * hue but not the same named token) — PR-2/3 use these directly.
+   */
+  --color-border: #e7e2da;
+  --color-border-strong: #d9d3c9;
+  --color-border-control: #8f887d;
 
   /*
    * ADR-104: repoint Tailwind's own native radius scale instead of

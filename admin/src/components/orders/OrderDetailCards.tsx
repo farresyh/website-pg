@@ -84,19 +84,23 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
               <dd className="font-medium text-ink">{formatRm(order.standard_selling_price)}</dd>
             </div>
           )}
-          {/* ADR-104 decision 3: purple = profit, everywhere — a markup% is
-              the platform's own take, same semantic as Platform/Affiliate
-              Profit below, so it gets the same token, not amber. */}
+          {/* ADR-104 correction (re-verified live against the artifact for
+              PR-2's table/detail work): purple on Orders pages is reserved
+              for urgency ("need action"), not profit — that's a Reports-
+              chart-specific convention (Revenue=cyan/Owner profit=purple).
+              The artifact's own OrderDetailFailed mockup shows "Owner
+              profit" in plain neutral text, not purple. Reverted from an
+              earlier, incorrect purple-everywhere reading of decision 3. */}
           {isWalletOrder && resellerMarkupPct !== null && (
             <div className="flex justify-between items-center">
               <dt className="text-ink-muted">Reseller Markup</dt>
-              <dd className="font-semibold text-purple-ink">+{resellerMarkupPct}%</dd>
+              <dd className="font-semibold text-ink">+{resellerMarkupPct}%</dd>
             </div>
           )}
           {isAffiliateWholesale && order.wholesale_markup_pct && (
             <div className="flex justify-between items-center">
               <dt className="text-ink-muted">Wholesale Tier Markup</dt>
-              <dd className="font-semibold text-purple-ink">+{order.wholesale_markup_pct}%</dd>
+              <dd className="font-semibold text-ink">+{order.wholesale_markup_pct}%</dd>
             </div>
           )}
           {isMemberOrder && order.normal_selling_price !== null && (
@@ -154,13 +158,13 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
 
           <div className="border-t border-gray-100 pt-1.5 dark:border-gray-800" />
 
-          {/* ADR-104 decision 3: purple = "this needs you" / profit,
-              specifically — Platform/Affiliate Profit are the platform's
-              own margin, the same semantic the Reports revenue-vs-profit
-              charts use purple for. */}
+          {/* ADR-104 correction — same reasoning as the markup rows above:
+              purple is Reports' profit-chart convention, not an Orders one.
+              Plain neutral text here, matching the artifact's own
+              OrderDetailFailed mockup ("Owner profit" in neutral ink). */}
           <div className="flex justify-between items-center">
             <dt className="text-ink-muted text-xs">Platform Profit</dt>
-            <dd className="font-semibold font-mono text-purple-ink">
+            <dd className="font-semibold font-mono text-ink">
               +{formatRm(order.platform_profit)}
             </dd>
           </div>
@@ -168,7 +172,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           {!isWalletOrder && (
             <div className="flex justify-between items-center">
               <dt className="text-ink-muted text-xs">Affiliate Profit</dt>
-              <dd className={order.affiliate_profit > 0 ? "font-semibold font-mono text-purple-ink" : "font-mono text-ink-muted"}>
+              <dd className={order.affiliate_profit > 0 ? "font-semibold font-mono text-ink" : "font-mono text-ink-muted"}>
                 {order.affiliate_profit > 0 ? `+${formatRm(order.affiliate_profit)}` : formatRm(0)}
               </dd>
             </div>

@@ -608,7 +608,16 @@ function OrdersPageInner() {
                             order.affiliate?.business_name ?? "—"
                           )}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">{formatRm(order.final_amount)}</DataTableCell>
+                        {/* ADR-104: two-line cell (main value + a quiet sub-line) —
+                            same fields already on OrderListItem, no data/label
+                            change, just how the existing payment_method reads
+                            here. */}
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <span className="font-medium text-ink">{formatRm(order.final_amount)}</span>
+                          {order.payment_method && (
+                            <div className="text-theme-xs text-ink-muted">{order.payment_method}</div>
+                          )}
+                        </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Tag dot severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</Tag>
                         </DataTableCell>
@@ -626,7 +635,16 @@ function OrdersPageInner() {
                           {new Date(order.created_at).toLocaleString()}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Button size="small" variant="outlined" onClick={() => session && openOrder(session.token, order.id)}>
+                          {/* ADR-104: label stays "View" — same button, same
+                              action, same destination — only its emphasis
+                              (filled vs outlined) follows the delivery
+                              status, matching the artifact's own Failed-row
+                              treatment. No new button, no relabel. */}
+                          <Button
+                            size="small"
+                            variant={order.delivery_status === "failed" ? undefined : "outlined"}
+                            onClick={() => session && openOrder(session.token, order.id)}
+                          >
                             View
                           </Button>
                         </DataTableCell>
