@@ -235,6 +235,22 @@ class Order extends Model
     }
 
     /**
+     * ADR-024 addendum (2026-09-17, restore-only) — true once this
+     * order's own voucher redemption has been given back (Path B's
+     * "restore" trigger), independent of whether a compensation Voucher
+     * row was also minted. A full-cover-by-voucher order that later
+     * fails delivery restores the original voucher but issues no new
+     * one (its cash portion is 0) — `voucher()` alone stays null
+     * forever for that order, so `isAlreadyCompensated()` below folds
+     * this in too, or a resend/retry could still slip through after
+     * the original voucher's balance was already given back.
+     */
+    public function isVoucherRestored(): bool
+    {
+        return $this->voucherRedemption()->where('status', 'restored')->exists();
+    }
+
+    /**
      * ADR-102 decision 1 — the single source of truth for "this order
      * is already settled, leave delivery alone": true when a
      * compensation voucher exists for it (`voucher()`, VCH-7) OR a
@@ -251,7 +267,7 @@ class Order extends Model
      */
     public function isAlreadyCompensated(): bool
     {
-        return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet();
+        return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet() || $this->isVoucherRestored();
     }
 
     /**

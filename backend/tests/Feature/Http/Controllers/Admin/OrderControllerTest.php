@@ -16,6 +16,7 @@ use App\Models\ResellerBotOrderNotification;
 use App\Models\ResellerWebhookDelivery;
 use App\Models\Supplier;
 use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -1369,6 +1370,86 @@ class OrderControllerTest extends TestCase
         $this->assertTrue((bool) $byId[$usedVoucherOrder->id]['has_used_voucher']);
         $this->assertTrue((bool) $byId[$failedOrder->id]['has_compensation_voucher']);
         $this->assertTrue((bool) $byId[$walletRefundedOrder->id]['has_wallet_refund']);
+    }
+
+    /**
+     * ADR-024 addendum (2026-09-17, restore-only) — the 4th compensation
+     * badge: true once this order's own voucher redemption is
+     * 'restored', independent of whether a new compensation Voucher was
+     * also minted (it wasn't, for a full-cover-by-voucher order).
+     */
+    public function test_index_and_show_expose_the_voucher_restored_badge(): void
+    {
+        $this->actingAsAdmin();
+        $originalVoucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-RESTORED-1',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->order(['voucher_id' => $originalVoucher->id, 'delivery_status' => DeliveryStatus::Failed->value]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $originalVoucher->id,
+            'order_id' => $order->id,
+            'amount' => 500,
+            'status' => 'restored',
+        ]);
+        $plainOrder = $this->order(['delivery_status' => DeliveryStatus::Delivered->value]);
+
+        $show = $this->getJson("/api/orders/{$order->id}");
+        $show->assertOk()->assertJsonPath('has_voucher_restored', true);
+
+        $index = $this->getJson('/api/orders');
+        $byId = collect($index->json('data'))->keyBy('id');
+        $this->assertTrue((bool) $byId[$order->id]['has_voucher_restored']);
+        $this->assertFalse((bool) $byId[$plainOrder->id]['has_voucher_restored']);
+    }
+
+    /**
+     * ADR-024 addendum — the guard gap this closes: a full-cover order
+     * that already had its voucher restored must be just as untouchable
+     * as one with a Voucher row or wallet refund, or a further resend
+     * could deliver goods on top of a refund already given back.
+     */
+    public function test_resend_rejects_an_order_whose_voucher_has_already_been_restored(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1900, 'standard_selling_price' => 1900,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $originalVoucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-RESTORED-2',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 500,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'voucher_id' => $originalVoucher->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $originalVoucher->id,
+            'order_id' => $order->id,
+            'amount' => 500,
+            'status' => 'restored',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id]);
+
+        $response->assertUnprocessable();
+        Queue::assertNothingPushed();
     }
 
     public function test_refund_to_wallet_rejects_a_non_wallet_order(): void

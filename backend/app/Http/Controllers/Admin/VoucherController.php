@@ -250,10 +250,22 @@ class VoucherController extends Controller
         // two independent, un-merged vouchers, never one combined
         // amount. restore() is a no-op if this order never redeemed
         // one, so it's always safe to call unconditionally here.
+        //
+        // ADR-024 addendum (2026-09-17, restore-only): a full-cover-by-
+        // voucher order (decision 5: transaction_fee=0, final_amount=0)
+        // has a genuinely zero cash portion — issue() must never fire
+        // for it. Restoring X still happens unconditionally; minting a
+        // new, pointless RM0.00 Y does not. The partial-combo branch is
+        // unaffected — its amount is admin-typed and already floored at
+        // `min:1` by StoreVoucherFromOrderRequest.
         try {
             $voucher = DB::transaction(function () use ($order, $amount, $request) {
                 Order::query()->lockForUpdate()->findOrFail($order->id);
                 $this->vouchers->restore($order->id);
+
+                if ($amount === 0) {
+                    return null;
+                }
 
                 return $this->vouchers->issue(
                     customerEmail: $order->customer_email,
@@ -275,7 +287,15 @@ class VoucherController extends Controller
             ]);
         }
 
-        return response()->json($voucher, 201);
+        // One shape either way: `restored_only` tells the caller which
+        // of the two things this endpoint always does actually happened
+        // (restore always runs; issue only when the cash portion is
+        // non-zero) — its own admin-frontend consumer branches on this
+        // rather than infer it from `voucher` being null.
+        return response()->json([
+            'restored_only' => $voucher === null,
+            'voucher' => $voucher,
+        ], 201);
     }
 
     public function revoke(Request $request, Voucher $voucher): JsonResponse
