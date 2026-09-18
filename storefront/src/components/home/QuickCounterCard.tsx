@@ -31,7 +31,7 @@ export default function QuickCounterCard({ games }: { games: Game[] }) {
       <p className="mb-5 mt-0.5 text-[12px] text-on-surface-variant">Select your game to start.</p>
 
       {tiles.length === 0 ? (
-        <p className="my-auto rounded-md border-2 border-dashed border-ink/40 p-6 text-center text-[13px] text-on-surface-variant">
+        <p className="mt-auto mb-6 rounded-md border-2 border-dashed border-ink/40 p-6 text-center text-[13px] text-on-surface-variant">
           Games coming soon.
         </p>
       ) : (
@@ -61,7 +61,7 @@ export default function QuickCounterCard({ games }: { games: Game[] }) {
         </>
       )}
 
-      <Button href="/#popular-picks" variant="outline" className="mt-auto w-full">
+      <Button href="/#popular-picks" variant="primary" className="mt-auto w-full">
         View All Games
         <ArrowRight size={16} weight="bold" />
       </Button>
