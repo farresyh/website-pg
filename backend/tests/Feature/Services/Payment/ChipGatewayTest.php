@@ -7,6 +7,7 @@ use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -78,6 +79,45 @@ class ChipGatewayTest extends TestCase
                 && $request['failure_redirect'] === 'https://storefront.test/order/status/KRS-1'
                 && $request['success_callback'] === 'https://api.pekangame.space/api/webhooks/chip'
                 && $request['payment_method_whitelist'] === ['fpx'];
+        });
+    }
+
+    /**
+     * ADR-110 PR-A decision 2 — a purchase this platform creates must
+     * eventually become CHIP-side unpayable rather than sitting at
+     * `overdue` forever (CHIP's own default: still payable past
+     * `.due`). 30 minutes matches this codebase's existing
+     * "how long do we give someone to pay" convention
+     * (`wallet_topup_attempts.expires_at`,
+     * `payment_reconciliation.pending_after_minutes`), applied
+     * uniformly across every `PaymentRequest` caller — no per-caller
+     * override.
+     */
+    public function test_create_payment_sends_due_30_minutes_out_and_due_strict(): void
+    {
+        Carbon::setTestNow('2026-09-19 10:00:00');
+
+        Http::fake([
+            'gate.chip-in.asia/*' => Http::response([
+                'id' => 'purchase-123', 'status' => 'created', 'checkout_url' => 'https://gate.chip-in.asia/p/x/',
+                'reference' => 'KRS-1', 'purchase' => ['total' => 10000],
+            ], 201),
+        ]);
+
+        $this->gateway()->createPayment(new PaymentRequest(
+            referenceId: 'KRS-1',
+            amountSen: 10000,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: 'fpx',
+            customer: new PaymentCustomer(referenceId: 'KRS-1', givenNames: 'Buyer One', email: 'buyer@example.com'),
+        ));
+
+        $expectedDue = Carbon::parse('2026-09-19 10:30:00')->timestamp;
+
+        Http::assertSent(function ($request) use ($expectedDue) {
+            return $request['due'] === $expectedDue
+                && $request['purchase']['due_strict'] === true;
         });
     }
 
@@ -242,6 +282,57 @@ class ChipGatewayTest extends TestCase
     {
         Http::fake([
             'gate.chip-in.asia/*' => Http::response(['id' => 'purchase-123', 'status' => 'cancelled', 'purchase' => ['total' => 10000]], 200),
+        ]);
+
+        $result = $this->gateway()->getPayment('purchase-123');
+
+        $this->assertSame(PaymentStatus::Failed, $result->status);
+    }
+
+    /**
+     * ADR-110 PR-A — found live on a real stuck production order
+     * (PG-ZUOSHF3Q9FOC, pending since 2026-09-11): CHIP's own
+     * OpenAPI spec (fetched raw, not summarized) documents `overdue`
+     * as "past its `.due`, but payment for it is still possible" —
+     * but this platform's guest-checkout orders are never worth
+     * resurrecting days later, so it's treated as a hard failure here,
+     * same as `error`/`cancelled`.
+     */
+    public function test_get_payment_maps_overdue_status_to_failed(): void
+    {
+        Http::fake([
+            'gate.chip-in.asia/*' => Http::response(['id' => 'purchase-123', 'status' => 'overdue', 'purchase' => ['total' => 10000]], 200),
+        ]);
+
+        $result = $this->gateway()->getPayment('purchase-123');
+
+        $this->assertSame(PaymentStatus::Failed, $result->status);
+    }
+
+    /**
+     * ADR-110 PR-A — reachable once `due_strict: true` (also this PR)
+     * causes CHIP to set this status itself once `.due` passes.
+     */
+    public function test_get_payment_maps_expired_status_to_failed(): void
+    {
+        Http::fake([
+            'gate.chip-in.asia/*' => Http::response(['id' => 'purchase-123', 'status' => 'expired', 'purchase' => ['total' => 10000]], 200),
+        ]);
+
+        $result = $this->gateway()->getPayment('purchase-123');
+
+        $this->assertSame(PaymentStatus::Failed, $result->status);
+    }
+
+    /**
+     * ADR-110 PR-A — CHIP's spec: "like `error`, but payment attempt
+     * was blocked due to fraud scoring below threshold or other
+     * security checks not passing."
+     */
+    public function test_get_payment_maps_blocked_status_to_failed(): void
+    {
+        Http::fake([
+            'gate.chip-in.asia/*' => Http::response(['id' => 'purchase-123', 'status' => 'blocked', 'purchase' => ['total' => 10000]], 200),
         ]);
 
         $result = $this->gateway()->getPayment('purchase-123');
