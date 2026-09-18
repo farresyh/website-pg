@@ -12,6 +12,7 @@ use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -36,10 +37,22 @@ use Illuminate\Support\Facades\Http;
  *    page handles bank/wallet selection, no bank code is ever sent by
  *    this adapter.
  *  - `GET /purchases/{id}/` returns the same Purchase shape.
- *  - Purchase `status` real terminal values: `paid` (success),
- *    `error`/`cancelled` (failure); everything else (`created`,
- *    `hold`, `pending_*`, `refunded`, `released`, `preauthorized`) is
- *    still in flight.
+ *  - Purchase `status` real terminal values (confirmed against CHIP's
+ *    raw OpenAPI spec, `docs.chip-in.asia/openapi/chip-collect.yaml` —
+ *    ADR-110 PR-A, 2026-09-19, found live on a stuck-pending order
+ *    where this docblock's own previously-incomplete list was the
+ *    bug): `paid` (success); `error`/`cancelled`/`overdue`/`expired`/
+ *    `blocked` (failure — `overdue`/`expired` both mean "past `.due`",
+ *    the difference being whether `purchase.due_strict` was set;
+ *    `blocked` is `error` but for a failed fraud check). Everything
+ *    else (`created`, `hold`, `pending_*`, `refunded`, `released`,
+ *    `preauthorized`) is still in flight.
+ *  - `createPayment()` sends `due` (+30 minutes) and
+ *    `purchase.due_strict: true` on every purchase, so a purchase
+ *    this platform creates can always reach a real terminal status —
+ *    without `due_strict`, CHIP's own default lets a purchase sit at
+ *    `overdue` ("payment still possible") indefinitely, which is what
+ *    let the order above go unresolved for 8 days.
  *  - Webhook delivery: this adapter uses CHIP's per-purchase
  *    `success_callback` (a URL sent on `POST /purchases/`), not a
  *    portal-registered webhook — ADR-022's 2026-09-04 webhook-model
@@ -88,9 +101,24 @@ final class ChipGateway implements PaymentGateway
                     'price' => $request->amountSen,
                 ]],
                 'currency' => $request->currency,
+                // ADR-110 PR-A decision 2 — without this, CHIP's own
+                // default lets an unpaid purchase sit at `overdue`
+                // ("payment still possible") forever; `due` below is
+                // what actually closes it.
+                'due_strict' => true,
             ], fn ($value) => $value !== null),
             'brand_id' => $this->brandId,
             'reference' => $request->referenceId,
+            // ADR-110 PR-A decision 2 — top-level per CHIP's own
+            // PurchaseBody schema (`due_strict` above is the only
+            // due-related field nested under `purchase`). 30 minutes
+            // matches this codebase's existing "how long do we give
+            // someone to pay" convention (`wallet_topup_attempts`,
+            // `payment_reconciliation.pending_after_minutes`), applied
+            // uniformly to every PaymentRequest caller — order
+            // checkout, membership subscribe, wallet top-up, and the
+            // channel test-probe alike.
+            'due' => Carbon::now()->addMinutes(30)->timestamp,
             // Server-to-server paid notification (ADR-022 2026-09-04
             // addendum). `success_redirect`/`failure_redirect` below are
             // only the customer's browser landing — never trusted to move
@@ -252,7 +280,12 @@ final class ChipGateway implements PaymentGateway
     {
         return match ($rawStatus) {
             'paid' => PaymentStatus::Paid,
-            'error', 'cancelled' => PaymentStatus::Failed,
+            // ADR-110 PR-A — `overdue`/`expired` both mean "past
+            // `.due`" (see this class's own docblock for the
+            // distinction); `blocked` is `error` but for a failed
+            // fraud check. None of these are worth resurrecting in
+            // this platform's guest-checkout context.
+            'error', 'cancelled', 'overdue', 'expired', 'blocked' => PaymentStatus::Failed,
             default => PaymentStatus::Pending,
         };
     }
