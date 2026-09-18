@@ -21,7 +21,7 @@ export default function PopularPicksSection({ games: allGames }: { games: Game[]
 
       {games.length === 0 ? (
         <p className="rounded-lg border-2 border-ink bg-surface-container-lowest p-8 text-center text-sm text-on-surface-variant neo">
-          No games match &quot;{query}&quot; — try another search.
+          No games match &quot;{query}&quot;. Try another search.
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

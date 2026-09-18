@@ -28,7 +28,7 @@ interface OrderPageProps {
 export async function generateMetadata({ params }: OrderPageProps): Promise<Metadata> {
   const { slug } = await params;
   const [game, settings, branding] = await Promise.all([getGame(slug), getSeoSettings(), getBranding()]);
-  if (!game) return { title: "Top Up — PekanGame" };
+  if (!game) return { title: "Top Up - PekanGame" };
 
   const tokens = { game_name: game.name, store_name: branding.storeName };
   const templatedTitle = settings.meta_title_template ? renderTemplate(settings.meta_title_template, tokens) : null;
@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: OrderPageProps): Promise<Meta
     : null;
 
   return {
-    title: game.seoTitle || templatedTitle || settings.default_meta_title || `Top Up ${game.name} — PekanGame`,
+    title: game.seoTitle || templatedTitle || settings.default_meta_title || `Top Up ${game.name} - PekanGame`,
     description: game.seoDescription || templatedDescription || settings.default_meta_description || undefined,
     openGraph: (game.seoOgImage || settings.default_og_image)
       ? { images: [{ url: (game.seoOgImage || settings.default_og_image) as string }] }

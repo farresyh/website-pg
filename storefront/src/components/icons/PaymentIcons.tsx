@@ -12,7 +12,7 @@ import { Bank, Wallet } from "@phosphor-icons/react/dist/ssr";
 type Mark = { src: string; width: number; height: number; alt: string };
 
 const MARKS: Record<"fpx" | "duitnow" | "card" | "ewallet", Mark> = {
-  fpx: { src: "/images/payments/fpx.png", width: 1300, height: 710, alt: "FPX — Pay with Online Banking" },
+  fpx: { src: "/images/payments/fpx.png", width: 1300, height: 710, alt: "FPX: Pay with Online Banking" },
   duitnow: { src: "/images/payments/duitnow-qr.svg", width: 165, height: 173, alt: "DuitNow QR" },
   card: { src: "/images/payments/cards.svg", width: 671, height: 113, alt: "Debit & credit card" },
   ewallet: { src: "/images/payments/ewallets.svg", width: 734, height: 113, alt: "e-Wallet" },

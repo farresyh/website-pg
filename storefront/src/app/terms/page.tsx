@@ -6,7 +6,7 @@ import { getBranding, getLegalContent } from "@/lib/branding";
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await getBranding();
   return {
-    title: `Terms & Conditions — ${branding.storeName}`,
+    title: `Terms & Conditions - ${branding.storeName}`,
   };
 }
 

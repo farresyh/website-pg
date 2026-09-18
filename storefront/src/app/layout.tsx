@@ -53,7 +53,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const defaultTitle = settings.default_meta_title
     ? renderTemplate(settings.default_meta_title, { store_name: branding.storeName })
-    : `${branding.storeName} — Top Up Games in Malaysia`;
+    : `${branding.storeName} - Top Up Games in Malaysia`;
 
   const defaultDesc = settings.default_meta_description
     ? renderTemplate(settings.default_meta_description, { store_name: branding.storeName })
