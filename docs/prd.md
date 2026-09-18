@@ -699,16 +699,15 @@ drops off this list into `docs/build-log.md`.
 2. ~~Real PekanGame logo + hero artwork~~ — **DONE 2026-09-14.** Founder uploaded
    the real asset via `/admin/settings`'s Logo + Favicon panel (ADR-089
    pipeline). SVG placeholder replaced.
-3. **`/admin/reviews` approved-corpus re-read — premise now STALE, needs
-   re-check (flagged 2026-09-16).** ADR-082 made every *approved* review
-   public retroactively (the approve bar used to mean "not spam", now means
-   "shown to customers"), which is real risk for a corpus approved under the
-   old bar. Previously marked dormant because REV-1..5 gates submission on an
-   order reaching **Delivered**, and no order had been delivered yet — that's
-   no longer true: Digiflazz was funded 2026-09-15 and real orders are
-   delivering (see §14). Whether any guest has actually submitted a review
-   since is unverified — check `/admin/reviews`'s real row count next
-   session before deciding this is still dormant.
+3. ~~`/admin/reviews` approved-corpus re-read~~ — **RESOLVED 2026-09-18, no
+   audit needed.** ADR-082's risk was a corpus approved *before* it landed,
+   under the old "not spam" bar, suddenly going public under the new "shown
+   to customers" one. Confirmed: no such corpus ever existed — the first
+   order wasn't delivered until Digiflazz funded 2026-09-15 (REV-1..5 gates
+   submission on Delivered), so no review could have been submitted, let
+   alone approved, before ADR-082 shipped. Founder end-to-end-verified the
+   live pipeline the same day: placed a real order, approved its review from
+   `/admin/reviews`, confirmed it renders on the storefront.
 4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
    Bot channel works and every command is prod-verified; the webhook already has
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
