@@ -110,6 +110,51 @@ class ReviewCatalogControllerTest extends TestCase
         ]);
     }
 
+    public function test_homepage_reviews_cap_repeat_customers_so_the_carousel_stays_diverse(): void
+    {
+        $game = Game::query()->create([
+            'name' => 'Mobile Legends',
+            'slug' => 'mobile-legends',
+            'is_active' => true,
+        ]);
+
+        // One repeat customer with 5 approved reviews should only ever
+        // contribute MAX_REVIEWS_PER_CUSTOMER (2) to the carousel, even
+        // though they are the most recent reviewer by far.
+        for ($i = 0; $i < 5; $i++) {
+            Review::query()->create([
+                'order_id' => $this->order([
+                    'customer_name' => 'Muhammad Ghazali',
+                    'customer_email' => 'ghazali@example.com',
+                    'game_id' => $game->id,
+                ])->id,
+                'rating' => 5,
+                'comment' => "Repeat order review #{$i}",
+                'status' => ReviewStatus::Approved->value,
+            ]);
+        }
+
+        // Three other distinct customers, one review each.
+        foreach (['Ali Baba', 'Siti Aminah', 'Kumar Raj'] as $name) {
+            Review::query()->create([
+                'order_id' => $this->order(['customer_name' => $name, 'customer_email' => strtolower(str_replace(' ', '.', $name)).'@example.com', 'game_id' => $game->id])->id,
+                'rating' => 4,
+                'comment' => "Review from {$name}",
+                'status' => ReviewStatus::Approved->value,
+            ]);
+        }
+
+        $response = $this->getJson('/api/catalog/reviews');
+
+        $response->assertOk();
+        // 2 from the repeat customer + 3 distinct others = 5, not 8.
+        $response->assertJsonCount(5);
+
+        $names = collect($response->json())->pluck('name')->all();
+        $repeatCustomerCount = collect($names)->filter(fn ($name) => $name === 'Muhammad G.')->count();
+        $this->assertSame(2, $repeatCustomerCount);
+    }
+
     public function test_homepage_reviews_are_scoped_to_the_resolved_storefront_brand(): void
     {
         $game = Game::query()->create([
