@@ -7,6 +7,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PlatformSettings;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\CustomerAnalytics\CustomerAnalyticsService;
 use App\Services\CustomerAnalytics\CustomerSegment;
@@ -202,6 +203,62 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->assertSame(1000, $rows['shared@example.com']['total_spent']);
     }
 
+    /**
+     * ADR-049 addendum — a wallet Reseller order's affiliate_id is
+     * always the primary brand (ADR-073 decision 5), so before this
+     * addendum there was no way to separate a reseller's wholesale
+     * volume from a genuine retail customer's — this locks in the
+     * `wallet_reseller_id`/`reseller_name` fields plus the new
+     * independent `$resellerId` filter parameter.
+     */
+    public function test_reseller_id_scopes_customers_to_that_reseller_and_tags_the_row(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Wholesale Partner']);
+        $this->order(['customer_email' => 'wholesale@example.com', 'wallet_reseller_id' => $reseller->id, 'final_amount' => 1000]);
+        $this->order(['customer_email' => 'retail@example.com', 'final_amount' => 2000]);
+
+        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+
+        $this->assertSame($reseller->id, $rows['wholesale@example.com']['wallet_reseller_id']);
+        $this->assertSame('Wholesale Partner', $rows['wholesale@example.com']['reseller_name']);
+        $this->assertNull($rows['retail@example.com']['wallet_reseller_id']);
+        $this->assertNull($rows['retail@example.com']['reseller_name']);
+
+        $scoped = $this->analytics->customers(null, null, null, null, $reseller->id);
+
+        $this->assertCount(1, $scoped);
+        $this->assertSame('wholesale@example.com', $scoped[0]['customer_email']);
+    }
+
+    /** ADR-049 addendum — segmentation itself is deliberately unchanged for a reseller row. */
+    public function test_reseller_row_still_gets_segmented_by_the_same_rules(): void
+    {
+        PlatformSettings::current()->update(['vip_spend_threshold_sen' => 500000]);
+        $reseller = Reseller::query()->create(['business_name' => 'Big Wholesale Partner']);
+        $this->order(['customer_email' => 'wholesale@example.com', 'wallet_reseller_id' => $reseller->id, 'final_amount' => 500000]);
+
+        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+
+        $this->assertSame(CustomerSegment::Vip->value, $rows['wholesale@example.com']['segment']);
+    }
+
+    /** ADR-050 addendum — "Source" replaces "Affiliate" wherever a wallet Reseller order is involved. */
+    public function test_customer_detail_source_shows_reseller_not_primary_affiliate(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Wholesale Partner']);
+        $this->order([
+            'customer_email' => 'wholesale@example.com',
+            'wallet_reseller_id' => $reseller->id,
+            'final_amount' => 1000,
+        ]);
+
+        $detail = $this->analytics->customerDetail('wholesale@example.com');
+
+        $this->assertSame('Reseller: Wholesale Partner', $detail['order_history'][0]['source_name']);
+        $this->assertSame('Reseller: Wholesale Partner', $detail['top_sources'][0]['name']);
+        $this->assertSame(1000, $detail['top_sources'][0]['total_spent']);
+    }
+
     public function test_stats_reports_total_customers_avg_order_value_and_top_spender(): void
     {
         $this->order(['customer_email' => 'big@example.com', 'final_amount' => 5000]);
@@ -348,8 +405,8 @@ class CustomerAnalyticsServiceTest extends TestCase
 
         $this->assertSame('172 Diamonds', $detail['top_packages'][0]['name']);
         $this->assertSame(2000, $detail['top_packages'][0]['total_spent']);
-        $this->assertSame('Affiliate B', $detail['top_affiliates'][0]['name']);
-        $this->assertSame(2000, $detail['top_affiliates'][0]['total_spent']);
+        $this->assertSame('Affiliate B', $detail['top_sources'][0]['name']);
+        $this->assertSame(2000, $detail['top_sources'][0]['total_spent']);
     }
 
     public function test_monthly_trend_buckets_by_paid_month(): void
