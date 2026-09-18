@@ -36,7 +36,7 @@ export default function RateOrderModal({
       await submitReview(orderNumber, rating, comment.trim() || undefined);
       onSubmitted();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong — try again in a moment.");
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again in a moment.");
     } finally {
       setSubmitting(false);
     }
@@ -45,7 +45,7 @@ export default function RateOrderModal({
   const displayRating = hoverRating || rating;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 lg:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 lg:items-center" onClick={onClose}>
       <div
         className="flex w-full flex-col overflow-y-auto rounded-t-lg border-2 border-ink bg-surface neo-lg p-6 lg:max-w-[420px] lg:rounded-lg"
         onClick={(e) => e.stopPropagation()}

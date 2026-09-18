@@ -76,7 +76,7 @@ export default function GameReviewsSection({ gameName, data }: GameReviewsSectio
 
               <div className="mt-4 pt-3 border-t border-ink/10 flex items-center justify-between gap-2">
                 <span className="font-display text-[12px] font-bold text-on-surface truncate">
-                  — {r.name}
+                  - {r.name}
                 </span>
                 <Badge tone="info">
                   <span className="flex items-center gap-1">

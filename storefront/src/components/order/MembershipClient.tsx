@@ -99,7 +99,7 @@ export default function MembershipClient() {
       await sendOtp(email.trim());
       setEmailStep("otp");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not send a code — try again in a moment.");
+      setError(err instanceof ApiError ? err.message : "Could not send a code. Try again in a moment.");
     } finally {
       setSending(false);
     }
@@ -114,7 +114,7 @@ export default function MembershipClient() {
       const newToken = await verifyOtp(email.trim(), code);
       setMembershipToken(newToken); // triggers the effect above via useMembershipToken()'s subscription
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "That code didn't work — check it and try again.");
+      setError(err instanceof ApiError ? err.message : "That code didn't work. Check it and try again.");
     } finally {
       setVerifying(false);
     }
@@ -136,7 +136,7 @@ export default function MembershipClient() {
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
         <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Membership</h1>
-        <p className="mb-6 text-sm text-on-surface-variant">Enter your email — we&apos;ll send a code to verify it&apos;s you.</p>
+        <p className="mb-6 text-sm text-on-surface-variant">Enter your email, and we&apos;ll send a code to verify it&apos;s you.</p>
         <form onSubmit={handleSendCode} className="flex flex-col gap-3">
           <div className="flex min-h-11 items-center gap-2 rounded-md border-2 border-ink bg-surface-container-lowest px-3.5">
             <Envelope size={16} className="shrink-0 text-on-surface-variant" />
@@ -203,7 +203,7 @@ export default function MembershipClient() {
       {checkoutParam === "failed" && (
         <section className="flex items-center gap-3 rounded-lg border-2 border-ink bg-warning p-4 text-sm text-on-warning neo">
           <WarningCircle size={20} weight="fill" className="shrink-0" />
-          Payment wasn&apos;t completed. Nothing was charged — pick a plan below to try again.
+          Payment wasn&apos;t completed. Nothing was charged, pick a plan below to try again.
         </section>
       )}
 
@@ -213,7 +213,7 @@ export default function MembershipClient() {
         <section className="rounded-lg border-2 border-ink bg-surface-container p-5 neo-sm">
           <p className="font-display text-headline-sm font-bold">You&apos;re not a member yet</p>
           <p className="mt-1 text-sm text-on-surface-variant">
-            Verified as <span className="font-medium text-on-surface">{dashboard.email}</span> — choose a plan below to
+            Verified as <span className="font-medium text-on-surface">{dashboard.email}</span>. Choose a plan below to
             unlock member pricing on every top-up.
           </p>
         </section>
@@ -285,10 +285,10 @@ export default function MembershipClient() {
                 {orders.map((order) => (
                   <tr key={order.orderNumber} className="hover:bg-surface-container-low">
                     <td className="whitespace-nowrap p-4 font-mono text-[13px] text-on-surface-variant">
-                      {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}
+                      {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "-"}
                     </td>
                     <td className="p-4 font-medium">
-                      {order.gameName ?? "—"}
+                      {order.gameName ?? "-"}
                       {order.packageName ? <span className="text-on-surface-variant"> · {order.packageName}</span> : null}
                     </td>
                     <td className="whitespace-nowrap p-4 font-mono text-[12px] text-on-surface-variant">{order.orderNumber}</td>

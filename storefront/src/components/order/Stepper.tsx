@@ -50,7 +50,7 @@ export default function Stepper({ steps }: { steps: StepInfo[] }) {
 
       <p className="mt-3 font-display text-[12px] font-bold uppercase tracking-wide text-on-surface lg:hidden">
         <span className="text-on-surface-variant">
-          Step {current + 1} of {steps.length} —{" "}
+          Step {current + 1} of {steps.length}:{" "}
         </span>
         {steps[current]?.label}
       </p>

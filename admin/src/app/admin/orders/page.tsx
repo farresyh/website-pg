@@ -21,7 +21,7 @@
  * a later pass.
  */
 
-import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DataTable,
@@ -37,10 +37,38 @@ import {
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectIndicator,
+  SelectPortal,
+  SelectPositioner,
+  SelectPopup,
+  SelectList,
+  SelectOption,
+} from "@/components/ui/select";
+import { Popover, PopoverPortal, PopoverPositioner, PopoverPopup } from "@/components/ui/popover";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type OrderListItem, type OrderDetail, type OrderPage, type OrderStatusFilter, type OrderSummary, type IssueVoucherResult, listOrders, getOrder, getOrderSummary, refundOrderToWallet, retryOrderDelivery } from "@/lib/orders";
+import {
+  type OrderListItem,
+  type OrderDetail,
+  type OrderPage,
+  type OrderStatusFilter,
+  type OrderSummary,
+  type IssueVoucherResult,
+  type OrderSourceFilter,
+  listOrders,
+  getOrder,
+  getOrderSummary,
+  refundOrderToWallet,
+  retryOrderDelivery,
+  exportOrders,
+} from "@/lib/orders";
+import { type Game, listGames } from "@/lib/games";
+import { DATE_RANGE_PRESETS, type DateRangePreset, resolveDateRange } from "@/lib/date-range";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import IssueVoucherModal, { isRestoreOnly } from "@/components/orders/IssueVoucherModal";
 import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
@@ -70,6 +98,41 @@ const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "today", label: "Today" },
 ];
 
+/**
+ * ADR-108 decision 5 — Source filter, single-select, mirrors the Source
+ * column's own 3 states. "all" (not "") is the no-filter sentinel — this
+ * Select component treats an empty-string value as "nothing selected"
+ * and renders no label at all, unlike a native <select>'s placeholder.
+ */
+const SOURCE_FILTERS: { value: OrderSourceFilter | "all"; label: string }[] = [
+  { value: "all", label: "All sources" },
+  { value: "direct", label: "Direct" },
+  { value: "affiliate", label: "Affiliate" },
+  { value: "reseller", label: "Reseller" },
+];
+
+/** ADR-108 decision 8 — every column hideable except Order # and Actions. */
+const TOGGLEABLE_COLUMNS = [
+  { key: "customer", label: "Customer" },
+  { key: "game", label: "Game / Package" },
+  { key: "source", label: "Source" },
+  { key: "amount", label: "Final Amount" },
+  { key: "payment", label: "Payment" },
+  { key: "delivery", label: "Delivery" },
+  { key: "date", label: "Date" },
+] as const;
+type ToggleableColumnKey = (typeof TOGGLEABLE_COLUMNS)[number]["key"];
+const COLUMNS_STORAGE_KEY = "pekangame-admin-orders-columns";
+
+function loadHiddenColumns(): Set<ToggleableColumnKey> {
+  try {
+    const raw = localStorage.getItem(COLUMNS_STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
@@ -94,6 +157,26 @@ const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondar
   // in-flight delivery attempt.
   pending: "info",
 };
+
+/**
+ * ADR-108 decision 2 — at most one compensation Tag per row now,
+ * replacing the old up-to-4-pill stack (a real order on prod showed
+ * Voucher Paid + Voucher Issued + Restored simultaneously). Priority,
+ * most-final-state wins: Restored > Wallet Refunded > Voucher Issued >
+ * Voucher Paid (the least informative — just the payment method, not a
+ * compensation outcome). Order Detail's own RefundInformationCards
+ * still shows every independent fact in full; this only declutters the
+ * list row.
+ */
+function primaryCompensationTag(
+  order: Pick<OrderListItem, "has_voucher_restored" | "has_wallet_refund" | "has_compensation_voucher" | "has_used_voucher">,
+): { label: string; severity: "secondary" | "warn" | "success" | "info" } | null {
+  if (order.has_voucher_restored) return { label: "Restored", severity: "success" };
+  if (order.has_wallet_refund) return { label: "Wallet Refunded", severity: "info" };
+  if (order.has_compensation_voucher) return { label: "Voucher Issued", severity: "warn" };
+  if (order.has_used_voucher) return { label: "Voucher Paid", severity: "secondary" };
+  return null;
+}
 
 // ADR-104: payment/delivery status specifically render as a dot + plain
 // text (no pill background), matching the artifact's own OrderDetailFailed/
@@ -139,13 +222,67 @@ function OrdersPageInner() {
   const [status, setStatus] = useState<OrderStatusFilter>("all");
   const [search, setSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
+  // ADR-108 decisions 5-7 — Source/Game/date-range, each orthogonal to
+  // the status tab above (can combine with any of them, same as the
+  // Reports page's own filter row).
+  const [source, setSource] = useState<OrderSourceFilter | "all">("all");
+  const [gameId, setGameId] = useState<number | "all">("all");
+  const [games, setGames] = useState<Game[]>([]);
+  const [rangePreset, setRangePreset] = useState<DateRangePreset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const { from: dateFrom, to: dateTo } = resolveDateRange(rangePreset, customFrom, customTo);
+  // ADR-108 decision 8 — lazy initializer, same pattern ThemeContext.tsx
+  // already uses for its own localStorage-backed preference (accepted
+  // in this codebase over a setState-in-effect read).
+  const [hiddenColumns, setHiddenColumns] = useState<Set<ToggleableColumnKey>>(() => loadHiddenColumns());
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [columnsTriggerEl, setColumnsTriggerEl] = useState<HTMLElement | null>(null);
+  function toggleColumn(key: ToggleableColumnKey) {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // per-viewer convenience only — a failed write just means the
+        // preference doesn't persist this session, nothing to surface.
+      }
+      return next;
+    });
+  }
+  const [exporting, setExporting] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  // Memoized so the fetch effect below can list this one value in its
+  // deps instead of every individual field — a fresh object literal on
+  // every render would otherwise refire the effect every render too.
+  const orderFilters = useMemo(
+    () => ({
+      status,
+      search: search || undefined,
+      page: pageNumber,
+      source: source === "all" ? undefined : source,
+      gameId: gameId === "all" ? undefined : gameId,
+      dateFrom,
+      dateTo,
+    }),
+    [status, search, pageNumber, source, gameId, dateFrom, dateTo],
+  );
   // Adjusted during render (React's own pattern for "reset state when
   // other state changes"), not in an effect — resets pagination to 1
   // whenever the filter/search changes, without a synchronous setState
   // call inside an effect.
-  const [paginationFilterKey, setPaginationFilterKey] = useState({ status, search });
-  if (paginationFilterKey.status !== status || paginationFilterKey.search !== search) {
-    setPaginationFilterKey({ status, search });
+  const [paginationFilterKey, setPaginationFilterKey] = useState({ status, search, source, gameId, dateFrom, dateTo });
+  if (
+    paginationFilterKey.status !== status ||
+    paginationFilterKey.search !== search ||
+    paginationFilterKey.source !== source ||
+    paginationFilterKey.gameId !== gameId ||
+    paginationFilterKey.dateFrom !== dateFrom ||
+    paginationFilterKey.dateTo !== dateTo
+  ) {
+    setPaginationFilterKey({ status, search, source, gameId, dateFrom, dateTo });
     setPageNumber(1);
   }
   const [page, setPage] = useState<OrderPage | null>(null);
@@ -238,7 +375,7 @@ function OrdersPageInner() {
             resolved = true;
             setSelected(fresh);
             // Refresh orders table in background
-            listOrders(session.token, { status, search: search || undefined, page: pageNumber })
+            listOrders(session.token, orderFilters)
               .then(setPage)
               .catch(() => {});
 
@@ -324,6 +461,25 @@ function OrdersPageInner() {
     }
   }
 
+  /**
+   * ADR-108 decision 9 (ORD-5) — respects every filter currently active
+   * on the screen (status/search/source/game/date-range), not just the
+   * page an admin happens to be viewing.
+   */
+  async function handleExport() {
+    const s = getClientSession();
+    if (!s) return;
+    setExporting(true);
+    setError(null);
+    try {
+      await exportOrders(s.token, orderFilters);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not export orders.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   useEffect(() => {
     const s = getClientSession();
     if (!s) {
@@ -336,13 +492,38 @@ function OrdersPageInner() {
   useEffect(() => {
     if (!session) return;
 
-    listOrders(session.token, { status, search: search || undefined, page: pageNumber })
-      .then(setPage)
+    listOrders(session.token, orderFilters)
+      .then((p) => {
+        setPage(p);
+        setLastUpdatedAt(new Date());
+      })
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load orders.");
       });
 
-  }, [session, status, search, pageNumber]);
+  }, [session, orderFilters]);
+
+  /** Manual "Refresh" button — re-runs the same fetch the effect above already does, on demand. */
+  function handleManualRefresh() {
+    if (!session) return;
+    listOrders(session.token, orderFilters)
+      .then((p) => {
+        setPage(p);
+        setLastUpdatedAt(new Date());
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "Could not load orders.");
+      });
+  }
+
+  // ADR-108 decision 6 — the Game filter's own dropdown options, loaded
+  // once (games rarely change mid-session; a fresh admin session just
+  // reloads the page).
+  useEffect(() => {
+    if (!session) return;
+
+    listGames(session.token).then(setGames).catch(() => {});
+  }, [session]);
 
   // ADR-092: decoupled from the listOrders() effect above — the six
   // counts don't depend on search/filter/page, and shouldn't be
@@ -617,11 +798,28 @@ function OrdersPageInner() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-page-title font-semibold text-ink">Orders</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Every order created via checkout — real customer purchases only.
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-page-title font-semibold text-ink">Orders</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            Every order created via checkout — real customer purchases only.
+          </p>
+        </div>
+        {/* ADR-108 decision 10 (layout) — Refresh + last-updated + Export CSV, top-right, matching the founder's own mockup. */}
+        <div className="flex items-center gap-3">
+          {lastUpdatedAt && (
+            <span className="flex items-center gap-1.5 text-theme-xs text-ink-muted">
+              <span className="size-1.5 rounded-full bg-success-500" />
+              Updated {lastUpdatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          <Button size="small" variant="outlined" onClick={handleManualRefresh}>
+            Refresh
+          </Button>
+          <Button size="small" variant="outlined" onClick={handleExport} disabled={exporting}>
+            {exporting ? "Exporting…" : "Export CSV"}
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -635,7 +833,7 @@ function OrdersPageInner() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           type="text"
-          placeholder="Search order # or customer email…"
+          placeholder="Search order #, email or game…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-cyan-600 focus:outline-hidden focus:ring-3 focus:ring-focus-ring/10 dark:border-gray-700 dark:bg-gray-900 dark:text-ink"
@@ -659,6 +857,116 @@ function OrdersPageInner() {
         </div>
       </div>
 
+      {/* ADR-108 decisions 5-8 — Source/Game/date-range filters + Columns toggle, orthogonal to the status tabs above. */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Select value={source} options={SOURCE_FILTERS} optionLabel="label" optionValue="value" onValueChange={(e) => setSource(e.value as OrderSourceFilter | "all")}>
+          <SelectTrigger className="min-w-[9rem]">
+            <SelectValue />
+            <SelectIndicator />
+          </SelectTrigger>
+          <SelectPortal>
+            <SelectPositioner>
+              <SelectPopup>
+                <SelectList>
+                  {SOURCE_FILTERS.map((opt, index) => (
+                    <SelectOption key={opt.value} index={index}>
+                      {opt.label}
+                    </SelectOption>
+                  ))}
+                </SelectList>
+              </SelectPopup>
+            </SelectPositioner>
+          </SelectPortal>
+        </Select>
+
+        <Select
+          value={gameId === "all" ? "all" : String(gameId)}
+          options={[{ label: "All games", value: "all" }, ...games.map((g) => ({ label: g.name, value: String(g.id) }))]}
+          optionLabel="label"
+          optionValue="value"
+          onValueChange={(e) => setGameId(e.value === "all" ? "all" : Number(e.value))}
+        >
+          <SelectTrigger className="min-w-[10rem]">
+            <SelectValue />
+            <SelectIndicator />
+          </SelectTrigger>
+          <SelectPortal>
+            <SelectPositioner>
+              <SelectPopup>
+                <SelectList>
+                  <SelectOption key="all" index={0}>
+                    All games
+                  </SelectOption>
+                  {games.map((g, index) => (
+                    <SelectOption key={g.id} index={index + 1}>
+                      {g.name}
+                    </SelectOption>
+                  ))}
+                </SelectList>
+              </SelectPopup>
+            </SelectPositioner>
+          </SelectPortal>
+        </Select>
+
+        <Select value={rangePreset} options={DATE_RANGE_PRESETS} optionLabel="label" optionValue="value" onValueChange={(e) => setRangePreset(e.value as DateRangePreset)}>
+          <SelectTrigger className="min-w-[9rem]">
+            <SelectValue />
+            <SelectIndicator />
+          </SelectTrigger>
+          <SelectPortal>
+            <SelectPositioner>
+              <SelectPopup>
+                <SelectList>
+                  {DATE_RANGE_PRESETS.map((opt, index) => (
+                    <SelectOption key={opt.value} index={index}>
+                      {opt.label}
+                    </SelectOption>
+                  ))}
+                </SelectList>
+              </SelectPopup>
+            </SelectPositioner>
+          </SelectPortal>
+        </Select>
+        {rangePreset === "custom" && (
+          <>
+            <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="w-[9.5rem]" />
+            <span className="text-theme-xs text-gray-400 dark:text-gray-500">to</span>
+            <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="w-[9.5rem]" />
+          </>
+        )}
+
+        {/* Manual anchor pattern (UserDropdown.tsx's own precedent) — Button
+            isn't a forwardRef component, so a wrapping span carries the ref
+            Popover's `anchor` prop needs. */}
+        <span ref={setColumnsTriggerEl}>
+          <Button size="small" variant="outlined" onClick={() => setColumnsMenuOpen((v) => !v)}>
+            Columns
+          </Button>
+        </span>
+        <Popover open={columnsMenuOpen} onOpenChange={(e) => setColumnsMenuOpen(e.value ?? false)} anchor={columnsTriggerEl}>
+          <PopoverPortal>
+            <PopoverPositioner side="bottom" align="start" sideOffset={6}>
+              <PopoverPopup className="w-56 p-3">
+                <p className="mb-2 text-theme-xs font-medium text-ink-muted">Show columns</p>
+                <div className="flex flex-col gap-1.5">
+                  {TOGGLEABLE_COLUMNS.map((col) => (
+                    <label key={col.key} className="flex items-center gap-2 text-theme-sm text-ink">
+                      <input
+                        type="checkbox"
+                        checked={!hiddenColumns.has(col.key)}
+                        onChange={() => toggleColumn(col.key)}
+                        className="size-3.5 rounded border-gray-300 dark:border-gray-700"
+                      />
+                      {col.label}
+                    </label>
+                  ))}
+                </div>
+              </PopoverPopup>
+            </PopoverPositioner>
+          </PopoverPortal>
+        </Popover>
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={page?.data ?? []} dataKey="id">
@@ -667,13 +975,13 @@ function OrdersPageInner() {
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Order #</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Customer</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game / Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Source</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Final Amount</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Payment</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Delivery</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Date</DataTableTHeadCell>
+                    {!hiddenColumns.has("customer") && <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Customer</DataTableTHeadCell>}
+                    {!hiddenColumns.has("game") && <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game / Package</DataTableTHeadCell>}
+                    {!hiddenColumns.has("source") && <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Source</DataTableTHeadCell>}
+                    {!hiddenColumns.has("amount") && <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Final Amount</DataTableTHeadCell>}
+                    {!hiddenColumns.has("payment") && <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Payment</DataTableTHeadCell>}
+                    {!hiddenColumns.has("delivery") && <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Delivery</DataTableTHeadCell>}
+                    {!hiddenColumns.has("date") && <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Date</DataTableTHeadCell>}
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
@@ -684,47 +992,61 @@ function OrdersPageInner() {
                     return (
                       <DataTableRow key={order.id}>
                         <DataTableCell className="px-5 py-4 font-mono text-code-id font-medium text-ink">{order.order_number}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{order.customer_email}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
-                          {order.game?.name ?? "—"}
-                          {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
-                        </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
-                          {/* A wallet order's own affiliate is always the platform's primary brand (ADR-073 decision 5) — wallet_reseller is the one that actually answers "where from". */}
-                          {order.wallet_reseller ? (
-                            <span>
-                              Reseller: <span className="font-medium text-ink">{order.wallet_reseller.business_name}</span>
-                            </span>
-                          ) : (
-                            order.affiliate?.business_name ?? "—"
-                          )}
-                        </DataTableCell>
+                        {!hiddenColumns.has("customer") && <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{order.customer_email}</DataTableCell>}
+                        {!hiddenColumns.has("game") && (
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
+                            {order.game?.name ?? "—"}
+                            {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
+                          </DataTableCell>
+                        )}
+                        {!hiddenColumns.has("source") && (
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
+                            {/* A wallet order's own affiliate is always the platform's primary brand (ADR-073 decision 5) — wallet_reseller is the one that actually answers "where from". ADR-108 decision 5 — "Direct" for the primary brand's own order, a real name only for a genuine partner Affiliate (both carry a non-null affiliate, only is_primary tells them apart). */}
+                            {order.wallet_reseller ? (
+                              <span>
+                                Reseller: <span className="font-medium text-ink">{order.wallet_reseller.business_name}</span>
+                              </span>
+                            ) : order.affiliate && !order.affiliate.is_primary ? (
+                              order.affiliate.business_name
+                            ) : (
+                              "Direct"
+                            )}
+                          </DataTableCell>
+                        )}
                         {/* ADR-104: two-line cell (main value + a quiet sub-line) —
                             same fields already on OrderListItem, no data/label
                             change, just how the existing payment_method reads
                             here. */}
-                        <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <span className="font-medium text-ink">{formatRm(order.final_amount)}</span>
-                          {order.payment_method && (
-                            <div className="text-theme-xs text-ink-muted">{order.payment_method}</div>
-                          )}
-                        </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <StatusText severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</StatusText>
-                        </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <StatusText severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</StatusText>
-                            {/* ADR-102 decision 12 — compensation is an orthogonal axis to delivery_status, not folded into it (an order can carry more than one badge at once). ADR-024 addendum (2026-09-17): plain-text Tag pills, not emoji — founder feedback, 2026-09-17 — plus a 4th ("Restored") for the restore-only case, which never sets has_compensation_voucher. */}
-                            {order.has_used_voucher && <Tag severity="secondary">Voucher Paid</Tag>}
-                            {order.has_compensation_voucher && <Tag severity="warn">Voucher Issued</Tag>}
-                            {order.has_wallet_refund && <Tag severity="info">Wallet Refunded</Tag>}
-                            {order.has_voucher_restored && <Tag severity="success">Restored</Tag>}
-                          </div>
-                        </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
-                          {new Date(order.created_at).toLocaleString()}
-                        </DataTableCell>
+                        {!hiddenColumns.has("amount") && (
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <span className="font-medium text-ink">{formatRm(order.final_amount)}</span>
+                            {order.payment_method && (
+                              <div className="text-theme-xs text-ink-muted">{order.payment_method}</div>
+                            )}
+                          </DataTableCell>
+                        )}
+                        {!hiddenColumns.has("payment") && (
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <StatusText severity={paymentStatusSeverity[order.payment_status]}>{order.payment_status}</StatusText>
+                          </DataTableCell>
+                        )}
+                        {!hiddenColumns.has("delivery") && (
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <StatusText severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</StatusText>
+                              {/* ADR-108 decision 2 — at most one compensation Tag, priority-picked (see primaryCompensationTag()); was up to 4 stacked pills (ADR-102 decision 12 / ADR-024 addendum), decluttered here. Order Detail's RefundInformationCards still shows every fact in full. */}
+                              {(() => {
+                                const tag = primaryCompensationTag(order);
+                                return tag && <Tag severity={tag.severity}>{tag.label}</Tag>;
+                              })()}
+                            </div>
+                          </DataTableCell>
+                        )}
+                        {!hiddenColumns.has("date") && (
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
+                            {new Date(order.created_at).toLocaleString()}
+                          </DataTableCell>
+                        )}
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           {/* ADR-104: label stays "View" — same button, same
                               action, same destination — only its emphasis

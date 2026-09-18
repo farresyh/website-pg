@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\Admin;
 use App\Models\AdminUser;
 use App\Models\Order;
 use App\Models\PlatformSettings;
+use App\Models\Reseller;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -76,6 +77,22 @@ class CustomerAnalyticsControllerTest extends TestCase
         $this->assertSame('VIP', $customers[0]['segment_label']);
     }
 
+    /** ADR-049 addendum — reseller_id filters exactly like affiliate_id does. */
+    public function test_customers_filters_by_reseller_id(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = Reseller::query()->create(['business_name' => 'Wholesale Partner']);
+        $this->order(['customer_email' => 'wholesale@example.com', 'wallet_reseller_id' => $reseller->id]);
+        $this->order(['customer_email' => 'retail@example.com']);
+
+        $response = $this->getJson('/api/customer-analytics/customers?reseller_id='.$reseller->id)->assertOk();
+        $customers = $response->json('customers');
+
+        $this->assertCount(1, $customers);
+        $this->assertSame('wholesale@example.com', $customers[0]['customer_email']);
+        $this->assertSame('Wholesale Partner', $customers[0]['reseller_name']);
+    }
+
     public function test_export_streams_csv(): void
     {
         $this->actingAsAdmin();
@@ -108,7 +125,7 @@ class CustomerAnalyticsControllerTest extends TestCase
             ->assertOk()
             ->assertJsonStructure([
                 'customer_email', 'customer_name', 'customer_phone', 'segment', 'segment_label',
-                'stats', 'profit_analysis', 'monthly_trend', 'top_packages', 'top_affiliates', 'order_history',
+                'stats', 'profit_analysis', 'monthly_trend', 'top_packages', 'top_sources', 'order_history',
             ])
             ->assertJson(['customer_email' => 'buyer@example.com']);
     }

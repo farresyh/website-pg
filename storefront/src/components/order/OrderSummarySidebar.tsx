@@ -38,10 +38,10 @@ function OrderSummarySidebar({
       </h3>
       <div className="mb-4 flex flex-col gap-2.5 text-[13px]">
         <Row k="Product" v={game.name} />
-        <Row k="Package" v={selectedPackage?.name ?? "—"} dim={!selectedPackage} />
+        <Row k="Package" v={selectedPackage?.name ?? "-"} dim={!selectedPackage} />
         <Row
           k="Player ID"
-          v={playerId ? (serverId ? `${playerId} (${serverId})` : playerId) : "—"}
+          v={playerId ? (serverId ? `${playerId} (${serverId})` : playerId) : "-"}
           dim={!playerId}
           mono
         />

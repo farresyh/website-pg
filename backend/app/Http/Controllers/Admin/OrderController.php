@@ -26,11 +26,13 @@ use App\Services\Reseller\Webhook\ResellerWebhookDispatcher;
 use App\Services\Reseller\Webhook\ResellerWebhookEvent;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Support\ManualCheckCooldown;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * ORD-1..7 — read-only list + detail, plus retryDelivery (ORD-7's
@@ -68,9 +70,14 @@ class OrderController extends Controller
         // for a wallet order, which Reseller API/Bot account) this order
         // came from. Founder-requested visibility: the list previously
         // loaded neither, so there was no way to tell at a glance.
+        // ADR-108 decision 5 — `is_primary` rides along so the frontend can
+        // tell a genuine partner Affiliate apart from the primary brand's
+        // own orders (both carry a non-null affiliate_id — see
+        // applyFilters()'s own 'source' branch for the same distinction
+        // made query-side).
         $query = Order::query()->where('is_test', false)->with([
             'game:id,name', 'package:id,name',
-            'affiliate:id,business_name', 'walletReseller:id,business_name',
+            'affiliate:id,business_name,is_primary', 'walletReseller:id,business_name',
         ])
             // ADR-102 decision 12 — cheap correlated-subquery booleans
             // (never an N+1 per row) powering the list's compensation
@@ -85,27 +92,7 @@ class OrderController extends Controller
                 'voucherRedemption as has_voucher_restored' => fn ($query) => $query->where('status', 'restored'),
             ]);
 
-        match ($request->query('status')) {
-            'need_action' => $query
-                ->where('payment_status', PaymentStatus::Paid->value)
-                ->where('delivery_status', DeliveryStatus::Failed->value),
-            'needs_review' => $query->where('delivery_status', DeliveryStatus::NeedsReview->value),
-            'pending_delivery' => $query->where('delivery_status', DeliveryStatus::Pending->value),
-            'processing' => $query->where('delivery_status', DeliveryStatus::Processing->value),
-            'completed' => $query->where('delivery_status', DeliveryStatus::Delivered->value),
-            'awaiting_payment' => $query
-                ->where('payment_status', PaymentStatus::Pending->value)
-                ->where('created_at', '<=', now()->subMinutes(30)),
-            'today' => $query->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()]),
-            default => null,
-        };
-
-        if ($search = $request->query('search')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhere('customer_email', 'like', "%{$search}%");
-            });
-        }
+        $this->applyFilters($query, $request);
 
         $perPage = (int) $request->query('per_page', 25);
 
@@ -132,6 +119,149 @@ class OrderController extends Controller
     }
 
     /**
+     * ADR-108 — the full filter set shared between index() (paginated
+     * screen) and export() (unpaginated CSV stream) so the two can never
+     * disagree about what "the current view" means. Decision 4 (search
+     * widened to game name), 5 (source: reseller/affiliate/direct — an
+     * affiliate order and the primary brand's own order both carry a
+     * non-null affiliate_id, only `is_primary` tells them apart), 6
+     * (game_id, exact match), 7 (date_from/date_to on created_at, KL
+     * calendar-date strings, both inclusive — same shape as the Reports
+     * page's own `@/lib/date-range`, ADR-088).
+     */
+    private function applyFilters(Builder $query, Request $request): void
+    {
+        match ($request->query('status')) {
+            // ADR-108 decision 1 — shares Order::scopeNeedsAction() with
+            // summary() below, so an already-compensated order (voucher/
+            // wallet-refund/restore) never shows up asking for one.
+            'need_action' => $query->needsAction(),
+            'needs_review' => $query->where('delivery_status', DeliveryStatus::NeedsReview->value),
+            'pending_delivery' => $query->where('delivery_status', DeliveryStatus::Pending->value),
+            'processing' => $query->where('delivery_status', DeliveryStatus::Processing->value),
+            'completed' => $query->where('delivery_status', DeliveryStatus::Delivered->value),
+            'awaiting_payment' => $query
+                ->where('payment_status', PaymentStatus::Pending->value)
+                ->where('created_at', '<=', now()->subMinutes(30)),
+            'today' => $query->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()]),
+            default => null,
+        };
+
+        if ($search = $request->query('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%")
+                    ->orWhere('customer_email', 'like', "%{$search}%")
+                    ->orWhereHas('game', fn ($gq) => $gq->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        match ($request->query('source')) {
+            'reseller' => $query->whereNotNull('wallet_reseller_id'),
+            'affiliate' => $query
+                ->whereNull('wallet_reseller_id')
+                ->whereNotNull('affiliate_id')
+                ->whereDoesntHave('affiliate', fn ($aq) => $aq->where('is_primary', true)),
+            'direct' => $query
+                ->whereNull('wallet_reseller_id')
+                ->where(function ($q) {
+                    $q->whereNull('affiliate_id')
+                        ->orWhereHas('affiliate', fn ($aq) => $aq->where('is_primary', true));
+                }),
+            default => null,
+        };
+
+        if ($gameId = $request->query('game_id')) {
+            $query->where('game_id', (int) $gameId);
+        }
+
+        if ($dateFrom = $request->query('date_from')) {
+            $query->where('created_at', '>=', $dateFrom.' 00:00:00');
+        }
+
+        if ($dateTo = $request->query('date_to')) {
+            $query->where('created_at', '<=', $dateTo.' 23:59:59');
+        }
+    }
+
+    /**
+     * ADR-108 decision 9 (ORD-5, finally built) — streams every order
+     * matching the current filter set (not just the current page),
+     * reusing the StreamedResponse+fputcsv convention already
+     * established (CustomerAnalyticsController/ReportController/etc).
+     * Columns match the on-screen table plus the full money breakdown
+     * the founder asked for (Q6-Q9 of ADR-108's own grill) — CSV-only,
+     * deliberately not added to the on-screen Columns toggle (decision
+     * 8), since Order Detail already shows every one of these fields in
+     * full. A combo order (deliveryLegs non-empty) has no single frozen
+     * cost column (ADR-107 dropped it) — its "Cost Price" cell is the
+     * live sum of each leg's componentPackage->cost_price instead,
+     * labelled accordingly in the header so it's never mistaken for a
+     * frozen figure the way the non-combo column is.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $query = Order::query()->where('is_test', false)->with([
+            'game:id,name', 'package:id,name',
+            'affiliate:id,business_name,is_primary', 'walletReseller:id,business_name',
+            'deliveryLegs.componentPackage:id,cost_price',
+        ]);
+        $this->applyFilters($query, $request);
+
+        $filename = 'orders-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'Order #', 'Customer Email', 'Game', 'Package', 'Source', 'Final Amount (RM)',
+                'Payment Status', 'Delivery Status', 'Pricing Basis', 'Cost Price (RM)',
+                'Standard/Normal Selling Price (RM)', 'Member Markup %', 'Affiliate Markup %',
+                'Wholesale Markup %', 'Transaction Fee (RM)', 'Platform Profit (RM)',
+                'Affiliate Profit (RM)', 'Date',
+            ]);
+
+            $query->orderBy('created_at', 'desc')->chunk(500, function ($orders) use ($out) {
+                foreach ($orders as $order) {
+                    $source = $order->wallet_reseller
+                        ? 'Reseller: '.$order->wallet_reseller->business_name
+                        : ($order->affiliate && ! $order->affiliate->is_primary ? $order->affiliate->business_name : 'Direct');
+
+                    // ADR-107 dropped combo's per-leg frozen cost column —
+                    // read live (same precedent that ADR established for
+                    // combo reconciliation), prefixed '~' so it's never
+                    // mistaken for the non-combo column's frozen figure.
+                    $isCombo = $order->deliveryLegs->isNotEmpty();
+                    $costPriceSen = $isCombo
+                        ? $order->deliveryLegs->sum(fn ($leg) => $leg->componentPackage->cost_price ?? 0)
+                        : $order->cost_price;
+
+                    fputcsv($out, [
+                        $order->order_number,
+                        $order->customer_email,
+                        $order->game?->name ?? '',
+                        $order->package?->name ?? '',
+                        $source,
+                        number_format($order->final_amount / 100, 2, '.', ''),
+                        $order->payment_status->value,
+                        $order->delivery_status->value,
+                        $order->pricing_basis?->value ?? '',
+                        ($isCombo ? '~' : '').number_format($costPriceSen / 100, 2, '.', ''),
+                        number_format(($order->standard_selling_price ?? $order->normal_selling_price ?? 0) / 100, 2, '.', ''),
+                        $order->markup_percent !== null ? $order->markup_percent.'%' : '',
+                        $order->affiliate_markup_pct !== null ? $order->affiliate_markup_pct.'%' : '',
+                        $order->wholesale_markup_pct !== null ? $order->wholesale_markup_pct.'%' : '',
+                        number_format($order->transaction_fee / 100, 2, '.', ''),
+                        number_format($order->platform_profit / 100, 2, '.', ''),
+                        number_format($order->affiliate_profit / 100, 2, '.', ''),
+                        $order->created_at->toDateTimeString(),
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    /**
      * ADR-092: the six Orders KPI-card counts in one grouped query,
      * deliberately not piggybacked onto index()'s paginated response —
      * that query already varies per search/filter/page on every
@@ -141,20 +271,27 @@ class OrderController extends Controller
      * view; the two underlying filter pills stay separately clickable).
      * "today" is orthogonal to delivery status, cutting across every
      * bucket by created_at. Same is_test=false scope as index().
+     *
+     * ADR-108 decision 1 — need_action is deliberately its own separate
+     * `scopeNeedsAction()` count, not folded into the grouped CASE WHEN
+     * above: the compensated-order exclusion needs whereDoesntHave/
+     * whereNotExists subqueries a single CASE expression can't express,
+     * and this way index()'s filter and this count share the exact same
+     * scope, so they can never drift apart again.
      */
     public function summary(): JsonResponse
     {
+        $needAction = Order::query()->where('is_test', false)->needsAction()->count();
+
         $row = Order::query()
             ->where('is_test', false)
             ->selectRaw(
-                'SUM(CASE WHEN payment_status = ? AND delivery_status = ? THEN 1 ELSE 0 END) as need_action,
-                 SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as needs_review,
+                'SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as needs_review,
                  SUM(CASE WHEN delivery_status IN (?, ?) THEN 1 ELSE 0 END) as processing,
                  SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as completed,
                  SUM(CASE WHEN created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) as today,
                  COUNT(*) as all_orders',
                 [
-                    PaymentStatus::Paid->value, DeliveryStatus::Failed->value,
                     DeliveryStatus::NeedsReview->value,
                     DeliveryStatus::Processing->value, DeliveryStatus::Pending->value,
                     DeliveryStatus::Delivered->value,
@@ -164,7 +301,7 @@ class OrderController extends Controller
             ->first();
 
         return response()->json([
-            'need_action' => (int) $row->need_action,
+            'need_action' => $needAction,
             'needs_review' => (int) $row->needs_review,
             'processing' => (int) $row->processing,
             'completed' => (int) $row->completed,

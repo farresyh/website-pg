@@ -74,7 +74,7 @@ export default function TestimonialsSection({ reviews = [] }: TestimonialsSectio
                 </q>
               </div>
               <p className="mt-4 font-display text-[12px] font-bold text-on-surface">
-                — {t.name}
+                - {t.name}
               </p>
             </div>
           ))}

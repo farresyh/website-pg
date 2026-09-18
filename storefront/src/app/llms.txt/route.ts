@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const [branding, settings, games] = await Promise.all([getBranding(), getSeoSettings(), listGames()]);
 
-  const summary = settings.default_meta_description || branding.description || `${branding.storeName} — fast, secure game top-ups.`;
+  const summary = settings.default_meta_description || branding.description || `${branding.storeName}: fast, secure game top-ups.`;
 
   const lines: string[] = [];
   lines.push(`# ${branding.storeName}`);
@@ -34,7 +34,7 @@ export async function GET() {
   if (games.length > 0) {
     lines.push("## Games");
     for (const game of games) {
-      const price = game.priceFromRm !== null ? ` — from RM${game.priceFromRm.toFixed(2)}` : "";
+      const price = game.priceFromRm !== null ? ` - from RM${game.priceFromRm.toFixed(2)}` : "";
       const category = game.category ? ` (${game.category})` : "";
       lines.push(`- [${game.name}](${SITE_URL}/order/${game.slug})${category}${price}`);
     }

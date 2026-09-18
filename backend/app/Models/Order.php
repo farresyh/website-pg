@@ -314,6 +314,35 @@ class Order extends Model
     }
 
     /**
+     * ADR-108 decision 1 — the query-level mirror of isAlreadyCompensated()
+     * above: every order genuinely still needing admin action (paid,
+     * delivery failed, and not already settled). `OrderController::index()`'s
+     * `need_action` filter and `summary()`'s KPI count both call this
+     * instead of hand-rolling `payment_status`+`delivery_status` alone, so
+     * the two can never drift apart from each other or from the guard this
+     * mirrors. Confirmed live on production 2026-09-18: without this
+     * exclusion, the "Need Action" KPI counted 4 orders that were all
+     * already compensated — real actionable count was 0.
+     */
+    public function scopeNeedsAction(Builder $query): Builder
+    {
+        return $query
+            ->where('payment_status', PaymentStatus::Paid->value)
+            ->where('delivery_status', DeliveryStatus::Failed->value)
+            ->whereDoesntHave('voucher')
+            ->whereDoesntHave('voucherRedemption', fn (Builder $q) => $q->where('status', 'restored'))
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('ledger_entries')
+                    ->where('ledger_entries.owner_type', LedgerOwnerType::ResellerWallet->value)
+                    ->where('ledger_entries.type', 'wallet_refund')
+                    ->where('ledger_entries.reference_type', 'order')
+                    ->whereColumn('ledger_entries.reference_id', 'orders.id')
+                    ->whereColumn('ledger_entries.owner_id', 'orders.wallet_reseller_id');
+            });
+    }
+
+    /**
      * ADR-073: true once a `wallet_refund` ledger entry exists for
      * this order's reseller-wallet account. Always false for a
      * non-wallet order (`wallet_reseller_id` null). Promoted out of

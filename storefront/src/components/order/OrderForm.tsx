@@ -321,7 +321,7 @@ export default function OrderForm({
       setVerifyError(
         err instanceof ApiError
           ? err.message
-          : "Couldn't reach the validation service — please try again in a moment.",
+          : "Couldn't reach the validation service. Please try again in a moment.",
       );
     } finally {
       setVerifying(false);
@@ -394,7 +394,7 @@ export default function OrderForm({
       setSubmitError(
         err instanceof ApiError
           ? err.message
-          : "Couldn't reach checkout — please try again in a moment.",
+          : "Couldn't reach checkout. Please try again in a moment.",
       );
     } finally {
       setSubmitting(false);

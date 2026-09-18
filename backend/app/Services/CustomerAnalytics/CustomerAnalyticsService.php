@@ -5,6 +5,7 @@ namespace App\Services\CustomerAnalytics;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PlatformSettings;
+use App\Models\Reseller;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -42,6 +43,24 @@ use Illuminate\Support\Collection;
  *
  * All money figures are integer sen. All "days ago" comparisons use
  * Asia/Kuala_Lumpur "now," matching ReportService's own timezone.
+ *
+ * **ADR-049/050 addendum (2026-09-18)** — reseller-wallet awareness.
+ * A `wallet_reseller_id`-owned order (ADR-072/073) always carries
+ * `affiliate_id = Affiliate::primary()->id` by construction (ADR-073
+ * decision 5 — there is no whitelabel storefront involved), so before
+ * this addendum every wallet-Reseller "customer" row showed up
+ * indistinguishable from a genuine retail buyer of the primary brand —
+ * same gap ADR-086 PR-2 already closed for Reports via its own
+ * `resellerBreakdown()`. Extends decision 7's existing affiliate-filter
+ * mechanism with a symmetric, independently-combinable `$resellerId`
+ * filter (mirrors `ReportService::resellerBreakdown()`'s own
+ * `wallet_reseller_id` grouping) rather than excluding wallet orders
+ * from this population — the founder's explicit call: keep them
+ * visible and filterable, don't hide them. Segmentation itself
+ * (decision 4's classify()) is **deliberately unchanged** — a
+ * high-volume reseller can still earn a VIP/Frequent tag under the
+ * same rules as any other customer_email; the Source label (below) is
+ * what tells an admin it's a B2B row, not a special-cased threshold.
  */
 final class CustomerAnalyticsService
 {
@@ -61,16 +80,16 @@ final class CustomerAnalyticsService
      * lifetime question by definition, so it's evaluated against each
      * scoped customer's lifetime order count, not their in-range count.
      */
-    public function stats(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    public function stats(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, ?int $resellerId = null): array
     {
-        $scoped = $this->aggregatesByEmail($from, $toExclusive, $affiliateId);
+        $scoped = $this->aggregatesByEmail($from, $toExclusive, $affiliateId, $resellerId);
 
         $totalCustomers = count($scoped);
         $totalSpent = array_sum(array_column($scoped, 'total_spent'));
         $totalOrders = array_sum(array_column($scoped, 'orders_count'));
 
         $isFiltered = $from !== null || $toExclusive !== null;
-        $lifetime = $isFiltered ? $this->aggregatesByEmail(null, null, $affiliateId) : $scoped;
+        $lifetime = $isFiltered ? $this->aggregatesByEmail(null, null, $affiliateId, $resellerId) : $scoped;
 
         $repeatCustomers = 0;
         foreach (array_keys($scoped) as $email) {
@@ -109,12 +128,12 @@ final class CustomerAnalyticsService
      *
      * @return list<array<string, mixed>>
      */
-    public function customers(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, ?CustomerSegment $segmentFilter): array
+    public function customers(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, ?CustomerSegment $segmentFilter, ?int $resellerId = null): array
     {
-        $lifetime = $this->aggregatesByEmail(null, null, $affiliateId);
+        $lifetime = $this->aggregatesByEmail(null, null, $affiliateId, $resellerId);
 
         $isFiltered = $from !== null || $toExclusive !== null;
-        $period = $isFiltered ? $this->aggregatesByEmail($from, $toExclusive, $affiliateId) : null;
+        $period = $isFiltered ? $this->aggregatesByEmail($from, $toExclusive, $affiliateId, $resellerId) : null;
 
         $vipThresholdSen = PlatformSettings::current()->vip_spend_threshold_sen;
 
@@ -145,6 +164,12 @@ final class CustomerAnalyticsService
                 'orders_count' => $display['orders_count'],
                 'total_spent' => $display['total_spent'],
                 'last_order_at' => $display['last_order_at']->setTimezone(self::TIMEZONE)->toIso8601String(),
+                // ADR-049 addendum — always the LIFETIME wallet_reseller_id
+                // (from $agg, never $display), same "identity is a lifetime
+                // fact, figures are period-scoped" split the segment above
+                // already follows.
+                'wallet_reseller_id' => $agg['wallet_reseller_id'],
+                'reseller_name' => $agg['reseller_name'],
             ];
         }
 
@@ -176,7 +201,7 @@ final class CustomerAnalyticsService
     {
         $orders = $this->scopedOrders(null)
             ->where('customer_email', $customerEmail)
-            ->with(['package:id,name', 'affiliate:id,business_name'])
+            ->with(['package:id,name', 'affiliate:id,business_name', 'walletReseller:id,business_name'])
             ->orderByDesc('paid_at')
             ->get();
 
@@ -242,10 +267,21 @@ final class CustomerAnalyticsService
                 'package_id',
                 fn (Order $o) => $o->package?->name ?? 'Unknown Package',
             ),
-            'top_affiliates' => $this->topSpendBreakdown(
+            // ADR-050 addendum — "Source" (not "Affiliate"): a wallet
+            // Reseller order's affiliate_id is always the primary brand
+            // (ADR-073 decision 5), so grouping by affiliate_id alone
+            // would silently merge a reseller's wholesale volume into the
+            // primary brand's own direct-sales bucket. Groups by a
+            // composite key instead — 'reseller:{id}' or
+            // 'affiliate:{id}' — so the two populations never collapse
+            // into one row.
+            'top_sources' => $this->topSpendBreakdown(
                 $orders,
-                'affiliate_id',
-                fn (Order $o) => $o->affiliate?->business_name ?? 'Unknown Affiliate',
+                fn (Order $o) => $o->wallet_reseller_id !== null ? 'reseller:'.$o->wallet_reseller_id : 'affiliate:'.$o->affiliate_id,
+                fn (Order $o) => $o->wallet_reseller_id !== null
+                    ? 'Reseller: '.($o->walletReseller?->business_name ?? 'Unknown Reseller')
+                    : ($o->affiliate?->business_name ?? 'Unknown Affiliate'),
+                fn (Order $o) => $o->wallet_reseller_id ?? $o->affiliate_id,
             ),
             'order_history' => $orders->map(function (Order $order) use ($profitByOrder) {
                 // Order.delivery_status is cast to the DeliveryStatus enum
@@ -256,12 +292,19 @@ final class CustomerAnalyticsService
                 $isDelivered = $order->delivery_status === DeliveryStatus::Delivered;
                 $entries = $profitByOrder->get($order->id);
 
+                // ADR-050 addendum — same Source logic as top_sources
+                // above, and the exact "Reseller: {name}" wording
+                // Admin\OrderController's own Source column already uses.
+                $sourceName = $order->wallet_reseller_id !== null
+                    ? 'Reseller: '.($order->walletReseller?->business_name ?? 'Unknown Reseller')
+                    : ($order->affiliate?->business_name ?? 'Unknown Affiliate');
+
                 return [
                     'id' => $order->id,
                     'order_number' => $order->order_number,
                     'paid_at' => $order->paid_at->setTimezone(self::TIMEZONE)->toIso8601String(),
                     'package_name' => $order->package?->name ?? 'Unknown Package',
-                    'affiliate_name' => $order->affiliate?->business_name ?? 'Unknown Affiliate',
+                    'source_name' => $sourceName,
                     'final_amount' => $order->final_amount,
                     'affiliate_profit' => $isDelivered ? (int) $entries?->where('owner_type', LedgerOwnerType::Affiliate->value)->sum('amount') : null,
                     'system_profit' => $isDelivered ? (int) $entries?->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount') : null,
@@ -313,21 +356,24 @@ final class CustomerAnalyticsService
 
     /**
      * ADR-050 decision 4 — top 5 by spend, Paid-scoped, grouped by an
-     * arbitrary FK column (package_id/affiliate_id) already eager-loaded
-     * onto $orders.
+     * arbitrary FK column (package_id) or, since the ADR-050 addendum,
+     * a computed composite key (top_sources' 'reseller:{id}'/
+     * 'affiliate:{id}') — hence $groupKey now also accepts a callable,
+     * and $idResolver lets a composite-key caller supply a real id
+     * (Collection::groupBy() has no column to read one off of).
      *
-     * @return list<array{id: ?int, name: string, orders_count: int, total_spent: int, pct_of_spend: float}>
+     * @return list<array{id: int|string|null, name: string, orders_count: int, total_spent: int, pct_of_spend: float}>
      */
-    private function topSpendBreakdown(Collection $orders, string $groupKey, callable $nameResolver): array
+    private function topSpendBreakdown(Collection $orders, string|callable $groupKey, callable $nameResolver, ?callable $idResolver = null): array
     {
         $totalSpent = (int) $orders->sum('final_amount');
 
-        $rows = $orders->groupBy($groupKey)->map(function (Collection $group) use ($groupKey, $nameResolver, $totalSpent) {
+        $rows = $orders->groupBy($groupKey)->map(function (Collection $group) use ($groupKey, $nameResolver, $idResolver, $totalSpent) {
             $spent = (int) $group->sum('final_amount');
             $first = $group->first();
 
             return [
-                'id' => $first->{$groupKey},
+                'id' => $idResolver !== null ? $idResolver($first) : (is_string($groupKey) ? $first->{$groupKey} : null),
                 'name' => $nameResolver($first),
                 'orders_count' => $group->count(),
                 'total_spent' => $spent,
@@ -382,11 +428,20 @@ final class CustomerAnalyticsService
      * because this needs a per-customer-email GROUP BY rather than
      * ReportService's per-order rows.
      *
-     * @return array<string, array{orders_count: int, total_spent: int, first_order_at: CarbonImmutable, last_order_at: CarbonImmutable, customer_name: ?string}>
+     * ADR-049 addendum — also resolves each email group's
+     * `wallet_reseller_id` (`MAX()`, since a wallet-Reseller's own
+     * customer_email is a dedicated bucket that in practice never mixes
+     * wallet and non-wallet orders) and, when set, the Reseller's
+     * `business_name` — the same batched-lookup shape the customer_name
+     * pass below already uses, and the same `withTrashed()` precedent
+     * `ReportService::resellerBreakdown()` uses so a since-removed
+     * reseller's historical rows keep their name.
+     *
+     * @return array<string, array{orders_count: int, total_spent: int, first_order_at: CarbonImmutable, last_order_at: CarbonImmutable, customer_name: ?string, wallet_reseller_id: ?int, reseller_name: ?string}>
      */
-    private function aggregatesByEmail(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    private function aggregatesByEmail(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, ?int $resellerId = null): array
     {
-        $query = $this->scopedOrders($affiliateId);
+        $query = $this->scopedOrders($affiliateId, $resellerId);
 
         if ($from !== null) {
             $query->where('paid_at', '>=', $from);
@@ -397,7 +452,7 @@ final class CustomerAnalyticsService
         }
 
         $rows = $query
-            ->selectRaw('customer_email, COUNT(*) as orders_count, SUM(final_amount) as total_spent, MIN(paid_at) as first_order_at, MAX(paid_at) as last_order_at')
+            ->selectRaw('customer_email, COUNT(*) as orders_count, SUM(final_amount) as total_spent, MIN(paid_at) as first_order_at, MAX(paid_at) as last_order_at, MAX(wallet_reseller_id) as wallet_reseller_id')
             ->groupBy('customer_email')
             ->get();
 
@@ -417,22 +472,31 @@ final class CustomerAnalyticsService
             ->unique('customer_email')
             ->pluck('customer_name', 'customer_email');
 
+        $resellerIds = $rows->pluck('wallet_reseller_id')->filter()->unique()->all();
+        $resellerNames = $resellerIds !== []
+            ? Reseller::query()->withTrashed()->whereIn('id', $resellerIds)->pluck('business_name', 'id')
+            : collect();
+
         $result = [];
 
         foreach ($rows as $row) {
+            $walletResellerId = $row->wallet_reseller_id !== null ? (int) $row->wallet_reseller_id : null;
+
             $result[$row->customer_email] = [
                 'orders_count' => (int) $row->orders_count,
                 'total_spent' => (int) $row->total_spent,
                 'first_order_at' => CarbonImmutable::parse($row->first_order_at),
                 'last_order_at' => CarbonImmutable::parse($row->last_order_at),
                 'customer_name' => $names[$row->customer_email] ?? null,
+                'wallet_reseller_id' => $walletResellerId,
+                'reseller_name' => $walletResellerId !== null ? ($resellerNames[$walletResellerId] ?? 'Unknown Reseller') : null,
             ];
         }
 
         return $result;
     }
 
-    private function scopedOrders(?int $affiliateId): Builder
+    private function scopedOrders(?int $affiliateId, ?int $resellerId = null): Builder
     {
         $query = Order::query()
             ->where('is_test', false)
@@ -441,6 +505,17 @@ final class CustomerAnalyticsService
 
         if ($affiliateId !== null) {
             $query->where('affiliate_id', $affiliateId);
+        }
+
+        // ADR-049 addendum — independently combinable with $affiliateId
+        // above (mirrors ReportService's own filter shape): a
+        // wallet-Reseller order's affiliate_id is always the primary
+        // brand (ADR-073 decision 5), so picking a non-primary Affiliate
+        // AND a Reseller at once naturally returns nothing — not a
+        // conflict to guard against, the same way an impossible
+        // affiliate+date combination already just returns an empty list.
+        if ($resellerId !== null) {
+            $query->where('wallet_reseller_id', $resellerId);
         }
 
         return $query;

@@ -6,6 +6,7 @@ use App\Jobs\FulfillOrderJob;
 use App\Jobs\Reseller\DeliverResellerWebhook;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
@@ -128,6 +129,73 @@ class OrderControllerTest extends TestCase
         $response->assertOk();
         $this->assertCount(1, $response->json('data'));
         $this->assertSame('KRS-NEEDS-ACTION', $response->json('data.0.order_number'));
+    }
+
+    /**
+     * ADR-108 decision 1 — a Paid+Failed order that already has a
+     * compensation Voucher no longer counts as "need action": the
+     * admin already resolved it, isAlreadyCompensated() already blocks
+     * every further action on it, so it shouldn't still show up asking
+     * for one. Confirmed live on production 2026-09-18: all 4 orders
+     * in this bucket were already compensated, real actionable count
+     * was 0, not 4.
+     */
+    public function test_index_need_action_excludes_an_order_with_a_compensation_voucher(): void
+    {
+        $order = $this->order(['order_number' => 'KRS-VOUCHERED', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        Voucher::query()->create([
+            'order_id' => $order->id, 'affiliate_id' => $order->affiliate_id,
+            'code' => 'KRS-COMP-TEST', 'customer_email' => 'buyer@example.com',
+            'amount' => 500, 'remaining' => 500, 'status' => 'active', 'reason' => 'test',
+        ]);
+        $this->order(['order_number' => 'KRS-STILL-NEEDS-ACTION', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=need_action');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-STILL-NEEDS-ACTION', $response->json('data.0.order_number'));
+    }
+
+    /** ADR-108 decision 1 — same exclusion, wallet-refund compensation path. */
+    public function test_index_need_action_excludes_an_order_already_refunded_to_wallet(): void
+    {
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'order_number' => 'KRS-WALLET-REFUNDED', 'wallet_reseller_id' => $reseller->id,
+            'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, $order->final_amount, 'wallet_refund', 'order', $order->id);
+        $this->order(['order_number' => 'KRS-STILL-NEEDS-ACTION', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=need_action');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-STILL-NEEDS-ACTION', $response->json('data.0.order_number'));
+    }
+
+    /** ADR-108 decision 1 — same exclusion, restore-only path (ADR-024 addendum, no `voucher()` row at all). */
+    public function test_index_need_action_excludes_an_order_with_a_restored_voucher_redemption(): void
+    {
+        $order = $this->order(['order_number' => 'KRS-RESTORED', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $paidWith = Voucher::query()->create([
+            'affiliate_id' => $order->affiliate_id, 'code' => 'KRS-ORIGINAL', 'customer_email' => 'buyer@example.com',
+            'amount' => 1000, 'remaining' => 1000, 'status' => 'active', 'reason' => 'test',
+        ]);
+        VoucherRedemption::query()->create([
+            'voucher_id' => $paidWith->id, 'order_id' => $order->id, 'amount' => 1000, 'status' => 'restored',
+        ]);
+        $this->order(['order_number' => 'KRS-STILL-NEEDS-ACTION', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=need_action');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-STILL-NEEDS-ACTION', $response->json('data.0.order_number'));
     }
 
     /**
@@ -282,6 +350,29 @@ class OrderControllerTest extends TestCase
         $response->assertJson(['need_action' => 1, 'all' => 1]);
     }
 
+    /**
+     * ADR-108 decision 1 — the KPI card must agree with the tab it
+     * labels: a compensated Paid+Failed order no longer counts, same
+     * exclusion as the index() filter (same underlying scope, so they
+     * can never drift out of sync with each other again).
+     */
+    public function test_summary_need_action_excludes_a_compensated_order(): void
+    {
+        $order = $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        Voucher::query()->create([
+            'order_id' => $order->id, 'affiliate_id' => $order->affiliate_id,
+            'code' => 'KRS-COMP-SUMMARY', 'customer_email' => 'buyer@example.com',
+            'amount' => 500, 'remaining' => 500, 'status' => 'active', 'reason' => 'test',
+        ]);
+        $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders/summary');
+
+        $response->assertOk();
+        $response->assertJson(['need_action' => 1, 'all' => 2]);
+    }
+
     public function test_index_can_search_by_order_number(): void
     {
         $this->order(['order_number' => 'KRS-FINDME', 'customer_email' => 'a@example.com']);
@@ -304,6 +395,120 @@ class OrderControllerTest extends TestCase
 
         $response->assertOk();
         $this->assertCount(1, $response->json('data'));
+    }
+
+    /** ADR-108 decision 4 — search widened to match game name too, not just order#/email. */
+    public function test_index_can_search_by_game_name(): void
+    {
+        $game = Game::query()->create(['name' => 'Mobile Legends Malaysia', 'slug' => 'mlbb-my']);
+        $this->order(['order_number' => 'KRS-A', 'game_id' => $game->id]);
+        $this->order(['order_number' => 'KRS-B']);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?search=Mobile Legends');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-A', $response->json('data.0.order_number'));
+    }
+
+    /** ADR-108 decision 5 — source filter: reseller (wallet) / affiliate (partner whitelabel) / direct (primary brand or no affiliate). */
+    public function test_index_can_filter_by_source_reseller(): void
+    {
+        $reseller = $this->walletReseller();
+        $this->order(['order_number' => 'KRS-RESELLER', 'wallet_reseller_id' => $reseller->id]);
+        $this->order(['order_number' => 'KRS-DIRECT']);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?source=reseller');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-RESELLER', $response->json('data.0.order_number'));
+    }
+
+    public function test_index_can_filter_by_source_affiliate(): void
+    {
+        $partner = Affiliate::query()->create(['business_name' => 'Acme Partner', 'markup_pct' => 5, 'status' => 'active', 'is_owned' => false]);
+        $this->order(['order_number' => 'KRS-PARTNER', 'affiliate_id' => $partner->id]);
+        $this->order(['order_number' => 'KRS-PRIMARY']);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?source=affiliate');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-PARTNER', $response->json('data.0.order_number'));
+    }
+
+    public function test_index_can_filter_by_source_direct(): void
+    {
+        $partner = Affiliate::query()->create(['business_name' => 'Acme Partner', 'markup_pct' => 5, 'status' => 'active', 'is_owned' => false]);
+        $this->order(['order_number' => 'KRS-PARTNER', 'affiliate_id' => $partner->id]);
+        $this->order(['order_number' => 'KRS-PRIMARY']);
+        $reseller = $this->walletReseller();
+        $this->order(['order_number' => 'KRS-RESELLER', 'wallet_reseller_id' => $reseller->id]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?source=direct');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-PRIMARY', $response->json('data.0.order_number'));
+    }
+
+    /** ADR-108 decision 6 — game filter, exact game_id match. */
+    public function test_index_can_filter_by_game_id(): void
+    {
+        $gameA = Game::query()->create(['name' => 'Game A', 'slug' => 'game-a']);
+        $gameB = Game::query()->create(['name' => 'Game B', 'slug' => 'game-b']);
+        $this->order(['order_number' => 'KRS-A', 'game_id' => $gameA->id]);
+        $this->order(['order_number' => 'KRS-B', 'game_id' => $gameB->id]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders?game_id={$gameA->id}");
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-A', $response->json('data.0.order_number'));
+    }
+
+    /** ADR-108 decision 7 — date-range filter on created_at, reusing the Reports page's own preset shape (KL calendar-date 'YYYY-MM-DD', both inclusive). */
+    public function test_index_can_filter_by_date_range(): void
+    {
+        $inRange = $this->order(['order_number' => 'KRS-IN-RANGE']);
+        $inRange->forceFill(['created_at' => '2026-09-10 12:00:00'])->save();
+        $outOfRange = $this->order(['order_number' => 'KRS-OUT-OF-RANGE']);
+        $outOfRange->forceFill(['created_at' => '2026-09-01 12:00:00'])->save();
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?date_from=2026-09-05&date_to=2026-09-15');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('KRS-IN-RANGE', $response->json('data.0.order_number'));
+    }
+
+    /** ADR-108 decision 9 (ORD-5) — CSV export respects the current filter set, streams every matching row, not just the current page. */
+    public function test_export_requires_authentication(): void
+    {
+        $this->getJson('/api/orders/export')->assertUnauthorized();
+    }
+
+    public function test_export_streams_a_csv_of_matching_orders(): void
+    {
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $this->order(['order_number' => 'KRS-EXPORT-ME', 'game_id' => $game->id, 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Delivered->value]);
+        $this->order(['order_number' => 'KRS-EXCLUDED', 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->get('/api/orders/export?status=completed');
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $csv = $response->streamedContent();
+        $this->assertStringContainsString('KRS-EXPORT-ME', $csv);
+        $this->assertStringNotContainsString('KRS-EXCLUDED', $csv);
     }
 
     public function test_show_returns_full_order_detail(): void

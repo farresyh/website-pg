@@ -44,6 +44,7 @@ import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { type ReportAffiliate, listReportAffiliates } from "@/lib/reports";
+import { type ResellerRow, listResellers } from "@/lib/resellers";
 import {
   type CustomerAnalyticsFilters,
   type CustomerAnalyticsRow,
@@ -55,6 +56,7 @@ import {
 } from "@/lib/customer-analytics";
 
 const AFFILIATE_ALL = "all";
+const RESELLER_ALL = "all";
 const YEAR_ALL = "all";
 const SEGMENT_ALL = "all";
 
@@ -99,6 +101,8 @@ export default function CustomerAnalyticsPage() {
 
   const [affiliates, setAffiliates] = useState<ReportAffiliate[]>([]);
   const [affiliateId, setAffiliateId] = useState<string>(AFFILIATE_ALL);
+  const [resellers, setResellers] = useState<ResellerRow[]>([]);
+  const [resellerId, setResellerId] = useState<string>(RESELLER_ALL);
   const [year, setYear] = useState<string>(YEAR_ALL);
   const [month, setMonth] = useState<string>(YEAR_ALL);
   const [segment, setSegment] = useState<string>(SEGMENT_ALL);
@@ -120,12 +124,14 @@ export default function CustomerAnalyticsPage() {
     year: year === YEAR_ALL ? undefined : Number(year),
     month: year === YEAR_ALL || month === YEAR_ALL ? undefined : Number(month),
     affiliateId: affiliateId === AFFILIATE_ALL ? undefined : Number(affiliateId),
+    resellerId: resellerId === RESELLER_ALL ? undefined : Number(resellerId),
     segment: segment === SEGMENT_ALL ? undefined : (segment as CustomerSegment),
   };
 
   useEffect(() => {
     if (!session) return;
     listReportAffiliates(session.token).then(setAffiliates).catch(() => undefined);
+    listResellers(session.token).then((res) => setResellers(res.resellers)).catch(() => undefined);
   }, [session]);
 
   const refresh = useCallback((token: string, f: CustomerAnalyticsFilters) => {
@@ -141,7 +147,7 @@ export default function CustomerAnalyticsPage() {
     if (!session) return;
     refresh(session.token, filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, year, month, affiliateId, segment]);
+  }, [session, year, month, affiliateId, resellerId, segment]);
 
   async function handleExport() {
     if (!session) return;
@@ -159,6 +165,15 @@ export default function CustomerAnalyticsPage() {
   const affiliateOptions = [
     { label: "All Affiliates", value: AFFILIATE_ALL },
     ...affiliates.map((r) => ({ label: r.business_name, value: String(r.id) })),
+  ];
+
+  // ADR-049 addendum — independent of the Affiliate filter above (a
+  // wallet Reseller order's affiliate_id is always the primary brand,
+  // so picking both at once naturally returns nothing rather than
+  // needing a mutual-exclusion guard).
+  const resellerOptions = [
+    { label: "All Resellers", value: RESELLER_ALL },
+    ...resellers.map((r) => ({ label: r.business_name, value: String(r.id) })),
   ];
 
   return (
@@ -215,6 +230,7 @@ export default function CustomerAnalyticsPage() {
       {/* ANL-4: filters */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <FilterSelect label="Affiliate" value={affiliateId} onChange={setAffiliateId} options={affiliateOptions} />
+        <FilterSelect label="Reseller" value={resellerId} onChange={setResellerId} options={resellerOptions} />
         <FilterSelect label="Segment" value={segment} onChange={setSegment} options={segmentOptions} />
         <FilterSelect
           label="Year"
@@ -244,6 +260,7 @@ export default function CustomerAnalyticsPage() {
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Email</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Name</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Segment</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Orders</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Total Spent</DataTableTHeadCell>
@@ -265,6 +282,13 @@ export default function CustomerAnalyticsPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {row.customer_name ?? "—"}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
+                          {row.reseller_name ? (
+                            <Tag severity="info">{`Reseller: ${row.reseller_name}`}</Tag>
+                          ) : (
+                            <span className="text-gray-500 dark:text-gray-400">Retail</span>
+                          )}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           {row.segment ? <Tag severity={segmentSeverity[row.segment]}>{row.segment_label}</Tag> : "—"}

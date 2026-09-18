@@ -190,7 +190,7 @@ export default function ReviewModal({
     } catch (err) {
       setAppliedVoucher(null);
       onVoucherChange(null);
-      setVoucherError(err instanceof ApiError ? err.message : "Couldn't check that voucher — please try again.");
+      setVoucherError(err instanceof ApiError ? err.message : "Couldn't check that voucher. Please try again.");
     } finally {
       setApplying(false);
     }
@@ -418,7 +418,7 @@ export default function ReviewModal({
             {submitting
               ? "Processing…"
               : payableRm === 0
-                ? "Confirm — Fully Covered by Voucher"
+                ? "Confirm: Fully Covered by Voucher"
                 : `Confirm & Pay RM${payableRm.toFixed(2)}`}
           </Button>
 
