@@ -98,9 +98,14 @@ const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "today", label: "Today" },
 ];
 
-/** ADR-108 decision 5 — Source filter, single-select, mirrors the Source column's own 3 states. */
-const SOURCE_FILTERS: { value: OrderSourceFilter | ""; label: string }[] = [
-  { value: "", label: "All sources" },
+/**
+ * ADR-108 decision 5 — Source filter, single-select, mirrors the Source
+ * column's own 3 states. "all" (not "") is the no-filter sentinel — this
+ * Select component treats an empty-string value as "nothing selected"
+ * and renders no label at all, unlike a native <select>'s placeholder.
+ */
+const SOURCE_FILTERS: { value: OrderSourceFilter | "all"; label: string }[] = [
+  { value: "all", label: "All sources" },
   { value: "direct", label: "Direct" },
   { value: "affiliate", label: "Affiliate" },
   { value: "reseller", label: "Reseller" },
@@ -220,8 +225,8 @@ function OrdersPageInner() {
   // ADR-108 decisions 5-7 — Source/Game/date-range, each orthogonal to
   // the status tab above (can combine with any of them, same as the
   // Reports page's own filter row).
-  const [source, setSource] = useState<OrderSourceFilter | "">("");
-  const [gameId, setGameId] = useState<number | "">("");
+  const [source, setSource] = useState<OrderSourceFilter | "all">("all");
+  const [gameId, setGameId] = useState<number | "all">("all");
   const [games, setGames] = useState<Game[]>([]);
   const [rangePreset, setRangePreset] = useState<DateRangePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
@@ -253,7 +258,15 @@ function OrdersPageInner() {
   // deps instead of every individual field — a fresh object literal on
   // every render would otherwise refire the effect every render too.
   const orderFilters = useMemo(
-    () => ({ status, search: search || undefined, page: pageNumber, source: source || undefined, gameId: gameId || undefined, dateFrom, dateTo }),
+    () => ({
+      status,
+      search: search || undefined,
+      page: pageNumber,
+      source: source === "all" ? undefined : source,
+      gameId: gameId === "all" ? undefined : gameId,
+      dateFrom,
+      dateTo,
+    }),
     [status, search, pageNumber, source, gameId, dateFrom, dateTo],
   );
   // Adjusted during render (React's own pattern for "reset state when
@@ -846,7 +859,7 @@ function OrdersPageInner() {
 
       {/* ADR-108 decisions 5-8 — Source/Game/date-range filters + Columns toggle, orthogonal to the status tabs above. */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Select value={source} options={SOURCE_FILTERS} optionLabel="label" optionValue="value" onValueChange={(e) => setSource(e.value as OrderSourceFilter | "")}>
+        <Select value={source} options={SOURCE_FILTERS} optionLabel="label" optionValue="value" onValueChange={(e) => setSource(e.value as OrderSourceFilter | "all")}>
           <SelectTrigger className="min-w-[9rem]">
             <SelectValue />
             <SelectIndicator />
@@ -856,7 +869,7 @@ function OrdersPageInner() {
               <SelectPopup>
                 <SelectList>
                   {SOURCE_FILTERS.map((opt, index) => (
-                    <SelectOption key={opt.value || "all"} index={index}>
+                    <SelectOption key={opt.value} index={index}>
                       {opt.label}
                     </SelectOption>
                   ))}
@@ -867,11 +880,11 @@ function OrdersPageInner() {
         </Select>
 
         <Select
-          value={gameId === "" ? "" : String(gameId)}
-          options={[{ label: "All games", value: "" }, ...games.map((g) => ({ label: g.name, value: String(g.id) }))]}
+          value={gameId === "all" ? "all" : String(gameId)}
+          options={[{ label: "All games", value: "all" }, ...games.map((g) => ({ label: g.name, value: String(g.id) }))]}
           optionLabel="label"
           optionValue="value"
-          onValueChange={(e) => setGameId(e.value ? Number(e.value) : "")}
+          onValueChange={(e) => setGameId(e.value === "all" ? "all" : Number(e.value))}
         >
           <SelectTrigger className="min-w-[10rem]">
             <SelectValue />
