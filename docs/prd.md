@@ -715,8 +715,9 @@ drops off this list into `docs/build-log.md`.
 5. **e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
    30s timeout under the 60s per-test budget; raise it.
 6. Small unbuilt scope, none blocking: ORD-5 (order export), SET-9 (the Telegram
-   *sender* — the setting fields exist), gallery in-modal picker, gallery→WebP
-   + delete referential safety, SEO `AggregateRating` JSON-LD on the PDP,
+   *sender* — the setting fields exist), gallery in-modal picker (paste-URL —
+   gallery→WebP + delete referential safety already shipped, ADR-095),
+   SEO `AggregateRating` JSON-LD on the PDP,
    **ADR-090's dark-palette backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each still need a
    hand-authored `tokensDark` (only `default` has one; the portal's Site Mode
    toggle already hides "Dark" for any preset without one, so this is additive
