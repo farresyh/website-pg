@@ -93,10 +93,21 @@ class OrderStatusUpdatedTest extends TestCase
 
         $channels = $event->broadcastOn();
 
-        $this->assertCount(1, $channels);
         $this->assertInstanceOf(Channel::class, $channels[0]);
         $this->assertNotInstanceOf(PrivateChannel::class, $channels[0]);
         $this->assertSame('order.KRS-TEST-BROADCAST-2', $channels[0]->name);
+    }
+
+    /** ADR-047 addendum (2026-09-19) — the admin Orders screen's own refresh channel. */
+    public function test_also_broadcasts_on_the_private_admin_orders_channel(): void
+    {
+        $event = new OrderStatusUpdated($this->order());
+
+        $channels = $event->broadcastOn();
+
+        $this->assertCount(2, $channels);
+        $this->assertInstanceOf(PrivateChannel::class, $channels[1]);
+        $this->assertSame('private-admin-orders', $channels[1]->name);
     }
 
     public function test_broadcast_payload_excludes_internal_financial_and_operational_fields(): void

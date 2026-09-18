@@ -5,6 +5,7 @@ namespace App\Events;
 use App\Http\Controllers\TrackOrderController;
 use App\Models\Order;
 use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -29,6 +30,18 @@ use Illuminate\Queue\SerializesModels;
  * see that observer's own doc comment for why (a real reproduced bug: a
  * Reverb-unreachable broadcast must never be allowed to throw out of the
  * `DB::transaction()` it's reporting on).
+ *
+ * ADR-047 addendum (2026-09-19) — also broadcasts on a second, PRIVATE
+ * `admin-orders` channel (routes/channels.php), replacing the admin
+ * Orders screen's own bounded poll (Resend Delivery) and fire-and-forget
+ * gap (Retry Delivery) after a queued FulfillOrderJob/ResendOrderDeliveryJob
+ * actually writes the new status. One admin-wide channel, not one per
+ * order — same "the screen already refetches on any change" reasoning
+ * BackupRunUpdated's own doc comment gives, not a per-run/per-order
+ * channel. Reuses `broadcastWith()`'s existing customer-safe payload
+ * verbatim as a pure "order {order_number} changed" signal — the admin
+ * frontend refetches its own authoritative data from the REST API, it
+ * never trusts this payload as the source of truth.
  */
 final class OrderStatusUpdated implements ShouldBroadcast
 {
@@ -38,7 +51,10 @@ final class OrderStatusUpdated implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
-        return [new Channel('order.'.$this->order->order_number)];
+        return [
+            new Channel('order.'.$this->order->order_number),
+            new PrivateChannel('admin-orders'),
+        ];
     }
 
     public function broadcastAs(): string

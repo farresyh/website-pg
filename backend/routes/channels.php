@@ -29,3 +29,13 @@ Broadcast::channel('price-sync-run.{runId}', function (AdminUser $admin, int $ru
 Broadcast::channel('backups', function (AdminUser $admin) {
     return $admin->role === 'super_admin' && $admin->is_active;
 });
+
+// Orders (`/admin/orders`) — ADR-047 addendum (2026-09-19). Mirrors
+// routes/api.php's `admin.role:super_admin,admin` group on `/api/orders`
+// exactly (both roles, not super_admin-only like Price Sync/Backups) —
+// this channel never grants broadcast access a role couldn't already get
+// through the ordinary REST endpoints. One admin-wide channel, same
+// "refetch on any change" shape as `backups`.
+Broadcast::channel('admin-orders', function (AdminUser $admin) {
+    return in_array($admin->role, ['super_admin', 'admin'], true) && $admin->is_active;
+});
