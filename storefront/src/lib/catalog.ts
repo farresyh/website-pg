@@ -32,6 +32,16 @@ const CatalogGameWireSchema = z.object({
    * narrow-response-shape discipline), not `.nullable()`-only.
    */
   zone_options: z.array(z.string()).nullable().optional(),
+  /**
+   * ADR-109 decisions 11/12 — same detail-only-response shape as
+   * zone_options above. description/important_notes gate the "How to
+   * Buy" popup's auto-open; delivery_mode/delivery_subtext feed
+   * ProductHeaderCard's badge.
+   */
+  description: z.string().nullable().optional(),
+  important_notes: z.array(z.string()).optional(),
+  delivery_mode: z.enum(["instant", "manual"]).optional(),
+  delivery_subtext: z.string().optional(),
   player_validator_enabled: z.boolean(),
   price_from_sen: z.number().nullable().optional(),
   created_at: z.string().optional(),
@@ -102,6 +112,12 @@ export interface GameDetail extends Game {
    * <select>.
    */
   zoneOptions: string[] | null;
+  /** ADR-109 — null/empty gates the "How to Buy" popup's auto-open and its manual re-open trigger. */
+  description: string | null;
+  importantNotes: string[];
+  deliveryMode: "instant" | "manual";
+  /** Never empty — CatalogController's effectiveDeliverySubtext() already applies the "Average delivery: 1–3 minutes" fallback. */
+  deliverySubtext: string;
 }
 
 export interface GamePackage {
@@ -142,6 +158,10 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
     schemaCategory: wire.schema_category ?? null,
     noIndex: wire.no_index ?? false,
     zoneOptions: wire.zone_options && wire.zone_options.length > 0 ? wire.zone_options : null,
+    description: wire.description ?? null,
+    importantNotes: wire.important_notes ?? [],
+    deliveryMode: wire.delivery_mode ?? "instant",
+    deliverySubtext: wire.delivery_subtext ?? "Average delivery: 1–3 minutes",
   };
 }
 

@@ -1,8 +1,9 @@
 import Image from "next/image";
-import { Lightning } from "@phosphor-icons/react/dist/ssr";
-import type { Game } from "@/lib/catalog";
+import { Lightning, Clock } from "@phosphor-icons/react/dist/ssr";
+import type { GameDetail } from "@/lib/catalog";
 
-export default function ProductHeaderCard({ game }: { game: Game }) {
+export default function ProductHeaderCard({ game }: { game: GameDetail }) {
+  const isInstant = game.deliveryMode === "instant";
   return (
     <div className="mb-6 flex items-center gap-5 rounded-lg border-2 border-ink bg-surface-container-lowest p-5 neo">
       <div
@@ -23,10 +24,14 @@ export default function ProductHeaderCard({ game }: { game: Game }) {
         {game.publisher && <p className="text-[13px] text-on-surface-variant">{game.publisher}</p>}
         <div className="mt-2 flex flex-wrap items-center gap-2.5">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-ink bg-surface-container px-2.5 py-0.5 font-display text-[11px] font-bold uppercase tracking-wide">
-            <Lightning size={12} weight="fill" className="text-primary" />
-            Instant Delivery
+            {isInstant ? (
+              <Lightning size={12} weight="fill" className="text-primary" />
+            ) : (
+              <Clock size={12} weight="fill" className="text-secondary" />
+            )}
+            {isInstant ? "Instant Delivery" : "Manual Processing"}
           </span>
-          <span className="text-xs text-on-surface-variant">Average delivery: 1–3 minutes</span>
+          <span className="text-xs text-on-surface-variant">{game.deliverySubtext}</span>
         </div>
       </div>
     </div>
