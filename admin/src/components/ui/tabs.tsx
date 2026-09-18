@@ -32,6 +32,7 @@ function TabsTab({ className, ...props }: TabsTabProps) {
                 className
             )}
             {...props}
+            type="button"
         />
     );
 }
