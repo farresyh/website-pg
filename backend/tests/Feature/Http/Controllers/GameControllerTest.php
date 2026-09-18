@@ -274,6 +274,48 @@ class GameControllerTest extends TestCase
         $this->assertFalse($game->is_active);
     }
 
+    public function test_update_sets_the_adr_109_content_and_delivery_fields(): void
+    {
+        $game = Game::query()->create(['name' => 'Genshin Impact', 'slug' => 'genshin-impact', 'is_active' => true]);
+        $this->actingAsAdmin();
+
+        $response = $this->putJson("/api/games/{$game->id}", [
+            'name' => 'Genshin Impact',
+            'slug' => 'genshin-impact',
+            'is_active' => true,
+            'description' => 'Top-up Genesis Crystals for Genshin Impact.',
+            'important_notes' => ['Double-check your UID.', 'Server must match your account region.'],
+            'delivery_mode' => 'manual',
+            'delivery_subtext' => '5-30 minutes',
+        ]);
+
+        $response->assertOk();
+        $game->refresh();
+        $this->assertSame('Top-up Genesis Crystals for Genshin Impact.', $game->description);
+        $this->assertSame(
+            ['Double-check your UID.', 'Server must match your account region.'],
+            $game->important_notes,
+        );
+        $this->assertSame('manual', $game->delivery_mode);
+        $this->assertSame('5-30 minutes', $game->delivery_subtext);
+    }
+
+    public function test_update_rejects_an_unknown_delivery_mode(): void
+    {
+        $game = Game::query()->create(['name' => 'Genshin Impact', 'slug' => 'genshin-impact', 'is_active' => true]);
+        $this->actingAsAdmin();
+
+        $response = $this->putJson("/api/games/{$game->id}", [
+            'name' => 'Genshin Impact',
+            'slug' => 'genshin-impact',
+            'is_active' => true,
+            'delivery_mode' => 'scheduled',
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['delivery_mode']);
+    }
+
     public function test_update_assigns_a_player_validator_profile_and_toggles_it_on(): void
     {
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);

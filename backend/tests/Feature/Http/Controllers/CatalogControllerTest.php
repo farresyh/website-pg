@@ -164,6 +164,40 @@ class CatalogControllerTest extends TestCase
         $response->assertJsonPath('zone_options', null);
     }
 
+    /** ADR-109 decision 12 — GameInfoModal.tsx/ProductHeaderCard.tsx's own fields. */
+    public function test_show_returns_the_games_content_and_delivery_fields(): void
+    {
+        Game::query()->create([
+            'name' => 'PUBG Mobile UC', 'slug' => 'pubg-mobile-uc-global', 'is_active' => true,
+            'description' => 'Top-up UC for PUBG Mobile Global.',
+            'important_notes' => ['Only available 10:30 AM to 12:00 AM (MYT).'],
+            'delivery_mode' => 'manual',
+            'delivery_subtext' => '5-30 minutes',
+        ]);
+
+        $response = $this->getJson('/api/catalog/games/pubg-mobile-uc-global');
+
+        $response->assertOk();
+        $response->assertJsonPath('description', 'Top-up UC for PUBG Mobile Global.');
+        $response->assertJsonPath('important_notes', ['Only available 10:30 AM to 12:00 AM (MYT).']);
+        $response->assertJsonPath('delivery_mode', 'manual');
+        $response->assertJsonPath('delivery_subtext', '5-30 minutes');
+    }
+
+    /** ADR-109 decision 1 — zero admin action required for a game that predates this column. */
+    public function test_show_defaults_delivery_mode_and_subtext_for_an_untouched_game(): void
+    {
+        Game::query()->create(['name' => 'Free Fire Global 3', 'slug' => 'free-fire-global-3', 'is_active' => true]);
+
+        $response = $this->getJson('/api/catalog/games/free-fire-global-3');
+
+        $response->assertOk();
+        $response->assertJsonPath('delivery_mode', 'instant');
+        $response->assertJsonPath('delivery_subtext', 'Average delivery: 1–3 minutes');
+        $response->assertJsonPath('description', null);
+        $response->assertJsonPath('important_notes', []);
+    }
+
     public function test_show_404s_for_an_inactive_game(): void
     {
         Game::query()->create(['name' => 'Discontinued', 'slug' => 'discontinued', 'is_active' => false]);

@@ -262,6 +262,15 @@ class CatalogController extends Controller
             // null/empty preserves today's free-text <input> exactly.
             'zone_options' => $game->zoneOptions(),
             'player_validator_enabled' => $game->player_validator_enabled,
+            // ADR-109 decisions 11/12 — flat siblings, same shape as
+            // extra_field/zone_options above. important_notes/
+            // description gate the storefront's auto-open modal;
+            // delivery_mode/delivery_subtext feed ProductHeaderCard's
+            // badge, which used to hardcode this for every game.
+            'description' => $game->description,
+            'important_notes' => $game->important_notes ?? [],
+            'delivery_mode' => $game->delivery_mode,
+            'delivery_subtext' => $game->effectiveDeliverySubtext(),
             'seo_title' => $game->seo_title,
             'seo_title_local' => $game->seo_title_local,
             'seo_description' => $game->seo_description,

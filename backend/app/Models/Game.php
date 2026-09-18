@@ -17,6 +17,10 @@ class Game extends Model
         'sort_order',
         'image_url',
         'banner_url',
+        'description',
+        'important_notes',
+        'delivery_mode',
+        'delivery_subtext',
         'supplier_mappings',
         'validation_rules',
         'player_validator_profile_id',
@@ -35,6 +39,7 @@ class Game extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'sort_order' => 'integer',
+        'important_notes' => 'array',
         'supplier_mappings' => 'array',
         'validation_rules' => 'array',
         'player_validator_enabled' => 'boolean',
@@ -83,5 +88,17 @@ class Game extends Model
         $options = $this->validation_rules['zone_options'] ?? null;
 
         return is_array($options) && $options !== [] ? $options : null;
+    }
+
+    /**
+     * ADR-109 decision 1 — `delivery_subtext` stays nullable at the DB
+     * layer, but every reader (CatalogController, admin edit form)
+     * sees the same default text ProductHeaderCard hardcoded before
+     * this column existed, so no admin action is required for any
+     * existing game to keep behaving exactly as it does today.
+     */
+    public function effectiveDeliverySubtext(): string
+    {
+        return $this->delivery_subtext ?? 'Average delivery: 1–3 minutes';
     }
 }
