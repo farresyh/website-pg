@@ -146,6 +146,27 @@ export default function OrderForm({
   }, [membershipToken, game.slug, ssrMembershipToken]);
 
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
+  const step3Ref = useRef<HTMLDivElement>(null);
+  // Picking a package brings Step 3 (and the membership promo card right
+  // below it) into view without a manual scroll — mobile/tablet only
+  // (< lg, the same breakpoint the layout itself switches on): desktop's
+  // two-column layout already keeps Step 3 and the sidebar promo card in
+  // view side by side, so a scroll jump there would be an unrequested,
+  // more jarring surprise for a mouse-driven visitor. Scrolls by a
+  // manually computed offset, not bare `scrollIntoView`, because the
+  // sticky `SiteHeader` would otherwise sit on top of and hide Step 3's
+  // own title. Skipped for a visitor who has asked the OS to reduce
+  // motion.
+  useEffect(() => {
+    if (selectedPackageId === null) return;
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+    const target = step3Ref.current;
+    if (!target) return;
+    const headerHeight = document.querySelector("header")?.getBoundingClientRect().height ?? 0;
+    const top = target.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+  }, [selectedPackageId]);
   const [playerId, setPlayerIdRaw] = useState("");
   const [serverId, setServerIdRaw] = useState("");
   const [step1Continued, setStep1Continued] = useState(false);
@@ -426,6 +447,7 @@ export default function OrderForm({
           {packages.length === 0 && <p className="text-sm text-on-surface-variant">No packages available for this game yet.</p>}
         </StepCard>
 
+        <div ref={step3Ref}>
         <StepCard number={3} title="Choose Payment Method" locked={!step2Complete} lockHint="Choose a package first">
           {CHANNEL_GROUPS.map((group) => {
             const channels = paymentChannels.filter(
@@ -482,6 +504,7 @@ export default function OrderForm({
             <span className="text-[11px] text-on-surface-variant">BNM Compliant • 256-bit SSL</span>
           </div>
         </StepCard>
+        </div>
       </div>
 
       <div className="flex flex-col gap-5 lg:sticky lg:top-20">
@@ -548,6 +571,8 @@ export default function OrderForm({
           submitError={submitError}
           onConfirm={handleConfirmPayment}
           onVoucherChange={setVoucherCode}
+          showMembershipPromo={showPromo}
+          topTierMemberPriceRm={selectedTier2MemberPriceRm}
         />
       )}
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { X } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, Crown, X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-client";
 import { previewVoucher, type VoucherPreviewResult } from "@/lib/vouchers";
@@ -33,6 +33,10 @@ interface ReviewModalProps {
   onConfirm: () => void;
   /** ADR-024 — the applied voucher's code, or null once cleared/removed. */
   onVoucherChange: (code: string | null) => void;
+  /** ADR-055 second touchpoint (design preview) — same `showPromo` gate OrderForm already computes for the sidebar card: false/omitted hides the strip entirely (no plans, or the visitor is already on the top tier). */
+  showMembershipPromo?: boolean;
+  /** The top tier's member price for this package, RM — same value the sidebar card promotes. */
+  topTierMemberPriceRm?: number | null;
 }
 
 const inputClass =
@@ -74,6 +78,8 @@ export default function ReviewModal({
   submitError,
   onConfirm,
   onVoucherChange,
+  showMembershipPromo = false,
+  topTierMemberPriceRm = null,
 }: ReviewModalProps) {
   const [tcChecked, setTcChecked] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -372,6 +378,30 @@ export default function ReviewModal({
             </div>
           )}
           <Row k={isMemberPrice ? "Member Price" : "Package Price"} v={`RM${packagePriceRm.toFixed(2)}`} />
+          {!isMemberPrice && showMembershipPromo && topTierMemberPriceRm !== null && (
+            <div className="flex min-h-[60px] items-center justify-between gap-3 rounded-lg border-2 border-ink bg-secondary-container px-3.5 py-2 text-on-secondary-container">
+              <div className="flex items-center gap-2">
+                <Crown size={16} weight="fill" className="shrink-0 text-on-secondary-container/70" />
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-on-secondary-container/70">
+                    Members Pay
+                  </p>
+                  <p className="font-mono text-xl font-bold leading-tight">
+                    RM{topTierMemberPriceRm.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/membership"
+                target="_blank"
+                onClick={(e) => e.stopPropagation()}
+                className="flex shrink-0 items-center gap-1 text-[11.5px] font-bold underline underline-offset-2"
+              >
+                Become a Member
+                <ArrowRight size={11} weight="bold" />
+              </Link>
+            </div>
+          )}
           {transactionFeeRm != null && <Row k="Transaction Fee" v={`RM${transactionFeeRm.toFixed(2)}`} />}
           {appliedVoucher && (
             <div className="flex items-center justify-between text-sm text-primary">
