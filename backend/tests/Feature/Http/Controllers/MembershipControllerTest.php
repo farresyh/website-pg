@@ -160,6 +160,43 @@ class MembershipControllerTest extends TestCase
         }
     }
 
+    /** Dashboard-preview sizing (not a business rule) — cap kept small as the customer base grows, not for query-cost reasons (`customer_email` is already indexed, ADR-077). */
+    public function test_me_order_history_caps_at_ten_most_recent(): void
+    {
+        $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+
+        for ($i = 0; $i < 12; $i++) {
+            $order = Order::query()->create([
+                'affiliate_id' => $this->primaryAffiliate()->id,
+                'order_number' => "KRS-CAP{$i}", 'reference_number' => "REF-CAP{$i}",
+                'game_id' => $game->id, 'package_id' => $package->id,
+                'customer_name' => 'Member', 'customer_email' => 'member@example.com', 'customer_phone' => '+60123456789',
+                'player_id' => '12345', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
+                'transaction_fee' => 0, 'platform_profit' => 50, 'affiliate_profit' => 0, 'final_amount' => 300,
+                'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
+            ]);
+            // `created_at` isn't in Order::$fillable, so it must be forced
+            // after create — otherwise every row in this tight loop lands
+            // on the same auto-timestamp and the ORDER BY has nothing to
+            // sort on.
+            $order->forceFill(['created_at' => now()->subMinutes(12 - $i)])->save();
+        }
+        $token = $this->tokenFor('member@example.com');
+
+        $orders = $this->getJson('/api/membership/me', ['Authorization' => "Bearer {$token}"])
+            ->assertOk()
+            ->json('order_history');
+
+        $this->assertCount(10, $orders);
+        $this->assertSame('KRS-CAP11', $orders[0]['order_number']);
+        $this->assertSame('KRS-CAP2', $orders[9]['order_number']);
+    }
+
     /** ADR-068 decision 16 — the storefront binds the checkout email to this. */
     public function test_me_returns_the_verified_session_email(): void
     {

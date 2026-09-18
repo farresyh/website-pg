@@ -273,7 +273,7 @@ class MembershipController extends Controller
                 }
             })
             ->orderByDesc('created_at')
-            ->limit(50)
+            ->limit(10)
             ->get()
             ->map(fn (Order $order) => [
                 'order_number' => $order->order_number,
