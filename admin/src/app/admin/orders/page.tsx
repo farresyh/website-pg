@@ -51,6 +51,7 @@ import {
 import { Popover, PopoverPortal, PopoverPositioner, PopoverPopup } from "@/components/ui/popover";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { getEcho } from "@/lib/echo";
 import { ApiError } from "@/lib/api-client";
 import {
   type OrderListItem,
@@ -341,61 +342,18 @@ function OrdersPageInner() {
     }
   }
 
-  const pollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  useEffect(() => {
-    return () => {
-      pollTimersRef.current.forEach(clearTimeout);
-    };
-  }, []);
+  // ADR-047 addendum (2026-09-19) — which order a just-fired queued action
+  // (Resend Delivery / Retry Delivery) is waiting on a real outcome for,
+  // and which one, so the `admin-orders` push listener below knows which
+  // message state to resolve once `OrderStatusUpdated` actually arrives
+  // for it. Replaces a bounded client-side poll (Resend Delivery had one;
+  // Retry Delivery had none at all — see this ADR's addendum in docs/adr.md).
+  const [, setPendingStatusWatch] = useState<{ orderId: number; action: "resend" | "retry" } | null>(null);
 
   function handleResent() {
     if (!session || !selected) return;
     setResendMessage("Resend queued — waiting for delivery outcome...");
-
-    pollTimersRef.current.forEach(clearTimeout);
-    pollTimersRef.current = [];
-
-    const orderId = selected.id;
-    const initialAttemptsCount = selected.resend_attempts?.length ?? 0;
-    const initialDeliveryStatus = selected.delivery_status;
-
-    const delays = [1500, 3500, 6000, 9000];
-    let resolved = false;
-
-    delays.forEach((delay, index) => {
-      const timer = setTimeout(async () => {
-        if (resolved) return;
-        try {
-          const fresh = await getOrder(session.token, orderId);
-          const hasNewAttempt = (fresh.resend_attempts?.length ?? 0) > initialAttemptsCount;
-          const statusChanged = fresh.delivery_status !== initialDeliveryStatus;
-
-          if (hasNewAttempt || statusChanged) {
-            resolved = true;
-            setSelected(fresh);
-            // Refresh orders table in background
-            listOrders(session.token, orderFilters)
-              .then(setPage)
-              .catch(() => {});
-
-            if (fresh.delivery_status === "delivered") {
-              setResendMessage("Resend delivered successfully! Delivery logs updated.");
-            } else if (fresh.delivery_status === "failed") {
-              setResendMessage("Resend attempt finished (delivery failed) — see latest Delivery Logs entry below.");
-            } else {
-              setResendMessage("Resend processed — delivery logs and order status updated.");
-            }
-          } else if (index === delays.length - 1) {
-            setSelected(fresh);
-            setResendMessage("Resend is still processing in background. You can refresh again in a moment.");
-          }
-        } catch {
-          // Silent ignore during background poll
-        }
-      }, delay);
-      pollTimersRef.current.push(timer);
-    });
+    setPendingStatusWatch({ orderId: selected.id, action: "resend" });
   }
 
   /**
@@ -453,7 +411,8 @@ function OrdersPageInner() {
         override_reason: retryOverrideReason.trim() || undefined,
       });
       setRetryOverrideReason("");
-      setRetryMessage("Delivery retry queued — refresh in a moment to see the result.");
+      setRetryMessage("Delivery retry queued — waiting for outcome...");
+      setPendingStatusWatch({ orderId: selected.id, action: "retry" });
     } catch (err) {
       setRetryMessage(err instanceof ApiError ? err.message : "Could not queue the retry.");
     } finally {
@@ -515,6 +474,68 @@ function OrdersPageInner() {
         setError(err instanceof ApiError ? err.message : "Could not load orders.");
       });
   }
+
+  // Read inside the push listener below without re-subscribing every time
+  // an admin opens a different order — the effect's own deps intentionally
+  // exclude `selected` (see that effect's own comment).
+  const selectedRef = useRef(selected);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  /**
+   * ADR-047 addendum (2026-09-19) — replaces Resend Delivery's own bounded
+   * poll and Retry Delivery's complete fire-and-forget gap. `OrderObserver`
+   * already broadcasts `OrderStatusUpdated` on every payment/delivery
+   * status write (including the ones `FulfillOrderJob`/
+   * `ResendOrderDeliveryJob` make once a queued action actually lands),
+   * now also on this admin-wide private channel — refreshes the list on
+   * any change, and the open order's own detail (+ resolves whichever
+   * action is being watched, if any) when the changed order is the one
+   * currently open. No in-flight gating needed, same reasoning Backups'
+   * own conversion used: a subscription costs nothing while idle, unlike
+   * an interval timer. If Reverb is unreachable, an admin can still hit
+   * "Refresh" manually — the same accepted degrade every other converted
+   * admin screen has.
+   */
+  useEffect(() => {
+    if (!session || !process.env.NEXT_PUBLIC_REVERB_APP_KEY) return;
+
+    const channel = getEcho().private("admin-orders");
+    channel.listen(".order.status.updated", (payload: { order_number: string }) => {
+      listOrders(session.token, orderFilters)
+        .then((p) => {
+          setPage(p);
+          setLastUpdatedAt(new Date());
+        })
+        .catch(() => {});
+
+      const current = selectedRef.current;
+      if (!current || current.order_number !== payload.order_number) return;
+
+      getOrder(session.token, current.id)
+        .then((fresh) => {
+          setSelected(fresh);
+          setPendingStatusWatch((watch) => {
+            if (!watch || watch.orderId !== fresh.id) return watch;
+            const outcome =
+              fresh.delivery_status === "delivered"
+                ? "Delivery succeeded — status updated."
+                : fresh.delivery_status === "failed"
+                  ? "Delivery attempt finished (failed) — see latest Delivery Logs entry below."
+                  : "Delivery status updated.";
+            if (watch.action === "resend") setResendMessage(outcome);
+            else setRetryMessage(outcome);
+            return null;
+          });
+        })
+        .catch(() => {});
+    });
+
+    return () => {
+      getEcho().leave("admin-orders");
+    };
+  }, [session, orderFilters]);
 
   // ADR-108 decision 6 — the Game filter's own dropdown options, loaded
   // once (games rarely change mid-session; a fresh admin session just
