@@ -12,6 +12,8 @@ export interface CustomerAnalyticsFilters {
   year?: number;
   month?: number;
   affiliateId?: number;
+  /** ADR-049 addendum — independently combinable with affiliateId, mirrors Reports' own reseller filter. */
+  resellerId?: number;
   segment?: CustomerSegment;
 }
 
@@ -34,6 +36,9 @@ export interface CustomerAnalyticsRow {
   orders_count: number;
   total_spent: number;
   last_order_at: string;
+  /** ADR-049 addendum — set when this customer_email's orders are a wallet Reseller's, not a retail buyer's. */
+  wallet_reseller_id: number | null;
+  reseller_name: string | null;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -50,6 +55,7 @@ function filterQuery(filters: CustomerAnalyticsFilters) {
     year: filters.year,
     month: filters.month,
     affiliate_id: filters.affiliateId,
+    reseller_id: filters.resellerId,
     segment: filters.segment,
   });
 }
@@ -100,7 +106,8 @@ export interface CustomerOrderHistoryRow {
   order_number: string;
   paid_at: string;
   package_name: string;
-  affiliate_name: string;
+  /** ADR-050 addendum — "Reseller: {name}" for a wallet order, the affiliate's business_name otherwise. */
+  source_name: string;
   final_amount: number;
   affiliate_profit: number | null;
   system_profit: number | null;
@@ -117,7 +124,8 @@ export interface CustomerDetail {
   profit_analysis: CustomerProfitAnalysis;
   monthly_trend: CustomerMonthlyTrendPoint[];
   top_packages: CustomerTopBreakdownRow[];
-  top_affiliates: CustomerTopBreakdownRow[];
+  /** ADR-050 addendum — was top_affiliates; renamed since a wallet Reseller order's affiliate is always the primary brand. */
+  top_sources: CustomerTopBreakdownRow[];
   order_history: CustomerOrderHistoryRow[];
 }
 
