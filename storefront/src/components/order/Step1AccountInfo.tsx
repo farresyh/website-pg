@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { useState } from "react";
 import { CheckCircle, WarningCircle, XCircle, ArrowSquareOut } from "@phosphor-icons/react/dist/ssr";
 import type { GameDetail } from "@/lib/catalog";
 import type { ValidatePlayerResult } from "@/lib/checkout";
 import Button from "@/components/ui/Button";
+import GameInfoModal, { GameInfoTriggerButton } from "@/components/order/GameInfoModal";
 
 interface Step1AccountInfoProps {
   /** ADR-097 decision 9 — needs GameDetail (not the narrower Game), for zoneOptions. */
@@ -49,8 +51,23 @@ export default function Step1AccountInfo({
 }: Step1AccountInfoProps) {
   const idReady = playerId.trim().length > 0 && (!game.extraField || serverId.trim().length > 0);
 
+  // ADR-109 decisions 8/9/10 — auto-opens once per page load, only when
+  // there's real content to show; the manual re-open button is gated
+  // by the identical check. Lazy initializer, not an effect — `game`
+  // never changes after mount, so there's nothing to synchronize.
+  const hasInfoContent = Boolean(game.description) || game.importantNotes.length > 0;
+  const [infoOpen, setInfoOpen] = useState(() => hasInfoContent);
+
   return (
     <div>
+      {infoOpen && (
+        <GameInfoModal
+          gameName={game.name}
+          description={game.description}
+          importantNotes={game.importantNotes}
+          onClose={() => setInfoOpen(false)}
+        />
+      )}
       <div className={`grid gap-3 ${game.extraField ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
         <div>
           <label htmlFor="playerId" className={labelClass}>
@@ -102,7 +119,8 @@ export default function Step1AccountInfo({
         )}
       </div>
 
-      <div className="mt-3.5 flex justify-end">
+      <div className={`mt-3.5 flex items-center ${hasInfoContent ? "justify-between" : "justify-end"}`}>
+        {hasInfoContent && <GameInfoTriggerButton onClick={() => setInfoOpen(true)} />}
         {game.playerValidatorEnabled ? (
           <Button type="button" variant="outline" size="sm" onClick={onVerify} disabled={verifying || !idReady}>
             {verifying ? "Verifying…" : "Verify Account"}

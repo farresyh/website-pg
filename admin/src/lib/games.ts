@@ -73,6 +73,11 @@ export interface Game {
   player_validator_profile_id?: number | null;
   /** Kill-switch, independent of the profile assignment — hides the storefront button without unassigning the profile. */
   player_validator_enabled?: boolean;
+  /** ADR-109 — the customer-facing info-modal + delivery-badge fields, edited under EditGameModal's "Content" tab. */
+  description?: string | null;
+  important_notes?: string[] | null;
+  delivery_mode?: "instant" | "manual";
+  delivery_subtext?: string | null;
 }
 
 /** ADR-094 decision 1: one of a combo Package's own components — this game's own package list, projected down for the composition/edit UI. */
@@ -127,6 +132,10 @@ export interface UpdateGameValues {
   is_active: boolean;
   player_validator_profile_id?: number | null;
   player_validator_enabled?: boolean;
+  description?: string | null;
+  important_notes?: string[] | null;
+  delivery_mode: "instant" | "manual";
+  delivery_subtext?: string | null;
 }
 
 export interface UpdatePackageValues {

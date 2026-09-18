@@ -29,6 +29,11 @@ use Illuminate\Validation\Rule;
  * letters only, no digits/dashes, so a product code's trailing
  * segment always parses unambiguously; unique globally (not scoped
  * per-game) since it stands alone as a public identifier.
+ *
+ * `description`/`important_notes`/`delivery_mode`/`delivery_subtext`:
+ * ADR-109's customer-facing info-modal + delivery-badge fields —
+ * catalog-display, same side of the split as everything else in this
+ * FormRequest.
  */
 class UpdateGameRequest extends FormRequest
 {
@@ -59,6 +64,11 @@ class UpdateGameRequest extends FormRequest
             'category' => ['nullable', 'string', 'max:255'],
             'image_url' => ['nullable', 'string', 'max:2048'],
             'banner_url' => ['nullable', 'string', 'max:2048'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'important_notes' => ['nullable', 'array'],
+            'important_notes.*' => ['string', 'max:500'],
+            'delivery_mode' => ['sometimes', Rule::in(['instant', 'manual'])],
+            'delivery_subtext' => ['nullable', 'string', 'max:255'],
             'is_active' => ['required', 'boolean'],
             'player_validator_profile_id' => ['nullable', 'integer', Rule::exists('player_validator_profiles', 'id')],
             'player_validator_enabled' => ['sometimes', 'boolean'],
