@@ -58,6 +58,7 @@ export default function MiddlewareSidebar() {
         { kind: "link", name: "Suppliers", href: "/middleware/suppliers", icon: <BoxLineIcon /> },
         { kind: "link", name: "Product Manager", href: "/middleware/product-manager", icon: <ListIcon /> },
         { kind: "link", name: "Payment Methods", href: "/middleware/payment-methods", icon: <DollarLineIcon /> },
+        { kind: "link", name: "Payment Gateways", href: "/middleware/payment-gateways", icon: <SettingsIcon /> },
         { kind: "link", name: "Price Sync", href: "/middleware/price-sync", icon: <TrendUpIcon /> },
         { kind: "link", name: "Validators", href: "/middleware/validators", icon: <BlockIcon /> },
         { kind: "placeholder", name: "Validate Player", icon: <UserCircleIcon /> },
