@@ -310,12 +310,12 @@ export default function CustomerDetailPage() {
           )}
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Top Affiliates</h3>
-          {detail.top_affiliates.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">No affiliates yet.</p>
+          <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Top Sources</h3>
+          {detail.top_sources.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No sources yet.</p>
           ) : (
             <div className="space-y-3">
-              {detail.top_affiliates.map((row) => (
+              {detail.top_sources.map((row) => (
                 <div key={row.id ?? row.name} className="flex items-center justify-between">
                   <div>
                     <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">{row.name}</p>
@@ -344,7 +344,7 @@ export default function CustomerDetailPage() {
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Revenue</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate Profit</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">System Profit</DataTableTHeadCell>
@@ -371,7 +371,7 @@ export default function CustomerDetailPage() {
                           {row.package_name}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
-                          {row.affiliate_name}
+                          {row.source_name}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {formatRm(row.final_amount)}

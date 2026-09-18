@@ -28,7 +28,7 @@ class CustomerAnalyticsController extends Controller
         [$from, $toExclusive] = $this->rangeFromRequest($request);
 
         return response()->json(
-            $this->analytics->stats($from, $toExclusive, $this->affiliateId($request)),
+            $this->analytics->stats($from, $toExclusive, $this->affiliateId($request), $this->resellerId($request)),
         );
     }
 
@@ -42,6 +42,7 @@ class CustomerAnalyticsController extends Controller
                 $toExclusive,
                 $this->affiliateId($request),
                 $this->segmentFromRequest($request),
+                $this->resellerId($request),
             ),
         ]);
     }
@@ -71,18 +72,20 @@ class CustomerAnalyticsController extends Controller
             $toExclusive,
             $this->affiliateId($request),
             $this->segmentFromRequest($request),
+            $this->resellerId($request),
         );
 
         $filename = 'customer-analytics-'.now()->setTimezone(CustomerAnalyticsService::TIMEZONE)->format('Y-m-d').'.csv';
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Email', 'Name', 'Segment', 'Orders Count', 'Total Spent (RM)', 'Last Order']);
+            fputcsv($out, ['Email', 'Name', 'Source', 'Segment', 'Orders Count', 'Total Spent (RM)', 'Last Order']);
 
             foreach ($rows as $row) {
                 fputcsv($out, [
                     $row['customer_email'],
                     $row['customer_name'] ?? '',
+                    $row['reseller_name'] !== null ? 'Reseller: '.$row['reseller_name'] : 'Retail',
                     $row['segment_label'],
                     $row['orders_count'],
                     number_format($row['total_spent'] / 100, 2, '.', ''),
@@ -97,6 +100,12 @@ class CustomerAnalyticsController extends Controller
     private function affiliateId(Request $request): ?int
     {
         return $request->filled('affiliate_id') ? (int) $request->query('affiliate_id') : null;
+    }
+
+    /** ADR-049 addendum — symmetric to affiliateId() above, mirrors ReportService's own wallet_reseller_id filter shape. */
+    private function resellerId(Request $request): ?int
+    {
+        return $request->filled('reseller_id') ? (int) $request->query('reseller_id') : null;
     }
 
     private function segmentFromRequest(Request $request): ?CustomerSegment
