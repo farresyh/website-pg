@@ -9,8 +9,8 @@ import { resolveWhatsappHref } from "@/lib/whatsapp";
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await getBranding();
   return {
-    title: `Reseller Price List — ${branding.storeName}`,
-    description: `Real-time wholesale top-up pricing for ${branding.storeName} reseller tiers — see the rates before you sign up.`,
+    title: `Reseller Price List - ${branding.storeName}`,
+    description: `Real-time wholesale top-up pricing for ${branding.storeName} reseller tiers. See the rates before you sign up.`,
   };
 }
 
@@ -40,7 +40,7 @@ export default async function ResellerPriceListPage() {
           </h1>
           <p className="mt-3 max-w-[62ch] text-sm leading-relaxed text-on-surface-variant">
             Real-time wholesale pricing for our top-up reseller tiers. Top up your wallet once, order at these
-            rates across every eligible game — synced automatically with our live catalog.
+            rates across every eligible game, synced automatically with our live catalog.
           </p>
 
           <div className="mt-8">
@@ -51,7 +51,7 @@ export default async function ResellerPriceListPage() {
             <div>
               <h2 className="font-display text-lg font-bold text-on-surface">Want in on these rates?</h2>
               <p className="mt-1 text-sm text-on-surface-variant">
-                Reseller accounts are set up by our team — reach out and we&apos;ll get you started.
+                Reseller accounts are set up by our team. Reach out and we&apos;ll get you started.
               </p>
             </div>
             {whatsappHref && (

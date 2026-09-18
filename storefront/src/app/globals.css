@@ -180,13 +180,16 @@
   scrollbar-width: none;
 }
 
-/* Bottom-nav clearance (ADR-071 PR1a). The fixed <BottomNav> is ~66px
- * tall (44px min tap target + 20px padding + 2px border) plus the
- * device safe-area inset; without this the last footer line and the
- * bottoms of the last content cards sit behind it on mobile. Desktop
- * has no bottom nav, so callers pair this with `lg:pb-0`. */
+/* Bottom-nav clearance (ADR-071 PR1a; heights recomputed for the
+ * 2026-09-18 floating-pill redesign). The fixed <BottomNav> is now a
+ * floating bar with a raised center button that pokes up above it, so
+ * its total footprint from the screen's bottom edge is taller than a
+ * flush bar: outer margin + pill height + the raised button's overhang,
+ * plus the device safe-area inset. Without this the last footer line
+ * and the bottoms of the last content cards sit behind it on mobile.
+ * Desktop has no bottom nav, so callers pair this with `lg:pb-0`. */
 @utility pb-nav {
-  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
 }
 
 /* ---- Loading skeletons (ADR-071 PR1a) ----------------------------

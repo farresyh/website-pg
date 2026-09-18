@@ -33,7 +33,7 @@ export default function TrackOrderClient() {
       await trackOrder(trimmed);
       router.push(`/order/status/${encodeURIComponent(trimmed)}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong — try again in a moment.");
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again in a moment.");
       setLoading(false);
     }
   }
@@ -58,7 +58,7 @@ export default function TrackOrderClient() {
     trackOrder(trimmed)
       .then(() => router.push(`/order/status/${encodeURIComponent(trimmed)}`))
       .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Something went wrong — try again in a moment.");
+        setError(err instanceof ApiError ? err.message : "Something went wrong. Try again in a moment.");
         setLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps

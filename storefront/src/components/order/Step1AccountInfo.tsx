@@ -135,7 +135,7 @@ export default function Step1AccountInfo({
       {game.playerValidatorEnabled && result?.status === "region_unknown" && (
         <p className="mt-3 flex items-center gap-2 rounded-md border-2 border-ink bg-surface-container p-3 text-[13px] text-on-surface-variant">
           <WarningCircle size={16} weight="fill" className="shrink-0" />
-          We couldn&apos;t confirm this account&apos;s region — contact WhatsApp support before paying.
+          We couldn&apos;t confirm this account&apos;s region. Contact WhatsApp support before paying.
         </p>
       )}
 
@@ -143,7 +143,7 @@ export default function Step1AccountInfo({
         <div className="mt-3 rounded-md border-2 border-ink bg-warning p-3 text-[13px] text-on-warning">
           <p className="mb-2 flex items-center gap-2 font-bold">
             <WarningCircle size={16} weight="fill" />
-            Wrong Region Detected — this account belongs to {result.redirect_game.name}.
+            Wrong Region Detected: this account belongs to {result.redirect_game.name}.
           </p>
           <Link href={`/order/${result.redirect_game.slug}`} className="inline-flex items-center gap-1 font-bold text-primary underline">
             Go to {result.redirect_game.name} Store <ArrowSquareOut size={14} />

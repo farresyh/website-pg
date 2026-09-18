@@ -39,7 +39,7 @@ export default function MembershipPromoCard({
       <p className="mb-2 font-display text-sm font-bold uppercase tracking-wide text-on-secondary-container">Membership</p>
       <p className="text-[13.5px] leading-snug text-on-secondary-container">
         Unlock <span className="font-bold">{packageName}</span> at{" "}
-        <span className="font-mono font-bold">RM{memberPriceRm.toFixed(2)}</span> — save{" "}
+        <span className="font-mono font-bold">RM{memberPriceRm.toFixed(2)}</span>, save{" "}
         <span className="font-bold">
           RM{savingsRm.toFixed(2)} ({savingsPercent.toFixed(0)}%)
         </span>{" "}

@@ -30,6 +30,19 @@ class ReviewCatalogController extends Controller
 
     private const CACHE_KEY = 'catalog.public.reviews';
 
+    private const HOMEPAGE_REVIEW_LIMIT = 12;
+
+    /**
+     * Caps how many of a single customer's reviews can appear in the
+     * homepage carousel. Without this, an early-launch site with few
+     * distinct reviewers has its "latest N" window dominated by
+     * whichever one customer happens to have ordered (and reviewed)
+     * most recently and repeatedly — real reviews, but a "What
+     * Customers Say" carousel that reads as synthetic. Found via the
+     * antislop-ui audit (docs/anti-slop/audit-001-2026-09-18.md #3).
+     */
+    private const MAX_REVIEWS_PER_CUSTOMER = 2;
+
     public function index(StorefrontBrand $brand): JsonResponse
     {
         $affiliate = $brand->get();
@@ -38,7 +51,7 @@ class ReviewCatalogController extends Controller
             self::homepageCacheKey($affiliate->id),
             self::CACHE_TTL_SECONDS,
             function () use ($affiliate) {
-                return Review::query()
+                $pool = Review::query()
                     ->where('status', ReviewStatus::Approved->value)
                     ->whereNotNull('comment')
                     ->whereHas('order', fn ($q) => $q->forStorefrontBrand($affiliate))
@@ -48,8 +61,28 @@ class ReviewCatalogController extends Controller
                         'order.package:id,name',
                     ])
                     ->orderByDesc('created_at')
-                    ->take(12)
-                    ->get()
+                    ->take(self::HOMEPAGE_REVIEW_LIMIT * 4)
+                    ->get();
+
+                $perCustomerCount = [];
+                $diversified = [];
+
+                foreach ($pool as $r) {
+                    $customerKey = $r->order?->customer_email ?? $r->order?->customer_name ?? "review-{$r->id}";
+                    $perCustomerCount[$customerKey] = ($perCustomerCount[$customerKey] ?? 0) + 1;
+
+                    if ($perCustomerCount[$customerKey] > self::MAX_REVIEWS_PER_CUSTOMER) {
+                        continue;
+                    }
+
+                    $diversified[] = $r;
+
+                    if (count($diversified) >= self::HOMEPAGE_REVIEW_LIMIT) {
+                        break;
+                    }
+                }
+
+                return collect($diversified)
                     ->map(fn (Review $r) => [
                         'id' => $r->id,
                         'name' => ContactMask::name($r->order?->customer_name)

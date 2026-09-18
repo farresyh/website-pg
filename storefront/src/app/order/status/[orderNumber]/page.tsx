@@ -10,7 +10,7 @@ interface OrderStatusPageProps {
 
 export async function generateMetadata({ params }: OrderStatusPageProps): Promise<Metadata> {
   const [{ orderNumber }, branding] = await Promise.all([params, getBranding()]);
-  return { title: `Order ${orderNumber} — ${branding.storeName}` };
+  return { title: `Order ${orderNumber} - ${branding.storeName}` };
 }
 
 /**

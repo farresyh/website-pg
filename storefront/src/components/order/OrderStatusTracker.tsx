@@ -123,7 +123,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         }
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : "Something went wrong — try again in a moment.");
+        setError(err instanceof ApiError ? err.message : "Something went wrong. Try again in a moment.");
         setLoading(false);
       }
     }
@@ -208,7 +208,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
                 * deriveStages() uses "Complete"); a second copy breaks
                 * the E2E golden path's strict getByText. */}
               <p className="font-display text-base font-bold uppercase tracking-tight">You&apos;re all set</p>
-              <p className="text-[13px] leading-snug">Your top-up is in your game account — enjoy!</p>
+              <p className="text-[13px] leading-snug">Your top-up is in your game account. Enjoy!</p>
             </div>
           </div>
         )}
@@ -270,8 +270,8 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         {/* Bento: Game & Package / Customer Info / Payment Details */}
         <div className="grid gap-4 md:grid-cols-2">
           <DetailCard icon={<GameController size={18} weight="fill" />} title="Game & Package">
-            <DetailRow k="Game" v={order.game?.name ?? "—"} />
-            <DetailRow k="Package" v={order.package_name ?? "—"} />
+            <DetailRow k="Game" v={order.game?.name ?? "-"} />
+            <DetailRow k="Package" v={order.package_name ?? "-"} />
             <DetailRow k="Player ID" v={order.player_id} mono />
             {order.server_id && <DetailRow k="Server ID" v={order.server_id} mono last />}
           </DetailCard>

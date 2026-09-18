@@ -91,9 +91,9 @@ export default function MembershipSubscribe({ token }: { token: string }) {
         window.location.assign(result.checkoutUrl);
         return;
       }
-      setError("Could not start the payment — please try again.");
+      setError("Could not start the payment. Please try again.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong — please try again.");
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setStarting(false);
     }
@@ -203,7 +203,7 @@ export default function MembershipSubscribe({ token }: { token: string }) {
       {selectedPlan && (
         <div className="flex flex-col gap-4 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
           <p className="font-display text-sm font-bold">
-            Subscribing to {selectedPlan.name} — RM{selectedPlan.feeRm.toFixed(2)}/month
+            Subscribing to {selectedPlan.name}: RM{selectedPlan.feeRm.toFixed(2)}/month
           </p>
 
           <p className="font-display text-[11px] font-bold uppercase tracking-widest text-outline">Payment Method</p>

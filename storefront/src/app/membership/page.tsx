@@ -9,7 +9,7 @@ import { listPlans } from "@/lib/membership";
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await getBranding();
   return {
-    title: `Membership — ${branding.storeName}`,
+    title: `Membership - ${branding.storeName}`,
   };
 }
 

@@ -7,7 +7,7 @@ import { getBranding } from "@/lib/branding";
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await getBranding();
   return {
-    title: `Track Order — ${branding.storeName}`,
+    title: `Track Order - ${branding.storeName}`,
   };
 }
 
