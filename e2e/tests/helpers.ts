@@ -36,7 +36,8 @@ export async function openOrder(page: Page, orderNumber: string): Promise<void> 
   // momentarily both in the DOM (a stale render lingering alongside
   // the settled one), tripping Playwright's strict-mode locator.
   await page.waitForLoadState("networkidle");
-  await page.getByPlaceholder("Search order # or customer email…").fill(orderNumber);
+  // ADR-108: search widened to game name — placeholder text updated to match.
+  await page.getByPlaceholder("Search order #, email or game…").fill(orderNumber);
   // Scoped to the matching row, not `.first()` — search is server-side
   // and re-fetches on every keystroke, so the table briefly still shows
   // the unfiltered list; waiting for the order_number's own row to

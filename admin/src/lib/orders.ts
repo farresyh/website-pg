@@ -1,12 +1,14 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, ApiError } from "@/lib/api-client";
 import type { Game } from "@/lib/games";
 import type { Voucher } from "@/lib/vouchers";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
  * ORD-1..7 — list + detail + retry-delivery (ORD-7 / ADR-014) +
  * resend (ADR-017's package-swap counterpart) + issueVoucherFromOrder
- * (ORD-7's other resolution path). Export (ORD-5) is a later pass; see
- * backend/app/Http/Controllers/Admin/OrderController.php.
+ * (ORD-7's other resolution path). Export (ORD-5, ADR-108 decision 9)
+ * finally built; see backend/app/Http/Controllers/Admin/OrderController.php.
  */
 export interface OrderListItem {
   id: number;
@@ -34,7 +36,10 @@ export interface OrderListItem {
   // once: a wallet order's affiliate is always the platform's own
   // primary brand (ADR-073 decision 5), so wallet_reseller is the one
   // that actually answers "where did this order come from".
-  affiliate: { id: number; business_name: string } | null;
+  // ADR-108 decision 5 — is_primary rides along so the Source column can
+  // tell a genuine partner Affiliate apart from the primary brand's own
+  // order (both carry a non-null affiliate).
+  affiliate: { id: number; business_name: string; is_primary: boolean } | null;
   wallet_reseller: { id: number; business_name: string } | null;
   // ADR-102 decision 12 — small compensation badges next to the
   // existing payment/delivery status tags, computed server-side (cheap
@@ -198,17 +203,63 @@ export type OrderStatusFilter =
   | "awaiting_payment"
   | "today";
 
-export function listOrders(
-  token: string,
-  params: { status?: OrderStatusFilter; search?: string; page?: number } = {},
-) {
+/** ADR-108 decision 5 — single-select, mirrors the Source column's own 3 states. */
+export type OrderSourceFilter = "reseller" | "affiliate" | "direct";
+
+export interface OrderListFilters {
+  status?: OrderStatusFilter;
+  search?: string;
+  page?: number;
+  source?: OrderSourceFilter;
+  gameId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function buildOrderFilterQuery(params: OrderListFilters): URLSearchParams {
   const query = new URLSearchParams();
   if (params.status && params.status !== "all") query.set("status", params.status);
   if (params.search) query.set("search", params.search);
   if (params.page) query.set("page", String(params.page));
-  const qs = query.toString();
+  if (params.source) query.set("source", params.source);
+  if (params.gameId) query.set("game_id", String(params.gameId));
+  if (params.dateFrom) query.set("date_from", params.dateFrom);
+  if (params.dateTo) query.set("date_to", params.dateTo);
+
+  return query;
+}
+
+export function listOrders(token: string, params: OrderListFilters = {}) {
+  const qs = buildOrderFilterQuery(params).toString();
 
   return apiFetch<OrderPage>(`/api/orders${qs ? `?${qs}` : ""}`, { token });
+}
+
+/**
+ * ADR-108 decision 9 (ORD-5) — mirrors exportReport()'s own raw-fetch +
+ * blob-download shape (admin/src/lib/reports.ts): apiFetch() assumes a
+ * JSON body, so a CSV stream needs its own fetch call. Respects every
+ * filter listOrders() does, via the same buildOrderFilterQuery().
+ */
+export async function exportOrders(token: string, params: OrderListFilters = {}): Promise<void> {
+  const qs = buildOrderFilterQuery(params).toString();
+  const response = await fetch(`${API_BASE_URL}/api/orders/export${qs ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, undefined, `Export failed (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 /**
