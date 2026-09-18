@@ -20,15 +20,25 @@ class ChipGatewayBindingTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * `services.chip.secret_key` is set explicitly here rather than
+     * read from whatever's ambient — CI has no real CHIP key
+     * configured (unlike a local dev `.env`), so asserting against the
+     * environment's own current value would silently pass locally and
+     * fail in CI (found live: an empty ambient value also hits a
+     * `withToken('')` trim() quirk where the real header becomes
+     * `'Bearer'` with no trailing space, not `'Bearer '`).
+     */
     public function test_falls_back_to_env_config_when_no_db_row_exists(): void
     {
+        config(['services.chip.secret_key' => 'sk_env_fallback']);
         Http::fake(['gate.chip-in.asia/*' => Http::response(['id' => 'x', 'status' => 'paid', 'purchase' => ['total' => 100]], 200)]);
 
         /** @var ChipGateway $gateway */
         $gateway = app('payment-gateway.chip');
         $gateway->getPayment('purchase-1');
 
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer '.config('services.chip.secret_key')));
+        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer sk_env_fallback'));
     }
 
     public function test_prefers_db_credentials_over_env_config_when_a_row_exists(): void
@@ -54,6 +64,7 @@ class ChipGatewayBindingTest extends TestCase
      */
     public function test_falls_back_per_field_when_the_db_row_is_missing_a_key(): void
     {
+        config(['services.chip.base_url' => 'https://gate.chip-in.asia/api/v1']);
         PaymentGateway::query()->create([
             'gateway_key' => 'chip',
             'api_config' => ['secret_key' => 'sk_from_db'],
@@ -64,7 +75,7 @@ class ChipGatewayBindingTest extends TestCase
         $gateway = app('payment-gateway.chip');
         $gateway->getPayment('purchase-1');
 
-        Http::assertSent(fn ($request) => $request->url() === config('services.chip.base_url').'/purchases/purchase-1/'
+        Http::assertSent(fn ($request) => $request->url() === 'https://gate.chip-in.asia/api/v1/purchases/purchase-1/'
             && $request->hasHeader('Authorization', 'Bearer sk_from_db'));
     }
 }
