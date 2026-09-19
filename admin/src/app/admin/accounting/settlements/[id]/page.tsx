@@ -25,6 +25,7 @@ import {
   type PaymentSettlement,
   type ChipSettledTransaction,
   type Paginated,
+  type PaidButNotSettledRow,
   getPaymentSettlement,
 } from "@/lib/payment-settlements";
 
@@ -43,6 +44,7 @@ export default function PaymentSettlementDetailPage() {
 
   const [settlement, setSettlement] = useState<PaymentSettlement | null>(null);
   const [transactions, setTransactions] = useState<Paginated<ChipSettledTransaction> | null>(null);
+  const [paidButNotSettled, setPaidButNotSettled] = useState<PaidButNotSettledRow[]>([]);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +58,7 @@ export default function PaymentSettlementDetailPage() {
       .then((res) => {
         setSettlement(res.settlement);
         setTransactions(res.transactions);
+        setPaidButNotSettled(res.paid_but_not_settled);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load this settlement."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,10 +82,31 @@ export default function PaymentSettlementDetailPage() {
           Settlement {settlement.date_from} → {settlement.date_to}
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Uploaded from {settlement.original_filename}. Expected net {rm(settlement.expected_net_sen)}, CHIP&apos;s own
+          Uploaded from {settlement.original_filename}. Matched net {rm(settlement.matched_net_sen)}, CHIP&apos;s own
           file reports net {rm(settlement.file_net_sen)}.
         </p>
       </div>
+
+      {paidButNotSettled.length > 0 && (
+        <div className="mb-6 rounded-lg bg-warning-50 p-4 text-theme-sm dark:bg-warning-500/15">
+          <p className="font-medium text-warning-700 dark:text-warning-400">
+            {paidButNotSettled.length} paid-but-not-yet-settled — likely why Expected Net is higher than File/Bank
+          </p>
+          <p className="mt-1 text-warning-600 dark:text-warning-400">
+            CHIP settles T+1/T+2 — these were charged inside this window but hadn&apos;t yet appeared in a settlement
+            file when this one was pulled. Not a discrepancy: they should show up in a later upload once CHIP
+            actually settles them.
+          </p>
+          <ul className="mt-2 space-y-1">
+            {paidButNotSettled.map((row) => (
+              <li key={row.reference} className="flex justify-between text-warning-700 dark:text-warning-400">
+                <span>{row.reference}</span>
+                <span>{rm(row.amount_sen)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
@@ -103,14 +127,19 @@ export default function PaymentSettlementDetailPage() {
                 <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {({ item }) => {
                     const t = item as unknown as ChipSettledTransaction;
+                    const grossMismatch = t.local_gross_sen !== null && t.local_gross_sen !== t.amount_sen;
                     return (
                       <DataTableRow key={t.id}>
                         <DataTableCell className="px-5 py-4 font-mono text-theme-xs text-gray-800 dark:text-white/90">{t.transaction_id}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
-                          {t.matched_type ? (
-                            <Tag severity="success">{t.matched_type.replace(/_/g, " ")} #{t.matched_id}</Tag>
-                          ) : (
+                          {t.matched_type === null ? (
                             <Tag severity="warn">unmatched</Tag>
+                          ) : grossMismatch ? (
+                            <Tag severity="danger">
+                              {t.matched_type.replace(/_/g, " ")} #{t.matched_id} — gross {rm(t.local_gross_sen ?? 0)} vs file {rm(t.amount_sen)}
+                            </Tag>
+                          ) : (
+                            <Tag severity="success">{t.matched_type.replace(/_/g, " ")} #{t.matched_id}</Tag>
                           )}
                         </DataTableCell>
                         <DataTableCell className={TD}>{rm(t.amount_sen)}</DataTableCell>

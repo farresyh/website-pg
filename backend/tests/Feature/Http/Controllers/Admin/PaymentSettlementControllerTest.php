@@ -100,6 +100,36 @@ class PaymentSettlementControllerTest extends TestCase
         $response->assertJsonPath('transactions.data.0.settled_on', '2026-09-07');
     }
 
+    /**
+     * Founder-reported live: a real `variance` settlement made no sense
+     * at a glance (Expected Net far above File/Bank) until it was traced
+     * to CHIP-paid orders/top-ups still awaiting T+1/T+2 settlement.
+     * `show()` now surfaces this on every view, not just the upload's
+     * own transient response.
+     */
+    public function test_show_surfaces_paid_but_not_settled_recomputed_live(): void
+    {
+        $this->actingAsAdmin();
+
+        Order::factory()->create([
+            'order_number' => 'PG-STILLPENDING',
+            'payment_gateway' => 'chip',
+            'payment_ref' => 'tx-not-in-file',
+            'payment_status' => PaymentStatus::Paid,
+            'paid_at' => '2026-09-07 12:00:00',
+            'final_amount' => 5000,
+        ]);
+        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '0.00', '0.00', '0.00', []);
+        $file = new UploadedFile($path, 'settlement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+        $settlementId = $this->postJson('/api/accounting/settlements', ['file' => $file])->json('settlement.id');
+        unlink($path);
+
+        $response = $this->getJson("/api/accounting/settlements/{$settlementId}")->assertOk();
+
+        $response->assertJsonPath('paid_but_not_settled.0.reference', 'PG-STILLPENDING');
+        $response->assertJsonPath('paid_but_not_settled.0.amount_sen', 5000);
+    }
+
     public function test_index_lists_settlements_newest_first(): void
     {
         $this->actingAsAdmin();
@@ -157,29 +187,38 @@ class PaymentSettlementControllerTest extends TestCase
         $this->assertSame(30, $response->json('transactions.total'));
     }
 
-    public function test_update_records_the_founders_own_bank_figure(): void
+    /**
+     * ADR-110 PR-B addendum (automatic reconciliation) — a purely
+     * optional founder annotation, never derived from `matched_net_sen`/
+     * `file_net_sen`, and never touches `status` (computed, read-only —
+     * confirmed unchanged by this same update).
+     */
+    public function test_update_records_the_founders_own_bank_figure_without_touching_status(): void
     {
         $this->actingAsAdmin();
-        $settlement = PaymentSettlement::query()->create($this->settlementAttributes());
+        $settlement = PaymentSettlement::query()->create($this->settlementAttributes(['status' => 'variance']));
 
         $response = $this->patchJson("/api/accounting/settlements/{$settlement->id}", [
             'actual_bank_amount_sen' => 1000,
-            'status' => 'matched',
+            'variance_note' => 'Checked against September bank statement, all good.',
         ])->assertOk();
 
-        $response->assertJsonPath('status', 'matched');
         $response->assertJsonPath('actual_bank_amount_sen', 1000);
+        $response->assertJsonPath('variance_note', 'Checked against September bank statement, all good.');
+        $response->assertJsonPath('status', 'variance'); // untouched
     }
 
-    public function test_update_requires_a_variance_note_when_status_is_variance(): void
+    public function test_update_ignores_a_status_field_if_sent(): void
     {
         $this->actingAsAdmin();
-        $settlement = PaymentSettlement::query()->create($this->settlementAttributes());
+        $settlement = PaymentSettlement::query()->create($this->settlementAttributes(['status' => 'matched']));
 
         $this->patchJson("/api/accounting/settlements/{$settlement->id}", [
-            'actual_bank_amount_sen' => 900,
+            'actual_bank_amount_sen' => 500,
             'status' => 'variance',
-        ])->assertStatus(422);
+        ])->assertOk();
+
+        $this->assertSame('matched', $settlement->fresh()->status);
     }
 
     /**
@@ -190,9 +229,9 @@ class PaymentSettlementControllerTest extends TestCase
         return array_merge([
             'date_from' => '2026-09-07',
             'date_to' => '2026-09-07',
-            'expected_gross_sen' => 1100,
-            'expected_fee_sen' => 100,
-            'expected_net_sen' => 1000,
+            'matched_gross_sen' => 1100,
+            'matched_fee_sen' => 100,
+            'matched_net_sen' => 1000,
             'file_gross_sen' => 1100,
             'file_fee_sen' => 100,
             'file_net_sen' => 1000,
