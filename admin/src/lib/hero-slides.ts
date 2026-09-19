@@ -10,13 +10,14 @@ import { apiFetch } from "@/lib/api-client";
 export interface HeroSlide {
   id: number;
   eyebrow: string | null;
-  title: string;
+  /** Nullable since the 2026-09-19 addendum — an asset-only slide (all copy baked into the image) needs neither title nor CTA. */
+  title: string | null;
   description: string | null;
   image_url: string | null;
   /** Sen — admin-typed display copy ("Starting at RM X"), never a live/computed price. */
   price_from_sen: number | null;
-  primary_cta_label: string;
-  primary_cta_href: string;
+  primary_cta_label: string | null;
+  primary_cta_href: string | null;
   secondary_cta_label: string | null;
   secondary_cta_href: string | null;
   is_active: boolean;
@@ -27,12 +28,12 @@ export interface HeroSlide {
 
 export interface SaveHeroSlideValues {
   eyebrow?: string | null;
-  title: string;
+  title: string | null;
   description?: string | null;
   image_url?: string | null;
   price_from_sen?: number | null;
-  primary_cta_label: string;
-  primary_cta_href: string;
+  primary_cta_label: string | null;
+  primary_cta_href: string | null;
   secondary_cta_label?: string | null;
   secondary_cta_href?: string | null;
   is_active: boolean;
