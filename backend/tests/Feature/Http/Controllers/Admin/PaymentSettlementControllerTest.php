@@ -68,6 +68,37 @@ class PaymentSettlementControllerTest extends TestCase
         $this->postJson('/api/accounting/settlements', ['file' => $file])->assertStatus(422);
     }
 
+    /**
+     * Found live testing this session: `settled_on` serialized as a full
+     * `...T00:00:00.000000Z` datetime instead of a plain date, same bug
+     * `PaymentSettlement.date_from`/`date_to` already had (fixed via a
+     * `date:Y-m-d` cast, not the bare `date` cast).
+     */
+    public function test_show_serializes_settled_on_as_a_plain_date(): void
+    {
+        $this->actingAsAdmin();
+
+        Order::factory()->create([
+            'order_number' => 'PG-SHOWTEST',
+            'payment_gateway' => 'chip',
+            'payment_ref' => 'tx-show-1',
+            'payment_status' => PaymentStatus::Paid,
+            'paid_at' => '2026-09-07 12:00:00',
+            'final_amount' => 1100,
+            'transaction_fee' => 100,
+        ]);
+        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.00', '10.00', [
+            ['transaction_id' => 'tx-show-1', 'reference' => 'PG-SHOWTEST', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
+        ]);
+        $file = new UploadedFile($path, 'settlement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+        $settlementId = $this->postJson('/api/accounting/settlements', ['file' => $file])->json('settlement.id');
+        unlink($path);
+
+        $response = $this->getJson("/api/accounting/settlements/{$settlementId}")->assertOk();
+
+        $response->assertJsonPath('transactions.0.settled_on', '2026-09-07');
+    }
+
     public function test_index_lists_settlements_newest_first(): void
     {
         $this->actingAsAdmin();

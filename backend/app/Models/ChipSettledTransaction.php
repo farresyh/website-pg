@@ -31,7 +31,7 @@ class ChipSettledTransaction extends Model
         'amount_sen' => 'integer',
         'fee_sen' => 'integer',
         'net_amount_sen' => 'integer',
-        'settled_on' => 'date',
+        'settled_on' => 'date:Y-m-d',
     ];
 
     /**
