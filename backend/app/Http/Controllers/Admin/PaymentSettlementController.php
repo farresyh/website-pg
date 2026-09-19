@@ -68,9 +68,11 @@ class PaymentSettlementController extends Controller
     }
 
     /**
-     * ADR-083 decision 7 — the founder's own manually-entered bank
-     * figure, checked against a real bank statement. Never auto-decided
-     * from `file_net_sen`/`expected_net_sen`.
+     * ADR-110 PR-B addendum (automatic reconciliation) — only
+     * `actual_bank_amount_sen` (a purely optional founder annotation)
+     * and `variance_note` (a free-text note) are writable here.
+     * `status` is fully computed at ingest and never touched by this
+     * endpoint.
      */
     public function update(UpdatePaymentSettlementRequest $request, PaymentSettlement $settlement): JsonResponse
     {

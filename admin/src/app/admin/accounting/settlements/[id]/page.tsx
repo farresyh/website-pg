@@ -82,7 +82,7 @@ export default function PaymentSettlementDetailPage() {
           Settlement {settlement.date_from} → {settlement.date_to}
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Uploaded from {settlement.original_filename}. Expected net {rm(settlement.expected_net_sen)}, CHIP&apos;s own
+          Uploaded from {settlement.original_filename}. Matched net {rm(settlement.matched_net_sen)}, CHIP&apos;s own
           file reports net {rm(settlement.file_net_sen)}.
         </p>
       </div>
@@ -127,14 +127,19 @@ export default function PaymentSettlementDetailPage() {
                 <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {({ item }) => {
                     const t = item as unknown as ChipSettledTransaction;
+                    const grossMismatch = t.local_gross_sen !== null && t.local_gross_sen !== t.amount_sen;
                     return (
                       <DataTableRow key={t.id}>
                         <DataTableCell className="px-5 py-4 font-mono text-theme-xs text-gray-800 dark:text-white/90">{t.transaction_id}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
-                          {t.matched_type ? (
-                            <Tag severity="success">{t.matched_type.replace(/_/g, " ")} #{t.matched_id}</Tag>
-                          ) : (
+                          {t.matched_type === null ? (
                             <Tag severity="warn">unmatched</Tag>
+                          ) : grossMismatch ? (
+                            <Tag severity="danger">
+                              {t.matched_type.replace(/_/g, " ")} #{t.matched_id} — gross {rm(t.local_gross_sen ?? 0)} vs file {rm(t.amount_sen)}
+                            </Tag>
+                          ) : (
+                            <Tag severity="success">{t.matched_type.replace(/_/g, " ")} #{t.matched_id}</Tag>
                           )}
                         </DataTableCell>
                         <DataTableCell className={TD}>{rm(t.amount_sen)}</DataTableCell>

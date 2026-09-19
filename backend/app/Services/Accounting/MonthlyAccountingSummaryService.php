@@ -87,16 +87,20 @@ final class MonthlyAccountingSummaryService
      * actual", from every settlement batch whose window falls inside
      * this month (a batch is typically weekly, per this ADR's own
      * recommended cadence — several may fall inside one month).
+     * `matched_fee_sen` (not the old `expected_fee_sen`, dropped by this
+     * ADR's own same-day addendum) sums our own fee assumption ONLY for
+     * the transactions each settlement actually matched — the same fix
+     * that made `status` reliable also makes this line correct.
      */
     private function paymentProcessingGainLoss(Carbon $from, Carbon $toExclusive): int
     {
         $totals = PaymentSettlement::query()
             ->where('date_from', '>=', $from->toDateString())
             ->where('date_to', '<', $toExclusive->toDateString())
-            ->selectRaw('COALESCE(SUM(expected_fee_sen), 0) as expected_fee, COALESCE(SUM(file_fee_sen), 0) as file_fee')
+            ->selectRaw('COALESCE(SUM(matched_fee_sen), 0) as matched_fee, COALESCE(SUM(file_fee_sen), 0) as file_fee')
             ->first();
 
-        return (int) $totals->expected_fee - (int) $totals->file_fee;
+        return (int) $totals->matched_fee - (int) $totals->file_fee;
     }
 
     private function supplierPrepaidTopup(Carbon $from, Carbon $toExclusive): int

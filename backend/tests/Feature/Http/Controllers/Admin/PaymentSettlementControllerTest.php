@@ -187,29 +187,38 @@ class PaymentSettlementControllerTest extends TestCase
         $this->assertSame(30, $response->json('transactions.total'));
     }
 
-    public function test_update_records_the_founders_own_bank_figure(): void
+    /**
+     * ADR-110 PR-B addendum (automatic reconciliation) — a purely
+     * optional founder annotation, never derived from `matched_net_sen`/
+     * `file_net_sen`, and never touches `status` (computed, read-only —
+     * confirmed unchanged by this same update).
+     */
+    public function test_update_records_the_founders_own_bank_figure_without_touching_status(): void
     {
         $this->actingAsAdmin();
-        $settlement = PaymentSettlement::query()->create($this->settlementAttributes());
+        $settlement = PaymentSettlement::query()->create($this->settlementAttributes(['status' => 'variance']));
 
         $response = $this->patchJson("/api/accounting/settlements/{$settlement->id}", [
             'actual_bank_amount_sen' => 1000,
-            'status' => 'matched',
+            'variance_note' => 'Checked against September bank statement, all good.',
         ])->assertOk();
 
-        $response->assertJsonPath('status', 'matched');
         $response->assertJsonPath('actual_bank_amount_sen', 1000);
+        $response->assertJsonPath('variance_note', 'Checked against September bank statement, all good.');
+        $response->assertJsonPath('status', 'variance'); // untouched
     }
 
-    public function test_update_requires_a_variance_note_when_status_is_variance(): void
+    public function test_update_ignores_a_status_field_if_sent(): void
     {
         $this->actingAsAdmin();
-        $settlement = PaymentSettlement::query()->create($this->settlementAttributes());
+        $settlement = PaymentSettlement::query()->create($this->settlementAttributes(['status' => 'matched']));
 
         $this->patchJson("/api/accounting/settlements/{$settlement->id}", [
-            'actual_bank_amount_sen' => 900,
+            'actual_bank_amount_sen' => 500,
             'status' => 'variance',
-        ])->assertStatus(422);
+        ])->assertOk();
+
+        $this->assertSame('matched', $settlement->fresh()->status);
     }
 
     /**
@@ -220,9 +229,9 @@ class PaymentSettlementControllerTest extends TestCase
         return array_merge([
             'date_from' => '2026-09-07',
             'date_to' => '2026-09-07',
-            'expected_gross_sen' => 1100,
-            'expected_fee_sen' => 100,
-            'expected_net_sen' => 1000,
+            'matched_gross_sen' => 1100,
+            'matched_fee_sen' => 100,
+            'matched_net_sen' => 1000,
             'file_gross_sen' => 1100,
             'file_fee_sen' => 100,
             'file_net_sen' => 1000,
