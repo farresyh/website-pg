@@ -49,6 +49,8 @@ const sections: PanelNavSection[] = [
         children: [
           { name: "Supplier Funding", href: "/admin/accounting/suppliers" },
           { name: "Transaction Register", href: "/admin/accounting/transactions" },
+          { name: "CHIP Settlements", href: "/admin/accounting/settlements" },
+          { name: "Monthly Summary", href: "/admin/accounting/summary" },
         ],
       },
     ],
