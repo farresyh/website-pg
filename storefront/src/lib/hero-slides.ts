@@ -15,12 +15,12 @@ import { catalogCache, safeRead } from "@/lib/cache";
 const HeroSlideWireSchema = z.object({
   id: z.number(),
   eyebrow: z.string().nullable(),
-  title: z.string(),
+  title: z.string().nullable(),
   description: z.string().nullable(),
   image_url: z.string().nullable(),
   price_from_sen: z.number().nullable(),
-  primary_cta_label: z.string(),
-  primary_cta_href: z.string(),
+  primary_cta_label: z.string().nullable(),
+  primary_cta_href: z.string().nullable(),
   secondary_cta_label: z.string().nullable(),
   secondary_cta_href: z.string().nullable(),
 });
@@ -30,11 +30,11 @@ type HeroSlideWire = z.infer<typeof HeroSlideWireSchema>;
 export interface HeroSlide {
   id: number;
   eyebrow: string | null;
-  title: string;
+  title: string | null;
   description: string | null;
   imageUrl: string | null;
   priceFromRm: number | null;
-  primaryCta: { label: string; href: string };
+  primaryCta: { label: string; href: string } | null;
   secondaryCta: { label: string; href: string } | null;
 }
 
@@ -46,7 +46,10 @@ function toHeroSlide(wire: HeroSlideWire): HeroSlide {
     description: wire.description,
     imageUrl: wire.image_url,
     priceFromRm: wire.price_from_sen != null ? wire.price_from_sen / 100 : null,
-    primaryCta: { label: wire.primary_cta_label, href: wire.primary_cta_href },
+    primaryCta:
+      wire.primary_cta_label && wire.primary_cta_href
+        ? { label: wire.primary_cta_label, href: wire.primary_cta_href }
+        : null,
     secondaryCta:
       wire.secondary_cta_label && wire.secondary_cta_href
         ? { label: wire.secondary_cta_label, href: wire.secondary_cta_href }
