@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AccountingSummaryController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AffiliateController;
 use App\Http\Controllers\Admin\AffiliateImpersonationController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
 use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\PaymentSettlementController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportAssistantController;
 use App\Http\Controllers\Admin\ReportController;
@@ -59,6 +61,7 @@ use App\Http\Controllers\Middleware\CurrencyRateController;
 use App\Http\Controllers\Middleware\DeveloperToolController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
 use App\Http\Controllers\Middleware\OpsAccessController;
+use App\Http\Controllers\Middleware\PaymentGatewayController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
@@ -576,6 +579,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{supplier}/packages/status', [SupplierController::class, 'updatePackagesStatus']);
     });
 
+    // ADR-110 PR-C — CHIP credential `.env`→DB migration. Super Admin
+    // only, same boundary as `middleware/suppliers` above. No
+    // create/delete: `gateway_key`'s value set is fixed by
+    // PaymentGatewayFactory, not admin-defined.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/payment-gateways')->group(function () {
+        Route::get('/', [PaymentGatewayController::class, 'index']);
+        Route::put('/{gatewayKey}', [PaymentGatewayController::class, 'update']);
+    });
+
     // ADR-051 (MUI-9) — read-only Request Logs viewer. Super Admin
     // only, same boundary as every other supplier-facing screen here.
     Route::middleware('admin.role:super_admin')->prefix('middleware/request-logs')->group(function () {
@@ -698,6 +710,18 @@ Route::middleware('auth:sanctum')->group(function () {
         // REFUND entries/Path-B vouchers.
         Route::get('/transactions', [TransactionRegisterController::class, 'index']);
         Route::get('/transactions/export', [TransactionRegisterController::class, 'export']);
+
+        // ADR-110 PR-B, fills ADR-083 decision 7 — "CHIP Settlements":
+        // upload a settlement .xlsx, match against orders/membership
+        // subscriptions/reseller wallet top-ups, never re-count an
+        // already-reconciled transaction (this ADR's own addendum).
+        Route::get('/settlements', [PaymentSettlementController::class, 'index']);
+        Route::post('/settlements', [PaymentSettlementController::class, 'store']);
+        Route::get('/settlements/{settlement}', [PaymentSettlementController::class, 'show']);
+        Route::patch('/settlements/{settlement}', [PaymentSettlementController::class, 'update']);
+
+        // ADR-083 decision 8 — read-only Monthly Accounting Summary.
+        Route::get('/summary', [AccountingSummaryController::class, 'show']);
     });
 
     // ADR-058 58b (RES-1..6) — admin Affiliate Management. Same

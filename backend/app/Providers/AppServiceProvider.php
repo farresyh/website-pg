@@ -10,6 +10,7 @@ use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
 use App\Models\BackupRun;
 use App\Models\Order;
+use App\Models\PaymentGateway as PaymentGatewayModel;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Observers\AffiliateMembershipTierObserver;
@@ -215,10 +216,21 @@ class AppServiceProvider extends ServiceProvider
 
             $config = config('services.chip');
 
+            // ADR-110 PR-C — credentials move to the encrypted
+            // `payment_gateways` row; `config('services.chip')` stays
+            // the fallback for `secret_key`/`brand_id`/`base_url` only
+            // while that row is still empty, so this deploy itself can
+            // never break checkout regardless of whether the founder
+            // has filled in the new `/middleware/payment-gateways` form
+            // yet. Once `.env`'s CHIP_SECRET_KEY/CHIP_BRAND_ID are
+            // actually removed (the founder's own manual cutover step),
+            // this fallback naturally has nothing left to fall back to.
+            $dbConfig = PaymentGatewayModel::query()->where('gateway_key', 'chip')->first()?->api_config ?? [];
+
             return new ChipGateway(
-                baseUrl: $config['base_url'],
-                secretKey: (string) $config['secret_key'],
-                brandId: (string) $config['brand_id'],
+                baseUrl: $dbConfig['base_url'] ?? $config['base_url'],
+                secretKey: (string) ($dbConfig['secret_key'] ?? $config['secret_key']),
+                brandId: (string) ($dbConfig['brand_id'] ?? $config['brand_id']),
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
                 webhookPublicKeyTtlSeconds: $config['webhook_public_key_ttl'],

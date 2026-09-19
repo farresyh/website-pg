@@ -599,7 +599,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end | ADR-056–061, 078 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13) | ADR-072–076, 084, 091, 093 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. PR-1 merged to `staging`; PR-2 open. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve. PR open | ADR-006, 030–032, 067, 069, 097, 098 |
-| Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived) | ADR-022 |
+| Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding falls back to `.env` until the founder completes the manual cutover (founder-owed, see §16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
 | Combo Package | 🟢 Live in prod as of `staging` (functionally complete) — several existing catalog Packages assembled into one opaque, sellable SKU above a game's native max denomination, so a reseller/guest pays one CHIP FPX fee instead of two. Data model + creation endpoint, pricing (sum-of-components, override optional) on the same Price Sync cadence, fulfillment leg-engine (both suppliers, partial-delivery → `needs_review`), admin UI (`/admin/games` composition CRUD, Order-detail leg breakdown, custom-amount Voucher for partial delivery, component-churn guards). Verified genuinely buyable through storefront, Affiliate, and Reseller API/Bot (Reseller Portal has no order-placement surface). **2026-09-16:** max legs raised 3→5 (real usage, decision 20's own revisit bar), component SKU (`supplier_package_ref`) now shown in the composition picker and the Order-detail leg breakdown — previously only the component name/denomination, ambiguous when two components share a denomination across suppliers. **2026-09-17:** `platform_profit` now reconciles as a money-conservation residual on final delivery instead of staying frozen through a leg retry (ADR-107, §16 item 18). Open, deliberately deferred: no per-leg `retryDelivery()` audit trail (§16), no edit-composition UI (delete-and-recreate only) | ADR-094, ADR-107 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
@@ -619,7 +619,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork asset itself still placeholder. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin-side live verification still owed | ADR-062–065, 071, 077–079, 089, 090, 109 |
-| Internal Accounting (supplier funding ledger) | 🟡 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). PR-2 (CHIP `.xlsx` settlement recon, Monthly Accounting Summary) waits for real order flow | ADR-083 |
+| Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file | ADR-083, ADR-110 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
 TailAdmin primitive in `admin/` migrated or deleted; `RichTextEditor` is the one
@@ -774,10 +774,15 @@ drops off this list into `docs/build-log.md`.
     deferral — a real operational risk once real traffic exists.
 ## Buildable now (design done, not started)
 
-12. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
-    Accounting Summary screen. Waits for real order flow + a real settlement
-    file from the **PekanGame** CHIP account (PR-1 shipped 2026-09-11 — see
-    `docs/build-log.md`).
+~~12. **ADR-083 PR-2** — CHIP `.xlsx` settlement reconciliation + Monthly
+    Accounting Summary screen.~~ — **grilled + BUILT 2026-09-19, [ADR-110](./adr.md)
+    PR-B** (+ same-day addendum: `chip_settled_transactions` dedup guard
+    against a re-uploaded/date-overlapping file). `payment_settlements` +
+    `chip_settled_transactions` tables, `SettlementFileParser`/
+    `SettlementReconciliationService`/`MonthlyAccountingSummaryService`,
+    `/admin/accounting/settlements` (+ detail) and `/admin/accounting/summary`
+    screens. Verified against the real PekanGame CHIP settlement file
+    (`settlements-20260919025821.xlsx`).
 13. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
 14. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
@@ -867,9 +872,15 @@ drops off this list into `docs/build-log.md`.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
-**CHIP credential `.env`→DB migration** — genuinely still open (confirmed
-2026-09-13), needs its own ADR + grill before building (touches live payment
-secrets). **Cloudflare R2 storage moved to item 17 above, 2026-09-14** — no
+~~**CHIP credential `.env`→DB migration**~~ — **grilled + BUILT 2026-09-19,
+[ADR-110](./adr.md) PR-C.** `payment_gateways` table (`api_config`
+`encrypted:array`, mirrors `Supplier.api_config`), `/middleware/payment-gateways`
+admin screen, `ChipGateway`'s container binding now DB-first with a
+`config('services.chip')` fallback (never breaks checkout regardless of
+deploy-vs-founder-fills-the-form ordering). Founder-owed: fill in the real
+`secret_key`/`brand_id`/`base_url` via the new screen, confirm the connection
+probe passes, then remove `CHIP_SECRET_KEY`/`CHIP_BRAND_ID` from Forge directly.
+**Cloudflare R2 storage moved to item 17 above, 2026-09-14** — no
 longer parked, design done, buildable now.
 The `PaymentGatewayFactory` seam is kept for multi-region payment; a real 2nd
 gateway is revisited only when cross-border selling is real (ADR-022 — Xendit
