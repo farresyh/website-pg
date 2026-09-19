@@ -23,14 +23,20 @@ class SaveHeroSlideRequest extends FormRequest
     {
         return [
             'eyebrow' => ['nullable', 'string', 'max:255'],
-            'title' => ['required', 'string', 'max:255'],
+            // Reversed 2026-09-19 (ADR-060 PR-6 addendum): an asset-only
+            // slide (all copy baked into the image) is now valid — the
+            // 'required_without:image_url' guard below is the only thing
+            // still standing between a slide and being fully blank.
+            'title' => ['nullable', 'required_without:image_url', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
             'image_url' => ['nullable', 'string', 'max:2048'],
             'price_from_sen' => ['nullable', 'integer', 'min:0'],
-            'primary_cta_label' => ['required', 'string', 'max:255'],
-            'primary_cta_href' => ['required', 'string', 'max:2048'],
-            'secondary_cta_label' => ['nullable', 'string', 'max:255'],
-            'secondary_cta_href' => ['nullable', 'string', 'max:2048'],
+            // A CTA is either fully present or fully absent — never a
+            // label with no destination or a href with no visible button.
+            'primary_cta_label' => ['nullable', 'required_with:primary_cta_href', 'string', 'max:255'],
+            'primary_cta_href' => ['nullable', 'required_with:primary_cta_label', 'string', 'max:2048'],
+            'secondary_cta_label' => ['nullable', 'required_with:secondary_cta_href', 'string', 'max:255'],
+            'secondary_cta_href' => ['nullable', 'required_with:secondary_cta_label', 'string', 'max:2048'],
             'is_active' => ['required', 'boolean'],
             'sort_order' => ['required', 'integer', 'min:0'],
             'starts_at' => ['nullable', 'date'],

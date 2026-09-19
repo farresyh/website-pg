@@ -35,7 +35,7 @@ function toDraft(slide: StorefrontHeroSlide): Draft {
   return {
     id: slide.id,
     eyebrow: slide.eyebrow ?? "",
-    title: slide.title,
+    title: slide.title ?? "",
     description: slide.description ?? "",
     price_from_sen: slide.price_from_sen,
     primary_cta_label: slide.primary_cta_label ?? "",
@@ -125,7 +125,9 @@ export default function HeroTab() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-gray-800 dark:text-white/90">{slide.title}</p>
+                    <p className="truncate font-medium text-gray-800 dark:text-white/90">
+                      {slide.title || <span className="italic text-gray-400">Asset-only banner</span>}
+                    </p>
                     <p className="text-theme-xs text-gray-500 dark:text-gray-400">Order {slide.sort_order}</p>
                   </div>
                   <Toggle
@@ -258,8 +260,8 @@ function SlideForm({
             />
           </Field>
         </div>
-        <Field label="Title">
-          <input value={form.title} onChange={(e) => set("title", e.target.value)} required className={inputClass} />
+        <Field label="Title" hint="Leave blank for an asset-only banner (all copy baked into the image).">
+          <input value={form.title} onChange={(e) => set("title", e.target.value)} className={inputClass} />
         </Field>
         <Field label="Description">
           <textarea
@@ -270,11 +272,10 @@ function SlideForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Button label">
+          <Field label="Button label" hint="Optional, but fill both label and link or neither.">
             <input
               value={form.primary_cta_label}
               onChange={(e) => set("primary_cta_label", e.target.value)}
-              required
               className={inputClass}
             />
           </Field>
@@ -283,7 +284,6 @@ function SlideForm({
               value={form.primary_cta_href}
               onChange={(e) => set("primary_cta_href", e.target.value)}
               placeholder="/order/mobile-legends"
-              required
               className={inputClass}
             />
           </Field>

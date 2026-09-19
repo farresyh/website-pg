@@ -72,14 +72,67 @@ class HeroSlideControllerTest extends TestCase
         $this->assertSame('Weekend Bonus UC', HeroSlide::query()->first()->title);
     }
 
-    public function test_store_requires_a_title_and_primary_cta(): void
+    /**
+     * 2026-09-19 addendum: a fully-blank slide (no title AND no image)
+     * is the only thing still rejected — title alone is no longer
+     * required.
+     */
+    public function test_store_requires_a_title_or_an_image(): void
     {
         $this->actingAsAdmin();
 
-        $response = $this->postJson('/api/hero-slides', $this->payload(['title' => '', 'primary_cta_label' => '']));
+        $response = $this->postJson('/api/hero-slides', $this->payload([
+            'title' => null,
+            'image_url' => null,
+            'primary_cta_label' => null,
+            'primary_cta_href' => null,
+            'secondary_cta_label' => null,
+            'secondary_cta_href' => null,
+        ]));
 
         $response->assertUnprocessable();
-        $response->assertJsonValidationErrors(['title', 'primary_cta_label']);
+        $response->assertJsonValidationErrors(['title']);
+    }
+
+    /** 2026-09-19 addendum: an asset-only slide (image, no title, no CTA) is now valid. */
+    public function test_store_accepts_an_asset_only_slide(): void
+    {
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/hero-slides', $this->payload([
+            'title' => null,
+            'image_url' => 'https://cdn.example.com/asset-only.webp',
+            'primary_cta_label' => null,
+            'primary_cta_href' => null,
+            'secondary_cta_label' => null,
+            'secondary_cta_href' => null,
+        ]));
+
+        $response->assertCreated();
+        $slide = HeroSlide::query()->first();
+        $this->assertNull($slide->title);
+        $this->assertNull($slide->primary_cta_label);
+    }
+
+    /** 2026-09-19 addendum: label and href must travel together — never a dead half-button. */
+    public function test_store_rejects_a_cta_label_without_a_href(): void
+    {
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/hero-slides', $this->payload(['primary_cta_href' => null]));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['primary_cta_href']);
+    }
+
+    public function test_store_rejects_a_cta_href_without_a_label(): void
+    {
+        $this->actingAsAdmin();
+
+        $response = $this->postJson('/api/hero-slides', $this->payload(['primary_cta_label' => null]));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['primary_cta_label']);
     }
 
     public function test_update_edits_the_slides_fields(): void

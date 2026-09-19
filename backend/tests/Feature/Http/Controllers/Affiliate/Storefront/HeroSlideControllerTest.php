@@ -74,6 +74,37 @@ class HeroSlideControllerTest extends TestCase
         $this->assertDatabaseCount('hero_slides', 0);
     }
 
+    /** 2026-09-19 addendum: image is already required on create, so an asset-only slide just omits title/CTA. */
+    public function test_create_an_asset_only_slide_with_no_title_or_cta(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $affiliate = $this->affiliate();
+
+        $created = $this->withToken($this->tokenFor($affiliate))->post('/api/affiliate/storefront/hero-slides', [
+            'is_active' => '1',
+            'sort_order' => '0',
+            'image' => UploadedFile::fake()->image('hero.jpg', 1200, 600),
+        ])->assertCreated()->json();
+
+        $this->assertNull($created['title']);
+        $this->assertNull($created['primary_cta_label']);
+    }
+
+    /** 2026-09-19 addendum: label and href must travel together — never a dead half-button. */
+    public function test_store_rejects_a_cta_label_without_a_href(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $affiliate = $this->affiliate();
+
+        $this->withToken($this->tokenFor($affiliate))->post('/api/affiliate/storefront/hero-slides', [
+            'title' => 'Big Sale',
+            'primary_cta_label' => 'Shop now',
+            'is_active' => '1',
+            'sort_order' => '0',
+            'image' => UploadedFile::fake()->image('hero.jpg', 1200, 600),
+        ])->assertUnprocessable()->assertJsonValidationErrors(['primary_cta_href']);
+    }
+
     public function test_the_slide_cap_is_enforced(): void
     {
         Storage::fake(config('filesystems.gallery_disk'));
