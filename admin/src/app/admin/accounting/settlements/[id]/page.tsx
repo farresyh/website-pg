@@ -17,10 +17,16 @@ import {
   DataTableCell,
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { type PaymentSettlement, type ChipSettledTransaction, getPaymentSettlement } from "@/lib/payment-settlements";
+import {
+  type PaymentSettlement,
+  type ChipSettledTransaction,
+  type Paginated,
+  getPaymentSettlement,
+} from "@/lib/payment-settlements";
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
 const TD = "px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400";
@@ -36,7 +42,8 @@ export default function PaymentSettlementDetailPage() {
   const settlementId = Number(params.id);
 
   const [settlement, setSettlement] = useState<PaymentSettlement | null>(null);
-  const [transactions, setTransactions] = useState<ChipSettledTransaction[] | null>(null);
+  const [transactions, setTransactions] = useState<Paginated<ChipSettledTransaction> | null>(null);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,14 +52,14 @@ export default function PaymentSettlementDetailPage() {
       router.replace("/login");
       return;
     }
-    getPaymentSettlement(s.token, settlementId)
+    getPaymentSettlement(s.token, settlementId, page)
       .then((res) => {
         setSettlement(res.settlement);
         setTransactions(res.transactions);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load this settlement."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settlementId]);
+  }, [settlementId, page]);
 
   if (error) {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
@@ -79,7 +86,7 @@ export default function PaymentSettlementDetailPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={transactions} dataKey="id">
+          <DataTable data={transactions.data} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
@@ -118,11 +125,32 @@ export default function PaymentSettlementDetailPage() {
               </DataTableTable>
             </DataTableTableContainer>
           </DataTable>
-          {transactions.length === 0 && (
+          {transactions.data.length === 0 && (
             <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No transactions recorded for this settlement.</p>
           )}
         </div>
       </div>
+
+      {transactions.last_page > 1 && (
+        <div className="mt-4 flex items-center justify-between text-theme-sm text-gray-500 dark:text-gray-400">
+          <span>
+            Page {transactions.current_page} of {transactions.last_page} ({transactions.total} total)
+          </span>
+          <div className="flex gap-2">
+            <Button size="small" variant="outlined" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              Previous
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={page >= transactions.last_page}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

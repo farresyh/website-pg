@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\ChipSettledTransaction;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
 use App\Services\Order\PaymentStatus;
@@ -96,7 +97,7 @@ class PaymentSettlementControllerTest extends TestCase
 
         $response = $this->getJson("/api/accounting/settlements/{$settlementId}")->assertOk();
 
-        $response->assertJsonPath('transactions.0.settled_on', '2026-09-07');
+        $response->assertJsonPath('transactions.data.0.settled_on', '2026-09-07');
     }
 
     public function test_index_lists_settlements_newest_first(): void
@@ -107,7 +108,53 @@ class PaymentSettlementControllerTest extends TestCase
 
         $response = $this->getJson('/api/accounting/settlements')->assertOk();
 
-        $this->assertSame('2026-09-08', $response->json('0.date_from'));
+        $this->assertSame('2026-09-08', $response->json('data.0.date_from'));
+    }
+
+    public function test_index_paginates_at_25_per_page_by_default(): void
+    {
+        $this->actingAsAdmin();
+        for ($i = 0; $i < 30; $i++) {
+            PaymentSettlement::query()->create($this->settlementAttributes([
+                'date_from' => now()->subDays($i * 7)->toDateString(),
+                'date_to' => now()->subDays($i * 7)->addDays(6)->toDateString(),
+            ]));
+        }
+
+        $response = $this->getJson('/api/accounting/settlements')->assertOk();
+
+        $this->assertCount(25, $response->json('data'));
+        $this->assertSame(30, $response->json('total'));
+        $this->assertSame(2, $response->json('last_page'));
+    }
+
+    public function test_show_paginates_transactions_at_25_per_page_by_default(): void
+    {
+        $this->actingAsAdmin();
+        $settlement = PaymentSettlement::query()->create($this->settlementAttributes());
+
+        $rows = [];
+        for ($i = 0; $i < 30; $i++) {
+            $rows[] = [
+                'transaction_id' => 'tx-'.$i,
+                'matched_type' => null,
+                'matched_id' => null,
+                'amount_sen' => 100,
+                'fee_sen' => 10,
+                'net_amount_sen' => 90,
+                'acquirer' => 'fpx',
+                'settled_on' => '2026-09-07',
+                'payment_settlement_id' => $settlement->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        ChipSettledTransaction::query()->insert($rows);
+
+        $response = $this->getJson("/api/accounting/settlements/{$settlement->id}")->assertOk();
+
+        $this->assertCount(25, $response->json('transactions.data'));
+        $this->assertSame(30, $response->json('transactions.total'));
     }
 
     public function test_update_records_the_founders_own_bank_figure(): void

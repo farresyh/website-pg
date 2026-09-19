@@ -31,6 +31,7 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
   type PaymentSettlement,
+  type Paginated,
   type SettlementIngestResult,
   listPaymentSettlements,
   uploadPaymentSettlement,
@@ -55,15 +56,16 @@ export default function PaymentSettlementsPage() {
   const session = useClientSession();
   const token = session?.token ?? null;
 
-  const [settlements, setSettlements] = useState<PaymentSettlement[] | null>(null);
+  const [settlements, setSettlements] = useState<Paginated<PaymentSettlement> | null>(null);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [lastResult, setLastResult] = useState<SettlementIngestResult | null>(null);
   const [bankFigures, setBankFigures] = useState<Record<number, string>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
 
-  const refresh = useCallback((t: string) => {
-    listPaymentSettlements(t)
+  const refresh = useCallback((t: string, p: number) => {
+    listPaymentSettlements(t, p)
       .then(setSettlements)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load settlements."));
   }, []);
@@ -74,9 +76,9 @@ export default function PaymentSettlementsPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh(s.token, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -89,7 +91,7 @@ export default function PaymentSettlementsPage() {
     try {
       const result = await uploadPaymentSettlement(token, file);
       setLastResult(result);
-      refresh(token);
+      refresh(token, page);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Upload failed — is this a real CHIP settlement .xlsx?");
     } finally {
@@ -110,7 +112,7 @@ export default function PaymentSettlementsPage() {
       const status = sen === settlement.expected_net_sen ? "matched" : "variance";
       const variance_note = status === "variance" ? `Bank figure RM${raw} vs expected ${rm(settlement.expected_net_sen)}` : undefined;
       await updatePaymentSettlement(token, settlement.id, { actual_bank_amount_sen: sen, status, variance_note });
-      refresh(token);
+      refresh(token, page);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save the bank figure.");
     } finally {
@@ -175,7 +177,7 @@ export default function PaymentSettlementsPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={settlements} dataKey="id">
+          <DataTable data={settlements.data} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
@@ -232,11 +234,32 @@ export default function PaymentSettlementsPage() {
               </DataTableTable>
             </DataTableTableContainer>
           </DataTable>
-          {settlements.length === 0 && (
+          {settlements.data.length === 0 && (
             <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No settlements uploaded yet.</p>
           )}
         </div>
       </div>
+
+      {settlements.last_page > 1 && (
+        <div className="mt-4 flex items-center justify-between text-theme-sm text-gray-500 dark:text-gray-400">
+          <span>
+            Page {settlements.current_page} of {settlements.last_page} ({settlements.total} total)
+          </span>
+          <div className="flex gap-2">
+            <Button size="small" variant="outlined" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              Previous
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={page >= settlements.last_page}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

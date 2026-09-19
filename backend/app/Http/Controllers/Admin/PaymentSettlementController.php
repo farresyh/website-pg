@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\UploadPaymentSettlementRequest;
 use App\Models\PaymentSettlement;
 use App\Services\Accounting\SettlementReconciliationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * ADR-110 PR-B, fills ADR-083 decision 7 — "CHIP Settlements" screen.
@@ -20,18 +21,22 @@ class PaymentSettlementController extends Controller
 {
     public function __construct(private readonly SettlementReconciliationService $reconciliation) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $perPage = (int) $request->query('per_page', 25);
+
         return response()->json(
-            PaymentSettlement::query()->orderByDesc('date_from')->get(),
+            PaymentSettlement::query()->orderByDesc('date_from')->paginate($perPage)->withQueryString(),
         );
     }
 
-    public function show(PaymentSettlement $settlement): JsonResponse
+    public function show(Request $request, PaymentSettlement $settlement): JsonResponse
     {
+        $perPage = (int) $request->query('per_page', 25);
+
         return response()->json([
             'settlement' => $settlement,
-            'transactions' => $settlement->transactions()->orderByDesc('settled_on')->get(),
+            'transactions' => $settlement->transactions()->orderByDesc('settled_on')->paginate($perPage)->withQueryString(),
         ]);
     }
 

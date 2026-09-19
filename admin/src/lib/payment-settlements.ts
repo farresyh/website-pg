@@ -1,5 +1,13 @@
 import { apiFetch, apiUpload } from "@/lib/api-client";
 
+/** Plain Laravel `LengthAwarePaginator` JSON shape — mirrors `OrderPage` (`lib/orders.ts`). */
+export interface Paginated<T> {
+  data: T[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
 /**
  * ADR-110 PR-B, fills ADR-083 decision 7 — CHIP Settlements. Three
  * independent numbers per settlement window, deliberately never
@@ -46,13 +54,13 @@ export interface SettlementIngestResult {
   paid_but_not_settled: { reference: string; amount_sen: number }[];
 }
 
-export function listPaymentSettlements(token: string) {
-  return apiFetch<PaymentSettlement[]>("/api/accounting/settlements", { token });
+export function listPaymentSettlements(token: string, page = 1) {
+  return apiFetch<Paginated<PaymentSettlement>>(`/api/accounting/settlements?page=${page}`, { token });
 }
 
-export function getPaymentSettlement(token: string, id: number) {
-  return apiFetch<{ settlement: PaymentSettlement; transactions: ChipSettledTransaction[] }>(
-    `/api/accounting/settlements/${id}`,
+export function getPaymentSettlement(token: string, id: number, transactionsPage = 1) {
+  return apiFetch<{ settlement: PaymentSettlement; transactions: Paginated<ChipSettledTransaction> }>(
+    `/api/accounting/settlements/${id}?page=${transactionsPage}`,
     { token },
   );
 }
