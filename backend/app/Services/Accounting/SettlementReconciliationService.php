@@ -161,10 +161,18 @@ final class SettlementReconciliationService
      * ADR-083 decision 7's "our-record-paid-but-not-settled" exception —
      * a CHIP-paid record in this window whose `transaction_id` has never
      * appeared in ANY settlement upload to date, not just this one.
+     * Public (not just called from `ingest()`) so the settlement detail
+     * screen can recompute it live on every view, not just show a
+     * snapshot frozen at upload time — a transaction genuinely still
+     * pending CHIP's own T+1/T+2 settlement at upload time (this ADR's
+     * own addendum, found live: a real RM111.50 wallet top-up paid the
+     * same day as a file's own date range) resolves itself once a later
+     * file covers it, and a founder revisiting a `variance` settlement
+     * days later should see the current answer, not a stale one.
      *
      * @return array<int, array{reference: string, amount_sen: int}>
      */
-    private function paidButNotSettled(Carbon $dateFrom, Carbon $dateTo): array
+    public function paidButNotSettled(Carbon $dateFrom, Carbon $dateTo): array
     {
         $from = $dateFrom->copy()->startOfDay();
         $to = $dateTo->copy()->endOfDay();

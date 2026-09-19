@@ -10,7 +10,6 @@ use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
 use App\Models\BackupRun;
 use App\Models\Order;
-use App\Models\PaymentGateway as PaymentGatewayModel;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Observers\AffiliateMembershipTierObserver;
@@ -25,6 +24,7 @@ use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\PlunkMailer;
 use App\Services\OpenWa\OpenWaClient;
+use App\Services\Payment\Chip\ChipCredentialResolver;
 use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
@@ -217,20 +217,22 @@ class AppServiceProvider extends ServiceProvider
             $config = config('services.chip');
 
             // ADR-110 PR-C — credentials move to the encrypted
-            // `payment_gateways` row; `config('services.chip')` stays
-            // the fallback for `secret_key`/`brand_id`/`base_url` only
-            // while that row is still empty, so this deploy itself can
-            // never break checkout regardless of whether the founder
-            // has filled in the new `/middleware/payment-gateways` form
+            // `payment_gateways` row; `ChipCredentialResolver` falls
+            // back to `config('services.chip')` per-field only while
+            // that row is still empty, so this deploy itself can never
+            // break checkout regardless of whether the founder has
+            // filled in the new `/middleware/payment-gateways` form
             // yet. Once `.env`'s CHIP_SECRET_KEY/CHIP_BRAND_ID are
             // actually removed (the founder's own manual cutover step),
             // this fallback naturally has nothing left to fall back to.
-            $dbConfig = PaymentGatewayModel::query()->where('gateway_key', 'chip')->first()?->api_config ?? [];
+            // The two manual smoke-test commands resolve identically —
+            // see `ChipCredentialResolver`'s own doc comment.
+            $credentials = $app->make(ChipCredentialResolver::class)->resolve();
 
             return new ChipGateway(
-                baseUrl: $dbConfig['base_url'] ?? $config['base_url'],
-                secretKey: (string) ($dbConfig['secret_key'] ?? $config['secret_key']),
-                brandId: (string) ($dbConfig['brand_id'] ?? $config['brand_id']),
+                baseUrl: $credentials['base_url'],
+                secretKey: $credentials['secret_key'],
+                brandId: $credentials['brand_id'],
                 timeoutSeconds: $config['timeout'],
                 connectTimeoutSeconds: $config['connect_timeout'],
                 webhookPublicKeyTtlSeconds: $config['webhook_public_key_ttl'],

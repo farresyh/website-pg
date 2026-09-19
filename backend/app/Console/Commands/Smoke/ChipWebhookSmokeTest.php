@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Package;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\Chip\ChipCredentialResolver;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentRequest;
@@ -38,7 +39,7 @@ use Illuminate\Support\Facades\Http;
 #[Description('End-to-end CHIP success_callback webhook verification against the real CHIP API. Non-production only.')]
 class ChipWebhookSmokeTest extends Command
 {
-    public function handle(PaymentGatewayFactory $gateways): int
+    public function handle(PaymentGatewayFactory $gateways, ChipCredentialResolver $credentialResolver): int
     {
         if (app()->environment('production')) {
             $this->error('Refusing to run with APP_ENV=production — this creates a real Order and calls mark_as_paid.');
@@ -46,14 +47,20 @@ class ChipWebhookSmokeTest extends Command
             return self::FAILURE;
         }
 
-        $config = config('services.chip');
+        // ADR-110 PR-C — resolves identically to `$gateways->make('chip')`
+        // below (the same `payment-gateway.chip` container binding);
+        // only the raw `mark_as_paid` HTTP call further down needs its
+        // own copy of the credentials, since it bypasses `ChipGateway`
+        // entirely. See `ChipCredentialResolver`'s own doc comment.
+        $credentials = $credentialResolver->resolve();
 
-        if (blank($config['secret_key'] ?? null) || blank($config['brand_id'] ?? null)) {
-            $this->error('CHIP_SECRET_KEY / CHIP_BRAND_ID not set — nothing to test.');
+        if (blank($credentials['secret_key']) || blank($credentials['brand_id'])) {
+            $this->error('No CHIP secret_key/brand_id configured — set them via /middleware/payment-gateways or CHIP_SECRET_KEY/CHIP_BRAND_ID in .env — nothing to test.');
 
             return self::FAILURE;
         }
 
+        $config = config('services.chip');
         $callbackUrl = (string) ($config['callback_url'] ?? '');
 
         if ($this->looksLocal($callbackUrl)) {
@@ -140,9 +147,9 @@ class ChipWebhookSmokeTest extends Command
 
         $this->info('2/4  POST /purchases/{id}/mark_as_paid/ — CHIP fires the callback...');
 
-        $marked = Http::withToken($config['secret_key'])
+        $marked = Http::withToken($credentials['secret_key'])
             ->acceptJson()
-            ->post(rtrim($config['base_url'], '/')."/purchases/{$purchaseId}/mark_as_paid/");
+            ->post(rtrim($credentials['base_url'], '/')."/purchases/{$purchaseId}/mark_as_paid/");
 
         if ($marked->failed()) {
             $this->error("mark_as_paid failed (HTTP {$marked->status()}): {$marked->body()}");

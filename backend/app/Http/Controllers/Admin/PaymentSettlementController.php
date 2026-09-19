@@ -30,6 +30,12 @@ class PaymentSettlementController extends Controller
         );
     }
 
+    /**
+     * `paid_but_not_settled` is recomputed live on every view (never
+     * stored) — see `SettlementReconciliationService::paidButNotSettled()`'s
+     * own doc comment for why a snapshot frozen at upload time would go
+     * stale.
+     */
     public function show(Request $request, PaymentSettlement $settlement): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 25);
@@ -37,6 +43,7 @@ class PaymentSettlementController extends Controller
         return response()->json([
             'settlement' => $settlement,
             'transactions' => $settlement->transactions()->orderByDesc('settled_on')->paginate($perPage)->withQueryString(),
+            'paid_but_not_settled' => $this->reconciliation->paidButNotSettled($settlement->date_from, $settlement->date_to),
         ]);
     }
 

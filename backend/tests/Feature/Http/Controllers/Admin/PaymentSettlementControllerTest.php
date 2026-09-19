@@ -100,6 +100,36 @@ class PaymentSettlementControllerTest extends TestCase
         $response->assertJsonPath('transactions.data.0.settled_on', '2026-09-07');
     }
 
+    /**
+     * Founder-reported live: a real `variance` settlement made no sense
+     * at a glance (Expected Net far above File/Bank) until it was traced
+     * to CHIP-paid orders/top-ups still awaiting T+1/T+2 settlement.
+     * `show()` now surfaces this on every view, not just the upload's
+     * own transient response.
+     */
+    public function test_show_surfaces_paid_but_not_settled_recomputed_live(): void
+    {
+        $this->actingAsAdmin();
+
+        Order::factory()->create([
+            'order_number' => 'PG-STILLPENDING',
+            'payment_gateway' => 'chip',
+            'payment_ref' => 'tx-not-in-file',
+            'payment_status' => PaymentStatus::Paid,
+            'paid_at' => '2026-09-07 12:00:00',
+            'final_amount' => 5000,
+        ]);
+        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '0.00', '0.00', '0.00', []);
+        $file = new UploadedFile($path, 'settlement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+        $settlementId = $this->postJson('/api/accounting/settlements', ['file' => $file])->json('settlement.id');
+        unlink($path);
+
+        $response = $this->getJson("/api/accounting/settlements/{$settlementId}")->assertOk();
+
+        $response->assertJsonPath('paid_but_not_settled.0.reference', 'PG-STILLPENDING');
+        $response->assertJsonPath('paid_but_not_settled.0.amount_sen', 5000);
+    }
+
     public function test_index_lists_settlements_newest_first(): void
     {
         $this->actingAsAdmin();

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Smoke;
 
+use App\Services\Payment\Chip\ChipCredentialResolver;
 use App\Services\Payment\Chip\ChipGateway;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentRequest;
@@ -32,22 +33,27 @@ use Illuminate\Console\Command;
 #[Description('Manually verify ChipGateway against the real CHIP API: creates a small test purchase and fetches it back.')]
 class ChipSmokeTest extends Command
 {
-    public function handle(): int
+    public function handle(ChipCredentialResolver $credentialResolver): int
     {
-        $config = config('services.chip');
+        // ADR-110 PR-C — resolves identically to real production
+        // traffic (the `payment-gateway.chip` container binding):
+        // `payment_gateways` DB row first, `.env` fallback per-field.
+        // See `ChipCredentialResolver`'s own doc comment for why this
+        // command doesn't just read `config('services.chip')` directly.
+        $credentials = $credentialResolver->resolve();
 
-        if (blank($config['secret_key'] ?? null) || blank($config['brand_id'] ?? null)) {
-            $this->error('CHIP_SECRET_KEY / CHIP_BRAND_ID not set in .env — nothing to test.');
+        if (blank($credentials['secret_key']) || blank($credentials['brand_id'])) {
+            $this->error('No CHIP secret_key/brand_id configured — set them via /middleware/payment-gateways or CHIP_SECRET_KEY/CHIP_BRAND_ID in .env — nothing to test.');
 
             return self::FAILURE;
         }
 
-        $this->warn('CHIP has no separate sandbox endpoint — this hits the real production API. Confirm CHIP_SECRET_KEY is a test-mode key in the CHIP dashboard before proceeding.');
+        $this->warn('CHIP has no separate sandbox endpoint — this hits the real production API. Confirm the configured secret_key is a test-mode key in the CHIP dashboard before proceeding.');
 
         $gateway = new ChipGateway(
-            baseUrl: $config['base_url'],
-            secretKey: $config['secret_key'],
-            brandId: $config['brand_id'],
+            baseUrl: $credentials['base_url'],
+            secretKey: $credentials['secret_key'],
+            brandId: $credentials['brand_id'],
         );
 
         $referenceId = 'SMOKE-'.now()->format('YmdHis');

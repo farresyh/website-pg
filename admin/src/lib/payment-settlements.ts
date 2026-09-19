@@ -44,6 +44,12 @@ export interface ChipSettledTransaction {
   settled_on: string;
 }
 
+/** A CHIP-paid record in this window that has never appeared in ANY settlement file uploaded to date — recomputed live, never a stale snapshot. */
+export interface PaidButNotSettledRow {
+  reference: string;
+  amount_sen: number;
+}
+
 /** ADR-110 PR-B addendum — a re-uploaded or date-overlapping file never double-counts; this is what makes that visible. */
 export interface SettlementIngestResult {
   settlement: PaymentSettlement;
@@ -51,7 +57,7 @@ export interface SettlementIngestResult {
   newly_unmatched_count: number;
   already_reconciled_skipped_count: number;
   unmatched_transaction_ids: string[];
-  paid_but_not_settled: { reference: string; amount_sen: number }[];
+  paid_but_not_settled: PaidButNotSettledRow[];
 }
 
 export function listPaymentSettlements(token: string, page = 1) {
@@ -59,10 +65,11 @@ export function listPaymentSettlements(token: string, page = 1) {
 }
 
 export function getPaymentSettlement(token: string, id: number, transactionsPage = 1) {
-  return apiFetch<{ settlement: PaymentSettlement; transactions: Paginated<ChipSettledTransaction> }>(
-    `/api/accounting/settlements/${id}?page=${transactionsPage}`,
-    { token },
-  );
+  return apiFetch<{
+    settlement: PaymentSettlement;
+    transactions: Paginated<ChipSettledTransaction>;
+    paid_but_not_settled: PaidButNotSettledRow[];
+  }>(`/api/accounting/settlements/${id}?page=${transactionsPage}`, { token });
 }
 
 export function uploadPaymentSettlement(token: string, file: File) {
