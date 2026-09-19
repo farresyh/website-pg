@@ -59,6 +59,7 @@ use App\Http\Controllers\Middleware\CurrencyRateController;
 use App\Http\Controllers\Middleware\DeveloperToolController;
 use App\Http\Controllers\Middleware\DismissedPackageController;
 use App\Http\Controllers\Middleware\OpsAccessController;
+use App\Http\Controllers\Middleware\PaymentGatewayController;
 use App\Http\Controllers\Middleware\PaymentMethodController;
 use App\Http\Controllers\Middleware\PendingPriceChangeController;
 use App\Http\Controllers\Middleware\PendingReactivationController;
@@ -574,6 +575,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{supplier}', [SupplierController::class, 'destroy']);
         Route::post('/{supplier}/refresh-balance', [SupplierController::class, 'refreshBalance']);
         Route::patch('/{supplier}/packages/status', [SupplierController::class, 'updatePackagesStatus']);
+    });
+
+    // ADR-110 PR-C — CHIP credential `.env`→DB migration. Super Admin
+    // only, same boundary as `middleware/suppliers` above. No
+    // create/delete: `gateway_key`'s value set is fixed by
+    // PaymentGatewayFactory, not admin-defined.
+    Route::middleware('admin.role:super_admin')->prefix('middleware/payment-gateways')->group(function () {
+        Route::get('/', [PaymentGatewayController::class, 'index']);
+        Route::put('/{gatewayKey}', [PaymentGatewayController::class, 'update']);
     });
 
     // ADR-051 (MUI-9) — read-only Request Logs viewer. Super Admin

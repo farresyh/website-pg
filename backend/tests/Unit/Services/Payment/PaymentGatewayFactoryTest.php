@@ -9,14 +9,22 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Payment\UnsupportedPaymentGatewayException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Tests\TestCase;
 
 class PaymentGatewayFactoryTest extends TestCase
 {
+    use RefreshDatabase;
+
     /**
      * ADR-022's 2026-09-01 addendum — CHIP is the only gateway bound in
      * AppServiceProvider now (Xendit removed).
+     *
+     * ADR-110 PR-C — resolving it now reads the `payment_gateways`
+     * table (empty here, falls back to `config('services.chip')`),
+     * hence `RefreshDatabase` (matches `SupplierAdapterFactoryTest`'s
+     * own precedent for the identical reason).
      */
     public function test_resolves_the_chip_gateway_bound_in_the_container(): void
     {
