@@ -37,6 +37,10 @@ interface ReviewModalProps {
   showMembershipPromo?: boolean;
   /** The top tier's member price for this package, RM — same value the sidebar card promotes. */
   topTierMemberPriceRm?: number | null;
+  /** 2026-09-20 quota transparency: true once we know this visitor is a signed-in member (any tier). */
+  isMember?: boolean;
+  /** The member's remaining monthly quota, RM — used to warn before "Confirm & Pay" when this package will fall back to standard price. */
+  quotaRemainingRm?: number | null;
 }
 
 const inputClass =
@@ -80,6 +84,8 @@ export default function ReviewModal({
   onVoucherChange,
   showMembershipPromo = false,
   topTierMemberPriceRm = null,
+  isMember = false,
+  quotaRemainingRm = null,
 }: ReviewModalProps) {
   const [tcChecked, setTcChecked] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -231,6 +237,22 @@ export default function ReviewModal({
   // hasn't landed yet (e.g. right after applying a voucher).
   const packagePriceRm = preview ? preview.selling_price_sen / 100 : fallbackBaseRm;
   const transactionFeeRm = preview ? preview.transaction_fee_sen / 100 : null;
+
+  // Quota transparency (2026-09-20): the real, authoritative signal that
+  // this order fell back to standard price — `member_discount_percent`
+  // is null whenever `OrderPricingResolver::resolveMember()` returned
+  // null, which for a signed-in member means quota was insufficient
+  // (the only other null-cause, "not a member", can't apply here since
+  // `isMember` is already true). Only shown once `preview` has actually
+  // loaded, so it never flashes based on stale/fallback pricing.
+  const quotaFellBackToStandard = isMember && preview !== null && preview.member_discount_percent === null;
+  // Bug found live-testing this feature: `isMemberPrice` only reflects
+  // the catalog's personalization flag, not whether quota actually held
+  // at checkout — once the real `preview` lands, it (not the catalog
+  // flag) is the source of truth for whether THIS order is really
+  // charged at member price, so the "Member Price" row/strikethrough
+  // never mislabels a quota-exceeded order that fell back to standard.
+  const chargedAsMember = preview ? preview.member_discount_percent !== null : isMemberPrice;
   const voucherDiscountRm = preview ? preview.voucher_discount_sen / 100 : fallbackDiscountRm;
   const payableRm = preview ? preview.final_amount_sen / 100 : fallbackPayableRm;
 
@@ -371,14 +393,14 @@ export default function ReviewModal({
         <hr className="mb-5 border-t-2 border-ink" />
 
         <div className="mb-5 flex flex-col gap-1.5">
-          {isMemberPrice && (
+          {chargedAsMember && (
             <div className="flex items-center justify-between text-sm text-on-surface-variant">
               <span>Standard price</span>
               <span className="line-through">RM{pkg.priceRm.toFixed(2)}</span>
             </div>
           )}
-          <Row k={isMemberPrice ? "Member Price" : "Package Price"} v={`RM${packagePriceRm.toFixed(2)}`} />
-          {!isMemberPrice && showMembershipPromo && topTierMemberPriceRm !== null && (
+          <Row k={chargedAsMember ? "Member Price" : "Package Price"} v={`RM${packagePriceRm.toFixed(2)}`} />
+          {!chargedAsMember && showMembershipPromo && topTierMemberPriceRm !== null && (
             <div className="flex min-h-[60px] items-center justify-between gap-3 rounded-lg border-2 border-ink bg-secondary-container px-3.5 py-2 text-on-secondary-container">
               <div className="flex items-center gap-2">
                 <Crown size={16} weight="fill" className="shrink-0 text-on-secondary-container/70" />
@@ -414,6 +436,14 @@ export default function ReviewModal({
             <span className="font-mono text-xl font-bold text-primary">RM{payableRm.toFixed(2)}</span>
           </div>
         </div>
+
+        {quotaFellBackToStandard && (
+          <p className="mx-6 mb-4 rounded-md border-2 border-danger bg-danger-container px-3 py-2 text-[12.5px] leading-relaxed text-on-danger-container">
+            {quotaRemainingRm != null
+              ? `Your remaining member quota (RM${quotaRemainingRm.toFixed(2)}) isn't enough for this package — it's charged at the standard price.`
+              : "This package exceeds your remaining member quota — it's charged at the standard price."}
+          </p>
+        )}
 
         <label className="mb-1 flex cursor-pointer items-start gap-2.5">
           <input

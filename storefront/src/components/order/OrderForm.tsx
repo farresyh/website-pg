@@ -51,7 +51,7 @@ interface OrderFormProps {
    * `null` for a guest.
    */
   memberPackages?: GamePackage[] | null;
-  memberSession?: { tierName: string | null; email: string | null } | null;
+  memberSession?: { tierName: string | null; email: string | null; quotaRemainingRm: number | null } | null;
   ssrMembershipToken?: string | null;
 }
 
@@ -100,18 +100,24 @@ export default function OrderForm({
     token: string;
     tierName: string | null;
     email: string | null;
+    quotaRemainingRm: number | null;
   } | null>(
     ssrMembershipToken
       ? {
           token: ssrMembershipToken,
           tierName: ssrMemberSession?.tierName ?? null,
           email: ssrMemberSession?.email ?? null,
+          quotaRemainingRm: ssrMemberSession?.quotaRemainingRm ?? null,
         }
       : null,
   );
   const activeSession = memberSession && memberSession.token === membershipToken ? memberSession : null;
   const activeTierName = activeSession?.tierName ?? null;
   const memberEmail = activeSession?.email ?? null;
+  // Quota transparency (2026-09-20): shown on PackageGrid + ReviewModal
+  // so a member sees a package will fall back to standard price BEFORE
+  // checkout, not as a surprise after paying.
+  const quotaRemainingRm = activeSession?.quotaRemainingRm ?? null;
 
   useEffect(() => {
     if (!membershipToken) return;
@@ -134,11 +140,16 @@ export default function OrderForm({
     getMe(membershipToken)
       .then((me) => {
         if (!cancelled) {
-          setMemberSession({ token: membershipToken, tierName: me.membership?.tierName ?? null, email: me.email });
+          setMemberSession({
+            token: membershipToken,
+            tierName: me.membership?.tierName ?? null,
+            email: me.email,
+            quotaRemainingRm: me.membership?.quotaRemainingRm ?? null,
+          });
         }
       })
       .catch(() => {
-        if (!cancelled) setMemberSession({ token: membershipToken, tierName: null, email: null });
+        if (!cancelled) setMemberSession({ token: membershipToken, tierName: null, email: null, quotaRemainingRm: null });
       });
     return () => {
       cancelled = true;
@@ -443,7 +454,12 @@ export default function OrderForm({
         </StepCard>
 
         <StepCard number={2} title="Choose Package" locked={!step1Continued} lockHint="Complete Step 1 first">
-          <PackageGrid packages={packages} selectedId={selectedPackageId} onSelect={setSelectedPackageId} />
+          <PackageGrid
+            packages={packages}
+            selectedId={selectedPackageId}
+            onSelect={setSelectedPackageId}
+            quotaRemainingRm={quotaRemainingRm}
+          />
           {packages.length === 0 && <p className="text-sm text-on-surface-variant">No packages available for this game yet.</p>}
         </StepCard>
 
@@ -573,6 +589,14 @@ export default function OrderForm({
           onVoucherChange={setVoucherCode}
           showMembershipPromo={showPromo}
           topTierMemberPriceRm={selectedTier2MemberPriceRm}
+          // Bug found live-testing: `activeSession` is set for anyone with
+          // a *verified* membership-session token, which exists before a
+          // real paid tier does (email OTP verification vs. actually
+          // subscribing are separate steps) — `activeTierName` is only
+          // non-null once a real Membership row (with a plan) exists, so
+          // it's the correct "is this an active paying member" check.
+          isMember={activeTierName !== null}
+          quotaRemainingRm={quotaRemainingRm}
         />
       )}
 
