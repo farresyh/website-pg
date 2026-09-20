@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Services\Report;
 
+use App\Models\Affiliate;
+use App\Models\Membership;
 use App\Models\Order;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -58,7 +60,17 @@ class ReportMembershipBreakdownTest extends TestCase
             'final_amount' => 1250,
         ]);
 
-        (new LedgerService)->credit('platform', null, 890, 'membership_fee', 'membership', 1);
+        $membership = Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'member@example.com',
+            'membership_plan_id' => 1,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 10000,
+            'expires_at' => now()->addDays(30),
+        ]);
+
+        (new LedgerService)->credit('platform', null, 890, 'membership_fee', 'membership', $membership->id);
 
         $row = (new ReportService)->membershipBreakdown(null, null, null);
 
@@ -81,5 +93,77 @@ class ReportMembershipBreakdownTest extends TestCase
         $this->assertSame(1, $row['member_orders_count']);
         $this->assertSame(0, $row['standard_orders_count']);
         $this->assertSame(120, $row['margin_forgone']);
+    }
+
+    /**
+     * 2026-09-21 fix (ADR-086 addendum) — `pricing_basis` has 4 values,
+     * not 2. The old `!= 'member'` "standard" bucket silently absorbed
+     * reseller-wallet and affiliate-wholesale-tier orders (found live:
+     * "Standard (guest)" showed 93% wholesale reseller volume in prod).
+     * Both non-standard, non-member bases must be excluded entirely from
+     * this breakdown — they have their own dedicated tabs
+     * (resellerBreakdown()/affiliateBreakdown()).
+     */
+    public function test_excludes_reseller_wallet_and_affiliate_tier_orders_from_standard_bucket(): void
+    {
+        $this->order(['pricing_basis' => 'standard', 'normal_selling_price' => null, 'final_amount' => 1250]);
+        $this->order(['pricing_basis' => 'reseller-wallet', 'normal_selling_price' => null, 'final_amount' => 46048]);
+        $this->order(['pricing_basis' => 'affiliate', 'normal_selling_price' => null, 'final_amount' => 5000]);
+
+        $row = (new ReportService)->membershipBreakdown(null, null, null);
+
+        $this->assertSame(1250, $row['standard_sales']);
+        $this->assertSame(1, $row['standard_orders_count']);
+    }
+
+    /**
+     * 2026-09-21 fix (ADR-086 addendum) — `membership_fee_revenue` never
+     * applied the `$affiliateId` filter every other figure in this
+     * breakdown does, even though membership is genuinely per-affiliate
+     * (`memberships.(affiliate_id, email)`, ADR-061 PR-B decision 5).
+     * Scoping now joins through `memberships` the same way the LLM
+     * Report Assistant's own `llm_report_membership_fees` view already
+     * does, so the two never drift.
+     */
+    public function test_membership_fee_revenue_is_scoped_by_affiliate(): void
+    {
+        $affiliateA = $this->primaryAffiliate();
+        $affiliateB = Affiliate::query()->create([
+            'business_name' => 'Ohahastore',
+            'markup_pct' => 0,
+            'status' => 'active',
+            'is_owned' => false,
+        ]);
+
+        $membershipA = Membership::query()->create([
+            'affiliate_id' => $affiliateA->id,
+            'email' => 'member-a@example.com',
+            'membership_plan_id' => 1,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 10000,
+            'expires_at' => now()->addDays(30),
+        ]);
+
+        $membershipB = Membership::query()->create([
+            'affiliate_id' => $affiliateB->id,
+            'email' => 'member-b@example.com',
+            'membership_plan_id' => 1,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 10000,
+            'expires_at' => now()->addDays(30),
+        ]);
+
+        (new LedgerService)->credit('platform', null, 890, 'membership_fee', 'membership', $membershipA->id);
+        (new LedgerService)->credit('platform', null, 1990, 'membership_fee', 'membership', $membershipB->id);
+
+        $rowA = (new ReportService)->membershipBreakdown(null, null, $affiliateA->id);
+        $rowB = (new ReportService)->membershipBreakdown(null, null, $affiliateB->id);
+        $rowAll = (new ReportService)->membershipBreakdown(null, null, null);
+
+        $this->assertSame(890, $rowA['membership_fee_revenue']);
+        $this->assertSame(1990, $rowB['membership_fee_revenue']);
+        $this->assertSame(2880, $rowAll['membership_fee_revenue']);
     }
 }
