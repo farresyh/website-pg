@@ -52,7 +52,7 @@ class ResendOrderDeliveryJobTest extends TestCase
                 new SupplierFundingService,
             ),
             new PricingService,
-            new MembershipPricingService,
+            new MembershipPricingService(new PricingService),
         );
     }
 

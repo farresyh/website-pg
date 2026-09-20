@@ -31,7 +31,13 @@ class UpdateMembershipPlanRequest extends FormRequest
             'name' => ['sometimes', 'string', 'max:255'],
             'fee_sen' => ['required', 'integer', 'min:0'],
             'quota_sen' => ['required', 'integer', 'min:0'],
-            'discount_percent' => ['required', 'numeric', 'min:0', 'max:1000'],
+            // 2026-09-20 addendum: max tightened from 1000 (an oversight,
+            // never a deliberate ceiling) to 95 — a literal 100% would let
+            // a member pay exact cost with zero buffer against price-sync
+            // lag or a stale cost_price (MembershipPricingService already
+            // floors the effective markup at 0, so 100% is reachable but
+            // deliberately never allowed to be set).
+            'discount_percent' => ['required', 'numeric', 'min:0', 'max:95'],
         ];
     }
 

@@ -36,7 +36,7 @@ class CheckoutServiceTest extends TestCase
     private function service(): CheckoutService
     {
         return new CheckoutService(
-            new OrderPricingResolver(new PricingService, new MembershipPricingService),
+            new OrderPricingResolver(new PricingService, new MembershipPricingService(new PricingService)),
             new CheckoutTotalService,
             new OrderFactory(new OrderNumberService),
             new VoucherService(new LedgerService),

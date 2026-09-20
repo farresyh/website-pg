@@ -100,6 +100,37 @@ class MembershipPlanControllerTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('discount_percent');
     }
 
+    /**
+     * 2026-09-20 addendum: max tightened from 1000 (an oversight) to 95 —
+     * a deliberate buffer against ever setting a literal 100% (member
+     * pays exact cost, zero margin cushion against price-sync lag).
+     */
+    public function test_rejects_a_discount_percent_above_95(): void
+    {
+        $this->actingAsSuperAdmin();
+        $tier1 = MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
+
+        $this->putJson("/api/membership-plans/{$tier1->id}", [
+            'fee_sen' => 990,
+            'quota_sen' => 12000,
+            'discount_percent' => 96,
+        ])->assertUnprocessable()->assertJsonValidationErrors('discount_percent');
+    }
+
+    public function test_accepts_a_discount_percent_of_exactly_95(): void
+    {
+        $this->actingAsSuperAdmin();
+        $tier2 = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+
+        $this->putJson("/api/membership-plans/{$tier2->id}", [
+            'fee_sen' => 4990,
+            'quota_sen' => 60500,
+            'discount_percent' => 95,
+        ])->assertOk();
+
+        $this->assertSame('95.00', $tier2->fresh()->discount_percent);
+    }
+
     public function test_logs_one_audit_row_per_changed_field_only(): void
     {
         $this->actingAsSuperAdmin();

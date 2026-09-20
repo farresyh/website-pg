@@ -24,7 +24,7 @@ class OrderPricingResolverTest extends TestCase
 
     private function resolver(): OrderPricingResolver
     {
-        return new OrderPricingResolver(new PricingService, new MembershipPricingService);
+        return new OrderPricingResolver(new PricingService, new MembershipPricingService(new PricingService));
     }
 
     public function test_no_membership_and_no_tier_resolves_standard(): void
