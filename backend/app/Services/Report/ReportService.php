@@ -111,7 +111,7 @@ final class ReportService
         // ->count()); the latest-order row can't fold into a GROUP-less
         // aggregate, so it stays its own query — two, down from three.
         $totals = $this->scopedOrders($from, $toExclusive, $affiliateId)
-            ->selectRaw('COALESCE(SUM(final_amount), 0) as total_sales, COUNT(*) as orders_count')
+            ->selectRaw("COALESCE(SUM({$this->netSalesExpr()}), 0) as total_sales, COUNT(*) as orders_count")
             ->first();
         $totalSales = (int) $totals->total_sales;
         $ordersCount = (int) $totals->orders_count;
@@ -194,7 +194,7 @@ final class ReportService
         $dayExpr = $this->dayBucketExpr('paid_at');
 
         $sales = $this->scopedOrders($from, $toExclusive, $affiliateId)
-            ->selectRaw("{$dayExpr} as report_key, COALESCE(SUM(final_amount), 0) as sales, COUNT(*) as orders_count, COALESCE(SUM(transaction_fee), 0) as transaction_fees")
+            ->selectRaw("{$dayExpr} as report_key, COALESCE(SUM({$this->netSalesExpr()}), 0) as sales, COUNT(*) as orders_count, COALESCE(SUM(transaction_fee), 0) as transaction_fees")
             ->groupBy('report_key')
             ->get()
             ->keyBy('report_key');
@@ -395,6 +395,7 @@ final class ReportService
     public function membershipBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
         $member = PricingBasis::Member->value;
+        $standard = PricingBasis::Standard->value;
 
         // A single aggregate pass, `pricing_basis` as the CASE-WHEN
         // discriminant instead of a GROUP BY — only 2 buckets, and this
@@ -402,26 +403,54 @@ final class ReportService
         // (normal_selling_price - selling_price) floored at 0 via the
         // CASE itself (portable across MySQL/sqlite — no GREATEST()/MAX()
         // scalar-function mismatch between the two).
+        //
+        // 2026-09-21 fix (ADR-086 addendum) — `standard_sales` used to be
+        // `pricing_basis != 'member'`, which silently absorbed
+        // reseller-wallet and affiliate-wholesale-tier orders too (4
+        // real values exist: standard/member/reseller-wallet/affiliate —
+        // found live in prod: "Standard (guest)" was 93% wholesale
+        // reseller volume). Now an exact `= 'standard'` match; the other
+        // two non-member bases are excluded from this tab entirely —
+        // they have their own dedicated breakdowns
+        // (resellerBreakdown()/affiliateBreakdown()).
         $totals = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->selectRaw(
                 'COALESCE(SUM(CASE WHEN pricing_basis = ? THEN final_amount ELSE 0 END), 0) as member_sales,'
                 .' SUM(CASE WHEN pricing_basis = ? THEN 1 ELSE 0 END) as member_orders_count,'
-                .' COALESCE(SUM(CASE WHEN pricing_basis != ? THEN final_amount ELSE 0 END), 0) as standard_sales,'
-                .' SUM(CASE WHEN pricing_basis != ? THEN 1 ELSE 0 END) as standard_orders_count,'
+                .' COALESCE(SUM(CASE WHEN pricing_basis = ? THEN final_amount ELSE 0 END), 0) as standard_sales,'
+                .' SUM(CASE WHEN pricing_basis = ? THEN 1 ELSE 0 END) as standard_orders_count,'
                 .' COALESCE(SUM(CASE WHEN pricing_basis = ? AND (COALESCE(normal_selling_price, 0) - COALESCE(selling_price, 0)) > 0'
                 .' THEN (COALESCE(normal_selling_price, 0) - COALESCE(selling_price, 0)) ELSE 0 END), 0) as margin_forgone',
-                [$member, $member, $member, $member, $member],
+                [$member, $member, $standard, $standard, $member],
             )
             ->first();
 
-        $feeRevenueQuery = LedgerEntry::query()->where('type', 'membership_fee');
+        // 2026-09-21 fix (ADR-086 addendum) — this used to never apply
+        // $affiliateId at all, even though every other figure in this
+        // breakdown does. Membership is genuinely per-affiliate
+        // (`memberships.(affiliate_id, email)`, ADR-061 PR-B decision
+        // 5), so joins through `memberships` on the ledger entry's own
+        // `reference_id` (`reference_type='membership'`) the same way
+        // the LLM Report Assistant's own `llm_report_membership_fees`
+        // view already does — one source of truth for this join, not
+        // two that can drift.
+        $feeRevenueQuery = LedgerEntry::query()
+            ->join('memberships', function ($join) {
+                $join->on('memberships.id', '=', 'ledger_entries.reference_id')
+                    ->where('ledger_entries.reference_type', '=', 'membership');
+            })
+            ->where('ledger_entries.type', 'membership_fee');
 
         if ($from !== null) {
-            $feeRevenueQuery->where('created_at', '>=', $from);
+            $feeRevenueQuery->where('ledger_entries.created_at', '>=', $from);
         }
 
         if ($toExclusive !== null) {
-            $feeRevenueQuery->where('created_at', '<', $toExclusive);
+            $feeRevenueQuery->where('ledger_entries.created_at', '<', $toExclusive);
+        }
+
+        if ($affiliateId !== null) {
+            $feeRevenueQuery->where('memberships.affiliate_id', $affiliateId);
         }
 
         return [
@@ -595,10 +624,34 @@ final class ReportService
     private function salesByGroup(Builder $ordersQuery, string $groupExpr): Collection
     {
         return $ordersQuery
-            ->selectRaw("{$groupExpr} as report_key, COALESCE(SUM(final_amount), 0) as sales, COUNT(*) as orders_count")
+            ->selectRaw("{$groupExpr} as report_key, COALESCE(SUM({$this->netSalesExpr()}), 0) as sales, COUNT(*) as orders_count")
             ->groupBy('report_key')
             ->get()
             ->keyBy('report_key');
+    }
+
+    /**
+     * 2026-09-21 fix (ADR-086 addendum, Bug 4) — a reseller-wallet
+     * order's compensation (`wallet_refund` ledger entry, ADR-073/
+     * ADR-102) genuinely reverses the wallet debit, unlike a storefront
+     * Voucher (whose `voucher_discount` already nets out of a later
+     * redeeming order's own `final_amount` via
+     * `CheckoutTotalService::calculate()` — no double count there, so
+     * this expression only needs to cover the wallet-refund case).
+     *
+     * Net Sales = Gross `final_amount` − Σ(`wallet_refund` ledger amount
+     * for THIS order) — a correlated subquery scoped by `orders.id`
+     * (never the refund's own `created_at`), so a refund posted on a
+     * later day still nets against the day the order was originally
+     * *paid* (Q5's own "each day stays self-contained" call), not the
+     * day it happened to be reversed. Real prod evidence this fixes:
+     * reseller "Naeem Industries" order 27 (RM343.51, failed+refunded
+     * same day) and "FixFast" order 5 (92 sen, refunded then re-spent on
+     * two later orders) both inflated Sales before this fix.
+     */
+    private function netSalesExpr(): string
+    {
+        return "final_amount - COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.reference_type = 'order' AND wr.reference_id = orders.id AND wr.type = 'wallet_refund'), 0)";
     }
 
     /**

@@ -424,4 +424,39 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->assertSame(1500, $trend[$lastMonthKey]['total_spent']);
         $this->assertSame(2000, $trend[$thisMonthKey]['total_spent']);
     }
+
+    /**
+     * 2026-09-21 fix (ADR-086 addendum, Bug 4) — same root cause as
+     * ReportService's own `total_sales` fix: a `wallet_refund` genuinely
+     * reverses a reseller-wallet order's debit, so its `final_amount`
+     * must net to 0 in `total_spent`/`customers()`, not count forever
+     * plus count again when the refunded balance funds a new order.
+     */
+    public function test_customers_and_stats_net_total_spent_against_wallet_refund(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries']);
+
+        $failedOrder = $this->order([
+            'customer_email' => 'naeem@example.com',
+            'wallet_reseller_id' => $reseller->id,
+            'final_amount' => 34351,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        (new LedgerService)->credit('reseller_wallet', $reseller->id, -34351, 'wallet_debit', 'order', $failedOrder->id);
+        (new LedgerService)->credit('reseller_wallet', $reseller->id, 34351, 'wallet_refund', 'order', $failedOrder->id);
+
+        $this->order([
+            'customer_email' => 'naeem@example.com',
+            'wallet_reseller_id' => $reseller->id,
+            'order_number' => 'KRS-delivered',
+            'final_amount' => 9194,
+        ]);
+
+        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $this->assertSame(9194, $rows['naeem@example.com']['total_spent']);
+        $this->assertSame(2, $rows['naeem@example.com']['orders_count']);
+
+        $detail = $this->analytics->customerDetail('naeem@example.com');
+        $this->assertSame(9194, $detail['stats']['total_spent']);
+    }
 }

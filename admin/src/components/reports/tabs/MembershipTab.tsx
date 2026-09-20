@@ -58,7 +58,7 @@ export function MembershipTab({ token, filters }: { token: string; filters: Repo
         {row ? (
           <HorizontalBarList
             items={[
-              { label: "Standard (guest)", value: toRm(row.standard_sales), sublabel: `${row.standard_orders_count} orders` },
+              { label: "Standard", value: toRm(row.standard_sales), sublabel: `${row.standard_orders_count} orders` },
               { label: "Member", value: toRm(row.member_sales), sublabel: `${row.member_orders_count} orders` },
             ]}
             formatValue={(v) => `RM ${v.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`}
