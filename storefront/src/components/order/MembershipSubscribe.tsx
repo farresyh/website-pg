@@ -143,15 +143,23 @@ export default function MembershipSubscribe({ token }: { token: string }) {
               <div className="flex flex-1 flex-col gap-4 p-6">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="font-display text-headline-sm font-bold">{plan.name}</span>
-                  <span
-                    className={
-                      isHero
-                        ? "shrink-0 rounded-sm border-2 border-ink bg-surface-container-lowest px-2.5 py-1 font-display text-[13px] font-bold uppercase tracking-wide text-ink"
-                        : "shrink-0 rounded-sm border border-ink bg-success px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-on-success"
-                    }
-                  >
-                    Save {plan.discountPercent}%
-                  </span>
+                  {plan.realSavingsPercent != null && (
+                    <span
+                      className={
+                        isHero
+                          ? "shrink-0 rounded-sm border-2 border-ink bg-surface-container-lowest px-2.5 py-1 font-display text-[13px] font-bold uppercase tracking-wide text-ink"
+                          : "shrink-0 rounded-sm border border-ink bg-success px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-on-success"
+                      }
+                    >
+                      {/* Bug fix, 2026-09-20: this used to show plan.discountPercent
+                        * directly (a "% cut off markup" config value, e.g. "Save 60%")
+                        * against a catalog that only ever gave ~5% real savings — the
+                        * exact mismatch that started this addendum. realSavingsPercent
+                        * is server-computed against a real package, so it always
+                        * matches what a member actually pays. */}
+                      Save {plan.realSavingsPercent}%
+                    </span>
+                  )}
                 </div>
 
                 <div>
