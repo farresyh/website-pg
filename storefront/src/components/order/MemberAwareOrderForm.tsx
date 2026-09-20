@@ -43,7 +43,11 @@ export default async function MemberAwareOrderForm({ game, packages, paymentChan
   // an empty member view.
   const memberPackages = memberPackagesRaw && memberPackagesRaw.length > 0 ? memberPackagesRaw : null;
   const memberSession = memberInfo
-    ? { tierName: memberInfo.membership?.tierName ?? null, email: memberInfo.email }
+    ? {
+        tierName: memberInfo.membership?.tierName ?? null,
+        email: memberInfo.email,
+        quotaRemainingRm: memberInfo.membership?.quotaRemainingRm ?? null,
+      }
     : null;
 
   return (

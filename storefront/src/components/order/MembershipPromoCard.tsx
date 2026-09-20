@@ -1,5 +1,6 @@
 import Button from "@/components/ui/Button";
 import type { MembershipPlan } from "@/lib/membership";
+import { calculateSavings } from "@/lib/membership-savings";
 
 interface MembershipPromoCardProps {
   /** The tier this card always promotes — Tier 2 (the top tier), ADR-055 decision 2. */
@@ -30,8 +31,9 @@ export default function MembershipPromoCard({
   memberPriceRm,
   activeTierName,
 }: MembershipPromoCardProps) {
-  const savingsRm = sellingPriceRm - memberPriceRm;
-  const savingsPercent = sellingPriceRm > 0 ? (1 - memberPriceRm / sellingPriceRm) * 100 : 0;
+  // 2026-09-20 addendum: shared calc so this never drifts from
+  // PackageGrid/MembershipSubscribe's own savings number.
+  const savings = calculateSavings(sellingPriceRm, memberPriceRm);
   const ctaLabel = activeTierName ? "Upgrade to Tier 2" : "Become a Member";
 
   return (
@@ -39,10 +41,15 @@ export default function MembershipPromoCard({
       <p className="mb-2 font-display text-sm font-bold uppercase tracking-wide text-on-secondary-container">Membership</p>
       <p className="text-[13.5px] leading-snug text-on-secondary-container">
         Unlock <span className="font-bold">{packageName}</span> at{" "}
-        <span className="font-mono font-bold">RM{memberPriceRm.toFixed(2)}</span>, save{" "}
-        <span className="font-bold">
-          RM{savingsRm.toFixed(2)} ({savingsPercent.toFixed(0)}%)
-        </span>{" "}
+        <span className="font-mono font-bold">RM{memberPriceRm.toFixed(2)}</span>
+        {savings && (
+          <>
+            , save{" "}
+            <span className="font-bold">
+              RM{savings.amountRm.toFixed(2)} ({savings.percent}%)
+            </span>
+          </>
+        )}{" "}
         on every purchase.
       </p>
       <p className="mt-2 text-[12.5px] text-on-secondary-container/80">

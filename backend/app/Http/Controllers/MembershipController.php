@@ -10,6 +10,7 @@ use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Membership\MembershipSubscriptionException;
 use App\Services\Membership\MembershipSubscriptionService;
+use App\Services\Pricing\MembershipPricingService;
 use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,7 @@ class MembershipController extends Controller
         private readonly MembershipSessionTokenService $sessionTokens,
         private readonly MembershipSubscriptionService $subscriptions,
         private readonly StorefrontBrand $brand,
+        private readonly MembershipPricingService $membershipPricing,
     ) {}
 
     /**
@@ -137,6 +139,15 @@ class MembershipController extends Controller
             ? (float) MembershipPlan::query()->whereKey($currentPlanId)->value('discount_percent')
             : null;
 
+        // 2026-09-20 addendum: `discount_percent` is a "% cut off markup"
+        // config value, not the real price-level savings a customer
+        // actually gets (the mismatch that started this addendum) —
+        // `real_savings_percent` is the number the subscribe screen's
+        // badge must show instead, computed against the same
+        // representative package + PricingService::calculate() call the
+        // admin preview and the real guest checkout both use.
+        $representativePackage = $this->membershipPricing->representativePackage();
+
         $plans = MembershipPlan::query()
             ->orderBy('id')
             ->get()
@@ -146,6 +157,9 @@ class MembershipController extends Controller
                 'fee_sen' => $plan->fee_sen,
                 'quota_sen' => $plan->quota_sen,
                 'discount_percent' => (float) $plan->discount_percent,
+                'real_savings_percent' => $representativePackage !== null
+                    ? $this->membershipPricing->realSavingsPercent($representativePackage, (float) $plan->discount_percent)
+                    : null,
                 'relation' => $this->planRelation($plan, $currentPlanId, $currentDiscount),
             ])
             ->all();
