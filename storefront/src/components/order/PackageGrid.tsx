@@ -1,11 +1,16 @@
 import { memo, useState } from "react";
 import { CaretDown } from "@phosphor-icons/react/dist/ssr";
 import type { GamePackage } from "@/lib/catalog";
+import { calculateSavings, formatSavingsBadge } from "@/lib/membership-savings";
 
 interface PackageGridProps {
   packages: GamePackage[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  /** 2026-09-20: a member's remaining monthly quota — shown as a strip
+   * and used to flag a package that would fall back to standard price
+   * (quota transparency, before checkout rather than as a surprise). */
+  quotaRemainingRm?: number | null;
 }
 
 // A popular game can have 60+ packages. Show a first screen, then a
@@ -23,7 +28,7 @@ const COLLAPSED_COUNT = 12;
  */
 type TabType = "all" | "direct" | "pass";
 
-function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
+function PackageGrid({ packages, selectedId, onSelect, quotaRemainingRm = null }: PackageGridProps) {
   const [activeTab, setActiveTab] = useState<TabType>("all");
   const [expanded, setExpanded] = useState(false);
 
@@ -58,6 +63,11 @@ function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
 
   return (
     <div>
+      {quotaRemainingRm != null && (
+        <p className="mb-3 rounded-md border-2 border-ink bg-secondary-fixed-dim px-3 py-2 font-display text-[12px] font-bold uppercase tracking-wide text-on-surface">
+          Member quota left this cycle: RM{quotaRemainingRm.toFixed(2)}
+        </p>
+      )}
       {tabs.length > 2 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {tabs.map((tab) => {
@@ -87,13 +97,13 @@ function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
         {shown.map((pkg) => {
           const selected = pkg.id === selectedId;
           // ADR-027's 2026-08-29 addendum, decisions 9/21: a display-only
-          // savings % — the actual charged price is always computed
+          // savings figure — the actual charged price is always computed
           // server-side (this codebase's own money-never-trusted-from-
           // client rule); this number never feeds a checkout request.
-          const savingsPercent =
-            pkg.memberPriceRm != null && pkg.priceRm > 0
-              ? Math.round((1 - pkg.memberPriceRm / pkg.priceRm) * 100)
-              : null;
+          // 2026-09-20 addendum: "Rule of 100" — below RM100 the % digit
+          // reads bigger, at/above it the RM digit does.
+          const savings = pkg.memberPriceRm != null ? calculateSavings(pkg.priceRm, pkg.memberPriceRm) : null;
+          const savingsLabel = savings ? formatSavingsBadge(pkg.priceRm, savings) : null;
 
           // Bug fix, 2026-08-30: `memberPriceRm` used to be shown as the
           // card's main price even for a non-member/anchor request — the
@@ -104,6 +114,11 @@ function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
           // price as the primary number, with the member price shown
           // only as a comparison/upsell line — never swapped in.
           const isMemberPrice = pkg.memberPricePersonalized === true;
+          const exceedsQuota =
+            isMemberPrice &&
+            quotaRemainingRm != null &&
+            pkg.memberPriceRm != null &&
+            pkg.memberPriceRm > quotaRemainingRm;
 
           return (
             <button
@@ -117,9 +132,9 @@ function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
                   : "border-ink bg-surface-container-lowest neo-hover hover:bg-surface-container-low"
               }`}
             >
-              {savingsPercent != null && savingsPercent > 0 && (
+              {savingsLabel != null && (
                 <span className="absolute -top-2.5 right-2 rounded-full border border-ink bg-tertiary px-1.5 py-0.5 font-display text-[10px] font-bold uppercase text-on-tertiary">
-                  {isMemberPrice ? `Save ${savingsPercent}%` : `Member −${savingsPercent}%`}
+                  {isMemberPrice ? `Save ${savingsLabel}` : `Member −${savingsLabel}`}
                 </span>
               )}
               <span className="font-display text-[13px] font-bold">{pkg.name}</span>
@@ -136,6 +151,11 @@ function PackageGrid({ packages, selectedId, onSelect }: PackageGridProps) {
               {!isMemberPrice && pkg.memberPriceRm != null && (
                 <span className="font-mono text-[11px] font-semibold text-primary">
                   Member: RM{pkg.memberPriceRm.toFixed(2)}
+                </span>
+              )}
+              {exceedsQuota && (
+                <span className="font-display text-[10px] font-bold uppercase text-danger">
+                  Exceeds quota — standard price applies
                 </span>
               )}
             </button>

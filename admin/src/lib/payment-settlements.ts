@@ -9,19 +9,22 @@ export interface Paginated<T> {
 }
 
 /**
- * ADR-110 PR-B, fills ADR-083 decision 7 — CHIP Settlements. Three
- * independent numbers per settlement window, deliberately never
- * conflated: `expected_*` (this platform's own records), `file_*`
- * (CHIP's own reported totals), `actual_bank_amount_sen` (the
- * founder's own manually-entered real bank figure).
+ * ADR-110 PR-B, fills ADR-083 decision 7 — CHIP Settlements. `status`
+ * is fully computed at ingest (a per-transaction gross comparison
+ * between `matched_*` — this platform's own records, summed ONLY over
+ * the transactions this settlement actually matched — and `file_*`,
+ * CHIP's own reported totals) — never admin-typed, per this ADR's own
+ * same-day "automatic reconciliation" addendum.
+ * `actual_bank_amount_sen` is a purely optional founder annotation
+ * (no cadence, never drives `status`).
  */
 export interface PaymentSettlement {
   id: number;
   date_from: string;
   date_to: string;
-  expected_gross_sen: number;
-  expected_fee_sen: number;
-  expected_net_sen: number;
+  matched_gross_sen: number;
+  matched_fee_sen: number;
+  matched_net_sen: number;
   file_gross_sen: number;
   file_fee_sen: number;
   file_net_sen: number;
@@ -37,11 +40,19 @@ export interface ChipSettledTransaction {
   transaction_id: string;
   matched_type: "order" | "membership_checkout_attempt" | "wallet_topup_attempt" | null;
   matched_id: number | null;
+  /** Our own gross for the matched record — null when unmatched. Compare to `amount_sen` for a per-row mismatch. */
+  local_gross_sen: number | null;
   amount_sen: number;
   fee_sen: number;
   net_amount_sen: number;
   acquirer: string;
   settled_on: string;
+}
+
+/** A CHIP-paid record in this window that has never appeared in ANY settlement file uploaded to date — recomputed live, never a stale snapshot. */
+export interface PaidButNotSettledRow {
+  reference: string;
+  amount_sen: number;
 }
 
 /** ADR-110 PR-B addendum — a re-uploaded or date-overlapping file never double-counts; this is what makes that visible. */
@@ -51,7 +62,7 @@ export interface SettlementIngestResult {
   newly_unmatched_count: number;
   already_reconciled_skipped_count: number;
   unmatched_transaction_ids: string[];
-  paid_but_not_settled: { reference: string; amount_sen: number }[];
+  paid_but_not_settled: PaidButNotSettledRow[];
 }
 
 export function listPaymentSettlements(token: string, page = 1) {
@@ -59,10 +70,11 @@ export function listPaymentSettlements(token: string, page = 1) {
 }
 
 export function getPaymentSettlement(token: string, id: number, transactionsPage = 1) {
-  return apiFetch<{ settlement: PaymentSettlement; transactions: Paginated<ChipSettledTransaction> }>(
-    `/api/accounting/settlements/${id}?page=${transactionsPage}`,
-    { token },
-  );
+  return apiFetch<{
+    settlement: PaymentSettlement;
+    transactions: Paginated<ChipSettledTransaction>;
+    paid_but_not_settled: PaidButNotSettledRow[];
+  }>(`/api/accounting/settlements/${id}?page=${transactionsPage}`, { token });
 }
 
 export function uploadPaymentSettlement(token: string, file: File) {
@@ -72,9 +84,9 @@ export function uploadPaymentSettlement(token: string, file: File) {
   return apiUpload<SettlementIngestResult>("/api/accounting/settlements", formData, { token });
 }
 
+/** ADR-110 PR-B addendum — a purely optional founder annotation, no cadence, never touches `status` (computed, read-only). */
 export interface UpdatePaymentSettlementValues {
-  actual_bank_amount_sen: number;
-  status: "matched" | "variance";
+  actual_bank_amount_sen?: number;
   variance_note?: string;
 }
 

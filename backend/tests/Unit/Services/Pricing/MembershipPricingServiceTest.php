@@ -3,6 +3,7 @@
 namespace Tests\Unit\Services\Pricing;
 
 use App\Services\Pricing\MembershipPricingService;
+use App\Services\Pricing\PricingService;
 use PHPUnit\Framework\TestCase;
 
 class MembershipPricingServiceTest extends TestCase
@@ -14,7 +15,7 @@ class MembershipPricingServiceTest extends TestCase
      */
     public function test_reduces_package_markup_by_tier_discount_percent(): void
     {
-        $service = new MembershipPricingService();
+        $service = new MembershipPricingService(new PricingService);
 
         $memberPriceSen = $service->calculateMemberPrice(
             costPriceSen: 1000,
@@ -31,7 +32,7 @@ class MembershipPricingServiceTest extends TestCase
      */
     public function test_floors_at_zero_percent_markup_when_discount_is_100_percent(): void
     {
-        $service = new MembershipPricingService();
+        $service = new MembershipPricingService(new PricingService);
 
         $memberPriceSen = $service->calculateMemberPrice(
             costPriceSen: 1000,
@@ -49,7 +50,7 @@ class MembershipPricingServiceTest extends TestCase
      */
     public function test_floors_at_zero_percent_markup_when_discount_exceeds_100_percent(): void
     {
-        $service = new MembershipPricingService();
+        $service = new MembershipPricingService(new PricingService);
 
         $memberPriceSen = $service->calculateMemberPrice(
             costPriceSen: 1000,
@@ -66,7 +67,7 @@ class MembershipPricingServiceTest extends TestCase
      */
     public function test_zero_package_markup_collapses_member_price_to_cost_price(): void
     {
-        $service = new MembershipPricingService();
+        $service = new MembershipPricingService(new PricingService);
 
         $memberPriceSen = $service->calculateMemberPrice(
             costPriceSen: 1000,
@@ -86,14 +87,14 @@ class MembershipPricingServiceTest extends TestCase
      */
     public function test_effective_markup_percent_matches_the_worked_example(): void
     {
-        $service = new MembershipPricingService();
+        $service = new MembershipPricingService(new PricingService);
 
         $this->assertSame(3.0, $service->effectiveMarkupPercent(15.0, 80.0));
     }
 
     public function test_effective_markup_percent_floors_at_zero(): void
     {
-        $service = new MembershipPricingService();
+        $service = new MembershipPricingService(new PricingService);
 
         $this->assertSame(0.0, $service->effectiveMarkupPercent(15.0, 150.0));
     }

@@ -153,6 +153,11 @@ const SubscribePlanWireSchema = z.object({
   fee_sen: z.number(),
   quota_sen: z.number(),
   discount_percent: z.number(),
+  // 2026-09-20 addendum: the real price-level savings against a real
+  // catalog package — never show discount_percent (a "% cut off markup"
+  // config value, not a price-level savings figure) to a customer.
+  // Null only when the catalog has no active packages at all.
+  real_savings_percent: z.number().nullable(),
   relation: z.enum(["renew", "upgrade", "downgrade", "subscribe"]),
 });
 
@@ -169,6 +174,7 @@ export interface SubscribePlan {
   feeRm: number;
   quotaRm: number;
   discountPercent: number;
+  realSavingsPercent: number | null;
   relation: SubscribeRelation;
 }
 
@@ -188,6 +194,7 @@ export async function getSubscribeOptions(token: string): Promise<SubscribeOptio
       feeRm: plan.fee_sen / 100,
       quotaRm: plan.quota_sen / 100,
       discountPercent: plan.discount_percent,
+      realSavingsPercent: plan.real_savings_percent,
       relation: plan.relation,
     })),
   };

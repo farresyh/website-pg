@@ -82,24 +82,24 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(2500, $summary['membership_revenue_sen']);
     }
 
-    public function test_payment_processing_gain_loss_is_expected_fee_minus_file_fee_across_settlements_in_month(): void
+    public function test_payment_processing_gain_loss_is_matched_fee_minus_file_fee_across_settlements_in_month(): void
     {
         PaymentSettlement::query()->create([
             'date_from' => '2026-09-01', 'date_to' => '2026-09-07',
-            'expected_gross_sen' => 0, 'expected_fee_sen' => 100, 'expected_net_sen' => 0,
+            'matched_gross_sen' => 0, 'matched_fee_sen' => 100, 'matched_net_sen' => 0,
             'file_gross_sen' => 0, 'file_fee_sen' => 90, 'file_net_sen' => 0,
             'status' => 'pending', 'original_filename' => 'a.xlsx',
         ]);
         PaymentSettlement::query()->create([
             'date_from' => '2026-09-08', 'date_to' => '2026-09-14',
-            'expected_gross_sen' => 0, 'expected_fee_sen' => 50, 'expected_net_sen' => 0,
+            'matched_gross_sen' => 0, 'matched_fee_sen' => 50, 'matched_net_sen' => 0,
             'file_gross_sen' => 0, 'file_fee_sen' => 55, 'file_net_sen' => 0,
             'status' => 'pending', 'original_filename' => 'b.xlsx',
         ]);
         // Outside the month.
         PaymentSettlement::query()->create([
             'date_from' => '2026-10-01', 'date_to' => '2026-10-07',
-            'expected_gross_sen' => 0, 'expected_fee_sen' => 1000, 'expected_net_sen' => 0,
+            'matched_gross_sen' => 0, 'matched_fee_sen' => 1000, 'matched_net_sen' => 0,
             'file_gross_sen' => 0, 'file_fee_sen' => 1, 'file_net_sen' => 0,
             'status' => 'pending', 'original_filename' => 'c.xlsx',
         ]);

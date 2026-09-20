@@ -62,6 +62,7 @@ export default function PaymentSettlementsPage() {
   const [uploading, setUploading] = useState(false);
   const [lastResult, setLastResult] = useState<SettlementIngestResult | null>(null);
   const [bankFigures, setBankFigures] = useState<Record<number, string>>({});
+  const [editingBankFigure, setEditingBankFigure] = useState<number | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
 
   const refresh = useCallback((t: string, p: number) => {
@@ -99,6 +100,14 @@ export default function PaymentSettlementsPage() {
     }
   }
 
+  /**
+   * ADR-110 PR-B addendum — a purely optional founder annotation, never
+   * derived from `matched_net_sen`/`file_net_sen` and never touches
+   * `status` (fully computed, read-only). Always editable, including
+   * after it's already been saved once — a real gap found live in the
+   * original build (the input only ever rendered while the value was
+   * still null).
+   */
   async function handleSaveBankFigure(settlement: PaymentSettlement) {
     if (!token) return;
     const raw = bankFigures[settlement.id];
@@ -109,9 +118,8 @@ export default function PaymentSettlementsPage() {
     setSavingId(settlement.id);
     setError(null);
     try {
-      const status = sen === settlement.expected_net_sen ? "matched" : "variance";
-      const variance_note = status === "variance" ? `Bank figure RM${raw} vs expected ${rm(settlement.expected_net_sen)}` : undefined;
-      await updatePaymentSettlement(token, settlement.id, { actual_bank_amount_sen: sen, status, variance_note });
+      await updatePaymentSettlement(token, settlement.id, { actual_bank_amount_sen: sen });
+      setEditingBankFigure(null);
       refresh(token, page);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save the bank figure.");
@@ -183,9 +191,9 @@ export default function PaymentSettlementsPage() {
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className={TH}>Window</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Expected Net</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH}>Matched Net</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>File Net</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Bank Figure</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH}>Bank Figure (optional)</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}></DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -193,28 +201,37 @@ export default function PaymentSettlementsPage() {
                 <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {({ item }) => {
                     const s = item as unknown as PaymentSettlement;
+                    const isEditing = editingBankFigure === s.id;
                     return (
                       <DataTableRow key={s.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {s.date_from} → {s.date_to}
                         </DataTableCell>
-                        <DataTableCell className={TD}>{rm(s.expected_net_sen)}</DataTableCell>
+                        <DataTableCell className={TD}>{rm(s.matched_net_sen)}</DataTableCell>
                         <DataTableCell className={TD}>{rm(s.file_net_sen)}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
-                          {s.actual_bank_amount_sen !== null ? (
-                            rm(s.actual_bank_amount_sen)
-                          ) : (
+                          {isEditing ? (
                             <div className="flex items-center gap-2">
                               <Input
                                 type="number"
                                 step="0.01"
                                 placeholder="0.00"
                                 className="w-24"
-                                value={bankFigures[s.id] ?? ""}
+                                value={bankFigures[s.id] ?? (s.actual_bank_amount_sen !== null ? (s.actual_bank_amount_sen / 100).toFixed(2) : "")}
                                 onChange={(e) => setBankFigures((v) => ({ ...v, [s.id]: e.target.value }))}
                               />
                               <Button size="small" disabled={savingId === s.id} onClick={() => handleSaveBankFigure(s)}>
                                 Save
+                              </Button>
+                              <Button size="small" variant="outlined" onClick={() => setEditingBankFigure(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span>{s.actual_bank_amount_sen !== null ? rm(s.actual_bank_amount_sen) : "—"}</span>
+                              <Button size="small" variant="outlined" onClick={() => setEditingBankFigure(s.id)}>
+                                {s.actual_bank_amount_sen !== null ? "Edit" : "Add"}
                               </Button>
                             </div>
                           )}

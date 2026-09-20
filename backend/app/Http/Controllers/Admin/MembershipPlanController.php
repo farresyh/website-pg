@@ -9,7 +9,6 @@ use App\Http\Requests\Membership\UpdateMembershipPlanRequest;
 use App\Models\Affiliate;
 use App\Models\MembershipPlan;
 use App\Models\MembershipPlanChange;
-use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
@@ -55,7 +54,7 @@ class MembershipPlanController extends Controller
         ]);
         $discountPercent = (float) $validated['discount_percent'];
 
-        $package = $this->samplePackage();
+        $package = $this->membershipPricing->representativePackage();
         if ($package === null) {
             // A consistent top-level shape (package_name: null), not a
             // bare JSON null — Laravel's response()->json(null) actually
@@ -86,9 +85,7 @@ class MembershipPlanController extends Controller
             'normal_price_sen' => $normalPriceSen,
             'member_price_sen' => $memberPriceSen,
             'margin_forgone_sen' => $normalPriceSen - $memberPriceSen,
-            'savings_percent' => $normalPriceSen > 0
-                ? round((1 - $memberPriceSen / $normalPriceSen) * 100, 1)
-                : 0.0,
+            'savings_percent' => $this->membershipPricing->realSavingsPercent($package, $discountPercent),
         ]);
     }
 
@@ -97,17 +94,6 @@ class MembershipPlanController extends Controller
      * most expensive edge case, per the founder's own "just show me one
      * example" ask.
      */
-    private function samplePackage(): ?Package
-    {
-        $active = Package::query()->where('is_active', true)->orderBy('cost_price')->get();
-
-        if ($active->isEmpty()) {
-            return null;
-        }
-
-        return $active[intdiv($active->count(), 2)];
-    }
-
     /**
      * Decision 22: writes one membership_plan_changes row per field that
      * actually changed (mirrors price_change_logs/deactivation_logs'

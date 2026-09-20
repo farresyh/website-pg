@@ -83,12 +83,12 @@ function HeroSlideFields({
     try {
       await onSubmit({
         eyebrow: eyebrow || null,
-        title,
+        title: title || null,
         description: description || null,
         image_url: imageUrl || null,
         price_from_sen: rmToSen(priceFromRm),
-        primary_cta_label: primaryCtaLabel,
-        primary_cta_href: primaryCtaHref,
+        primary_cta_label: primaryCtaLabel || null,
+        primary_cta_href: primaryCtaHref || null,
         secondary_cta_label: secondaryCtaLabel || null,
         secondary_cta_href: secondaryCtaHref || null,
         is_active: isActive,
@@ -126,7 +126,7 @@ function HeroSlideFields({
       {confirmingDelete ? (
         <div className="space-y-4">
           <p className="text-sm text-gray-700 dark:text-gray-300">
-            Delete <span className="font-medium">{slide?.title}</span>? This cannot be undone.
+            Delete <span className="font-medium">{slide?.title || "this asset-only slide"}</span>? This cannot be undone.
           </p>
           <div className="flex items-center justify-end gap-3">
             <Button type="button" variant="outlined" onClick={() => setConfirmingDelete(false)} disabled={submitting}>
@@ -144,8 +144,11 @@ function HeroSlideFields({
             <Input id="slide_eyebrow" value={eyebrow} onChange={(e) => setEyebrow(e.target.value)} placeholder="e.g. Limited Offer" />
           </div>
           <div>
-            <Label htmlFor="slide_title">Title</Label>
-            <Input id="slide_title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Label htmlFor="slide_title">Title (optional)</Label>
+            <Input id="slide_title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+              Leave blank for an asset-only banner (all copy baked into the image) — an image or a title is required, not both.
+            </p>
           </div>
           <div>
             <Label htmlFor="slide_description">Description (optional)</Label>
@@ -161,8 +164,8 @@ function HeroSlideFields({
             <Label htmlFor="slide_image_url">Image URL (optional)</Label>
             <Input id="slide_image_url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Paste a hosted image URL" />
             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-              Recommended 1600×800px (2:1) — matches the hero slider&apos;s display ratio at desktop width.
-              No banner falls back to the storefront&apos;s default gradient treatment.
+              Recommended 1600×800px (2:1) — the hero slider displays at exactly this ratio on every screen size,
+              so an off-ratio image gets cropped to fit. No banner falls back to the storefront&apos;s default gradient treatment.
             </p>
           </div>
           <div>
@@ -183,13 +186,16 @@ function HeroSlideFields({
           </div>
 
           <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+            <p className="col-span-2 -mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Both optional, but fill both or neither — a label with no link (or a link with no label) is rejected.
+            </p>
             <div>
-              <Label htmlFor="slide_primary_cta_label">Primary button label</Label>
-              <Input id="slide_primary_cta_label" value={primaryCtaLabel} onChange={(e) => setPrimaryCtaLabel(e.target.value)} required />
+              <Label htmlFor="slide_primary_cta_label">Primary button label (optional)</Label>
+              <Input id="slide_primary_cta_label" value={primaryCtaLabel} onChange={(e) => setPrimaryCtaLabel(e.target.value)} />
             </div>
             <div>
-              <Label htmlFor="slide_primary_cta_href">Primary button link</Label>
-              <Input id="slide_primary_cta_href" value={primaryCtaHref} onChange={(e) => setPrimaryCtaHref(e.target.value)} required placeholder="/order/free-fire" />
+              <Label htmlFor="slide_primary_cta_href">Primary button link (optional)</Label>
+              <Input id="slide_primary_cta_href" value={primaryCtaHref} onChange={(e) => setPrimaryCtaHref(e.target.value)} placeholder="/order/free-fire" />
             </div>
             <div>
               <Label htmlFor="slide_secondary_cta_label">Secondary button label (optional)</Label>

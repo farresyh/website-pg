@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Console;
 
+use App\Models\PaymentGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -43,7 +44,27 @@ class ChipWebhookSmokeTestCommandTest extends TestCase
         config(['services.chip.secret_key' => null]);
 
         $this->artisan('app:chip-webhook-smoke-test')
-            ->expectsOutputToContain('CHIP_SECRET_KEY / CHIP_BRAND_ID not set')
+            ->expectsOutputToContain('No CHIP secret_key/brand_id configured')
+            ->assertFailed();
+    }
+
+    /**
+     * ADR-110 PR-C — resolves identically to real production traffic:
+     * a `payment_gateways` DB row (even a partial one) takes priority
+     * over `.env`, per-field.
+     */
+    public function test_resolves_credentials_from_the_db_row_when_present(): void
+    {
+        PaymentGateway::query()->create([
+            'gateway_key' => 'chip',
+            'api_config' => ['secret_key' => 'sk_from_db', 'brand_id' => 'brand-from-db', 'base_url' => 'https://gate.chip-in.asia/api/v1'],
+        ]);
+        config(['services.chip.secret_key' => null, 'services.chip.brand_id' => null]);
+
+        // Still fails downstream (no supplier-linked package) — proves
+        // the credential pre-check passed using the DB row alone.
+        $this->artisan('app:chip-webhook-smoke-test')
+            ->expectsOutputToContain('No active supplier-linked Package found')
             ->assertFailed();
     }
 

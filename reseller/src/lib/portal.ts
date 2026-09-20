@@ -405,7 +405,8 @@ export function deleteStorefrontFavicon(token: string) {
 export interface StorefrontHeroSlide {
   id: number;
   eyebrow: string | null;
-  title: string;
+  /** Nullable since the 2026-09-19 addendum — an asset-only slide needs neither title nor CTA. */
+  title: string | null;
   description: string | null;
   image_url: string | null;
   price_from_sen: number | null;
@@ -425,7 +426,7 @@ export interface StorefrontHeroSlidesResponse {
 
 export interface HeroSlideInput {
   eyebrow?: string;
-  title: string;
+  title?: string;
   description?: string;
   price_from_sen?: number | null;
   primary_cta_label?: string;
@@ -439,7 +440,9 @@ export interface HeroSlideInput {
 function heroFormData(input: HeroSlideInput, image: File | null): FormData {
   const form = new FormData();
   for (const [key, value] of Object.entries(input)) {
-    if (value !== undefined && value !== null) form.append(key, String(value));
+    // An empty string is "left blank" the same as undefined/null — omit it
+    // rather than sending "", so the backend stores real NULL, not "".
+    if (value !== undefined && value !== null && value !== "") form.append(key, String(value));
   }
   // The backend `boolean` rule needs a literal "1"/"0", not "true".
   form.set("is_active", input.is_active ? "1" : "0");

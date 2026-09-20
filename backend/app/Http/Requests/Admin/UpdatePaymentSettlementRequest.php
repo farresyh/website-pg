@@ -3,12 +3,16 @@
 namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
- * ADR-083 decision 7 — the founder's own manually-entered real bank
- * figure, checked against a real bank statement, never derived from
- * the uploaded file or this platform's own records.
+ * ADR-110 PR-B addendum (automatic reconciliation) — `status` is now
+ * fully computed at ingest (see `SettlementReconciliationService`) and
+ * never admin-typed, so it is deliberately not accepted here anymore.
+ * `actual_bank_amount_sen` is a purely optional founder annotation
+ * (no cadence, never derived from the uploaded file or drives
+ * `status`); `variance_note` is a free-text note the founder can attach
+ * whenever, not an auto-generated message tied to a bank-figure
+ * mismatch.
  */
 class UpdatePaymentSettlementRequest extends FormRequest
 {
@@ -23,9 +27,8 @@ class UpdatePaymentSettlementRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'actual_bank_amount_sen' => ['required', 'integer', 'min:0'],
-            'status' => ['required', Rule::in(['matched', 'variance'])],
-            'variance_note' => ['required_if:status,variance', 'nullable', 'string', 'max:2000'],
+            'actual_bank_amount_sen' => ['nullable', 'integer', 'min:0'],
+            'variance_note' => ['nullable', 'string', 'max:2000'],
         ];
     }
 }

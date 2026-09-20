@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipPlan;
+use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
+use App\Models\Supplier;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Payment\PaymentGateway;
@@ -239,6 +242,49 @@ class MembershipSubscriptionControllerTest extends TestCase
             $this->assertSame('subscribe', $plan['relation']);
             $this->assertArrayHasKey('quota_sen', $plan);
             $this->assertArrayHasKey('id', $plan);
+        }
+    }
+
+    /**
+     * 2026-09-20 addendum: `discount_percent` is a "% cut off markup"
+     * config value, not the real price-level savings the subscribe
+     * screen's badge must show — `real_savings_percent` is the field
+     * that number now comes from, computed against a real package the
+     * same way the admin preview and the real guest checkout do.
+     */
+    public function test_subscribe_options_includes_real_savings_percent_against_a_real_package(): void
+    {
+        $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire', 'is_active' => true]);
+        $supplier = Supplier::query()->create(['slug' => 'gamevion', 'name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        Package::query()->create([
+            'game_id' => $game->id,
+            'supplier_id' => $supplier->id,
+            'supplier_package_ref' => 'GV1',
+            'name' => '100 Diamonds',
+            'cost_price' => 1000,
+            'standard_selling_price' => 1150,
+            'markup_percent' => 15,
+            'is_active' => true,
+        ]);
+        $tier1 = $this->tier('Tier 1');
+        $tier1->update(['discount_percent' => 80]);
+        $token = $this->tokenFor('newbie2@example.com');
+
+        $response = $this->getJson('/api/membership/subscribe-options', ['Authorization' => "Bearer {$token}"])->assertOk();
+
+        $byName = collect($response->json('plans'))->keyBy('name');
+        // 15% markup * (1 - 0.8) = 3% effective; (1150 - 1030) / 1150 * 100 = 10.4%.
+        $this->assertSame(10.4, $byName['Tier 1']['real_savings_percent']);
+    }
+
+    public function test_subscribe_options_real_savings_percent_is_null_with_no_active_packages(): void
+    {
+        $token = $this->tokenFor('newbie3@example.com');
+
+        $response = $this->getJson('/api/membership/subscribe-options', ['Authorization' => "Bearer {$token}"])->assertOk();
+
+        foreach ($response->json('plans') as $plan) {
+            $this->assertNull($plan['real_savings_percent']);
         }
     }
 

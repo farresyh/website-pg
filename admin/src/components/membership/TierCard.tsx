@@ -67,6 +67,30 @@ export default function TierCard({ token, plan, onSaved }: { token: string; plan
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
+  // 2026-09-20 addendum: a soft warning, not a hard block — the founder's
+  // own final tier numbers deliberately set quota_sen above break-even
+  // (maximizing member value over a per-member safety guarantee), so
+  // this only surfaces the resulting exposure for the admin to weigh,
+  // never rejects a save. Derived from the last "Preview Pricing Impact"
+  // click's real package markup/effective-markup (the only place those
+  // numbers exist) plus the currently-typed fee/quota — so it goes stale
+  // exactly like the preview card above it already does if discount_percent
+  // changes without re-previewing.
+  const quotaExposure = (() => {
+    if (preview === null || preview.package_name === null) return null;
+    const { package_markup_percent: markup, effective_markup_percent: eff } = preview;
+    if (markup <= eff) return null;
+    const fee = parseFloat(feeRm);
+    const quota = parseFloat(quotaRm);
+    if (!Number.isFinite(fee) || !Number.isFinite(quota)) return null;
+
+    const forgoneRatePerRm = (markup - eff) / (100 + eff);
+    const breakEvenRm = fee / forgoneRatePerRm;
+    const maxMonthlyLossRm = quota * forgoneRatePerRm - fee;
+
+    return maxMonthlyLossRm > 0 ? { breakEvenRm, maxMonthlyLossRm } : null;
+  })();
+
   async function handlePreview() {
     const discount = parseFloat(discountPercent);
     if (!Number.isFinite(discount) || discount < 0) {
@@ -175,6 +199,14 @@ export default function TierCard({ token, plan, onSaved }: { token: string; plan
           </p>
           <PreviewCard preview={preview} />
         </div>
+      )}
+
+      {quotaExposure && (
+        <p className="mt-3 rounded-lg bg-warning-surface px-3 py-2 text-theme-xs text-warning-ink">
+          This tier&apos;s quota (RM{quotaRm}) sits above its break-even (RM{quotaExposure.breakEvenRm.toFixed(0)}) — a member who
+          uses the full quota costs up to <strong>RM{quotaExposure.maxMonthlyLossRm.toFixed(2)}/month</strong> more than a
+          standard-price customer. Not blocked — just worth knowing before saving.
+        </p>
       )}
     </div>
   );
