@@ -12,6 +12,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\ResellerBotOrderNotification;
+use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\SupplierDeliveryCheckService;
 use App\Services\Ledger\LedgerOwnerType;
@@ -621,6 +622,21 @@ class OrderController extends Controller
             ]);
         }
 
+        // ADR-094's 2026-09-21 addendum decision 24 — this action force-sets
+        // the WHOLE order Delivered with no per-leg awareness at all, which
+        // is never safe for a multi-leg entity: a combo order can only ever
+        // become genuinely fully-delivered through its own per-leg tracking
+        // (resolveComboOutcome() already reaches Delivered on its own once
+        // every leg does). A leg still outstanding here needs Retry Delivery
+        // (resolves it automatically) or, once resolved to a genuine
+        // Delivered+Failed/NeedsReview mix, the partial-delivery Issue
+        // Voucher path (isPartialComboDelivery()) — never this button.
+        if ($order->deliveryLegs->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['This order is a combo — use Retry Delivery to resolve outstanding legs, or Issue Voucher for a partial delivery.'],
+            ]);
+        }
+
         // ADR-024 decision #8 / ADR-102 decision 1 — see retryDelivery()'s
         // identical guard for the full reasoning. Structurally shouldn't
         // be reachable (Issue Voucher is blocked from needs_review, ADR-026
@@ -686,11 +702,25 @@ class OrderController extends Controller
             ]);
         }
 
-        $result = $fulfillment->confirmDeliveryFailed(
-            $order,
-            $request->validated('note'),
-            $request->user()->name,
-        );
+        // ADR-094's 2026-09-21 addendum decision 26: the guard above ran on
+        // the unlocked $order — confirmDeliveryFailed() re-checks the same
+        // isPartialComboDelivery() condition itself, inside its own row
+        // lock, and throws this if the order genuinely drifted into partial
+        // delivery in the gap between this check and that one (a concurrent
+        // retry/webhook). Caught here so that rare race still surfaces as
+        // the same friendly 422 every other guard on this action gives,
+        // not a raw 500.
+        try {
+            $result = $fulfillment->confirmDeliveryFailed(
+                $order,
+                $request->validated('note'),
+                $request->user()->name,
+            );
+        } catch (OrderFulfillmentException) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['This order has a partial delivery — issue a custom-amount voucher for the failed leg(s) instead of confirming the whole order failed.'],
+            ]);
+        }
 
         return $this->orderDetailResponse($result);
     }

@@ -10,6 +10,7 @@ use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -1118,5 +1119,108 @@ class OrderFulfillmentServiceComboTest extends TestCase
             SupplierOutcome::Success,
             'SREF-DUPLICATE',
         );
+    }
+
+    /**
+     * ADR-094's 2026-09-21 addendum decision 25 — isPartialComboDelivery()
+     * now also recognizes a Delivered+NeedsReview mix (not just
+     * Delivered+Failed) as a genuine partial delivery, since a leg can
+     * land on NeedsReview for reasons decision 4 (ADR-102) never closed
+     * (Gamevion duplicate_reference, an unexpected exception). Proven
+     * here directly against the model, independent of the HTTP guard.
+     */
+    public function test_is_partial_combo_delivery_is_true_for_a_delivered_and_needs_review_leg_mix(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
+            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
+        ]);
+
+        $this->assertTrue($order->fresh()->isPartialComboDelivery());
+    }
+
+    /**
+     * Guards decision 25's own scoping: a Failed+NeedsReview mix with NO
+     * Delivered leg is NOT "partial" — nothing was delivered yet, so a
+     * full-order Failed + full voucher is correct there, not
+     * over-compensation. Only a Delivered leg alongside an
+     * unresolved/Failed one triggers the carve-out.
+     */
+    public function test_is_partial_combo_delivery_is_false_with_no_delivered_leg_at_all(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Failed->value,
+            'failure_reason' => 'Insufficient balance', 'selling_price_sen' => $a->standard_selling_price,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
+            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
+        ]);
+
+        $this->assertFalse($order->fresh()->isPartialComboDelivery());
+    }
+
+    /**
+     * ADR-094's 2026-09-21 addendum decision 26 — the real fix for the
+     * TOCTOU race: OrderController::confirmFailed()'s own
+     * isPartialComboDelivery() guard runs on the unlocked $order before
+     * this service method's lock is even acquired, so a state change in
+     * that gap (a concurrent retry/webhook delivering a leg) would
+     * otherwise go unnoticed. Calling the service directly here (the
+     * controller's own pre-check is bypassed entirely) proves the
+     * service's own in-lock re-check is the real, final guard — not
+     * just relying on the controller.
+     */
+    public function test_confirm_delivery_failed_rejects_a_partial_combo_delivery_order_even_when_called_directly(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
+            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
+        ]);
+
+        $this->expectException(OrderFulfillmentException::class);
+
+        $this->service($this->queuedAdapter([]))->confirmDeliveryFailed($order, 'note', 'Jane Admin');
     }
 }

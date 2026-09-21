@@ -197,13 +197,46 @@ class OrderTest extends TestCase
         $this->assertNull($order->suggestedPartialVoucherAmount());
     }
 
-    /** A leg-level NeedsReview (e.g. a Gamevion duplicate_reference) is real ambiguity, not a clean partial — never the carve-out. */
-    public function test_is_partial_combo_delivery_false_when_a_leg_is_itself_ambiguous(): void
+    /**
+     * ADR-094's 2026-09-21 addendum decision 25 — a leg-level NeedsReview
+     * (e.g. a Gamevion duplicate_reference) alongside a Delivered leg IS
+     * now recognized as a genuine partial delivery, same carve-out as a
+     * Delivered+Failed split: ADR-102 decision 4 only ever closed the
+     * Digiflazz-confirmed-Gagal cause of a leg landing on NeedsReview,
+     * this one (and an unexpected exception mid-attempt) were never
+     * covered — without this, confirmFailed() would let an admin
+     * confirm the whole order Failed and over-compensate with a
+     * full-amount voucher despite the delivered leg's goods already
+     * being received. Same math as the Delivered+Failed test above (385)
+     * — the numerator now includes NeedsReview legs too.
+     */
+    public function test_is_partial_combo_delivery_true_when_a_delivered_leg_is_mixed_with_an_ambiguous_one(): void
     {
         $delivered = $this->componentPackage();
-        $ambiguous = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $ambiguous = $this->componentPackage([
+            'name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976',
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+        ]);
         $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
         $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $ambiguous, DeliveryStatus::NeedsReview, 2);
+
+        $this->assertTrue($order->isPartialComboDelivery());
+        $this->assertSame(385, $order->suggestedPartialVoucherAmount());
+    }
+
+    /**
+     * Guards decision 25's own scoping so it doesn't over-block: a
+     * Failed+NeedsReview mix with NO Delivered leg is NOT "partial" —
+     * nothing was delivered yet, so confirming the whole order Failed
+     * (and a later full-amount voucher) stays correct there.
+     */
+    public function test_is_partial_combo_delivery_false_when_no_leg_is_delivered_yet(): void
+    {
+        $failed = $this->componentPackage();
+        $ambiguous = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $failed, DeliveryStatus::Failed, 1);
         $this->leg($order, $ambiguous, DeliveryStatus::NeedsReview, 2);
 
         $this->assertFalse($order->isPartialComboDelivery());

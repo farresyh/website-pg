@@ -119,16 +119,24 @@ class Order extends Model
     }
 
     /**
-     * ADR-094 decision 9 (2026-09-15 Phase 4): a combo order's
-     * delivery_status can land in NeedsReview for two structurally
-     * different reasons — real leg-level ambiguity (a leg itself is
-     * NeedsReview, e.g. a Gamevion duplicate_reference, or a leg still
-     * Pending) versus a genuine partial delivery (some legs Delivered,
-     * some cleanly Failed, nothing ambiguous/in-flight left). Only the
-     * second is decision 9's carve-out from ADR-026 decision 4c's
-     * "Issue Voucher is blocked from needs_review" rule — the first
-     * case still requires a human Retry/Resend/Mark Delivered call,
-     * never a refund. Non-combo orders (`deliveryLegs` empty) are
+     * ADR-094 decision 9 (2026-09-15 Phase 4), widened by ADR-094's
+     * 2026-09-21 addendum decision 25: a combo order's delivery_status
+     * can land in NeedsReview for two structurally different reasons —
+     * real leg-level ambiguity with NOTHING delivered yet (no Delivered
+     * leg present at all) versus a genuine partial delivery (at least
+     * one leg Delivered, alongside at least one leg that is Failed or
+     * itself NeedsReview — a Gamevion duplicate_reference, an
+     * unexpected exception mid-attempt, or a rare Digiflazz malformed-
+     * envelope case; confirmed supplier-agnostic, not Gamevion-only).
+     * Only the second is this decision's carve-out from ADR-026
+     * decision 4c's "Issue Voucher is blocked from needs_review" rule —
+     * the first case still requires a human Retry/Resend call, never a
+     * refund (Mark Delivered is no longer a candidate here either,
+     * decision 24 blocks it for every combo order). Pending is still
+     * excluded — defensive, and structurally unreachable at this point
+     * anyway: `resolveComboOutcome()`'s own status-priority ordering
+     * means no leg can still be Pending once the order itself has
+     * reached NeedsReview. Non-combo orders (`deliveryLegs` empty) are
      * always false here — their own needs_review path is unchanged.
      */
     /**
@@ -159,11 +167,15 @@ class Order extends Model
             return false;
         }
 
-        if ($statuses->contains(DeliveryStatus::NeedsReview) || $statuses->contains(DeliveryStatus::Pending)) {
+        if ($statuses->contains(DeliveryStatus::Pending)) {
             return false;
         }
 
-        return $statuses->contains(DeliveryStatus::Delivered) && $statuses->contains(DeliveryStatus::Failed);
+        if (! $statuses->contains(DeliveryStatus::Delivered)) {
+            return false;
+        }
+
+        return $statuses->contains(DeliveryStatus::Failed) || $statuses->contains(DeliveryStatus::NeedsReview);
     }
 
     /**
@@ -271,10 +283,17 @@ class Order extends Model
             return null;
         }
 
-        $failedSellingPriceSen = (int) $legs->where('status', DeliveryStatus::Failed)->sum('selling_price_sen');
+        // ADR-094's 2026-09-21 addendum decision 25: isPartialComboDelivery()
+        // now also recognizes a NeedsReview leg (not just Failed) as
+        // part of a genuine partial delivery — this numerator has to
+        // widen the same way, or a NeedsReview-caused partial would
+        // suggest RM0 instead of a correct proportional share.
+        $uncompensatedSellingPriceSen = (int) $legs
+            ->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::NeedsReview])
+            ->sum('selling_price_sen');
         $compensableAmount = $this->final_amount - $this->transaction_fee;
 
-        return (int) round($compensableAmount * $failedSellingPriceSen / $totalSellingPriceSen);
+        return (int) round($compensableAmount * $uncompensatedSellingPriceSen / $totalSellingPriceSen);
     }
 
     /**
