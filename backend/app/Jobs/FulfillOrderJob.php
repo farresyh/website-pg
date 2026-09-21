@@ -39,6 +39,16 @@ final class FulfillOrderJob implements ShouldQueue
 
     public function __construct(
         public readonly Order $order,
+        // ADR-106 addendum (2026-09-21): threaded from
+        // OrderController::retryDelivery() so a retry (combo leg or
+        // plain) leaves a real WHO/WHY in its durable attempt row,
+        // mirroring how ResendOrderDeliveryJob already carries this for
+        // a package-swap resend. Every other caller of this job (the
+        // CHIP webhook, checkout, reseller placement, both
+        // reconciliation paths) is system-triggered — left at their
+        // null defaults, which OrderFulfillmentService records as-is.
+        public readonly ?string $triggeredBy = null,
+        public readonly ?string $note = null,
     ) {
         // ADR-020 decision #5 — money-critical/customer-facing, kept on
         // its own queue so a slow SyncSupplierPricesJob run can never
@@ -69,7 +79,7 @@ final class FulfillOrderJob implements ShouldQueue
         Log::withContext(['order_number' => $this->order->order_number]);
 
         try {
-            $fulfillment->fulfill($this->order);
+            $fulfillment->fulfill($this->order, $this->triggeredBy, $this->note);
         } catch (InvalidOrderTransitionException $e) {
             // A concurrent webhook delivery already advanced this
             // order past NotStarted/Failed before this job got the

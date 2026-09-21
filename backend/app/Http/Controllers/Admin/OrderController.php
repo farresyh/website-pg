@@ -379,7 +379,15 @@ class OrderController extends Controller
 
         $this->guardResendUnsafeOverride($request, $order);
 
-        FulfillOrderJob::dispatch($order);
+        // ADR-106 addendum (2026-09-21) — retry-delivery has no separate
+        // `note` field of its own (unlike resend()); override_reason is
+        // the only free text an admin can supply here, so it doubles as
+        // this attempt's durable note (grill Q7).
+        FulfillOrderJob::dispatch(
+            $order,
+            $request->user()->name,
+            trim((string) $request->input('override_reason', '')) ?: null,
+        );
 
         return response()->json(['message' => 'Delivery retry queued.']);
     }

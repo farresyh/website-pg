@@ -236,7 +236,13 @@ final class OrderResendService
             'affiliate_profit' => $affiliateProfit,
         ]);
 
-        $result = $this->fulfillment->fulfill($order->fresh());
+        // ADR-106 addendum (2026-09-21): $recordAttempt=false — this
+        // method writes its own, richer `attempt_type=resend` row right
+        // below (package swap + live-cost reconciliation), so
+        // fulfill()'s own generic initial/retry write must stay silent
+        // here, or every resend would double-book two rows for one
+        // attempt.
+        $result = $this->fulfillment->fulfill($order->fresh(), recordAttempt: false);
 
         OrderResendAttempt::query()->create([
             'order_id' => $result->id,
@@ -260,7 +266,12 @@ final class OrderResendService
                 default => 'failed',
             },
             'supplier_response' => $result->supplier_response,
-            'note' => $note,
+            // ADR-106 addendum (2026-09-21), grill Q7: override_reason
+            // used to only ever reach Log::warning() above, never this
+            // durable row — the exact reason an admin decided to accept
+            // a loss and force the resend, worth keeping queryable. A
+            // real $note always wins; this is only a fallback.
+            'note' => $note ?: $overrideReason,
             'triggered_by' => $triggeredBy,
         ]);
 

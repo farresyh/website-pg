@@ -764,6 +764,52 @@ class OrderControllerTest extends TestCase
         Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
     }
 
+    /**
+     * ADR-106 addendum (2026-09-21) — retryDelivery() now threads the
+     * admin's identity through to FulfillOrderJob, closing the gap
+     * where a combo (or plain) retry left zero durable trace of WHO
+     * triggered it. `override_reason` doubles as this action's only
+     * free-text field (no separate `note` input exists for retry),
+     * threaded through as this job's `note`.
+     */
+    public function test_retry_delivery_threads_the_admins_name_and_override_reason_into_the_job(): void
+    {
+        Queue::fake();
+        $admin = AdminUser::factory()->create(['role' => 'admin', 'name' => 'Farres Yahaya']);
+        Sanctum::actingAs($admin);
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery", [
+            'override_reason' => 'Confirmed cleared with Gamevion support',
+        ]);
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, function (FulfillOrderJob $job) use ($order) {
+            return $job->order->id === $order->id
+                && $job->triggeredBy === 'Farres Yahaya'
+                && $job->note === 'Confirmed cleared with Gamevion support';
+        });
+    }
+
+    /** A plain retry with no override_reason still queues, with a null note (not an empty string). */
+    public function test_retry_delivery_queues_with_a_null_note_when_no_override_reason_given(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->note === null && $job->triggeredBy !== null);
+    }
+
     public function test_retry_delivery_rejects_an_order_that_is_not_failed(): void
     {
         Queue::fake();
