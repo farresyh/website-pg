@@ -1067,6 +1067,21 @@ final class OrderFulfillmentService
         return DB::transaction(function () use ($order, $note, $confirmedBy) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
+            // ADR-094's 2026-09-21 addendum decision 26 — OrderController's
+            // own isPartialComboDelivery() guard runs on the unlocked
+            // $order, before this transaction even starts; a leg delivering
+            // in that gap (a concurrent retry/webhook) would otherwise go
+            // unnoticed and this method would blindly confirm the whole
+            // order Failed on stale data, over-compensating a customer who
+            // already received that leg's goods once Issue Voucher runs.
+            // Re-checked here, inside the lock, on $locked (not $order) —
+            // same defense-in-depth pattern as isAlreadyCompensated() above.
+            if ($locked->isPartialComboDelivery()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} has a partial delivery — refusing to confirm the whole order failed",
+                );
+            }
+
             $failedStatus = $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
 
             Log::withContext(['reference_number' => $locked->reference_number]);

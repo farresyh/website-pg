@@ -677,8 +677,8 @@ function OrdersPageInner() {
                       {isRestoreOnly(selected) ? "Restore Voucher…" : "Issue Voucher…"}
                     </Button>
                   )}
-                  {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
-                  {selected.delivery_status === "needs_review" && !selected.voucher && !selected.wallet_refunded && (
+                  {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. ADR-094's 2026-09-21 addendum decision 24: hidden for any combo order (`delivery_legs.length > 0`) — this action force-sets the WHOLE order Delivered with no per-leg awareness, never safe for a multi-leg entity; a combo resolves outstanding legs via Retry Delivery instead, or the partial-delivery Issue Voucher path once genuinely mixed Delivered+Failed/NeedsReview. */}
+                  {selected.delivery_status === "needs_review" && selected.delivery_legs.length === 0 && !selected.voucher && !selected.wallet_refunded && (
                     <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
                       Mark as Delivered…
                     </Button>
