@@ -879,6 +879,30 @@ shipped and verified drops off this list into `docs/build-log.md`.
     in `docs/adr.md`. Zero real combo resends/partial-deliveries exist in
     prod to date — latent fix, not yet touched real money. Independent of
     ADR-106 (item 15), which is sequenced next on the same branch.
+19. **Real-cost profit reconciliation at delivery time — grilled + DECIDED
+    2026-09-21/22, [ADR-111](./adr.md), not yet built.** Real production
+    order (`PG-B2BL0G1YDMVS`) found `resolveComboOutcome()`'s reconciliation
+    (ADR-107 above) using a stale `Package.cost_price` that traced exactly
+    to a FAILED supplier attempt's price, not the one that actually
+    delivered — confirmed via raw supplier response payloads, not assumed.
+    Widened during the grill: the identical `Package.cost_price`-as-live-cost
+    pattern also drives `OrderResendService::resend()` (ADR-105), and the
+    plain non-combo retry path reconciles **nothing at all** today — a
+    bigger latent gap than combo's own. Design: widen ADR-033's single FX
+    conversion boundary to a second call site (delivery, not just Price
+    Sync) via one new `CurrencyRateService::convertToSen()` method; capture
+    the supplier's own real per-transaction price into new
+    `real_cost_price_sen` columns (`orders`, `order_delivery_legs`) at all 4
+    delivery-finalization sites; one basis-agnostic residual formula
+    (`selling_price − real_cost − affiliate_profit`, the same ADR-105
+    decision 8 identity) for every successful delivery, first-attempt or
+    retry. Confirmed cheap/safe (cached FX rate, queued job, ADR-014) —
+    not a per-order live API call. Feature-flagged rollout given the blast
+    radius (every future order's `platform_profit`, not a scoped subset).
+    Explicit per-`pricing_basis` (Standard/Affiliate/Member/ResellerWallet)
+    test coverage required at build time, not inferred. Next session's
+    first task — full decision record already in `docs/adr.md`, no
+    re-investigation needed.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
