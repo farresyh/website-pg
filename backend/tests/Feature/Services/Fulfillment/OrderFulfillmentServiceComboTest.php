@@ -6,6 +6,7 @@ use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
+use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
@@ -583,6 +584,156 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame('SREF-A', $legs[0]->supplier_reference);
         $this->assertSame('SREF-B-RETRY', $legs[1]->supplier_reference);
         $this->assertSame(2, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — closes decision 1's own
+     * "non-combo only for now" deferral: a leg's very first attempt now
+     * writes a durable `attempt_type=initial` row of its own, one per
+     * leg, mirroring the order-level table's own `initial` semantics.
+     */
+    public function test_full_success_writes_a_durable_initial_attempt_row_per_leg(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 600]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 480]),
+        ]);
+
+        $this->service($adapter)->fulfill($order);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $attempts = OrderResendAttempt::query()->where('order_id', $order->id)->orderBy('order_delivery_leg_id')->get();
+        $this->assertCount(2, $attempts);
+        $this->assertTrue($attempts->every(fn (OrderResendAttempt $a) => $a->attempt_type === 'initial'));
+        $this->assertTrue($attempts->every(fn (OrderResendAttempt $a) => $a->outcome === 'success'));
+        $this->assertSame($legs->pluck('id')->sort()->values()->all(), $attempts->pluck('order_delivery_leg_id')->sort()->values()->all());
+        $this->assertSame($a->id, $attempts->firstWhere('order_delivery_leg_id', $legs[0]->id)->package_id);
+        $this->assertSame(500, $attempts->firstWhere('order_delivery_leg_id', $legs[0]->id)->cost_price_sen);
+        $this->assertNull($attempts->first()->triggered_by);
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — a leg retry writes its own
+     * `attempt_type=retry` row (not a second `initial`), with
+     * `triggered_by`/`note` threaded from fulfill()/fulfillCombo() down
+     * to attemptLeg() — mirrors the non-combo retry row exactly, just
+     * scoped to the one leg actually retried.
+     */
+    public function test_retrying_a_failed_leg_writes_a_durable_retry_attempt_row(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $firstPass = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::failure('timeout', 'Supplier timed out'),
+        ]);
+        $this->service($firstPass)->fulfill($order);
+        // One leg Delivered + one Failed rolls the order up to NeedsReview
+        // (decision 9's own precedence) — the leg itself is still plainly
+        // Failed, which is what matters for this test.
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->sole()->status);
+
+        $retryPass = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY', 'price' => 480]),
+        ]);
+        $this->service($retryPass)->fulfill($order->fresh(), 'Admin User', 'Retried after checking Gamevion dashboard');
+
+        $legB = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->sole();
+        $attemptsOnLegB = OrderResendAttempt::query()->where('order_delivery_leg_id', $legB->id)->orderBy('id')->get();
+        $this->assertCount(2, $attemptsOnLegB);
+        $this->assertSame('initial', $attemptsOnLegB[0]->attempt_type);
+        $this->assertSame('failed', $attemptsOnLegB[0]->outcome);
+        $this->assertNull($attemptsOnLegB[0]->triggered_by);
+        $this->assertSame('retry', $attemptsOnLegB[1]->attempt_type);
+        $this->assertSame('success', $attemptsOnLegB[1]->outcome);
+        $this->assertSame('Admin User', $attemptsOnLegB[1]->triggered_by);
+        $this->assertSame('Retried after checking Gamevion dashboard', $attemptsOnLegB[1]->note);
+
+        // Leg A only ever succeeded once — no retry row for it.
+        $legA = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 1)->sole();
+        $this->assertSame(1, OrderResendAttempt::query()->where('order_delivery_leg_id', $legA->id)->count());
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — the exception-catch path
+     * (Throwable mid-call) is a real, distinct write site from the
+     * clean Pending/Failure/Success branches, and must not be missed:
+     * a leg that throws still gets a durable attempt row, not just its
+     * mutable `failure_reason` column overwritten.
+     */
+    public function test_a_leg_that_throws_unexpectedly_still_writes_a_durable_attempt_row(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = new class implements SupplierAdapter
+        {
+            private int $calls = 0;
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->calls++;
+                if ($this->calls === 2) {
+                    throw new RuntimeException('Connection timed out');
+                }
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+
+        $result = $this->service($adapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+
+        $legB = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->sole();
+        $attempt = OrderResendAttempt::query()->where('order_delivery_leg_id', $legB->id)->sole();
+        $this->assertSame('initial', $attempt->attempt_type);
+        $this->assertSame('failed', $attempt->outcome);
     }
 
     /**

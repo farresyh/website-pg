@@ -636,6 +636,46 @@ class OrderResendServiceTest extends TestCase
     }
 
     /**
+     * ADR-106 addendum (2026-09-21), grill Q7 — `override_reason` used
+     * to only ever reach `Log::warning()`, never the durable
+     * `order_resend_attempts.note` column, even though it's the exact
+     * reason an admin decided to accept a loss and force the resend.
+     * Retrofitted for consistency with the new leg/retry attempt rows,
+     * which persist it the same way. Only falls back to it when no
+     * separate `note` was given — a real `note` always wins.
+     */
+    public function test_override_reason_falls_back_into_the_attempt_rows_note_when_no_note_given(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 1000]);
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1100, 'standard_selling_price' => 1210]);
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1000, 'affiliate_markup_pct' => 0]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, null, 'Admin', overrideReason: 'Customer already paid, deliver anyway per founder instruction');
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $order->id)->sole();
+        $this->assertSame('Customer already paid, deliver anyway per founder instruction', $attempt->note);
+    }
+
+    /** A real `note` is never clobbered by an override_reason given alongside it. */
+    public function test_a_real_note_is_not_overridden_by_an_override_reason(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 1000]);
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 1100, 'standard_selling_price' => 1210]);
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1000, 'affiliate_markup_pct' => 0]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->resend($order, $swap, 'Customer requested a bigger pack', 'Admin', overrideReason: 'Deliver anyway, absorb the loss');
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $order->id)->sole();
+        $this->assertSame('Customer requested a bigger pack', $attempt->note);
+    }
+
+    /**
      * ADR-027 Phase 6 / ADR-105 decision 3: a member-priced order's
      * resend must recompute via the member formula, not the standard
      * chain — live cost_price from the swap package, but the order's

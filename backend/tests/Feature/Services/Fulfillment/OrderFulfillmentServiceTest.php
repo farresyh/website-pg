@@ -474,6 +474,13 @@ class OrderFulfillmentServiceTest extends TestCase
      * SECOND 'initial' row — $wasNotStarted is computed once, before
      * this call's own update() advances the order, so a retry from
      * Failed correctly sees it as false.
+     *
+     * ADR-106 addendum (2026-09-21): a retry is no longer silent either
+     * — it now writes its own `attempt_type=retry` row, closing the
+     * exact gap `docs/prd.md` §16 item 16 tracked (a retryDelivery()
+     * call previously left zero durable trace for combo OR plain
+     * orders alike, since both share this same FulfillOrderJob/
+     * fulfill() path).
      */
     public function test_fulfill_does_not_write_a_second_initial_attempt_row_on_a_retry(): void
     {
@@ -486,6 +493,51 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($failed->fresh());
 
         $this->assertSame(1, OrderResendAttempt::query()->where('order_id', $failed->id)->where('attempt_type', 'initial')->count());
+        $this->assertSame(1, OrderResendAttempt::query()->where('order_id', $failed->id)->where('attempt_type', 'retry')->count());
+        $this->assertSame(2, OrderResendAttempt::query()->where('order_id', $failed->id)->count());
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — a plain (non-combo) retry writes
+     * a durable `attempt_type=retry` row, with `triggered_by`/`note`
+     * threaded all the way from `OrderController::retryDelivery()`
+     * through `FulfillOrderJob`, exactly mirroring how `resend()`
+     * already threads them for a package-swap resend.
+     */
+    public function test_fulfill_writes_a_retry_attempt_row_with_triggered_by_and_note(): void
+    {
+        $order = $this->paidOrder();
+
+        $failed = $this->service($this->fakeSupplierAdapter(false, null, 'timeout', 'Supplier timed out'))
+            ->fulfill($order);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->fulfill($failed->fresh(), 'Admin User', 'Retried after supplier outage cleared');
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->where('attempt_type', 'retry')->sole();
+        $this->assertSame('Admin User', $attempt->triggered_by);
+        $this->assertSame('Retried after supplier outage cleared', $attempt->note);
+        $this->assertSame('success', $attempt->outcome);
+        $this->assertNull($attempt->order_delivery_leg_id);
+    }
+
+    /**
+     * A system-triggered retry (scheduled reconciliation, no admin
+     * involved) must still leave a row — just with a null
+     * `triggered_by`, distinguishing it from an admin-clicked one.
+     */
+    public function test_fulfill_writes_a_retry_attempt_row_with_null_triggered_by_when_system_triggered(): void
+    {
+        $order = $this->paidOrder();
+
+        $failed = $this->service($this->fakeSupplierAdapter(false, null, 'timeout', 'Supplier timed out'))
+            ->fulfill($order);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($failed->fresh());
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->where('attempt_type', 'retry')->sole();
+        $this->assertNull($attempt->triggered_by);
+        $this->assertNull($attempt->note);
     }
 
     /**

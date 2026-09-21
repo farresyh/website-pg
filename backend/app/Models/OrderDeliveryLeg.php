@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\Order\DeliveryStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * ADR-094 decision 1 + its 2026-09-15 addendum: one row per real
@@ -63,5 +64,11 @@ class OrderDeliveryLeg extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    /** ADR-106 addendum (2026-09-21) — this leg's own durable per-attempt history. */
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(OrderResendAttempt::class);
     }
 }
