@@ -249,3 +249,15 @@ corrupted `APP_KEY` broke nothing until the first real encrypted write
 generic "Process from config.webServer was not able to start" — see
 `docs/build-log.md`'s 2026-08-27 entry for the full root-cause chain. Any
 script that captures `artisan` output into a variable needs `--no-ansi`.
+
+**Fifth known gotcha:** each of `admin/`, `storefront/`, `reseller/`,
+`docs-site/` has its own `vercel.json` with an `ignoreCommand` (`git diff
+--quiet HEAD^ HEAD .`) that skips that app's Vercel build entirely when
+nothing under its own directory changed — added 2026-09-22 after PR #269
+found every push was rebuilding all 4 frontends regardless of relevance. A
+merged PR that only shows 3 (or fewer) of the 4 Vercel deployments actually
+build — the rest show `Canceled` / "Ignored Build Step command returned exit
+code 0" — is this working as intended, not a broken deploy. If a real change
+to one of these apps ever needs to force a rebuild without touching that
+app's own directory (e.g. a shared config file moves outside it), the
+`ignoreCommand` needs updating too, or that app will silently stay stale.
