@@ -722,8 +722,12 @@ shipped and verified drops off this list into `docs/build-log.md`.
 4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
    Bot channel works and every command is prod-verified; the webhook already has
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
-5. **e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
-   30s timeout under the 60s per-test budget; raise it.
+5. ~~**e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
+   30s timeout under the 60s per-test budget; raise it.~~ — **FIXED
+   2026-09-22.** Real bottleneck wasn't the overall test budget
+   (`test.slow()` already triples it to 180s) — the final assertion's own
+   `15_000`ms timeout was racing a cold Next.js compile of the status
+   route. Raised to `30_000`. See `docs/build-log.md`'s matching entry.
 6. Small unbuilt scope, none blocking: ~~ORD-5 (order export)~~ — **built
    2026-09-18, ADR-108** — SET-9 (the Telegram
    *sender* — the setting fields exist), gallery in-modal picker (paste-URL —
