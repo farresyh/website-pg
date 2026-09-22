@@ -865,7 +865,9 @@ shipped and verified drops off this list into `docs/build-log.md`.
     established) — `affiliate_profit` itself is never touched. A resulting
     loss is never blocked (decision 3): the order still delivers, the
     figure is recorded as-is, and a new Order Detail card
-    (`combo_profit_reconciled_negative`) flags it for admin visibility
+    (`combo_profit_reconciled_negative` — **renamed `profit_reconciled_flagged`
+    and generalized to every order type, not just combo, by ADR-111
+    decision 7, see item 19 below**) flags it for admin visibility
     after the fact. `Order::suggestedPartialVoucherAmount()` now apportions
     `final_amount − transaction_fee` proportionally across failed legs'
     frozen `order_delivery_legs.selling_price_sen` weights, never a live
@@ -901,13 +903,72 @@ shipped and verified drops off this list into `docs/build-log.md`.
     not a per-order live API call. Feature-flagged rollout given the blast
     radius (every future order's `platform_profit`, not a scoped subset).
     Explicit per-`pricing_basis` (Standard/Affiliate/Member/ResellerWallet)
-    test coverage built and green, one test per basis. `config(
-    'services.real_cost_reconciliation.enabled')` (default false) is the
-    kill switch — real cost is captured unconditionally on every delivery,
-    but only USED to recompute `platform_profit` once flipped on. Founder-
-    owed: actually enabling it in prod, once comfortable. See
-    `docs/build-log.md`'s 2026-09-22 entry and `docs/adr.md`'s ADR-111 for
-    the full build record.
+    test coverage built and green, one test per basis, for both combo and
+    non-combo. `config('services.real_cost_reconciliation.enabled')` is
+    the kill switch — real cost is captured unconditionally on every
+    delivery, but only USED to recompute `platform_profit` once flipped
+    on. **🟢 LIVE PROD, flag enabled 2026-09-22** (same day as build,
+    ahead of the `staging`→`main` release) — verified against a real
+    delivered order via SSH the same day. Founder's explicit call: no
+    backfill for orders delivered before this shipped (`real_cost_price_sen`
+    stays null for them permanently, `cost_basis` reads 'estimated'). Also
+    shipped same day: a "Cost Price + Cost Basis" addendum unifying Order
+    Detail and the `/admin/orders` CSV export into one reconciled cost
+    figure (Real/Mixed/Estimated), so neither ever shows two competing
+    cost numbers. See `docs/build-log.md`'s 2026-09-22 entries and
+    `docs/adr.md`'s ADR-111 for the full build record.
+20. **`/track-order` intermittently shows "Too Many Attempts" — a real bug,
+    reproduced live 2026-09-22, was never actually added here despite being
+    called "tracked separately."** First diagnosed 2026-09-19 while
+    investigating an unrelated stuck-payment order (`docs/adr.md`'s ADR-110
+    Context, `docs/build-log.md`'s matching entry) but only ever mentioned
+    in passing inside that ADR's prose — no backlog entry was ever created,
+    so it sat undiscoverable for 3 days until the founder hit it again
+    2026-09-22 on a real post-purchase order, confirming it's a recurring,
+    customer-facing issue, not a one-off. Root cause (read directly from
+    `storefront/src/components/order/OrderStatusTracker.tsx` and
+    `backend/routes/api.php`, not assumed): the adaptive poll cadence
+    (`nextPollDelay()`, ADR-071 PR3) polls every **2 seconds** for the
+    delivery's first minute (fast-path for the common case) — up to 30
+    requests/minute — against the route's own `throttle:20,1,track-order`
+    limit (ADR-065). The math was never cross-checked between the two
+    ADRs: any delivery that takes longer than ~40 seconds to resolve (a
+    normal outcome for an async/Pending supplier response, not an edge
+    case) causes the frontend's OWN legitimate polling to trip the
+    backend's OWN rate limit, showing a paying customer who did nothing
+    wrong a scary error. Reverb push (when connected) doesn't prevent
+    this — the poll loop runs unconditionally alongside it, on its own
+    schedule, regardless of whether Reverb already delivered the update.
+    Two independent fix directions, not yet chosen: widen the throttle
+    limit, or slow the first-minute poll cadence (e.g. 2s → 3s brings the
+    worst case to exactly 20/min). Small, well-understood fix — not
+    blocking launch, but real UX/trust damage for a customer who already
+    paid.
+21. **Pending Reactivation approval doesn't cascade to reactivate a
+    dependent combo — visibility AND action both missing, confirmed still
+    unbuilt 2026-09-22.** Found live 2026-09-21 while reviewing Pending
+    Reactivation and re-confirmed by re-reading the actual
+    code this session (`ComboPricingService::cascadeDeactivate()`,
+    `PendingReactivationFinder`, `PendingReactivationController`) —
+    nothing has changed since. Two-part gap: (1) `cascadeDeactivate()`
+    sets a dependent combo's `deactivated_reason = 'combo_component_deactivated'`,
+    but `PendingReactivationFinder` only ever queries
+    `deactivated_reason = 'supplier_sync'` — a cascade-deactivated combo
+    **never appears in the Pending Reactivation queue at all**, not even
+    for an admin to manually reactivate; (2) even setting that aside,
+    `PendingReactivationController::approve()`/`bulkApprove()` and
+    `PendingReactivationAutoApprover::approve()` (ADR-100) only ever touch
+    the package actually being approved — zero reverse-cascade logic
+    exists anywhere to reactivate a combo once every one of its components
+    is active again. ADR-094 decision 22 deliberately made cascade
+    **deactivation** one-directional (no auto-reactivate) — but that
+    decision never addressed **visibility**, so gap (1) is an unintended
+    side effect, not a recorded decision. Needs its own grill before
+    building (touches 3 call sites: manual single/bulk approve + the
+    auto-approver; needs multi-component-all-active checking; needs to
+    decide whether reactivation stays manual-but-visible or becomes
+    auto like ADR-100's own trigger). Not started — no ADR number
+    assigned yet.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
