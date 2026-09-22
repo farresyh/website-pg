@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\Order\DeliveryStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * ADR-094 decision 1 + its 2026-09-15 addendum: one row per real
@@ -25,6 +26,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * apportionment. No `cost_price_sen` twin: decision 2's platformProfit
  * reconciliation reads `componentPackage->cost_price` LIVE at final
  * resolution instead (see the owning migration's doc comment for why).
+ *
+ * ADR-111 decision 2: `real_cost_price_sen` is the OTHER cost figure —
+ * the supplier's own real per-transaction price this specific leg
+ * actually delivered at (converted via `CurrencyRateService::
+ * convertToSen()`), captured once the leg reaches Delivered. Distinct
+ * from `componentPackage->cost_price` (a catalog snapshot); null until
+ * delivered, or if the FX rate was genuinely unavailable at that moment.
  */
 class OrderDeliveryLeg extends Model
 {
@@ -40,6 +48,7 @@ class OrderDeliveryLeg extends Model
         'failure_reason',
         'resend_unsafe_with_same_reference',
         'selling_price_sen',
+        'real_cost_price_sen',
     ];
 
     protected $casts = [
@@ -48,6 +57,7 @@ class OrderDeliveryLeg extends Model
         'delivered_at' => 'datetime',
         'resend_unsafe_with_same_reference' => 'boolean',
         'selling_price_sen' => 'integer',
+        'real_cost_price_sen' => 'integer',
     ];
 
     public function order(): BelongsTo
@@ -63,5 +73,11 @@ class OrderDeliveryLeg extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    /** ADR-106 addendum (2026-09-21) — this leg's own durable per-attempt history. */
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(OrderResendAttempt::class);
     }
 }

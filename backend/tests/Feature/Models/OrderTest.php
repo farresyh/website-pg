@@ -197,13 +197,46 @@ class OrderTest extends TestCase
         $this->assertNull($order->suggestedPartialVoucherAmount());
     }
 
-    /** A leg-level NeedsReview (e.g. a Gamevion duplicate_reference) is real ambiguity, not a clean partial — never the carve-out. */
-    public function test_is_partial_combo_delivery_false_when_a_leg_is_itself_ambiguous(): void
+    /**
+     * ADR-094's 2026-09-21 addendum decision 25 — a leg-level NeedsReview
+     * (e.g. a Gamevion duplicate_reference) alongside a Delivered leg IS
+     * now recognized as a genuine partial delivery, same carve-out as a
+     * Delivered+Failed split: ADR-102 decision 4 only ever closed the
+     * Digiflazz-confirmed-Gagal cause of a leg landing on NeedsReview,
+     * this one (and an unexpected exception mid-attempt) were never
+     * covered — without this, confirmFailed() would let an admin
+     * confirm the whole order Failed and over-compensate with a
+     * full-amount voucher despite the delivered leg's goods already
+     * being received. Same math as the Delivered+Failed test above (385)
+     * — the numerator now includes NeedsReview legs too.
+     */
+    public function test_is_partial_combo_delivery_true_when_a_delivered_leg_is_mixed_with_an_ambiguous_one(): void
     {
         $delivered = $this->componentPackage();
-        $ambiguous = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $ambiguous = $this->componentPackage([
+            'name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976',
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+        ]);
         $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
         $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $ambiguous, DeliveryStatus::NeedsReview, 2);
+
+        $this->assertTrue($order->isPartialComboDelivery());
+        $this->assertSame(385, $order->suggestedPartialVoucherAmount());
+    }
+
+    /**
+     * Guards decision 25's own scoping so it doesn't over-block: a
+     * Failed+NeedsReview mix with NO Delivered leg is NOT "partial" —
+     * nothing was delivered yet, so confirming the whole order Failed
+     * (and a later full-amount voucher) stays correct there.
+     */
+    public function test_is_partial_combo_delivery_false_when_no_leg_is_delivered_yet(): void
+    {
+        $failed = $this->componentPackage();
+        $ambiguous = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
+        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->leg($order, $failed, DeliveryStatus::Failed, 1);
         $this->leg($order, $ambiguous, DeliveryStatus::NeedsReview, 2);
 
         $this->assertFalse($order->isPartialComboDelivery());
@@ -386,5 +419,116 @@ class OrderTest extends TestCase
         $this->leg($order, $componentB, DeliveryStatus::NeedsReview, 2, resendUnsafeWithSameReference: true);
 
         $this->assertTrue($order->resendUnsafeToOverride());
+    }
+
+    /**
+     * ADR-111 addendum (2026-09-22) — `effectiveCostPriceSen()`/
+     * `costBasis()` reverse-engineer which cost figure actually produced
+     * the stored `platform_profit`, rather than trusting whether
+     * `real_cost_price_sen` merely happens to be non-null (the
+     * reconciliation feature flag can be off at capture time — decision
+     * 2 always captures it — so its presence alone doesn't mean it was
+     * USED). A catalog-based `platform_profit` (real-cost-reconciliation
+     * flag was off when this order delivered) must read as 'estimated'.
+     */
+    public function test_cost_basis_is_estimated_when_the_stored_profit_was_computed_from_catalog_cost(): void
+    {
+        $order = $this->makeOrder([
+            'cost_price' => 900, 'selling_price' => 1000, 'affiliate_profit' => 0,
+            // platform_profit computed from catalog cost_price (900), NOT real_cost_price_sen.
+            'platform_profit' => 100,
+            'real_cost_price_sen' => 850,
+        ]);
+
+        $this->assertSame('estimated', $order->costBasis());
+        $this->assertSame(900, $order->effectiveCostPriceSen());
+    }
+
+    /** The mirror case — platform_profit genuinely was derived from the real cost. */
+    public function test_cost_basis_is_real_when_the_stored_profit_was_computed_from_real_cost(): void
+    {
+        $order = $this->makeOrder([
+            'cost_price' => 900, 'selling_price' => 1000, 'affiliate_profit' => 0,
+            'real_cost_price_sen' => 850,
+            // 1000 - 850 - 0 = 150.
+            'platform_profit' => 150,
+        ]);
+
+        $this->assertSame('real', $order->costBasis());
+        $this->assertSame(850, $order->effectiveCostPriceSen());
+    }
+
+    /** No real cost ever captured (order not yet delivered, or FX was unavailable) — falls back to the catalog figure. */
+    public function test_cost_basis_is_estimated_when_no_real_cost_was_ever_captured(): void
+    {
+        $order = $this->makeOrder(['cost_price' => 900, 'real_cost_price_sen' => null]);
+
+        $this->assertSame('estimated', $order->costBasis());
+        $this->assertSame(900, $order->effectiveCostPriceSen());
+    }
+
+    /** Combo, every leg's real cost known and actually used — 'real', not 'mixed'. */
+    public function test_cost_basis_is_real_for_a_combo_order_when_every_leg_has_real_cost(): void
+    {
+        $a = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'REALALL-A']);
+        $b = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'REALALL-B']);
+        $order = $this->makeOrder(['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 300]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $a->supplier_id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value,
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $b->supplier_id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value,
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => 500,
+        ]);
+
+        $this->assertSame('real', $order->fresh()->costBasis());
+        $this->assertSame(1200, $order->fresh()->effectiveCostPriceSen());
+    }
+
+    /** Combo, one leg's real cost was genuinely unavailable — falls back to that leg's catalog cost, basis 'mixed'. */
+    public function test_cost_basis_is_mixed_for_a_combo_order_when_only_one_leg_has_real_cost(): void
+    {
+        $a = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'MIXED-A']);
+        $b = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'MIXED-B']);
+        $order = $this->makeOrder(['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 300]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $a->supplier_id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value,
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $b->supplier_id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value,
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => null,
+        ]);
+
+        $this->assertSame('mixed', $order->fresh()->costBasis());
+        // 700 (real) + 500 (catalog fallback) = 1200.
+        $this->assertSame(1200, $order->fresh()->effectiveCostPriceSen());
+    }
+
+    /** Combo, real-cost-reconciliation flag was off at delivery — stored profit used the catalog total, basis 'estimated'. */
+    public function test_cost_basis_is_estimated_for_a_combo_order_when_catalog_cost_was_used(): void
+    {
+        $a = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'ESTALL-A']);
+        $b = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'ESTALL-B']);
+        $order = $this->makeOrder(['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 500]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $a->supplier_id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value,
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $b->supplier_id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value,
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+
+        // 1500 - (500 + 500 catalog) - 0 = 500 — matches the catalog total, not the real total (1200).
+        $this->assertSame('estimated', $order->fresh()->costBasis());
+        $this->assertSame(1000, $order->fresh()->effectiveCostPriceSen());
     }
 }

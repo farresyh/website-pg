@@ -12,6 +12,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\ResellerBotOrderNotification;
+use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\SupplierDeliveryCheckService;
 use App\Services\Ledger\LedgerOwnerType;
@@ -192,11 +193,19 @@ class OrderController extends Controller
      * the founder asked for (Q6-Q9 of ADR-108's own grill) — CSV-only,
      * deliberately not added to the on-screen Columns toggle (decision
      * 8), since Order Detail already shows every one of these fields in
-     * full. A combo order (deliveryLegs non-empty) has no single frozen
-     * cost column (ADR-107 dropped it) — its "Cost Price" cell is the
-     * live sum of each leg's componentPackage->cost_price instead,
-     * labelled accordingly in the header so it's never mistaken for a
-     * frozen figure the way the non-combo column is.
+     * full.
+     *
+     * ADR-111 addendum (2026-09-22, founder concern): this export is the
+     * documented source of truth for order-level P&L (`docs/prd.md`),
+     * so "Cost Price" is deliberately ONE column, not two competing ones
+     * (raw catalog `cost_price` vs `real_cost_price_sen`) — an auditor
+     * reading this file must never have to guess which figure to sum.
+     * `Order::effectiveCostPriceSen()`/`costBasis()` (shared with Order
+     * Detail) resolve to whichever cost actually produced the row's own
+     * `Platform Profit`, plus a "Cost Basis" column (Real/Mixed/
+     * Estimated) so the provenance is explicit rather than assumed.
+     * `Selling Price − Cost Price − Affiliate Profit` always equals
+     * `Platform Profit` for every row.
      */
     public function export(Request $request): StreamedResponse
     {
@@ -213,7 +222,7 @@ class OrderController extends Controller
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'Order #', 'Customer Email', 'Game', 'Package', 'Source', 'Final Amount (RM)',
-                'Payment Status', 'Delivery Status', 'Pricing Basis', 'Cost Price (RM)',
+                'Payment Status', 'Delivery Status', 'Pricing Basis', 'Cost Price (RM)', 'Cost Basis',
                 'Standard/Normal Selling Price (RM)', 'Member Markup %', 'Affiliate Markup %',
                 'Wholesale Markup %', 'Transaction Fee (RM)', 'Platform Profit (RM)',
                 'Affiliate Profit (RM)', 'Date',
@@ -225,15 +234,6 @@ class OrderController extends Controller
                         ? 'Reseller: '.$order->wallet_reseller->business_name
                         : ($order->affiliate && ! $order->affiliate->is_primary ? $order->affiliate->business_name : 'Direct');
 
-                    // ADR-107 dropped combo's per-leg frozen cost column —
-                    // read live (same precedent that ADR established for
-                    // combo reconciliation), prefixed '~' so it's never
-                    // mistaken for the non-combo column's frozen figure.
-                    $isCombo = $order->deliveryLegs->isNotEmpty();
-                    $costPriceSen = $isCombo
-                        ? $order->deliveryLegs->sum(fn ($leg) => $leg->componentPackage->cost_price ?? 0)
-                        : $order->cost_price;
-
                     fputcsv($out, [
                         $order->order_number,
                         $order->customer_email,
@@ -244,7 +244,8 @@ class OrderController extends Controller
                         $order->payment_status->value,
                         $order->delivery_status->value,
                         $order->pricing_basis?->value ?? '',
-                        ($isCombo ? '~' : '').number_format($costPriceSen / 100, 2, '.', ''),
+                        number_format($order->effectiveCostPriceSen() / 100, 2, '.', ''),
+                        ucfirst($order->costBasis()),
                         number_format(($order->standard_selling_price ?? $order->normal_selling_price ?? 0) / 100, 2, '.', ''),
                         $order->markup_percent !== null ? $order->markup_percent.'%' : '',
                         $order->affiliate_markup_pct !== null ? $order->affiliate_markup_pct.'%' : '',
@@ -378,7 +379,15 @@ class OrderController extends Controller
 
         $this->guardResendUnsafeOverride($request, $order);
 
-        FulfillOrderJob::dispatch($order);
+        // ADR-106 addendum (2026-09-21) — retry-delivery has no separate
+        // `note` field of its own (unlike resend()); override_reason is
+        // the only free text an admin can supply here, so it doubles as
+        // this attempt's durable note (grill Q7).
+        FulfillOrderJob::dispatch(
+            $order,
+            $request->user()->name,
+            trim((string) $request->input('override_reason', '')) ?: null,
+        );
 
         return response()->json(['message' => 'Delivery retry queued.']);
     }
@@ -621,6 +630,21 @@ class OrderController extends Controller
             ]);
         }
 
+        // ADR-094's 2026-09-21 addendum decision 24 — this action force-sets
+        // the WHOLE order Delivered with no per-leg awareness at all, which
+        // is never safe for a multi-leg entity: a combo order can only ever
+        // become genuinely fully-delivered through its own per-leg tracking
+        // (resolveComboOutcome() already reaches Delivered on its own once
+        // every leg does). A leg still outstanding here needs Retry Delivery
+        // (resolves it automatically) or, once resolved to a genuine
+        // Delivered+Failed/NeedsReview mix, the partial-delivery Issue
+        // Voucher path (isPartialComboDelivery()) — never this button.
+        if ($order->deliveryLegs->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['This order is a combo — use Retry Delivery to resolve outstanding legs, or Issue Voucher for a partial delivery.'],
+            ]);
+        }
+
         // ADR-024 decision #8 / ADR-102 decision 1 — see retryDelivery()'s
         // identical guard for the full reasoning. Structurally shouldn't
         // be reachable (Issue Voucher is blocked from needs_review, ADR-026
@@ -686,11 +710,25 @@ class OrderController extends Controller
             ]);
         }
 
-        $result = $fulfillment->confirmDeliveryFailed(
-            $order,
-            $request->validated('note'),
-            $request->user()->name,
-        );
+        // ADR-094's 2026-09-21 addendum decision 26: the guard above ran on
+        // the unlocked $order — confirmDeliveryFailed() re-checks the same
+        // isPartialComboDelivery() condition itself, inside its own row
+        // lock, and throws this if the order genuinely drifted into partial
+        // delivery in the gap between this check and that one (a concurrent
+        // retry/webhook). Caught here so that rare race still surfaces as
+        // the same friendly 422 every other guard on this action gives,
+        // not a raw 500.
+        try {
+            $result = $fulfillment->confirmDeliveryFailed(
+                $order,
+                $request->validated('note'),
+                $request->user()->name,
+            );
+        } catch (OrderFulfillmentException) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['This order has a partial delivery — issue a custom-amount voucher for the failed leg(s) instead of confirming the whole order failed.'],
+            ]);
+        }
 
         return $this->orderDetailResponse($result);
     }
@@ -836,7 +874,10 @@ class OrderController extends Controller
             // id), which doesn't tell admin WHICH product SKU was
             // submitted for that leg — real gap when two components
             // share a denomination across suppliers.
-            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price,supplier_package_ref',
+            // ADR-111 addendum: cost_price added — Order::costBasis()/
+            // effectiveCostPriceSen() need each leg's live catalog cost
+            // as the fallback figure alongside its own real_cost_price_sen.
+            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price,supplier_package_ref,cost_price',
             'deliveryLegs.supplier:id,name',
         ]);
 
@@ -888,12 +929,22 @@ class OrderController extends Controller
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
             'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
-            // ADR-107 decision 3 — true only once a combo order actually
-            // delivered with a reconciled negative platform_profit
-            // (never blocks delivery; this is the after-the-fact
-            // visibility signal instead). Drives the Order Detail
-            // "Combo Profit Adjusted" info card.
-            'combo_profit_reconciled_negative' => $order->hasNegativeComboProfit(),
+            // ADR-107 decision 3, generalized by ADR-111 decision 7 — true
+            // once ANY order (not just combo) delivered with a reconciled
+            // negative platform_profit, or a material drift from the
+            // pre-reconciliation estimate (never blocks delivery; this is
+            // the after-the-fact visibility signal instead). Drives the
+            // Order Detail "Profit Adjusted" info card.
+            'profit_reconciled_flagged' => $order->hasReconciledProfitFlag(),
+            // ADR-111 addendum — one "Cost Price" figure, not two
+            // competing columns (raw `cost_price` catalog snapshot vs
+            // `real_cost_price_sen`): whichever cost actually went into
+            // the currently-stored `platform_profit`, plus a basis label
+            // so the figure is never ambiguous to read. Reverse-calculate
+            // Selling Price − Cost Price − Affiliate Profit and it always
+            // equals Platform Profit.
+            'effective_cost_price' => $order->effectiveCostPriceSen(),
+            'cost_basis' => $order->costBasis(),
         ]);
     }
 }

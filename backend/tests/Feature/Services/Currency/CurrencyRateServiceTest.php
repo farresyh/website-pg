@@ -30,7 +30,7 @@ class CurrencyRateServiceTest extends TestCase
             ], 200),
         ]);
 
-        $rate = (new CurrencyRateService())->rate('IDR', 'MYR');
+        $rate = (new CurrencyRateService)->rate('IDR', 'MYR');
 
         $this->assertSame(0.000228, $rate);
         $row = CurrencyRate::query()->sole();
@@ -47,7 +47,7 @@ class CurrencyRateServiceTest extends TestCase
         ]);
         Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
 
-        $rate = (new CurrencyRateService())->rate('IDR', 'MYR');
+        $rate = (new CurrencyRateService)->rate('IDR', 'MYR');
 
         $this->assertSame(0.000230, $rate);
         // The failed live attempt must never write a new row.
@@ -63,7 +63,7 @@ class CurrencyRateServiceTest extends TestCase
             'open.er-api.com/*' => Http::response(['result' => 'success', 'base_code' => 'IDR', 'rates' => ['USD' => 0.000065]], 200),
         ]);
 
-        $rate = (new CurrencyRateService())->rate('IDR', 'MYR');
+        $rate = (new CurrencyRateService)->rate('IDR', 'MYR');
 
         $this->assertSame(0.000230, $rate);
     }
@@ -74,7 +74,7 @@ class CurrencyRateServiceTest extends TestCase
 
         $this->expectException(CurrencyRateUnavailableException::class);
 
-        (new CurrencyRateService())->rate('IDR', 'MYR');
+        (new CurrencyRateService)->rate('IDR', 'MYR');
     }
 
     /** ADR-033 decision 1 — the cache keeps a single sync run (and repeat calls within the TTL) deterministic and rate-limit-friendly. */
@@ -84,7 +84,7 @@ class CurrencyRateServiceTest extends TestCase
             'open.er-api.com/*' => Http::response(['result' => 'success', 'base_code' => 'IDR', 'rates' => ['MYR' => 0.000228]], 200),
         ]);
 
-        $service = new CurrencyRateService();
+        $service = new CurrencyRateService;
         $service->rate('IDR', 'MYR');
         $service->rate('IDR', 'MYR');
 
@@ -100,13 +100,66 @@ class CurrencyRateServiceTest extends TestCase
             'open.er-api.com/v6/latest/PHP' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.078]], 200),
         ]);
 
-        $service = new CurrencyRateService();
+        $service = new CurrencyRateService;
         $idr = $service->rate('IDR', 'MYR');
         $php = $service->rate('PHP', 'MYR');
 
         $this->assertSame(0.000228, $idr);
         $this->assertSame(0.078, $php);
         Http::assertSentCount(2);
+    }
+
+    /** ADR-111 decision 1 — the widened boundary: null price short-circuits before any rate lookup. */
+    public function test_convert_to_sen_returns_null_for_a_null_price(): void
+    {
+        $result = (new CurrencyRateService)->convertToSen(null, 'IDR');
+
+        $this->assertNull($result);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * ADR-111 decision 1 — MYR: plain `round`, no conversion, no rate
+     * lookup at all (same as pre-ADR-111 `ProductSyncService::toMyrSen()`
+     * with a null rate).
+     */
+    public function test_convert_to_sen_rounds_a_myr_price_without_fetching_a_rate(): void
+    {
+        $result = (new CurrencyRateService)->convertToSen(35.556, 'MYR');
+
+        $this->assertSame(3556, $result);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * ADR-111 decision 1 — non-MYR: `ceil`, never `round`, protecting
+     * margin by construction — reuses `rate()`'s own cache/live-fetch.
+     */
+    public function test_convert_to_sen_ceils_a_non_myr_price_using_the_live_rate(): void
+    {
+        Http::fake([
+            'open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.00023]], 200),
+        ]);
+
+        // 15394 * 0.00023 = 3.54062 sen * 100 = 354.062 -> ceil 355.
+        $result = (new CurrencyRateService)->convertToSen(15394, 'IDR');
+
+        $this->assertSame(355, $result);
+    }
+
+    /**
+     * ADR-111 decision 6 — the exception `rate()` already throws when no
+     * live fetch succeeds and nothing was ever stored propagates
+     * unchanged; callers (OrderFulfillmentService) are the ones that
+     * catch it and fall back to catalog cost, never this method itself.
+     */
+    public function test_convert_to_sen_throws_for_a_non_myr_currency_with_no_rate_ever_available(): void
+    {
+        Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
+
+        $this->expectException(CurrencyRateUnavailableException::class);
+
+        (new CurrencyRateService)->convertToSen(15394, 'IDR');
     }
 
     protected function setUp(): void

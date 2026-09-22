@@ -6,6 +6,8 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\CurrencyRateUnavailableException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -48,6 +50,7 @@ final class OrderFulfillmentService
         private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
         private readonly SupplierFundingService $supplierFunding,
+        private readonly CurrencyRateService $currencyRates,
     ) {}
 
     /**
@@ -62,15 +65,28 @@ final class OrderFulfillmentService
      * OrderStatusService's guard — never generates a second
      * reference_number or submits a second supplier order for the
      * same Order.
+     *
+     * $recordAttempt (ADR-106 addendum, 2026-09-21): OrderResendService::resend()
+     * calls this internally after already writing its own, richer
+     * `attempt_type=resend` row (package swap, live-cost reconciliation)
+     * — passes false here so this method's own generic initial/retry
+     * write never double-books the same attempt. Every other caller
+     * (FulfillOrderJob — the webhook, checkout, reseller placement, both
+     * reconciliation paths, and retryDelivery()'s plain retry) leaves
+     * this at its true default, since none of them write a row of their
+     * own.
      */
-    public function fulfill(Order $order): Order
+    public function fulfill(Order $order, ?string $triggeredBy = null, ?string $note = null, bool $recordAttempt = true): Order
     {
         // ADR-094 decision 7: a combo order (Order.package.is_combo)
         // diverts to its own leg-loop sub-flow before any of the
         // single-ref guards below — it has no supplier_product_ref/
-        // supplier_id of its own to check (ADR-094 decision 3).
+        // supplier_id of its own to check (ADR-094 decision 3). Never
+        // reached via OrderResendService::resend() (decision 10 rejects
+        // every combo resend), so $recordAttempt has no combo case to
+        // gate — not threaded through fulfillCombo().
         if ($order->package?->is_combo) {
-            return $this->fulfillCombo($order);
+            return $this->fulfillCombo($order, $triggeredBy, $note);
         }
 
         // ADR-083 decision 3 — captured here, written to the supplier
@@ -79,7 +95,7 @@ final class OrderFulfillmentService
         // branch actually runs and the adapter reported a price.
         $drawdownPrice = null;
 
-        $delivered = DB::transaction(function () use ($order, &$drawdownPrice) {
+        $delivered = DB::transaction(function () use ($order, &$drawdownPrice, $triggeredBy, $note, $recordAttempt) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             // ADR-102 decision 1: the real, final defense-in-depth
@@ -187,7 +203,9 @@ final class OrderFulfillmentService
                     'supplier_response' => $result->data,
                 ]);
 
-                $this->recordInitialAttemptIfFirst($locked, $wasNotStarted);
+                if ($recordAttempt) {
+                    $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
+                }
 
                 Log::info('Delivery pending — awaiting async supplier confirmation', [
                     'supplier_response' => $result->data,
@@ -224,7 +242,9 @@ final class OrderFulfillmentService
                     ],
                 ]);
 
-                $this->recordInitialAttemptIfFirst($locked, $wasNotStarted);
+                if ($recordAttempt) {
+                    $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
+                }
 
                 // ADR-014: the one line a file-log admin actually needs
                 // to notice without watching the Admin Orders screen —
@@ -240,14 +260,32 @@ final class OrderFulfillmentService
                 return $locked->fresh();
             }
 
-            $locked->update([
+            // ADR-111 decision 2/3: real per-transaction cost, captured
+            // regardless of the feature flag; only USED to recompute
+            // platform_profit when the flag is enabled (decision 8).
+            // Closes this branch's own gap ADR-111's Context called out
+            // as the biggest latent one — a plain successful delivery
+            // (first attempt or retry) never reconciled platform_profit
+            // against anything beyond the checkout-time catalog estimate.
+            $realCostPriceSen = $this->captureRealCostSen($result->data, $locked->supplier->currency);
+
+            $updateData = [
                 'supplier_ref' => $result->data['supplier_ref'] ?? null,
                 'supplier_response' => $result->data,
                 'delivery_status' => $this->orderStatus->markDelivered($processingStatus)->value,
                 'delivered_at' => now(),
-            ]);
+                'real_cost_price_sen' => $realCostPriceSen,
+            ];
 
-            $this->recordInitialAttemptIfFirst($locked, $wasNotStarted);
+            if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
+            }
+
+            $locked->update($updateData);
+
+            if ($recordAttempt) {
+                $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
+            }
 
             $this->creditProfit($locked);
 
@@ -290,7 +328,7 @@ final class OrderFulfillmentService
      *  3. Aggregate the legs' resulting statuses into the order's own
      *     delivery_status (resolveComboOutcome()).
      */
-    private function fulfillCombo(Order $order): Order
+    private function fulfillCombo(Order $order, ?string $triggeredBy = null, ?string $note = null): Order
     {
         DB::transaction(function () use ($order) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
@@ -333,7 +371,7 @@ final class OrderFulfillmentService
                 continue;
             }
 
-            $this->attemptLeg($order, $leg);
+            $this->attemptLeg($order, $leg, $triggeredBy, $note);
         }
 
         return $this->resolveComboOutcome($order);
@@ -399,7 +437,7 @@ final class OrderFulfillmentService
      * across up to 3 sequential HTTP calls, ADR-077's own fixed lock-
      * contention class).
      */
-    private function attemptLeg(Order $order, OrderDeliveryLeg $leg): void
+    private function attemptLeg(Order $order, OrderDeliveryLeg $leg, ?string $triggeredBy = null, ?string $note = null): void
     {
         $drawdownPrice = null;
         $legId = $leg->id;
@@ -412,8 +450,18 @@ final class OrderFulfillmentService
         // so a genuinely-attempted reference is never silently lost.
         $legReferenceNumber = null;
 
+        // ADR-106 addendum (2026-09-21) — same reasoning as fulfill()'s
+        // own $wasNotStarted: captured once, from the locked leg, before
+        // this call's own update() advances it past NotStarted, and by
+        // reference so the catch block below can still write a correct
+        // `initial`-vs-`retry` attempt row even when the try block's own
+        // transaction rolled back. Defaults false (never a false
+        // 'initial') for the theoretical case an exception fires before
+        // the locked leg is even read.
+        $wasLegNotStarted = false;
+
         try {
-            DB::transaction(function () use ($order, $leg, &$drawdownPrice, &$legReferenceNumber) {
+            DB::transaction(function () use ($order, $leg, &$drawdownPrice, &$legReferenceNumber, &$wasLegNotStarted, $triggeredBy, $note) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
@@ -421,6 +469,8 @@ final class OrderFulfillmentService
                     // nothing to do, the other attempt already owns it.
                     return;
                 }
+
+                $wasLegNotStarted = $lockedLeg->status === DeliveryStatus::NotStarted;
 
                 // ADR-103 decision 3 — mirrors ADR-102 decision 9 at leg
                 // granularity: NotStarted keeps today's derived value
@@ -463,6 +513,8 @@ final class OrderFulfillmentService
                 if ($result->outcome === SupplierOutcome::Pending) {
                     $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
 
+                    $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, $result->data);
+
                     Log::info('Combo leg pending — awaiting async supplier confirmation', ['leg_id' => $lockedLeg->id]);
 
                     return;
@@ -486,6 +538,11 @@ final class OrderFulfillmentService
                         'resend_unsafe_with_same_reference' => true,
                     ] : []));
 
+                    $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, [
+                        'error_code' => $result->errorCode,
+                        'error_message' => $result->errorMessage,
+                    ]);
+
                     Log::warning($requiresManualReview ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
                         'leg_id' => $lockedLeg->id,
                         'error_code' => $result->errorCode,
@@ -495,11 +552,20 @@ final class OrderFulfillmentService
                     return;
                 }
 
+                // ADR-111 decision 2 — the leg-scoped twin of fulfill()'s
+                // own capture; no order-level platform_profit recompute
+                // here (that's resolveComboOutcome()'s job, once every
+                // leg has settled).
+                $realLegCostPriceSen = $this->captureRealCostSen($result->data, $component->supplier->currency);
+
                 $lockedLeg->update([
                     'status' => DeliveryStatus::Delivered->value,
                     'supplier_reference' => $result->data['supplier_ref'] ?? null,
                     'delivered_at' => now(),
+                    'real_cost_price_sen' => $realLegCostPriceSen,
                 ]);
+
+                $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, $result->data);
 
                 if (isset($result->data['price'])) {
                     $drawdownPrice = (float) $result->data['price'];
@@ -525,7 +591,7 @@ final class OrderFulfillmentService
                 'exception' => $e->getMessage(),
             ]);
 
-            DB::transaction(function () use ($legId, $e, $legReferenceNumber) {
+            DB::transaction(function () use ($legId, $e, $legReferenceNumber, $wasLegNotStarted, $triggeredBy, $note) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($legId);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
@@ -546,6 +612,8 @@ final class OrderFulfillmentService
                     // genuinely attempted under, not a stale/null one.
                     'reference_number' => $legReferenceNumber,
                 ] : []));
+
+                $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, ['error_message' => $e->getMessage()]);
             });
 
             return;
@@ -633,27 +701,45 @@ final class OrderFulfillmentService
                     ? $this->orderStatus->finalizePendingSuccess($locked->delivery_status)
                     : $this->orderStatus->markDelivered($locked->delivery_status);
 
-                // ADR-107 decision 2 — see this method's own doc comment.
-                // Reads live cost, never a frozen snapshot (there isn't
-                // one for cost — only `selling_price_sen`, decision 1).
-                $liveCostTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
-                $reconciledPlatformProfit = $locked->selling_price - $liveCostTotal - $locked->affiliate_profit;
+                // ADR-107 decision 2, cost input widened by ADR-111
+                // decision 3/8: real per-transaction cost when the flag
+                // is enabled (decision 2's leg-level capture, falling
+                // back to this leg's own live catalog cost only if ITS
+                // real cost is missing — a genuinely unavailable FX rate
+                // at that one leg's delivery moment, decision 6); the
+                // flag disabled restores the exact pre-ADR-111 live
+                // catalog-cost-only aggregation (decision 8's kill
+                // switch). Never a frozen snapshot either way — there
+                // isn't one for cost, only `selling_price_sen` (decision 1).
+                $useRealCost = config('services.real_cost_reconciliation.enabled', false);
+                $costTotal = (int) $legs->sum(function (OrderDeliveryLeg $leg) use ($useRealCost) {
+                    if ($useRealCost && $leg->real_cost_price_sen !== null) {
+                        return $leg->real_cost_price_sen;
+                    }
+
+                    return $leg->componentPackage?->cost_price ?? 0;
+                });
+                $reconciledPlatformProfit = $locked->selling_price - $costTotal - $locked->affiliate_profit;
 
                 // Decision 3: never block delivery over this — a combo
                 // can finalize via webhook/scheduled poll with no admin
                 // present to supply an override reason (ADR-105 decision
                 // 4's gate is deliberately NOT reused here). The order
                 // still delivers, the (possibly negative) figure is
-                // recorded as-is, and this line is the after-the-fact
-                // signal an admin needs to actually notice it — the
-                // Order Detail response's `combo_profit_reconciled_negative`
-                // flag (derived from the stored value, not a separate
-                // column) is the UI-facing half of the same signal.
-                if ($reconciledPlatformProfit < 0) {
-                    Log::warning('Combo order platform profit reconciled negative on final delivery', [
+                // recorded as-is, and ADR-111 decision 7's persisted
+                // `profit_reconciled_flagged` (any negative result, OR a
+                // material drift from the pre-reconciliation estimate —
+                // both universal, not combo-only any more) is the
+                // after-the-fact signal an admin needs to actually
+                // notice it — the UI-facing half of the same signal.
+                $flagged = $this->isProfitDriftFlagged($locked->platform_profit, $reconciledPlatformProfit, $locked->selling_price);
+
+                if ($flagged) {
+                    Log::warning('Combo order platform profit reconciled negative or drifted materially on final delivery', [
                         'order_id' => $locked->id,
                         'reconciled_platform_profit' => $reconciledPlatformProfit,
-                        'live_cost_total' => $liveCostTotal,
+                        'cost_total' => $costTotal,
+                        'used_real_cost' => $useRealCost,
                         'affiliate_profit' => $locked->affiliate_profit,
                         'frozen_selling_price' => $locked->selling_price,
                     ]);
@@ -663,6 +749,7 @@ final class OrderFulfillmentService
                     'delivery_status' => $newStatus->value,
                     'delivered_at' => now(),
                     'platform_profit' => $reconciledPlatformProfit,
+                    'profit_reconciled_flagged' => $flagged,
                 ]);
 
                 $this->creditProfit($locked);
@@ -727,13 +814,24 @@ final class OrderFulfillmentService
             if ($outcome === SupplierOutcome::Success) {
                 $deliveredStatus = $this->orderStatus->finalizePendingSuccess($lockedLeg->status);
 
+                // ADR-111 decision 2 — the async counterpart to
+                // attemptLeg()'s own capture, for a Digiflazz rc=03 leg
+                // whose real price only ever arrives via webhook/poll.
+                $realLegCostPriceSen = $this->captureRealCostSen(
+                    is_array($supplierResponse) ? $supplierResponse : null,
+                    $lockedLeg->supplier->currency,
+                );
+
                 $lockedLeg->update([
                     'status' => $deliveredStatus->value,
                     'supplier_reference' => $supplierRef ?? $lockedLeg->supplier_reference,
                     'delivered_at' => now(),
+                    'real_cost_price_sen' => $realLegCostPriceSen,
                 ]);
 
                 Log::info('Combo leg finalized as delivered');
+
+                $this->resolvePendingLegAttempt($lockedLeg->id, 'success', $supplierResponse);
 
                 if (is_array($supplierResponse) && isset($supplierResponse['price'])) {
                     $drawdownPrice = (float) $supplierResponse['price'];
@@ -760,6 +858,8 @@ final class OrderFulfillmentService
                 // on NeedsReview (see attemptLeg()'s identical comment).
                 'resend_unsafe_with_same_reference' => true,
             ] : []));
+
+            $this->resolvePendingLegAttempt($lockedLeg->id, 'failed', $supplierResponse);
 
             Log::warning($requiresManualReview ? 'Combo leg finalized as needs-review' : 'Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
         });
@@ -804,12 +904,28 @@ final class OrderFulfillmentService
             if ($outcome === SupplierOutcome::Success) {
                 $deliveredStatus = $this->orderStatus->finalizePendingSuccess($locked->delivery_status);
 
-                $locked->update([
+                // ADR-111 decision 2/3 — the async counterpart to
+                // fulfill()'s own Success branch: a Digiflazz rc=03
+                // order's real price only ever arrives here (webhook or
+                // reconcile poll), never at the initial Pending response.
+                $realCostPriceSen = $this->captureRealCostSen(
+                    is_array($supplierResponse) ? $supplierResponse : null,
+                    $locked->supplier->currency,
+                );
+
+                $updateData = [
                     'supplier_ref' => $supplierRef ?? $locked->supplier_ref,
                     'supplier_response' => $supplierResponse ?? $locked->supplier_response,
                     'delivery_status' => $deliveredStatus->value,
                     'delivered_at' => now(),
-                ]);
+                    'real_cost_price_sen' => $realCostPriceSen,
+                ];
+
+                if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                    $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
+                }
+
+                $locked->update($updateData);
 
                 $this->creditProfit($locked);
                 $this->vouchers->commit($locked->id);
@@ -904,15 +1020,18 @@ final class OrderFulfillmentService
      * blocks a NEW resend while the order is Pending — so at most one
      * order_resend_attempts row for a given order can genuinely be
      * "awaiting an async answer" at a time. A combo order never reaches
-     * here at all (OrderResendService::assertSameGamePackage() rejects
-     * every combo resend, ADR-094 decision 10), so no leg-side
-     * counterpart is needed.
+     * THIS method at all (OrderResendService::assertSameGamePackage()
+     * rejects every combo resend, ADR-094 decision 10) — its `whereNull`
+     * guard keeps it scoped to order-level rows regardless. A combo
+     * DOES have its own leg-scoped counterpart now, resolvePendingLegAttempt()
+     * below, for the retryDelivery()/attemptLeg() path resend() can
+     * never reach.
      *
      * ADR-106 decision 2 (2026-09-18): this query is entirely
      * type-agnostic (no `attempt_type` filter), so it keeps working
      * unchanged now that an `initial` attempt can also land on
      * `outcome=pending` (a first-ever call that happens to hit
-     * Digiflazz's async rc=03) — `recordInitialAttemptIfFirst()` below
+     * Digiflazz's async rc=03) — `recordFulfillmentAttempt()` below
      * writes that row, this method resolves it exactly like it always
      * resolved a resend's pending row. Still a genuine no-op for an
      * order whose very first attempt landed on a terminal outcome
@@ -922,6 +1041,7 @@ final class OrderFulfillmentService
     {
         OrderResendAttempt::query()
             ->where('order_id', $orderId)
+            ->whereNull('order_delivery_leg_id')
             ->where('outcome', 'pending')
             ->latest('id')
             ->first()
@@ -929,32 +1049,49 @@ final class OrderFulfillmentService
     }
 
     /**
-     * ADR-106 decision 3: the durable counterpart to the admin's
-     * synthesized "Initial Delivery" row — writes an `attempt_type=initial`
-     * `order_resend_attempts` row for a genuinely first-ever fulfillment
-     * attempt, called from inside fulfill()'s own transaction (all three
-     * outcome branches) right after $locked's delivery_status/
-     * supplier_response have been updated for this call's real outcome,
-     * so it only ever commits alongside that outcome — never orphaned by
-     * a mid-flight exception, and never double-written by a retry
-     * ($wasNotStarted is computed once, before this call's own update()
-     * advanced the order past NotStarted).
-     *
-     * `package_id`/`cost_price_sen`/`standard_selling_price_sen` are the
-     * order's own checkout-frozen values — a first attempt always uses
-     * the order's own package (only a resend can swap it, ADR-017).
-     * `price_diff_sen` is null (decision 4): no live-cost comparison is
-     * ever made on a first attempt, unlike a resend's real diff.
+     * ADR-106 addendum (2026-09-21) — the leg-scoped twin of
+     * resolvePendingResendAttempt() above: a combo leg's own `pending`
+     * attempt row (written by attemptLeg()'s Pending branch) is
+     * resolved here once finalizePendingDeliveryLeg() (webhook or poll)
+     * settles it, so a leg that went Pending never leaves its own
+     * attempt history stuck at `outcome=pending` forever.
      */
-    private function recordInitialAttemptIfFirst(Order $locked, bool $wasNotStarted): void
+    private function resolvePendingLegAttempt(int $legId, string $outcome, mixed $supplierResponse): void
     {
-        if (! $wasNotStarted) {
-            return;
-        }
+        OrderResendAttempt::query()
+            ->where('order_delivery_leg_id', $legId)
+            ->where('outcome', 'pending')
+            ->latest('id')
+            ->first()
+            ?->update(['outcome' => $outcome, 'supplier_response' => $supplierResponse]);
+    }
 
+    /**
+     * ADR-106 decision 3, widened by its 2026-09-21 addendum: the
+     * durable counterpart to the admin's synthesized "Initial Delivery"
+     * row — writes an `order_resend_attempts` row for EVERY fulfillment
+     * attempt now, not just the first (`attempt_type` discriminates
+     * `initial` vs `retry`), called from inside fulfill()'s own
+     * transaction (all three outcome branches) right after $locked's
+     * delivery_status/supplier_response have been updated for this
+     * call's real outcome, so it only ever commits alongside that
+     * outcome — never orphaned by a mid-flight exception.
+     *
+     * `triggered_by`/`note` come from wherever this call originated —
+     * an admin's `retryDelivery()` click, or null for every
+     * system-triggered dispatch (CHIP webhook, checkout, reseller
+     * placement, both reconciliation paths). `package_id`/
+     * `cost_price_sen`/`standard_selling_price_sen` are the order's own
+     * checkout-frozen values — a plain retry never swaps package (only
+     * `OrderResendService::resend()` can, ADR-017). `price_diff_sen` is
+     * always null here (decision 4) — no live-cost comparison is ever
+     * made on this path, unlike a resend's real diff.
+     */
+    private function recordFulfillmentAttempt(Order $locked, bool $wasNotStarted, ?string $triggeredBy, ?string $note): void
+    {
         OrderResendAttempt::query()->create([
             'order_id' => $locked->id,
-            'attempt_type' => 'initial',
+            'attempt_type' => $wasNotStarted ? 'initial' : 'retry',
             'package_id' => $locked->package_id,
             'cost_price_sen' => $locked->cost_price,
             'standard_selling_price_sen' => $locked->standard_selling_price,
@@ -969,8 +1106,54 @@ final class OrderFulfillmentService
                 default => 'failed',
             },
             'supplier_response' => $locked->supplier_response,
-            'note' => null,
-            'triggered_by' => null,
+            'note' => $note,
+            'triggered_by' => $triggeredBy,
+        ]);
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — the leg-scoped twin of
+     * recordFulfillmentAttempt() above, closing decision 1's own
+     * "non-combo only for now" deferral: a combo leg's own mutable
+     * columns (`status`/`failure_reason`/`supplier_reference`) get
+     * overwritten on every attempt exactly like a plain order's used to
+     * before ADR-106 — this writes the leg's own durable per-attempt
+     * row instead, called from all 4 of attemptLeg()'s write sites
+     * (Pending/Failure/Success inside its transaction, plus the
+     * Throwable catch's own separate one) right after $lockedLeg's
+     * status is updated for this call's real outcome, so it only ever
+     * commits alongside that outcome.
+     *
+     * `package_id` here is the LEG's own component package, not the
+     * order's (a combo order's own `package_id` is the combo SKU
+     * itself, meaningless per-leg). `standard_selling_price_sen` reads
+     * the leg's own frozen `selling_price_sen` (ADR-107 decision 1).
+     * `cost_price_sen` reads the component's LIVE cost — no frozen
+     * snapshot exists for it (same reason `resolveComboOutcome()`'s own
+     * profit reconciliation reads it live, see that method's doc
+     * comment) — and `price_diff_sen` stays null (grill Q3, deferred):
+     * this addendum closes the missing-audit-trail gap, not a
+     * leg-level cost-drift reconciliation, which is ADR-107's own
+     * domain.
+     */
+    private function recordLegAttempt(OrderDeliveryLeg $lockedLeg, bool $wasLegNotStarted, ?string $triggeredBy, ?string $note, mixed $supplierResponseData): void
+    {
+        OrderResendAttempt::query()->create([
+            'order_id' => $lockedLeg->order_id,
+            'order_delivery_leg_id' => $lockedLeg->id,
+            'attempt_type' => $wasLegNotStarted ? 'initial' : 'retry',
+            'package_id' => $lockedLeg->component_package_id,
+            'cost_price_sen' => $lockedLeg->componentPackage->cost_price,
+            'standard_selling_price_sen' => $lockedLeg->selling_price_sen,
+            'price_diff_sen' => null,
+            'outcome' => match ($lockedLeg->status) {
+                DeliveryStatus::Delivered => 'success',
+                DeliveryStatus::Pending => 'pending',
+                default => 'failed',
+            },
+            'supplier_response' => $supplierResponseData,
+            'note' => $note,
+            'triggered_by' => $triggeredBy,
         ]);
     }
 
@@ -1067,6 +1250,21 @@ final class OrderFulfillmentService
         return DB::transaction(function () use ($order, $note, $confirmedBy) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
+            // ADR-094's 2026-09-21 addendum decision 26 — OrderController's
+            // own isPartialComboDelivery() guard runs on the unlocked
+            // $order, before this transaction even starts; a leg delivering
+            // in that gap (a concurrent retry/webhook) would otherwise go
+            // unnoticed and this method would blindly confirm the whole
+            // order Failed on stale data, over-compensating a customer who
+            // already received that leg's goods once Issue Voucher runs.
+            // Re-checked here, inside the lock, on $locked (not $order) —
+            // same defense-in-depth pattern as isAlreadyCompensated() above.
+            if ($locked->isPartialComboDelivery()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} has a partial delivery — refusing to confirm the whole order failed",
+                );
+            }
+
             $failedStatus = $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
 
             Log::withContext(['reference_number' => $locked->reference_number]);
@@ -1089,6 +1287,93 @@ final class OrderFulfillmentService
 
             return $locked->fresh();
         });
+    }
+
+    /**
+     * ADR-111 decision 2/6: converts the supplier's own real
+     * per-transaction price (`$resultData['price']`, when present) into
+     * MYR sen via the shared `CurrencyRateService::convertToSen()`
+     * boundary. Returns null — never throws, never blocks delivery —
+     * both when no price was reported and when the FX rate is
+     * genuinely unavailable (no live fetch ever succeeded AND nothing
+     * was ever stored for that pair); the caller's own reconciliation
+     * step already treats a null real cost as "fall back to today's
+     * existing catalog-cost behavior for this one delivery."
+     */
+    private function captureRealCostSen(?array $resultData, string $currency): ?int
+    {
+        if (! isset($resultData['price'])) {
+            return null;
+        }
+
+        try {
+            return $this->currencyRates->convertToSen((float) $resultData['price'], $currency);
+        } catch (CurrencyRateUnavailableException $e) {
+            Log::warning('Real-cost reconciliation: FX rate unavailable, falling back to catalog cost for this delivery', [
+                'currency' => $currency,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * ADR-111 decision 3: the one basis-agnostic residual formula,
+     * `platform_profit = selling_price (frozen) − real_cost − affiliate_profit`
+     * — the same identity ADR-105 decision 8 established, now fed by
+     * the real per-transaction cost instead of a catalog snapshot.
+     * `affiliate_profit` is never touched: whatever checkout or
+     * `OrderResendService::resend()`'s own per-basis formula already
+     * determined for it stays exactly as-is (decision 3's own text) —
+     * only `platform_profit` absorbs the gap between what was assumed
+     * and what was actually paid. Returns the fields to merge into the
+     * caller's own `update()` call, never writes directly, so this
+     * stays a plain calculation the caller applies alongside whatever
+     * else that same call is already updating (decision 2's "no extra
+     * query, no extra transaction").
+     *
+     * @return array{platform_profit: int, profit_reconciled_flagged: bool}
+     */
+    private function reconcileRealCostProfit(Order $locked, int $realCostPriceSen): array
+    {
+        $reconciledProfit = $locked->selling_price - $realCostPriceSen - $locked->affiliate_profit;
+        $flagged = $this->isProfitDriftFlagged($locked->platform_profit, $reconciledProfit, $locked->selling_price);
+
+        if ($flagged) {
+            Log::warning('Real-cost profit reconciliation flagged this delivery', [
+                'order_id' => $locked->id,
+                'estimated_platform_profit' => $locked->platform_profit,
+                'reconciled_platform_profit' => $reconciledProfit,
+                'real_cost_price_sen' => $realCostPriceSen,
+            ]);
+        }
+
+        return [
+            'platform_profit' => $reconciledProfit,
+            'profit_reconciled_flagged' => $flagged,
+        ];
+    }
+
+    /**
+     * ADR-111 decision 7: the universal visibility signal — fires on any
+     * negative reconciled profit (unconditionally), OR a material drift
+     * from the pre-reconciliation estimate that's BOTH more than RM1
+     * (100 sen) AND more than 1% of `selling_price` (a flat sen
+     * threshold alone under-protects a large order; a percentage alone
+     * over-fires on a small, normally-volatile one). Starting numbers,
+     * not empirically tuned — revisit once real resend/combo volume at
+     * varied order sizes exists (ADR-111's own Consequence-to-track).
+     */
+    private function isProfitDriftFlagged(int $previousEstimatedProfit, int $reconciledProfit, int $sellingPrice): bool
+    {
+        if ($reconciledProfit < 0) {
+            return true;
+        }
+
+        $driftSen = abs($reconciledProfit - $previousEstimatedProfit);
+
+        return $driftSen > 100 && $driftSen > (int) round($sellingPrice * 0.01);
     }
 
     /**

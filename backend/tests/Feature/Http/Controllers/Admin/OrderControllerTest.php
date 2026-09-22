@@ -533,6 +533,34 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('package.name', '100 Diamonds');
         $response->assertJsonPath('supplier.name', 'Gamevion');
         $response->assertJsonPath('supplier_response.supplier_ref', 'GV-123');
+        // ADR-111 addendum — no real cost ever captured on this fixture,
+        // so the catalog snapshot is what the stored platform_profit
+        // was actually computed from.
+        $response->assertJsonPath('effective_cost_price', 900);
+        $response->assertJsonPath('cost_basis', 'estimated');
+    }
+
+    /**
+     * ADR-111 addendum (2026-09-22) — the "real" case: platform_profit
+     * genuinely was derived from real_cost_price_sen (not merely
+     * present), so Order Detail must show the real figure, not the
+     * stale catalog cost_price.
+     */
+    public function test_show_reports_the_real_cost_basis_when_the_stored_profit_was_derived_from_it(): void
+    {
+        $order = $this->order([
+            'cost_price' => 900, 'selling_price' => 1000, 'affiliate_profit' => 0,
+            'real_cost_price_sen' => 850,
+            // 1000 - 850 - 0 = 150, not the catalog-derived 100.
+            'platform_profit' => 150,
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('effective_cost_price', 850);
+        $response->assertJsonPath('cost_basis', 'real');
     }
 
     /**
@@ -591,18 +619,69 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('delivery_legs.0.component_package.supplier_package_ref', 'GV-4810');
         $response->assertJsonPath('delivery_legs.1.status', 'failed');
         $response->assertJsonPath('delivery_legs.1.failure_reason', 'Insufficient balance');
-        // ADR-107 decision 3 — a NeedsReview (partial-delivery) combo
-        // order is never the negative-profit case (that's a Delivered-
-        // only signal, see Order::hasNegativeComboProfit()).
-        $response->assertJsonPath('combo_profit_reconciled_negative', false);
+        // ADR-107 decision 3, generalized by ADR-111 decision 7 — a
+        // NeedsReview (partial-delivery) order never has this flag set
+        // (only OrderFulfillmentService's own Delivered-branch
+        // reconciliation writes it, see Order::hasReconciledProfitFlag()).
+        $response->assertJsonPath('profit_reconciled_flagged', false);
     }
 
     /**
-     * ADR-107 decision 3 — the Order Detail visibility signal: true only
-     * once a combo order actually delivered with a reconciled negative
-     * platform_profit already stored on it.
+     * ADR-094's 2026-09-21 addendum decision 25 — before this fix,
+     * suggestedPartialVoucherAmount() summed only Failed legs, so a
+     * NeedsReview-caused partial delivery would suggest RM0 instead of
+     * the leg's correct proportional share. Same fixture math as
+     * test_show_includes_delivery_legs_and_partial_delivery_computed_fields
+     * above, with the second leg NeedsReview instead of Failed — the
+     * suggested amount must be identical (385), not 0/null.
      */
-    public function test_show_flags_a_delivered_combo_order_with_reconciled_negative_profit(): void
+    public function test_show_suggests_a_correct_partial_voucher_amount_for_a_needs_review_leg(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-voucher-amount-needs-review-test', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-voucher-amount-needs-review-test']);
+        $delivered = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $needsReview = Package::query()->create([
+            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500,
+        ]);
+        $order = $this->order(['package_id' => $combo->id, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+            'selling_price_sen' => $delivered->standard_selling_price,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $needsReview->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value, 'failure_reason' => 'Duplicate reference',
+            'selling_price_sen' => $needsReview->standard_selling_price,
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('partial_combo_delivery', true);
+        $response->assertJsonPath('suggested_voucher_amount', 385);
+    }
+
+    /**
+     * ADR-107 decision 3, generalized by ADR-111 decision 7 — the Order
+     * Detail visibility signal: a plain passthrough of the persisted
+     * `profit_reconciled_flagged` column (written by
+     * OrderFulfillmentService's own reconciliation, exercised separately
+     * in OrderFulfillmentServiceComboTest/OrderFulfillmentServiceTest —
+     * this only proves the controller surfaces it correctly).
+     */
+    public function test_show_flags_a_delivered_order_with_a_reconciled_profit_flag(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia']);
@@ -617,7 +696,7 @@ class OrderControllerTest extends TestCase
         ]);
         $order = $this->order([
             'package_id' => $combo->id, 'delivery_status' => DeliveryStatus::Delivered->value,
-            'platform_profit' => -500,
+            'platform_profit' => -500, 'profit_reconciled_flagged' => true,
         ]);
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $component->id, 'supplier_id' => $supplier->id,
@@ -629,7 +708,7 @@ class OrderControllerTest extends TestCase
         $response = $this->getJson("/api/orders/{$order->id}");
 
         $response->assertOk();
-        $response->assertJsonPath('combo_profit_reconciled_negative', true);
+        $response->assertJsonPath('profit_reconciled_flagged', true);
     }
 
     /** An ordinary single-supplier order has no legs and never trips the partial-delivery carve-out. */
@@ -715,6 +794,52 @@ class OrderControllerTest extends TestCase
 
         $response->assertOk();
         Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — retryDelivery() now threads the
+     * admin's identity through to FulfillOrderJob, closing the gap
+     * where a combo (or plain) retry left zero durable trace of WHO
+     * triggered it. `override_reason` doubles as this action's only
+     * free-text field (no separate `note` input exists for retry),
+     * threaded through as this job's `note`.
+     */
+    public function test_retry_delivery_threads_the_admins_name_and_override_reason_into_the_job(): void
+    {
+        Queue::fake();
+        $admin = AdminUser::factory()->create(['role' => 'admin', 'name' => 'Farres Yahaya']);
+        Sanctum::actingAs($admin);
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery", [
+            'override_reason' => 'Confirmed cleared with Gamevion support',
+        ]);
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, function (FulfillOrderJob $job) use ($order) {
+            return $job->order->id === $order->id
+                && $job->triggeredBy === 'Farres Yahaya'
+                && $job->note === 'Confirmed cleared with Gamevion support';
+        });
+    }
+
+    /** A plain retry with no override_reason still queues, with a null note (not an empty string). */
+    public function test_retry_delivery_queues_with_a_null_note_when_no_override_reason_given(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $order = $this->order([
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/retry-delivery");
+
+        $response->assertOk();
+        Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->note === null && $job->triggeredBy !== null);
     }
 
     public function test_retry_delivery_rejects_an_order_that_is_not_failed(): void
@@ -1368,6 +1493,55 @@ class OrderControllerTest extends TestCase
         $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
     }
 
+    /**
+     * ADR-094's 2026-09-21 addendum decision 24 — this action never had
+     * any combo/leg awareness at all: force-setting the whole order
+     * Delivered with one leg still genuinely outstanding permanently
+     * orphaned that leg (Resend/Retry only render for order-level
+     * Failed/NeedsReview, and the order would now be Delivered). Hard
+     * blocked for any combo order regardless of leg mix.
+     */
+    public function test_mark_delivered_rejects_a_combo_order(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-mark-delivered-combo-test', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-mark-delivered-combo-test']);
+        $delivered = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $needsReview = Package::query()->create([
+            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500,
+        ]);
+        $order = $this->order([
+            'package_id' => $combo->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $needsReview->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value, 'failure_reason' => 'Duplicate reference',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1']);
+
+        $response->assertUnprocessable();
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        // The outstanding leg was never touched by the rejected action.
+        $this->assertSame(DeliveryStatus::NeedsReview, OrderDeliveryLeg::query()->where('leg_number', 2)->first()->status);
+    }
+
     public function test_mark_delivered_404s_for_a_sandbox_order(): void
     {
         $order = $this->order([
@@ -1530,6 +1704,105 @@ class OrderControllerTest extends TestCase
 
         $response->assertUnprocessable();
         $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    /**
+     * ADR-094's 2026-09-21 addendum decision 25 — the actual over-
+     * compensation gap this addendum closes. ADR-102 decision 4 only
+     * closed the Digiflazz-confirmed-Gagal cause of a leg landing on
+     * NeedsReview; a Gamevion duplicate_reference (this test) or any
+     * unexpected exception mid-attempt was NOT recognized as "partial"
+     * before this fix, so confirmFailed() would let an admin confirm
+     * the whole order Failed and Issue Voucher compute off the FULL
+     * final_amount — over-compensating a customer who already received
+     * the delivered leg's goods.
+     */
+    public function test_confirm_failed_rejects_when_a_delivered_leg_is_mixed_with_a_needs_review_leg(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-confirm-failed-needs-review-test', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-confirm-failed-needs-review-test']);
+        $delivered = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $needsReview = Package::query()->create([
+            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500,
+        ]);
+        $order = $this->order([
+            'package_id' => $combo->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'final_amount' => 71500 + 90,
+            'transaction_fee' => 90,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $needsReview->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value, 'failure_reason' => 'Duplicate reference',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note']);
+
+        $response->assertUnprocessable();
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(0, Voucher::query()->where('order_id', $order->id)->count());
+    }
+
+    /**
+     * Guards decision 25's own scoping so it doesn't over-block: a
+     * Failed+NeedsReview mix with no Delivered leg at all is NOT
+     * "partial" — nothing was delivered yet, so confirming the whole
+     * order Failed (and a later full-amount voucher) is correct, same
+     * as before this addendum.
+     */
+    public function test_confirm_failed_still_allows_a_combo_with_no_delivered_leg_at_all(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-confirm-failed-no-delivered-test', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-confirm-failed-no-delivered-test']);
+        $failed = Package::query()->create([
+            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
+            'cost_price' => 40000, 'standard_selling_price' => 44000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
+        ]);
+        $needsReview = Package::query()->create([
+            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
+            'cost_price' => 25000, 'standard_selling_price' => 27500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
+            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500,
+        ]);
+        $order = $this->order([
+            'package_id' => $combo->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $needsReview->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value, 'failure_reason' => 'Duplicate reference',
+        ]);
+
+        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note']);
+
+        $response->assertOk();
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 
     /** ADR-073 decision 7: makes a wallet Reseller + its ledger account, mirrors order()'s helper shape. */

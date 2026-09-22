@@ -13,6 +13,7 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Accounting\SupplierLedgerEntryType;
+use App\Services\Currency\CurrencyRateService;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
@@ -30,6 +31,7 @@ use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Tests\TestCase;
@@ -57,6 +59,7 @@ class OrderFulfillmentServiceTest extends TestCase
             new LedgerService,
             new VoucherService(new LedgerService),
             new SupplierFundingService,
+            new CurrencyRateService,
         );
     }
 
@@ -229,6 +232,7 @@ class OrderFulfillmentServiceTest extends TestCase
             new LedgerService,
             new VoucherService(new LedgerService),
             new SupplierFundingService,
+            new CurrencyRateService,
         );
 
         $result = $service->fulfill($order);
@@ -474,6 +478,13 @@ class OrderFulfillmentServiceTest extends TestCase
      * SECOND 'initial' row — $wasNotStarted is computed once, before
      * this call's own update() advances the order, so a retry from
      * Failed correctly sees it as false.
+     *
+     * ADR-106 addendum (2026-09-21): a retry is no longer silent either
+     * — it now writes its own `attempt_type=retry` row, closing the
+     * exact gap `docs/prd.md` §16 item 16 tracked (a retryDelivery()
+     * call previously left zero durable trace for combo OR plain
+     * orders alike, since both share this same FulfillOrderJob/
+     * fulfill() path).
      */
     public function test_fulfill_does_not_write_a_second_initial_attempt_row_on_a_retry(): void
     {
@@ -486,6 +497,51 @@ class OrderFulfillmentServiceTest extends TestCase
         $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($failed->fresh());
 
         $this->assertSame(1, OrderResendAttempt::query()->where('order_id', $failed->id)->where('attempt_type', 'initial')->count());
+        $this->assertSame(1, OrderResendAttempt::query()->where('order_id', $failed->id)->where('attempt_type', 'retry')->count());
+        $this->assertSame(2, OrderResendAttempt::query()->where('order_id', $failed->id)->count());
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — a plain (non-combo) retry writes
+     * a durable `attempt_type=retry` row, with `triggered_by`/`note`
+     * threaded all the way from `OrderController::retryDelivery()`
+     * through `FulfillOrderJob`, exactly mirroring how `resend()`
+     * already threads them for a package-swap resend.
+     */
+    public function test_fulfill_writes_a_retry_attempt_row_with_triggered_by_and_note(): void
+    {
+        $order = $this->paidOrder();
+
+        $failed = $this->service($this->fakeSupplierAdapter(false, null, 'timeout', 'Supplier timed out'))
+            ->fulfill($order);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->fulfill($failed->fresh(), 'Admin User', 'Retried after supplier outage cleared');
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->where('attempt_type', 'retry')->sole();
+        $this->assertSame('Admin User', $attempt->triggered_by);
+        $this->assertSame('Retried after supplier outage cleared', $attempt->note);
+        $this->assertSame('success', $attempt->outcome);
+        $this->assertNull($attempt->order_delivery_leg_id);
+    }
+
+    /**
+     * A system-triggered retry (scheduled reconciliation, no admin
+     * involved) must still leave a row — just with a null
+     * `triggered_by`, distinguishing it from an admin-clicked one.
+     */
+    public function test_fulfill_writes_a_retry_attempt_row_with_null_triggered_by_when_system_triggered(): void
+    {
+        $order = $this->paidOrder();
+
+        $failed = $this->service($this->fakeSupplierAdapter(false, null, 'timeout', 'Supplier timed out'))
+            ->fulfill($order);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))->fulfill($failed->fresh());
+
+        $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->where('attempt_type', 'retry')->sole();
+        $this->assertNull($attempt->triggered_by);
+        $this->assertNull($attempt->note);
     }
 
     /**
@@ -1042,5 +1098,134 @@ class OrderFulfillmentServiceTest extends TestCase
         $funding->recordOrderDrawdown($order, 850.0);
 
         $this->assertSame(1, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * ADR-111 decision 2: real cost is captured on EVERY successful
+     * delivery regardless of the feature flag — only whether it's USED
+     * to recompute platform_profit is gated (decision 8).
+     */
+    public function test_fulfill_captures_real_cost_price_sen_but_leaves_platform_profit_untouched_when_flag_disabled(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => false]);
+        $order = $this->paidOrder(['platform_profit' => 100]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 8.5]))
+            ->fulfill($order);
+
+        $this->assertSame(850, $result->real_cost_price_sen);
+        $this->assertSame(100, $result->platform_profit);
+        $this->assertFalse($result->profit_reconciled_flagged);
+    }
+
+    /**
+     * ADR-111 decision 3/4: when the flag is enabled, EVERY successful
+     * delivery (not just a retry) recomputes platform_profit as the
+     * basis-agnostic residual — closing the gap the ADR's own Context
+     * called out as the biggest latent one (a plain first delivery never
+     * reconciled against anything beyond the checkout-time estimate).
+     */
+    public function test_fulfill_reconciles_platform_profit_with_real_cost_when_flag_enabled(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $order = $this->paidOrder(['selling_price' => 1000, 'affiliate_profit' => 0, 'platform_profit' => 100]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 8.5]))
+            ->fulfill($order);
+
+        $this->assertSame(850, $result->real_cost_price_sen);
+        // 1000 - 850 - 0 = 150
+        $this->assertSame(150, $result->platform_profit);
+    }
+
+    /**
+     * ADR-111 decision 7: the universal signal fires on a material drift
+     * from the pre-reconciliation estimate (more than RM1 AND more than
+     * 1% of selling_price) even when the reconciled result is still
+     * positive — not just on an outright loss.
+     */
+    public function test_fulfill_flags_a_material_positive_profit_drift_when_flag_enabled(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $order = $this->paidOrder(['selling_price' => 1000, 'affiliate_profit' => 0, 'platform_profit' => 100]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 2.0]))
+            ->fulfill($order);
+
+        // real_cost 200 sen -> profit 800, drift from the 100 estimate = 700 (> RM1 AND > 1% of 1000).
+        $this->assertSame(800, $result->platform_profit);
+        $this->assertTrue($result->profit_reconciled_flagged);
+    }
+
+    /**
+     * ADR-111 decision 6: a genuinely unavailable FX rate (no live fetch
+     * succeeds, nothing was ever stored for the pair) never blocks
+     * delivery — falls back to today's existing catalog-cost estimate
+     * for this one delivery, real_cost_price_sen stays null.
+     */
+    public function test_fulfill_falls_back_to_catalog_profit_when_fx_rate_is_unavailable(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
+        // Pre-create the default test supplier with a non-MYR currency —
+        // paidOrder()'s own firstOrCreate() then finds this row instead
+        // of minting a fresh MYR one, so the adapter stays bound under
+        // the same slug service() already binds it to.
+        Supplier::query()->create(['name' => 'Test Supplier', 'slug' => self::DEFAULT_SUPPLIER_SLUG, 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->paidOrder(['platform_profit' => 100]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 15000.0]))
+            ->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertNull($result->real_cost_price_sen);
+        $this->assertSame(100, $result->platform_profit);
+        $this->assertFalse($result->profit_reconciled_flagged);
+    }
+
+    /**
+     * ADR-111 decision 9: explicit per-pricing_basis coverage — the
+     * residual formula (decision 3) never branches on `pricing_basis`
+     * itself, so `affiliate_profit` (whatever each basis already
+     * determined) must stay exactly as-is across every one of the four.
+     */
+    public function test_fulfill_reconciles_correctly_for_standard_pricing_basis(): void
+    {
+        $this->assertReconciliationHoldsForBasis('standard', affiliateProfit: 0);
+    }
+
+    public function test_fulfill_reconciles_correctly_for_affiliate_pricing_basis(): void
+    {
+        $this->assertReconciliationHoldsForBasis('affiliate', affiliateProfit: 120);
+    }
+
+    public function test_fulfill_reconciles_correctly_for_member_pricing_basis(): void
+    {
+        $this->assertReconciliationHoldsForBasis('member', affiliateProfit: 0);
+    }
+
+    public function test_fulfill_reconciles_correctly_for_reseller_wallet_pricing_basis(): void
+    {
+        // ADR-111 decision 3 — a ResellerWallet order's own affiliate_profit
+        // equivalent is always 0 by construction; its entire markup is
+        // platform_profit, so it carries the most exposure to real-cost drift.
+        $this->assertReconciliationHoldsForBasis('reseller-wallet', affiliateProfit: 0);
+    }
+
+    private function assertReconciliationHoldsForBasis(string $pricingBasis, int $affiliateProfit): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $order = $this->paidOrder([
+            'pricing_basis' => $pricingBasis,
+            'selling_price' => 1000,
+            'affiliate_profit' => $affiliateProfit,
+            'platform_profit' => 100,
+        ]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 8.5]))
+            ->fulfill($order);
+
+        $this->assertSame($affiliateProfit, $result->affiliate_profit);
+        $this->assertSame(1000 - 850 - $affiliateProfit, $result->platform_profit);
     }
 }

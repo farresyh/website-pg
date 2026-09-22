@@ -57,6 +57,8 @@ class Order extends Model
         'final_amount',
         'platform_profit',
         'affiliate_profit',
+        'real_cost_price_sen',
+        'profit_reconciled_flagged',
         'payment_status',
         'paid_at',
         'delivery_status',
@@ -85,6 +87,8 @@ class Order extends Model
         'final_amount' => 'integer',
         'platform_profit' => 'integer',
         'affiliate_profit' => 'integer',
+        'real_cost_price_sen' => 'integer',
+        'profit_reconciled_flagged' => 'boolean',
         'payment_status' => PaymentStatus::class,
         'paid_at' => 'datetime',
         'delivery_status' => DeliveryStatus::class,
@@ -119,32 +123,110 @@ class Order extends Model
     }
 
     /**
-     * ADR-094 decision 9 (2026-09-15 Phase 4): a combo order's
-     * delivery_status can land in NeedsReview for two structurally
-     * different reasons — real leg-level ambiguity (a leg itself is
-     * NeedsReview, e.g. a Gamevion duplicate_reference, or a leg still
-     * Pending) versus a genuine partial delivery (some legs Delivered,
-     * some cleanly Failed, nothing ambiguous/in-flight left). Only the
-     * second is decision 9's carve-out from ADR-026 decision 4c's
-     * "Issue Voucher is blocked from needs_review" rule — the first
-     * case still requires a human Retry/Resend/Mark Delivered call,
-     * never a refund. Non-combo orders (`deliveryLegs` empty) are
+     * ADR-094 decision 9 (2026-09-15 Phase 4), widened by ADR-094's
+     * 2026-09-21 addendum decision 25: a combo order's delivery_status
+     * can land in NeedsReview for two structurally different reasons —
+     * real leg-level ambiguity with NOTHING delivered yet (no Delivered
+     * leg present at all) versus a genuine partial delivery (at least
+     * one leg Delivered, alongside at least one leg that is Failed or
+     * itself NeedsReview — a Gamevion duplicate_reference, an
+     * unexpected exception mid-attempt, or a rare Digiflazz malformed-
+     * envelope case; confirmed supplier-agnostic, not Gamevion-only).
+     * Only the second is this decision's carve-out from ADR-026
+     * decision 4c's "Issue Voucher is blocked from needs_review" rule —
+     * the first case still requires a human Retry/Resend call, never a
+     * refund (Mark Delivered is no longer a candidate here either,
+     * decision 24 blocks it for every combo order). Pending is still
+     * excluded — defensive, and structurally unreachable at this point
+     * anyway: `resolveComboOutcome()`'s own status-priority ordering
+     * means no leg can still be Pending once the order itself has
+     * reached NeedsReview. Non-combo orders (`deliveryLegs` empty) are
      * always false here — their own needs_review path is unchanged.
      */
     /**
-     * ADR-107 decision 3 — the UI-facing half of the "never block, flag
-     * after the fact" signal. Derived from the already-stored
-     * `platform_profit` (OrderFulfillmentService::resolveComboOutcome()
-     * writes the reconciled figure there, including when negative — see
-     * its own doc comment), never a separate column: a combo order's
-     * `platform_profit` genuinely IS negative once this is true, not
-     * just flagged as such.
+     * ADR-111 decision 7 — replaces ADR-107 decision 3's combo-only,
+     * negative-only `hasNegativeComboProfit()`: a persisted, universal
+     * signal (any order type, not just combo) that fires on any negative
+     * reconciled `platform_profit` OR a material drift from the
+     * pre-reconciliation estimate (more than RM1 AND more than 1% of
+     * `selling_price`). Written by `OrderFulfillmentService` at the
+     * moment real-cost reconciliation actually runs — reading it here is
+     * a plain column read, not a re-derivation, so it stays accurate even
+     * after the order's `platform_profit` is later viewed again.
      */
-    public function hasNegativeComboProfit(): bool
+    public function hasReconciledProfitFlag(): bool
     {
-        return $this->deliveryLegs->isNotEmpty()
-            && $this->delivery_status === DeliveryStatus::Delivered
-            && $this->platform_profit < 0;
+        return $this->profit_reconciled_flagged;
+    }
+
+    /**
+     * ADR-111 addendum (2026-09-22, founder-requested): a single
+     * "Cost Price" figure for Order Detail/CSV export to show — never
+     * two competing cost columns (`cost_price` catalog snapshot vs
+     * `real_cost_price_sen`), which reads as ambiguous to an accountant
+     * auditing off this export (the documented source of truth for
+     * order-level P&L). Reverse-engineers WHICH cost basis
+     * `OrderFulfillmentService` actually used to arrive at the
+     * currently-stored `platform_profit` (the real-cost-reconciliation
+     * feature flag can be off, or the FX rate genuinely unavailable at
+     * capture time, so `real_cost_price_sen` being non-null does NOT by
+     * itself mean it was used) rather than guessing — the residual
+     * formula is basis-agnostic (ADR-105 decision 8 / ADR-111 decision
+     * 3), so checking which cost input satisfies it is exact, not a
+     * heuristic. `Selling Price − Cost Price − Affiliate Profit` always
+     * equals `Platform Profit` for whatever this returns.
+     */
+    public function effectiveCostPriceSen(): int
+    {
+        return $this->costReconciliation()['cost'];
+    }
+
+    /**
+     * 'real' — every cost figure that went into `platform_profit` was
+     * the supplier's own real per-transaction price. 'mixed' — combo
+     * only: some legs' real cost was known, at least one leg fell back
+     * to its catalog `cost_price` (a genuinely unavailable FX rate at
+     * that leg's own delivery moment, decision 6). 'estimated' — the
+     * catalog snapshot was used, either because real-cost reconciliation
+     * was off at delivery time, or this order hasn't delivered yet.
+     */
+    public function costBasis(): string
+    {
+        return $this->costReconciliation()['basis'];
+    }
+
+    /**
+     * @return array{cost: int, basis: string}
+     */
+    private function costReconciliation(): array
+    {
+        if ($this->deliveryLegs->isNotEmpty()) {
+            return $this->comboCostReconciliation();
+        }
+
+        if ($this->real_cost_price_sen !== null
+            && $this->platform_profit === $this->selling_price - $this->real_cost_price_sen - $this->affiliate_profit) {
+            return ['cost' => $this->real_cost_price_sen, 'basis' => 'real'];
+        }
+
+        return ['cost' => $this->cost_price, 'basis' => 'estimated'];
+    }
+
+    /**
+     * @return array{cost: int, basis: string}
+     */
+    private function comboCostReconciliation(): array
+    {
+        $legs = $this->deliveryLegs;
+        $catalogTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
+        $realTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen ?? $leg->componentPackage?->cost_price ?? 0);
+        $allLegsReal = $legs->every(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null);
+
+        if ($this->platform_profit === $this->selling_price - $realTotal - $this->affiliate_profit) {
+            return ['cost' => $realTotal, 'basis' => $allLegsReal ? 'real' : 'mixed'];
+        }
+
+        return ['cost' => $catalogTotal, 'basis' => 'estimated'];
     }
 
     public function isPartialComboDelivery(): bool
@@ -159,11 +241,15 @@ class Order extends Model
             return false;
         }
 
-        if ($statuses->contains(DeliveryStatus::NeedsReview) || $statuses->contains(DeliveryStatus::Pending)) {
+        if ($statuses->contains(DeliveryStatus::Pending)) {
             return false;
         }
 
-        return $statuses->contains(DeliveryStatus::Delivered) && $statuses->contains(DeliveryStatus::Failed);
+        if (! $statuses->contains(DeliveryStatus::Delivered)) {
+            return false;
+        }
+
+        return $statuses->contains(DeliveryStatus::Failed) || $statuses->contains(DeliveryStatus::NeedsReview);
     }
 
     /**
@@ -271,10 +357,17 @@ class Order extends Model
             return null;
         }
 
-        $failedSellingPriceSen = (int) $legs->where('status', DeliveryStatus::Failed)->sum('selling_price_sen');
+        // ADR-094's 2026-09-21 addendum decision 25: isPartialComboDelivery()
+        // now also recognizes a NeedsReview leg (not just Failed) as
+        // part of a genuine partial delivery — this numerator has to
+        // widen the same way, or a NeedsReview-caused partial would
+        // suggest RM0 instead of a correct proportional share.
+        $uncompensatedSellingPriceSen = (int) $legs
+            ->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::NeedsReview])
+            ->sum('selling_price_sen');
         $compensableAmount = $this->final_amount - $this->transaction_fee;
 
-        return (int) round($compensableAmount * $failedSellingPriceSen / $totalSellingPriceSen);
+        return (int) round($compensableAmount * $uncompensatedSellingPriceSen / $totalSellingPriceSen);
     }
 
     /**

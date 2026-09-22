@@ -6,10 +6,13 @@ use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
+use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Currency\CurrencyRateService;
+use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -51,6 +54,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
             new LedgerService,
             new VoucherService(new LedgerService),
             new SupplierFundingService,
+            new CurrencyRateService,
         );
     }
 
@@ -585,6 +589,156 @@ class OrderFulfillmentServiceComboTest extends TestCase
     }
 
     /**
+     * ADR-106 addendum (2026-09-21) — closes decision 1's own
+     * "non-combo only for now" deferral: a leg's very first attempt now
+     * writes a durable `attempt_type=initial` row of its own, one per
+     * leg, mirroring the order-level table's own `initial` semantics.
+     */
+    public function test_full_success_writes_a_durable_initial_attempt_row_per_leg(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 600]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 480]),
+        ]);
+
+        $this->service($adapter)->fulfill($order);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $attempts = OrderResendAttempt::query()->where('order_id', $order->id)->orderBy('order_delivery_leg_id')->get();
+        $this->assertCount(2, $attempts);
+        $this->assertTrue($attempts->every(fn (OrderResendAttempt $a) => $a->attempt_type === 'initial'));
+        $this->assertTrue($attempts->every(fn (OrderResendAttempt $a) => $a->outcome === 'success'));
+        $this->assertSame($legs->pluck('id')->sort()->values()->all(), $attempts->pluck('order_delivery_leg_id')->sort()->values()->all());
+        $this->assertSame($a->id, $attempts->firstWhere('order_delivery_leg_id', $legs[0]->id)->package_id);
+        $this->assertSame(500, $attempts->firstWhere('order_delivery_leg_id', $legs[0]->id)->cost_price_sen);
+        $this->assertNull($attempts->first()->triggered_by);
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — a leg retry writes its own
+     * `attempt_type=retry` row (not a second `initial`), with
+     * `triggered_by`/`note` threaded from fulfill()/fulfillCombo() down
+     * to attemptLeg() — mirrors the non-combo retry row exactly, just
+     * scoped to the one leg actually retried.
+     */
+    public function test_retrying_a_failed_leg_writes_a_durable_retry_attempt_row(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $firstPass = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::failure('timeout', 'Supplier timed out'),
+        ]);
+        $this->service($firstPass)->fulfill($order);
+        // One leg Delivered + one Failed rolls the order up to NeedsReview
+        // (decision 9's own precedence) — the leg itself is still plainly
+        // Failed, which is what matters for this test.
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::Failed, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->sole()->status);
+
+        $retryPass = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY', 'price' => 480]),
+        ]);
+        $this->service($retryPass)->fulfill($order->fresh(), 'Admin User', 'Retried after checking Gamevion dashboard');
+
+        $legB = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->sole();
+        $attemptsOnLegB = OrderResendAttempt::query()->where('order_delivery_leg_id', $legB->id)->orderBy('id')->get();
+        $this->assertCount(2, $attemptsOnLegB);
+        $this->assertSame('initial', $attemptsOnLegB[0]->attempt_type);
+        $this->assertSame('failed', $attemptsOnLegB[0]->outcome);
+        $this->assertNull($attemptsOnLegB[0]->triggered_by);
+        $this->assertSame('retry', $attemptsOnLegB[1]->attempt_type);
+        $this->assertSame('success', $attemptsOnLegB[1]->outcome);
+        $this->assertSame('Admin User', $attemptsOnLegB[1]->triggered_by);
+        $this->assertSame('Retried after checking Gamevion dashboard', $attemptsOnLegB[1]->note);
+
+        // Leg A only ever succeeded once — no retry row for it.
+        $legA = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 1)->sole();
+        $this->assertSame(1, OrderResendAttempt::query()->where('order_delivery_leg_id', $legA->id)->count());
+    }
+
+    /**
+     * ADR-106 addendum (2026-09-21) — the exception-catch path
+     * (Throwable mid-call) is a real, distinct write site from the
+     * clean Pending/Failure/Success branches, and must not be missed:
+     * a leg that throws still gets a durable attempt row, not just its
+     * mutable `failure_reason` column overwritten.
+     */
+    public function test_a_leg_that_throws_unexpectedly_still_writes_a_durable_attempt_row(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = new class implements SupplierAdapter
+        {
+            private int $calls = 0;
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                $this->calls++;
+                if ($this->calls === 2) {
+                    throw new RuntimeException('Connection timed out');
+                }
+
+                return SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]);
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+
+        $result = $this->service($adapter)->fulfill($order);
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+
+        $legB = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->sole();
+        $attempt = OrderResendAttempt::query()->where('order_delivery_leg_id', $legB->id)->sole();
+        $this->assertSame('initial', $attempt->attempt_type);
+        $this->assertSame('failed', $attempt->outcome);
+    }
+
+    /**
      * Decision 4's own example: the same component repeated (quantity 2)
      * expands into 2 real legs, each its own supplier call/idempotency
      * key/leg_number — not one call for "2 units".
@@ -1043,10 +1197,11 @@ class OrderFulfillmentServiceComboTest extends TestCase
     }
 
     /**
-     * ADR-107 decision 3 — a resulting loss is never blocked: the order
-     * still delivers, the reconciled (negative) platform_profit is
-     * recorded as-is, and Order::hasNegativeComboProfit() (the Order
-     * Detail visibility signal) becomes true. No exception, no
+     * ADR-107 decision 3, signal generalized by ADR-111 decision 7 — a
+     * resulting loss is never blocked: the order still delivers, the
+     * reconciled (negative) platform_profit is recorded as-is, and
+     * Order::hasReconciledProfitFlag() (the Order Detail visibility
+     * signal, universal now — not combo-only) becomes true. No
      * override-reason gate (unlike ADR-105 decision 4's synchronous-
      * admin-only mechanism, deliberately not reused here).
      */
@@ -1072,7 +1227,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
         $this->assertSame(-500, $result->platform_profit);
-        $this->assertTrue($result->hasNegativeComboProfit());
+        $this->assertTrue($result->hasReconciledProfitFlag());
         // The customer still got their goods, and the ledger still
         // credits whatever was reconciled — a real, logged loss, not a
         // silently clamped-to-zero one.
@@ -1118,5 +1273,246 @@ class OrderFulfillmentServiceComboTest extends TestCase
             SupplierOutcome::Success,
             'SREF-DUPLICATE',
         );
+    }
+
+    /**
+     * ADR-094's 2026-09-21 addendum decision 25 — isPartialComboDelivery()
+     * now also recognizes a Delivered+NeedsReview mix (not just
+     * Delivered+Failed) as a genuine partial delivery, since a leg can
+     * land on NeedsReview for reasons decision 4 (ADR-102) never closed
+     * (Gamevion duplicate_reference, an unexpected exception). Proven
+     * here directly against the model, independent of the HTTP guard.
+     */
+    public function test_is_partial_combo_delivery_is_true_for_a_delivered_and_needs_review_leg_mix(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
+            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
+        ]);
+
+        $this->assertTrue($order->fresh()->isPartialComboDelivery());
+    }
+
+    /**
+     * Guards decision 25's own scoping: a Failed+NeedsReview mix with NO
+     * Delivered leg is NOT "partial" — nothing was delivered yet, so a
+     * full-order Failed + full voucher is correct there, not
+     * over-compensation. Only a Delivered leg alongside an
+     * unresolved/Failed one triggers the carve-out.
+     */
+    public function test_is_partial_combo_delivery_is_false_with_no_delivered_leg_at_all(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Failed->value,
+            'failure_reason' => 'Insufficient balance', 'selling_price_sen' => $a->standard_selling_price,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
+            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
+        ]);
+
+        $this->assertFalse($order->fresh()->isPartialComboDelivery());
+    }
+
+    /**
+     * ADR-094's 2026-09-21 addendum decision 26 — the real fix for the
+     * TOCTOU race: OrderController::confirmFailed()'s own
+     * isPartialComboDelivery() guard runs on the unlocked $order before
+     * this service method's lock is even acquired, so a state change in
+     * that gap (a concurrent retry/webhook delivering a leg) would
+     * otherwise go unnoticed. Calling the service directly here (the
+     * controller's own pre-check is bypassed entirely) proves the
+     * service's own in-lock re-check is the real, final guard — not
+     * just relying on the controller.
+     */
+    public function test_confirm_delivery_failed_rejects_a_partial_combo_delivery_order_even_when_called_directly(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
+            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
+        ]);
+
+        $this->expectException(OrderFulfillmentException::class);
+
+        $this->service($this->queuedAdapter([]))->confirmDeliveryFailed($order, 'note', 'Jane Admin');
+    }
+
+    /**
+     * ADR-111 decision 2 — the leg-scoped capture: attemptLeg()'s own
+     * Success branch converts the supplier's real price into
+     * `real_cost_price_sen`, unconditionally (regardless of the feature
+     * flag — only resolveComboOutcome()'s own USE of it is gated).
+     */
+    public function test_attempt_leg_captures_real_cost_price_sen_on_delivery(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 7.0]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 4.8]),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(700, $legs[0]->real_cost_price_sen);
+        $this->assertSame(480, $legs[1]->real_cost_price_sen);
+    }
+
+    /**
+     * ADR-111 decision 3/8: when the flag is enabled, resolveComboOutcome()
+     * sums each leg's REAL cost instead of its catalog `cost_price` — and
+     * falls back to that leg's own catalog cost only when ITS real cost
+     * is genuinely missing (decision 6's per-delivery fallback), never
+     * failing the whole reconciliation over one leg. Legs are pre-seeded
+     * directly as already-Delivered so fulfill()'s combo loop skips
+     * attemptLeg() entirely and goes straight to resolveComboOutcome() —
+     * same direct-model pattern this file already uses for
+     * isPartialComboDelivery() coverage above.
+     */
+    public function test_resolve_combo_outcome_uses_real_cost_with_per_leg_fallback_when_flag_enabled(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 100]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-2',
+            // real_cost_price_sen genuinely missing (FX unavailable at
+            // capture time) — falls back to this leg's own catalog cost.
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => null,
+        ]);
+
+        $result = $this->service($this->queuedAdapter([]))->fulfill($order);
+
+        // costTotal = 700 (real, leg A) + 500 (catalog fallback, leg B) = 1200
+        // platformProfit = 1500 - 1200 - 0 = 300; drift from the 100 estimate = 200 (> RM1 AND > 1% of 1500).
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame(300, $result->platform_profit);
+        $this->assertTrue($result->profit_reconciled_flagged);
+    }
+
+    /**
+     * ADR-111 decision 9, extended to combo: resolveComboOutcome()'s own
+     * aggregation formula never branches on `pricing_basis` (same
+     * basis-agnostic identity as the non-combo case — ADR-105 decision
+     * 8's precedent) — proven directly for all 4 bases a combo order can
+     * legitimately carry (Standard/guest, Affiliate wholesale, Member,
+     * Reseller Wallet), not just assumed from the non-combo coverage in
+     * OrderFulfillmentServiceTest.
+     */
+    public function test_resolve_combo_outcome_reconciles_correctly_for_standard_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('standard', affiliateProfit: 0);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_affiliate_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('affiliate', affiliateProfit: 120);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_member_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('member', affiliateProfit: 0);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_reseller_wallet_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('reseller-wallet', affiliateProfit: 0);
+    }
+
+    private function assertComboReconciliationHoldsForBasis(string $pricingBasis, int $affiliateProfit): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, [
+            'pricing_basis' => $pricingBasis,
+            'selling_price' => 1500,
+            'affiliate_profit' => $affiliateProfit,
+            'platform_profit' => 100,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-2',
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => 500,
+        ]);
+
+        $result = $this->service($this->queuedAdapter([]))->fulfill($order);
+
+        // costTotal = 700 + 500 = 1200 (both real, no fallback needed).
+        $this->assertSame($affiliateProfit, $result->affiliate_profit);
+        $this->assertSame(1500 - 1200 - $affiliateProfit, $result->platform_profit);
     }
 }

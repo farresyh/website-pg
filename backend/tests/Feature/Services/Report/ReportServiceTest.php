@@ -494,4 +494,45 @@ class ReportServiceTest extends TestCase
         $this->assertSame(1, $rows[0]['orders_count']);
         $this->assertSame(100, $rows[0]['platform_profit']);
     }
+
+    /**
+     * 2026-09-21 fix (ADR-086 addendum, Bug 4) — a `wallet_refund`
+     * genuinely reverses a reseller-wallet order's debit, unlike a
+     * storefront Voucher's `voucher_discount` (which already nets out of
+     * a later redeeming order's own `final_amount`). Real prod evidence:
+     * a failed+refunded reseller-wallet order kept counting its full
+     * `final_amount` in Sales forever, then counted AGAIN when the
+     * refunded balance funded a new order — up to 2x the real cash ever
+     * collected. Fixed at the source (`netSalesExpr()`), proven here
+     * against both `summary()` and `resellerBreakdown()`.
+     */
+    public function test_summary_and_reseller_breakdown_net_sales_against_wallet_refund(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries', 'is_active' => true]);
+
+        $failedOrder = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'affiliate_profit' => 0,
+            'platform_profit' => 0,
+            'final_amount' => 34351,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        (new LedgerService)->credit('reseller_wallet', $reseller->id, -34351, 'wallet_debit', 'order', $failedOrder->id);
+        (new LedgerService)->credit('reseller_wallet', $reseller->id, 34351, 'wallet_refund', 'order', $failedOrder->id);
+
+        $deliveredOrder = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'affiliate_profit' => 0,
+            'platform_profit' => 268,
+            'final_amount' => 9194,
+        ]);
+        (new LedgerService)->credit('platform', null, 268, 'order_profit', 'order', $deliveredOrder->id);
+
+        $summary = $this->reports->summary(null, null, null);
+        $this->assertSame(9194, $summary['total_sales']); // 9194 + 0 (34351 - 34351), not 43545
+        $this->assertSame(2, $summary['orders_count']); // count is unaffected — both orders still real
+
+        $rows = $this->reports->resellerBreakdown(null, null, null);
+        $this->assertSame(9194, $rows[0]['sales']);
+    }
 }

@@ -128,7 +128,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
     Number(!!order.voucher) +
     Number(!!order.wallet_refund) +
     Number(order.has_voucher_restored) +
-    Number(order.combo_profit_reconciled_negative);
+    Number(order.profit_reconciled_flagged);
 
   if (cardCount === 0) return null;
 
@@ -188,12 +188,12 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
           ]}
         />
       )}
-      {order.combo_profit_reconciled_negative && (
-        <WarningCard icon={ExclamationTriangle} title="Combo Profit Adjusted">
-          This combo order delivered, but its reported platform profit reconciled to{" "}
-          <span className="font-mono font-medium">{formatRm(order.platform_profit)}</span> — live supplier cost on a
-          retried leg exceeded what this order ever collected. The platform absorbed the difference; delivery was never
-          blocked over it.
+      {order.profit_reconciled_flagged && (
+        <WarningCard icon={ExclamationTriangle} title="Profit Adjusted">
+          This order delivered, but its reported platform profit reconciled to{" "}
+          <span className="font-mono font-medium">{formatRm(order.platform_profit)}</span> — the real supplier cost at
+          delivery differed materially from the estimate (or went negative). The platform absorbed the difference;
+          delivery was never blocked over it.
         </WarningCard>
       )}
     </div>
