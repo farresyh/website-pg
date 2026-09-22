@@ -9,6 +9,7 @@ import { User } from "@primeicons/react/user";
 import { Box } from "@primeicons/react/box";
 import { Tag as TagIcon } from "@primeicons/react/tag";
 import { CreditCard } from "@primeicons/react/credit-card";
+import { InfoCircle } from "@primeicons/react/info-circle";
 import type { OrderDetail } from "@/lib/orders";
 
 function formatRm(sen: number): string {
@@ -104,7 +105,19 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         </div>
         <dl className="space-y-2.5 text-sm">
           <div className="flex justify-between items-center">
-            <dt className="text-ink-muted">Cost Price</dt>
+            <dt className="flex items-center gap-1 text-ink-muted">
+              Cost Price
+              {/* ADR-111 addendum — plain-language explainer, native
+                  browser tooltip (no existing Tooltip component pattern
+                  in this app yet, and a hover title is enough for a
+                  short 3-line explanation). */}
+              <span
+                title="Real: the actual price the supplier charged for this delivery. Mixed: a combo order where some parts are real and some are still estimated. Estimated: the catalog price — either not delivered yet, or real-cost reconciliation is off."
+                className="cursor-help text-ink-muted/60"
+              >
+                <InfoCircle className="h-3 w-3" />
+              </span>
+            </dt>
             <dd className="flex items-center gap-1.5 font-mono text-ink">
               {formatRm(order.effective_cost_price)}
               {/* ADR-111 addendum — 'estimated' is today's ordinary state
