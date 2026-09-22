@@ -591,10 +591,11 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('delivery_legs.0.component_package.supplier_package_ref', 'GV-4810');
         $response->assertJsonPath('delivery_legs.1.status', 'failed');
         $response->assertJsonPath('delivery_legs.1.failure_reason', 'Insufficient balance');
-        // ADR-107 decision 3 — a NeedsReview (partial-delivery) combo
-        // order is never the negative-profit case (that's a Delivered-
-        // only signal, see Order::hasNegativeComboProfit()).
-        $response->assertJsonPath('combo_profit_reconciled_negative', false);
+        // ADR-107 decision 3, generalized by ADR-111 decision 7 — a
+        // NeedsReview (partial-delivery) order never has this flag set
+        // (only OrderFulfillmentService's own Delivered-branch
+        // reconciliation writes it, see Order::hasReconciledProfitFlag()).
+        $response->assertJsonPath('profit_reconciled_flagged', false);
     }
 
     /**
@@ -645,11 +646,14 @@ class OrderControllerTest extends TestCase
     }
 
     /**
-     * ADR-107 decision 3 — the Order Detail visibility signal: true only
-     * once a combo order actually delivered with a reconciled negative
-     * platform_profit already stored on it.
+     * ADR-107 decision 3, generalized by ADR-111 decision 7 — the Order
+     * Detail visibility signal: a plain passthrough of the persisted
+     * `profit_reconciled_flagged` column (written by
+     * OrderFulfillmentService's own reconciliation, exercised separately
+     * in OrderFulfillmentServiceComboTest/OrderFulfillmentServiceTest —
+     * this only proves the controller surfaces it correctly).
      */
-    public function test_show_flags_a_delivered_combo_order_with_reconciled_negative_profit(): void
+    public function test_show_flags_a_delivered_order_with_a_reconciled_profit_flag(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia']);
@@ -664,7 +668,7 @@ class OrderControllerTest extends TestCase
         ]);
         $order = $this->order([
             'package_id' => $combo->id, 'delivery_status' => DeliveryStatus::Delivered->value,
-            'platform_profit' => -500,
+            'platform_profit' => -500, 'profit_reconciled_flagged' => true,
         ]);
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $component->id, 'supplier_id' => $supplier->id,
@@ -676,7 +680,7 @@ class OrderControllerTest extends TestCase
         $response = $this->getJson("/api/orders/{$order->id}");
 
         $response->assertOk();
-        $response->assertJsonPath('combo_profit_reconciled_negative', true);
+        $response->assertJsonPath('profit_reconciled_flagged', true);
     }
 
     /** An ordinary single-supplier order has no legs and never trips the partial-delivery carve-out. */

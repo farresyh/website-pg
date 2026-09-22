@@ -12,6 +12,7 @@ use App\Models\PlayerValidatorProfile;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Currency\CurrencyRateService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
 use App\Services\Ledger\LedgerService;
@@ -60,6 +61,7 @@ class OrderResendServiceTest extends TestCase
                 new LedgerService,
                 new VoucherService(new LedgerService),
                 new SupplierFundingService,
+                new CurrencyRateService,
             ),
             new PricingService,
             new MembershipPricingService(new PricingService),
@@ -148,6 +150,7 @@ class OrderResendServiceTest extends TestCase
             new LedgerService,
             new VoucherService(new LedgerService),
             new SupplierFundingService,
+            new CurrencyRateService,
         );
     }
 
@@ -1106,5 +1109,39 @@ class OrderResendServiceTest extends TestCase
             ->resend($order, $package, null, 'Admin', serverId: '');
 
         $this->assertNull($result->server_id);
+    }
+
+    /**
+     * ADR-111 decision 5: resend() needs no code change of its own —
+     * it sets affiliate_profit correctly (per its own per-basis formula)
+     * BEFORE calling fulfill(), and fulfill()'s own Success-branch
+     * correction (decision 3) then unconditionally re-derives
+     * platform_profit from the now-known REAL cost, using the
+     * affiliate_profit resend() already set. The real cost here (800
+     * sen) differs from both the swap package's live catalog cost_price
+     * (950) and resend()'s own pre-fulfill estimate (50) — the final
+     * stored figure must reflect the real cost, not either estimate.
+     */
+    public function test_fulfill_overwrites_resends_own_estimate_with_the_real_cost_when_flag_enabled(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 1000]);
+        $swap = $this->package($game, $supplier, ['name' => '210 Diamonds', 'supplier_package_ref' => 'D', 'cost_price' => 950, 'standard_selling_price' => 1045]);
+        $order = $this->failedOrder($game, $original, $supplier, ['standard_selling_price' => 1000, 'affiliate_markup_pct' => 0]);
+
+        $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1', 'price' => 8.0]))
+            ->resend($order, $swap, null, 'Admin');
+
+        // 1000 (frozen selling_price) - 800 (real cost, not the swap
+        // package's live 950 catalog cost) - 0 (affiliate_profit,
+        // resend()'s own, untouched) = 200 — not resend()'s own
+        // pre-fulfill estimate of 50 (1000 - 950 - 0).
+        $fresh = $order->fresh();
+        $this->assertSame(800, $fresh->real_cost_price_sen);
+        $this->assertSame(0, $fresh->affiliate_profit);
+        $this->assertSame(200, $fresh->platform_profit);
+        $this->assertSame(200, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
     }
 }

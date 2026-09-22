@@ -106,6 +106,18 @@ return [
         'timeout' => (int) env('FX_API_TIMEOUT_SECONDS', 5),
     ],
 
+    // ADR-111 decision 8 — single-line kill switch for the real-cost
+    // profit reconciliation at delivery time (decision 3): off restores
+    // the exact pre-ADR-111 behavior (combo keeps ADR-107's own live
+    // catalog-cost residual; non-combo never recomputes platform_profit
+    // after checkout) without a code revert/redeploy. Real cost is
+    // still captured into `real_cost_price_sen` regardless of this flag
+    // (decision 2) — only whether it's USED to recompute platform_profit
+    // is gated.
+    'real_cost_reconciliation' => [
+        'enabled' => (bool) env('REAL_COST_RECONCILIATION_ENABLED', false),
+    ],
+
     // ADR-019 addendum: per-supplier circuit breaker (App\Services\
     // CircuitBreaker\CircuitBreaker) - trips after this many consecutive
     // server-error (5xx) responses, stays open for the cooldown window.

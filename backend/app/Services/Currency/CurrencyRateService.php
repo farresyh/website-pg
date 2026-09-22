@@ -23,6 +23,33 @@ use Throwable;
  */
 final class CurrencyRateService
 {
+    /**
+     * ADR-111 decision 1: the single conversion boundary, widened from
+     * one call pattern (Price Sync's catalog conversion, via
+     * ProductSyncService) to two (this ADR's delivery-time conversion).
+     * Same formula as the pre-ADR-111 `ProductSyncService::toMyrSen()`
+     * it replaces, unchanged: MYR is `round` (no conversion, no
+     * margin-protection concern); every other currency is `ceil`, never
+     * `round`, protecting margin by construction. Non-MYR resolves its
+     * own rate via `rate()` above — same cache `ProductSyncService`
+     * already warms, so this is a cache read in the common case, not a
+     * live fetch (ADR-111 decision 6).
+     */
+    public function convertToSen(?float $price, string $fromCurrency): ?int
+    {
+        if ($price === null) {
+            return null;
+        }
+
+        if ($fromCurrency === 'MYR') {
+            return (int) round($price * 100);
+        }
+
+        $rate = $this->rate($fromCurrency, 'MYR');
+
+        return (int) ceil($price * $rate * 100);
+    }
+
     public function rate(string $from, string $to): float
     {
         $ttl = (int) config('services.fx_api.cache_ttl_seconds', 86400);

@@ -879,8 +879,9 @@ shipped and verified drops off this list into `docs/build-log.md`.
     in `docs/adr.md`. Zero real combo resends/partial-deliveries exist in
     prod to date — latent fix, not yet touched real money. Independent of
     ADR-106 (item 15), which is sequenced next on the same branch.
-19. **Real-cost profit reconciliation at delivery time — grilled + DECIDED
-    2026-09-21/22, [ADR-111](./adr.md), not yet built.** Real production
+19. ~~Real-cost profit reconciliation at delivery time — grilled + DECIDED
+    2026-09-21/22, [ADR-111](./adr.md), not yet built.~~ — **BUILT
+    2026-09-22.** Real production
     order (`PG-B2BL0G1YDMVS`) found `resolveComboOutcome()`'s reconciliation
     (ADR-107 above) using a stale `Package.cost_price` that traced exactly
     to a FAILED supplier attempt's price, not the one that actually
@@ -900,9 +901,13 @@ shipped and verified drops off this list into `docs/build-log.md`.
     not a per-order live API call. Feature-flagged rollout given the blast
     radius (every future order's `platform_profit`, not a scoped subset).
     Explicit per-`pricing_basis` (Standard/Affiliate/Member/ResellerWallet)
-    test coverage required at build time, not inferred. Next session's
-    first task — full decision record already in `docs/adr.md`, no
-    re-investigation needed.
+    test coverage built and green, one test per basis. `config(
+    'services.real_cost_reconciliation.enabled')` (default false) is the
+    kill switch — real cost is captured unconditionally on every delivery,
+    but only USED to recompute `platform_profit` once flipped on. Founder-
+    owed: actually enabling it in prod, once comfortable. See
+    `docs/build-log.md`'s 2026-09-22 entry and `docs/adr.md`'s ADR-111 for
+    the full build record.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

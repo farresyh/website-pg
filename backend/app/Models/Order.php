@@ -57,6 +57,8 @@ class Order extends Model
         'final_amount',
         'platform_profit',
         'affiliate_profit',
+        'real_cost_price_sen',
+        'profit_reconciled_flagged',
         'payment_status',
         'paid_at',
         'delivery_status',
@@ -85,6 +87,8 @@ class Order extends Model
         'final_amount' => 'integer',
         'platform_profit' => 'integer',
         'affiliate_profit' => 'integer',
+        'real_cost_price_sen' => 'integer',
+        'profit_reconciled_flagged' => 'boolean',
         'payment_status' => PaymentStatus::class,
         'paid_at' => 'datetime',
         'delivery_status' => DeliveryStatus::class,
@@ -140,19 +144,19 @@ class Order extends Model
      * always false here — their own needs_review path is unchanged.
      */
     /**
-     * ADR-107 decision 3 — the UI-facing half of the "never block, flag
-     * after the fact" signal. Derived from the already-stored
-     * `platform_profit` (OrderFulfillmentService::resolveComboOutcome()
-     * writes the reconciled figure there, including when negative — see
-     * its own doc comment), never a separate column: a combo order's
-     * `platform_profit` genuinely IS negative once this is true, not
-     * just flagged as such.
+     * ADR-111 decision 7 — replaces ADR-107 decision 3's combo-only,
+     * negative-only `hasNegativeComboProfit()`: a persisted, universal
+     * signal (any order type, not just combo) that fires on any negative
+     * reconciled `platform_profit` OR a material drift from the
+     * pre-reconciliation estimate (more than RM1 AND more than 1% of
+     * `selling_price`). Written by `OrderFulfillmentService` at the
+     * moment real-cost reconciliation actually runs — reading it here is
+     * a plain column read, not a re-derivation, so it stays accurate even
+     * after the order's `platform_profit` is later viewed again.
      */
-    public function hasNegativeComboProfit(): bool
+    public function hasReconciledProfitFlag(): bool
     {
-        return $this->deliveryLegs->isNotEmpty()
-            && $this->delivery_status === DeliveryStatus::Delivered
-            && $this->platform_profit < 0;
+        return $this->profit_reconciled_flagged;
     }
 
     public function isPartialComboDelivery(): bool

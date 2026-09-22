@@ -6,6 +6,8 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\CurrencyRateUnavailableException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -48,6 +50,7 @@ final class OrderFulfillmentService
         private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
         private readonly SupplierFundingService $supplierFunding,
+        private readonly CurrencyRateService $currencyRates,
     ) {}
 
     /**
@@ -257,12 +260,28 @@ final class OrderFulfillmentService
                 return $locked->fresh();
             }
 
-            $locked->update([
+            // ADR-111 decision 2/3: real per-transaction cost, captured
+            // regardless of the feature flag; only USED to recompute
+            // platform_profit when the flag is enabled (decision 8).
+            // Closes this branch's own gap ADR-111's Context called out
+            // as the biggest latent one — a plain successful delivery
+            // (first attempt or retry) never reconciled platform_profit
+            // against anything beyond the checkout-time catalog estimate.
+            $realCostPriceSen = $this->captureRealCostSen($result->data, $locked->supplier->currency);
+
+            $updateData = [
                 'supplier_ref' => $result->data['supplier_ref'] ?? null,
                 'supplier_response' => $result->data,
                 'delivery_status' => $this->orderStatus->markDelivered($processingStatus)->value,
                 'delivered_at' => now(),
-            ]);
+                'real_cost_price_sen' => $realCostPriceSen,
+            ];
+
+            if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
+            }
+
+            $locked->update($updateData);
 
             if ($recordAttempt) {
                 $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
@@ -533,10 +552,17 @@ final class OrderFulfillmentService
                     return;
                 }
 
+                // ADR-111 decision 2 — the leg-scoped twin of fulfill()'s
+                // own capture; no order-level platform_profit recompute
+                // here (that's resolveComboOutcome()'s job, once every
+                // leg has settled).
+                $realLegCostPriceSen = $this->captureRealCostSen($result->data, $component->supplier->currency);
+
                 $lockedLeg->update([
                     'status' => DeliveryStatus::Delivered->value,
                     'supplier_reference' => $result->data['supplier_ref'] ?? null,
                     'delivered_at' => now(),
+                    'real_cost_price_sen' => $realLegCostPriceSen,
                 ]);
 
                 $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, $result->data);
@@ -675,27 +701,45 @@ final class OrderFulfillmentService
                     ? $this->orderStatus->finalizePendingSuccess($locked->delivery_status)
                     : $this->orderStatus->markDelivered($locked->delivery_status);
 
-                // ADR-107 decision 2 — see this method's own doc comment.
-                // Reads live cost, never a frozen snapshot (there isn't
-                // one for cost — only `selling_price_sen`, decision 1).
-                $liveCostTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
-                $reconciledPlatformProfit = $locked->selling_price - $liveCostTotal - $locked->affiliate_profit;
+                // ADR-107 decision 2, cost input widened by ADR-111
+                // decision 3/8: real per-transaction cost when the flag
+                // is enabled (decision 2's leg-level capture, falling
+                // back to this leg's own live catalog cost only if ITS
+                // real cost is missing — a genuinely unavailable FX rate
+                // at that one leg's delivery moment, decision 6); the
+                // flag disabled restores the exact pre-ADR-111 live
+                // catalog-cost-only aggregation (decision 8's kill
+                // switch). Never a frozen snapshot either way — there
+                // isn't one for cost, only `selling_price_sen` (decision 1).
+                $useRealCost = config('services.real_cost_reconciliation.enabled', false);
+                $costTotal = (int) $legs->sum(function (OrderDeliveryLeg $leg) use ($useRealCost) {
+                    if ($useRealCost && $leg->real_cost_price_sen !== null) {
+                        return $leg->real_cost_price_sen;
+                    }
+
+                    return $leg->componentPackage?->cost_price ?? 0;
+                });
+                $reconciledPlatformProfit = $locked->selling_price - $costTotal - $locked->affiliate_profit;
 
                 // Decision 3: never block delivery over this — a combo
                 // can finalize via webhook/scheduled poll with no admin
                 // present to supply an override reason (ADR-105 decision
                 // 4's gate is deliberately NOT reused here). The order
                 // still delivers, the (possibly negative) figure is
-                // recorded as-is, and this line is the after-the-fact
-                // signal an admin needs to actually notice it — the
-                // Order Detail response's `combo_profit_reconciled_negative`
-                // flag (derived from the stored value, not a separate
-                // column) is the UI-facing half of the same signal.
-                if ($reconciledPlatformProfit < 0) {
-                    Log::warning('Combo order platform profit reconciled negative on final delivery', [
+                // recorded as-is, and ADR-111 decision 7's persisted
+                // `profit_reconciled_flagged` (any negative result, OR a
+                // material drift from the pre-reconciliation estimate —
+                // both universal, not combo-only any more) is the
+                // after-the-fact signal an admin needs to actually
+                // notice it — the UI-facing half of the same signal.
+                $flagged = $this->isProfitDriftFlagged($locked->platform_profit, $reconciledPlatformProfit, $locked->selling_price);
+
+                if ($flagged) {
+                    Log::warning('Combo order platform profit reconciled negative or drifted materially on final delivery', [
                         'order_id' => $locked->id,
                         'reconciled_platform_profit' => $reconciledPlatformProfit,
-                        'live_cost_total' => $liveCostTotal,
+                        'cost_total' => $costTotal,
+                        'used_real_cost' => $useRealCost,
                         'affiliate_profit' => $locked->affiliate_profit,
                         'frozen_selling_price' => $locked->selling_price,
                     ]);
@@ -705,6 +749,7 @@ final class OrderFulfillmentService
                     'delivery_status' => $newStatus->value,
                     'delivered_at' => now(),
                     'platform_profit' => $reconciledPlatformProfit,
+                    'profit_reconciled_flagged' => $flagged,
                 ]);
 
                 $this->creditProfit($locked);
@@ -769,10 +814,19 @@ final class OrderFulfillmentService
             if ($outcome === SupplierOutcome::Success) {
                 $deliveredStatus = $this->orderStatus->finalizePendingSuccess($lockedLeg->status);
 
+                // ADR-111 decision 2 — the async counterpart to
+                // attemptLeg()'s own capture, for a Digiflazz rc=03 leg
+                // whose real price only ever arrives via webhook/poll.
+                $realLegCostPriceSen = $this->captureRealCostSen(
+                    is_array($supplierResponse) ? $supplierResponse : null,
+                    $lockedLeg->supplier->currency,
+                );
+
                 $lockedLeg->update([
                     'status' => $deliveredStatus->value,
                     'supplier_reference' => $supplierRef ?? $lockedLeg->supplier_reference,
                     'delivered_at' => now(),
+                    'real_cost_price_sen' => $realLegCostPriceSen,
                 ]);
 
                 Log::info('Combo leg finalized as delivered');
@@ -850,12 +904,28 @@ final class OrderFulfillmentService
             if ($outcome === SupplierOutcome::Success) {
                 $deliveredStatus = $this->orderStatus->finalizePendingSuccess($locked->delivery_status);
 
-                $locked->update([
+                // ADR-111 decision 2/3 — the async counterpart to
+                // fulfill()'s own Success branch: a Digiflazz rc=03
+                // order's real price only ever arrives here (webhook or
+                // reconcile poll), never at the initial Pending response.
+                $realCostPriceSen = $this->captureRealCostSen(
+                    is_array($supplierResponse) ? $supplierResponse : null,
+                    $locked->supplier->currency,
+                );
+
+                $updateData = [
                     'supplier_ref' => $supplierRef ?? $locked->supplier_ref,
                     'supplier_response' => $supplierResponse ?? $locked->supplier_response,
                     'delivery_status' => $deliveredStatus->value,
                     'delivered_at' => now(),
-                ]);
+                    'real_cost_price_sen' => $realCostPriceSen,
+                ];
+
+                if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                    $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
+                }
+
+                $locked->update($updateData);
 
                 $this->creditProfit($locked);
                 $this->vouchers->commit($locked->id);
@@ -1217,6 +1287,93 @@ final class OrderFulfillmentService
 
             return $locked->fresh();
         });
+    }
+
+    /**
+     * ADR-111 decision 2/6: converts the supplier's own real
+     * per-transaction price (`$resultData['price']`, when present) into
+     * MYR sen via the shared `CurrencyRateService::convertToSen()`
+     * boundary. Returns null — never throws, never blocks delivery —
+     * both when no price was reported and when the FX rate is
+     * genuinely unavailable (no live fetch ever succeeded AND nothing
+     * was ever stored for that pair); the caller's own reconciliation
+     * step already treats a null real cost as "fall back to today's
+     * existing catalog-cost behavior for this one delivery."
+     */
+    private function captureRealCostSen(?array $resultData, string $currency): ?int
+    {
+        if (! isset($resultData['price'])) {
+            return null;
+        }
+
+        try {
+            return $this->currencyRates->convertToSen((float) $resultData['price'], $currency);
+        } catch (CurrencyRateUnavailableException $e) {
+            Log::warning('Real-cost reconciliation: FX rate unavailable, falling back to catalog cost for this delivery', [
+                'currency' => $currency,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * ADR-111 decision 3: the one basis-agnostic residual formula,
+     * `platform_profit = selling_price (frozen) − real_cost − affiliate_profit`
+     * — the same identity ADR-105 decision 8 established, now fed by
+     * the real per-transaction cost instead of a catalog snapshot.
+     * `affiliate_profit` is never touched: whatever checkout or
+     * `OrderResendService::resend()`'s own per-basis formula already
+     * determined for it stays exactly as-is (decision 3's own text) —
+     * only `platform_profit` absorbs the gap between what was assumed
+     * and what was actually paid. Returns the fields to merge into the
+     * caller's own `update()` call, never writes directly, so this
+     * stays a plain calculation the caller applies alongside whatever
+     * else that same call is already updating (decision 2's "no extra
+     * query, no extra transaction").
+     *
+     * @return array{platform_profit: int, profit_reconciled_flagged: bool}
+     */
+    private function reconcileRealCostProfit(Order $locked, int $realCostPriceSen): array
+    {
+        $reconciledProfit = $locked->selling_price - $realCostPriceSen - $locked->affiliate_profit;
+        $flagged = $this->isProfitDriftFlagged($locked->platform_profit, $reconciledProfit, $locked->selling_price);
+
+        if ($flagged) {
+            Log::warning('Real-cost profit reconciliation flagged this delivery', [
+                'order_id' => $locked->id,
+                'estimated_platform_profit' => $locked->platform_profit,
+                'reconciled_platform_profit' => $reconciledProfit,
+                'real_cost_price_sen' => $realCostPriceSen,
+            ]);
+        }
+
+        return [
+            'platform_profit' => $reconciledProfit,
+            'profit_reconciled_flagged' => $flagged,
+        ];
+    }
+
+    /**
+     * ADR-111 decision 7: the universal visibility signal — fires on any
+     * negative reconciled profit (unconditionally), OR a material drift
+     * from the pre-reconciliation estimate that's BOTH more than RM1
+     * (100 sen) AND more than 1% of `selling_price` (a flat sen
+     * threshold alone under-protects a large order; a percentage alone
+     * over-fires on a small, normally-volatile one). Starting numbers,
+     * not empirically tuned — revisit once real resend/combo volume at
+     * varied order sizes exists (ADR-111's own Consequence-to-track).
+     */
+    private function isProfitDriftFlagged(int $previousEstimatedProfit, int $reconciledProfit, int $sellingPrice): bool
+    {
+        if ($reconciledProfit < 0) {
+            return true;
+        }
+
+        $driftSen = abs($reconciledProfit - $previousEstimatedProfit);
+
+        return $driftSen > 100 && $driftSen > (int) round($sellingPrice * 0.01);
     }
 
     /**

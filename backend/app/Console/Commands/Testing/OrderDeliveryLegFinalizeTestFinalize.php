@@ -4,6 +4,7 @@ namespace App\Console\Commands\Testing;
 
 use App\Models\OrderDeliveryLeg;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Currency\CurrencyRateService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\InvalidOrderTransitionException;
@@ -41,6 +42,7 @@ class OrderDeliveryLegFinalizeTestFinalize extends Command
             new LedgerService,
             app(VoucherService::class),
             app(SupplierFundingService::class),
+            app(CurrencyRateService::class),
         );
 
         try {

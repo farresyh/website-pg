@@ -926,12 +926,13 @@ class OrderController extends Controller
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
             'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
-            // ADR-107 decision 3 — true only once a combo order actually
-            // delivered with a reconciled negative platform_profit
-            // (never blocks delivery; this is the after-the-fact
-            // visibility signal instead). Drives the Order Detail
-            // "Combo Profit Adjusted" info card.
-            'combo_profit_reconciled_negative' => $order->hasNegativeComboProfit(),
+            // ADR-107 decision 3, generalized by ADR-111 decision 7 — true
+            // once ANY order (not just combo) delivered with a reconciled
+            // negative platform_profit, or a material drift from the
+            // pre-reconciliation estimate (never blocks delivery; this is
+            // the after-the-fact visibility signal instead). Drives the
+            // Order Detail "Profit Adjusted" info card.
+            'profit_reconciled_flagged' => $order->hasReconciledProfitFlag(),
         ]);
     }
 }
