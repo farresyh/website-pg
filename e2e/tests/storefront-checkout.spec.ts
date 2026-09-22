@@ -125,5 +125,8 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
     .toBe("delivered");
 
   await page.goto(`${STOREFRONT_URL}/order/status/${encodeURIComponent(orderNumber)}`);
-  await expect(page.getByText("Delivered")).toBeVisible({ timeout: 15_000 });
+  // 15s flaked on a cold Next.js compile of this route on a loaded CI
+  // runner (prd.md §16 item 5) — test.slow() already triples the
+  // per-test budget to 180s, so this has ample room to widen.
+  await expect(page.getByText("Delivered")).toBeVisible({ timeout: 30_000 });
 });
