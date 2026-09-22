@@ -533,6 +533,34 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('package.name', '100 Diamonds');
         $response->assertJsonPath('supplier.name', 'Gamevion');
         $response->assertJsonPath('supplier_response.supplier_ref', 'GV-123');
+        // ADR-111 addendum — no real cost ever captured on this fixture,
+        // so the catalog snapshot is what the stored platform_profit
+        // was actually computed from.
+        $response->assertJsonPath('effective_cost_price', 900);
+        $response->assertJsonPath('cost_basis', 'estimated');
+    }
+
+    /**
+     * ADR-111 addendum (2026-09-22) — the "real" case: platform_profit
+     * genuinely was derived from real_cost_price_sen (not merely
+     * present), so Order Detail must show the real figure, not the
+     * stale catalog cost_price.
+     */
+    public function test_show_reports_the_real_cost_basis_when_the_stored_profit_was_derived_from_it(): void
+    {
+        $order = $this->order([
+            'cost_price' => 900, 'selling_price' => 1000, 'affiliate_profit' => 0,
+            'real_cost_price_sen' => 850,
+            // 1000 - 850 - 0 = 150, not the catalog-derived 100.
+            'platform_profit' => 150,
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('effective_cost_price', 850);
+        $response->assertJsonPath('cost_basis', 'real');
     }
 
     /**

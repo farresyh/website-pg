@@ -1451,4 +1451,68 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame(300, $result->platform_profit);
         $this->assertTrue($result->profit_reconciled_flagged);
     }
+
+    /**
+     * ADR-111 decision 9, extended to combo: resolveComboOutcome()'s own
+     * aggregation formula never branches on `pricing_basis` (same
+     * basis-agnostic identity as the non-combo case — ADR-105 decision
+     * 8's precedent) — proven directly for all 4 bases a combo order can
+     * legitimately carry (Standard/guest, Affiliate wholesale, Member,
+     * Reseller Wallet), not just assumed from the non-combo coverage in
+     * OrderFulfillmentServiceTest.
+     */
+    public function test_resolve_combo_outcome_reconciles_correctly_for_standard_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('standard', affiliateProfit: 0);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_affiliate_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('affiliate', affiliateProfit: 120);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_member_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('member', affiliateProfit: 0);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_reseller_wallet_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('reseller-wallet', affiliateProfit: 0);
+    }
+
+    private function assertComboReconciliationHoldsForBasis(string $pricingBasis, int $affiliateProfit): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, [
+            'pricing_basis' => $pricingBasis,
+            'selling_price' => 1500,
+            'affiliate_profit' => $affiliateProfit,
+            'platform_profit' => 100,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-2',
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => 500,
+        ]);
+
+        $result = $this->service($this->queuedAdapter([]))->fulfill($order);
+
+        // costTotal = 700 + 500 = 1200 (both real, no fallback needed).
+        $this->assertSame($affiliateProfit, $result->affiliate_profit);
+        $this->assertSame(1500 - 1200 - $affiliateProfit, $result->platform_profit);
+    }
 }

@@ -186,6 +186,17 @@ export interface OrderDetail extends OrderListItem {
   // visibility signal instead, so an admin notices without watching
   // every resend).
   profit_reconciled_flagged: boolean;
+  // ADR-111 addendum (2026-09-22) — one Cost Price figure, not two
+  // competing ones (`cost_price` catalog snapshot vs the internal
+  // `real_cost_price_sen`): whichever cost actually produced the
+  // stored `platform_profit` above, so Selling Price − Cost Price −
+  // Affiliate Profit always reconciles to it. `cost_basis` says which
+  // one — 'real' (the supplier's own actual price), 'mixed' (combo
+  // only — some legs real, one or more fell back to catalog), or
+  // 'estimated' (catalog snapshot, either not yet delivered or the
+  // real-cost-reconciliation flag was off at delivery time).
+  effective_cost_price: number;
+  cost_basis: "real" | "mixed" | "estimated";
 }
 
 export interface OrderPage {

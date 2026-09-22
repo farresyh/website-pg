@@ -159,6 +159,76 @@ class Order extends Model
         return $this->profit_reconciled_flagged;
     }
 
+    /**
+     * ADR-111 addendum (2026-09-22, founder-requested): a single
+     * "Cost Price" figure for Order Detail/CSV export to show — never
+     * two competing cost columns (`cost_price` catalog snapshot vs
+     * `real_cost_price_sen`), which reads as ambiguous to an accountant
+     * auditing off this export (the documented source of truth for
+     * order-level P&L). Reverse-engineers WHICH cost basis
+     * `OrderFulfillmentService` actually used to arrive at the
+     * currently-stored `platform_profit` (the real-cost-reconciliation
+     * feature flag can be off, or the FX rate genuinely unavailable at
+     * capture time, so `real_cost_price_sen` being non-null does NOT by
+     * itself mean it was used) rather than guessing — the residual
+     * formula is basis-agnostic (ADR-105 decision 8 / ADR-111 decision
+     * 3), so checking which cost input satisfies it is exact, not a
+     * heuristic. `Selling Price − Cost Price − Affiliate Profit` always
+     * equals `Platform Profit` for whatever this returns.
+     */
+    public function effectiveCostPriceSen(): int
+    {
+        return $this->costReconciliation()['cost'];
+    }
+
+    /**
+     * 'real' — every cost figure that went into `platform_profit` was
+     * the supplier's own real per-transaction price. 'mixed' — combo
+     * only: some legs' real cost was known, at least one leg fell back
+     * to its catalog `cost_price` (a genuinely unavailable FX rate at
+     * that leg's own delivery moment, decision 6). 'estimated' — the
+     * catalog snapshot was used, either because real-cost reconciliation
+     * was off at delivery time, or this order hasn't delivered yet.
+     */
+    public function costBasis(): string
+    {
+        return $this->costReconciliation()['basis'];
+    }
+
+    /**
+     * @return array{cost: int, basis: string}
+     */
+    private function costReconciliation(): array
+    {
+        if ($this->deliveryLegs->isNotEmpty()) {
+            return $this->comboCostReconciliation();
+        }
+
+        if ($this->real_cost_price_sen !== null
+            && $this->platform_profit === $this->selling_price - $this->real_cost_price_sen - $this->affiliate_profit) {
+            return ['cost' => $this->real_cost_price_sen, 'basis' => 'real'];
+        }
+
+        return ['cost' => $this->cost_price, 'basis' => 'estimated'];
+    }
+
+    /**
+     * @return array{cost: int, basis: string}
+     */
+    private function comboCostReconciliation(): array
+    {
+        $legs = $this->deliveryLegs;
+        $catalogTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
+        $realTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen ?? $leg->componentPackage?->cost_price ?? 0);
+        $allLegsReal = $legs->every(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null);
+
+        if ($this->platform_profit === $this->selling_price - $realTotal - $this->affiliate_profit) {
+            return ['cost' => $realTotal, 'basis' => $allLegsReal ? 'real' : 'mixed'];
+        }
+
+        return ['cost' => $catalogTotal, 'basis' => 'estimated'];
+    }
+
     public function isPartialComboDelivery(): bool
     {
         if ($this->delivery_status !== DeliveryStatus::NeedsReview) {

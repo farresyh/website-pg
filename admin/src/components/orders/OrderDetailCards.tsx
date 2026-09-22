@@ -26,9 +26,19 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
   // exactly derivable from the two prices that already are.
   const isWalletOrder = order.pricing_basis === "reseller-wallet";
   const isAffiliateWholesale = order.pricing_basis === "affiliate";
-  const resellerMarkupPct = isWalletOrder && order.cost_price > 0
-    ? (((order.selling_price - order.cost_price) / order.cost_price) * 100).toFixed(2)
+  // ADR-111 addendum — reads the same reconciled figure the Cost Price
+  // card itself shows below, not the raw catalog `cost_price`, so this
+  // derived % stays consistent with whichever basis actually produced
+  // the stored platform_profit.
+  const resellerMarkupPct = isWalletOrder && order.effective_cost_price > 0
+    ? (((order.selling_price - order.effective_cost_price) / order.effective_cost_price) * 100).toFixed(2)
     : null;
+  const costBasisTags = {
+    real: { label: "Real", severity: "success" as const },
+    mixed: { label: "Mixed", severity: "warn" as const },
+    estimated: { label: "Estimated", severity: "secondary" as const },
+  };
+  const costBasisTag = costBasisTags[order.cost_basis];
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -95,7 +105,17 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         <dl className="space-y-2.5 text-sm">
           <div className="flex justify-between items-center">
             <dt className="text-ink-muted">Cost Price</dt>
-            <dd className="font-mono text-ink">{formatRm(order.cost_price)}</dd>
+            <dd className="flex items-center gap-1.5 font-mono text-ink">
+              {formatRm(order.effective_cost_price)}
+              {/* ADR-111 addendum — 'estimated' is today's ordinary state
+                  (not yet delivered, or real-cost reconciliation is off),
+                  so it stays unlabeled to avoid a permanent gray badge on
+                  every row; 'real'/'mixed' are the notable states worth
+                  a tag. */}
+              {order.cost_basis !== "estimated" && (
+                <Tag severity={costBasisTag.severity}>{costBasisTag.label}</Tag>
+              )}
+            </dd>
           </div>
           {/* Standard Selling Price is the storefront's own guest/list price — meaningless for a wallet order, which is never priced off it (the reseller's own tier markup is, shown below instead). */}
           {!isWalletOrder && (
