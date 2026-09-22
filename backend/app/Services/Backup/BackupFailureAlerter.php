@@ -37,10 +37,14 @@ class BackupFailureAlerter
 
         foreach ($recipients as $email) {
             try {
-                $this->mailer->send(
+                $this->mailer->sendView(
                     $email,
                     "[PekanGame Backup] {$context}",
-                    "{$context}\n\n{$message}",
+                    'emails.backup-failure',
+                    [
+                        'context' => $context,
+                        'messageText' => $message,
+                    ]
                 );
             } catch (PlunkSendException $e) {
                 // One admin's bad/bouncing address shouldn't swallow the

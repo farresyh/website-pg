@@ -35,8 +35,9 @@ class MembershipOtpController extends Controller
     public function send(SendOtpRequest $request): JsonResponse
     {
         $email = $request->validated('email');
-        $code = $this->otp->generate($this->brand->get()->id, $email);
-        $this->mailer->sendOtpEmail($email, $code);
+        $affiliate = $this->brand->get();
+        $code = $this->otp->generate($affiliate->id, $email);
+        $this->mailer->sendOtpEmail($email, $code, $affiliate);
 
         return response()->json(['message' => 'Verification code sent.']);
     }

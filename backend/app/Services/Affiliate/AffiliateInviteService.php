@@ -55,13 +55,15 @@ final class AffiliateInviteService
         $link = $this->createInviteLink($user);
         $business = $user->ownerBusinessName() ?? 'your account';
 
-        $this->mailer->send(
+        $this->mailer->sendView(
             $user->email,
             'Set your portal password',
-            "Hi {$user->name},\n\n"
-            ."An account has been created for you to manage {$business} on the partner portal. "
-            ."Set your password to activate it:\n\n{$link}\n\n"
-            ."This link expires in 24 hours. If you weren't expecting this, ignore this email.",
+            'emails.affiliate-invite',
+            [
+                'name' => $user->name,
+                'business' => $business,
+                'url' => $link,
+            ]
         );
     }
 }

@@ -105,12 +105,11 @@ class SyncAffiliateDomainStatusCommand extends Command
         }
 
         try {
-            $mailer->send(
+            $mailer->sendView(
                 $email,
                 'Action needed: finish setting up '.$domain->hostname,
-                "Your storefront domain {$domain->hostname} is still waiting for its DNS records.\n\n".
-                'Sign in to your portal, open Domains, and follow the CNAME instructions shown there. '.
-                'If the records are not in place within a couple of weeks the domain is removed automatically and you can add it again later.',
+                'emails.domain-status',
+                ['hostname' => $domain->hostname]
             );
 
             return true;

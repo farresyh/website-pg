@@ -2,7 +2,10 @@
 
 namespace App\Services\Membership;
 
+use App\Models\Affiliate;
+use App\Models\AffiliateBranding;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -29,13 +32,38 @@ final class PlunkMailer
         private readonly int $connectTimeoutSeconds = 5,
     ) {}
 
-    public function sendOtpEmail(string $to, string $code): void
+    public function sendOtpEmail(string $to, string $code, ?Affiliate $affiliate = null): void
     {
-        $this->send(
+        $this->sendView(
             $to,
             'Your verification code',
-            "Your verification code is: {$code}. It expires in 10 minutes. If you didn't request this, ignore this email.",
+            'emails.membership-otp',
+            [
+                'code' => $code,
+                ...$this->brandingFor($affiliate),
+            ]
         );
+    }
+
+    /**
+     * `Affiliate` has no `branding` relation (every existing caller —
+     * BrandingController, SettingsController, GalleryImageController —
+     * queries `AffiliateBranding` directly), and `AffiliateBranding`
+     * carries the ADR-057 tenant `AffiliateScope`, so a plain query
+     * would come back empty outside the affiliate guard (a queue job,
+     * this mailer). `withoutAffiliateScope()` is the same escape hatch
+     * those existing callers already use.
+     */
+    public function brandingFor(?Affiliate $affiliate): array
+    {
+        $branding = $affiliate === null
+            ? null
+            : AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
+
+        return [
+            'storeName' => $branding?->store_name ?? 'PekanGame',
+            'logoUrl' => $branding?->logo_url,
+        ];
     }
 
     /**
@@ -68,5 +96,16 @@ final class PlunkMailer
         if (! $response->successful()) {
             throw new PlunkSendException("Plunk send failed: HTTP {$response->status()} {$response->body()}");
         }
+    }
+
+    /**
+     * Send an HTML email generated from a Laravel Markdown view.
+     * Uses the default mail theme without needing a full Mailable class.
+     */
+    public function sendView(string $to, string $subject, string $view, array $data = []): void
+    {
+        $body = app(Markdown::class)->render($view, $data)->toHtml();
+
+        $this->send($to, $subject, $body);
     }
 }
