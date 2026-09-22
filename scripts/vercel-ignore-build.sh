@@ -28,26 +28,22 @@
 
 set -u
 
-echo "[vercel-ignore] ref=${VERCEL_GIT_COMMIT_REF:-<unset>}"
-
 if [ "${VERCEL_GIT_COMMIT_REF:-}" = "main" ] || [ "${VERCEL_GIT_COMMIT_REF:-}" = "staging" ]; then
   git diff --quiet HEAD^ HEAD .
   exit $?
 fi
 
+# Vercel's clone has no "origin" remote configured — fetch by URL.
 repo_url="https://github.com/farresyh/website-pg.git"
 
-if git fetch --depth=200 -q "$repo_url" staging 2>&1; then
-  echo "[vercel-ignore] fetch ok"
-  base=$(git merge-base HEAD FETCH_HEAD 2>&1)
-  echo "[vercel-ignore] merge-base result: '$base'"
+if git fetch --depth=200 -q "$repo_url" staging 2>/dev/null; then
+  base=$(git merge-base HEAD FETCH_HEAD 2>/dev/null || true)
   if [ -n "$base" ]; then
+    echo "[vercel-ignore] diffing against staging merge-base $base"
     git diff --quiet "$base" HEAD .
     exit $?
   fi
-else
-  echo "[vercel-ignore] fetch FAILED"
 fi
 
-echo "[vercel-ignore] falling through to build (fail-open)"
+echo "[vercel-ignore] couldn't resolve a merge-base with staging — building rather than risking a false skip"
 exit 1
