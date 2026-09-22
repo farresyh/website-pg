@@ -28,17 +28,24 @@
 
 set -u
 
+echo "[vercel-ignore] ref=${VERCEL_GIT_COMMIT_REF:-<unset>}"
+
 if [ "${VERCEL_GIT_COMMIT_REF:-}" = "main" ] || [ "${VERCEL_GIT_COMMIT_REF:-}" = "staging" ]; then
   git diff --quiet HEAD^ HEAD .
   exit $?
 fi
 
-if git fetch origin staging --depth=200 -q 2>/dev/null; then
-  base=$(git merge-base HEAD origin/staging 2>/dev/null || true)
+if git fetch origin staging --depth=200 -q 2>&1; then
+  echo "[vercel-ignore] fetch ok"
+  base=$(git merge-base HEAD origin/staging 2>&1)
+  echo "[vercel-ignore] merge-base result: '$base'"
   if [ -n "$base" ]; then
     git diff --quiet "$base" HEAD .
     exit $?
   fi
+else
+  echo "[vercel-ignore] fetch FAILED"
 fi
 
+echo "[vercel-ignore] falling through to build (fail-open)"
 exit 1
