@@ -35,9 +35,11 @@ if [ "${VERCEL_GIT_COMMIT_REF:-}" = "main" ] || [ "${VERCEL_GIT_COMMIT_REF:-}" =
   exit $?
 fi
 
-if git fetch origin staging --depth=200 -q 2>&1; then
+repo_url="https://github.com/farresyh/website-pg.git"
+
+if git fetch --depth=200 -q "$repo_url" staging 2>&1; then
   echo "[vercel-ignore] fetch ok"
-  base=$(git merge-base HEAD origin/staging 2>&1)
+  base=$(git merge-base HEAD FETCH_HEAD 2>&1)
   echo "[vercel-ignore] merge-base result: '$base'"
   if [ -n "$base" ]; then
     git diff --quiet "$base" HEAD .
