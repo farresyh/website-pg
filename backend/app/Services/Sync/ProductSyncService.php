@@ -101,7 +101,7 @@ final class ProductSyncService
                     // even before its adapter was taught to set it).
                     'group_label' => $item->groupLabel ?? $item->category ?? '',
                     'type' => $item->type,
-                    'price_sen' => $this->toMyrSen($item->price, $fxRateUsed['rate'] ?? null),
+                    'price_sen' => $this->currencyRates->convertToSen($item->price, $supplier->currency),
                     // ADR-069 decision 10 — the supplier's pre-conversion
                     // figure, display-only. Adapter-set, no branching here.
                     'raw_price' => $item->rawPrice,
@@ -175,23 +175,6 @@ final class ProductSyncService
             ->whereNotIn('external_ref', $seenRefs)
             ->whereNotIn('external_ref', $promotedRefs)
             ->delete();
-    }
-
-    /**
-     * MYR: `round` (unchanged, pre-ADR-033 behavior — no conversion,
-     * no margin-protection concern). Non-MYR: `ceil`, never `round` —
-     * protects margin by construction (the founder's own decision),
-     * e.g. 83.33 sen never rounds down to 83.
-     */
-    private function toMyrSen(?float $price, ?float $rate): ?int
-    {
-        if ($price === null) {
-            return null;
-        }
-
-        return $rate === null
-            ? (int) round($price * 100)
-            : (int) ceil($price * $rate * 100);
     }
 
     /**

@@ -9,6 +9,7 @@ import { User } from "@primeicons/react/user";
 import { Box } from "@primeicons/react/box";
 import { Tag as TagIcon } from "@primeicons/react/tag";
 import { CreditCard } from "@primeicons/react/credit-card";
+import { InfoCircle } from "@primeicons/react/info-circle";
 import type { OrderDetail } from "@/lib/orders";
 
 function formatRm(sen: number): string {
@@ -26,9 +27,19 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
   // exactly derivable from the two prices that already are.
   const isWalletOrder = order.pricing_basis === "reseller-wallet";
   const isAffiliateWholesale = order.pricing_basis === "affiliate";
-  const resellerMarkupPct = isWalletOrder && order.cost_price > 0
-    ? (((order.selling_price - order.cost_price) / order.cost_price) * 100).toFixed(2)
+  // ADR-111 addendum — reads the same reconciled figure the Cost Price
+  // card itself shows below, not the raw catalog `cost_price`, so this
+  // derived % stays consistent with whichever basis actually produced
+  // the stored platform_profit.
+  const resellerMarkupPct = isWalletOrder && order.effective_cost_price > 0
+    ? (((order.selling_price - order.effective_cost_price) / order.effective_cost_price) * 100).toFixed(2)
     : null;
+  const costBasisTags = {
+    real: { label: "Real", severity: "success" as const },
+    mixed: { label: "Mixed", severity: "warn" as const },
+    estimated: { label: "Estimated", severity: "secondary" as const },
+  };
+  const costBasisTag = costBasisTags[order.cost_basis];
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -94,8 +105,30 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         </div>
         <dl className="space-y-2.5 text-sm">
           <div className="flex justify-between items-center">
-            <dt className="text-ink-muted">Cost Price</dt>
-            <dd className="font-mono text-ink">{formatRm(order.cost_price)}</dd>
+            <dt className="flex items-center gap-1 text-ink-muted">
+              Cost Price
+              {/* ADR-111 addendum — plain-language explainer, native
+                  browser tooltip (no existing Tooltip component pattern
+                  in this app yet, and a hover title is enough for a
+                  short 3-line explanation). */}
+              <span
+                title="Real: the actual price the supplier charged for this delivery. Mixed: a combo order where some parts are real and some are still estimated. Estimated: the catalog price — either not delivered yet, or real-cost reconciliation is off."
+                className="cursor-help text-ink-muted/60"
+              >
+                <InfoCircle className="h-3 w-3" />
+              </span>
+            </dt>
+            <dd className="flex items-center gap-1.5 font-mono text-ink">
+              {formatRm(order.effective_cost_price)}
+              {/* ADR-111 addendum — 'estimated' is today's ordinary state
+                  (not yet delivered, or real-cost reconciliation is off),
+                  so it stays unlabeled to avoid a permanent gray badge on
+                  every row; 'real'/'mixed' are the notable states worth
+                  a tag. */}
+              {order.cost_basis !== "estimated" && (
+                <Tag severity={costBasisTag.severity}>{costBasisTag.label}</Tag>
+              )}
+            </dd>
           </div>
           {/* Standard Selling Price is the storefront's own guest/list price — meaningless for a wallet order, which is never priced off it (the reseller's own tier markup is, shown below instead). */}
           {!isWalletOrder && (

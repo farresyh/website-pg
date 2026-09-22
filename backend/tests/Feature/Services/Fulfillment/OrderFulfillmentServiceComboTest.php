@@ -11,6 +11,7 @@ use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Currency\CurrencyRateService;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
@@ -53,6 +54,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
             new LedgerService,
             new VoucherService(new LedgerService),
             new SupplierFundingService,
+            new CurrencyRateService,
         );
     }
 
@@ -1195,10 +1197,11 @@ class OrderFulfillmentServiceComboTest extends TestCase
     }
 
     /**
-     * ADR-107 decision 3 — a resulting loss is never blocked: the order
-     * still delivers, the reconciled (negative) platform_profit is
-     * recorded as-is, and Order::hasNegativeComboProfit() (the Order
-     * Detail visibility signal) becomes true. No exception, no
+     * ADR-107 decision 3, signal generalized by ADR-111 decision 7 — a
+     * resulting loss is never blocked: the order still delivers, the
+     * reconciled (negative) platform_profit is recorded as-is, and
+     * Order::hasReconciledProfitFlag() (the Order Detail visibility
+     * signal, universal now — not combo-only) becomes true. No
      * override-reason gate (unlike ADR-105 decision 4's synchronous-
      * admin-only mechanism, deliberately not reused here).
      */
@@ -1224,7 +1227,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
         $this->assertSame(-500, $result->platform_profit);
-        $this->assertTrue($result->hasNegativeComboProfit());
+        $this->assertTrue($result->hasReconciledProfitFlag());
         // The customer still got their goods, and the ledger still
         // credits whatever was reconciled — a real, logged loss, not a
         // silently clamped-to-zero one.
@@ -1373,5 +1376,143 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->expectException(OrderFulfillmentException::class);
 
         $this->service($this->queuedAdapter([]))->confirmDeliveryFailed($order, 'note', 'Jane Admin');
+    }
+
+    /**
+     * ADR-111 decision 2 — the leg-scoped capture: attemptLeg()'s own
+     * Success branch converts the supplier's real price into
+     * `real_cost_price_sen`, unconditionally (regardless of the feature
+     * flag — only resolveComboOutcome()'s own USE of it is gated).
+     */
+    public function test_attempt_leg_captures_real_cost_price_sen_on_delivery(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId);
+        $b = $this->componentPackage($supplier, $gameId);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo);
+
+        $adapter = $this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 7.0]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 4.8]),
+        ]);
+        $this->service($adapter)->fulfill($order);
+
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(700, $legs[0]->real_cost_price_sen);
+        $this->assertSame(480, $legs[1]->real_cost_price_sen);
+    }
+
+    /**
+     * ADR-111 decision 3/8: when the flag is enabled, resolveComboOutcome()
+     * sums each leg's REAL cost instead of its catalog `cost_price` — and
+     * falls back to that leg's own catalog cost only when ITS real cost
+     * is genuinely missing (decision 6's per-delivery fallback), never
+     * failing the whole reconciliation over one leg. Legs are pre-seeded
+     * directly as already-Delivered so fulfill()'s combo loop skips
+     * attemptLeg() entirely and goes straight to resolveComboOutcome() —
+     * same direct-model pattern this file already uses for
+     * isPartialComboDelivery() coverage above.
+     */
+    public function test_resolve_combo_outcome_uses_real_cost_with_per_leg_fallback_when_flag_enabled(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, ['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 100]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-2',
+            // real_cost_price_sen genuinely missing (FX unavailable at
+            // capture time) — falls back to this leg's own catalog cost.
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => null,
+        ]);
+
+        $result = $this->service($this->queuedAdapter([]))->fulfill($order);
+
+        // costTotal = 700 (real, leg A) + 500 (catalog fallback, leg B) = 1200
+        // platformProfit = 1500 - 1200 - 0 = 300; drift from the 100 estimate = 200 (> RM1 AND > 1% of 1500).
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame(300, $result->platform_profit);
+        $this->assertTrue($result->profit_reconciled_flagged);
+    }
+
+    /**
+     * ADR-111 decision 9, extended to combo: resolveComboOutcome()'s own
+     * aggregation formula never branches on `pricing_basis` (same
+     * basis-agnostic identity as the non-combo case — ADR-105 decision
+     * 8's precedent) — proven directly for all 4 bases a combo order can
+     * legitimately carry (Standard/guest, Affiliate wholesale, Member,
+     * Reseller Wallet), not just assumed from the non-combo coverage in
+     * OrderFulfillmentServiceTest.
+     */
+    public function test_resolve_combo_outcome_reconciles_correctly_for_standard_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('standard', affiliateProfit: 0);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_affiliate_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('affiliate', affiliateProfit: 120);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_member_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('member', affiliateProfit: 0);
+    }
+
+    public function test_resolve_combo_outcome_reconciles_correctly_for_reseller_wallet_pricing_basis(): void
+    {
+        $this->assertComboReconciliationHoldsForBasis('reseller-wallet', affiliateProfit: 0);
+    }
+
+    private function assertComboReconciliationHoldsForBasis(string $pricingBasis, int $affiliateProfit): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $a, 'quantity' => 1],
+            ['package' => $b, 'quantity' => 1],
+        ]);
+        $order = $this->paidComboOrder($combo, [
+            'pricing_basis' => $pricingBasis,
+            'selling_price' => 1500,
+            'affiliate_profit' => $affiliateProfit,
+            'platform_profit' => 100,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
+            'selling_price_sen' => $a->standard_selling_price, 'real_cost_price_sen' => 700,
+        ]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
+            'leg_number' => 2, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-2',
+            'selling_price_sen' => $b->standard_selling_price, 'real_cost_price_sen' => 500,
+        ]);
+
+        $result = $this->service($this->queuedAdapter([]))->fulfill($order);
+
+        // costTotal = 700 + 500 = 1200 (both real, no fallback needed).
+        $this->assertSame($affiliateProfit, $result->affiliate_profit);
+        $this->assertSame(1500 - 1200 - $affiliateProfit, $result->platform_profit);
     }
 }

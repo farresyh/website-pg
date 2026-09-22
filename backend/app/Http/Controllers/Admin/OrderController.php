@@ -193,11 +193,19 @@ class OrderController extends Controller
      * the founder asked for (Q6-Q9 of ADR-108's own grill) — CSV-only,
      * deliberately not added to the on-screen Columns toggle (decision
      * 8), since Order Detail already shows every one of these fields in
-     * full. A combo order (deliveryLegs non-empty) has no single frozen
-     * cost column (ADR-107 dropped it) — its "Cost Price" cell is the
-     * live sum of each leg's componentPackage->cost_price instead,
-     * labelled accordingly in the header so it's never mistaken for a
-     * frozen figure the way the non-combo column is.
+     * full.
+     *
+     * ADR-111 addendum (2026-09-22, founder concern): this export is the
+     * documented source of truth for order-level P&L (`docs/prd.md`),
+     * so "Cost Price" is deliberately ONE column, not two competing ones
+     * (raw catalog `cost_price` vs `real_cost_price_sen`) — an auditor
+     * reading this file must never have to guess which figure to sum.
+     * `Order::effectiveCostPriceSen()`/`costBasis()` (shared with Order
+     * Detail) resolve to whichever cost actually produced the row's own
+     * `Platform Profit`, plus a "Cost Basis" column (Real/Mixed/
+     * Estimated) so the provenance is explicit rather than assumed.
+     * `Selling Price − Cost Price − Affiliate Profit` always equals
+     * `Platform Profit` for every row.
      */
     public function export(Request $request): StreamedResponse
     {
@@ -214,7 +222,7 @@ class OrderController extends Controller
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'Order #', 'Customer Email', 'Game', 'Package', 'Source', 'Final Amount (RM)',
-                'Payment Status', 'Delivery Status', 'Pricing Basis', 'Cost Price (RM)',
+                'Payment Status', 'Delivery Status', 'Pricing Basis', 'Cost Price (RM)', 'Cost Basis',
                 'Standard/Normal Selling Price (RM)', 'Member Markup %', 'Affiliate Markup %',
                 'Wholesale Markup %', 'Transaction Fee (RM)', 'Platform Profit (RM)',
                 'Affiliate Profit (RM)', 'Date',
@@ -226,15 +234,6 @@ class OrderController extends Controller
                         ? 'Reseller: '.$order->wallet_reseller->business_name
                         : ($order->affiliate && ! $order->affiliate->is_primary ? $order->affiliate->business_name : 'Direct');
 
-                    // ADR-107 dropped combo's per-leg frozen cost column —
-                    // read live (same precedent that ADR established for
-                    // combo reconciliation), prefixed '~' so it's never
-                    // mistaken for the non-combo column's frozen figure.
-                    $isCombo = $order->deliveryLegs->isNotEmpty();
-                    $costPriceSen = $isCombo
-                        ? $order->deliveryLegs->sum(fn ($leg) => $leg->componentPackage->cost_price ?? 0)
-                        : $order->cost_price;
-
                     fputcsv($out, [
                         $order->order_number,
                         $order->customer_email,
@@ -245,7 +244,8 @@ class OrderController extends Controller
                         $order->payment_status->value,
                         $order->delivery_status->value,
                         $order->pricing_basis?->value ?? '',
-                        ($isCombo ? '~' : '').number_format($costPriceSen / 100, 2, '.', ''),
+                        number_format($order->effectiveCostPriceSen() / 100, 2, '.', ''),
+                        ucfirst($order->costBasis()),
                         number_format(($order->standard_selling_price ?? $order->normal_selling_price ?? 0) / 100, 2, '.', ''),
                         $order->markup_percent !== null ? $order->markup_percent.'%' : '',
                         $order->affiliate_markup_pct !== null ? $order->affiliate_markup_pct.'%' : '',
@@ -874,7 +874,10 @@ class OrderController extends Controller
             // id), which doesn't tell admin WHICH product SKU was
             // submitted for that leg — real gap when two components
             // share a denomination across suppliers.
-            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price,supplier_package_ref',
+            // ADR-111 addendum: cost_price added — Order::costBasis()/
+            // effectiveCostPriceSen() need each leg's live catalog cost
+            // as the fallback figure alongside its own real_cost_price_sen.
+            'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price,supplier_package_ref,cost_price',
             'deliveryLegs.supplier:id,name',
         ]);
 
@@ -926,12 +929,22 @@ class OrderController extends Controller
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
             'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
-            // ADR-107 decision 3 — true only once a combo order actually
-            // delivered with a reconciled negative platform_profit
-            // (never blocks delivery; this is the after-the-fact
-            // visibility signal instead). Drives the Order Detail
-            // "Combo Profit Adjusted" info card.
-            'combo_profit_reconciled_negative' => $order->hasNegativeComboProfit(),
+            // ADR-107 decision 3, generalized by ADR-111 decision 7 — true
+            // once ANY order (not just combo) delivered with a reconciled
+            // negative platform_profit, or a material drift from the
+            // pre-reconciliation estimate (never blocks delivery; this is
+            // the after-the-fact visibility signal instead). Drives the
+            // Order Detail "Profit Adjusted" info card.
+            'profit_reconciled_flagged' => $order->hasReconciledProfitFlag(),
+            // ADR-111 addendum — one "Cost Price" figure, not two
+            // competing columns (raw `cost_price` catalog snapshot vs
+            // `real_cost_price_sen`): whichever cost actually went into
+            // the currently-stored `platform_profit`, plus a basis label
+            // so the figure is never ambiguous to read. Reverse-calculate
+            // Selling Price − Cost Price − Affiliate Profit and it always
+            // equals Platform Profit.
+            'effective_cost_price' => $order->effectiveCostPriceSen(),
+            'cost_basis' => $order->costBasis(),
         ]);
     }
 }
