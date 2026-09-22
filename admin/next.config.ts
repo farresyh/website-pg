@@ -57,7 +57,10 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/(.*)",
-        headers: [{ key: "Content-Security-Policy", value: cspDirectives }],
+        headers: [
+          { key: "Content-Security-Policy", value: cspDirectives },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
       },
     ];
   },
