@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -62,41 +63,7 @@ function ResellerDashboard() {
             <StatCard label="Wallet balance" value={formatRm(wallet.balance)} />
           </div>
 
-          <Panel title="Recent orders">
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {(recentOrders ?? []).map((order) => (
-                <div
-                  key={order.order_number}
-                  className="flex items-center justify-between gap-4 px-5 py-3 text-theme-sm"
-                >
-                  <div>
-                    <p className="font-medium text-gray-800 dark:text-white/90">
-                      {order.order_number}
-                    </p>
-                    <p className="text-theme-xs text-gray-400">
-                      {order.game?.name ?? "—"} · {order.package_name ?? "—"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-800 dark:text-white/90">
-                      {formatRm(order.final_amount)}
-                    </p>
-                    <StatusTag severity={order.delivery_status === "delivered" ? "success" : "muted"}>
-                      {order.delivery_status}
-                    </StatusTag>
-                    {order.wallet_refunded && (
-                      <span className="ml-1"><StatusTag severity="info">Wallet Refunded</StatusTag></span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {recentOrders !== null && recentOrders.length === 0 && (
-                <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                  No orders yet.
-                </p>
-              )}
-            </div>
-          </Panel>
+          <RecentOrdersPanel orders={recentOrders} href="/orders" />
         </>
       )}
     </div>
@@ -105,14 +72,21 @@ function ResellerDashboard() {
 
 function AffiliateDashboard() {
   const [data, setData] = useState<DashboardStats | null>(null);
+  const [recentOrders, setRecentOrders] = useState<OrderListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const session = getClientSession();
     if (!session) return;
 
-    getDashboard(session.token)
-      .then(setData)
+    Promise.all([
+      getDashboard(session.token),
+      listOrders(session.token, "affiliate", { page: 1 }),
+    ])
+      .then(([dashboard, orders]) => {
+        setData(dashboard);
+        setRecentOrders(orders.data.slice(0, 5));
+      })
       .catch((err: unknown) =>
         setError(
           err instanceof ApiError ? err.message : "Could not load the dashboard.",
@@ -185,8 +159,75 @@ function AffiliateDashboard() {
               </div>
             </Panel>
           )}
+
+          <RecentOrdersPanel orders={recentOrders} href="/orders" />
         </>
       )}
+    </div>
+  );
+}
+
+function RecentOrdersPanel({
+  orders,
+  href,
+}: {
+  orders: OrderListItem[] | null;
+  href: string;
+}) {
+  return (
+    <Panel
+      title="Recent orders"
+    >
+      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3 dark:border-gray-800">
+        <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+          Latest {orders?.length ?? 0} orders from the first page.
+        </p>
+        <Link
+          href={href}
+          className="min-h-11 inline-flex items-center rounded-lg px-3 text-theme-xs font-medium text-brand-600 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:text-brand-400 dark:hover:bg-brand-500/10"
+        >
+          View all
+        </Link>
+      </div>
+      {orders === null && (
+        <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading recent orders…</p>
+      )}
+      {orders !== null && orders.length === 0 && (
+        <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No orders yet.</p>
+      )}
+      {orders && orders.length > 0 && (
+        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+          {orders.map((order) => (
+            <Link
+              key={order.order_number}
+              href={`/orders/${order.order_number}`}
+              className="flex min-h-16 items-center justify-between gap-4 px-5 py-3 text-theme-sm transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-brand-500 dark:hover:bg-white/5"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium text-gray-800 dark:text-white/90">{order.order_number}</p>
+                <p className="truncate text-theme-xs text-gray-400">{order.game?.name ?? "—"} · {order.package_name ?? "—"}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</p>
+                <OrderStatusTags order={order} />
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function OrderStatusTags({ order }: { order: OrderListItem }) {
+  return (
+    <div className="mt-1 flex flex-wrap justify-end gap-1">
+      <StatusTag severity={order.delivery_status === "delivered" ? "success" : order.delivery_status === "failed" ? "danger" : "muted"}>
+        {order.delivery_status.replaceAll("_", " ")}
+      </StatusTag>
+      {order.wallet_refunded && <StatusTag severity="info">Wallet Refunded</StatusTag>}
+      {order.has_compensation_voucher && <StatusTag severity="info">Voucher Issued</StatusTag>}
+      {order.has_voucher_restored && <StatusTag severity="info">Voucher Restored</StatusTag>}
     </div>
   );
 }
