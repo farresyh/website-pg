@@ -1034,6 +1034,24 @@ accepted state, not a gap to chase. See §14.
     robustness fix, not urgent — likely a small `Authenticate::redirectTo()`
     override or `exceptions()` handler tweak so an unauthenticated
     non-JSON request to an API-only guard always gets a clean 401.
+27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
+    `next dev` webServer — a recurring CI-environment flake, not a code
+    bug.** Hit twice in one day (2026-09-24) on two unrelated PRs (#278:
+    security/portal-fixes release; #279: docs + `.claude/` config only, zero
+    app code) — same signature both times: Turbopack's Google Fonts loader
+    throws `Module not found: Can't resolve
+    '@vercel/turbopack-next/internal/font/google/font'` / `next/font/google
+    queries have exactly one entry` while compiling `layout.tsx`, so the
+    `webServer` never comes up and Playwright times out after 60s. A full
+    workflow rerun passed cleanly both times with no code change, and
+    PR #279 touched no app code at all — rules out a real regression.
+    `e2e/playwright.config.ts`'s admin `webServer` command is plain `npx
+    next dev --port 3000`, which defaults to Turbopack on Next 16; likely
+    fix is pinning it to `--webpack` (matching the known local-dev gotcha
+    already in `AGENTS.md`'s Build & Test section, where the same Turbopack
+    CSS-worker/font-loader class of failure was hit and worked around the
+    same way). Not urgent — a rerun always clears it — but worth a proper
+    fix before it happens a third time. Not started.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
