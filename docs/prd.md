@@ -566,19 +566,39 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-09-21).** The platform is feature-complete and live in
+**Where things stand (2026-09-24).** The platform is feature-complete and live in
 production — storefront, admin panel, reseller/affiliate portal, and the
 developer-docs site all deployed; CHIP FPX payments and the CHIP + Digiflazz
 webhooks proven end-to-end with real money (order `PG-PYAYMRYNUYV0`).
 **Digiflazz was funded 2026-09-15** — real orders are now placed and delivered
 (5 non-test orders as of that date, `PG-PYAYMRYNUYV0` itself later resent and
-delivered once balance landed). **Gamevion remains at zero balance**, still a
-deliberate founder hold — Gamevion-routed orders can be paid but not delivered
-until funded. Since the 2026-09-18 snapshot this headline used to carry:
+delivered once balance landed). **Gamevion (a MYR-billed supplier, not
+IDR/Rp — do not confuse it with Digiflazz's own currency) stays deliberately
+unfunded and deprioritized as of 2026-09-24**: the founder has decided to run
+the platform Digiflazz-only for the foreseeable future rather than fund a
+second supplier, so this is no longer tracked as a launch gate — see §16's
+former item 1. Gamevion-routed orders can still be paid but not delivered
+until/unless the founder revisits that call.
+
+**2026-09-24 release (`staging`→`main`, PR #278, 11 PRs #267–#277):**
+security patch (`next@16.3.1`→`16.3.5`, 2 critical unauthenticated-RCE CVEs),
+5 Plunk emails moved to branded HTML Markdown Mailables, Reseller/Affiliate
+portal order list & detail now show wallet-refund/voucher-compensation facts
+separately from delivery status, `/track-order` polling fixed to stay under
+its own rate limit (ADR-071 addendum), and **ADR-112** (Affiliate/Reseller
+portal mobile-first redesign — role-aware shell, dashboards, responsive
+Orders). Founder confirmed live post-deploy. See §16 items 20/22/23 (closed)
+and `docs/build-log.md`'s matching entry.
+
+Since the 2026-09-18 snapshot this headline used to carry:
 **ADR-110** (CHIP status-mapping/expiry fix, settlement reconciliation filling
 ADR-083 PR-2, and the CHIP credential `.env`→DB migration, plus two same-day
 follow-up addenda) shipped and released to `main` 2026-09-19 (PR #250–252,
-#254); **ADR-109** (per-game "How to Buy" info popup + delivery badge) and the
+#254) — **founder has since filled in the real CHIP credentials via
+`/middleware/payment-gateways` and confirmed the connection probe passes; the
+`.env` `CHIP_SECRET_KEY`/`CHIP_BRAND_ID` fallback vars are being kept on Forge
+deliberately (belt-and-braces), not an owed removal — see the "Parked" section
+below**; **ADR-109** (per-game "How to Buy" info popup + delivery badge) and the
 hero-banner optional-fields/mobile-crop fix both shipped; **Membership**'s
 savings-badge fix + tier-economics redesign (new RM19.90/RM49.90 tiers) +
 quota transparency shipped 2026-09-20 (PR #256/257); a Reports/Customer
@@ -689,21 +709,26 @@ spot-checked against real code again 2026-09-13 twice in the same day (Voucher/
 Blacklist/GAME-11/SEO-fields turned out already shipped; GAME-6 then shipped
 same-session, PR #192), again 2026-09-14 (real logo/hero asset uploaded), and
 again 2026-09-16 (Digiflazz confirmed funded 2026-09-15, real orders now
-delivering — see §14 and item 1 below; `/admin/reviews` item's "zero orders
-delivered" premise is now stale, re-check its corpus next session), and again
+delivering — see §14; `/admin/reviews` item's "zero orders
+delivered" premise is now stale, re-check its corpus next session), again
 2026-09-21 (full docs-vs-code audit; no open item below turned out already
-shipped) — this list drifts easily, re-verify against real code/production
-before trusting an "open" line here, not just this doc's memory. Anything
-shipped and verified drops off this list into `docs/build-log.md`.
+shipped), and again 2026-09-24 (staging→main release PR #278 — items 20/22/23
+closed; Gamevion launch gate retired, see below) — this list drifts easily,
+re-verify against real code/production before trusting an "open" line here,
+not just this doc's memory. Anything shipped and verified drops off this
+list into `docs/build-log.md`.
 
-## The one launch gate
+## No open launch gate
 
-1. **Fund Gamevion — still at zero balance.** Digiflazz was funded 2026-09-15
-   and is now delivering real orders (see §14) — this gate is half-cleared,
-   not fully. Deliberate founder hold on Gamevion, not a task to chase.
-   Catalogue is sufficient (founder-confirmed); everything else below is
-   polish. Until Gamevion is funded, orders for Gamevion-only games can be
-   paid but not delivered.
+~~**Fund Gamevion.**~~ — **Retired as a launch gate, 2026-09-24, founder
+decision.** Digiflazz was funded 2026-09-15 and has been delivering real
+orders since; the founder has decided to run the platform Digiflazz-only for
+the foreseeable future rather than fund a second supplier. Gamevion (billed
+in **MYR**, not IDR/Rp — do not conflate its currency with Digiflazz's) stays
+integrated and buildable but deliberately unfunded/deprioritized; revisit
+only if the founder actively decides to bring it online. Until then,
+Gamevion-routed orders can still be paid but not delivered — a known,
+accepted state, not a gap to chase. See §14.
 
 ## Polish (not blocking launch)
 
@@ -921,36 +946,18 @@ shipped and verified drops off this list into `docs/build-log.md`.
     figure (Real/Mixed/Estimated), so neither ever shows two competing
     cost numbers. See `docs/build-log.md`'s 2026-09-22 entries and
     `docs/adr.md`'s ADR-111 for the full build record.
-20. **`/track-order` intermittently shows "Too Many Attempts" — a real bug,
-    reproduced live 2026-09-22, was never actually added here despite being
-    called "tracked separately."** First diagnosed 2026-09-19 while
-    investigating an unrelated stuck-payment order (`docs/adr.md`'s ADR-110
-    Context, `docs/build-log.md`'s matching entry) but only ever mentioned
-    in passing inside that ADR's prose — no backlog entry was ever created,
-    so it sat undiscoverable for 3 days until the founder hit it again
-    2026-09-22 on a real post-purchase order, confirming it's a recurring,
-    customer-facing issue, not a one-off. Root cause (read directly from
-    `storefront/src/components/order/OrderStatusTracker.tsx` and
-    `backend/routes/api.php`, not assumed): the adaptive poll cadence
-    (`nextPollDelay()`, ADR-071 PR3) polls every **2 seconds** for the
-    delivery's first minute (fast-path for the common case) — up to 30
-    requests/minute — against the route's own `throttle:20,1,track-order`
-    limit (ADR-065). The math was never cross-checked between the two
-    ADRs: any delivery that takes longer than ~40 seconds to resolve (a
-    normal outcome for an async/Pending supplier response, not an edge
-    case) causes the frontend's OWN legitimate polling to trip the
-    backend's OWN rate limit, showing a paying customer who did nothing
-    wrong a scary error. Reverb push (when connected) doesn't prevent
-    this — the poll loop runs unconditionally alongside it, on its own
-    schedule, regardless of whether Reverb already delivered the update.
-    **Fix built on `fix/partner-portal-refund-status-and-tracking`, merged to
-    `staging` as PR #273 (2026-09-23), production verification not yet
-    claimed:** slow the first-minute cadence
-    to 4s (headroom below 20/min), retain the backend throttle, and recover
-    automatically from any residual 429 using `Retry-After` (e.g. other tabs
-    or users sharing one IP). Cross-origin responses expose that header.
-    Keep this item open until the customer-facing flow is verified after
-    release; no live fix is claimed yet.
+20. ~~**`/track-order` intermittently shows "Too Many Attempts".**~~ —
+    **🟢 FIXED, LIVE PROD 2026-09-24** (PR #273, released `main` via PR
+    #278; founder-confirmed post-deploy). Root cause: the adaptive poll
+    cadence (`nextPollDelay()`, ADR-071 PR3) polled every 2 seconds for the
+    delivery's first minute — up to 30 requests/minute — against the
+    route's own `throttle:20,1,track-order` limit (ADR-065), so any
+    delivery taking longer than ~40s to resolve tripped the frontend's own
+    legitimate polling into the backend's own rate limit. Fixed by slowing
+    the first-minute cadence to 4s and recovering automatically from any
+    residual 429 via the now cross-origin-exposed `Retry-After` header. See
+    `docs/adr.md`'s ADR-071 addendum and `docs/build-log.md`'s 2026-09-23/24
+    entries.
 21. **Pending Reactivation approval doesn't cascade to reactivate a
     dependent combo — visibility AND action both missing, confirmed still
     unbuilt 2026-09-22.** Found live 2026-09-21 while reviewing Pending
@@ -976,25 +983,22 @@ shipped and verified drops off this list into `docs/build-log.md`.
     decide whether reactivation stays manual-but-visible or becomes
     auto like ADR-100's own trigger). Not started — no ADR number
     assigned yet.
-22. **`docs-site/` three high-severity audit entries — fix merged to
-    `staging` in PR #273 (2026-09-23), production verification not yet
-    claimed.** They trace to
-    one build-time chain:
-    `starlight-openapi` → `httpsnippet` → vulnerable `form-data`, not three
-    independent runtime flaws. The fix branch pins patched `form-data@4.0.6`
-    through a scoped npm override, retaining `starlight-openapi@0.26.2`;
-    `npm audit --audit-level=high`, `npm ci`, docs check and static build pass.
-    Do not use `npm audit fix --force`: it proposes a breaking plugin change.
-    Close this item after release verification; later remove the override
-    when upstream resolves the transitive pin without it (ADR-084 addendum).
+22. ~~**`docs-site/` three high-severity audit entries.**~~ — **🟢 FIXED, LIVE
+    2026-09-24** (PR #273, released `main` via PR #278). Traced to one
+    build-time chain: `starlight-openapi` → `httpsnippet` → vulnerable
+    `form-data`, not three independent runtime flaws. Pins patched
+    `form-data@4.0.6` through a scoped npm override, retaining
+    `starlight-openapi@0.26.2`. Remove the override later when upstream
+    resolves the transitive pin without it (ADR-084 addendum).
 23. ~~**Affiliate/Reseller portal mobile-first redesign — [ADR-112](./adr.md).**~~
-    **BUILT on `staging` in PRs #275 and #276 (2026-09-23/24).** The role-aware
-    shell, dashboard recent-order panels, responsive Orders cards, and
-    PrimeReact-styled filter controls passed role-by-role browser verification
-    at phone/intermediate/desktop widths. Production release remains a
-    separate staging→main decision. Pending top-up resume/cancel and a
-    precise exception aggregate remain deliberately separate backlog items,
-    not hidden work in this redesign.
+    **🟢 LIVE PROD 2026-09-24** (PRs #275/#276, released `main` via PR #278).
+    The role-aware shell, dashboard recent-order panels, responsive Orders
+    cards, and PrimeReact-styled filter controls passed role-by-role browser
+    verification at phone/intermediate/desktop widths (both locally,
+    against a live backend, and founder-confirmed post-deploy). Pending
+    top-up resume/cancel and a precise exception aggregate remain
+    deliberately separate backlog items (§16 items 24/25), not hidden work
+    in this redesign.
 24. **Reseller wallet pending top-up recovery/cancellation UX — design not
     started.** The current one-active-top-up/30-minute rule and second-attempt
     `422` remain correct money-safety behavior, but the portal does not yet
@@ -1007,17 +1011,59 @@ shipped and verified drops off this list into `docs/build-log.md`.
     explicit payment/delivery/compensation semantics and a versioned API
     contract; never sum the current paginated page in the browser. Requires a
     separate ADR before implementation.
+26. **Unauthenticated non-JSON request to a `auth:affiliate`-guarded portal
+    route crashes 500 instead of a clean 401 — found 2026-09-24, not started.**
+    Reproduced against production via `curl` (no `Accept: application/json`
+    header) on `/api/affiliate/orders` and `/api/reseller-portal/orders`:
+    Sanctum's `Authenticate` middleware falls into `redirectTo()` → `route(
+    'login')`, which throws `RouteNotFoundException` (this is an API-only
+    backend with no named `login` route) instead of returning a plain
+    `{"message":"Unauthenticated."}` 401. **Scope is narrow — confirmed by
+    reading the actual middleware, not assumed:** only the two portal login
+    surfaces sharing the `auth:affiliate` Sanctum guard
+    (`/api/affiliate/*`, `/api/reseller-portal/*`) are affected. The
+    Reseller **API** (`/api/reseller/v1/*`, partner-facing, bearer key from
+    `reseller_api_keys` set in `/admin/resellers`) uses its own
+    `EnsureResellerApiKey` middleware — a completely separate auth
+    boundary that never touches Sanctum or `Accept` headers and always
+    throws a clean `ResellerApiException` envelope (`MISSING_API_KEY`/
+    `INVALID_API_KEY`) — **not affected.** The Reseller Bot (WhatsApp/
+    OpenWA) doesn't go through this HTTP guard either. No customer impact:
+    every real frontend (`admin/`, `storefront/`, `reseller/`) always sends
+    `Accept: application/json` on its own API calls. Low-severity
+    robustness fix, not urgent — likely a small `Authenticate::redirectTo()`
+    override or `exceptions()` handler tweak so an unauthenticated
+    non-JSON request to an API-only guard always gets a clean 401.
+27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
+    `next dev` webServer — a recurring CI-environment flake, not a code
+    bug.** Hit twice in one day (2026-09-24) on two unrelated PRs (#278:
+    security/portal-fixes release; #279: docs + `.claude/` config only, zero
+    app code) — same signature both times: Turbopack's Google Fonts loader
+    throws `Module not found: Can't resolve
+    '@vercel/turbopack-next/internal/font/google/font'` / `next/font/google
+    queries have exactly one entry` while compiling `layout.tsx`, so the
+    `webServer` never comes up and Playwright times out after 60s. A full
+    workflow rerun passed cleanly both times with no code change, and
+    PR #279 touched no app code at all — rules out a real regression.
+    `e2e/playwright.config.ts`'s admin `webServer` command is plain `npx
+    next dev --port 3000`, which defaults to Turbopack on Next 16; likely
+    fix is pinning it to `--webpack` (matching the known local-dev gotcha
+    already in `AGENTS.md`'s Build & Test section, where the same Turbopack
+    CSS-worker/font-loader class of failure was hit and worked around the
+    same way). Not urgent — a rerun always clears it — but worth a proper
+    fix before it happens a third time. Not started.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 ~~**CHIP credential `.env`→DB migration**~~ — **grilled + BUILT 2026-09-19,
-[ADR-110](./adr.md) PR-C.** `payment_gateways` table (`api_config`
-`encrypted:array`, mirrors `Supplier.api_config`), `/middleware/payment-gateways`
-admin screen, `ChipGateway`'s container binding now DB-first with a
-`config('services.chip')` fallback (never breaks checkout regardless of
-deploy-vs-founder-fills-the-form ordering). Founder-owed: fill in the real
-`secret_key`/`brand_id`/`base_url` via the new screen, confirm the connection
-probe passes, then remove `CHIP_SECRET_KEY`/`CHIP_BRAND_ID` from Forge directly.
+[ADR-110](./adr.md) PR-C, fully settled 2026-09-24.** `payment_gateways` table
+(`api_config` `encrypted:array`, mirrors `Supplier.api_config`),
+`/middleware/payment-gateways` admin screen, `ChipGateway`'s container binding
+DB-first with a `config('services.chip')` fallback. Founder has filled in the
+real `secret_key`/`brand_id`/`base_url` via the screen and confirmed the
+connection probe passes. **Deliberate founder call:** the `.env`
+`CHIP_SECRET_KEY`/`CHIP_BRAND_ID` vars stay on Forge as a belt-and-braces
+fallback rather than being removed — not an owed cleanup, don't re-flag it.
 **Cloudflare R2 storage moved to item 17 above, 2026-09-14** — no
 longer parked, design done, buildable now.
 The `PaymentGatewayFactory` seam is kept for multi-region payment; a real 2nd
