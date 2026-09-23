@@ -986,8 +986,9 @@ shipped and verified drops off this list into `docs/build-log.md`.
     Do not use `npm audit fix --force`: it proposes a breaking plugin change.
     Close this item after release verification; later remove the override
     when upstream resolves the transitive pin without it (ADR-084 addendum).
-23. **Affiliate/Reseller portal mobile-first redesign — accepted design only,
-    [ADR-112](./adr.md), not built.** Two frontend-only PRs into `staging`:
+23. **Affiliate/Reseller portal mobile-first redesign — [ADR-112](./adr.md);
+    PR 1 shell/navigation implemented on `feature/adr-112-portal-shell`,
+    not yet merged or live.** Two frontend-only PRs into `staging`:
     shared role-aware shell/navigation first, then role-specific Dashboards
     and phone-sized Orders cards using existing tenant-scoped API fields.
     Keep desktop tables, light/dark parity, and distinct payment/delivery/

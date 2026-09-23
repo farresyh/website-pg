@@ -7,8 +7,8 @@ import { PrimeProvider } from "@/components/prime-provider";
 const outfit = Outfit({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "PekanGame — Reseller Portal",
-  description: "Earnings, orders, and storefront settings for affiliate partners.",
+  title: "PekanGame — Partner Portal",
+  description: "Orders and account tools for PekanGame affiliate and reseller partners.",
 };
 
 export default function RootLayout({
