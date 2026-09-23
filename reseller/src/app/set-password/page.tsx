@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { clearClientSession, getClientSession } from "@/lib/session";
 
 // PasswordBroker collapses wrong / expired (24h) / already-used token into
 // one identical 422 on the `email` field — there is nothing to distinguish
@@ -35,6 +36,7 @@ export default function SetPasswordPage() {
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
 
   useEffect(() => {
     // Read from the query string directly (mirrors `/impersonate`) so the
@@ -56,29 +58,52 @@ export default function SetPasswordPage() {
 
     // Mirror the backend's own `min:8|confirmed` rule so a doomed request
     // never round-trips (addendum "Shape").
-    if (password.length < 8) {
+    if (!passwordSaved && password.length < 8) {
       setError("Kata laluan mesti sekurang-kurangnya 8 aksara.");
       return;
     }
-    if (password !== passwordConfirmation) {
+    if (!passwordSaved && password !== passwordConfirmation) {
       setError("Pengesahan kata laluan tidak sepadan.");
       return;
     }
 
     setSubmitting(true);
+    let saved = passwordSaved;
     try {
-      await apiFetch("/api/affiliate/set-password", {
+      if (!saved) {
+        await apiFetch("/api/affiliate/set-password", {
+          method: "POST",
+          body: {
+            token: credentials.token,
+            email: credentials.email,
+            password,
+            password_confirmation: passwordConfirmation,
+          },
+        });
+        saved = true;
+        setPasswordSaved(true);
+      }
+      // An invite can be opened while another partner is signed in. Clear
+      // that old token and the presence-only cookie before visiting /login;
+      // otherwise proxy.ts redirects straight back to the old dashboard.
+      const previousSession = getClientSession();
+      const logoutResponse = await fetch("/api/logout", {
         method: "POST",
-        body: {
-          token: credentials.token,
-          email: credentials.email,
-          password,
-          password_confirmation: passwordConfirmation,
-        },
+        headers: previousSession
+          ? { Authorization: `Bearer ${previousSession.token}` }
+          : {},
       });
-      router.push("/login?message=Password+berjaya+ditetapkan");
+      if (!logoutResponse.ok) {
+        throw new Error("Could not clear the previous portal session.");
+      }
+      clearClientSession();
+      router.replace("/login?message=Password+berjaya+ditetapkan");
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (saved) {
+        // An invite token is single-use: retry cookie cleanup, not the
+        // already successful password request.
+        setError("Kata laluan berjaya ditetapkan, tetapi sesi lama belum dapat ditutup. Sila cuba teruskan lagi.");
+      } else if (err instanceof ApiError) {
         // A weak/mismatched password comes back on the `password` field —
         // show Laravel's own message verbatim. Anything on the `email`
         // field is a bad/expired/used token — one generic message.
@@ -118,48 +143,52 @@ export default function SetPasswordPage() {
               </p>
             )}
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="password"
-                className="text-theme-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                Kata Laluan Baharu
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label
-                htmlFor="password_confirmation"
-                className="text-theme-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                Sahkan Kata Laluan
-              </label>
-              <input
-                id="password_confirmation"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                value={passwordConfirmation}
-                onChange={(event) => setPasswordConfirmation(event.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              />
-            </div>
+            {!passwordSaved && (
+              <>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="password"
+                    className="text-theme-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Kata Laluan Baharu
+                  </label>
+                  <input
+                    id="password"
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="password_confirmation"
+                    className="text-theme-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Sahkan Kata Laluan
+                  </label>
+                  <input
+                    id="password_confirmation"
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={passwordConfirmation}
+                    onChange={(event) => setPasswordConfirmation(event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </div>
+              </>
+            )}
             <button
               type="submit"
               disabled={submitting}
               className="w-full rounded-lg bg-brand-500 py-2.5 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
             >
-              {submitting ? "Menyimpan…" : "Tetapkan Kata Laluan"}
+              {submitting ? "Sila tunggu…" : passwordSaved ? "Terus ke Login" : "Tetapkan Kata Laluan"}
             </button>
           </form>
         )}

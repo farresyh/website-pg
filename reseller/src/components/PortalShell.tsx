@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { useClientSession } from "@/hooks/useClientSession";
 import { clearClientSession, getClientSession } from "@/lib/session";
@@ -68,7 +68,25 @@ function PortalShellFrame({ children }: { children: React.ReactNode }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
-  const isReseller = session?.owner_type === "reseller";
+  useEffect(() => {
+    // The cookie can outlive this tab's sessionStorage (or belong to a
+    // different tab). Never leave a cookie-only visitor on a dead dashboard.
+    // Read storage directly: useClientSession's SSR snapshot is briefly null
+    // even when a valid client session is present during hydration.
+    if (getClientSession()) return;
+
+    void fetch("/api/logout", { method: "POST" })
+      .catch(() => null)
+      .then(() => router.replace("/login"));
+  }, [session, router]);
+
+  // A null session must not render the Affiliate nav by default. It also
+  // keeps child pages from making requests for the wrong account type.
+  if (!session) {
+    return <div className="min-h-screen bg-gray-50 dark:bg-gray-900" />;
+  }
+
+  const isReseller = session.owner_type === "reseller";
   const sections = isReseller ? RESELLER_SECTIONS : AFFILIATE_SECTIONS;
 
   const mainContentMargin = isMobileOpen
