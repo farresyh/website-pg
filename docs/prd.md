@@ -605,8 +605,8 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. MFA (AUTH-7) descoped, founder's call | ADR-019 |
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
-| Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. **Fix branch pending merge (2026-09-23):** invite set-password clears a pre-existing partner session before manual login; portal orders show compensation-voucher/restored markers separately from delivery status | ADR-056–061, 078 |
-| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13). **Fix branch pending merge (2026-09-23):** wallet-refund amount/time are exposed from the ledger, independently of `payment_status`/`delivery_status`, in portal orders, Reseller API GET/list/place/replay, and delivery webhook; public API docs revision 1.1.0 and scoped docs-site dependency patch accompany it | ADR-072–076, 084, 091, 093 |
+| Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. **PR #273 merged to `staging` 2026-09-23, not yet claimed live:** invite set-password clears a pre-existing partner session before manual login; portal orders show compensation-voucher/restored markers separately from delivery status. Mobile-first portal redesign is accepted design only (ADR-112) | ADR-056–061, 078, 112 |
+| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13). **PR #273 merged to `staging` 2026-09-23, not yet claimed live:** wallet-refund amount/time are exposed from the ledger, independently of `payment_status`/`delivery_status`, in portal orders, Reseller API GET/list/place/replay, and delivery webhook; public API docs revision 1.1.0 and scoped docs-site dependency patch accompany it. Mobile-first portal redesign is accepted design only (ADR-112) | ADR-072–076, 084, 091, 093, 112 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. PR-1 merged to `staging`; PR-2 open. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve. PR open | ADR-006, 030–032, 067, 069, 097, 098 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding falls back to `.env` until the founder completes the manual cutover (founder-owed, see §16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
@@ -943,13 +943,14 @@ shipped and verified drops off this list into `docs/build-log.md`.
     wrong a scary error. Reverb push (when connected) doesn't prevent
     this — the poll loop runs unconditionally alongside it, on its own
     schedule, regardless of whether Reverb already delivered the update.
-    **Fix built on `fix/partner-portal-refund-status-and-tracking`, pending
-    merge/preview verification (2026-09-23):** slow the first-minute cadence
+    **Fix built on `fix/partner-portal-refund-status-and-tracking`, merged to
+    `staging` as PR #273 (2026-09-23), preview/production verification not
+    yet claimed:** slow the first-minute cadence
     to 4s (headroom below 20/min), retain the backend throttle, and recover
     automatically from any residual 429 using `Retry-After` (e.g. other tabs
     or users sharing one IP). Cross-origin responses expose that header.
-    Keep this item open until the PR merges and the customer-facing flow is
-    verified; no live fix is claimed yet.
+    Keep this item open until the customer-facing flow is verified after
+    release; no live fix is claimed yet.
 21. **Pending Reactivation approval doesn't cascade to reactivate a
     dependent combo — visibility AND action both missing, confirmed still
     unbuilt 2026-09-22.** Found live 2026-09-21 while reviewing Pending
@@ -975,15 +976,27 @@ shipped and verified drops off this list into `docs/build-log.md`.
     decide whether reactivation stays manual-but-visible or becomes
     auto like ADR-100's own trigger). Not started — no ADR number
     assigned yet.
-22. **`docs-site/` three high-severity audit entries — fix built, pending
-    merge (2026-09-23).** They trace to one build-time chain:
+22. **`docs-site/` three high-severity audit entries — fix merged to
+    `staging` in PR #273 (2026-09-23), not yet claimed live.** They trace to
+    one build-time chain:
     `starlight-openapi` → `httpsnippet` → vulnerable `form-data`, not three
     independent runtime flaws. The fix branch pins patched `form-data@4.0.6`
     through a scoped npm override, retaining `starlight-openapi@0.26.2`;
     `npm audit --audit-level=high`, `npm ci`, docs check and static build pass.
     Do not use `npm audit fix --force`: it proposes a breaking plugin change.
-    Close this item after merge/CI; later remove the override when upstream
-    resolves the transitive pin without it (ADR-084 addendum).
+    Close this item after release verification; later remove the override
+    when upstream resolves the transitive pin without it (ADR-084 addendum).
+23. **Affiliate/Reseller portal mobile-first redesign — accepted design only,
+    [ADR-112](./adr.md), not built.** Two frontend-only PRs into `staging`:
+    shared role-aware shell/navigation first, then role-specific Dashboards
+    and phone-sized Orders cards using existing tenant-scoped API fields.
+    Keep desktop tables, light/dark parity, and distinct payment/delivery/
+    compensation facts. No all-orders "needs attention" counter, Reseller
+    current-page-only search, new top-up action, backend contract, or money
+    state-machine change. Verify both roles at phone/intermediate/desktop
+    widths and the PR preview before marking built. Pending top-up resume/
+    cancel and a precise exception aggregate need separate backend/money-
+    critical design, not a hidden part of this visual work.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
