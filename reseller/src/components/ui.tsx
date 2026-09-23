@@ -1,5 +1,7 @@
 "use client";
 
+import { Tag as PrimeTag } from "primereact/tag";
+
 /** Small presentational helpers shared across the portal's read screens. */
 
 export function PageHeader({
@@ -88,13 +90,13 @@ export function StatusTag({
   severity?: keyof typeof SEVERITY | string;
 }) {
   return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-theme-xs font-medium capitalize ${
-        SEVERITY[severity] ?? SEVERITY.muted
-      }`}
+    <PrimeTag
+      severity={severity === "muted" ? undefined : (severity as "success" | "warn" | "danger" | "info")}
+      rounded
+      className={`text-theme-xs font-medium capitalize ${SEVERITY[severity] ?? SEVERITY.muted}`}
     >
       {children}
-    </span>
+    </PrimeTag>
   );
 }
 
