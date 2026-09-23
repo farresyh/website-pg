@@ -1,58 +1,44 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { useClientSession } from "@/hooks/useClientSession";
 import { clearClientSession, getClientSession } from "@/lib/session";
-import PanelSidebar, { type PanelNavSection } from "@/layout/PanelSidebar";
+import PanelSidebar, { type PanelNavLink, type PanelNavSection } from "@/layout/PanelSidebar";
 import PortalHeader from "@/layout/PortalHeader";
+import MobilePortalNav from "@/layout/MobilePortalNav";
 import Backdrop from "@/layout/Backdrop";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import { GridIcon, ListIcon, DollarLineIcon, TrendUpIcon, BoxLineIcon, UserCircleIcon, KeyIcon, GlobeIcon, StorefrontIcon } from "@/icons";
 
-const AFFILIATE_SECTIONS: PanelNavSection[] = [
-  {
-    title: "Menu",
-    items: [
-      { kind: "link", name: "Dashboard", href: "/dashboard", icon: <GridIcon /> },
-      { kind: "link", name: "Orders", href: "/orders", icon: <ListIcon /> },
-      { kind: "link", name: "Earnings", href: "/earnings", icon: <TrendUpIcon /> },
-      { kind: "link", name: "Withdrawal", href: "/withdrawal", icon: <DollarLineIcon /> },
-      { kind: "link", name: "Subscription", href: "/subscription", icon: <BoxLineIcon /> },
-      { kind: "link", name: "Storefront", href: "/storefront", icon: <StorefrontIcon /> },
-      { kind: "link", name: "Domains", href: "/domains", icon: <GlobeIcon /> },
-      { kind: "link", name: "Profile", href: "/profile", icon: <UserCircleIcon /> },
-    ],
-  },
+const AFFILIATE_ITEMS: PanelNavLink[] = [
+  { kind: "link", name: "Dashboard", href: "/dashboard", icon: <GridIcon /> },
+  { kind: "link", name: "Orders", href: "/orders", icon: <ListIcon /> },
+  { kind: "link", name: "Earnings", href: "/earnings", icon: <TrendUpIcon /> },
+  { kind: "link", name: "Withdrawal", href: "/withdrawal", icon: <DollarLineIcon /> },
+  { kind: "link", name: "Subscription", href: "/subscription", icon: <BoxLineIcon /> },
+  { kind: "link", name: "Storefront", href: "/storefront", icon: <StorefrontIcon /> },
+  { kind: "link", name: "Domains", href: "/domains", icon: <GlobeIcon /> },
+  { kind: "link", name: "Profile", href: "/profile", icon: <UserCircleIcon /> },
 ];
 
 // ADR-072 decision 5 / PR-G: a Reseller (wallet) portal account never
 // sees Earnings/Subscription/Withdrawal (it only ever spends, never
 // earns) — Wallet + API Keys replace them. An Affiliate never sees
 // Wallet/API-Keys, the reverse of the same rule.
-const RESELLER_SECTIONS: PanelNavSection[] = [
-  {
-    title: "Menu",
-    items: [
-      { kind: "link", name: "Dashboard", href: "/dashboard", icon: <GridIcon /> },
-      { kind: "link", name: "Orders", href: "/orders", icon: <ListIcon /> },
-      { kind: "link", name: "Wallet", href: "/wallet", icon: <DollarLineIcon /> },
-      { kind: "link", name: "API Keys", href: "/api-keys", icon: <KeyIcon /> },
-      { kind: "link", name: "Profile", href: "/profile", icon: <UserCircleIcon /> },
-    ],
-  },
+const RESELLER_ITEMS: PanelNavLink[] = [
+  { kind: "link", name: "Dashboard", href: "/dashboard", icon: <GridIcon /> },
+  { kind: "link", name: "Orders", href: "/orders", icon: <ListIcon /> },
+  { kind: "link", name: "Wallet", href: "/wallet", icon: <DollarLineIcon /> },
+  { kind: "link", name: "API Keys", href: "/api-keys", icon: <KeyIcon /> },
+  { kind: "link", name: "Profile", href: "/profile", icon: <UserCircleIcon /> },
 ];
 
 /**
- * Shared chrome for the portal — mirrors `admin/src/layout/PanelShell.tsx`
- * + `AppSidebar.tsx` structurally (collapsible desktop rail, off-canvas
- * mobile drawer + backdrop, sticky header with the same toggle) so this
- * app's responsive behavior can never visually drift from the admin/
- * middleware panels again (founder feedback, 2026-09-05). `reseller/`
- * has no shared workspace with `admin/`, so `PanelSidebar`/`Backdrop`/
- * `SidebarContext` here are maintained copies, not imports — see
- * PanelSidebar.tsx's own header comment.
+ * Shared role-aware portal chrome. ADR-112 keeps the desktop rail and
+ * introduces a four-slot bottom nav plus a secondary mobile drawer.
  */
 export default function PortalShell({ children }: { children: React.ReactNode }) {
   return (
@@ -64,6 +50,7 @@ export default function PortalShell({ children }: { children: React.ReactNode })
 
 function PortalShellFrame({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const session = useClientSession();
   const [loggingOut, setLoggingOut] = useState(false);
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
@@ -87,7 +74,10 @@ function PortalShellFrame({ children }: { children: React.ReactNode }) {
   }
 
   const isReseller = session.owner_type === "reseller";
-  const sections = isReseller ? RESELLER_SECTIONS : AFFILIATE_SECTIONS;
+  const items = isReseller ? RESELLER_ITEMS : AFFILIATE_ITEMS;
+  const sections: PanelNavSection[] = [{ title: "Menu", items }];
+  const mobileSections: PanelNavSection[] = [{ title: "More", items: items.slice(3) }];
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   const mainContentMargin = isMobileOpen
     ? "ml-0"
@@ -117,6 +107,24 @@ function PortalShellFrame({ children }: { children: React.ReactNode }) {
         brandLabel="PekanGame"
         shortLabel="PG"
         sections={sections}
+        mobileSections={mobileSections}
+        isActive={isActive}
+        mobileFooter={
+          <div className="space-y-3">
+            <p className="truncate text-sm text-gray-500 dark:text-gray-400">{session.name} · {session.email}</p>
+            <div className="flex items-center justify-between gap-3">
+              <ThemeToggleButton />
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="min-h-11 rounded-lg border border-gray-200 px-4 text-sm font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {loggingOut ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
+          </div>
+        }
         extra={
           <>
             <p className="mt-1 text-theme-xs font-medium uppercase tracking-wide text-gray-400">
@@ -130,8 +138,9 @@ function PortalShellFrame({ children }: { children: React.ReactNode }) {
       />
       <Backdrop />
 
-      <div className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
+      <div className={`min-w-0 flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] transition-all duration-300 ease-in-out lg:pb-0 ${mainContentMargin}`}>
         <PortalHeader
+          roleLabel={isReseller ? "Reseller Portal" : "Affiliate Portal"}
           sessionLabel={session ? `${session.name} · ${session.email}` : ""}
           onSignOut={handleLogout}
           signingOut={loggingOut}
@@ -139,6 +148,11 @@ function PortalShellFrame({ children }: { children: React.ReactNode }) {
         <ImpersonationBanner />
         <main className="mx-auto max-w-(--breakpoint-xl) p-4 md:p-6">{children}</main>
       </div>
+      <MobilePortalNav
+        primaryItems={items.slice(0, 3)}
+        moreActive={items.slice(3).some((item) => isActive(item.href))}
+        isActive={isActive}
+      />
     </div>
   );
 }
