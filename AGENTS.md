@@ -19,7 +19,7 @@ change to those paths with the same care the existing code already does.
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
 | `docs-site/` | Astro 7 + Starlight — public Reseller API docs | The **4th frontend** (ADR-084). Deploys on Vercel → `docs.pekangame.space`; `/docs/api` on the backend 301s to it. Spec is generated (`php artisan scramble:export`), never hand-edited; CI drift-guards it |
-| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log — has an ADR index at the top), `build-log.md` (the running chronological build record — moved out of §14 on 2026-09-11), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
+| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log — has an ADR index at the top), `build-log.md` (the running chronological build record — moved out of §14 on 2026-09-11; its pre-2026-09-01 foundation-build entries live in `build-log-archive.md`, split out 2026-09-22 to keep the live file shorter), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
 
 > **Terminology (ADR-072, 2026-09-04):** the old whitelabel "Reseller" was
 > renamed **Affiliate**; "Reseller" now means a prepaid-wallet account with
@@ -191,14 +191,15 @@ cd e2e && npm test
 actual queue worker running — `composer run dev` includes one (`php artisan
 horizon`, since ADR-048); a bare `php artisan serve` (or Laravel Herd on its
 own) does not. A stuck "Syncing…" state with nothing updating almost always
-means the worker isn't running, not a frontend bug — see `docs/build-log.md`'s
-2026-07-27 live-testing entry. A second, quieter cause of the same symptom:
-`composer run dev` itself silently kills its own queue worker if
-`backend/node_modules` was never installed (`npm install` inside `backend/`,
-separate from `admin/`/`storefront/`'s own installs) — its `vite` step fails
-and `concurrently --kill-others` tears down `horizon` with it, visible only
-in the backend's own terminal output. See `docs/build-log.md`'s 2026-07-28
-addendum. **Third cause, since ADR-048:** `horizon` itself needs
+means the worker isn't running, not a frontend bug — see
+`docs/build-log-archive.md`'s 2026-07-27 live-testing entry. A second,
+quieter cause of the same symptom: `composer run dev` itself silently kills
+its own queue worker if `backend/node_modules` was never installed (`npm
+install` inside `backend/`, separate from `admin/`/`storefront/`'s own
+installs) — its `vite` step fails and `concurrently --kill-others` tears
+down `horizon` with it, visible only in the backend's own terminal output.
+See `docs/build-log-archive.md`'s 2026-07-28 addendum. **Third cause, since
+ADR-048:** `horizon` itself needs
 `backend/docker-compose.yml`'s `redis` service running (`QUEUE_CONNECTION`
 moved off `database` onto `redis`, and Horizon has no `database`-driver
 fallback) — if that container isn't up, `horizon`'s pane in `composer run
@@ -249,3 +250,15 @@ corrupted `APP_KEY` broke nothing until the first real encrypted write
 generic "Process from config.webServer was not able to start" — see
 `docs/build-log.md`'s 2026-08-27 entry for the full root-cause chain. Any
 script that captures `artisan` output into a variable needs `--no-ansi`.
+
+**Fifth known gotcha:** each of `admin/`, `storefront/`, `reseller/`,
+`docs-site/` has its own `vercel.json` with an `ignoreCommand` (`git diff
+--quiet HEAD^ HEAD .`) that skips that app's Vercel build entirely when
+nothing under its own directory changed — added 2026-09-22 after PR #269
+found every push was rebuilding all 4 frontends regardless of relevance. A
+merged PR that only shows 3 (or fewer) of the 4 Vercel deployments actually
+build — the rest show `Canceled` / "Ignored Build Step command returned exit
+code 0" — is this working as intended, not a broken deploy. If a real change
+to one of these apps ever needs to force a rebuild without touching that
+app's own directory (e.g. a shared config file moves outside it), the
+`ignoreCommand` needs updating too, or that app will silently stay stale.

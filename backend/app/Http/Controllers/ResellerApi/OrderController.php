@@ -6,6 +6,7 @@ use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Http\Requests\ResellerApi\IndexOrdersRequest;
 use App\Http\Requests\ResellerApi\PlaceOrderRequest;
 use App\Models\Game;
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
@@ -45,6 +46,8 @@ class OrderController extends Controller
         'price_sen' => 6300,
         'payment_status' => 'paid',
         'delivery_status' => 'delivered',
+        'wallet_refunded' => false,
+        'wallet_refund' => null,
         'created_at' => '2026-09-10T09:14:52+00:00',
         'delivered_at' => '2026-09-10T09:15:07+00:00',
     ];
@@ -57,7 +60,7 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'List orders',
-        description: "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status and `?created_after=` (ISO 8601) on creation time. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
+        description: "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status (not wallet refund) and `?created_after=` (ISO 8601) on creation time. `wallet_refunded` and `wallet_refund` report a later wallet credit independently of delivery status. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
     )]
     #[Response(status: 200, description: 'A page of orders.', examples: [[
         'items' => [self::ORDER_EXAMPLE],
@@ -88,9 +91,10 @@ class OrderController extends Controller
         }
 
         $page = $query->cursorPaginate($data['limit'] ?? self::DEFAULT_LIMIT);
+        $refunds = Order::walletRefundEntriesFor($page->getCollection());
 
         return response()->json([
-            'items' => $page->getCollection()->map(fn (Order $order) => self::publicOrder($order))->all(),
+            'items' => $page->getCollection()->map(fn (Order $order) => self::publicOrder($order, $refunds))->all(),
             'next_cursor' => $page->nextCursor()?->encode(),
         ]);
     }
@@ -164,7 +168,7 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'Get an order',
-        description: "The current status of one of the caller's own orders. Poll this as the fallback to the delivery webhook.",
+        description: "The current status of one of the caller's own orders, including any later wallet refund. Poll this as the fallback to the delivery webhook; a failed delivery does not itself guarantee a refund.",
     )]
     #[Response(status: 200, description: 'The order.', examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
@@ -210,10 +214,11 @@ class OrderController extends Controller
      * to `App\Support\ResellerOrderPayload` in PR-3 so the delivery
      * webhook body and this endpoint can never drift.
      *
+     * @param  array<int, LedgerEntry|null>|null  $walletRefundsByOrderId
      * @return array<string, mixed>
      */
-    private static function publicOrder(Order $order): array
+    private static function publicOrder(Order $order, ?array $walletRefundsByOrderId = null): array
     {
-        return ResellerOrderPayload::for($order);
+        return ResellerOrderPayload::for($order, $walletRefundsByOrderId);
     }
 }

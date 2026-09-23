@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 
 class Order extends Model
 {
@@ -460,6 +461,38 @@ class Order extends Model
     public function walletRefundLedgerEntry(): ?LedgerEntry
     {
         return $this->walletRefundQuery()->first();
+    }
+
+    /**
+     * Read the same wallet-refund facts for an already-paginated set of
+     * orders in one query. Include null entries so serializers can tell
+     * "looked up, no refund" from "not looked up yet" without N+1 reads.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @return array<int, LedgerEntry|null>
+     */
+    public static function walletRefundEntriesFor(Collection $orders): array
+    {
+        $walletOrders = $orders->filter(fn (Order $order) => $order->wallet_reseller_id !== null)->keyBy('id');
+        if ($walletOrders->isEmpty()) {
+            return [];
+        }
+
+        $entries = array_fill_keys($walletOrders->keys()->all(), null);
+        LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('type', 'wallet_refund')
+            ->where('reference_type', 'order')
+            ->whereIn('reference_id', $walletOrders->keys())
+            ->get(['reference_id', 'owner_id', 'amount', 'created_at'])
+            ->each(function (LedgerEntry $entry) use ($walletOrders, &$entries): void {
+                $order = $walletOrders->get((int) $entry->reference_id);
+                if ($order !== null && (int) $entry->owner_id === (int) $order->wallet_reseller_id) {
+                    $entries[$order->id] ??= $entry;
+                }
+            });
+
+        return $entries;
     }
 
     private function walletRefundQuery(): Builder

@@ -6,6 +6,8 @@ use App\Models\AffiliateUser;
 use App\Models\Order;
 use App\Models\Reseller;
 use App\Models\Supplier;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,5 +113,30 @@ class OrderControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('order_number', $order->order_number)
             ->assertJsonPath('delivery_status', 'delivered');
+    }
+
+    public function test_failed_order_shows_wallet_refund_on_list_and_detail(): void
+    {
+        $reseller = $this->reseller();
+        $token = $this->tokenFor($reseller);
+        $order = $this->orderFor($reseller, ['delivery_status' => DeliveryStatus::Failed->value]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+        app(LedgerService::class)->credit(
+            LedgerOwnerType::ResellerWallet, $reseller->id, 945, 'wallet_refund',
+            referenceType: 'order', referenceId: $order->id,
+        );
+
+        $list = $this->withToken($token)->getJson('/api/reseller-portal/orders');
+        $list->assertOk()
+            ->assertJsonPath('data.0.delivery_status', 'failed')
+            ->assertJsonPath('data.0.wallet_refunded', true)
+            ->assertJsonPath('data.0.wallet_refund.amount_sen', 945);
+
+        $detail = $this->withToken($token)->getJson("/api/reseller-portal/orders/{$order->order_number}");
+        $detail->assertOk()
+            ->assertJsonPath('delivery_status', 'failed')
+            ->assertJsonPath('wallet_refunded', true)
+            ->assertJsonPath('wallet_refund.amount_sen', 945);
+        $this->assertNotNull($detail->json('wallet_refund.refunded_at'));
     }
 }

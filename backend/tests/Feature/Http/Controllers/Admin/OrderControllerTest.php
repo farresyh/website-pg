@@ -2150,6 +2150,10 @@ class OrderControllerTest extends TestCase
 
         $delivery = ResellerWebhookDelivery::query()->where('order_id', $order->id)->sole();
         $this->assertSame('order.refunded', $delivery->event);
+        $this->assertSame('failed', $delivery->payload['delivery_status']);
+        $this->assertTrue($delivery->payload['wallet_refunded']);
+        $this->assertSame(945, $delivery->payload['wallet_refund']['amount_sen']);
+        $this->assertNotNull($delivery->payload['wallet_refund']['refunded_at']);
         Queue::assertPushed(DeliverResellerWebhook::class, fn ($job) => $job->deliveryId === $delivery->id);
     }
 

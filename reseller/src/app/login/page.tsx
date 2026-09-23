@@ -81,7 +81,7 @@ export default function LoginPage() {
       >
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
-            Reseller Portal
+            Partner Portal
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Sign in to your partner account.

@@ -96,6 +96,12 @@ export default function OrderDetailPage() {
                   </StatusTag>
                 }
               />
+              {ownerType === "affiliate" && order.has_compensation_voucher && (
+                <Row label="Compensation" value="Voucher Issued" />
+              )}
+              {ownerType === "affiliate" && order.has_voucher_restored && (
+                <Row label="Voucher" value="Restored" />
+              )}
               {ownerType === "affiliate" && (
                 <Row label="Payment method" value={order.payment_method ?? "—"} />
               )}
@@ -110,6 +116,12 @@ export default function OrderDetailPage() {
             <Panel title="Money">
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 <Row label="Total" value={formatRm(order.final_amount)} />
+                {ownerType === "reseller" && order.wallet_refund && (
+                  <>
+                    <Row label="Wallet refunded" value={formatRm(order.wallet_refund.amount_sen)} />
+                    <Row label="Refunded at" value={formatDateTime(order.wallet_refund.refunded_at)} />
+                  </>
+                )}
                 {ownerType === "affiliate" && (
                   <>
                     <Row

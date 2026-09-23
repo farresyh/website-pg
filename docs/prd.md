@@ -605,8 +605,8 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. MFA (AUTH-7) descoped, founder's call | ADR-019 |
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
-| Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end | ADR-056–061, 078 |
-| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13) | ADR-072–076, 084, 091, 093 |
+| Affiliates / whitelabel (RES-1..6) | 🟢 Built on `staging` — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, are merged to `staging` in PRs #273, #275, and #276; production release is not claimed | ADR-056–061, 078, 112 |
+| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Built on `staging` — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13). PR #273's ledger-backed refund fields and API/docs patch, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, are merged to `staging` in PRs #273, #275, and #276; production release is not claimed | ADR-072–076, 084, 091, 093, 112 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Gamevion + Digiflazz both live. Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. PR-1 merged to `staging`; PR-2 open. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve. PR open | ADR-006, 030–032, 067, 069, 097, 098 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding falls back to `.env` until the founder completes the manual cutover (founder-owed, see §16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
@@ -722,8 +722,12 @@ shipped and verified drops off this list into `docs/build-log.md`.
 4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
    Bot channel works and every command is prod-verified; the webhook already has
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
-5. **e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
-   30s timeout under the 60s per-test budget; raise it.
+5. ~~**e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
+   30s timeout under the 60s per-test budget; raise it.~~ — **FIXED
+   2026-09-22.** Real bottleneck wasn't the overall test budget
+   (`test.slow()` already triples it to 180s) — the final assertion's own
+   `15_000`ms timeout was racing a cold Next.js compile of the status
+   route. Raised to `30_000`. See `docs/build-log.md`'s matching entry.
 6. Small unbuilt scope, none blocking: ~~ORD-5 (order export)~~ — **built
    2026-09-18, ADR-108** — SET-9 (the Telegram
    *sender* — the setting fields exist), gallery in-modal picker (paste-URL —
@@ -865,7 +869,9 @@ shipped and verified drops off this list into `docs/build-log.md`.
     established) — `affiliate_profit` itself is never touched. A resulting
     loss is never blocked (decision 3): the order still delivers, the
     figure is recorded as-is, and a new Order Detail card
-    (`combo_profit_reconciled_negative`) flags it for admin visibility
+    (`combo_profit_reconciled_negative` — **renamed `profit_reconciled_flagged`
+    and generalized to every order type, not just combo, by ADR-111
+    decision 7, see item 19 below**) flags it for admin visibility
     after the fact. `Order::suggestedPartialVoucherAmount()` now apportions
     `final_amount − transaction_fee` proportionally across failed legs'
     frozen `order_delivery_legs.selling_price_sen` weights, never a live
@@ -901,13 +907,106 @@ shipped and verified drops off this list into `docs/build-log.md`.
     not a per-order live API call. Feature-flagged rollout given the blast
     radius (every future order's `platform_profit`, not a scoped subset).
     Explicit per-`pricing_basis` (Standard/Affiliate/Member/ResellerWallet)
-    test coverage built and green, one test per basis. `config(
-    'services.real_cost_reconciliation.enabled')` (default false) is the
-    kill switch — real cost is captured unconditionally on every delivery,
-    but only USED to recompute `platform_profit` once flipped on. Founder-
-    owed: actually enabling it in prod, once comfortable. See
-    `docs/build-log.md`'s 2026-09-22 entry and `docs/adr.md`'s ADR-111 for
-    the full build record.
+    test coverage built and green, one test per basis, for both combo and
+    non-combo. `config('services.real_cost_reconciliation.enabled')` is
+    the kill switch — real cost is captured unconditionally on every
+    delivery, but only USED to recompute `platform_profit` once flipped
+    on. **🟢 LIVE PROD, flag enabled 2026-09-22** (same day as build,
+    ahead of the `staging`→`main` release) — verified against a real
+    delivered order via SSH the same day. Founder's explicit call: no
+    backfill for orders delivered before this shipped (`real_cost_price_sen`
+    stays null for them permanently, `cost_basis` reads 'estimated'). Also
+    shipped same day: a "Cost Price + Cost Basis" addendum unifying Order
+    Detail and the `/admin/orders` CSV export into one reconciled cost
+    figure (Real/Mixed/Estimated), so neither ever shows two competing
+    cost numbers. See `docs/build-log.md`'s 2026-09-22 entries and
+    `docs/adr.md`'s ADR-111 for the full build record.
+20. **`/track-order` intermittently shows "Too Many Attempts" — a real bug,
+    reproduced live 2026-09-22, was never actually added here despite being
+    called "tracked separately."** First diagnosed 2026-09-19 while
+    investigating an unrelated stuck-payment order (`docs/adr.md`'s ADR-110
+    Context, `docs/build-log.md`'s matching entry) but only ever mentioned
+    in passing inside that ADR's prose — no backlog entry was ever created,
+    so it sat undiscoverable for 3 days until the founder hit it again
+    2026-09-22 on a real post-purchase order, confirming it's a recurring,
+    customer-facing issue, not a one-off. Root cause (read directly from
+    `storefront/src/components/order/OrderStatusTracker.tsx` and
+    `backend/routes/api.php`, not assumed): the adaptive poll cadence
+    (`nextPollDelay()`, ADR-071 PR3) polls every **2 seconds** for the
+    delivery's first minute (fast-path for the common case) — up to 30
+    requests/minute — against the route's own `throttle:20,1,track-order`
+    limit (ADR-065). The math was never cross-checked between the two
+    ADRs: any delivery that takes longer than ~40 seconds to resolve (a
+    normal outcome for an async/Pending supplier response, not an edge
+    case) causes the frontend's OWN legitimate polling to trip the
+    backend's OWN rate limit, showing a paying customer who did nothing
+    wrong a scary error. Reverb push (when connected) doesn't prevent
+    this — the poll loop runs unconditionally alongside it, on its own
+    schedule, regardless of whether Reverb already delivered the update.
+    **Fix built on `fix/partner-portal-refund-status-and-tracking`, merged to
+    `staging` as PR #273 (2026-09-23), production verification not yet
+    claimed:** slow the first-minute cadence
+    to 4s (headroom below 20/min), retain the backend throttle, and recover
+    automatically from any residual 429 using `Retry-After` (e.g. other tabs
+    or users sharing one IP). Cross-origin responses expose that header.
+    Keep this item open until the customer-facing flow is verified after
+    release; no live fix is claimed yet.
+21. **Pending Reactivation approval doesn't cascade to reactivate a
+    dependent combo — visibility AND action both missing, confirmed still
+    unbuilt 2026-09-22.** Found live 2026-09-21 while reviewing Pending
+    Reactivation and re-confirmed by re-reading the actual
+    code this session (`ComboPricingService::cascadeDeactivate()`,
+    `PendingReactivationFinder`, `PendingReactivationController`) —
+    nothing has changed since. Two-part gap: (1) `cascadeDeactivate()`
+    sets a dependent combo's `deactivated_reason = 'combo_component_deactivated'`,
+    but `PendingReactivationFinder` only ever queries
+    `deactivated_reason = 'supplier_sync'` — a cascade-deactivated combo
+    **never appears in the Pending Reactivation queue at all**, not even
+    for an admin to manually reactivate; (2) even setting that aside,
+    `PendingReactivationController::approve()`/`bulkApprove()` and
+    `PendingReactivationAutoApprover::approve()` (ADR-100) only ever touch
+    the package actually being approved — zero reverse-cascade logic
+    exists anywhere to reactivate a combo once every one of its components
+    is active again. ADR-094 decision 22 deliberately made cascade
+    **deactivation** one-directional (no auto-reactivate) — but that
+    decision never addressed **visibility**, so gap (1) is an unintended
+    side effect, not a recorded decision. Needs its own grill before
+    building (touches 3 call sites: manual single/bulk approve + the
+    auto-approver; needs multi-component-all-active checking; needs to
+    decide whether reactivation stays manual-but-visible or becomes
+    auto like ADR-100's own trigger). Not started — no ADR number
+    assigned yet.
+22. **`docs-site/` three high-severity audit entries — fix merged to
+    `staging` in PR #273 (2026-09-23), production verification not yet
+    claimed.** They trace to
+    one build-time chain:
+    `starlight-openapi` → `httpsnippet` → vulnerable `form-data`, not three
+    independent runtime flaws. The fix branch pins patched `form-data@4.0.6`
+    through a scoped npm override, retaining `starlight-openapi@0.26.2`;
+    `npm audit --audit-level=high`, `npm ci`, docs check and static build pass.
+    Do not use `npm audit fix --force`: it proposes a breaking plugin change.
+    Close this item after release verification; later remove the override
+    when upstream resolves the transitive pin without it (ADR-084 addendum).
+23. ~~**Affiliate/Reseller portal mobile-first redesign — [ADR-112](./adr.md).**~~
+    **BUILT on `staging` in PRs #275 and #276 (2026-09-23/24).** The role-aware
+    shell, dashboard recent-order panels, responsive Orders cards, and
+    PrimeReact-styled filter controls passed role-by-role browser verification
+    at phone/intermediate/desktop widths. Production release remains a
+    separate staging→main decision. Pending top-up resume/cancel and a
+    precise exception aggregate remain deliberately separate backlog items,
+    not hidden work in this redesign.
+24. **Reseller wallet pending top-up recovery/cancellation UX — design not
+    started.** The current one-active-top-up/30-minute rule and second-attempt
+    `422` remain correct money-safety behavior, but the portal does not yet
+    offer a tenant-scoped read/resume/cancel path. Requires a new ADR and
+    gateway/webhook review before any backend or payment-state change; do not
+    solve this with a client-only button.
+25. **Cross-order portal “needs attention” aggregate — design not started.**
+    Dashboard recent orders are intentionally bounded and cannot prove a
+    global exception count. A reliable count needs a backend aggregate with
+    explicit payment/delivery/compensation semantics and a versioned API
+    contract; never sum the current paginated page in the browser. Requires a
+    separate ADR before implementation.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

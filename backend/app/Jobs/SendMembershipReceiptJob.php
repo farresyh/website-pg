@@ -41,7 +41,7 @@ final class SendMembershipReceiptJob implements ShouldQueue
 
     public function handle(PlunkMailer $mailer): void
     {
-        $membership = Membership::query()->with('membershipPlan')->find($this->membershipId);
+        $membership = Membership::query()->with(['membershipPlan', 'affiliate'])->find($this->membershipId);
 
         if ($membership === null || $membership->membershipPlan === null) {
             Log::warning('SendMembershipReceiptJob: membership or plan gone, skipping', [
@@ -65,13 +65,17 @@ final class SendMembershipReceiptJob implements ShouldQueue
         };
 
         try {
-            $mailer->send(
+            $mailer->sendView(
                 $membership->email,
                 "Your {$tier} membership — payment received",
-                "{$opening}\n\n"
-                ."{$amountLine}\n"
-                ."Active through: {$expires}\n\n"
-                ."Manage your membership any time at your account's Membership page.",
+                'emails.membership-receipt',
+                [
+                    'tier' => $tier,
+                    'opening' => $opening,
+                    'amountLine' => $amountLine,
+                    'expires' => $expires,
+                    ...$mailer->brandingFor($membership->affiliate),
+                ]
             );
         } catch (Throwable $e) {
             Log::warning('SendMembershipReceiptJob: receipt email not sent', [

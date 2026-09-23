@@ -2,30 +2,24 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
 import { ChevronDownIcon, HorizontaLDots } from "@/icons";
 
 /**
- * Copied from `admin/src/layout/PanelSidebar.tsx` (the shared
- * collapsible/drawer sidebar for the Admin + Middleware panels) and
- * adapted for this app — `reseller/` has no shared workspace with
- * `admin/`, so this is a maintained copy, not an import. Keep it in
- * sync with admin's own component if that one changes; the two apps'
- * chrome must never visually drift (founder feedback, 2026-09-05 — the
- * same drift admin's own doc comment already records for middleware
- * vs admin, caught again here between admin and this portal).
+ * Portal-specific adaptation of the admin sidebar. Desktop retains the
+ * collapsible rail; ADR-112 gives mobile its own bottom navigation and
+ * a secondary "More" drawer.
  *
  * Desktop: pinned, collapses to an icon rail (hover to peek).
- * Mobile: off-canvas drawer toggled from PortalHeader's hamburger, with
- * a Backdrop. Scrolls internally — the nav area is `flex-1 min-h-0`
+ * Mobile: the off-canvas "More" drawer is toggled from the bottom nav,
+ * with a Backdrop. Scrolls internally — the nav area is `flex-1 min-h-0`
  * so a long menu never pushes items past the viewport with no way to
  * reach them. `extra` is this app's one real addition over admin's
  * version — a small subtitle block (the signed-in business name) shown
  * under the brand link, never present when the rail is collapsed.
  */
 
-type LinkItem = { kind: "link"; name: string; href: string; icon: React.ReactNode };
+export type PanelNavLink = { kind: "link"; name: string; href: string; icon: React.ReactNode };
 type PlaceholderItem = { kind: "placeholder"; name: string; icon: React.ReactNode };
 type ButtonItem = {
   kind: "button";
@@ -42,7 +36,7 @@ type GroupItem = {
   children: { name: string; href: string }[];
 };
 
-export type PanelNavItem = LinkItem | PlaceholderItem | ButtonItem | GroupItem;
+export type PanelNavItem = PanelNavLink | PlaceholderItem | ButtonItem | GroupItem;
 export type PanelNavSection = { title: string; items: PanelNavItem[] };
 
 interface PanelSidebarProps {
@@ -50,36 +44,95 @@ interface PanelSidebarProps {
   brandLabel: string;
   shortLabel: string;
   sections: PanelNavSection[];
+  mobileSections: PanelNavSection[];
+  mobileFooter: React.ReactNode;
+  isActive: (href: string) => boolean;
   /** This app's own addition over admin's version — see file header. */
   extra?: React.ReactNode;
 }
 
-export default function PanelSidebar({ homeHref, brandLabel, shortLabel, sections, extra }: PanelSidebarProps) {
-  const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
-  const pathname = usePathname();
+export default function PanelSidebar({ homeHref, brandLabel, shortLabel, sections, mobileSections, mobileFooter, isActive, extra }: PanelSidebarProps) {
+  const { isExpanded, isMobileOpen, isHovered, setIsHovered, closeMobileSidebar } = useSidebar();
+  const closeButtonRef = React.useRef<HTMLButtonElement>(null);
 
-  const isActive = (path: string) => path === pathname;
+  function closeAndRestoreFocus() {
+    closeMobileSidebar();
+    document.getElementById("portal-more-trigger")?.focus();
+  }
+
+  React.useEffect(() => {
+    if (!isMobileOpen) return;
+    closeButtonRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeMobileSidebar();
+        document.getElementById("portal-more-trigger")?.focus();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const panel = document.getElementById("portal-more-panel");
+      const focusable = panel?.querySelectorAll<HTMLElement>('#portal-more-home, #portal-more-close, [data-mobile-nav] a[href], [data-mobile-nav] button:not([disabled])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobileOpen, closeMobileSidebar]);
+
   const showLabels = isExpanded || isHovered || isMobileOpen;
 
   return (
     <aside
+      id="portal-more-panel"
+      aria-label={isMobileOpen ? "More navigation" : "Portal navigation"}
       className={`fixed left-0 top-0 z-50 mt-16 flex h-[calc(100dvh-4rem)] flex-col border-r border-gray-200 bg-white px-5 text-gray-900 transition-all duration-300 ease-in-out lg:mt-0 lg:h-screen lg:translate-x-0 dark:border-gray-800 dark:bg-gray-900
         ${showLabels ? "w-[290px]" : "w-[90px]"}
-        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        ${isMobileOpen ? "visible translate-x-0" : "invisible -translate-x-full lg:visible"}`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`flex flex-col py-8 ${!showLabels ? "lg:items-center" : "items-start"}`}>
-        <Link href={homeHref} className="text-lg font-semibold text-gray-900 dark:text-white">
-          {showLabels ? brandLabel : shortLabel}
-        </Link>
-        {showLabels && extra}
+      <div className={`flex items-start justify-between py-8 ${!showLabels ? "lg:items-center" : ""}`}>
+        <div className="min-w-0">
+          <Link id="portal-more-home" href={homeHref} onClick={closeMobileSidebar} className="text-lg font-semibold text-gray-900 dark:text-white">
+            {showLabels ? brandLabel : shortLabel}
+          </Link>
+          {showLabels && extra}
+        </div>
+        <button
+          ref={closeButtonRef}
+          id="portal-more-close"
+          type="button"
+          onClick={closeAndRestoreFocus}
+          aria-label="Close more navigation"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 lg:hidden dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          <span aria-hidden="true" className="text-2xl leading-none">×</span>
+        </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pb-8 no-scrollbar">
+      <div className="hidden min-h-0 flex-1 flex-col gap-6 overflow-y-auto pb-8 no-scrollbar lg:flex">
         {sections.map((section) => (
-          <PanelSection key={section.title} section={section} showLabels={showLabels} isActive={isActive} />
+          <PanelSection key={section.title} section={section} showLabels={showLabels} isActive={isActive} onNavigate={closeMobileSidebar} />
         ))}
+      </div>
+      <div data-mobile-nav className="flex min-h-0 flex-1 flex-col lg:hidden">
+        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pb-6 no-scrollbar">
+          {mobileSections.map((section) => (
+            <PanelSection key={section.title} section={section} showLabels isActive={isActive} onNavigate={closeMobileSidebar} />
+          ))}
+        </div>
+        <div className="border-t border-gray-200 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:border-gray-800">{mobileFooter}</div>
       </div>
     </aside>
   );
@@ -89,10 +142,12 @@ function PanelSection({
   section,
   showLabels,
   isActive,
+  onNavigate,
 }: {
   section: PanelNavSection;
   showLabels: boolean;
   isActive: (path: string) => boolean;
+  onNavigate: () => void;
 }) {
   return (
     <nav>
@@ -105,7 +160,7 @@ function PanelSection({
       </h2>
       <ul className="flex flex-col gap-1.5">
         {section.items.map((item) => (
-          <PanelItem key={item.name} item={item} showLabels={showLabels} isActive={isActive} />
+          <PanelItem key={item.name} item={item} showLabels={showLabels} isActive={isActive} onNavigate={onNavigate} />
         ))}
       </ul>
     </nav>
@@ -116,13 +171,15 @@ function PanelItem({
   item,
   showLabels,
   isActive,
+  onNavigate,
 }: {
   item: PanelNavItem;
   showLabels: boolean;
   isActive: (path: string) => boolean;
+  onNavigate: () => void;
 }) {
   if (item.kind === "group") {
-    return <PanelGroup item={item} showLabels={showLabels} isActive={isActive} />;
+    return <PanelGroup item={item} showLabels={showLabels} isActive={isActive} onNavigate={onNavigate} />;
   }
 
   if (item.kind === "placeholder") {
@@ -155,7 +212,7 @@ function PanelItem({
   const active = isActive(item.href);
   return (
     <li>
-      <Link href={item.href} className={`menu-item group ${active ? "menu-item-active" : "menu-item-inactive"}`}>
+      <Link href={item.href} onClick={onNavigate} aria-label={item.name} aria-current={active ? "page" : undefined} className={`menu-item group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${active ? "menu-item-active" : "menu-item-inactive"}`}>
         <span className={active ? "menu-item-icon-active" : "menu-item-icon-inactive"}>{item.icon}</span>
         {showLabels && <span className="menu-item-text">{item.name}</span>}
       </Link>
@@ -167,10 +224,12 @@ function PanelGroup({
   item,
   showLabels,
   isActive,
+  onNavigate,
 }: {
   item: GroupItem;
   showLabels: boolean;
   isActive: (path: string) => boolean;
+  onNavigate: () => void;
 }) {
   const groupActive = item.children.some((c) => isActive(c.href));
   const [open, setOpen] = React.useState(groupActive);
@@ -196,6 +255,8 @@ function PanelGroup({
             <li key={child.href}>
               <Link
                 href={child.href}
+                onClick={onNavigate}
+                aria-current={isActive(child.href) ? "page" : undefined}
                 className={`text-theme-sm ${
                   isActive(child.href)
                     ? "font-medium text-brand-500"
