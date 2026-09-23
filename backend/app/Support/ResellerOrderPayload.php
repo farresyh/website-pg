@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\LedgerEntry;
 use App\Models\Order;
 
 /**
@@ -19,11 +20,15 @@ use App\Models\Order;
 final class ResellerOrderPayload
 {
     /**
+     * @param  array<int, LedgerEntry|null>|null  $walletRefundsByOrderId
      * @return array<string, mixed>
      */
-    public static function for(Order $order): array
+    public static function for(Order $order, ?array $walletRefundsByOrderId = null): array
     {
         $order->loadMissing(['game', 'package']);
+        $walletRefund = $walletRefundsByOrderId !== null
+            ? ($walletRefundsByOrderId[$order->id] ?? null)
+            : $order->walletRefundLedgerEntry();
 
         $productCode = $order->game?->reseller_code !== null
             ? $order->game->reseller_code.'-'.($order->package?->denomination ?? $order->package?->catalog_code)
@@ -37,6 +42,11 @@ final class ResellerOrderPayload
             'price_sen' => (int) $order->selling_price,
             'payment_status' => $order->payment_status->value,
             'delivery_status' => $order->delivery_status->value,
+            'wallet_refunded' => $walletRefund !== null,
+            'wallet_refund' => $walletRefund !== null ? [
+                'amount_sen' => $walletRefund->amount,
+                'refunded_at' => $walletRefund->created_at?->toIso8601String(),
+            ] : null,
             'created_at' => $order->created_at?->toIso8601String(),
             'delivered_at' => $order->delivered_at?->toIso8601String(),
         ];

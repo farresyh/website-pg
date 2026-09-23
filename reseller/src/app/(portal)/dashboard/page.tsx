@@ -15,9 +15,9 @@ import { PageHeader, StatCard, Panel, StatusTag, ErrorNote } from "@/components/
 
 export default function DashboardPage() {
   const session = useClientSession();
-  const ownerType = session?.owner_type ?? "affiliate";
+  if (!session) return null;
 
-  return ownerType === "reseller" ? <ResellerDashboard /> : <AffiliateDashboard />;
+  return session.owner_type === "reseller" ? <ResellerDashboard /> : <AffiliateDashboard />;
 }
 
 /**
@@ -84,6 +84,9 @@ function ResellerDashboard() {
                     <StatusTag severity={order.delivery_status === "delivered" ? "success" : "muted"}>
                       {order.delivery_status}
                     </StatusTag>
+                    {order.wallet_refunded && (
+                      <span className="ml-1"><StatusTag severity="info">Wallet Refunded</StatusTag></span>
+                    )}
                   </div>
                 </div>
               ))}

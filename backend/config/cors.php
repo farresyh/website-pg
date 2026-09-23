@@ -43,7 +43,9 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    // Track Order's 429 recovery reads Laravel's throttle window from
+    // browser JavaScript; without this, cross-origin fetch hides the header.
+    'exposed_headers' => ['Retry-After'],
 
     'max_age' => 0,
 

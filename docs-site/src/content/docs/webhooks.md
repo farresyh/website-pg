@@ -26,12 +26,15 @@ PekanGame support can also set this for you.
 | Event | When |
 | --- | --- |
 | `order.delivered` | The order was fulfilled successfully. |
-| `order.failed` | Delivery failed. The wallet refund follows (see `order.refunded`). |
+| `order.failed` | Delivery failed; PekanGame may retry it, so a wallet refund is not guaranteed. |
 | `order.refunded` | A failed order was refunded to your wallet. |
 
 Each **event type** fires **at most once per order** — so one order can send
 you both an `order.failed` and a later `order.refunded`, but never two
 `order.failed`.
+`order.failed` does not mean the wallet has been credited. Webhooks can arrive
+out of order or be retried; `GET /v1/orders/{order_number}` is the authoritative
+current state when you need to reconcile.
 
 ## Payload
 
@@ -46,6 +49,8 @@ you both an `order.failed` and a later `order.refunded`, but never two
   "price_sen": 6300,
   "payment_status": "paid",
   "delivery_status": "delivered",
+  "wallet_refunded": false,
+  "wallet_refund": null,
   "created_at": "2026-09-10T09:14:52+00:00",
   "delivered_at": "2026-09-10T09:15:07+00:00",
   "event": "order.delivered",
@@ -56,6 +61,10 @@ you both an `order.failed` and a later `order.refunded`, but never two
 
 `event_id` is unique per event — use it for your own idempotency if the same
 event is delivered more than once.
+For `order.refunded`, `delivery_status` remains `failed`, while
+`wallet_refunded` is `true` and `wallet_refund` contains `amount_sen` and
+`refunded_at` (ISO 8601). The refund fields come from the wallet ledger, not
+from a new delivery state.
 
 ## Headers
 
@@ -101,7 +110,9 @@ if (! hash_equals($expected, $request->header('X-Hub-Signature-256', ''))) {
 - If your endpoint is down for longer than that, **reconcile with
   `GET /v1/orders`** — `?created_after=<ISO 8601>` to bound the window, and
   `?status=failed` / `?status=delivered` to filter (any
-  [`delivery_status` value](/first-order/#order-status-values)).
+  [`delivery_status` value](/first-order/#order-status-values)). Check each
+  order's `wallet_refunded` field; `?status=failed` includes both refunded and
+  not-yet-refunded failed orders.
 
 ## If your signing secret leaks
 

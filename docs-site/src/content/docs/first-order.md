@@ -75,6 +75,8 @@ On success you get **HTTP 201** and the order:
   "price_sen": 6300,
   "payment_status": "paid",
   "delivery_status": "not_started",
+  "wallet_refunded": false,
+  "wallet_refund": null,
   "created_at": "2026-09-10T09:14:52+00:00",
   "delivered_at": null
 }
@@ -94,13 +96,15 @@ own — see the table below.
 | `processing` | Being fulfilled. |
 | `pending` | Submitted; awaiting the final result. |
 | `delivered` | Done. `delivered_at` is set. |
-| `failed` | Delivery failed. A wallet refund follows. |
+| `failed` | Delivery failed. PekanGame may retry; a wallet refund is a separate later action. |
 | `needs_review` | The outcome is ambiguous and being confirmed manually. Rare. |
 
 `delivered` is final. `failed` is usually final too, but PekanGame may
 re-attempt a stuck order, so a `failed` order can still reach `delivered`
 later (you get an `order.delivered` webhook if so). Poll or use the webhook
 until the order is `delivered` or `failed`.
+For a failed order, check `wallet_refunded` separately to learn whether the
+wallet has actually been credited. Do not infer a refund from `failed` alone.
 
 ## 4. Get the result
 
@@ -124,11 +128,15 @@ GET /v1/orders/PG-7QK2M9X4RJ
   "price_sen": 6300,
   "payment_status": "paid",
   "delivery_status": "delivered",
+  "wallet_refunded": false,
+  "wallet_refund": null,
   "created_at": "2026-09-10T09:14:52+00:00",
   "delivered_at": "2026-09-10T09:15:07+00:00"
 }
 ```
 
-A `failed` order is refunded to your wallet — automatically once it is no
-longer being retried, or on request for one that is stuck. See
+A failed order can later be refunded to your wallet after PekanGame decides
+not to retry it. In that case the order still reports `payment_status: paid`
+and `delivery_status: failed`, but `wallet_refunded` becomes `true` and
+`wallet_refund` supplies the actual credited amount and time. See
 [Wallet & balance](/wallet/).

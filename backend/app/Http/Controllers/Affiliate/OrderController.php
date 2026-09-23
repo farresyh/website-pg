@@ -36,6 +36,10 @@ class OrderController extends Controller
 
         $orders = Order::query()
             ->with(['game:id,name,slug', 'package:id,name'])
+            ->withExists([
+                'voucher as has_compensation_voucher',
+                'voucherRedemption as has_voucher_restored' => fn ($query) => $query->where('status', 'restored'),
+            ])
             ->when($validated['payment_status'] ?? null, fn ($q, $v) => $q->where('payment_status', $v))
             ->when($validated['delivery_status'] ?? null, fn ($q, $v) => $q->where('delivery_status', $v))
             ->when($validated['search'] ?? null, fn ($q, $v) => $q->where(function ($q) use ($v) {
@@ -54,6 +58,10 @@ class OrderController extends Controller
     {
         $order = Order::query()
             ->with(['game:id,name,slug', 'package:id,name'])
+            ->withExists([
+                'voucher as has_compensation_voucher',
+                'voucherRedemption as has_voucher_restored' => fn ($query) => $query->where('status', 'restored'),
+            ])
             ->where('order_number', $orderNumber)
             ->first();
 
@@ -78,6 +86,8 @@ class OrderController extends Controller
             'affiliate_profit' => $order->affiliate_profit,
             'payment_status' => $order->payment_status->value,
             'delivery_status' => $order->delivery_status->value,
+            'has_compensation_voucher' => (bool) $order->has_compensation_voucher,
+            'has_voucher_restored' => (bool) $order->has_voucher_restored,
             'paid_at' => $order->paid_at?->toIso8601String(),
             'created_at' => $order->created_at?->toIso8601String(),
         ];

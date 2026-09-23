@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "PekanGame Reseller API",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "description": "Order placement, order status, price list, and wallet balance for a PekanGame reseller account. Every request needs a Bearer API key issued by PekanGame \u2014 Authorization: Bearer <key>."
     },
     "servers": [
@@ -376,7 +376,7 @@
         "/v1/orders": {
             "get": {
                 "operationId": "order.index",
-                "description": "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status and `?created_after=` (ISO 8601) on creation time. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
+                "description": "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status (not wallet refund) and `?created_after=` (ISO 8601) on creation time. `wallet_refunded` and `wallet_refund` report a later wallet credit independently of delivery status. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
                 "summary": "List orders",
                 "tags": [
                     "Order"
@@ -449,6 +449,8 @@
                                                     "price_sen": 6300,
                                                     "payment_status": "paid",
                                                     "delivery_status": "delivered",
+                                                    "wallet_refunded": false,
+                                                    "wallet_refund": null,
                                                     "created_at": "2026-09-10T09:14:52+00:00",
                                                     "delivered_at": "2026-09-10T09:15:07+00:00"
                                                 }
@@ -489,6 +491,27 @@
                                                     "delivery_status": {
                                                         "type": "string"
                                                     },
+                                                    "wallet_refunded": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "wallet_refund": {
+                                                        "type": [
+                                                            "object",
+                                                            "null"
+                                                        ],
+                                                        "properties": {
+                                                            "amount_sen": {
+                                                                "type": "integer"
+                                                            },
+                                                            "refunded_at": {
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "amount_sen",
+                                                            "refunded_at"
+                                                        ]
+                                                    },
                                                     "created_at": {
                                                         "type": [
                                                             "string",
@@ -510,6 +533,8 @@
                                                     "price_sen",
                                                     "payment_status",
                                                     "delivery_status",
+                                                    "wallet_refunded",
+                                                    "wallet_refund",
                                                     "created_at",
                                                     "delivered_at"
                                                 ]
@@ -682,6 +707,8 @@
                                             "price_sen": 6300,
                                             "payment_status": "paid",
                                             "delivery_status": "delivered",
+                                            "wallet_refunded": false,
+                                            "wallet_refund": null,
                                             "created_at": "2026-09-10T09:14:52+00:00",
                                             "delivered_at": "2026-09-10T09:15:07+00:00"
                                         }
@@ -733,6 +760,8 @@
                                             "price_sen": 6300,
                                             "payment_status": "paid",
                                             "delivery_status": "delivered",
+                                            "wallet_refunded": false,
+                                            "wallet_refund": null,
                                             "created_at": "2026-09-10T09:14:52+00:00",
                                             "delivered_at": "2026-09-10T09:15:07+00:00"
                                         }
@@ -859,7 +888,7 @@
         "/v1/orders/{orderNumber}": {
             "get": {
                 "operationId": "order.show",
-                "description": "The current status of one of the caller's own orders. Poll this as the fallback to the delivery webhook.",
+                "description": "The current status of one of the caller's own orders, including any later wallet refund. Poll this as the fallback to the delivery webhook; a failed delivery does not itself guarantee a refund.",
                 "summary": "Get an order",
                 "tags": [
                     "Order"
@@ -890,6 +919,8 @@
                                             "price_sen": 6300,
                                             "payment_status": "paid",
                                             "delivery_status": "delivered",
+                                            "wallet_refunded": false,
+                                            "wallet_refund": null,
                                             "created_at": "2026-09-10T09:14:52+00:00",
                                             "delivered_at": "2026-09-10T09:15:07+00:00"
                                         }
@@ -922,6 +953,27 @@
                                         "delivery_status": {
                                             "type": "string"
                                         },
+                                        "wallet_refunded": {
+                                            "type": "boolean"
+                                        },
+                                        "wallet_refund": {
+                                            "type": [
+                                                "object",
+                                                "null"
+                                            ],
+                                            "properties": {
+                                                "amount_sen": {
+                                                    "type": "integer"
+                                                },
+                                                "refunded_at": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "amount_sen",
+                                                "refunded_at"
+                                            ]
+                                        },
                                         "created_at": {
                                             "type": [
                                                 "string",
@@ -943,6 +995,8 @@
                                         "price_sen",
                                         "payment_status",
                                         "delivery_status",
+                                        "wallet_refunded",
+                                        "wallet_refund",
                                         "created_at",
                                         "delivered_at"
                                     ]

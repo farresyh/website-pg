@@ -53,7 +53,7 @@ return [
          * API version — the API version is the `/v1` in the path. Bump on
          * a docs release; a breaking API change is `/v2`, not a bump here.
          */
-        'version' => env('API_VERSION', '1.0.0'),
+        'version' => env('API_VERSION', '1.1.0'),
 
         /*
          * Description rendered on the home page of the API documentation (`/docs/api`).

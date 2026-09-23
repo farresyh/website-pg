@@ -13,6 +13,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Reseller\ResellerApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -260,6 +261,31 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('order_number', $orderNumber);
     }
 
+    public function test_show_exposes_wallet_refund_without_rewriting_payment_or_delivery_status(): void
+    {
+        [$reseller, $key] = $this->makeFundedReseller();
+        $order = $this->order($reseller, [
+            'order_number' => 'PG-REFUNDED',
+            'payment_status' => 'paid',
+            'delivery_status' => DeliveryStatus::Failed,
+            'selling_price' => 945,
+            'final_amount' => 945,
+        ]);
+        app(LedgerService::class)->credit(
+            LedgerOwnerType::ResellerWallet, $reseller->id, 945, 'wallet_refund',
+            referenceType: 'order', referenceId: $order->id,
+        );
+
+        $response = $this->getJson('/api/reseller/v1/orders/PG-REFUNDED', $this->authHeaders($key));
+
+        $response->assertOk()
+            ->assertJsonPath('payment_status', 'paid')
+            ->assertJsonPath('delivery_status', 'failed')
+            ->assertJsonPath('wallet_refunded', true)
+            ->assertJsonPath('wallet_refund.amount_sen', 945);
+        $this->assertNotNull($response->json('wallet_refund.refunded_at'));
+    }
+
     public function test_show_404s_for_another_resellers_order(): void
     {
         Queue::fake();
@@ -310,6 +336,40 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('items.1.order_number', 'PG-OLDER');
         $response->assertJsonPath('next_cursor', null);
         $response->assertJsonMissingPath('items.0.cost_price');
+    }
+
+    public function test_index_shows_refund_details_for_only_the_refunded_order(): void
+    {
+        [$reseller, $key] = $this->makeFundedReseller();
+        $refunded = $this->order($reseller, [
+            'order_number' => 'PG-REFUNDED-LIST',
+            'delivery_status' => DeliveryStatus::Failed,
+        ]);
+        $this->order($reseller, [
+            'order_number' => 'PG-FAILED-NOT-REFUNDED',
+            'delivery_status' => DeliveryStatus::Failed,
+        ]);
+        app(LedgerService::class)->credit(
+            LedgerOwnerType::ResellerWallet, $reseller->id, 945, 'wallet_refund',
+            referenceType: 'order', referenceId: $refunded->id,
+        );
+
+        $ledgerReads = 0;
+        DB::listen(function ($query) use (&$ledgerReads): void {
+            if (str_contains($query->sql, 'ledger_entries') && str_starts_with(strtolower($query->sql), 'select')) {
+                $ledgerReads++;
+            }
+        });
+
+        $response = $this->getJson('/api/reseller/v1/orders?status=failed', $this->authHeaders($key));
+
+        $response->assertOk()->assertJsonCount(2, 'items');
+        $items = collect($response->json('items'))->keyBy('order_number');
+        $this->assertTrue($items['PG-REFUNDED-LIST']['wallet_refunded']);
+        $this->assertSame(945, $items['PG-REFUNDED-LIST']['wallet_refund']['amount_sen']);
+        $this->assertFalse($items['PG-FAILED-NOT-REFUNDED']['wallet_refunded']);
+        $this->assertNull($items['PG-FAILED-NOT-REFUNDED']['wallet_refund']);
+        $this->assertSame(1, $ledgerReads, 'A page of orders should load wallet refunds in one batch query.');
     }
 
     public function test_index_paginates_with_an_opaque_cursor(): void

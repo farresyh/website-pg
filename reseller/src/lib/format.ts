@@ -45,9 +45,10 @@ export function deliverySeverity(status: string): string {
     {
       delivered: "success",
       processing: "info",
+      pending: "info",
+      needs_review: "warn",
       not_started: "muted",
       failed: "danger",
-      refunded: "warn",
     }[status] ?? "muted"
   );
 }

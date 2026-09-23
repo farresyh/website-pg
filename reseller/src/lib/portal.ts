@@ -11,9 +11,10 @@ export type PaymentStatus = "pending" | "paid" | "failed";
 export type DeliveryStatus =
   | "not_started"
   | "processing"
+  | "pending"
+  | "needs_review"
   | "delivered"
-  | "failed"
-  | "refunded";
+  | "failed";
 export type SubscriptionStatus = "active" | "grace" | "lapsed";
 
 export interface SubscriptionSnapshot {
@@ -47,6 +48,12 @@ export interface OrderListItem {
   affiliate_profit?: number;
   payment_status: PaymentStatus;
   delivery_status: DeliveryStatus;
+  /** Wallet-order compensation is separate from delivery status. */
+  wallet_refunded?: boolean;
+  wallet_refund?: { amount_sen: number; refunded_at: string | null } | null;
+  /** Affiliate-storefront compensation is separate from delivery status. */
+  has_compensation_voucher?: boolean;
+  has_voucher_restored?: boolean;
   paid_at?: string | null;
   created_at: string | null;
 }

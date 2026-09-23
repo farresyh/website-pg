@@ -30,6 +30,14 @@ The version number on this documentation (shown in the API Reference) is the
 
 ## Changelog
 
+### 2026-09 — v1.1.0
+
+- Order responses (create/replay, get, and list) and delivery webhooks now
+  include `wallet_refunded` and `wallet_refund` (amount in sen and refund time).
+  These are additive fields; the API path remains `/v1`.
+- Clarified that `delivery_status: failed` does not itself mean a wallet refund
+  has occurred. `order.refunded` announces the separate wallet credit.
+
 ### 2026-09 — v1.0.0
 
 Initial public documentation of the `/v1` API.

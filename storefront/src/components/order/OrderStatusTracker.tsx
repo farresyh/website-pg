@@ -17,14 +17,23 @@ import RateOrderModal from "@/components/order/RateOrderModal";
 //
 // ADR-071 PR3 — adaptive cadence, since Reverb is still deferred in
 // production (ADR-071 PR4): a fresh delivery usually resolves in the
-// first minute, so poll fast then, then back off. Keeps the "your
-// diamonds were delivered" moment near-instant (≤2s) without the
-// steady 20s load of a flat interval.
+// first minute, so poll fast then, then back off. The first-minute
+// cadence stays below the track-order endpoint's 20/minute throttle.
 const MAX_WATCH_MS = 6 * 60_000; // ~6 minutes total, unchanged
 function nextPollDelay(elapsedMs: number): number {
-  if (elapsedMs < 60_000) return 2_000; // first minute — the common case
+  if (elapsedMs < 60_000) return 4_000; // first minute — the common case
   if (elapsedMs < 180_000) return 10_000; // 1–3 minutes
   return 20_000; // 3–6 minutes
+}
+
+function retryAfterDelay(value: string | null): number {
+  if (value !== null) {
+    const seconds = Number(value);
+    const delay = Number.isFinite(seconds) ? seconds * 1_000 : Date.parse(value) - Date.now();
+    if (Number.isFinite(delay)) return Math.max(4_000, delay);
+  }
+  // A missing/unreadable header must not recreate a tight 429 loop.
+  return 60_000;
 }
 
 type StageState = "done" | "active" | "pending" | "failed";
@@ -123,6 +132,14 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         }
       } catch (err) {
         if (cancelled) return;
+        if (err instanceof ApiError && err.status === 429) {
+          // Other tabs or visitors behind the same IP can still hit the
+          // shared throttle. Keep the last good status (or loading state)
+          // and retry after the server's window instead of showing a
+          // permanent error that requires a page refresh.
+          timer = setTimeout(poll, retryAfterDelay(err.retryAfter));
+          return;
+        }
         setError(err instanceof ApiError ? err.message : "Something went wrong. Try again in a moment.");
         setLoading(false);
       }
