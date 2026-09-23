@@ -132,7 +132,7 @@ export default function PanelSidebar({ homeHref, brandLabel, shortLabel, section
             <PanelSection key={section.title} section={section} showLabels isActive={isActive} onNavigate={closeMobileSidebar} />
           ))}
         </div>
-        <div className="border-t border-gray-200 py-4 dark:border-gray-800">{mobileFooter}</div>
+        <div className="border-t border-gray-200 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:border-gray-800">{mobileFooter}</div>
       </div>
     </aside>
   );
