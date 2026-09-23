@@ -80,7 +80,10 @@ class DispatchResellerOrderWebhookTest extends TestCase
 
         $this->fire($order);
 
-        $this->assertSame('order.failed', ResellerWebhookDelivery::query()->where('order_id', $order->id)->value('event'));
+        $delivery = ResellerWebhookDelivery::query()->where('order_id', $order->id)->sole();
+        $this->assertSame('order.failed', $delivery->event);
+        $this->assertFalse($delivery->payload['wallet_refunded']);
+        $this->assertNull($delivery->payload['wallet_refund']);
     }
 
     public function test_needs_review_does_not_fire(): void

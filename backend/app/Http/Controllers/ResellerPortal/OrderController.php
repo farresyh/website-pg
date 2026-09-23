@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\ResellerPortal;
 
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -42,8 +43,9 @@ class OrderController extends Controller
             ->when($validated['payment_status'] ?? null, fn ($q, $v) => $q->where('payment_status', $v))
             ->when($validated['delivery_status'] ?? null, fn ($q, $v) => $q->where('delivery_status', $v))
             ->orderByDesc('created_at')
-            ->paginate($validated['per_page'] ?? 20)
-            ->through(fn (Order $order): array => self::shape($order));
+            ->paginate($validated['per_page'] ?? 20);
+        $refunds = Order::walletRefundEntriesFor($orders->getCollection());
+        $orders->through(fn (Order $order): array => self::shape($order, refundsByOrderId: $refunds));
 
         return response()->json($orders);
     }
@@ -66,10 +68,14 @@ class OrderController extends Controller
     }
 
     /**
+     * @param  array<int, LedgerEntry|null>|null  $refundsByOrderId
      * @return array<string, mixed>
      */
-    private static function shape(Order $order, bool $detail = false): array
+    private static function shape(Order $order, bool $detail = false, ?array $refundsByOrderId = null): array
     {
+        $walletRefund = $refundsByOrderId !== null
+            ? ($refundsByOrderId[$order->id] ?? null)
+            : $order->walletRefundLedgerEntry();
         $base = [
             'order_number' => $order->order_number,
             'reference_number' => $order->reference_number,
@@ -78,6 +84,11 @@ class OrderController extends Controller
             'final_amount' => $order->final_amount,
             'payment_status' => $order->payment_status->value,
             'delivery_status' => $order->delivery_status->value,
+            'wallet_refunded' => $walletRefund !== null,
+            'wallet_refund' => $walletRefund !== null ? [
+                'amount_sen' => $walletRefund->amount,
+                'refunded_at' => $walletRefund->created_at?->toIso8601String(),
+            ] : null,
             'created_at' => $order->created_at?->toIso8601String(),
         ];
 

@@ -25,9 +25,10 @@ const DELIVERY_OPTIONS = [
   "",
   "not_started",
   "processing",
+  "pending",
+  "needs_review",
   "delivered",
   "failed",
-  "refunded",
 ];
 
 export default function OrdersPage() {
@@ -193,9 +194,20 @@ export default function OrdersPage() {
                     </StatusTag>
                   </td>
                   <td className="px-5 py-4">
-                    <StatusTag severity={deliverySeverity(order.delivery_status)}>
-                      {humanize(order.delivery_status)}
-                    </StatusTag>
+                    <div className="flex flex-wrap gap-1">
+                      <StatusTag severity={deliverySeverity(order.delivery_status)}>
+                        {humanize(order.delivery_status)}
+                      </StatusTag>
+                      {ownerType === "reseller" && order.wallet_refunded && (
+                        <StatusTag severity="info">Wallet Refunded</StatusTag>
+                      )}
+                      {ownerType === "affiliate" && order.has_compensation_voucher && (
+                        <StatusTag severity="info">Voucher Issued</StatusTag>
+                      )}
+                      {ownerType === "affiliate" && order.has_voucher_restored && (
+                        <StatusTag severity="info">Voucher Restored</StatusTag>
+                      )}
+                    </div>
                   </td>
                   <td className="px-5 py-4 text-theme-xs text-gray-400">
                     {formatDateTime(order.paid_at ?? order.created_at)}
