@@ -58,6 +58,7 @@ export class ApiError extends Error {
     public status: number,
     public code: string | undefined,
     message: string,
+    public retryAfter: string | null = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -100,6 +101,7 @@ export async function apiFetch<T>(path: string, { body, token, headers, ...init 
       response.status,
       payload?.code,
       payload?.message ?? `Request to ${path} failed (${response.status})`,
+      response.headers.get("Retry-After"),
     );
   }
 

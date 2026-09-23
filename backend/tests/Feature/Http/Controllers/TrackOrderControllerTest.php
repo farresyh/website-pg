@@ -153,6 +153,22 @@ class TrackOrderControllerTest extends TestCase
         $this->getJson("/api/track-order/{$order->order_number}")->assertOk();
     }
 
+    public function test_throttle_exposes_retry_after_to_the_cross_origin_storefront(): void
+    {
+        $order = $this->order();
+        $url = "/api/track-order/{$order->order_number}";
+        $headers = ['Origin' => 'http://localhost:3001'];
+
+        for ($attempt = 0; $attempt < 20; $attempt++) {
+            $this->getJson($url, $headers)->assertOk();
+        }
+
+        $this->getJson($url, $headers)
+            ->assertStatus(429)
+            ->assertHeader('Access-Control-Expose-Headers', 'Retry-After')
+            ->assertHeader('Retry-After');
+    }
+
     public function test_has_review_is_false_when_no_review_exists(): void
     {
         $order = $this->order(['order_number' => 'KRS-NOREVIEW']);
