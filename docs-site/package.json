@@ -21,5 +21,10 @@
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "httpsnippet": {
+      "form-data": "4.0.6"
+    }
   }
 }
