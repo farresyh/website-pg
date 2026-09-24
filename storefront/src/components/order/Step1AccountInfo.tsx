@@ -163,7 +163,7 @@ export default function Step1AccountInfo({
             <WarningCircle size={16} weight="fill" />
             Wrong Region Detected: this account belongs to {result.redirect_game.name}.
           </p>
-          <Link href={`/order/${result.redirect_game.slug}`} className="inline-flex items-center gap-1 font-bold text-primary underline">
+          <Link href={`/order/${result.redirect_game.slug}`} className="inline-flex items-center gap-1 font-bold text-primary-on-surface underline">
             Go to {result.redirect_game.name} Store <ArrowSquareOut size={14} />
           </Link>
         </div>

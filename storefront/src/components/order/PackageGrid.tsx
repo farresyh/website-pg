@@ -64,7 +64,7 @@ function PackageGrid({ packages, selectedId, onSelect, quotaRemainingRm = null }
   return (
     <div>
       {quotaRemainingRm != null && (
-        <p className="mb-3 rounded-md border-2 border-ink bg-secondary-fixed-dim px-3 py-2 font-display text-[12px] font-bold uppercase tracking-wide text-on-surface">
+        <p className="mb-3 rounded-md border-2 border-ink bg-secondary-fixed-dim px-3 py-2 font-display text-[12px] font-bold uppercase tracking-wide text-on-secondary-fixed-dim">
           Member quota left this cycle: RM{quotaRemainingRm.toFixed(2)}
         </p>
       )}
@@ -140,7 +140,7 @@ function PackageGrid({ packages, selectedId, onSelect, quotaRemainingRm = null }
               <span className="font-display text-[13px] font-bold">{pkg.name}</span>
               {isMemberPrice && pkg.memberPriceRm != null ? (
                 <span className="flex items-baseline gap-1.5">
-                  <span className="font-mono text-[15px] font-bold text-primary">RM{pkg.memberPriceRm.toFixed(2)}</span>
+                  <span className="font-mono text-[15px] font-bold text-primary-on-surface">RM{pkg.memberPriceRm.toFixed(2)}</span>
                   <span className="font-mono text-[11px] text-on-surface-variant line-through">
                     RM{pkg.priceRm.toFixed(2)}
                   </span>
@@ -149,7 +149,7 @@ function PackageGrid({ packages, selectedId, onSelect, quotaRemainingRm = null }
                 <span className="font-mono text-[15px] font-bold">RM{pkg.priceRm.toFixed(2)}</span>
               )}
               {!isMemberPrice && pkg.memberPriceRm != null && (
-                <span className="font-mono text-[11px] font-semibold text-primary">
+                <span className="font-mono text-[11px] font-semibold text-primary-on-surface">
                   Member: RM{pkg.memberPriceRm.toFixed(2)}
                 </span>
               )}

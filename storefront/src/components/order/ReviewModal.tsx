@@ -426,14 +426,14 @@ export default function ReviewModal({
           )}
           {transactionFeeRm != null && <Row k="Transaction Fee" v={`RM${transactionFeeRm.toFixed(2)}`} />}
           {appliedVoucher && (
-            <div className="flex items-center justify-between text-sm text-primary">
+            <div className="flex items-center justify-between text-sm text-primary-on-surface">
               <span>Voucher Discount</span>
               <span>-RM{voucherDiscountRm.toFixed(2)}</span>
             </div>
           )}
           <div className="flex items-center justify-between pt-1">
             <span className="text-base font-extrabold">Total</span>
-            <span className="font-mono text-xl font-bold text-primary">RM{payableRm.toFixed(2)}</span>
+            <span className="font-mono text-xl font-bold text-primary-on-surface">RM{payableRm.toFixed(2)}</span>
           </div>
         </div>
 
@@ -454,7 +454,7 @@ export default function ReviewModal({
           />
           <span className="text-[12.5px] leading-relaxed text-on-surface-variant">
             I agree to the{" "}
-            <Link href="/terms" target="_blank" className="text-primary underline" onClick={(e) => e.stopPropagation()}>
+            <Link href="/terms" target="_blank" className="text-primary-on-surface underline" onClick={(e) => e.stopPropagation()}>
               Terms &amp; Conditions
             </Link>{" "}
             and confirm that the Player ID above is correct. Delivery to an incorrect ID cannot be reversed.

@@ -41,11 +41,11 @@ export default function SiteHeader() {
         </div>
 
         <nav className="hidden items-center gap-6 font-display text-[13px] font-bold uppercase tracking-wide text-on-surface-variant lg:flex">
-          <Link href="/#popular-picks" className="border-b-2 border-primary pb-0.5 text-primary">
+          <Link href="/#popular-picks" className="border-b-2 border-primary pb-0.5 text-primary-on-surface">
             All Products
           </Link>
           {membershipEnabled && (
-            <Link href="/membership" className="pb-0.5 hover:text-primary">
+            <Link href="/membership" className="pb-0.5 hover:text-primary-on-surface">
               Membership
             </Link>
           )}

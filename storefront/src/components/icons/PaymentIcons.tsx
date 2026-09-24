@@ -57,5 +57,5 @@ export function PaymentChannelIcon({
   if ((category ?? "").toLowerCase() === "ewallet") {
     return <Wallet size={20} className="text-secondary" weight="fill" />;
   }
-  return <Bank size={20} className="text-primary" weight="fill" />;
+  return <Bank size={20} className="text-primary-on-surface" weight="fill" />;
 }

@@ -61,11 +61,11 @@ export default async function SiteFooter() {
 
           {branding.footerGames.length > 0 && (
             <div>
-              <h5 className="mb-3.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-primary">Top Up Games</h5>
+              <h5 className="mb-3.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-primary-on-surface">Top Up Games</h5>
               <ul className="space-y-2.5 text-sm text-on-surface-variant">
                 {branding.footerGames.map((game) => (
                   <li key={game.id}>
-                    <Link href={`/order/${game.slug}`} className="hover:text-primary">
+                    <Link href={`/order/${game.slug}`} className="hover:text-primary-on-surface">
                       {game.name}
                     </Link>
                   </li>
@@ -75,16 +75,16 @@ export default async function SiteFooter() {
           )}
 
           <div>
-            <h5 className="mb-3.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-primary">Company</h5>
+            <h5 className="mb-3.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-primary-on-surface">Company</h5>
             <ul className="space-y-2.5 text-sm text-on-surface-variant">
               <li>
-                <Link href="/about-us" className="hover:text-primary">About Us</Link>
+                <Link href="/about-us" className="hover:text-primary-on-surface">About Us</Link>
               </li>
               <li>
-                <Link href="/terms" className="hover:text-primary">Terms &amp; Conditions</Link>
+                <Link href="/terms" className="hover:text-primary-on-surface">Terms &amp; Conditions</Link>
               </li>
               <li>
-                <Link href="/privacy" className="hover:text-primary">Privacy Policy</Link>
+                <Link href="/privacy" className="hover:text-primary-on-surface">Privacy Policy</Link>
               </li>
               {/* Founder feedback 2026-09-13: hidden from footer nav for
                   now — the page itself (ADR-091) stays fully live and
@@ -97,12 +97,12 @@ export default async function SiteFooter() {
           </div>
 
           <div>
-            <h5 className="mb-3.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-primary">Support</h5>
+            <h5 className="mb-3.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-primary-on-surface">Support</h5>
             <ul className="space-y-2.5 text-sm text-on-surface-variant">
               {branding.supportEmail && <li>{branding.supportEmail}</li>}
               {branding.supportPhone && <li>{branding.supportPhone}</li>}
               <li>
-                <Link href="/track-order" className="hover:text-primary">Track Order</Link>
+                <Link href="/track-order" className="hover:text-primary-on-surface">Track Order</Link>
               </li>
             </ul>
           </div>
