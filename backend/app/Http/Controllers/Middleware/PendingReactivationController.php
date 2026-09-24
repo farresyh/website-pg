@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
 use App\Http\Requests\Middleware\BulkPendingReactivationRequest;
 use App\Models\Package;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Sync\PendingReactivationFinder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * SYNC-5/6, ADR-015 decision #3: a package Deactivation Detection
@@ -19,20 +21,22 @@ use Illuminate\Http\JsonResponse;
  */
 class PendingReactivationController extends Controller
 {
-    public function __construct(private readonly PendingReactivationFinder $finder)
-    {
-    }
+    public function __construct(
+        private readonly PendingReactivationFinder $finder,
+        private readonly ComboPricingService $comboPricing,
+    ) {}
 
     public function index(): JsonResponse
     {
         return response()->json($this->finder->find()->values());
     }
 
-    public function approve(Package $package): JsonResponse
+    public function approve(Request $request, Package $package): JsonResponse
     {
         $this->assertPending($package);
 
         $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+        $this->comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
         $this->forgetCaches($package);
 
         return response()->json($package);
@@ -57,8 +61,9 @@ class PendingReactivationController extends Controller
         Package::query()
             ->whereIn('id', array_intersect($request->validated('package_ids'), $pendingIds))
             ->get()
-            ->each(function (Package $package) {
+            ->each(function (Package $package) use ($request) {
                 $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+                $this->comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
                 $this->forgetCaches($package);
             });
 

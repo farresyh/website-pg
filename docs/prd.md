@@ -958,31 +958,17 @@ accepted state, not a gap to chase. See §14.
     residual 429 via the now cross-origin-exposed `Retry-After` header. See
     `docs/adr.md`'s ADR-071 addendum and `docs/build-log.md`'s 2026-09-23/24
     entries.
-21. **Pending Reactivation approval doesn't cascade to reactivate a
-    dependent combo — visibility AND action both missing, confirmed still
-    unbuilt 2026-09-22.** Found live 2026-09-21 while reviewing Pending
-    Reactivation and re-confirmed by re-reading the actual
-    code this session (`ComboPricingService::cascadeDeactivate()`,
-    `PendingReactivationFinder`, `PendingReactivationController`) —
-    nothing has changed since. Two-part gap: (1) `cascadeDeactivate()`
-    sets a dependent combo's `deactivated_reason = 'combo_component_deactivated'`,
-    but `PendingReactivationFinder` only ever queries
-    `deactivated_reason = 'supplier_sync'` — a cascade-deactivated combo
-    **never appears in the Pending Reactivation queue at all**, not even
-    for an admin to manually reactivate; (2) even setting that aside,
-    `PendingReactivationController::approve()`/`bulkApprove()` and
-    `PendingReactivationAutoApprover::approve()` (ADR-100) only ever touch
-    the package actually being approved — zero reverse-cascade logic
-    exists anywhere to reactivate a combo once every one of its components
-    is active again. ADR-094 decision 22 deliberately made cascade
-    **deactivation** one-directional (no auto-reactivate) — but that
-    decision never addressed **visibility**, so gap (1) is an unintended
-    side effect, not a recorded decision. Needs its own grill before
-    building (touches 3 call sites: manual single/bulk approve + the
-    auto-approver; needs multi-component-all-active checking; needs to
-    decide whether reactivation stays manual-but-visible or becomes
-    auto like ADR-100's own trigger). Not started — no ADR number
-    assigned yet.
+21. ~~**Pending Reactivation approval doesn't cascade to reactivate a
+    dependent combo.**~~ — **🟢 FIXED, staging 2026-09-24** (ADR-094's
+    2026-09-24 addendum). `ComboPricingService::cascadeReactivate()`
+    reactivates a `combo_component_deactivated` combo the moment every
+    one of its components is active again — wired into every site a
+    component's `is_active` can flip false→true (Pending Reactivation
+    approve/bulk-approve, dismiss-restore, pending price change
+    approve/dismiss, the Games admin toggle, ADR-100's auto-approver).
+    Founder chose auto-cascade over manual-but-visible. New
+    `package_reactivation_logs.admin_user_id` records provenance. Full
+    backend suite green (2236/2236); not yet released to `main`.
 22. ~~**`docs-site/` three high-severity audit entries.**~~ — **🟢 FIXED, LIVE
     2026-09-24** (PR #273, released `main` via PR #278). Traced to one
     build-time chain: `starlight-openapi` → `httpsnippet` → vulnerable

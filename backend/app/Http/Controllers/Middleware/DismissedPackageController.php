@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Middleware;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
 use App\Models\Package;
+use App\Services\Pricing\ComboPricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -33,11 +34,12 @@ class DismissedPackageController extends Controller
         return response()->json($query->paginate($perPage)->withQueryString());
     }
 
-    public function restore(Package $package): JsonResponse
+    public function restore(Request $request, Package $package, ComboPricingService $comboPricing): JsonResponse
     {
         abort_unless($package->deactivated_reason === 'admin', 422, 'This package was not manually dismissed.');
 
         $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+        $comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
 
         GameController::forgetPackagesCache($package->game_id);
         GameController::forgetIndexCache();

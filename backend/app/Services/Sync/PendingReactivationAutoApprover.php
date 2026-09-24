@@ -7,6 +7,7 @@ use App\Models\Package;
 use App\Models\PackageReactivationLog;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Pricing\ComboPricingService;
 use Illuminate\Support\Carbon;
 
 /**
@@ -59,7 +60,10 @@ use Illuminate\Support\Carbon;
  */
 final class PendingReactivationAutoApprover
 {
-    public function __construct(private readonly PendingReactivationFinder $finder) {}
+    public function __construct(
+        private readonly PendingReactivationFinder $finder,
+        private readonly ComboPricingService $comboPricing,
+    ) {}
 
     public function run(Supplier $supplier, ?int $priceSyncRunId): int
     {
@@ -146,6 +150,10 @@ final class PendingReactivationAutoApprover
             'price_sync_run_id' => $priceSyncRunId,
             'trigger' => $trigger,
         ]);
+
+        // ADR-094 addendum (2026-09-24) — this component may complete
+        // a combo that's been sitting cascade-deactivated.
+        $this->comboPricing->cascadeReactivate($package, $priceSyncRunId);
 
         // Matches PendingReactivationController::forgetCaches()'s own
         // per-package pattern exactly — default `withIndex=true`

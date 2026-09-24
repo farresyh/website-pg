@@ -489,12 +489,13 @@ class ComboPackageControllerTest extends TestCase
     }
 
     /**
-     * Decision 22's other half: reactivating a component never
-     * auto-reactivates a combo that depends on it — a deactivated
-     * combo stays deactivated until an admin explicitly reactivates it
-     * (and decision 13's cascade only ever runs on deactivate).
+     * ADR-094 addendum (2026-09-24), reversing decision 22's original
+     * "reactivating a component never auto-reactivates a combo" call:
+     * once every one of a cascade-deactivated combo's components is
+     * active again, reactivating the last one brings the combo back
+     * too, via `ComboPricingService::cascadeReactivate()`.
      */
-    public function test_reactivating_a_component_does_not_auto_reactivate_a_dependent_combo(): void
+    public function test_reactivating_the_last_inactive_component_auto_reactivates_a_dependent_combo(): void
     {
         $game = $this->game();
         $component = $this->package($game, $this->supplier());
@@ -506,6 +507,8 @@ class ComboPackageControllerTest extends TestCase
         $this->patchJson("/api/packages/{$component->id}/status", ['is_active' => true])->assertOk();
 
         $this->assertTrue($component->refresh()->is_active);
-        $this->assertFalse($combo->refresh()->is_active);
+        $combo->refresh();
+        $this->assertTrue($combo->is_active);
+        $this->assertNull($combo->deactivated_reason);
     }
 }
