@@ -51,7 +51,7 @@ export default function QuickCounterCard({ games }: { games: Game[] }) {
                   {g.imageUrl ? (
                     <Image src={g.imageUrl} alt="" fill className="object-cover" sizes="44px" />
                   ) : (
-                    <GameController size={20} weight="fill" className="text-ink" />
+                    <GameController size={20} weight="fill" className="text-on-surface" />
                   )}
                 </span>
                 <span className="line-clamp-2 font-display text-[10px] font-bold leading-tight">{g.name}</span>

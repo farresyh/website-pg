@@ -33,7 +33,7 @@ const variantClasses = {
   primary:
     "border-2 border-ink bg-primary text-on-primary neo neo-hover-cyan hover:bg-primary-container",
   outline:
-    "border-2 border-ink bg-surface-container-lowest text-ink neo neo-hover hover:bg-surface-container-low",
+    "border-2 border-ink bg-surface-container-lowest text-on-surface neo neo-hover hover:bg-surface-container-low",
   text: "border-2 border-transparent bg-transparent text-primary-on-surface hover:bg-primary-fixed",
   destructive:
     "border-2 border-ink bg-danger text-on-danger neo neo-hover hover:brightness-95",

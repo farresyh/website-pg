@@ -16,7 +16,7 @@ export default function ProductHeaderCard({ game }: { game: GameDetail }) {
         {game.imageUrl ? (
           <Image src={game.imageUrl} alt={game.name} fill className="object-cover" sizes="64px" priority />
         ) : (
-          <span className="font-display text-2xl font-bold text-ink/70">{game.name.charAt(0).toUpperCase()}</span>
+          <span className="font-display text-2xl font-bold text-on-surface/70">{game.name.charAt(0).toUpperCase()}</span>
         )}
       </div>
       <div>

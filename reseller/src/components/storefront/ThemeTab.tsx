@@ -12,9 +12,17 @@ import { THEME_PRESETS, getThemePreset } from "@/lib/theme-presets";
 import { Panel, ErrorNote } from "@/components/ui";
 import { SaveButton, InactiveNotice, TabLoading } from "./shared";
 
+// `default` (Digital Architect) is PekanGame's own primary-brand identity,
+// never an affiliate's option (founder decision, 2026-09-24) — filtered
+// out of every list an affiliate can pick from. It stays in THEME_PRESETS
+// itself (storefront/src/lib/theme-presets.ts) as the primary brand's own
+// definition and the internal fallback `getThemePreset()` uses.
+const SELECTABLE_PRESETS = Object.values(THEME_PRESETS).filter((p) => p.id !== "default");
+const FALLBACK_PRESET_ID = SELECTABLE_PRESETS[0].id;
+
 export default function ThemeTab() {
   const [data, setData] = useState<StorefrontBrandingResponse | null>(null);
-  const [selectedPreset, setSelectedPreset] = useState<string>("default");
+  const [selectedPreset, setSelectedPreset] = useState<string>(FALLBACK_PRESET_ID);
   const [selectedMode, setSelectedMode] = useState<"light" | "dark">("light");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -28,7 +36,11 @@ export default function ThemeTab() {
       .then((result) => {
         if (cancelled) return;
         setData(result);
-        setSelectedPreset(result.branding.theme_preset || "default");
+        setSelectedPreset(
+          result.branding.theme_preset && result.branding.theme_preset !== "default"
+            ? result.branding.theme_preset
+            : FALLBACK_PRESET_ID,
+        );
         setSelectedMode(result.branding.theme_mode || "light");
       })
       .catch((err: unknown) => {
@@ -115,7 +127,7 @@ export default function ThemeTab() {
                 })}
               </div>
               {!darkAvailable && (
-                <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">Dark mode is only available on the Digital Architect (default) preset for now — more presets are getting a dark palette over time.</p>
+                <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">This preset doesn&apos;t have a dark palette yet — more presets are getting one over time.</p>
               )}
             </div>
           </Panel>
@@ -126,7 +138,7 @@ export default function ThemeTab() {
                 Choose a curated Neubrutalist color palette for your customer storefront. Click a preset to preview.
               </p>
               <div className="space-y-3">
-              {Object.values(THEME_PRESETS).map((preset) => {
+              {SELECTABLE_PRESETS.map((preset) => {
                 const isSelected = selectedPreset === preset.id;
                 const isSavedActive = currentActivePreset === preset.id;
 

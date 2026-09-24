@@ -248,11 +248,13 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 
 **Extended 2026-09-11 by [ADR-090](./adr.md).** Grilled after the founder found the presets barely changed the page in production — root cause: `tokens` only ever covered accent colours (`--color-primary`/`secondary`/`tertiary`/`warning`), never `--color-surface*`/`--color-ink` (background/text), which stayed fixed once in `globals.css :root` regardless of preset. All 5 presets now carry surface/ink overrides too, so a preset actually recolors the whole page, not just buttons/badges. Also delivers the first slice of ADR-081's pinned dark-mode requirement: a per-affiliate fixed **Site Mode** (light/dark, not a viewer-side toggle) with a hand-authored `tokensDark` for the `default` preset; the other 4 presets' dark palettes are backlog (§16).
 
+**Extended 2026-09-24 by [ADR-113](./adr.md).** Dark mode now ships for all 4 **affiliate-selectable** presets (Cyber Bumblebee, Red Giants Edition, Cyber Emerald, Hyper Cobalt) — the §16 backlog item this closed. `storefront/DESIGN.md` written as the living design-system reference (new file, includes named Dark Mode Rules). A same-session policy change: **Digital Architect (`default`) is no longer offered to affiliates at all** — it's PekanGame's own primary-brand identity (verified zero non-primary affiliates were on it in production before removing it), so its own dark palette was built, then deleted again as unreachable once it was pulled from the affiliate picker. A real WCAG contrast bug in Cyber Bumblebee's light mode (`primary` unreadable as running text on white, 41 call sites) was also found and fixed the same session.
+
 | ID | Original Phase-2 requirement | Status |
 | --- | --- | --- |
 | **THM-1** | Theme list (cards/grid) with preview, status badge, usage count | 🟡 **Partial** — a fixed preset picker with live preview shipped (ADR-081); no admin CRUD, no usage count |
 | **THM-2** | Admin creates/edits a theme: colour scheme, fonts, radii, backgrounds, header/button styles, logo | ❌ **Dropped** (ADR-081) — presets are code-defined; per-brand custom colour/typography is not built |
-| **THM-3** | Reseller theme *permissions* table | ❌ **Dropped** (ADR-081) — every affiliate may pick any preset |
+| **THM-3** | Reseller theme *permissions* table | ❌ **Dropped** (ADR-081) — every affiliate may pick any of the 4 affiliate-selectable presets (ADR-113 excludes the primary-brand-only 5th) |
 | **THM-4** | Bulk update reseller theme assignments | ❌ **Dropped** (ADR-081) |
 
 ## 6.16 Admin — SEO Management
@@ -817,18 +819,16 @@ accepted state, not a gap to chase. See §14.
    *sender* — the setting fields exist), gallery in-modal picker (paste-URL —
    gallery→WebP + delete referential safety already shipped, ADR-095),
    SEO `AggregateRating` JSON-LD on the PDP,
-   **ADR-090's dark-palette backfill** — `bumblebee`/`redgiants`/`emerald`/`cobalt` each still need a
-   hand-authored `tokensDark` (only `default` has one; the portal's Site Mode
-   toggle already hides "Dark" for any preset without one, so this is additive
-   design work, not a blocker) — and the **reseller-family audit's item A3**
+   ~~ADR-090's dark-palette backfill (`bumblebee`/`redgiants`/`emerald`/`cobalt`)~~
+   — **built 2026-09-24, ADR-113**, and the **reseller-family audit's item A3**
    (per-tier rate limit on the Reseller API/Bot) — deliberately deferred design
    call from the 2026-09-10 audit, not forgotten.
-7. **ADR-090 dark mode needs a real redo, not just the backfill above.** The
-   founder tried the shipped version live and dislikes the actual design (not
-   missing presets — the design itself); next session he brings a Stitch
-   reference for the team to follow instead of designing it from scratch again.
-   Distinct from item 6's `tokensDark` backfill, which is additive work on the
-   *current* design and can proceed independently.
+7. ~~ADR-090 dark mode needs a real redo.~~ **Resolved 2026-09-24 by
+   [ADR-113](./adr.md)** — the founder tried the antislop/impeccable skills
+   directly against real competitor references instead of waiting for a
+   Stitch reference, found and fixed the actual causes (border contrast, a
+   large-fill color clash), and separately decided Digital Architect is no
+   longer an affiliate-selectable preset at all (see §6.15).
 8. **GAME-6, GAME-11 (bulk price update), Game SEO fields, and GAME-12 are OFF
    this list — confirmed already resolved 2026-09-13, not by this list's own
    prior entries:**

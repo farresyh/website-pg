@@ -104,9 +104,9 @@ export default async function OrderPage({ params }: OrderPageProps) {
             <Link href="/" className="hover:text-primary-on-surface">
               Home
             </Link>
-            <span className="text-ink/40">›</span>
+            <span className="text-on-surface-variant/60">›</span>
             <span>{game.category}</span>
-            <span className="text-ink/40">›</span>
+            <span className="text-on-surface-variant/60">›</span>
             <span className="text-primary-on-surface">{game.name}</span>
           </nav>
         </div>
