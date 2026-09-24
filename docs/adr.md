@@ -6306,7 +6306,7 @@ Also closed at the founder's explicit request: decision 9's per-`pricing_basis` 
 
 ## ADR-113: Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md`, Digital Architect retired from the affiliate picker
 
-**Status:** Accepted & built — grilled with the founder 2026-09-24 (`/mattpocock-skills:grilling`), all 4 dark palettes hand-authored and live-tested the same session, committed to `fix/affiliate-theme-contrast-bugs` (unpushed at session end).
+**Status:** Accepted & built — grilled with the founder 2026-09-24 (`/mattpocock-skills:grilling`), all 4 dark palettes hand-authored and live-tested the same session. **Merged to `staging` 2026-09-25** (PR #288, CI green). A `staging`→`main` release is a separate founder decision, not yet made.
 
 **Context:**
 
