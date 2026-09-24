@@ -34,19 +34,21 @@ return [
     // no deploy needed to disable it again.
     'pending_reactivation_auto_approve' => (bool) env('PENDING_REACTIVATION_AUTO_APPROVE', false),
 
-    // ADR-100 decision — a package deactivated more than this many
-    // times in the trailing 14 days (excluding cutoff-window-explained
-    // deactivations, which never count) is treated as genuinely
-    // unstable and never auto-approved, regardless of how many
-    // consecutive syncs currently show it active. First-cut guess,
-    // not data-derived — same "revisit once real cycles produce real
-    // data" caveat as `price_swing_threshold_percent` above.
-    'reactivation_flap_limit_per_14_days' => (int) env('REACTIVATION_FLAP_LIMIT_PER_14_DAYS', 2),
-    'reactivation_flap_window_days' => (int) env('REACTIVATION_FLAP_WINDOW_DAYS', 14),
+    // ADR-100 addendum (2026-09-24) — the original flap-count gate
+    // (a package deactivated more than N times in a trailing 14-day
+    // window was treated as unstable and never auto-approved, however
+    // long its current streak) is retired: live data showed it
+    // permanently blocking exactly the popular SKUs it was meant to
+    // protect (Valorant Singapore VP, confirmed active ~20h straight
+    // per the founder's own Digiflazz dashboard, still stuck on a
+    // rolling flap count that couldn't age out while the package kept
+    // legitimately flapping). Streak length is now the only gate.
 
-    // ADR-100 decision — consecutive hourly syncs a package must show
-    // 'active' before PendingReactivationAutoApprover trusts the
-    // signal enough to auto-approve (the non-cutoff path only —
-    // a cutoff-window match auto-approves immediately, decision Q5).
-    'reactivation_stability_syncs' => (int) env('REACTIVATION_STABILITY_SYNCS', 2),
+    // ADR-100 decision (raised by its 2026-09-24 addendum from 2 to 3
+    // now that streak is the sole stability signal) — consecutive
+    // hourly syncs a package must show 'active' before
+    // PendingReactivationAutoApprover trusts the signal enough to
+    // auto-approve (the non-cutoff path only — a cutoff-window match
+    // auto-approves immediately, decision Q5).
+    'reactivation_stability_syncs' => (int) env('REACTIVATION_STABILITY_SYNCS', 3),
 ];
