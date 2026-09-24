@@ -10,6 +10,7 @@ use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\PaymentMethodFeeResolver;
+use App\Support\StorefrontBrand;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -35,6 +36,7 @@ final class MembershipSubscriptionService
         private readonly PaymentMethodFeeResolver $fees,
         private readonly CheckoutTotalService $totals,
         private readonly MembershipFeeService $membershipFees,
+        private readonly StorefrontBrand $storefrontBrand,
     ) {}
 
     /**
@@ -147,7 +149,11 @@ final class MembershipSubscriptionService
         string $gatewayName,
         array $channelProperties,
     ): MembershipCheckoutAttempt {
-        $storefront = rtrim((string) config('services.storefront.url'), '/');
+        // Bug fix, 2026-09-24: same fix as CheckoutService::requestPayment()
+        // — must redirect back to the affiliate's own storefront origin,
+        // not the platform default, or a member subscribing on
+        // fixfastapp.com lands back on pekangame.space/membership instead.
+        $storefront = $this->storefrontBrand->url();
         $channelProperties['success_return_url'] = "{$storefront}/membership?checkout=success";
         $channelProperties['failure_return_url'] = "{$storefront}/membership?checkout=failed";
 

@@ -4,8 +4,10 @@ namespace App\Services\Pricing;
 
 use App\Models\DeactivationLog;
 use App\Models\Package;
+use App\Models\PackageReactivationLog;
 use App\Models\PriceChangeLog;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * ADR-094 decisions 5/6/13 (2026-09-15 stress-test addendum): the one
@@ -153,5 +155,199 @@ final class ComboPricingService
         });
 
         return $affectedGameIds;
+    }
+
+    /**
+     * ADR-094 addendum (2026-09-24) — reverses decision 22's original
+     * "cascade deactivation is one-directional, reactivating a
+     * component never auto-reactivates a combo" call. Found live:
+     * that decision only addressed the *action*, and left a combo
+     * cascade-deactivated by ADR-100's automated Pending Reactivation
+     * path with zero visibility AND zero way back except an admin
+     * happening to find it in /admin/games — see PRD §16 item 21.
+     *
+     * Called from every place a component's `is_active` can flip
+     * false->true (`PendingReactivationController::approve()`/
+     * `bulkApprove()`, `DismissedPackageController::restore()`,
+     * `PendingPriceChangeController::approve()`/`dismiss()`,
+     * `PackageController::updateStatus()`, `PendingReactivationAutoApprover::approve()`).
+     * For every combo still `deactivated_reason='combo_component_deactivated'`
+     * that references this component, reactivates it the moment (and
+     * only the moment) **every** one of its own components is active
+     * again — a combo's checkout depends on every leg succeeding, so a
+     * partial reactivation would silently offer an unfulfillable combo.
+     * A no-op for a package that isn't part of any combo, or whose
+     * combo(s) aren't in that exact deactivated state (harmless to
+     * call unconditionally from every reactivation site).
+     *
+     * @return Collection<int, int> affected game_ids
+     */
+    public function cascadeReactivate(Package $component, ?int $priceSyncRunId, ?int $adminUserId = null): Collection
+    {
+        $affectedGameIds = collect();
+
+        $component->partOfCombos()
+            ->where('packages.deactivated_reason', 'combo_component_deactivated')
+            ->get()
+            ->each(function (Package $combo) use ($priceSyncRunId, $adminUserId, $affectedGameIds) {
+                $combo->loadMissing('components');
+
+                if ($combo->components->contains(fn (Package $c) => ! $c->is_active)) {
+                    return;
+                }
+
+                $combo->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+
+                PackageReactivationLog::query()->create([
+                    'package_id' => $combo->id,
+                    'admin_user_id' => $adminUserId,
+                    'price_sync_run_id' => $priceSyncRunId,
+                    'trigger' => 'combo_components_all_active',
+                ]);
+
+                $affectedGameIds->push($combo->game_id);
+            });
+
+        return $affectedGameIds;
+    }
+
+    /**
+     * Addendum (2026-09-24) to ADR-046 decisions 9/10 — the batch
+     * counterpart to `cascadeDeactivate()`, for `SupplierController::
+     * updatePackagesStatus()`'s bulk "Deactivate All"/"Deactivate by
+     * Game" action. That action never called the per-component method
+     * (it does a single mass `Package::query()->update()`, not a
+     * per-row loop) — found live: a supplier-wide bulk deactivate could
+     * take every component of a combo offline while the combo itself
+     * stayed listed `is_active=true`, sellable, with no leg able to
+     * fulfill. Looping `cascadeDeactivate()` once per affected component
+     * was rejected: Digiflazz alone has 1,088 active packages today, so
+     * a naive per-row loop turns this endpoint's existing 2 bulk SQL
+     * statements into 1,000+ synchronous queries in one admin HTTP
+     * request. Real combos number 49 total — this finds affected combos
+     * with ONE query, then bulk-writes just those (typically far fewer
+     * than the component count), never looping over the component set.
+     *
+     * Returns the affected combos' own `id`s (not game_ids, unlike
+     * `cascadeDeactivate()`/`cascadeReactivate()`) — a caller reporting
+     * "N combos affected" needs an exact combo count, and two combos
+     * can share a game.
+     *
+     * @param  Collection<int, int>  $componentPackageIds
+     * @return Collection<int, int> affected combo package ids
+     */
+    public function cascadeDeactivateForComponents(
+        Collection $componentPackageIds,
+        ?int $priceSyncRunId,
+        ?int $adminUserId = null,
+        ?string $reason = null,
+    ): Collection {
+        if ($componentPackageIds->isEmpty()) {
+            return collect();
+        }
+
+        // A plain `whereHas('components', ...)` self-joins `packages`
+        // onto itself through the pivot — Laravel aliases that inner
+        // join (e.g. `laravel_reserved_0`) to disambiguate it from the
+        // outer query, so a closure filtering on the literal
+        // `packages.id` column silently matches the wrong (outer) side
+        // instead of the joined component row. Querying the pivot
+        // table directly sidesteps the alias entirely.
+        $comboIds = DB::table('package_components')
+            ->whereIn('component_package_id', $componentPackageIds->all())
+            ->distinct()
+            ->pluck('combo_package_id');
+
+        $comboIds = Package::query()
+            ->whereIn('id', $comboIds)
+            ->where('is_combo', true)
+            ->where('is_active', true)
+            ->pluck('id');
+
+        if ($comboIds->isEmpty()) {
+            return collect();
+        }
+
+        $now = now();
+
+        Package::query()->whereIn('id', $comboIds)->update([
+            'is_active' => false,
+            'deactivated_reason' => 'combo_component_deactivated',
+            'deactivated_at' => $now,
+        ]);
+
+        DeactivationLog::query()->insert($comboIds->map(fn (int $comboId) => [
+            'package_id' => $comboId,
+            'price_sync_run_id' => $priceSyncRunId,
+            'admin_user_id' => $adminUserId,
+            'reason' => $reason,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ])->all());
+
+        return $comboIds;
+    }
+
+    /**
+     * Addendum (2026-09-24) to ADR-046 decisions 9/10 — the batch
+     * counterpart to `cascadeReactivate()`, for `SupplierController::
+     * updatePackagesStatus()`'s bulk "Reactivate" action (scoped to
+     * `deactivated_reason='supplier_issue'` components only). Finds
+     * every still-cascade-deactivated combo referencing ANY of the
+     * just-reactivated components with ONE query, then loops only over
+     * that small candidate set (bounded by total combo count, currently
+     * 49 system-wide — never by the potentially 1,000+-row component
+     * set) checking each one's own components are ALL active before
+     * reactivating it.
+     *
+     * Returns the reactivated combos' own `id`s — see
+     * `cascadeDeactivateForComponents()`'s own doc for why (exact count,
+     * two combos can share a game).
+     *
+     * @param  Collection<int, int>  $componentPackageIds
+     * @return Collection<int, int> reactivated combo package ids
+     */
+    public function cascadeReactivateForComponents(
+        Collection $componentPackageIds,
+        ?int $priceSyncRunId,
+        ?int $adminUserId = null,
+    ): Collection {
+        if ($componentPackageIds->isEmpty()) {
+            return collect();
+        }
+
+        $reactivatedComboIds = collect();
+
+        // See cascadeDeactivateForComponents()'s own comment — same
+        // self-join alias trap, same pivot-table-first fix.
+        $candidateComboIds = DB::table('package_components')
+            ->whereIn('component_package_id', $componentPackageIds->all())
+            ->distinct()
+            ->pluck('combo_package_id');
+
+        Package::query()
+            ->whereIn('id', $candidateComboIds)
+            ->where('is_combo', true)
+            ->where('deactivated_reason', 'combo_component_deactivated')
+            ->with('components')
+            ->get()
+            ->each(function (Package $combo) use ($priceSyncRunId, $adminUserId, $reactivatedComboIds) {
+                if ($combo->components->contains(fn (Package $c) => ! $c->is_active)) {
+                    return;
+                }
+
+                $combo->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+
+                PackageReactivationLog::query()->create([
+                    'package_id' => $combo->id,
+                    'admin_user_id' => $adminUserId,
+                    'price_sync_run_id' => $priceSyncRunId,
+                    'trigger' => 'combo_components_all_active',
+                ]);
+
+                $reactivatedComboIds->push($combo->id);
+            });
+
+        return $reactivatedComboIds;
     }
 }

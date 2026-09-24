@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\Middleware;
 use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PackageReactivationLog;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,6 +107,41 @@ class PendingReactivationControllerTest extends TestCase
         $this->assertTrue($package->is_active);
         $this->assertNull($package->deactivated_reason);
         $this->assertNull($package->deactivated_at);
+    }
+
+    /**
+     * ADR-094 addendum (2026-09-24) — approving the last inactive
+     * component of a cascade-deactivated combo reactivates the combo
+     * too, logging the admin who approved the component.
+     */
+    public function test_approve_cascades_to_reactivate_a_dependent_combo_once_complete(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $component = $this->deactivatedBySync($supplier, $game, 'GV733');
+        SupplierProduct::query()->create([
+            'supplier_id' => $supplier->id, 'external_ref' => 'GV733', 'name' => '14 Diamond', 'status_raw' => 'active', 'last_synced_at' => now(),
+        ]);
+
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 0, 'cost_price' => 0, 'standard_selling_price' => 0, 'markup_percent' => 0,
+            'is_active' => false, 'deactivated_reason' => 'combo_component_deactivated', 'deactivated_at' => now(),
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+
+        $admin = AdminUser::factory()->create(['role' => 'super_admin']);
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/middleware/price-sync/pending-reactivations/{$component->id}/approve")->assertOk();
+
+        $combo->refresh();
+        $this->assertTrue($combo->is_active);
+        $this->assertNull($combo->deactivated_reason);
+
+        $log = PackageReactivationLog::query()->where('package_id', $combo->id)->firstOrFail();
+        $this->assertSame('combo_components_all_active', $log->trigger);
+        $this->assertSame($admin->id, $log->admin_user_id);
     }
 
     public function test_approve_rejects_a_package_that_is_not_pending(): void

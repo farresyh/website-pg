@@ -182,6 +182,68 @@ class AffiliateStorefrontCheckoutTest extends TestCase
         $this->assertSame('10.00', $order->affiliate_markup_pct);
     }
 
+    /**
+     * Bug fix, 2026-09-24: found via a real fixfastapp.com order redirecting
+     * back to pekangame.space's /order/status/... (itself brand-scoped, so
+     * it 404'd there). The gateway return URL must reflect the resolved
+     * affiliate's own domain, not the platform default.
+     */
+    public function test_checkout_return_url_lands_on_the_affiliates_own_domain(): void
+    {
+        $this->affiliateBrand();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        $gateway = new class implements PaymentGateway
+        {
+            public ?PaymentRequest $received = null;
+
+            public function createPayment(PaymentRequest $request): PaymentResponse
+            {
+                $this->received = $request;
+
+                return PaymentResponse::success(['payment_request_id' => 'pr-domain-test']);
+            }
+
+            public function getPayment(string $paymentRequestId): PaymentResponse
+            {
+                return PaymentResponse::success([
+                    'payment_request_id' => $paymentRequestId,
+                    'actions' => ['desktop_web_checkout_url' => 'https://gate.chip-in.asia/p/x'],
+                ]);
+            }
+
+            public function verifyWebhookSignature(Request $request): bool
+            {
+                throw new RuntimeException('not used');
+            }
+
+            public function parseWebhookEvent(array $payload): PaymentWebhookEvent
+            {
+                throw new RuntimeException('not used');
+            }
+        };
+        $this->app->instance('payment-gateway.chip', $gateway);
+
+        $this->postJson('/api/checkout', [
+            ...$this->payload($game, $package),
+            'channel_properties' => [
+                'success_return_url' => 'placeholder',
+                'failure_return_url' => 'placeholder',
+            ],
+        ], ['X-Storefront-Host' => 'shop.acme.com'])->assertCreated();
+
+        $order = Order::query()->sole();
+        $this->assertNotNull($gateway->received);
+        $this->assertSame(
+            "https://shop.acme.com/order/status/{$order->order_number}",
+            $gateway->received->channelProperties['success_return_url'],
+        );
+        $this->assertSame(
+            "https://shop.acme.com/order/status/{$order->order_number}",
+            $gateway->received->channelProperties['failure_return_url'],
+        );
+    }
+
     public function test_preview_totals_matches_what_checkout_charges_for_the_brand(): void
     {
         $this->affiliateBrand();

@@ -20,6 +20,7 @@ use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
 use App\Services\Voucher\VoucherService;
+use App\Support\StorefrontBrand;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -38,6 +39,7 @@ final class CheckoutService
         private readonly OrderFactory $orderFactory,
         private readonly VoucherService $vouchers,
         private readonly MembershipQuotaService $membershipQuota,
+        private readonly StorefrontBrand $storefrontBrand,
     ) {}
 
     /**
@@ -206,7 +208,13 @@ final class CheckoutService
         // so a redirect-based channel (FPX, some e-wallets) lands the
         // customer straight on their own order's status instead of the
         // general "look up an order" search page.
-        $orderStatusUrl = rtrim((string) config('services.storefront.url'), '/')
+        //
+        // Bug fix, 2026-09-24: this MUST be built from `StorefrontBrand`'s
+        // own request-scoped origin, not the platform default — an order
+        // placed on an affiliate's custom domain (e.g. fixfastapp.com)
+        // otherwise redirected to pekangame.space/order/status/..., whose
+        // /track-order is itself brand-scoped and 404s on that order.
+        $orderStatusUrl = $this->storefrontBrand->url()
             .'/order/status/'.$order->order_number;
 
         if (array_key_exists('success_return_url', $channelProperties)) {
