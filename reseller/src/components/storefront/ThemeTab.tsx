@@ -276,7 +276,7 @@ export default function ThemeTab() {
                       <span className="text-[10px] uppercase font-bold text-gray-500">From</span>
                       <p
                         className="font-bold text-base"
-                        style={{ color: activePresetConfig.primaryHex }}
+                        style={{ color: activePresetConfig.tokens["--color-primary-on-surface"] }}
                       >
                         RM 5.00
                       </p>

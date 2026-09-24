@@ -30,12 +30,23 @@
   --color-on-primary-container: #fffbff;
   --color-primary-fixed: #e9ddff;
   --color-on-primary-fixed: #23005c;
+  /* WCAG-safe variant of --color-primary for running text/icons on a
+     light surface (price, order totals, nav links, footer headings).
+     Equal to --color-primary on every preset whose primary hex already
+     clears 4.5:1 on white; only a preset whose primary is too light for
+     text (e.g. Cyber Bumblebee's #FFC700, ~1.6:1) overrides it. */
+  --color-primary-on-surface: #6b38d4;
 
   --color-secondary: #00687a;
   --color-on-secondary: #ffffff;
   --color-secondary-container: #57dffe;
   --color-on-secondary-container: #00363f;
   --color-secondary-fixed-dim: #4cd7f6;
+  /* Icon/text color for anything sitting on --color-secondary-fixed-dim.
+     Ink on every preset whose fixed-dim is a bright tint; only a preset
+     whose fixed-dim is solid ink itself (Cyber Bumblebee — audit finding,
+     2026-09-24) overrides it, so the icon still pops off the block. */
+  --color-on-secondary-fixed-dim: #19192f;
 
   --color-tertiary: #b10e6b;
   --color-on-tertiary: #ffffff;

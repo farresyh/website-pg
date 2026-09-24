@@ -21,7 +21,7 @@ export default function FaqSection() {
               <CaretDown
                 size={18}
                 weight="bold"
-                className="shrink-0 text-primary transition-transform group-open:rotate-180"
+                className="shrink-0 text-primary-on-surface transition-transform group-open:rotate-180"
               />
             </summary>
             <p className="px-5 pb-5 text-[13px] leading-relaxed text-on-surface-variant">{item.answer}</p>

@@ -55,7 +55,7 @@ function OrderSummarySidebar({
         {preview && <Row k="Transaction Fee" v={`+ RM${(preview.transaction_fee_sen / 100).toFixed(2)}`} mono />}
         <div className="mt-2 flex items-end justify-between border-t-2 border-ink pt-3">
           <span className="font-display text-[15px] font-bold uppercase">Total</span>
-          <span className="font-mono text-2xl font-bold text-primary">RM{totalRm.toFixed(2)}</span>
+          <span className="font-mono text-2xl font-bold text-primary-on-surface">RM{totalRm.toFixed(2)}</span>
         </div>
       </div>
       <Button onClick={onReview} disabled={!ready} className="w-full">

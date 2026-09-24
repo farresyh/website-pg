@@ -25,7 +25,7 @@ export default function ProductHeaderCard({ game }: { game: GameDetail }) {
         <div className="mt-2 flex flex-wrap items-center gap-2.5">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-ink bg-surface-container px-2.5 py-0.5 font-display text-[11px] font-bold uppercase tracking-wide">
             {isInstant ? (
-              <Lightning size={12} weight="fill" className="text-primary" />
+              <Lightning size={12} weight="fill" className="text-primary-on-surface" />
             ) : (
               <Clock size={12} weight="fill" className="text-secondary" />
             )}

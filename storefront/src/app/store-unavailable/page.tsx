@@ -16,7 +16,7 @@ export default function StoreUnavailable() {
   return (
     <main className="pb-nav lg:pb-0">
       <div className="mx-auto flex min-h-[70vh] max-w-[560px] flex-col items-center justify-center px-4 py-16 text-center">
-        <p className="font-mono text-5xl font-bold text-primary">503</p>
+        <p className="font-mono text-5xl font-bold text-primary-on-surface">503</p>
         <h1 className="mt-4 font-display text-2xl font-bold uppercase tracking-tight">Store unavailable</h1>
         <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
           This address isn&apos;t connected to an active store right now. If you&apos;re the store owner,

@@ -101,13 +101,13 @@ export default async function OrderPage({ params }: OrderPageProps) {
       <main className="pb-nav lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 pt-5">
           <nav className="mb-4 flex items-center gap-2 font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
-            <Link href="/" className="hover:text-primary">
+            <Link href="/" className="hover:text-primary-on-surface">
               Home
             </Link>
             <span className="text-ink/40">›</span>
             <span>{game.category}</span>
             <span className="text-ink/40">›</span>
-            <span className="text-primary">{game.name}</span>
+            <span className="text-primary-on-surface">{game.name}</span>
           </nav>
         </div>
 

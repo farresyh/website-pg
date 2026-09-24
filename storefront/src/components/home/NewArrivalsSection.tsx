@@ -25,7 +25,7 @@ export default function NewArrivalsSection({ games }: { games: Game[] }) {
               <span className="font-display text-[13px] font-bold leading-tight">{game.name}</span>
               <Badge tone="new">New</Badge>
             </span>
-            <span className="font-mono text-[13px] font-bold text-primary">
+            <span className="font-mono text-[13px] font-bold text-primary-on-surface">
               {game.priceFromRm !== null ? `From RM${game.priceFromRm.toFixed(2)}` : "Coming soon"}
             </span>
           </Link>
