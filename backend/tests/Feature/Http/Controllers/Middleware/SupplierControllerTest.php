@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\DeactivationLog;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PackageReactivationLog;
 use App\Models\Supplier;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
@@ -458,5 +459,70 @@ class SupplierControllerTest extends TestCase
         $this->assertTrue($bySupplierIssue->fresh()->is_active);
         $this->assertNull($bySupplierIssue->fresh()->deactivated_reason);
         $this->assertFalse($byPriceAnomaly->fresh()->is_active, 'price_anomaly deactivations must not be swept up by a supplier-issue reactivate');
+    }
+
+    /**
+     * ADR-046 addendum (2026-09-24) — this bulk endpoint used to bypass
+     * combo cascade entirely (a raw mass update, not a per-row loop).
+     */
+    public function test_deactivate_all_cascades_onto_a_dependent_combo(): void
+    {
+        $admin = $this->actingAsAdmin();
+        $supplier = $this->supplier();
+        $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire']);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'supplier_id' => $supplier->id, 'name' => '100 Diamonds',
+            'denomination' => 100, 'cost_price' => 1000, 'standard_selling_price' => 1200, 'markup_percent' => 20,
+            'is_active' => true, 'supplier_package_ref' => 'ref-'.uniqid(),
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 0, 'cost_price' => 0, 'standard_selling_price' => 0, 'markup_percent' => 0,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+
+        $this->patchJson("/api/middleware/suppliers/{$supplier->id}/packages/status", [
+            'is_active' => false,
+            'reason' => 'Supplier outage',
+        ])->assertOk()->assertJson(['updated' => 1, 'updated_combos' => 1]);
+
+        $combo->refresh();
+        $this->assertFalse($combo->is_active);
+        $this->assertSame('combo_component_deactivated', $combo->deactivated_reason);
+
+        $log = DeactivationLog::query()->where('package_id', $combo->id)->firstOrFail();
+        $this->assertSame($admin->id, $log->admin_user_id);
+        $this->assertSame('Supplier outage', $log->reason);
+    }
+
+    public function test_reactivate_cascades_onto_a_dependent_combo_once_every_component_is_active(): void
+    {
+        $admin = $this->actingAsAdmin();
+        $supplier = $this->supplier();
+        $game = Game::query()->create(['name' => 'Free Fire', 'slug' => 'free-fire']);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'supplier_id' => $supplier->id, 'name' => '100 Diamonds',
+            'denomination' => 100, 'cost_price' => 1000, 'standard_selling_price' => 1200, 'markup_percent' => 20,
+            'supplier_package_ref' => 'ref-'.uniqid(),
+            'is_active' => false, 'deactivated_reason' => 'supplier_issue', 'deactivated_at' => now(),
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 0, 'cost_price' => 0, 'standard_selling_price' => 0, 'markup_percent' => 0,
+            'is_active' => false, 'deactivated_reason' => 'combo_component_deactivated', 'deactivated_at' => now(),
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+
+        $this->patchJson("/api/middleware/suppliers/{$supplier->id}/packages/status", [
+            'is_active' => true,
+        ])->assertOk()->assertJson(['updated' => 1, 'updated_combos' => 1]);
+
+        $combo->refresh();
+        $this->assertTrue($combo->is_active);
+        $this->assertNull($combo->deactivated_reason);
+
+        $log = PackageReactivationLog::query()->where('package_id', $combo->id)->firstOrFail();
+        $this->assertSame('combo_components_all_active', $log->trigger);
+        $this->assertSame($admin->id, $log->admin_user_id);
     }
 }
