@@ -8,6 +8,7 @@ import { getSubscribeOptions, subscribe, type SubscribeOptions, type SubscribePl
 import { listPaymentChannels, type PaymentChannel } from "@/lib/payment-methods";
 import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
 import Button from "@/components/ui/Button";
+import MembershipTransitionModal from "@/components/order/MembershipTransitionModal";
 
 const CTA_LABEL: Record<SubscribePlan["relation"], string> = {
   subscribe: "Subscribe",
@@ -42,6 +43,13 @@ export default function MembershipSubscribe({ token }: { token: string }) {
   const [channelCode, setChannelCode] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Founder-requested guided note, 2026-09-24: renew/upgrade have
+  // non-obvious expiry/quota mechanics (see MembershipTransitionModal's
+  // own doc comment) — gate the pick behind an explanation the customer
+  // must acknowledge. `pendingPlan` holds the plan awaiting that
+  // acknowledgement; a first-time "Subscribe" (no prior membership) has
+  // no transition to explain, so it skips straight to `pickPlan`.
+  const [pendingPlan, setPendingPlan] = useState<SubscribePlan | null>(null);
 
   // One key per tier selection — reused if the customer retries the
   // same "Continue to Payment" click, mirroring checkout's idempotency.
@@ -79,6 +87,14 @@ export default function MembershipSubscribe({ token }: { token: string }) {
     setSelectedPlanId(plan.id);
     setError(null);
     if (channels.length === 1) setChannelCode(channels[0].channelCode);
+  }
+
+  function handlePlanClick(plan: SubscribePlan) {
+    if (plan.relation === "renew" || plan.relation === "upgrade") {
+      setPendingPlan(plan);
+      return;
+    }
+    pickPlan(plan);
   }
 
   async function startPayment() {
@@ -189,7 +205,7 @@ export default function MembershipSubscribe({ token }: { token: string }) {
                     <Button
                       variant={isSelected ? "outline" : isHero ? "primary" : "outline"}
                       size="sm"
-                      onClick={() => pickPlan(plan)}
+                      onClick={() => handlePlanClick(plan)}
                       className="w-full"
                     >
                       {isSelected ? (
@@ -278,6 +294,17 @@ export default function MembershipSubscribe({ token }: { token: string }) {
             <p className="rounded-md border-2 border-ink bg-surface-container p-4 text-sm text-on-surface-variant">{error}</p>
           )}
         </div>
+      )}
+
+      {pendingPlan && (pendingPlan.relation === "renew" || pendingPlan.relation === "upgrade") && (
+        <MembershipTransitionModal
+          relation={pendingPlan.relation}
+          onClose={() => setPendingPlan(null)}
+          onConfirm={() => {
+            pickPlan(pendingPlan);
+            setPendingPlan(null);
+          }}
+        />
       )}
     </section>
   );
