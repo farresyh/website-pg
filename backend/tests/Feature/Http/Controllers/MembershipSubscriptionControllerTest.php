@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\Affiliate;
+use App\Models\AffiliateDomain;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipCheckoutAttempt;
@@ -10,6 +12,7 @@ use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\Supplier;
+use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Payment\PaymentGateway;
@@ -157,6 +160,73 @@ class MembershipSubscriptionControllerTest extends TestCase
         $this->assertSame(MembershipCheckoutAttemptStatus::Pending, $attempt->status);
         $this->assertNotNull($attempt->payment_ref);
         $this->assertSame($response->json('subscription_number'), $attempt->subscription_number);
+    }
+
+    /**
+     * Bug fix, 2026-09-24: same class of bug as
+     * AffiliateStorefrontCheckoutTest::test_checkout_return_url_lands_on_the_affiliates_own_domain
+     * — a member subscribing on an affiliate's own custom domain must be
+     * sent back there after paying, not to the platform default.
+     */
+    public function test_subscribe_return_url_lands_on_the_affiliates_own_domain(): void
+    {
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Acme Resell', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
+        ]);
+        AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'hostname' => 'shop.acme.com',
+            'status' => AffiliateDomainStatus::Active,
+            'is_primary' => true,
+        ]);
+
+        $gateway = new class implements PaymentGateway
+        {
+            public ?PaymentRequest $received = null;
+
+            public function createPayment(PaymentRequest $request): PaymentResponse
+            {
+                $this->received = $request;
+
+                return PaymentResponse::success([
+                    'payment_request_id' => 'pr-'.$request->referenceId,
+                    'actions' => [['type' => 'REDIRECT', 'value' => 'https://gate.chip-in.asia/p/'.$request->referenceId]],
+                ]);
+            }
+
+            public function getPayment(string $paymentRequestId): PaymentResponse
+            {
+                return PaymentResponse::success(['payment_request_id' => $paymentRequestId], status: null);
+            }
+
+            public function verifyWebhookSignature(Request $request): bool
+            {
+                throw new RuntimeException('not used');
+            }
+
+            public function parseWebhookEvent(array $payload): PaymentWebhookEvent
+            {
+                throw new RuntimeException('not used');
+            }
+        };
+        $this->app->instance('payment-gateway.chip', $gateway);
+
+        $token = app(MembershipSessionTokenService::class)->issue($affiliate->id, 'member@example.com');
+
+        $this->postJson('/api/membership/subscribe', [
+            'membership_plan_id' => $this->tier('Tier 2')->id,
+            'payment_method' => 'fpx',
+        ], ['Authorization' => "Bearer {$token}", 'X-Storefront-Host' => 'shop.acme.com'])->assertCreated();
+
+        $this->assertNotNull($gateway->received);
+        $this->assertSame(
+            'https://shop.acme.com/membership?checkout=success',
+            $gateway->received->channelProperties['success_return_url'],
+        );
+        $this->assertSame(
+            'https://shop.acme.com/membership?checkout=failed',
+            $gateway->received->channelProperties['failure_return_url'],
+        );
     }
 
     public function test_subscribe_never_trusts_a_client_amount(): void

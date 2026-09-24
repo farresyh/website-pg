@@ -23,6 +23,7 @@ use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\VoucherService;
+use App\Support\StorefrontBrand;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -41,6 +42,7 @@ class CheckoutServiceTest extends TestCase
             new OrderFactory(new OrderNumberService),
             new VoucherService(new LedgerService),
             new MembershipQuotaService,
+            new StorefrontBrand,
         );
     }
 

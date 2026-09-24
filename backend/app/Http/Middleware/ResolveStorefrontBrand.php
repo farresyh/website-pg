@@ -64,7 +64,13 @@ class ResolveStorefrontBrand
             return $next($request);
         }
 
-        // The primary brand's own hostnames are deploy config, not rows.
+        // The primary brand's own hostnames are deploy config, not rows —
+        // no hostname passed to `set()` here, so `StorefrontBrand::url()`
+        // falls back to `STOREFRONT_URL`, exactly as before this fix. That
+        // config value IS the primary brand's own canonical origin
+        // (scheme included, e.g. `http://localhost:3001` in dev/e2e), so
+        // there's nothing to correct on this branch — only a resolved
+        // AffiliateDomain (below) ever needs its own literal host.
         if (in_array($host, config('services.storefront.primary_hosts'), true)) {
             $this->brand->set(Affiliate::primary());
 
@@ -89,7 +95,7 @@ class ResolveStorefrontBrand
             ], 404));
         }
 
-        $this->brand->set($domain->affiliate);
+        $this->brand->set($domain->affiliate, $host);
 
         return $next($request);
     }
