@@ -147,62 +147,29 @@ class PendingReactivationAutoApproverTest extends TestCase
         $this->assertFalse($package->fresh()->is_active);
     }
 
-    public function test_excessive_flap_count_blocks_approval_even_with_a_sufficient_streak(): void
+    /**
+     * ADR-100 addendum (2026-09-24) — a package can have flapped any
+     * number of times in its past; only the CURRENT streak matters now
+     * that the flap-count gate is retired. Regression test for the
+     * exact bug found live: Valorant Singapore VP packages stuck
+     * despite a long confirmed-active streak, because their (now
+     * irrelevant) flap history sat over the old limit.
+     */
+    public function test_a_long_prior_flap_history_no_longer_blocks_approval_once_the_streak_is_met(): void
     {
         config([
             'packages.pending_reactivation_auto_approve' => true,
             'packages.reactivation_stability_syncs' => 2,
-            'packages.reactivation_flap_limit_per_14_days' => 2,
         ]);
         [$supplier, $package] = $this->pendingPackage(productOverrides: ['consecutive_active_syncs' => 5]);
 
-        // 3 unexplained flaps in the last 14 days — over the limit of 2.
-        // `DeactivationLog::created_at` isn't fillable, so each one is
-        // created under its own frozen clock instead of a passed value.
-        for ($i = 0; $i < 3; $i++) {
-            Carbon::setTestNow(now()->subDays(2 + $i));
+        // 5 historical flaps in the last 14 days — would have blocked
+        // approval under the old flap-limit gate.
+        for ($i = 0; $i < 5; $i++) {
+            Carbon::setTestNow(now()->subDays(1 + $i));
             DeactivationLog::query()->create(['package_id' => $package->id]);
         }
         Carbon::setTestNow();
-
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder))->run($supplier, null);
-
-        $this->assertSame(0, $approved);
-        $this->assertFalse($package->fresh()->is_active);
-    }
-
-    /**
-     * ADR-100 decision Q6 — a package can flap far past the raw limit
-     * and still auto-approve via the stability gate, as long as every
-     * one of those historical flaps falls inside its OWN current
-     * cutoff window: they don't count as "unexplained" instability.
-     */
-    public function test_flaps_inside_the_packages_own_cutoff_window_do_not_count_toward_the_limit(): void
-    {
-        config([
-            'packages.pending_reactivation_auto_approve' => true,
-            'packages.reactivation_stability_syncs' => 2,
-            'packages.reactivation_flap_limit_per_14_days' => 2,
-        ]);
-        // "Now" is outside the cutoff window (10:00 WIB), so this run
-        // is evaluated via the stability gate, not the cutoff trigger
-        // — isolates exactly what's under test.
-        Carbon::setTestNow(Carbon::parse('2026-09-16 03:00:00', 'UTC')); // 10:00 WIB
-
-        [$supplier, $package] = $this->pendingPackage(productOverrides: [
-            'cutoff_start' => '23:00', 'cutoff_end' => '01:00', 'consecutive_active_syncs' => 2,
-        ]);
-
-        // 5 flaps, every one at 23:30 WIB (16:30 UTC) — inside the
-        // package's own cutoff window — far past the raw limit of 2.
-        // `DeactivationLog::created_at` isn't fillable (Eloquent would
-        // otherwise silently drop it and stamp the real test "now"),
-        // so each one is created under its own frozen clock instead.
-        for ($i = 0; $i < 5; $i++) {
-            Carbon::setTestNow(Carbon::parse('2026-09-'.(10 + $i).' 16:30:00', 'UTC'));
-            DeactivationLog::query()->create(['package_id' => $package->id]);
-        }
-        Carbon::setTestNow(Carbon::parse('2026-09-16 03:00:00', 'UTC')); // back to "now" = 10:00 WIB
 
         $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder))->run($supplier, null);
 
