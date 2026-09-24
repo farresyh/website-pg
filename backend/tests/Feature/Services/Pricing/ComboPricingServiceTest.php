@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Services\Pricing;
 
+use App\Models\AdminUser;
 use App\Models\DeactivationLog;
 use App\Models\Game;
 use App\Models\Package;
+use App\Models\PackageReactivationLog;
 use App\Models\PriceChangeLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
@@ -189,5 +191,91 @@ class ComboPricingServiceTest extends TestCase
 
         $this->assertSame('admin', $combo->refresh()->deactivated_reason);
         $this->assertSame(0, DeactivationLog::query()->count());
+    }
+
+    /**
+     * ADR-094 addendum (2026-09-24) — the reverse of cascadeDeactivate:
+     * a combo whose ONLY component just came back reactivates too.
+     */
+    public function test_cascade_reactivate_turns_a_single_component_combo_back_on_and_logs_it(): void
+    {
+        $game = $this->game();
+        $supplier = $this->supplier();
+        $component = $this->componentPackage($game, $supplier);
+        $combo = $this->combo($game, $component);
+        $this->service()->cascadeDeactivate($component, priceSyncRunId: null);
+        $component->update(['is_active' => true]);
+        $run = PriceSyncRun::query()->create(['status' => 'running']);
+
+        $affected = $this->service()->cascadeReactivate($component, priceSyncRunId: $run->id);
+
+        $this->assertSame([$game->id], $affected->all());
+        $combo->refresh();
+        $this->assertTrue($combo->is_active);
+        $this->assertNull($combo->deactivated_reason);
+        $this->assertNull($combo->deactivated_at);
+
+        $log = PackageReactivationLog::query()->where('package_id', $combo->id)->firstOrFail();
+        $this->assertSame('combo_components_all_active', $log->trigger);
+        $this->assertSame($run->id, $log->price_sync_run_id);
+        $this->assertNull($log->admin_user_id);
+    }
+
+    /**
+     * A combo needs EVERY leg active — reactivating just one of two
+     * components must not bring the combo back yet.
+     */
+    public function test_cascade_reactivate_waits_for_every_component_to_be_active(): void
+    {
+        $game = $this->game();
+        $supplier = $this->supplier();
+        $componentA = $this->componentPackage($game, $supplier, ['name' => 'A', 'supplier_package_ref' => 'GV-A']);
+        $componentB = $this->componentPackage($game, $supplier, ['name' => 'B', 'supplier_package_ref' => 'GV-B']);
+
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo AB', 'is_combo' => true,
+            'denomination' => 0, 'cost_price' => 0, 'standard_selling_price' => 0, 'markup_percent' => 0,
+        ]);
+        $combo->components()->attach([
+            $componentA->id => ['quantity' => 1, 'sort_order' => 0],
+            $componentB->id => ['quantity' => 1, 'sort_order' => 1],
+        ]);
+        $combo->update([
+            'is_active' => false, 'deactivated_reason' => 'combo_component_deactivated', 'deactivated_at' => now(),
+        ]);
+        $componentA->update(['is_active' => false]);
+        $componentB->update(['is_active' => false]);
+
+        // Only A comes back — B is still down.
+        $componentA->update(['is_active' => true]);
+        $affected = $this->service()->cascadeReactivate($componentA, priceSyncRunId: null);
+
+        $this->assertSame([], $affected->all());
+        $this->assertFalse($combo->refresh()->is_active);
+        $this->assertSame(0, PackageReactivationLog::query()->count());
+
+        // Now B comes back too — the combo completes.
+        $componentB->update(['is_active' => true]);
+        $admin = AdminUser::factory()->create();
+        $affected = $this->service()->cascadeReactivate($componentB, priceSyncRunId: null, adminUserId: $admin->id);
+
+        $this->assertSame([$game->id], $affected->all());
+        $this->assertTrue($combo->refresh()->is_active);
+        $this->assertNull($combo->deactivated_reason);
+        $this->assertSame($admin->id, PackageReactivationLog::query()->where('package_id', $combo->id)->value('admin_user_id'));
+    }
+
+    public function test_cascade_reactivate_ignores_a_combo_not_in_the_cascade_deactivated_state(): void
+    {
+        $game = $this->game();
+        $component = $this->componentPackage($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $combo->update(['is_active' => false, 'deactivated_reason' => 'admin']);
+
+        $affected = $this->service()->cascadeReactivate($component, priceSyncRunId: null);
+
+        $this->assertSame([], $affected->all());
+        $this->assertSame('admin', $combo->refresh()->deactivated_reason);
+        $this->assertSame(0, PackageReactivationLog::query()->count());
     }
 }

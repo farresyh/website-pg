@@ -9,6 +9,7 @@ use App\Models\PriceChangeLog;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * ADR-025 decision #8: sixth Price Sync Center section — a supplier
@@ -40,7 +41,7 @@ class PendingPriceChangeController extends Controller
      * was frozen when the anomaly was first flagged — an admin may
      * have edited the markup in between.
      */
-    public function approve(PendingPriceChange $pendingPriceChange): JsonResponse
+    public function approve(Request $request, PendingPriceChange $pendingPriceChange): JsonResponse
     {
         $this->assertPending($pendingPriceChange);
 
@@ -58,6 +59,8 @@ class PendingPriceChangeController extends Controller
             'old_standard_selling_price' => $package->standard_selling_price,
             'new_standard_selling_price' => $newStandardSellingPrice,
         ]);
+
+        $wasInactive = ! $package->is_active;
 
         $package->update([
             'cost_price' => $pendingPriceChange->proposed_cost_price,
@@ -77,6 +80,13 @@ class PendingPriceChangeController extends Controller
         // happened to touch it too.
         $this->comboPricing->recomputeForComponentChange($package, $pendingPriceChange->price_sync_run_id);
 
+        // ADR-094 addendum (2026-09-24) — this package may itself have
+        // been a `price_anomaly`-deactivated combo component; a combo
+        // depending on it can now complete.
+        if ($wasInactive) {
+            $this->comboPricing->cascadeReactivate($package, priceSyncRunId: $pendingPriceChange->price_sync_run_id, adminUserId: $request->user()?->id);
+        }
+
         $this->forgetCaches($package->game_id);
 
         return response()->json($package);
@@ -87,13 +97,19 @@ class PendingPriceChangeController extends Controller
      * at the already-proven-safe price in one action, no separate trip
      * to /admin/games to flip is_active back on.
      */
-    public function dismiss(PendingPriceChange $pendingPriceChange): JsonResponse
+    public function dismiss(Request $request, PendingPriceChange $pendingPriceChange): JsonResponse
     {
         $this->assertPending($pendingPriceChange);
 
         $package = $pendingPriceChange->package;
+        $wasInactive = ! $package->is_active;
         $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
         $pendingPriceChange->update(['status' => 'dismissed']);
+
+        if ($wasInactive) {
+            $this->comboPricing->cascadeReactivate($package, priceSyncRunId: $pendingPriceChange->price_sync_run_id, adminUserId: $request->user()?->id);
+        }
+
         $this->forgetCaches($package->game_id);
 
         return response()->json($package);

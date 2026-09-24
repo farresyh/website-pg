@@ -118,19 +118,19 @@ class PackageController extends Controller
      * updateStatus — a dedicated lightweight endpoint rather than
      * requiring the full edit form just to flip one flag.
      *
-     * ADR-094 decisions 13/22 (2026-09-15 Phase 4): two combo-aware
-     * guards layered on top of the plain toggle —
+     * ADR-094 decisions 13/22 (2026-09-15 Phase 4), decision 22
+     * reversed by the 2026-09-24 addendum: two combo-aware guards
+     * layered on top of the plain toggle —
      *  - **deactivating** a component Package with active combo
      *    dependents requires `acknowledge_cascade` (decision 13); once
      *    acknowledged, the deactivation cascades onto every one of
      *    them via the same `ComboPricingService::cascadeDeactivate()`
      *    Price Sync's own automated path already uses.
-     *  - **reactivating** a combo Package itself is blocked while any
-     *    of its components are inactive (decision 22 — no
-     *    auto-reactivation of a combo whose composition can't
-     *    currently fulfill; reactivating a *component* never
-     *    auto-reactivates a combo that depends on it, satisfied simply
-     *    by this method never doing that).
+     *  - **reactivating** a combo Package directly here is still
+     *    blocked while any of its own components are inactive — but
+     *    reactivating a *component* now DOES cascade back onto a combo
+     *    it depends on, the moment every one of that combo's other
+     *    components is active too (`cascadeReactivate()`, addendum).
      */
     public function updateStatus(UpdatePackageStatusRequest $request, Package $package, ComboPricingService $comboPricing): JsonResponse
     {
@@ -165,6 +165,8 @@ class PackageController extends Controller
 
         if (! $isActive) {
             $comboPricing->cascadeDeactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
+        } else {
+            $comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
         }
 
         GameController::forgetPackagesCache($package->game_id);

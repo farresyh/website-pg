@@ -4,6 +4,7 @@ namespace App\Services\Pricing;
 
 use App\Models\DeactivationLog;
 use App\Models\Package;
+use App\Models\PackageReactivationLog;
 use App\Models\PriceChangeLog;
 use Illuminate\Support\Collection;
 
@@ -151,6 +152,60 @@ final class ComboPricingService
 
             $affectedGameIds->push($combo->game_id);
         });
+
+        return $affectedGameIds;
+    }
+
+    /**
+     * ADR-094 addendum (2026-09-24) — reverses decision 22's original
+     * "cascade deactivation is one-directional, reactivating a
+     * component never auto-reactivates a combo" call. Found live:
+     * that decision only addressed the *action*, and left a combo
+     * cascade-deactivated by ADR-100's automated Pending Reactivation
+     * path with zero visibility AND zero way back except an admin
+     * happening to find it in /admin/games — see PRD §16 item 21.
+     *
+     * Called from every place a component's `is_active` can flip
+     * false->true (`PendingReactivationController::approve()`/
+     * `bulkApprove()`, `DismissedPackageController::restore()`,
+     * `PendingPriceChangeController::approve()`/`dismiss()`,
+     * `PackageController::updateStatus()`, `PendingReactivationAutoApprover::approve()`).
+     * For every combo still `deactivated_reason='combo_component_deactivated'`
+     * that references this component, reactivates it the moment (and
+     * only the moment) **every** one of its own components is active
+     * again — a combo's checkout depends on every leg succeeding, so a
+     * partial reactivation would silently offer an unfulfillable combo.
+     * A no-op for a package that isn't part of any combo, or whose
+     * combo(s) aren't in that exact deactivated state (harmless to
+     * call unconditionally from every reactivation site).
+     *
+     * @return Collection<int, int> affected game_ids
+     */
+    public function cascadeReactivate(Package $component, ?int $priceSyncRunId, ?int $adminUserId = null): Collection
+    {
+        $affectedGameIds = collect();
+
+        $component->partOfCombos()
+            ->where('packages.deactivated_reason', 'combo_component_deactivated')
+            ->get()
+            ->each(function (Package $combo) use ($priceSyncRunId, $adminUserId, $affectedGameIds) {
+                $combo->loadMissing('components');
+
+                if ($combo->components->contains(fn (Package $c) => ! $c->is_active)) {
+                    return;
+                }
+
+                $combo->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+
+                PackageReactivationLog::query()->create([
+                    'package_id' => $combo->id,
+                    'admin_user_id' => $adminUserId,
+                    'price_sync_run_id' => $priceSyncRunId,
+                    'trigger' => 'combo_components_all_active',
+                ]);
+
+                $affectedGameIds->push($combo->game_id);
+            });
 
         return $affectedGameIds;
     }
