@@ -5125,9 +5125,9 @@ Grilled over two rounds. Round 1 settled: "dark mode" means a **per-affiliate fi
 
 **Consequence to track:**
 
-- `bumblebee`/`redgiants`/`emerald`/`cobalt` still owe a `tokensDark` each — tracked in `docs/prd.md` §16. Until then, an affiliate on one of those presets simply has no Dark option in the portal.
-- The theme-preset duplication ADR-081 already flagged (`reseller/src/lib/theme-presets.ts` + `storefront/src/lib/theme-presets.ts`, two full copies) has grown by this ADR's new tokens — the follow-up noted there (a single source of truth, worth it at preset #6+) now applies to `tokensDark` too.
-- `ThemeTab.tsx`'s live preview still hardcodes a few cosmetic details (the payment-strip badge colours, the bottom price/button border) outside the surface/ink swap — a minor preview-fidelity gap, not a storefront-accuracy one (the actual storefront renders entirely off the injected CSS variables).
+- ~~`bumblebee`/`redgiants`/`emerald`/`cobalt` still owe a `tokensDark` each — tracked in `docs/prd.md` §16. Until then, an affiliate on one of those presets simply has no Dark option in the portal.~~ **Resolved 2026-09-24 by [ADR-113](#adr-113-affiliate-theme-preset-dark-mode-for-all-4-affiliate-selectable-presets-storefrontdesignmd-digital-architect-retired-from-the-affiliate-picker)** — all 4 now have a hand-authored `tokensDark`; that same ADR also retired `default` (Digital Architect) from the affiliate picker entirely.
+- The theme-preset duplication ADR-081 already flagged (`reseller/src/lib/theme-presets.ts` + `storefront/src/lib/theme-presets.ts`, two full copies) has grown by this ADR's new tokens — the follow-up noted there (a single source of truth, worth it at preset #6+) now applies to `tokensDark` too. Still unresolved as of ADR-113.
+- `ThemeTab.tsx`'s live preview still hardcodes a few cosmetic details (the payment-strip badge colours, the bottom price/button border) outside the surface/ink swap — a minor preview-fidelity gap, not a storefront-accuracy one (the actual storefront renders entirely off the injected CSS variables). Still unresolved as of ADR-113 — that ADR's own audit found this gap made the reseller preview mockup misleading (it appeared to show accent colours missing that the real storefront actually renders) and worked around it by verifying against the real storefront instead, without fixing the mockup itself.
 
 ---
 

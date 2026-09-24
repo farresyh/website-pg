@@ -244,9 +244,9 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 
 ## 6.15 Admin — Store Themes
 
-**Resolved 2026-09-09 by [ADR-081](./adr.md).** Shipped: a **curated fixed set of 5 theme presets** (`affiliate_branding.theme_preset`), an affiliate picks one in the portal "Theme" tab (live preview), the storefront injects the preset's Material-3 **colour** tokens only — structure/typography unchanged. Adding a preset is a code change, not an admin operation. The heavier THM-1..4 vision below is **dropped, not deferred** — re-argue only against real sized demand.
+**Resolved 2026-09-09 by [ADR-081](./adr.md).** Shipped: a **curated fixed set of 5 theme presets** (`affiliate_branding.theme_preset`), an affiliate picks one in the portal "Theme" tab (live preview), the storefront injects the preset's Material-3 **colour** tokens only — structure/typography unchanged. Adding a preset is a code change, not an admin operation. The heavier THM-1..4 vision below is **dropped, not deferred** — re-argue only against real sized demand. (One of the 5, `default`/Digital Architect, was later retired from the affiliate-pickable set — see the 2026-09-24 entry below; 4 are affiliate-selectable today.)
 
-**Extended 2026-09-11 by [ADR-090](./adr.md).** Grilled after the founder found the presets barely changed the page in production — root cause: `tokens` only ever covered accent colours (`--color-primary`/`secondary`/`tertiary`/`warning`), never `--color-surface*`/`--color-ink` (background/text), which stayed fixed once in `globals.css :root` regardless of preset. All 5 presets now carry surface/ink overrides too, so a preset actually recolors the whole page, not just buttons/badges. Also delivers the first slice of ADR-081's pinned dark-mode requirement: a per-affiliate fixed **Site Mode** (light/dark, not a viewer-side toggle) with a hand-authored `tokensDark` for the `default` preset; the other 4 presets' dark palettes are backlog (§16).
+**Extended 2026-09-11 by [ADR-090](./adr.md).** Grilled after the founder found the presets barely changed the page in production — root cause: `tokens` only ever covered accent colours (`--color-primary`/`secondary`/`tertiary`/`warning`), never `--color-surface*`/`--color-ink` (background/text), which stayed fixed once in `globals.css :root` regardless of preset. All 5 presets now carry surface/ink overrides too, so a preset actually recolors the whole page, not just buttons/badges. Also delivers the first slice of ADR-081's pinned dark-mode requirement: a per-affiliate fixed **Site Mode** (light/dark, not a viewer-side toggle) with a hand-authored `tokensDark` for the `default` preset; the other 4 presets' dark palettes were backlog at the time — **built 2026-09-24, see the next entry.**
 
 **Extended 2026-09-24 by [ADR-113](./adr.md).** Dark mode now ships for all 4 **affiliate-selectable** presets (Cyber Bumblebee, Red Giants Edition, Cyber Emerald, Hyper Cobalt) — the §16 backlog item this closed. `storefront/DESIGN.md` written as the living design-system reference (new file, includes named Dark Mode Rules). A same-session policy change: **Digital Architect (`default`) is no longer offered to affiliates at all** — it's PekanGame's own primary-brand identity (verified zero non-primary affiliates were on it in production before removing it), so its own dark palette was built, then deleted again as unreachable once it was pulled from the affiliate picker. A real WCAG contrast bug in Cyber Bumblebee's light mode (`primary` unreadable as running text on white, 41 call sites) was also found and fixed the same session.
 
@@ -820,9 +820,17 @@ accepted state, not a gap to chase. See §14.
    gallery→WebP + delete referential safety already shipped, ADR-095),
    SEO `AggregateRating` JSON-LD on the PDP,
    ~~ADR-090's dark-palette backfill (`bumblebee`/`redgiants`/`emerald`/`cobalt`)~~
-   — **built 2026-09-24, ADR-113**, and the **reseller-family audit's item A3**
+   — **built 2026-09-24, ADR-113**, the **reseller-family audit's item A3**
    (per-tier rate limit on the Reseller API/Bot) — deliberately deferred design
-   call from the 2026-09-10 audit, not forgotten.
+   call from the 2026-09-10 audit, not forgotten — and the reseller portal's
+   `ThemeTab.tsx` live-preview panel still hardcoding a few cosmetic details
+   (the payment-strip background/badge colours) outside the injected tokens,
+   first flagged in ADR-090's Consequence-to-track and confirmed still
+   unresolved during ADR-113's audit (2026-09-24) — the mockup made it look
+   like a preset's secondary/tertiary accents were missing when the real
+   storefront actually renders them fine; low priority since the real
+   storefront is unaffected, but worth fixing so the preview can be trusted
+   without a live-storefront cross-check every time.
 7. ~~ADR-090 dark mode needs a real redo.~~ **Resolved 2026-09-24 by
    [ADR-113](./adr.md)** — the founder tried the antislop/impeccable skills
    directly against real competitor references instead of waiting for a
