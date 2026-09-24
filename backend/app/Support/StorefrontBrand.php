@@ -21,14 +21,25 @@ use App\Models\Affiliate;
  * tests, a non-storefront caller, Postman), `get()` lazily falls back to
  * `Affiliate::primary()` — the exact behaviour every call site had before
  * this seam (ADR-061 `Affiliate::primary()`).
+ *
+ * Also carries the literal `X-Storefront-Host` the middleware verified for
+ * this request (bug fix, 2026-09-24): any redirect built back OUT to the
+ * storefront (CHIP's `success_return_url`/`failure_return_url` — see
+ * `CheckoutService`/`MembershipSubscriptionService`) must land the customer
+ * on the SAME domain they checked out from, not the platform default —
+ * otherwise a `fixfastapp.com` order redirects to `pekangame.space`, whose
+ * `/track-order` is itself brand-scoped and 404s on that order.
  */
 class StorefrontBrand
 {
     private ?Affiliate $brand = null;
 
-    public function set(Affiliate $brand): void
+    private ?string $hostname = null;
+
+    public function set(Affiliate $brand, ?string $hostname = null): void
     {
         $this->brand = $brand;
+        $this->hostname = $hostname;
     }
 
     /**
@@ -41,6 +52,7 @@ class StorefrontBrand
     public function clear(): void
     {
         $this->brand = null;
+        $this->hostname = null;
     }
 
     public function isResolved(): bool
@@ -51,5 +63,21 @@ class StorefrontBrand
     public function get(): Affiliate
     {
         return $this->brand ??= Affiliate::primary();
+    }
+
+    /**
+     * The storefront origin to redirect back to for this request: the
+     * literal verified `X-Storefront-Host` when one was resolved, else the
+     * platform default (`STOREFRONT_URL`) — no header ever reaches here
+     * outside a real storefront request (console, queue, tests, bot/API
+     * order channels), so the default is the correct answer there too.
+     */
+    public function url(): string
+    {
+        if ($this->hostname !== null) {
+            return 'https://'.$this->hostname;
+        }
+
+        return rtrim((string) config('services.storefront.url'), '/');
     }
 }
