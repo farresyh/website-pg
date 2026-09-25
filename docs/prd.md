@@ -805,16 +805,22 @@ accepted state, not a gap to chase. See §14.
    alone approved, before ADR-082 shipped. Founder end-to-end-verified the
    live pipeline the same day: placed a real order, approved its review from
    `/admin/reviews`, confirmed it renders on the storefront.
-4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
-   Bot channel works and every command is prod-verified; the webhook already has
-   HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
-   **2026-09-25 note (ADR-114 migration audit):** the new production droplet
-   (`pekangame-prod-lwf`) does not carry this nginx-level 127.0.0.1
-   IP-restriction at all — checked directly, no match in its `sites-available`
-   config. Not urgent (HMAC auth still gates the route, and OpenWA itself
-   hasn't moved to this box yet), but the IP-restriction needs re-adding here
-   once the bot migrates onto the new server, not assumed carried over from
-   the Cloudflare-mTLS config copy.
+4. **OpenWA droplet resize (+$20/mo)** ~~+ the webhook nginx IP-restriction~~
+   — the Bot channel works and every command is prod-verified; the webhook
+   already has HMAC-signature auth (ADR-076). Resize when capacity actually
+   calls for it (still open). **Correction, 2026-09-25 (ADR-114 migration
+   audit):** this entry's "IP-restriction" half is stale, struck out — that
+   `allow 127.0.0.1; deny all;` block (ADR-075 decision 4) was **deliberately
+   deleted**, not left undone, once `api`/`bot` went behind Cloudflare (see
+   `docs/adr.md`'s 2026-09-06 cutover entry, line ~690): a raw-IP allowlist
+   can't work once traffic arrives from Cloudflare's edge IPs instead of the
+   droplet itself, so it would have 403'd the bot's own webhook. HMAC is the
+   real, only, and intentional auth layer on this route — confirmed
+   identical (absent) on both the old and new droplet's nginx config, not a
+   migration regression. Nothing to "re-add" here; if IP-layer defense is
+   ever wanted again it would need to allowlist Cloudflare's published edge
+   ranges, not `127.0.0.1`, and that's a fresh decision, not restoring old
+   config.
 5. ~~**e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
    30s timeout under the 60s per-test budget; raise it.~~ — **FIXED
    2026-09-22.** Real bottleneck wasn't the overall test budget
