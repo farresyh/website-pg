@@ -808,6 +808,13 @@ accepted state, not a gap to chase. See §14.
 4. **OpenWA droplet resize (+$20/mo) + the webhook nginx IP-restriction** — the
    Bot channel works and every command is prod-verified; the webhook already has
    HMAC-signature auth (ADR-076). Resize when capacity actually calls for it.
+   **2026-09-25 note (ADR-114 migration audit):** the new production droplet
+   (`pekangame-prod-lwf`) does not carry this nginx-level 127.0.0.1
+   IP-restriction at all — checked directly, no match in its `sites-available`
+   config. Not urgent (HMAC auth still gates the route, and OpenWA itself
+   hasn't moved to this box yet), but the IP-restriction needs re-adding here
+   once the bot migrates onto the new server, not assumed carried over from
+   the Cloudflare-mTLS config copy.
 5. ~~**e2e flake** — `storefront-checkout.spec.ts`'s "Delivered" assertion uses a
    30s timeout under the 60s per-test budget; raise it.~~ — **FIXED
    2026-09-22.** Real bottleneck wasn't the overall test budget
