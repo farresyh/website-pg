@@ -1761,3 +1761,24 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   on its own `fix/adr059-withdrawal-payout-redirect` branch off `staging`,
   its own PR, per the usual branch workflow (item 28's Reseller API
   idempotency-scope fix landed the same session on its own separate branch/PR).
+- **Code-review follow-up, same PR, caught two real gaps in the first pass:**
+  the `reseller/` portal's own `/withdrawal` page still let an
+  `affiliate_user` type a "one-off" bank override and submit it — the
+  backend now silently ignores those fields, so the form was actively
+  misleading (looked like it worked, payout still went to profile). Replaced
+  the editable inputs with a read-only "Payout to" summary + a link to
+  Profile, and disabled submission when no bank details exist yet (mirrors
+  the backend's own 422 guard). Separately, `Admin\WithdrawalController::index()`
+  ran one extra query per affiliate-owned row to compute
+  `bank_details_changed_since_last_approval` — batched into a single query
+  per request instead (fetch every relevant owner's approved/completed
+  withdrawals once, group in PHP). A third, lower-severity finding — bank
+  fields are read from the in-memory `$affiliate` model before
+  `AffiliateWithdrawalService::request()`'s lock, so a concurrent Profile
+  bank-detail edit isn't covered by that lock — is accepted, not fixed:
+  the lock's declared purpose is serializing balance/open-request checks,
+  not bank-detail consistency, no `Affiliate`-row locking exists anywhere
+  else in the codebase (a Profile update doesn't lock either), and this is
+  a narrower instance of the same already-accepted gap this ADR addendum's
+  own Consequence-to-track already covers (first payout after a change only
+  warns, doesn't block).
