@@ -1199,11 +1199,21 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
     `reseller_tier_id` assigned yet — `.order` already correctly blocks with
     `NoResellerTierAssignedException`, `.list` doesn't guard the same case.
     Not started.
-38. **`docs-site`'s `first-order.md`/`product-codes.md` walkthrough is
-    missing `checkout_input`** (the ADR-097 zone-id discovery field, live in
-    code + the auto-generated API Reference since 2026-09-16) — a developer
-    following only the hand-written guide would get stuck on a zone_id game.
-    Doc-only fix. Not started.
+38. ~~**`docs-site`'s `first-order.md` walkthrough is missing
+    `checkout_input`**~~ — **🟢 BUILT 2026-09-26.** Added `checkout_input` to
+    the catalog response example in "2. Read the catalogue" (matching
+    `CatalogController`'s own `#[Response]` example) + a paragraph
+    explaining it (non-null `field`/`options` means send that value as
+    `server_id` on the order — the request field is always literally named
+    `server_id` regardless of what `checkout_input.field` calls it) +
+    reworded the `server_id`-is-conditional bullet in "3. Place the order"
+    to point at checking `checkout_input` programmatically instead of
+    hardcoding which games need it. `product-codes.md` reuses the same
+    catalog example for an unrelated purpose (building `product_code`, not
+    checkout inputs) — left as-is, adding `checkout_input` there would be
+    noise unrelated to what that page teaches. `npm run check` + `npm run
+    build` both clean. Built on its own `fix/docs-checkout-input-example`
+    branch off `staging`. Not yet merged.
 
 **Low priority / needs a founder yes-no, not a grill:**
 

@@ -1820,3 +1820,23 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   a narrower instance of the same already-accepted gap this ADR addendum's
   own Consequence-to-track already covers (first payout after a change only
   warns, doesn't block).
+
+## 2026-09-26 — Item 38 built (docs-site missing `checkout_input`)
+
+- Doc-only fix from the 2026-09-26 money-critical branch audit punch list
+  (`docs/prd.md` §16 item 38). `first-order.md`'s hand-written catalog
+  example was missing `checkout_input` (the ADR-097 zone-id discovery
+  field, already live in the real API and its auto-generated Reference) —
+  a developer following only the guide would get stuck placing an order
+  for a zone-id game, since the guide only mentioned `server_id` in prose
+  ("Mobile Legends does; many do not") with no way to check programmatically.
+  Added `checkout_input` to the catalog JSON example (matching
+  `CatalogController`'s own `#[Response]` example exactly) + a paragraph
+  explaining it, and reworded the `server_id` bullet to point at
+  `checkout_input` instead of a hardcoded game list.
+  `product-codes.md` reuses the same catalog example for a different
+  purpose (building `product_code`) — left untouched, not in scope for
+  this fix. `npm run check` + `npm run build` both clean. Built on its own
+  `fix/docs-checkout-input-example` branch off `staging`, per the
+  founder's plan to build several punch-list items and bundle them into
+  one PR. Not yet merged.
