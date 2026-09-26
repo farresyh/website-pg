@@ -1761,3 +1761,19 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   `migrate:status`). Not yet released to `main`. Built on its own
   `fix/adr074-reseller-idempotency-scope` branch off `staging`, its own PR,
   per the usual branch workflow.
+- **Code-review follow-up, same PR, caught two real gaps in the first pass:**
+  the migration's `down()` unconditionally re-added the bare global-unique
+  constraint on `checkout_idempotency_key` — safe today (0 collisions
+  exist) but a real footgun the moment two resellers actually do share a
+  key post-deployment (the exact state this migration exists to allow):
+  the final statement would throw mid-rollback, leaving `idempotency_scope`
+  already dropped and the old constraint never restored either way. `down()`
+  now checks for any cross-reseller duplicate `checkout_idempotency_key`
+  first and throws a clear `RuntimeException` before touching schema at
+  all. Added a regression test for both the refusal and the clean-rollback
+  path. Separately, the two `wallet_reseller_id`-scoped idempotency lookups
+  in `ResellerOrderPlacementService` (pre-check + race-recovery) were
+  duplicated verbatim — extracted into one private `findByIdempotencyKey()`
+  so a future edit to the scoping predicate can't update one call site and
+  silently miss the other. Backend 2246/2246 fast + concurrency suite both
+  green.

@@ -58,6 +58,28 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Fail loud, before touching anything: this migration exists
+        // specifically to allow two different resellers to share a
+        // checkout_idempotency_key. Once that's actually happened, dropping
+        // back to a bare global-unique column is not a safe rollback — and
+        // checking this first (rather than letting the final statement
+        // below throw) avoids leaving the table with idempotency_scope
+        // already dropped and no unique constraint restored either way.
+        $duplicateCount = DB::table('orders')
+            ->select('checkout_idempotency_key')
+            ->whereNotNull('checkout_idempotency_key')
+            ->groupBy('checkout_idempotency_key')
+            ->havingRaw('COUNT(*) > 1')
+            ->count();
+
+        if ($duplicateCount > 0) {
+            throw new RuntimeException(
+                "Cannot roll back: {$duplicateCount} checkout_idempotency_key value(s) are now ".
+                'shared across different resellers — restoring the bare global-unique constraint '.
+                'would violate real data. Resolve those orders manually before rolling back.'
+            );
+        }
+
         Schema::table('orders', function (Blueprint $table) {
             $table->dropUnique('orders_idem_scope_key_unique');
             $table->dropColumn('idempotency_scope');
