@@ -158,4 +158,21 @@ class EnsureAccountTypeTest extends TestCase
         $this->withToken($this->affiliateToken())->getJson('/api/affiliate/me')->assertOk();
         $this->withToken($this->resellerToken())->getJson('/api/affiliate/me')->assertOk();
     }
+
+    // --- Item 31 (2026-09-26 audit): a deactivated Reseller must be
+    // blocked from the portal too, matching the REST API/Bot's existing
+    // full block on the same `resellers.is_active` column. ---
+
+    public function test_a_deactivated_reseller_cannot_reach_the_portal_even_with_an_active_login_row(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Suspended Reseller', 'is_active' => false]);
+        $user = AffiliateUser::query()->create([
+            'owner_type' => 'reseller', 'owner_id' => $reseller->id,
+            'name' => 'Reseller Staff', 'email' => 'staff@suspended-reseller.test',
+            'password' => Hash::make('secret-password'), 'is_active' => true,
+        ]);
+        $token = $user->createToken('affiliate')->plainTextToken;
+
+        $this->withToken($token)->getJson('/api/reseller-portal/wallet')->assertForbidden();
+    }
 }

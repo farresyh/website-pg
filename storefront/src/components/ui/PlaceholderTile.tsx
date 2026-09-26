@@ -14,7 +14,7 @@ export default function PlaceholderTile({ label }: { label: string }) {
       }}
       aria-hidden="true"
     >
-      <span className="font-display text-4xl font-bold text-ink/70">{label.charAt(0).toUpperCase()}</span>
+      <span className="font-display text-4xl font-bold text-on-surface/70">{label.charAt(0).toUpperCase()}</span>
     </div>
   );
 }

@@ -238,7 +238,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
                 Order Reference Number
               </p>
               <div className="mt-0.5 flex items-center gap-2">
-                <p className="font-mono text-base font-bold text-primary">{order.order_number}</p>
+                <p className="font-mono text-base font-bold text-primary-on-surface">{order.order_number}</p>
                 <button
                   type="button"
                   onClick={handleCopy}
@@ -302,7 +302,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           )}
 
           <div className={`rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo ${hasContact ? "md:col-span-2" : ""}`}>
-            <div className="mb-4 flex items-center gap-2 text-primary">
+            <div className="mb-4 flex items-center gap-2 text-primary-on-surface">
               <CreditCard size={18} weight="fill" />
               <h2 className="font-display text-headline-sm">Payment Details</h2>
             </div>
@@ -319,7 +319,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
                 <span className="block text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">
                   Amount Paid
                 </span>
-                <span className="block font-mono text-headline-md font-bold text-primary">{rm(order.final_amount)}</span>
+                <span className="block font-mono text-headline-md font-bold text-primary-on-surface">{rm(order.final_amount)}</span>
               </div>
             </div>
           </div>
@@ -360,7 +360,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
 function DetailCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
     <div className="rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
-      <div className="mb-4 flex items-center gap-2 text-primary">
+      <div className="mb-4 flex items-center gap-2 text-primary-on-surface">
         {icon}
         <h2 className="font-display text-headline-sm">{title}</h2>
       </div>
@@ -396,7 +396,7 @@ function StageCircle({ state, index }: { state: StageState; index: number }) {
   if (state === "active") {
     return (
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-secondary-container">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-ink" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-on-secondary-container" />
       </div>
     );
   }

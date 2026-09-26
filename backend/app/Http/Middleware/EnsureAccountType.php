@@ -45,6 +45,18 @@ class EnsureAccountType
             throw new HttpException(403, "Forbidden: this endpoint is for {$expected->value} accounts only.");
         }
 
+        // Item 31 (2026-09-26 audit): a deactivated Reseller
+        // (`resellers.is_active`) kept full wallet/orders/API-key portal
+        // access — the REST API (EnsureResellerApiKey) and the Bot already
+        // block entirely on this same column, so the portal was the odd
+        // one out. Affiliate side is deliberately NOT mirrored here — an
+        // ADR-058 RES-5 decision keeps a deactivated Affiliate's portal
+        // read-only (earnings stay withdrawable), which existing tests
+        // (BrandingControllerTest) already cover.
+        if ($expected === AccountOwnerType::Reseller && ! $user->resellerOwner()?->is_active) {
+            throw new HttpException(403, 'Forbidden: account deactivated.');
+        }
+
         return $next($request);
     }
 }

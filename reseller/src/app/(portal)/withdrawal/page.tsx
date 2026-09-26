@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -33,10 +34,6 @@ export default function WithdrawalPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [amountRm, setAmountRm] = useState("");
-  const [bankName, setBankName] = useState("");
-  const [bankAccountNo, setBankAccountNo] = useState("");
-  const [bankHolder, setBankHolder] = useState("");
-  const [bankTouched, setBankTouched] = useState(false);
 
   useEffect(() => {
     const session = getClientSession();
@@ -48,11 +45,6 @@ export default function WithdrawalPage() {
         if (cancelled) return;
         setData(result);
         setError(null);
-        if (!bankTouched) {
-          setBankName(result.prefill.bank_name ?? "");
-          setBankAccountNo(result.prefill.bank_account_no ?? "");
-          setBankHolder(result.prefill.bank_account_holder ?? "");
-        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -64,8 +56,6 @@ export default function WithdrawalPage() {
     return () => {
       cancelled = true;
     };
-    // bankTouched intentionally excluded — prefill only on first load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey]);
 
   const hasOpenRequest = data?.withdrawals.some(
@@ -88,9 +78,6 @@ export default function WithdrawalPage() {
     try {
       await createWithdrawal(session.token, {
         amount: Math.round(rm * 100),
-        bank_name: bankName || undefined,
-        bank_account_no: bankAccountNo || undefined,
-        bank_account_holder: bankHolder || undefined,
       });
       setAmountRm("");
       setReloadKey((k) => k + 1);
@@ -145,45 +132,35 @@ export default function WithdrawalPage() {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Bank name">
-                <input
-                  value={bankName}
-                  onChange={(e) => {
-                    setBankTouched(true);
-                    setBankName(e.target.value);
-                  }}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Account number">
-                <input
-                  value={bankAccountNo}
-                  onChange={(e) => {
-                    setBankTouched(true);
-                    setBankAccountNo(e.target.value);
-                  }}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Account holder">
-                <input
-                  value={bankHolder}
-                  onChange={(e) => {
-                    setBankTouched(true);
-                    setBankHolder(e.target.value);
-                  }}
-                  className={inputClass}
-                />
-              </Field>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-theme-sm dark:border-gray-700 dark:bg-gray-900">
+                <p className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                  Payout to
+                </p>
+                {data?.prefill.bank_name ? (
+                  <p className="text-gray-800 dark:text-white/90">
+                    {data.prefill.bank_name} — {data.prefill.bank_account_no}
+                    <br />
+                    {data.prefill.bank_account_holder}
+                  </p>
+                ) : (
+                  <p className="text-gray-500 dark:text-gray-400">
+                    No bank details on file.
+                  </p>
+                )}
+              </div>
 
               <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                Prefilled from your Profile. Edit here for a one-off, or update
-                Profile to change the default.
+                A withdrawal always pays out to your saved Profile bank
+                details.{" "}
+                <Link href="/profile" className="text-brand-500 hover:underline">
+                  Update Profile
+                </Link>{" "}
+                first to change where this goes.
               </p>
 
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !data?.prefill.bank_name}
                 className="w-full rounded-lg bg-brand-500 py-2.5 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
               >
                 {submitting ? "Submitting…" : "Request withdrawal"}

@@ -13,7 +13,7 @@ export default function NotFound() {
     <>
       <main className="pb-nav lg:pb-0">
         <div className="mx-auto flex min-h-[60vh] max-w-[560px] flex-col items-center justify-center px-4 py-16 text-center">
-          <p className="font-mono text-6xl font-bold text-primary">404</p>
+          <p className="font-mono text-6xl font-bold text-primary-on-surface">404</p>
           <h1 className="mt-4 font-display text-2xl font-bold uppercase tracking-tight">Page not found</h1>
           <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">
             That page doesn&apos;t exist, or the game you were looking for isn&apos;t available right now.

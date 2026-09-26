@@ -67,13 +67,12 @@ class WithdrawalController extends Controller
         $affiliate = $request->user()->affiliateOwner();
         $data = $request->validated();
 
-        $bankName = $data['bank_name'] ?? $affiliate->bank_name;
-        $bankAccountNo = $data['bank_account_no'] ?? $affiliate->bank_account_no;
-        $bankAccountHolder = $data['bank_account_holder'] ?? $affiliate->bank_account_holder;
-
-        if ($bankName === null || $bankAccountNo === null || $bankAccountHolder === null) {
+        // ADR-059 addendum, 2026-09-26: always the saved profile — no
+        // per-request override. See CreateAffiliateWithdrawalRequest's
+        // own docblock for why.
+        if ($affiliate->bank_name === null || $affiliate->bank_account_no === null || $affiliate->bank_account_holder === null) {
             throw ValidationException::withMessages([
-                'bank_name' => ['Add your bank details in Profile first, or enter them on this request.'],
+                'bank_name' => ['Add your bank details in Profile first.'],
             ]);
         }
 
@@ -83,9 +82,9 @@ class WithdrawalController extends Controller
         // closes.
         $withdrawal = $this->withdrawals->request($affiliate, [
             'amount' => $data['amount'],
-            'bank_name' => $bankName,
-            'bank_account_no' => $bankAccountNo,
-            'bank_account_holder' => $bankAccountHolder,
+            'bank_name' => $affiliate->bank_name,
+            'bank_account_no' => $affiliate->bank_account_no,
+            'bank_account_holder' => $affiliate->bank_account_holder,
         ], $request->user()->id);
 
         return response()->json([

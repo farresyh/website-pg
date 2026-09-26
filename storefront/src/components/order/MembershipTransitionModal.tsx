@@ -70,7 +70,7 @@ export default function MembershipTransitionModal({
         <div className="mb-4 flex flex-col gap-3">
           <div className="rounded-md border-2 border-ink bg-surface-container p-4">
             <div className="mb-2 flex items-center gap-2">
-              <Info size={16} weight="fill" className="shrink-0 text-primary" />
+              <Info size={16} weight="fill" className="shrink-0 text-primary-on-surface" />
               <span className="font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
                 English
               </span>
@@ -80,7 +80,7 @@ export default function MembershipTransitionModal({
 
           <div className="rounded-md border-2 border-ink bg-surface-container p-4">
             <div className="mb-2 flex items-center gap-2">
-              <Info size={16} weight="fill" className="shrink-0 text-primary" />
+              <Info size={16} weight="fill" className="shrink-0 text-primary-on-surface" />
               <span className="font-display text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">
                 Bahasa Melayu
               </span>

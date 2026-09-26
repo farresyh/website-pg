@@ -1670,3 +1670,301 @@ The same session's Kimi-review discussion also verified (no code change needed, 
 - **Fix:** `StorefrontBrand::set()` now optionally carries the literal verified `X-Storefront-Host` alongside the resolved `Affiliate`; a new `StorefrontBrand::url()` returns that host (as `https://`) when one was resolved, else falls back to `STOREFRONT_URL` unchanged. `ResolveStorefrontBrand` passes the host only on the custom-domain branch — the primary brand's own hostnames stay on the config default, so `pekangame.space`'s own checkout is byte-identical to before. Both services now inject `StorefrontBrand` and call `->url()` instead of reading config directly.
 - Added a feature-level regression test per flow — `AffiliateStorefrontCheckoutTest::test_checkout_return_url_lands_on_the_affiliates_own_domain` and `MembershipSubscriptionControllerTest::test_subscribe_return_url_lands_on_the_affiliates_own_domain` — each captures the real `PaymentRequest` sent to the (faked) CHIP gateway and asserts both return URLs use the affiliate's own domain. Neither flow had any test coverage of the return URL at all before this fix. Full backend suite green: 2243/2243, 6019 assertions.
 - No ADR needed — this restores ADR-060's already-intended per-brand isolation, not a new decision. `/track-order`'s brand-scoping itself is correct as designed (an order shouldn't be look-up-able cross-brand); the bug was purely in where the customer got redirected to.
+
+## 2026-09-24 — Membership renew/upgrade guided modal (PR #285)
+
+- Direct follow-up in the same session as the affiliate redirect fix above: walking through how renew/upgrade actually work surfaced that neither mechanic is obvious from the button label — Renew extends `expires_at` by 30 days from the CURRENT expiry (not reset from today) and never touches `quota_remaining_sen`; Upgrade switches the tier's price immediately but the customer keeps using the OLD tier's remaining quota until the next 30-day cycle boundary (`MembershipFeeService::applyTransition()`, ADR-027 addendum Q2/Q5 — a deliberate anti-abuse call, not a bug). The storefront (`MembershipSubscribe.tsx`) had zero explanation of either — only "Downgrade" (disabled) carried an inline note.
+- **Fix:** new `MembershipTransitionModal.tsx` — bilingual (English + Bahasa Melayu, this storefront has no locale switcher) explanation shown when tapping Renew or Upgrade, gated behind an "I Understand, Continue" acknowledgement before `pickPlan()` runs; Cancel dismisses with no selection made. First-time Subscribe and disabled Downgrade are unaffected.
+- Browser-verified against a real flow, not just `tsc`/lint/build: seeded an active Tier 1 membership + issued a session token via `MembershipSessionTokenService::issue()` on local dev, set the `krs_membership_token` cookie, walked both Renew and Upgrade — correct EN+BM copy, Continue proceeds to plan selection, Cancel dismisses cleanly.
+
+## 2026-09-24 — Release: `staging` → `main` (PR #286, 7 PRs #279–#285)
+
+- Founder merged PR #286 same day; production auto-deployed per ADR-037/066. Ships: ADR-100's flap-gate retirement (PR #280), ADR-094's combo auto-reactivation cascade (PR #281), ADR-046's supplier-bulk-toggle combo cascade (PR #282), the affiliate checkout/membership redirect fix (PR #284), and the membership renew/upgrade guided modal (PR #285) — see their own entries above/in `docs/adr.md`. One additive migration (`package_reactivation_logs.admin_user_id`). All CI green on every merged PR, including a `playwright` job that hit the known recurring Turbopack Google-Fonts CI flake (`docs/prd.md` §16 item 27) on PR #285's first run and cleared on a plain rerun with zero code change — consistent with every prior occurrence.
+
+## 2026-09-24 — Production infra: Vercel Function Region was `iad1` (US), not `sin1` (Singapore), on all 3 frontends
+
+- Same session as the release above: founder asked whether a felt storefront slowdown was related to the recently-shipped `GameInfoModal` (ADR-109). Ruled that out by reading the code — it's a pure client component riding on an already-fetched payload, zero new network calls. Kept digging instead of stopping at "not this feature."
+- **Live investigation found the real cause.** `curl` timing against `api.pekangame.space` directly: ~70-120ms (backend/DB fine). A Chrome DevTools network trace against production while clicking through the homepage caught `_rsc` prefetch requests for `/order/[slug]` taking 4.9s, 12.4s, 19.8s, and once **48.2s** — 2+ orders of magnitude slower than the backend alone. Vercel Observability confirmed this wasn't a one-off: `/order/[slug]`'s trailing-12h duration averaged 3.9s, P75 4.38s, P95 6s, 0% actual errors (just slow). `vercel inspect` on the latest production deployment showed the Function's build output tagged `[iad1]` — Washington DC, US East. `ipinfo.io` on the Forge box's IP confirmed the backend origin is physically in Singapore. Checked `pekangame-admin` and `pekangame-reseller` too — same `iad1` misconfiguration on both (the Vercel account default, never explicitly set on any of the 3 projects). `pekangame-docs` (Astro/Starlight) has zero Vercel Functions, unaffected.
+- **Fix:** Project Settings → Functions → Function Region on all 3 projects — unchecked `iad1`, checked `sin1` (Singapore is offered under Vercel's Asia Pacific region list, though the collapsed UI only previews Hong Kong/Tokyo at a glance), Save, Redeploy. Confirmed Pro plan + Fluid Compute already enabled on all 3 — this was pure misconfiguration, not a capacity ceiling, so self-hosting off Vercel was considered and explicitly rejected as the wrong fix (a single fixed-capacity VPS would handle a real burst of concurrent users worse than Vercel's already-enabled auto-scaling, once pointed at the correct region).
+- **Verified live immediately after redeploy, no rollout wait needed:** `/order/[slug]` steady-state dropped from 3.9-6s to 0.15-0.45s across 4 different games; `admin.pekangame.space`/`reseller.pekangame.space` login pages both settled at ~0.35-0.4s (down from the same `iad1` tax). One cold-start spike (16.9s) on the very first request per project, then immediately stable.
+- **Found the same root cause behind a previously-unexplained error**, not a separate bug: `[catalog] listHeroSlides failed — serving fallback: ...(525)` on `fixfastapp.com`, first spotted in a quick `vercel logs` tail. Pulled full history via Vercel's dashboard Logs (Query) tool (the CLI's `logs` command is live-tail only, not historical) — only 2 occurrences in 7 days. The Sep 21 one is the smoking gun: the same request had `listGames` (522 Connection Timed Out) AND `listHeroSlides` (525 SSL Handshake Failed) fail together, with the external call to `api.pekangame.space` itself stalling 44.8s before Cloudflare gave up — same cross-region latency pathology as above, just manifesting as an outright connection failure under worse conditions instead of merely slow. No separate fix needed; covered by the region change. `safeRead()`'s graceful `[]` fallback meant the customer never saw a crash either time, just a page with no hero banner.
+- Same session, founder also tuned `packages.php`'s Price Sync/reactivation config live in prod: raised `PRICE_SYNC_INTERVAL_MINUTES` 60→30 for fresher prices, then raised `REACTIVATION_STABILITY_SYNCS` straight to `6` (skipping the originally-planned `3` — ADR-100's own owed bump from `1`) once the interaction was flagged — halving the sync interval would have silently halved the real-world stability window (3 syncs × 60min ≈ 3h vs. 3 syncs × 30min ≈ 1.5h) had the streak requirement not moved with it. Confirmed via SSH: the first attempt's `.env` write hadn't actually landed (caught by checking the file's mtime before trusting it — still Sep 22's, two days stale); the second attempt did, `config:cache` regenerated automatically, `php artisan tinker` read back the live values (`30`/`6`).
+- See `docs/adr.md`'s ADR-071 addendum for the full record (this ADR's own Context had explicitly ruled out backend throughput as the cause and never checked Function region — worth remembering that "not the backend" isn't the same as "not infra").
+
+## 2026-09-24 — Affiliate theme-preset audit → Cyber Bumblebee contrast fix + dark mode for all 4 affiliate presets (ADR-113, branch `fix/affiliate-theme-contrast-bugs`, unpushed)
+
+- Founder asked for a full visual audit of the 5 affiliate theme presets using `antislop`/`impeccable` rather than the previously-planned Stitch reference — see [ADR-113](./adr.md) for the full decision record. Two rounds of work, same session.
+- **Round 1 — contrast bug, found via the reseller portal's Live Storefront Preview panel, confirmed on the real storefront.** Cyber Bumblebee's raw `#FFC700` primary is ~1.6:1 on white — used directly (`text-primary` Tailwind class) as running text across 41 call sites: checkout total, order tracking, footer headings, every price tag. Fixed with a new `--color-primary-on-surface` token (equal to `--color-primary` on the 4 presets already ≥4.5:1; overridden to a deep amber `#8a6500` only for Bumblebee) and a mechanical rename of all 41 `text-primary` usages to the new token-backed class. Same audit also found Bumblebee's `secondary-container`/`secondary-fixed-dim` were a washed navy-slate/lavender-grey (`#3A3A50`/`#8E8EA8`) instead of "ink black" — set both to solid ink black with a new `--color-on-secondary-fixed-dim` (ink on every other preset, yellow pop on Bumblebee) so icon badges read as yellow-on-black instead of grey-on-grey. Verified live on local dev by temporarily pointing the primary affiliate's own branding row at each preset (`AffiliateBranding::theme_preset`/`theme_mode`, reverted after each check) — the reseller preview mockup alone wasn't trusted as ground truth after it was found to hide real components (discount badges, step indicators) that do show the intended accent colors on the actual storefront.
+- **Round 2 — dark mode, all 5 presets audited, 4 built.** Compared Digital Architect's existing (disliked) dark build against two real competitor dark themes (warungvamos.games, acidgameshop.com). Root cause wasn't the brand hues: (1) the structural 2px border was full-brightness near-white on every element at once, and (2) the Membership promo card's `secondary-container` fill used a raw hue near-complementary to the page's primary, reading as a mismatched inserted block. Fixed for Digital Architect (muted `--color-ink`, in-family `secondary-container`), then built fresh `tokensDark` for Cyber Bumblebee, Red Giants Edition, Cyber Emerald, and Hyper Cobalt following the same rules — each gets its own hue-tinted dark surface ramp (warm amber-black, maroon-black, green-black, blue-black respectively), a muted structural border, and a deep in-family tone for the Membership card instead of the raw saturated secondary hue. `storefront/DESIGN.md` written (new file) to carry the system forward, including a named "Dark Mode Rules" section citing each bug it exists to prevent.
+- **Mid-build policy change:** founder decided Digital Architect (PekanGame's own primary-brand identity) should never have been an affiliate-pickable preset at all. Verified via read-only production query (SSH, founder-authorized) that zero non-primary affiliates were on it — zero customer impact. Removed it from the reseller portal's picker (`ThemeTab.tsx`'s `SELECTABLE_PRESETS` filter) and the backend's `UpdateBrandingRequest` validation (`in:bumblebee,redgiants,emerald,cobalt`, was `in:default,...`); deleted its freshly-built `tokensDark` as unreachable dead code rather than keeping it.
+- Fixed a related regression while muting `--color-ink` for dark mode: 6 component call sites paired `text-ink` with `bg-surface-container-lowest` for real legible content (icon fallback letters, a status badge, the `outline` Button variant), not decoration — routed through `text-on-surface`/`text-on-surface-variant` instead so dark mode didn't lose real text contrast while structural borders got calmer.
+- **Verification:** `tsc --noEmit`, `eslint`, and a full production `next build` clean on both `storefront/` and `reseller/`; full backend suite green (2243/2243); `theme-presets.ts` byte-identical between `storefront/` and `reseller/` after every `scripts/sync-theme-presets.mjs` run (CI's `theme-preset-drift` job would pass). Every preset/mode combination live-tested in the real browser against local dev (not just the reseller preview mockup), including reverting the primary affiliate's branding row back to Digital Architect/light after each check so local dev was left in its original state.
+- `docs/prd.md` §15/§16 updated same session to reflect dark mode now shipping on 4 presets (was 1) and Digital Architect no longer being affiliate-selectable. Branch pushed and PR opened same session (#288) — see the 2026-09-25 entry below for its merge.
+
+## 2026-09-25 — ADR-113 merged to `staging`
+
+- PR #288 (branch `fix/affiliate-theme-contrast-bugs`) merged into `staging` — CI green, no follow-up fixes needed. Not yet released to `main`/production; that remains a separate founder decision.
+
+## 2026-09-25 — ADR-114: production infra split into its own DigitalOcean team (retroactive doc backfill)
+
+- **This entry was written a day after the migration itself shipped** — a doc-audit session (this one) found the migration had no `adr.md`/`build-log.md` record at all, only session memory. Backfilled here; see [ADR-114](./adr.md) for the full decision record.
+- PekanGame's droplet + managed MySQL rebuilt (not transferred — DO has no cross-team transfer) into a new DO team, **LWF Group Sdn Bhd**, separating it from the DO account it was sharing with Nakhoda (a different, older business with real external customers). New droplet `pekangame-prod-lwf` (159.223.39.16), new `topup-prod-mysql` cluster (89 tables imported, `DEFINER` clauses stripped first). Cloudflare Authenticated Origin Pulls mTLS replicated byte-for-byte from the old server's nginx config; new Origin CA cert installed via Forge.
+- **DNS cutover for `api.pekangame.space` verified via a real end-to-end order**, not just a health check: `PG-NMED1MMB4HKK` — CHIP webhook received, `payment_status: paid`; first Digiflazz delivery attempt failed (`error_code 45`, IP not yet whitelisted for the new droplet's IP); founder updated the Digiflazz IP whitelist, automatic retry succeeded ~2 min later (`delivery_status: delivered`).
+- **OpenWA bot deliberately not migrated in this cutover** — its WhatsApp session is device-bound, can't be copied, needs a fresh QR re-link with unavoidable bot-channel downtime when it happens. Old droplet (`pekangame-prod`, 157.245.203.250, old DO team) kept running in parallel, serving both as API rollback and as the bot's still-live home (`bot.pekangame.space` + its OpenWA process, confirmed still running via SSH during this audit session).
+- **Found during this audit session, not the migration session:** the new droplet provisions with Forge's zero-downtime deploy (`releases/<id>/` + `current` symlink) — the old droplet does not (flat `backend/` dir, Quick Deploy off). Not a deliberate choice re-made for this migration, just what Forge gave the new site; kept as a strict improvement (no half-deployed-release window on a money-critical checkout path, atomic rollback). This means `.env` now lives at `/home/forge/api.pekangame.space/.env` (site root, symlinked into `current/backend/.env`), not inside a flat `backend/` dir — an initial check in this same audit session looked at the wrong (old-server-shaped) path and wrongly concluded OpenWA env vars were missing entirely; re-checked against the correct path and found `OPENWA_WEBHOOK_SECRET` is actually present and correct (inbound bot webhook traffic verifies fine), while `OPENWA_BASE_URL` still resolves to `127.0.0.1:2785` with nothing listening there on the new box (outbound backend→bot calls fail) — a real but low-urgency gap, since this channel has zero external customers yet.
+- **Memory updated same session:** the `reference_forge_box_ssh` memory described only the old server's flat layout — added a new-server addendum so a future session doesn't repeat the same wrong-path mistake. (No server-path reference exists in `AGENTS.md` itself — checked, none found.)
+- **Still open, unscheduled:** OpenWA bot migration to the new droplet; old droplet/DB decommission (no date — wait for the new server to prove stable for a few days); a stray duplicate `schedule:run` cron entry accidentally left on the old server mid-migration (harmless, delete whenever convenient).
+
+## 2026-09-25 — OpenWA bot channel migrated to the new droplet, closing out ADR-114
+
+- Same-day follow-up to the migration audit above, same founder session. Provisioned `bot.pekangame.space` as a Custom Forge site on `pekangame-prod-lwf` (browser-driven: New Site → domain → SSL cloned from the old site's own certificate rather than waiting on Let's Encrypt HTTP validation, which needs DNS to already point here), cloned `github.com/rmyndharis/OpenWA` fresh, `npm install` clean, nginx proxy config hand-typed to match the old server's `proxy_pass http://127.0.0.1:2785` block, registered as a Forge background process (`npm run prod`). DNS cut over (`bot.pekangame.space` + `www.bot.pekangame.space` A records → `159.223.39.16`) once the new instance answered `200` locally — same careful "verify fully live, then cut DNS" order as the earlier `api.` cutover.
+- **Three separate per-instance credentials in OpenWA's own excluded `data/` SQLite DB caused three rounds of 401s, each looking like the previous fix hadn't worked when actually a different credential was still wrong:** (1) the dashboard login key (auto-generated fresh, cosmetic only), (2) the webhook registration's `secret` column (the dashboard's "Create Webhook" form has no secret field at all, so a fresh registration ships with `secret = NULL` and every inbound delivery gets HMAC-rejected — fixed via a direct `sqlite3 UPDATE` reusing the value already in both servers' `.env`), (3) the outbound API key **and** the WhatsApp session's own ID (both per-instance; the session ID in particular is assigned fresh at QR-link time, not reused — fixing the API key alone still 401'd because the endpoint URL itself named a stale session ID). See ADR-114's 2026-09-25 addendum for the full mechanism of each and why `.env` alone doesn't carry them.
+- **`horizon:terminate` was required after each `.env` fix** — a running Horizon doesn't pick up `config:cache` changes on its own; this is an already-documented project gotcha (`AGENTS.md`) that still cost real time here because the fix was applied out-of-band from a normal deploy.
+- **Verified end-to-end for real, not just per-credential:** a WhatsApp message sent into the founder's own test group round-tripped — inbound `message.received` processed (`OpenWaSessionStatus` cache showed `ready`), outbound reply delivered (OpenWA's own `webhook_outbox_events` logged a matching `message.sent`), zero rows in `webhook_delivery_failures`.
+- **Found and fixed as a byproduct, not part of the bot migration itself** — asked directly by the founder to scan for other problems before closing the session: the old droplet's Horizon had been left fully live since the earlier `api.` cutover (deliberate, as rollback safety), and because `Supplier.api_config` for Digiflazz was copied into both databases, **both droplets had been independently running price-sync against the same real Digiflazz account concurrently since that cutover**, tripping Digiflazz's own rate limiter (`[83] Anda telah mencapai limitasi pengecekan pricelist`) repeatedly through the day on both sides — visible in both servers' logs going back to the `api.` cutover, not something the bot migration introduced. **Fixed:** founder paused the old droplet's Horizon/Reverb/Pulse daemons and Forge scheduler, deliberately leaving the OpenWA daemon running (still the rollback target). Confirmed via log check: zero further Digiflazz rate-limit errors after the pause.
+- `docs/adr.md`'s ADR-114 gained a full addendum with the per-credential mechanism, useful as a checklist if OpenWA is ever re-provisioned again. `docs/prd.md`'s OpenWA-resize backlog item corrected in a separate small PR (#291) after this session's own audit found its "nginx IP-restriction" half was already-stale wording, not a real gap.
+
+## 2026-09-26 — Full money-critical branch audit (4 background agents) + 2 grilled fixes decided, none built yet
+
+- Founder-requested comprehensive audit of every money-moving branch: Affiliate portal workflow (earnings ledger, withdrawal, tier fees, tenant isolation), Affiliate whitelabel storefront (custom-domain checkout/membership, brand isolation, theme rendering), Reseller WhatsApp Bot (command handling, webhook auth, wallet top-up safety), Reseller REST API + docs-site (code-vs-docs drift, external-developer usability). One background `general-purpose` agent per branch, each also running the `code-review` skill at high effort scoped to its own files, plus read-only production verification via `ssh pekangame-prod-lwf`/`tinker` (no mutating actions taken anywhere).
+- **Overall verdict: foundation is solid** — server-side pricing, ledger accuracy (0 sen drift between `ledger_entries` and `orders.affiliate_profit` live), and the whitelabel brand-isolation model (the 2026-09-24 CHIP-redirect fix, PR #284) all held up under adversarial review. One **critical** and four **high** findings surfaced; full findings list (including mediums/lows not repeated here) lives in this session's own conversation — the two that needed a design decision were grilled and are recorded as ADR addenda (not built this session):
+  - **[docs/adr.md ADR-074 addendum](./adr.md#adr-074-reseller-api-channel--per-tenant-api-keys-order-placementstatus-endpoints)** — Reseller API's `checkout_idempotency_key` lookup (`ResellerOrderPlacementService::placeOrder()`) had no per-reseller scope, letting one reseller's request match (and receive back) another reseller's real order data on a key collision — a real ADR-084 decision 2 invariant violation, not just a benign accidental-collision risk (a malicious caller could deliberately target a Bot-channel order's own `wa:...` key shape). Decided: a `STORED GENERATED` `idempotency_scope` column (`IFNULL(wallet_reseller_id, 0)`) + composite unique index, after two simpler approaches were grilled and rejected (a bare app-level `WHERE` filter leaves the race-recovery re-query's identical bug open; a naive composite index on the raw nullable column would have silently broken every guest/Affiliate-storefront order's own idempotency guarantee, since MySQL treats each `NULL` as distinct in a unique index).
+  - **[docs/adr.md ADR-059 addendum](./adr.md#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config--built--live-at-resellerpekangamespace-entity-later-renamed-resellerAffiliate-by-adr-072-the-app-now-also-serves-wallet-reseller-accounts)** — `Affiliate\WithdrawalController::store()` lets any `affiliate_user` override the saved profile's payout bank details per-request with zero cross-check, a real payout-redirect risk once an affiliate has multiple staff logins. First-draft fix (admin warning if the withdrawal differs from *current* profile) was self-corrected mid-grill — once the withdrawal always snapshots from profile, it can never differ from profile at approval time by construction, so that comparison would never fire. Decided instead: drop the per-request override fields entirely (withdrawal always reads profile) + an admin-approval warning comparing against the affiliate's *last admin-approved* withdrawal (a real "did the payout destination just change" signal). Accepted, tracked gap: the first payout after a malicious profile change still only warns, doesn't block — a cooling-off/notification mechanism (parked) would close that, not worth building yet for one real affiliate with one staff user.
+- **Findings triaged into two buckets, not built this session (all fixes are mechanical/pattern-following, no further grilling needed for these):**
+  - **Access control:** `SetAffiliateContext` never checks the parent `Affiliate.status` (a deactivated affiliate keeps full portal/withdrawal access); `EnsureAccountType` never checks `AffiliateUser.is_active` for `owner_type=reseller` either (same gap, reseller side).
+  - **Concurrency:** `Admin\WithdrawalController::reject()`/`complete()` and the platform `store()` path have no lock, unlike `approve()` in the same file (mirror its existing pattern).
+  - **`AffiliateTierFeeService::chargeCycle()`** — no due-date recheck inside its own lock (double-charge risk if invoked twice; zero live impact today since the one real affiliate's tier is RM0/month) + no `withTrashed()` on a soft-deleted tier relation (null-pointer crash risk).
+  - **Validation:** withdrawal bank-detail fields accept empty string, bypassing the "must have bank details" guard; `maker_checker_threshold_sen` silently coerces a missing config to 0 instead of failing loud.
+  - **Reseller Bot:** ordinary chat in an already-linked WhatsApp group triggers a full spam reply (confirmed live via real `ResellerBotCommandLog` rows) — missing the same `.`-prefix guard the unlinked-group path already has; `.list` shows cost-price (0% markup) for a reseller with no tier assigned yet, unlike `.order` which correctly blocks.
+  - **Docs:** `checkout_input` (the ADR-097 zone-id discovery field, live in code since 2026-09-16) is missing from `docs-site`'s hand-written `first-order.md`/`product-codes.md` walkthrough, though it is present in the auto-generated API Reference.
+  - **Low/cosmetic (not itemized further here):** CHIP payment description hardcodes "PekanGame" regardless of which affiliate storefront the customer paid on (needs a founder yes/no, not a grill — may be intentional single-merchant-of-record); a narrow `.topupbaki` notify-miss race (money safe, WhatsApp confirmation can be skipped); several stale docblocks/comments and one duplicated magic number.
+- **Nothing built this session** — this was audit + grill only, per the founder's own framing ("fix grill semua perkara yang perlu grill, note down yang boleh fix terus, next sesi settlekan satu per satu"). Next session's job: implement the two addenda above (migration + service-layer filter for ADR-074; request/controller change + approval-screen warning for ADR-059) plus work through the mechanical punch list, one PR at a time, each on its own `fix/*` branch off `staging` per the usual branch workflow.
+
+## 2026-09-26 — Item 28 built (Reseller API cross-reseller idempotency scope)
+
+- **[ADR-074 addendum](./adr.md#adr-074-reseller-api-channel--per-tenant-api-keys-order-placementstatus-endpoints).**
+  `ResellerOrderPlacementService::placeOrder()`'s two `checkout_idempotency_key`
+  lookups (lines 63/133) now both filter by `wallet_reseller_id`, backed by a
+  new generated `orders.idempotency_scope` column
+  (`IFNULL(wallet_reseller_id, 0)`) and a composite
+  `UNIQUE (idempotency_scope, checkout_idempotency_key)` index replacing the
+  old bare-column unique constraint. **Build-time revision:** the column is
+  `VIRTUAL`, not `STORED` as the addendum originally decided — sqlite (the
+  fast suite's driver, and the real local dev DB) refuses to add a `STORED`
+  generated column to a table that already has rows, confirmed empirically
+  against both an in-memory table and the actual `database.sqlite`; `VIRTUAL`
+  has no such restriction and indexes identically on both sqlite and MySQL
+  InnoDB. Added a regression test asserting two different resellers sharing
+  one idempotency key each get their own order, never a cross-tenant replay.
+  Backend 2248/2248 fast + 17/17 concurrency (real MySQL), both green. Local
+  dev DB migrated (plain `php artisan migrate`, confirmed via
+  `migrate:status`). Not yet released to `main`. Built on its own
+  `fix/adr074-reseller-idempotency-scope` branch off `staging`, its own PR,
+  per the usual branch workflow.
+- **Code-review follow-up, same PR, caught two real gaps in the first pass:**
+  the migration's `down()` unconditionally re-added the bare global-unique
+  constraint on `checkout_idempotency_key` — safe today (0 collisions
+  exist) but a real footgun the moment two resellers actually do share a
+  key post-deployment (the exact state this migration exists to allow):
+  the final statement would throw mid-rollback, leaving `idempotency_scope`
+  already dropped and the old constraint never restored either way. `down()`
+  now checks for any cross-reseller duplicate `checkout_idempotency_key`
+  first and throws a clear `RuntimeException` before touching schema at
+  all. Added a regression test for both the refusal and the clean-rollback
+  path. Separately, the two `wallet_reseller_id`-scoped idempotency lookups
+  in `ResellerOrderPlacementService` (pre-check + race-recovery) were
+  duplicated verbatim — extracted into one private `findByIdempotencyKey()`
+  so a future edit to the scoping predicate can't update one call site and
+  silently miss the other. Backend 2246/2246 fast + concurrency suite both
+  green. 🟢 **MERGED TO `staging`** (PR #293, 2026-09-26) — not yet on `main`.
+
+## 2026-09-26 — Item 29 built (Affiliate withdrawal payout-redirect fix)
+
+- **[ADR-059 addendum](./adr.md#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config--built--live-at-resellerpekangamespace-entity-later-renamed-resellerAffiliate-by-adr-072-the-app-now-also-serves-wallet-reseller-accounts).**
+  `CreateAffiliateWithdrawalRequest` no longer accepts
+  `bank_name`/`bank_account_no`/`bank_account_holder` at all — a withdrawal
+  request always reads the affiliate's saved profile
+  (`Affiliate\WithdrawalController::store()`), closing the payout-redirect
+  gap where any `affiliate_user` could silently override the payout
+  destination per request. Added a regression test asserting a bank-detail
+  override sent in the request body is fully ignored. `Admin\WithdrawalController::index()`
+  now also returns `bank_details_changed_since_last_approval` per withdrawal
+  (`null` for a platform withdrawal or an affiliate's first-ever payout,
+  otherwise a real diff against the affiliate's last admin-approved/completed
+  withdrawal — never against current profile, since a withdrawal already
+  always snapshots from profile at request time and so could never differ
+  from it by construction) — surfaced in `/admin/withdrawals` as a red "Bank
+  details changed since last payout" tag next to the row. Admin `tsc`/`eslint`
+  clean. Backend 2247/2247 fast, all green. Not yet released to `main`. Built
+  on its own `fix/adr059-withdrawal-payout-redirect` branch off `staging`,
+  its own PR, per the usual branch workflow (item 28's Reseller API
+  idempotency-scope fix landed the same session on its own separate branch/PR).
+- **Code-review follow-up, same PR, caught two real gaps in the first pass:**
+  the `reseller/` portal's own `/withdrawal` page still let an
+  `affiliate_user` type a "one-off" bank override and submit it — the
+  backend now silently ignores those fields, so the form was actively
+  misleading (looked like it worked, payout still went to profile). Replaced
+  the editable inputs with a read-only "Payout to" summary + a link to
+  Profile, and disabled submission when no bank details exist yet (mirrors
+  the backend's own 422 guard). Separately, `Admin\WithdrawalController::index()`
+  ran one extra query per affiliate-owned row to compute
+  `bank_details_changed_since_last_approval` — batched into a single query
+  per request instead (fetch every relevant owner's approved/completed
+  withdrawals once, group in PHP). A third, lower-severity finding — bank
+  fields are read from the in-memory `$affiliate` model before
+  `AffiliateWithdrawalService::request()`'s lock, so a concurrent Profile
+  bank-detail edit isn't covered by that lock — is accepted, not fixed:
+  the lock's declared purpose is serializing balance/open-request checks,
+  not bank-detail consistency, no `Affiliate`-row locking exists anywhere
+  else in the codebase (a Profile update doesn't lock either), and this is
+  a narrower instance of the same already-accepted gap this ADR addendum's
+  own Consequence-to-track already covers (first payout after a change only
+  warns, doesn't block).
+
+## 2026-09-26 — Items 30/31 resolved (deactivated-account portal access)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 items 30/31), originally filed as one mechanical fix mirrored across
+  Affiliate + Reseller. Building it surfaced a real conflict: a blanket
+  "deactivated account = no portal access" gate breaks an already-decided,
+  already-tested business rule for the Affiliate side —
+  [ADR-058 RES-5](./adr.md) deliberately keeps a deactivated Affiliate's
+  portal **read-only** with **earnings still withdrawable** (only new
+  orders + the branded storefront are blocked), confirmed live by the
+  already-passing `BrandingControllerTest::test_a_deactivated_affiliate_is_read_only`.
+  Founder confirmed: item 30 is **not a bug**, no code change.
+- Item 31 (Reseller side) built as scoped: `EnsureAccountType` now blocks
+  the entire `reseller-portal/*` route group when `resellers.is_active` is
+  false, matching the full block the REST API (`EnsureResellerApiKey`) and
+  the Bot (`ResellerBotService`/`ResellerOrderPlacementService`) already
+  enforce on the same column — the portal was the one channel that stayed
+  fully open for a deactivated Reseller.
+- Added 1 new test (`EnsureAccountTypeTest::test_a_deactivated_reseller_cannot_reach_the_portal_even_with_an_active_login_row`),
+  confirmed it fails against the pre-fix code first. Backend 2251/2251 fast
+  suite green. Built on its own `fix/deactivated-account-portal-access`
+  branch off `staging`, per the founder's plan this session to build a few
+  more punch-list items and bundle them into one PR rather than one PR per
+  item. Not yet merged.
+
+## 2026-09-26 — Item 32 built (`WithdrawalController::reject()`/`complete()` missing lock)
+
+- Mechanical fix from the 2026-09-26 money-critical branch audit punch list
+  (`docs/prd.md` §16 item 32) — no grill needed. `reject()` and `complete()`
+  each ran an unconditional `$withdrawal->update()` with no row lock, unlike
+  `approve()` in the same controller. The real risk isn't two admins double-
+  rejecting (harmless) — it's `approve()` racing `reject()` on the same
+  Pending withdrawal: `approve()` debits the ledger and flips the row to
+  `Approved`, then `reject()`'s unconditional write (reading the pre-race
+  `Pending` status) overwrites it to `Rejected` — money already paid out,
+  record says it wasn't, no compensating entry anywhere.
+- Fix mirrors `approve()` exactly: both now wrap in `DB::transaction()` +
+  `Withdrawal::query()->lockForUpdate()->findOrFail()`, re-checking status
+  inside the lock before mutating.
+- Test-first, red→green, per `AGENTS.md`'s money-critical-logic rule: added
+  3 new subprocess concurrency tests (same pattern as the existing
+  `WithdrawalApproveConcurrencyTest` — two genuinely separate PHP processes
+  racing for real against Docker MySQL, via new test-only artisan commands
+  `app:withdrawal-test-reject`/`app:withdrawal-test-complete`):
+  `WithdrawalRejectConcurrencyTest` (double-reject), `WithdrawalCompleteConcurrencyTest`
+  (double-complete), and `WithdrawalApproveRejectRaceConcurrencyTest` — the
+  one that actually matters, asserting exactly one of approve/reject wins
+  and the ledger entry count + balance stay consistent with whichever one
+  did. Confirmed all 3 fail against the pre-fix code (both processes reported
+  `success` every time) before applying the fix, then confirmed green after.
+- Backend 2250/2250 fast suite green, 6/6 withdrawal concurrency tests green
+  (old approve test + 3 new). Built on its own `fix/withdrawal-reject-
+  complete-lock` branch off `staging`. Not yet merged.
+
+## 2026-09-26 — Items 36/37 built (Reseller Bot `.list` unrecognized-chat spam + no-tier price leak)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 items 36/37). Founder revised item 36's scope mid-build: rather than
+  just adding the unlinked-group's existing `.`-prefix guard to the
+  linked-group path, an unlinked group now stays fully silent regardless of
+  the message (no more "Group ini belum dikaitkan..." reply even for a
+  dot-prefixed attempt) — only a linked group interacts at all, and only
+  with `.`-prefixed messages. Ordinary chat ("ok tq", "haha") in a linked
+  group parses as `Unrecognized` the same as a typo'd command, but is now
+  silently dropped in `ResellerBotService::handle()` before it reaches
+  either the command-list reply or the `unrecognized_command` failure log
+  — a dot-prefixed but malformed/unknown command still gets the helpful
+  reply, unchanged.
+- Item 37: `handleListGamePackages()` (`.list {kod}`) now guards on
+  `$reseller->tier === null` before computing a price, logging
+  `no_tier_assigned` and replying with a plain "belum ditetapkan tier
+  harga" message — mirrors `.order`'s existing
+  `NoResellerTierAssignedException` rejection. Before this, a reseller with
+  no `reseller_tier_id` got a 0%-markup price that silently equalled the
+  real cost price.
+- 4 new tests in `ResellerBotServiceTest`, all confirmed failing against
+  the pre-fix code first (2 assertion failures on the silence guards, 1
+  real `Attempt to read property "markup_percent" on null` reproducing the
+  exact leak/crash risk item 37 described). Backend 2253/2253 fast suite
+  green. Built on its own `fix/reseller-bot-list-unrecognized` branch off
+  `staging`, per the founder's plan to build several punch-list items and
+  bundle them into one PR. Not yet merged.
+
+## 2026-09-26 — Item 38 built (docs-site missing `checkout_input`)
+
+- Doc-only fix from the 2026-09-26 money-critical branch audit punch list
+  (`docs/prd.md` §16 item 38). `first-order.md`'s hand-written catalog
+  example was missing `checkout_input` (the ADR-097 zone-id discovery
+  field, already live in the real API and its auto-generated Reference) —
+  a developer following only the guide would get stuck placing an order
+  for a zone-id game, since the guide only mentioned `server_id` in prose
+  ("Mobile Legends does; many do not") with no way to check programmatically.
+  Added `checkout_input` to the catalog JSON example (matching
+  `CatalogController`'s own `#[Response]` example exactly) + a paragraph
+  explaining it, and reworded the `server_id` bullet to point at
+  `checkout_input` instead of a hardcoded game list.
+  `product-codes.md` reuses the same catalog example for a different
+  purpose (building `product_code`) — left untouched, not in scope for
+  this fix. `npm run check` + `npm run build` both clean. Built on its own
+  `fix/docs-checkout-input-example` branch off `staging`, per the
+  founder's plan to build several punch-list items and bundle them into
+  one PR. Not yet merged.
+
+## 2026-09-26 — Item 33 built (`AffiliateTierFeeService` double-charge + `withTrashed()`)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 item 33). The punch list's own suggested fix — recheck
+  `next_charge_at` inside the lock, mirroring `WithdrawalController::approve()`
+  — turned out to break a real, tested feature once built: a plain "is
+  `next_charge_at` in the future" check can't distinguish "already charged
+  this cycle" from "freshly assigned, never charged yet" — `assignTier()`
+  sets `next_charge_at` 30 days out on creation too, identically to a
+  just-charged row, and `Admin\AffiliateController::chargeTierFee()`'s
+  "Charge Now" deliberately has no due-date filter so it can force an
+  early first charge. Two existing tests
+  (`AffiliateControllerTest::test_charge_tier_fee_debits_earnings`/
+  `test_charge_tier_fee_starts_grace_when_earnings_short`) caught this
+  immediately.
+- Correct fix requires both signals together: `next_charge_at` in the
+  future **and** an `affiliate_tier_fee` ledger entry already exists for
+  this subscription. That combination is only ever true right after a
+  real completed charge — never on a freshly-assigned subscription (no
+  entry yet) — and resets correctly once a cycle naturally elapses
+  (`next_charge_at` back in the past, so the check is skipped regardless
+  of how many old entries exist from prior cycles).
+- Also fixed the `withTrashed()` gap: the eager-loaded `tier` relation
+  now includes soft-deleted tiers, so a subscription whose tier was later
+  deleted still charges its real fee instead of silently resolving to
+  `null` (`(int) null` = 0).
+- Found a second, related bug while building the fix: the pre-existing
+  `AffiliateTierFeeConcurrencyTest` funded exactly one fee and expected
+  `['active', 'grace']` as the outcome pair — the losing racer used to
+  attempt a debit against an already-drained balance and fail into
+  `grace`, even though this cycle's fee genuinely was already collected
+  by the winner (a subscription that's fully paid up should never show
+  `grace`). It now correctly recognizes the completed charge and no-ops
+  as `active` instead — updated that test's expectation to match, and
+  added a second concurrency test that funds *two* fees' worth (so a
+  second debit is financially possible) to specifically prove
+  `chargeCycle()` itself, not just the ledger balance check, is what
+  prevents the double-charge.
+- 4 new/updated tests total (2 feature, 2 concurrency), all confirmed
+  failing against the pre-fix code first. Backend 2252/2252 fast + 2/2
+  tier-fee concurrency green. Built on its own
+  `fix/affiliate-tier-fee-double-charge` branch off `staging`, per the
+  founder's plan to build several punch-list items and bundle them into
+  one PR. Not yet merged.

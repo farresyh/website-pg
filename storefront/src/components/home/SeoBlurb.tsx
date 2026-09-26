@@ -20,7 +20,7 @@ export default async function SeoBlurb() {
         <p className="max-w-[900px] text-[13px] leading-relaxed text-on-surface-variant">
           {branding.storeName} offers the fastest top-up platform for gaming fans across Malaysia. Get the best
           prices for all your favorite games.{" "}
-          <Link href="/about-us" className="font-bold text-primary underline underline-offset-2">
+          <Link href="/about-us" className="font-bold text-primary-on-surface underline underline-offset-2">
             Read More ›
           </Link>
         </p>

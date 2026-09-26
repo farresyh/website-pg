@@ -28,7 +28,7 @@ export default function ProductCard({ game }: { game: Game }) {
         {game.publisher && <span className="text-xs text-on-surface-variant">{game.publisher}</span>}
         <div className="mt-2 flex items-end justify-between gap-2 border-t border-dashed border-ink/40 pt-2">
           <span className="text-[11px] text-on-surface-variant">Starting from</span>
-          <span className="font-mono text-[15px] font-bold text-primary">
+          <span className="font-mono text-[15px] font-bold text-primary-on-surface">
             {game.priceFromRm !== null ? `RM${game.priceFromRm.toFixed(2)}` : "-"}
           </span>
         </div>

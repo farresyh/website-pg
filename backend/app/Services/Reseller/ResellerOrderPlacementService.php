@@ -14,6 +14,7 @@ use App\Services\Order\OrderFactory;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\OrderPricingResolver;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * ADR-073 decision 4: the ONE internal order-placement contract both the
@@ -60,7 +61,7 @@ final class ResellerOrderPlacementService
             throw new ResellerInactiveException("Reseller #{$reseller->id} is deactivated.");
         }
 
-        $existing = Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->first();
+        $existing = $this->findByIdempotencyKey($reseller, $request->idempotencyKey);
         if ($existing !== null) {
             $this->assertPayloadMatches($existing, $request->payloadHash);
 
@@ -130,7 +131,8 @@ final class ResellerOrderPlacementService
             // this). Same no-op-replay outcome as finding it up front,
             // never a second debit — the transaction rolled back before
             // `debit()` ran.
-            $raced = Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->firstOrFail();
+            $raced = $this->findByIdempotencyKey($reseller, $request->idempotencyKey)
+                ?? throw new RuntimeException('Lost a duplicate-order race but the winning row is gone.');
             $this->assertPayloadMatches($raced, $request->payloadHash);
 
             return new ResellerOrderPlacementResult($raced, wasReplay: true);
@@ -144,6 +146,20 @@ final class ResellerOrderPlacementService
         FulfillOrderJob::dispatch($order->fresh());
 
         return new ResellerOrderPlacementResult($order->fresh(), wasReplay: false);
+    }
+
+    /**
+     * ADR-074 addendum, 2026-09-26: the one place both idempotency lookups
+     * (pre-check and race-recovery) scope by `wallet_reseller_id` — kept as
+     * a single named lookup so the two call sites can't drift out of sync
+     * with the DB's own composite `idempotency_scope` constraint.
+     */
+    private function findByIdempotencyKey(Reseller $reseller, string $idempotencyKey): ?Order
+    {
+        return Order::query()
+            ->where('wallet_reseller_id', $reseller->id)
+            ->where('checkout_idempotency_key', $idempotencyKey)
+            ->first();
     }
 
     /**

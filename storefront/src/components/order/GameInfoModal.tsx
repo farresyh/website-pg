@@ -68,7 +68,7 @@ export function GameInfoTriggerButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-11 items-center gap-1.5 rounded-md border-2 border-transparent px-2 font-display text-[13px] font-bold uppercase tracking-wide text-primary hover:bg-primary-fixed"
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-md border-2 border-transparent px-2 font-display text-[13px] font-bold uppercase tracking-wide text-primary-on-surface hover:bg-primary-fixed"
     >
       <Info size={16} weight="fill" />
       How to Buy

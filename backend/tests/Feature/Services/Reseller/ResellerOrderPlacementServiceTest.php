@@ -148,6 +148,30 @@ class ResellerOrderPlacementServiceTest extends TestCase
         $service->placeOrder($reseller, $this->request('shared-key', payloadHash: 'hash-of-request-b'));
     }
 
+    public function test_two_resellers_sharing_the_same_idempotency_key_never_see_each_others_order(): void
+    {
+        // ADR-074 addendum, 2026-09-26: `idempotency_scope` closes a real
+        // cross-tenant leak — before this fix the second reseller's call
+        // below matched the FIRST reseller's order and silently replayed
+        // it, handing back reseller A's player_id/order data to reseller B.
+        Queue::fake();
+        $resellerA = $this->makeReseller();
+        $resellerB = $this->makeReseller();
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $resellerA->id, 10000, 'wallet_topup');
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $resellerB->id, 10000, 'wallet_topup');
+
+        $service = app(ResellerOrderPlacementService::class);
+        $resultA = $service->placeOrder($resellerA, $this->request('shared-key-across-resellers'));
+        $resultB = $service->placeOrder($resellerB, $this->request('shared-key-across-resellers'));
+
+        $this->assertFalse($resultA->wasReplay);
+        $this->assertFalse($resultB->wasReplay);
+        $this->assertNotSame($resultA->order->id, $resultB->order->id);
+        $this->assertSame($resellerA->id, $resultA->order->wallet_reseller_id);
+        $this->assertSame($resellerB->id, $resultB->order->wallet_reseller_id);
+        $this->assertSame(2, Order::query()->count());
+    }
+
     public function test_a_null_payload_hash_never_conflicts_on_replay(): void
     {
         Queue::fake();

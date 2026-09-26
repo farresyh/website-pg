@@ -163,7 +163,7 @@ export default function MembershipSubscribe({ token }: { token: string }) {
                     <span
                       className={
                         isHero
-                          ? "shrink-0 rounded-sm border-2 border-ink bg-surface-container-lowest px-2.5 py-1 font-display text-[13px] font-bold uppercase tracking-wide text-ink"
+                          ? "shrink-0 rounded-sm border-2 border-ink bg-surface-container-lowest px-2.5 py-1 font-display text-[13px] font-bold uppercase tracking-wide text-on-surface"
                           : "shrink-0 rounded-sm border border-ink bg-success px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-on-success"
                       }
                     >

@@ -159,6 +159,51 @@ class ResellerBotServiceTest extends TestCase
         ]);
     }
 
+    // --- Item 36 (2026-09-26 audit): only a `.`-prefixed message in an
+    // already-linked group gets a reply; ordinary chat, and anything at
+    // all in an unlinked group, stays silent. ---
+
+    public function test_ordinary_chat_in_a_linked_group_is_ignored_silently(): void
+    {
+        config(['services.openwa.session_id' => 'session-1', 'services.openwa.api_key' => 'key-1']);
+        Queue::fake();
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, 'ok tq', 'msg-1');
+
+        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame(0, ResellerBotCommandLog::query()->count());
+    }
+
+    public function test_unlinked_group_gets_no_reply_even_for_a_dot_prefixed_message(): void
+    {
+        config(['services.openwa.session_id' => 'session-1', 'services.openwa.api_key' => 'key-1']);
+        Queue::fake();
+
+        app(ResellerBotService::class)->handle('unlinked@g.us', '.baki', 'msg-1');
+
+        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'unlinked@g.us']);
+    }
+
+    // --- Item 37 (2026-09-26 audit): `.list` must not leak cost price
+    // (0% markup) for a reseller with no tier assigned. ---
+
+    public function test_list_command_rejects_a_reseller_with_no_tier_assigned(): void
+    {
+        $this->makePackage();
+        $this->primaryAffiliate();
+        $reseller = Reseller::query()->create(['business_name' => 'No Tier Co', 'reseller_tier_id' => null, 'is_active' => true]);
+        ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => self::GROUP_ID, 'is_active' => true]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLMY', 'msg-1');
+
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'no_tier_assigned',
+        ]);
+    }
+
     public function test_order_places_a_wallet_order_and_debits_the_balance(): void
     {
         Queue::fake();

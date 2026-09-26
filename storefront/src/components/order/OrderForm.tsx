@@ -556,7 +556,7 @@ export default function OrderForm({
         <div className="mx-auto flex max-w-[560px] items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="font-display text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Total</p>
-            <p className="font-mono text-lg font-bold text-primary">
+            <p className="font-mono text-lg font-bold text-primary-on-surface">
               RM{(preview ? preview.final_amount_sen / 100 : selectedPackage?.priceRm ?? 0).toFixed(2)}
             </p>
           </div>

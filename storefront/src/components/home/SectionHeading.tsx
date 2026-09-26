@@ -18,11 +18,11 @@ export default function SectionHeading({
       <h2 className="font-display text-headline-md tracking-tight lg:text-headline-lg">{title}</h2>
       {link &&
         (link.href.startsWith("#") ? (
-          <a href={link.href} className="font-display text-[13px] font-bold uppercase tracking-wide text-primary hover:underline">
+          <a href={link.href} className="font-display text-[13px] font-bold uppercase tracking-wide text-primary-on-surface hover:underline">
             {link.label} ›
           </a>
         ) : (
-          <Link href={link.href} className="font-display text-[13px] font-bold uppercase tracking-wide text-primary hover:underline">
+          <Link href={link.href} className="font-display text-[13px] font-bold uppercase tracking-wide text-primary-on-surface hover:underline">
             {link.label} ›
           </Link>
         ))}

@@ -98,6 +98,32 @@ class AffiliateWithdrawalTest extends TestCase
         ]);
     }
 
+    public function test_store_ignores_a_bank_detail_override_in_the_request_body(): void
+    {
+        // ADR-059 addendum, 2026-09-26: the payout-redirect gap this
+        // closes — an affiliate_user used to be able to send its own
+        // bank_name/bank_account_no/bank_account_holder per request and
+        // silently redirect the payout. A withdrawal now always reads
+        // the saved profile, no matter what the request body carries.
+        $affiliate = $this->affiliate();
+        $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 30000, 'order_profit', 'order', 1);
+
+        $this->withToken($this->tokenFor($affiliate))->postJson('/api/affiliate/withdrawals', [
+            'amount' => 25000,
+            'bank_name' => 'Some Other Bank',
+            'bank_account_no' => '999999',
+            'bank_account_holder' => 'Attacker',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('withdrawals', [
+            'owner_type' => 'affiliate',
+            'owner_id' => $affiliate->id,
+            'bank_name' => 'Maybank',
+            'bank_account_no' => '1234567',
+            'bank_account_holder' => 'Acme Sdn Bhd',
+        ]);
+    }
+
     public function test_store_rejects_an_amount_over_the_withdrawable_balance(): void
     {
         $affiliate = $this->affiliate();

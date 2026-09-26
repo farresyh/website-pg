@@ -3,6 +3,7 @@
 namespace App\Services\Affiliate;
 
 use App\Models\AffiliateSubscription;
+use App\Models\LedgerEntry;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -49,7 +50,7 @@ final class AffiliateTierFeeService
         return DB::transaction(function () use ($subscription) {
             /** @var AffiliateSubscription $subscription */
             $subscription = AffiliateSubscription::query()
-                ->with('tier')
+                ->with(['tier' => fn ($query) => $query->withTrashed()])
                 ->lockForUpdate()
                 ->findOrFail($subscription->id);
 
@@ -62,6 +63,38 @@ final class AffiliateTierFeeService
                 && $subscription->grace_until->isPast()) {
                 $subscription->update(['status' => AffiliateSubscriptionStatus::Lapsed]);
 
+                return $subscription;
+            }
+
+            // Item 33 (2026-09-26 audit): a second chargeCycle() call for
+            // this same subscription — the scheduled command racing the
+            // admin's manual "Charge Now" (Admin\AffiliateController::
+            // chargeTierFee(), which deliberately has no due-date filter
+            // of its own, so it can force an early first charge on a
+            // freshly-assigned tier) — would otherwise block on the lock
+            // above, then unblock into a row already charged this cycle
+            // and charge it again. `next_charge_at` being in the future
+            // alone isn't enough to detect that: assignTier() also sets
+            // it 30 days out on a subscription that's never been charged
+            // at all, which "Charge Now" must still be able to collect.
+            // Only a *completed* charge for the current cycle sets both
+            // `next_charge_at` to the future AND leaves an
+            // `affiliate_tier_fee` ledger entry — checking both together
+            // resets correctly once the cycle naturally elapses
+            // (`next_charge_at` back in the past), unlike checking the
+            // ledger entry alone (which would exist forever after the
+            // subscription's very first successful charge).
+            $alreadyChargedThisCycle = $subscription->status === AffiliateSubscriptionStatus::Active
+                && $subscription->next_charge_at?->isFuture()
+                && LedgerEntry::query()
+                    ->where('owner_type', LedgerOwnerType::Affiliate->value)
+                    ->where('owner_id', $subscription->affiliate_id)
+                    ->where('type', 'affiliate_tier_fee')
+                    ->where('reference_type', 'affiliate_subscription')
+                    ->where('reference_id', $subscription->id)
+                    ->exists();
+
+            if ($alreadyChargedThisCycle) {
                 return $subscription;
             }
 

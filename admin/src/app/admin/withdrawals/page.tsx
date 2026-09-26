@@ -175,6 +175,11 @@ export default function WithdrawalsPage() {
                           {w.bank_name} — {w.bank_account_no}
                           <br />
                           {w.bank_account_holder}
+                          {w.bank_details_changed_since_last_approval && (
+                            <div className="mt-1">
+                              <Tag severity="danger">Bank details changed since last payout</Tag>
+                            </div>
+                          )}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Tag severity={statusSeverity[w.status]}>

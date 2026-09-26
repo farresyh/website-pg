@@ -12,6 +12,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -37,11 +38,63 @@ class WithdrawalController extends Controller
             ]];
         });
 
+        $approvedByOwner = Withdrawal::query()
+            ->where('owner_type', LedgerOwnerType::Affiliate->value)
+            ->whereIn('owner_id', $withdrawals->where('owner_type', LedgerOwnerType::Affiliate->value)->pluck('owner_id')->unique())
+            ->whereIn('status', [WithdrawalStatus::Approved->value, WithdrawalStatus::Completed->value])
+            ->orderBy('id')
+            ->get()
+            ->groupBy('owner_id');
+
+        $withdrawals = $withdrawals->map(fn (Withdrawal $w) => [
+            ...$w->toArray(),
+            'bank_details_changed_since_last_approval' => $this->bankDetailsChangedSinceLastApproval(
+                $w,
+                $approvedByOwner->get($w->owner_id) ?? collect(),
+            ),
+        ]);
+
         return response()->json([
             'stats' => $stats,
             'available_balance' => $this->ledger->balance(LedgerOwnerType::Platform, null),
             'withdrawals' => $withdrawals,
         ]);
+    }
+
+    /**
+     * ADR-059 addendum, 2026-09-26: a real "did the payout destination just
+     * change" signal for the admin approving/reviewing a request — compares
+     * against the owner's most recently admin-approved (or completed)
+     * withdrawal, never the current profile (which a withdrawal always
+     * snapshots at request time anyway, so it could never differ from
+     * itself). `null` when there's no prior approved withdrawal to compare
+     * against (this owner's first-ever payout) or this isn't an
+     * affiliate-owned withdrawal (the platform owner has no bank-detail
+     * override risk to warn about).
+     *
+     * `$approvedForOwner` is this owner's own Approved/Completed withdrawals
+     * (ascending by id), pre-fetched once in `index()` for every affiliate
+     * owner in the current page — avoids one extra query per row.
+     *
+     * @param  Collection<int, Withdrawal>  $approvedForOwner
+     */
+    private function bankDetailsChangedSinceLastApproval(Withdrawal $withdrawal, Collection $approvedForOwner): ?bool
+    {
+        if ($withdrawal->owner_type !== LedgerOwnerType::Affiliate->value) {
+            return null;
+        }
+
+        $lastApproved = $approvedForOwner
+            ->filter(fn (Withdrawal $candidate) => $candidate->id < $withdrawal->id)
+            ->last();
+
+        if ($lastApproved === null) {
+            return null;
+        }
+
+        return $lastApproved->bank_name !== $withdrawal->bank_name
+            || $lastApproved->bank_account_no !== $withdrawal->bank_account_no
+            || $lastApproved->bank_account_holder !== $withdrawal->bank_account_holder;
     }
 
     public function store(CreateWithdrawalRequest $request): JsonResponse
@@ -142,37 +195,66 @@ class WithdrawalController extends Controller
      * Only valid from Pending for MVP — an Approved withdrawal already
      * has its ledger debit written; reversing that is a deliberately
      * deferred edge case (see docs/prd.md §14).
+     *
+     * Same TOCTOU risk class as approve() (see its doc comment): without
+     * a row lock, a reject() racing an approve() on the same Pending
+     * withdrawal could both read status=Pending before either commits —
+     * approve() debits the ledger and marks Approved, then reject()'s
+     * unconditional update() overwrites that to Rejected, leaving a
+     * withdrawal that says "rejected" while the ledger already paid it
+     * out. Locking the row here (and re-checking status after acquiring
+     * the lock) serializes the two the same way approve() does.
      */
     public function reject(RejectWithdrawalRequest $request, Withdrawal $withdrawal): JsonResponse
     {
-        if ($withdrawal->status !== WithdrawalStatus::Pending) {
-            throw ValidationException::withMessages([
-                'status' => ['Only a pending withdrawal can be rejected.'],
+        $admin = $request->user();
+        $adminNote = $request->validated('admin_note');
+
+        $withdrawal = DB::transaction(function () use ($withdrawal, $admin, $adminNote) {
+            $locked = Withdrawal::query()->lockForUpdate()->findOrFail($withdrawal->id);
+
+            if ($locked->status !== WithdrawalStatus::Pending) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only a pending withdrawal can be rejected.'],
+                ]);
+            }
+
+            $locked->update([
+                'status' => WithdrawalStatus::Rejected,
+                'approved_by' => $admin->id,
+                'admin_note' => $adminNote,
             ]);
-        }
 
-        $withdrawal->update([
-            'status' => WithdrawalStatus::Rejected,
-            'approved_by' => $request->user()->id,
-            'admin_note' => $request->validated('admin_note'),
-        ]);
+            return $locked;
+        });
 
-        return response()->json($withdrawal);
+        return response()->json($withdrawal->fresh());
     }
 
+    /**
+     * Same lock rationale as approve()/reject(): two admins marking the
+     * same withdrawal completed at nearly the same time could otherwise
+     * both pass the Approved check before either commits.
+     */
     public function complete(Request $request, Withdrawal $withdrawal): JsonResponse
     {
-        if ($withdrawal->status !== WithdrawalStatus::Approved) {
-            throw ValidationException::withMessages([
-                'status' => ['Only an approved withdrawal can be marked completed.'],
+        $withdrawal = DB::transaction(function () use ($withdrawal) {
+            $locked = Withdrawal::query()->lockForUpdate()->findOrFail($withdrawal->id);
+
+            if ($locked->status !== WithdrawalStatus::Approved) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only an approved withdrawal can be marked completed.'],
+                ]);
+            }
+
+            $locked->update([
+                'status' => WithdrawalStatus::Completed,
+                'processed_at' => now(),
             ]);
-        }
 
-        $withdrawal->update([
-            'status' => WithdrawalStatus::Completed,
-            'processed_at' => now(),
-        ]);
+            return $locked;
+        });
 
-        return response()->json($withdrawal);
+        return response()->json($withdrawal->fresh());
     }
 }

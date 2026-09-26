@@ -15,7 +15,7 @@ export default function WhyChooseUsSection() {
         <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
           {REASONS.map(({ icon: Icon, title, description }) => (
             <div key={title} className="flex flex-col items-center gap-3 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-md border-2 border-ink bg-secondary-fixed-dim text-ink neo-sm">
+              <div className="flex h-14 w-14 items-center justify-center rounded-md border-2 border-ink bg-secondary-fixed-dim text-on-secondary-fixed-dim neo-sm">
                 <Icon size={24} weight="fill" />
               </div>
               <h3 className="font-display text-base font-bold">{title}</h3>

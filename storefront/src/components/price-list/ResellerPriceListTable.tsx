@@ -41,7 +41,7 @@ export default function ResellerPriceListTable({ list }: { list: ResellerPriceLi
               {list.tiers.map((tier) => (
                 <th
                   key={tier.id}
-                  className="px-4 py-3 text-right font-display text-[12.5px] font-bold uppercase tracking-wide text-primary"
+                  className="px-4 py-3 text-right font-display text-[12.5px] font-bold uppercase tracking-wide text-primary-on-surface"
                 >
                   {tier.name}
                 </th>
