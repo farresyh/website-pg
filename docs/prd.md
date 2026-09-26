@@ -1171,11 +1171,20 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
 31. **Same gap, `Reseller` side.** `EnsureAccountType` never checks
     `is_active` for `owner_type=reseller` — a deactivated reseller keeps full
     wallet/orders/API-key access. Not started.
-32. **`Admin\WithdrawalController::reject()`/`complete()` have no lock**,
+32. ~~**`Admin\WithdrawalController::reject()`/`complete()` have no lock**,
     unlike `approve()` in the same file — a race can leave the ledger
     debited by a concurrent `approve()` while the row shows `Rejected`, no
-    compensating credit. The platform `store()` path has the same missing-lock
-    pattern. Mirror `approve()`'s existing `lockForUpdate()`. Not started.
+    compensating credit.~~ — **🟢 BUILT 2026-09-26.** Both now mirror
+    `approve()`'s `DB::transaction()` + `lockForUpdate()` pattern (re-fetch +
+    re-check status inside the lock before mutating). Proven red→green with
+    3 new concurrency tests (`WithdrawalRejectConcurrencyTest`,
+    `WithdrawalCompleteConcurrencyTest`,
+    `WithdrawalApproveRejectRaceConcurrencyTest` — the last one is the actual
+    money-critical case: an `approve()` racing a `reject()` on the same
+    Pending withdrawal must never leave the ledger debited while the row
+    shows `Rejected`) — all 3 confirmed failing against the pre-fix code,
+    passing after. Backend 2250/2250 fast + 6/6 withdrawal concurrency green.
+    Not yet merged to `staging`.
 33. **`AffiliateTierFeeService::chargeCycle()` can double-charge a billing
     cycle** if invoked twice (no `next_charge_at` recheck inside its own
     lock) — zero live impact today (the one real affiliate's tier is

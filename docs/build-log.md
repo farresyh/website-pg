@@ -1820,3 +1820,32 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   a narrower instance of the same already-accepted gap this ADR addendum's
   own Consequence-to-track already covers (first payout after a change only
   warns, doesn't block).
+
+## 2026-09-26 — Item 32 built (`WithdrawalController::reject()`/`complete()` missing lock)
+
+- Mechanical fix from the 2026-09-26 money-critical branch audit punch list
+  (`docs/prd.md` §16 item 32) — no grill needed. `reject()` and `complete()`
+  each ran an unconditional `$withdrawal->update()` with no row lock, unlike
+  `approve()` in the same controller. The real risk isn't two admins double-
+  rejecting (harmless) — it's `approve()` racing `reject()` on the same
+  Pending withdrawal: `approve()` debits the ledger and flips the row to
+  `Approved`, then `reject()`'s unconditional write (reading the pre-race
+  `Pending` status) overwrites it to `Rejected` — money already paid out,
+  record says it wasn't, no compensating entry anywhere.
+- Fix mirrors `approve()` exactly: both now wrap in `DB::transaction()` +
+  `Withdrawal::query()->lockForUpdate()->findOrFail()`, re-checking status
+  inside the lock before mutating.
+- Test-first, red→green, per `AGENTS.md`'s money-critical-logic rule: added
+  3 new subprocess concurrency tests (same pattern as the existing
+  `WithdrawalApproveConcurrencyTest` — two genuinely separate PHP processes
+  racing for real against Docker MySQL, via new test-only artisan commands
+  `app:withdrawal-test-reject`/`app:withdrawal-test-complete`):
+  `WithdrawalRejectConcurrencyTest` (double-reject), `WithdrawalCompleteConcurrencyTest`
+  (double-complete), and `WithdrawalApproveRejectRaceConcurrencyTest` — the
+  one that actually matters, asserting exactly one of approve/reject wins
+  and the ledger entry count + balance stay consistent with whichever one
+  did. Confirmed all 3 fail against the pre-fix code (both processes reported
+  `success` every time) before applying the fix, then confirmed green after.
+- Backend 2250/2250 fast suite green, 6/6 withdrawal concurrency tests green
+  (old approve test + 3 new). Built on its own `fix/withdrawal-reject-
+  complete-lock` branch off `staging`. Not yet merged.
