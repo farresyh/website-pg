@@ -1126,14 +1126,20 @@ accepted state, not a gap to chase. See §14.
     same way). Not urgent — a rerun always clears it — but worth a proper
     fix before it happens a third time. Not started.
 
-## 2026-09-26 money-critical branch audit — punch list, none built yet
+## 2026-09-26 money-critical branch audit — punch list, mostly built
 
 Full 4-branch background-agent audit (Affiliate portal, Affiliate whitelabel
 storefront, Reseller Bot, Reseller API+docs) — see `docs/build-log.md`'s
 2026-09-26 entry for the audit's own scope/method. Two items needed a design
 decision and were grilled to a decided-not-built addendum; the rest are
 mechanical fixes (existing pattern to mirror, no further grilling needed).
-Work through one at a time, each its own `fix/*` branch off `staging`.
+Each item was built on its own `fix/*` branch off `staging`, then bundled
+into one PR (`fix/2026-09-26-punch-list-bundle`) per the founder's call —
+items 28/29 shipped separately (already merged/in their own PRs before the
+bundling decision). Remaining open: item 34 (deliberately skipped by the
+founder this session), item 35 (re-checked against current code — not
+reproducible, likely already fixed or a stale description — no action), and
+items 39/40 (founder yes/no, not a grill).
 
 **Grilled, addendum written, ready to build:**
 
@@ -1163,47 +1169,117 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
 
 **Mechanical fixes, no grill needed (mirror an existing pattern in the same file/service):**
 
-30. **Deactivating an `Affiliate` doesn't block portal access.**
-    `SetAffiliateContext` only checks `AffiliateUser.is_active`, never the
-    parent `Affiliate.status` — `Admin\AffiliateController::updateStatus()`
-    never cascades to `affiliate_users.is_active` or revokes tokens. A
-    "deactivated" affiliate can still submit withdrawal requests. Not started.
-31. **Same gap, `Reseller` side.** `EnsureAccountType` never checks
-    `is_active` for `owner_type=reseller` — a deactivated reseller keeps full
-    wallet/orders/API-key access. Not started.
-32. **`Admin\WithdrawalController::reject()`/`complete()` have no lock**,
+30. ~~**Deactivating an `Affiliate` doesn't block portal access.**~~ —
+    **🟢 NOT A BUG, resolved 2026-09-26 by founder decision.** Re-checked
+    against [ADR-058 RES-5](./adr.md#adr-058-reseller-authentication--admin-reseller-management-res-1-6--built--live-guard-later-renamed-resellerAffiliate-by-adr-072),
+    which already decided a deactivated Affiliate keeps **read-only** portal
+    access with **earnings still withdrawable** (only new orders + the
+    branded storefront are blocked) — confirmed live in code by the already-
+    passing `BrandingControllerTest::test_a_deactivated_affiliate_is_read_only`.
+    The punch list's "can still submit withdrawal requests" framing was this
+    session mis-reading a deliberate decision as a gap. No code change.
+31. ~~**Same gap, `Reseller` side.**~~ — **🟢 BUILT 2026-09-26.**
+    `EnsureAccountType` now blocks the entire `reseller-portal/*` group when
+    `resellers.is_active` is false — matching the full block the REST API
+    (`EnsureResellerApiKey`) and the Bot (`ResellerBotService`/
+    `ResellerOrderPlacementService`) already enforce on the same column, so
+    all three Reseller channels are now consistent. Deliberately **not**
+    mirrored onto the Affiliate side (see item 30) — the two account types
+    have different, already-decided deactivation policies. Backend
+    2251/2251 fast green, 2 new tests (`EnsureAccountTypeTest`). Built on its
+    own `fix/deactivated-account-portal-access` branch off `staging`. Not
+    yet merged.
+32. ~~**`Admin\WithdrawalController::reject()`/`complete()` have no lock**,
     unlike `approve()` in the same file — a race can leave the ledger
     debited by a concurrent `approve()` while the row shows `Rejected`, no
-    compensating credit. The platform `store()` path has the same missing-lock
-    pattern. Mirror `approve()`'s existing `lockForUpdate()`. Not started.
-33. **`AffiliateTierFeeService::chargeCycle()` can double-charge a billing
-    cycle** if invoked twice (no `next_charge_at` recheck inside its own
-    lock) — zero live impact today (the one real affiliate's tier is
-    RM0/month), becomes real the moment any affiliate is assigned a
-    nonzero-fee tier. Same method also has no `withTrashed()` on a
-    soft-deleted tier relation (null-pointer crash risk, confirmed
-    soft-deleted tiers are already reachable elsewhere in
-    `Admin\AffiliateController`). Not started.
+    compensating credit.~~ — **🟢 BUILT 2026-09-26.** Both now mirror
+    `approve()`'s `DB::transaction()` + `lockForUpdate()` pattern (re-fetch +
+    re-check status inside the lock before mutating). Proven red→green with
+    3 new concurrency tests (`WithdrawalRejectConcurrencyTest`,
+    `WithdrawalCompleteConcurrencyTest`,
+    `WithdrawalApproveRejectRaceConcurrencyTest` — the last one is the actual
+    money-critical case: an `approve()` racing a `reject()` on the same
+    Pending withdrawal must never leave the ledger debited while the row
+    shows `Rejected`) — all 3 confirmed failing against the pre-fix code,
+    passing after. Backend 2250/2250 fast + 6/6 withdrawal concurrency green.
+    Not yet merged to `staging`. (Still unaddressed, out of this item's
+    scope: the platform `store()` path has the same missing-lock pattern —
+    two concurrent `store()` calls could both pass the balance check and
+    create multiple Pending withdrawals summing past the available
+    balance. Lower severity than the reject/complete gap since `store()`
+    never debits the ledger itself — `approve()`'s own lock + balance
+    check is what actually prevents an overdraw — but worth a follow-up.)
+33. ~~**`AffiliateTierFeeService::chargeCycle()` can double-charge a billing
+    cycle** if invoked twice~~ — **🟢 BUILT 2026-09-26.** Build-time revision:
+    a naive "`next_charge_at` is in the future ⇒ already charged" recheck
+    (the punch list's own suggested fix) turned out to break a real, tested
+    feature — `Admin\AffiliateController::chargeTierFee()`'s "Charge Now"
+    deliberately has no due-date filter, so it can force an early first
+    charge on a freshly-assigned tier (`assignTier()` also sets
+    `next_charge_at` 30 days out, identically to a real just-charged row).
+    The actual fix requires **both** signals together: `next_charge_at` in
+    the future **and** an `affiliate_tier_fee` ledger entry already exists
+    for this subscription — that combination is only ever true right after
+    a real completed charge (never on a freshly-assigned, never-charged
+    subscription), and resets correctly once a cycle naturally elapses.
+    Also fixed the `withTrashed()` gap on the eager-loaded `tier` relation
+    (a soft-deleted tier was silently resolving to `null`, charging RM0).
+    Found + fixed a related bug while at it: the pre-existing concurrency
+    test's expected outcome (`['active', 'grace']`) was itself masking a
+    second bug — the losing racer used to fail into `grace` over a
+    duplicate attempt even though the fee was genuinely already collected
+    by the winner; it now correctly no-ops as `active`. Backend 2252/2252
+    fast + 2/2 tier-fee concurrency green, all new tests confirmed red
+    against the pre-fix code first. Built on its own
+    `fix/affiliate-tier-fee-double-charge` branch off `staging`. Not yet
+    merged.
 34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
     "must have bank details" guard (`$bankName === null` doesn't catch
-    `""`). Tighten to `filled`/`required_without`. Not started.
+    `""`). Tighten to `filled`/`required_without`. **Deliberately skipped
+    2026-09-26 by founder call** — not built this session.
 35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
     0** instead of failing loud, silently changing which withdrawals need a
-    second approver. Not started.
-36. **Reseller Bot replies with the full command list to ordinary chat in an
-    already-linked WhatsApp group** — confirmed live via real
-    `ResellerBotCommandLog` rows ("Yow", "Wait i test", "Yeyy" all logged as
-    `unrecognized_command`). Missing the same `.`-prefix guard the
-    unlinked-group path already has. Not started.
-37. **Bot `.list {kod}` shows cost-price (0% markup)** for a reseller with no
-    `reseller_tier_id` assigned yet — `.order` already correctly blocks with
-    `NoResellerTierAssignedException`, `.list` doesn't guard the same case.
-    Not started.
-38. **`docs-site`'s `first-order.md`/`product-codes.md` walkthrough is
-    missing `checkout_input`** (the ADR-097 zone-id discovery field, live in
-    code + the auto-generated API Reference since 2026-09-16) — a developer
-    following only the hand-written guide would get stuck on a zone_id game.
-    Doc-only fix. Not started.
+    second approver. **Re-checked 2026-09-26 against current code — not
+    reproducible.** Both `config/withdrawals.php` and `config/vouchers.php`
+    already have an explicit non-zero default (`env(..., 200_000)` /
+    `env(..., 50_000)`), and no `?? 0` pattern exists anywhere near either
+    threshold in the codebase today. Likely already fixed in an earlier
+    session, or this description referred to a config field that no longer
+    exists under this name. No action taken.
+36. ~~**Reseller Bot replies with the full command list to ordinary chat in
+    an already-linked WhatsApp group.**~~ — **🟢 BUILT 2026-09-26**, scope
+    revised by the founder mid-build: an unlinked group now stays fully
+    silent (no reply even to a dot-prefixed message — previously it replied
+    "belum dikaitkan"), and a linked group only replies to a `.`-prefixed
+    message; ordinary chat parses as `Unrecognized` same as a typo'd
+    command but is now silently dropped before it reaches the command-list
+    reply or the failure log. A dot-prefixed but malformed/unknown command
+    still gets the helpful "Arahan tidak dikenali" reply, unchanged.
+37. ~~**Bot `.list {kod}` shows cost-price (0% markup)** for a reseller with
+    no `reseller_tier_id` assigned yet.~~ — **🟢 BUILT 2026-09-26.**
+    `handleListGamePackages()` now guards on `$reseller->tier === null`
+    before pricing, mirroring `.order`'s existing
+    `NoResellerTierAssignedException` rejection (logged as
+    `no_tier_assigned`), instead of silently computing a 0%-markup price
+    that equalled cost. Backend 2253/2253 fast green, 4 new tests, all
+    confirmed red against the pre-fix code first. Built on its own
+    `fix/reseller-bot-list-unrecognized` branch off `staging`. Not yet
+    merged.
+38. ~~**`docs-site`'s `first-order.md` walkthrough is missing
+    `checkout_input`**~~ — **🟢 BUILT 2026-09-26.** Added `checkout_input` to
+    the catalog response example in "2. Read the catalogue" (matching
+    `CatalogController`'s own `#[Response]` example) + a paragraph
+    explaining it (non-null `field`/`options` means send that value as
+    `server_id` on the order — the request field is always literally named
+    `server_id` regardless of what `checkout_input.field` calls it) +
+    reworded the `server_id`-is-conditional bullet in "3. Place the order"
+    to point at checking `checkout_input` programmatically instead of
+    hardcoding which games need it. `product-codes.md` reuses the same
+    catalog example for an unrelated purpose (building `product_code`, not
+    checkout inputs) — left as-is, adding `checkout_input` there would be
+    noise unrelated to what that page teaches. `npm run check` + `npm run
+    build` both clean. Built on its own `fix/docs-checkout-input-example`
+    branch off `staging`. Not yet merged.
 
 **Low priority / needs a founder yes-no, not a grill:**
 

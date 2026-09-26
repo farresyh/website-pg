@@ -1820,3 +1820,151 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   a narrower instance of the same already-accepted gap this ADR addendum's
   own Consequence-to-track already covers (first payout after a change only
   warns, doesn't block).
+
+## 2026-09-26 — Items 30/31 resolved (deactivated-account portal access)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 items 30/31), originally filed as one mechanical fix mirrored across
+  Affiliate + Reseller. Building it surfaced a real conflict: a blanket
+  "deactivated account = no portal access" gate breaks an already-decided,
+  already-tested business rule for the Affiliate side —
+  [ADR-058 RES-5](./adr.md) deliberately keeps a deactivated Affiliate's
+  portal **read-only** with **earnings still withdrawable** (only new
+  orders + the branded storefront are blocked), confirmed live by the
+  already-passing `BrandingControllerTest::test_a_deactivated_affiliate_is_read_only`.
+  Founder confirmed: item 30 is **not a bug**, no code change.
+- Item 31 (Reseller side) built as scoped: `EnsureAccountType` now blocks
+  the entire `reseller-portal/*` route group when `resellers.is_active` is
+  false, matching the full block the REST API (`EnsureResellerApiKey`) and
+  the Bot (`ResellerBotService`/`ResellerOrderPlacementService`) already
+  enforce on the same column — the portal was the one channel that stayed
+  fully open for a deactivated Reseller.
+- Added 1 new test (`EnsureAccountTypeTest::test_a_deactivated_reseller_cannot_reach_the_portal_even_with_an_active_login_row`),
+  confirmed it fails against the pre-fix code first. Backend 2251/2251 fast
+  suite green. Built on its own `fix/deactivated-account-portal-access`
+  branch off `staging`, per the founder's plan this session to build a few
+  more punch-list items and bundle them into one PR rather than one PR per
+  item. Not yet merged.
+
+## 2026-09-26 — Item 32 built (`WithdrawalController::reject()`/`complete()` missing lock)
+
+- Mechanical fix from the 2026-09-26 money-critical branch audit punch list
+  (`docs/prd.md` §16 item 32) — no grill needed. `reject()` and `complete()`
+  each ran an unconditional `$withdrawal->update()` with no row lock, unlike
+  `approve()` in the same controller. The real risk isn't two admins double-
+  rejecting (harmless) — it's `approve()` racing `reject()` on the same
+  Pending withdrawal: `approve()` debits the ledger and flips the row to
+  `Approved`, then `reject()`'s unconditional write (reading the pre-race
+  `Pending` status) overwrites it to `Rejected` — money already paid out,
+  record says it wasn't, no compensating entry anywhere.
+- Fix mirrors `approve()` exactly: both now wrap in `DB::transaction()` +
+  `Withdrawal::query()->lockForUpdate()->findOrFail()`, re-checking status
+  inside the lock before mutating.
+- Test-first, red→green, per `AGENTS.md`'s money-critical-logic rule: added
+  3 new subprocess concurrency tests (same pattern as the existing
+  `WithdrawalApproveConcurrencyTest` — two genuinely separate PHP processes
+  racing for real against Docker MySQL, via new test-only artisan commands
+  `app:withdrawal-test-reject`/`app:withdrawal-test-complete`):
+  `WithdrawalRejectConcurrencyTest` (double-reject), `WithdrawalCompleteConcurrencyTest`
+  (double-complete), and `WithdrawalApproveRejectRaceConcurrencyTest` — the
+  one that actually matters, asserting exactly one of approve/reject wins
+  and the ledger entry count + balance stay consistent with whichever one
+  did. Confirmed all 3 fail against the pre-fix code (both processes reported
+  `success` every time) before applying the fix, then confirmed green after.
+- Backend 2250/2250 fast suite green, 6/6 withdrawal concurrency tests green
+  (old approve test + 3 new). Built on its own `fix/withdrawal-reject-
+  complete-lock` branch off `staging`. Not yet merged.
+
+## 2026-09-26 — Items 36/37 built (Reseller Bot `.list` unrecognized-chat spam + no-tier price leak)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 items 36/37). Founder revised item 36's scope mid-build: rather than
+  just adding the unlinked-group's existing `.`-prefix guard to the
+  linked-group path, an unlinked group now stays fully silent regardless of
+  the message (no more "Group ini belum dikaitkan..." reply even for a
+  dot-prefixed attempt) — only a linked group interacts at all, and only
+  with `.`-prefixed messages. Ordinary chat ("ok tq", "haha") in a linked
+  group parses as `Unrecognized` the same as a typo'd command, but is now
+  silently dropped in `ResellerBotService::handle()` before it reaches
+  either the command-list reply or the `unrecognized_command` failure log
+  — a dot-prefixed but malformed/unknown command still gets the helpful
+  reply, unchanged.
+- Item 37: `handleListGamePackages()` (`.list {kod}`) now guards on
+  `$reseller->tier === null` before computing a price, logging
+  `no_tier_assigned` and replying with a plain "belum ditetapkan tier
+  harga" message — mirrors `.order`'s existing
+  `NoResellerTierAssignedException` rejection. Before this, a reseller with
+  no `reseller_tier_id` got a 0%-markup price that silently equalled the
+  real cost price.
+- 4 new tests in `ResellerBotServiceTest`, all confirmed failing against
+  the pre-fix code first (2 assertion failures on the silence guards, 1
+  real `Attempt to read property "markup_percent" on null` reproducing the
+  exact leak/crash risk item 37 described). Backend 2253/2253 fast suite
+  green. Built on its own `fix/reseller-bot-list-unrecognized` branch off
+  `staging`, per the founder's plan to build several punch-list items and
+  bundle them into one PR. Not yet merged.
+
+## 2026-09-26 — Item 38 built (docs-site missing `checkout_input`)
+
+- Doc-only fix from the 2026-09-26 money-critical branch audit punch list
+  (`docs/prd.md` §16 item 38). `first-order.md`'s hand-written catalog
+  example was missing `checkout_input` (the ADR-097 zone-id discovery
+  field, already live in the real API and its auto-generated Reference) —
+  a developer following only the guide would get stuck placing an order
+  for a zone-id game, since the guide only mentioned `server_id` in prose
+  ("Mobile Legends does; many do not") with no way to check programmatically.
+  Added `checkout_input` to the catalog JSON example (matching
+  `CatalogController`'s own `#[Response]` example exactly) + a paragraph
+  explaining it, and reworded the `server_id` bullet to point at
+  `checkout_input` instead of a hardcoded game list.
+  `product-codes.md` reuses the same catalog example for a different
+  purpose (building `product_code`) — left untouched, not in scope for
+  this fix. `npm run check` + `npm run build` both clean. Built on its own
+  `fix/docs-checkout-input-example` branch off `staging`, per the
+  founder's plan to build several punch-list items and bundle them into
+  one PR. Not yet merged.
+
+## 2026-09-26 — Item 33 built (`AffiliateTierFeeService` double-charge + `withTrashed()`)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 item 33). The punch list's own suggested fix — recheck
+  `next_charge_at` inside the lock, mirroring `WithdrawalController::approve()`
+  — turned out to break a real, tested feature once built: a plain "is
+  `next_charge_at` in the future" check can't distinguish "already charged
+  this cycle" from "freshly assigned, never charged yet" — `assignTier()`
+  sets `next_charge_at` 30 days out on creation too, identically to a
+  just-charged row, and `Admin\AffiliateController::chargeTierFee()`'s
+  "Charge Now" deliberately has no due-date filter so it can force an
+  early first charge. Two existing tests
+  (`AffiliateControllerTest::test_charge_tier_fee_debits_earnings`/
+  `test_charge_tier_fee_starts_grace_when_earnings_short`) caught this
+  immediately.
+- Correct fix requires both signals together: `next_charge_at` in the
+  future **and** an `affiliate_tier_fee` ledger entry already exists for
+  this subscription. That combination is only ever true right after a
+  real completed charge — never on a freshly-assigned subscription (no
+  entry yet) — and resets correctly once a cycle naturally elapses
+  (`next_charge_at` back in the past, so the check is skipped regardless
+  of how many old entries exist from prior cycles).
+- Also fixed the `withTrashed()` gap: the eager-loaded `tier` relation
+  now includes soft-deleted tiers, so a subscription whose tier was later
+  deleted still charges its real fee instead of silently resolving to
+  `null` (`(int) null` = 0).
+- Found a second, related bug while building the fix: the pre-existing
+  `AffiliateTierFeeConcurrencyTest` funded exactly one fee and expected
+  `['active', 'grace']` as the outcome pair — the losing racer used to
+  attempt a debit against an already-drained balance and fail into
+  `grace`, even though this cycle's fee genuinely was already collected
+  by the winner (a subscription that's fully paid up should never show
+  `grace`). It now correctly recognizes the completed charge and no-ops
+  as `active` instead — updated that test's expectation to match, and
+  added a second concurrency test that funds *two* fees' worth (so a
+  second debit is financially possible) to specifically prove
+  `chargeCycle()` itself, not just the ledger balance check, is what
+  prevents the double-charge.
+- 4 new/updated tests total (2 feature, 2 concurrency), all confirmed
+  failing against the pre-fix code first. Backend 2252/2252 fast + 2/2
+  tier-fee concurrency green. Built on its own
+  `fix/affiliate-tier-fee-double-charge` branch off `staging`, per the
+  founder's plan to build several punch-list items and bundle them into
+  one PR. Not yet merged.

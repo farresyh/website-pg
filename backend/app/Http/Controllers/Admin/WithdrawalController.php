@@ -195,37 +195,66 @@ class WithdrawalController extends Controller
      * Only valid from Pending for MVP — an Approved withdrawal already
      * has its ledger debit written; reversing that is a deliberately
      * deferred edge case (see docs/prd.md §14).
+     *
+     * Same TOCTOU risk class as approve() (see its doc comment): without
+     * a row lock, a reject() racing an approve() on the same Pending
+     * withdrawal could both read status=Pending before either commits —
+     * approve() debits the ledger and marks Approved, then reject()'s
+     * unconditional update() overwrites that to Rejected, leaving a
+     * withdrawal that says "rejected" while the ledger already paid it
+     * out. Locking the row here (and re-checking status after acquiring
+     * the lock) serializes the two the same way approve() does.
      */
     public function reject(RejectWithdrawalRequest $request, Withdrawal $withdrawal): JsonResponse
     {
-        if ($withdrawal->status !== WithdrawalStatus::Pending) {
-            throw ValidationException::withMessages([
-                'status' => ['Only a pending withdrawal can be rejected.'],
+        $admin = $request->user();
+        $adminNote = $request->validated('admin_note');
+
+        $withdrawal = DB::transaction(function () use ($withdrawal, $admin, $adminNote) {
+            $locked = Withdrawal::query()->lockForUpdate()->findOrFail($withdrawal->id);
+
+            if ($locked->status !== WithdrawalStatus::Pending) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only a pending withdrawal can be rejected.'],
+                ]);
+            }
+
+            $locked->update([
+                'status' => WithdrawalStatus::Rejected,
+                'approved_by' => $admin->id,
+                'admin_note' => $adminNote,
             ]);
-        }
 
-        $withdrawal->update([
-            'status' => WithdrawalStatus::Rejected,
-            'approved_by' => $request->user()->id,
-            'admin_note' => $request->validated('admin_note'),
-        ]);
+            return $locked;
+        });
 
-        return response()->json($withdrawal);
+        return response()->json($withdrawal->fresh());
     }
 
+    /**
+     * Same lock rationale as approve()/reject(): two admins marking the
+     * same withdrawal completed at nearly the same time could otherwise
+     * both pass the Approved check before either commits.
+     */
     public function complete(Request $request, Withdrawal $withdrawal): JsonResponse
     {
-        if ($withdrawal->status !== WithdrawalStatus::Approved) {
-            throw ValidationException::withMessages([
-                'status' => ['Only an approved withdrawal can be marked completed.'],
+        $withdrawal = DB::transaction(function () use ($withdrawal) {
+            $locked = Withdrawal::query()->lockForUpdate()->findOrFail($withdrawal->id);
+
+            if ($locked->status !== WithdrawalStatus::Approved) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only an approved withdrawal can be marked completed.'],
+                ]);
+            }
+
+            $locked->update([
+                'status' => WithdrawalStatus::Completed,
+                'processed_at' => now(),
             ]);
-        }
 
-        $withdrawal->update([
-            'status' => WithdrawalStatus::Completed,
-            'processed_at' => now(),
-        ]);
+            return $locked;
+        });
 
-        return response()->json($withdrawal);
+        return response()->json($withdrawal->fresh());
     }
 }

@@ -71,17 +71,13 @@ final class ResellerBotService
         $reseller = $this->groups->resolveReseller($whatsappGroupId);
 
         if ($reseller === null) {
-            // PR-F build addendum decision 3 — any group message captures/
-            // bumps the pending-link row (this IS the "send a test message"
-            // onboarding flow), but a reply is only worth sending back for
-            // something that looks like an attempted command — replying to
-            // every ordinary chat message in a not-yet-linked group would
-            // be spam, not a courtesy.
+            // Item 36 (2026-09-26 audit, founder-revised scope): an
+            // unlinked group stays fully silent, including a dot-prefixed
+            // attempted command — a reply here would train an unlinked
+            // group's members to expect bot chatter before an admin has
+            // even linked it. Still captures/bumps the pending-link row
+            // (the "send a test message" onboarding flow).
             $this->groups->capturePending($whatsappGroupId, $rawText);
-
-            if (str_starts_with(trim($rawText), '.')) {
-                $this->openWa->sendText($whatsappGroupId, 'Group ini belum dikaitkan dengan mana-mana akaun reseller. Sila hubungi admin untuk aktifkan.');
-            }
 
             return;
         }
@@ -93,6 +89,16 @@ final class ResellerBotService
         }
 
         $command = $this->parser->parse($rawText);
+
+        // Item 36 (2026-09-26 audit): a linked group only interacts with
+        // `.`-prefixed commands — ordinary chat ("ok tq", "haha") parses
+        // as Unrecognized same as a typo'd command, but must stay silent
+        // rather than spam the full command list back. A dot-prefixed
+        // but malformed/unknown command (".xyz") still gets the helpful
+        // reply below.
+        if ($command->type === ResellerBotCommandType::Unrecognized && ! str_starts_with(trim($rawText), '.')) {
+            return;
+        }
 
         // E10 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
         // `.order`/`.topupbaki` already reject a deactivated Reseller via
@@ -201,6 +207,17 @@ final class ResellerBotService
         }
 
         $tier = $reseller->tier;
+
+        // Item 37 (2026-09-26 audit): `.order` already rejects a reseller
+        // with no tier assigned via NoResellerTierAssignedException — this
+        // handler had no equivalent guard, so a 0% markup silently applied
+        // and `.list` showed the exact cost price as the "price".
+        if ($tier === null) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'no_tier_assigned');
+
+            return 'Senarai harga tidak dapat dipaparkan: akaun anda belum ditetapkan tier harga. Sila hubungi admin.';
+        }
+
         // ADR-060 PR-4b: the same seam ResellerOrderPlacementService
         // charges through, so the listed price can never drift from the
         // debited price.

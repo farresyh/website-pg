@@ -33,6 +33,7 @@ GET /v1/catalog
     {
       "code": "MLMY",
       "name": "Mobile Legends (Malaysia)",
+      "checkout_input": { "field": "zone_id", "options": ["SouthEastAsia", "MENA"] },
       "packages": [
         { "code": "MLMY-14", "name": "14 Diamonds", "price_sen": 1200 },
         { "code": "MLMY-86", "name": "86 Diamonds", "price_sen": 6300 }
@@ -44,6 +45,13 @@ GET /v1/catalog
 
 `price_sen` is **your** price for that package, in sen. Order against
 `packages[].code` — see [Product codes](/product-codes/).
+
+`checkout_input` tells you, per game, whether placing an order needs an
+extra value beyond `player_id` — `field`/`options` are both `null` when it
+doesn't. When present, send that value as `server_id` on the order below
+(the request field is always named `server_id`, regardless of what
+`checkout_input.field` calls it for that particular game) — `options`, when
+present, is the exact picklist of valid values; anything else is rejected.
 
 ## 3. Place the order
 
@@ -59,8 +67,9 @@ Content-Type: application/json
 }
 ```
 
-- `server_id` is required only for games that use one (Mobile Legends does;
-  many do not).
+- `server_id` is required only for games whose catalog entry has a non-null
+  `checkout_input` (Mobile Legends does; many games don't) — check that
+  field programmatically rather than hardcoding which games need it.
 - `idempotency_key` is a **fresh UUID you generate per order**. See
   [Idempotency & retries](/idempotency/).
 
