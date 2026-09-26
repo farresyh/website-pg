@@ -1126,6 +1126,94 @@ accepted state, not a gap to chase. See §14.
     same way). Not urgent — a rerun always clears it — but worth a proper
     fix before it happens a third time. Not started.
 
+## 2026-09-26 money-critical branch audit — punch list, none built yet
+
+Full 4-branch background-agent audit (Affiliate portal, Affiliate whitelabel
+storefront, Reseller Bot, Reseller API+docs) — see `docs/build-log.md`'s
+2026-09-26 entry for the audit's own scope/method. Two items needed a design
+decision and were grilled to a decided-not-built addendum; the rest are
+mechanical fixes (existing pattern to mirror, no further grilling needed).
+Work through one at a time, each its own `fix/*` branch off `staging`.
+
+**Grilled, addendum written, ready to build:**
+
+28. ~~**Reseller API cross-reseller idempotency-key leak (was CRITICAL).**~~
+    — **🟢 BUILT 2026-09-26.**
+    `ResellerOrderPlacementService::placeOrder()`'s idempotency lookup had no
+    per-reseller scope — a key collision (accidental or crafted) could hand
+    one reseller another reseller's real order data. Fixed per
+    [ADR-074 addendum](./adr.md#adr-074-reseller-api-channel--per-tenant-api-keys-order-placementstatus-endpoints)
+    — a generated `idempotency_scope` column (`VIRTUAL`, not `STORED` as
+    originally decided — see the ADR's build-time revision note) + composite
+    unique index, plus scoping both lookups in `placeOrder()` by
+    `wallet_reseller_id`. Zero live orders were affected (0 real Reseller API
+    orders existed in prod, confirmed before building). Backend 2248/2248
+    fast + 17/17 concurrency green. Not yet released to `main`.
+29. **Affiliate withdrawal payout-redirect gap (was HIGH).** Any
+    `affiliate_user` can override the saved profile's bank details per
+    withdrawal request with no cross-check. Decided:
+    [ADR-059 addendum](./adr.md#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config--built--live-at-resellerpekangamespace-entity-later-renamed-resellerAffiliate-by-adr-072-the-app-now-also-serves-wallet-reseller-accounts)
+    — drop the per-request override fields (withdrawal always reads
+    profile), admin-approval warning compares against the affiliate's last
+    *approved* withdrawal (not current profile — that comparison would never
+    fire by construction). One real affiliate, one staff user today — policy
+    decided ahead of scale, not an active incident. Not started.
+
+**Mechanical fixes, no grill needed (mirror an existing pattern in the same file/service):**
+
+30. **Deactivating an `Affiliate` doesn't block portal access.**
+    `SetAffiliateContext` only checks `AffiliateUser.is_active`, never the
+    parent `Affiliate.status` — `Admin\AffiliateController::updateStatus()`
+    never cascades to `affiliate_users.is_active` or revokes tokens. A
+    "deactivated" affiliate can still submit withdrawal requests. Not started.
+31. **Same gap, `Reseller` side.** `EnsureAccountType` never checks
+    `is_active` for `owner_type=reseller` — a deactivated reseller keeps full
+    wallet/orders/API-key access. Not started.
+32. **`Admin\WithdrawalController::reject()`/`complete()` have no lock**,
+    unlike `approve()` in the same file — a race can leave the ledger
+    debited by a concurrent `approve()` while the row shows `Rejected`, no
+    compensating credit. The platform `store()` path has the same missing-lock
+    pattern. Mirror `approve()`'s existing `lockForUpdate()`. Not started.
+33. **`AffiliateTierFeeService::chargeCycle()` can double-charge a billing
+    cycle** if invoked twice (no `next_charge_at` recheck inside its own
+    lock) — zero live impact today (the one real affiliate's tier is
+    RM0/month), becomes real the moment any affiliate is assigned a
+    nonzero-fee tier. Same method also has no `withTrashed()` on a
+    soft-deleted tier relation (null-pointer crash risk, confirmed
+    soft-deleted tiers are already reachable elsewhere in
+    `Admin\AffiliateController`). Not started.
+34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
+    "must have bank details" guard (`$bankName === null` doesn't catch
+    `""`). Tighten to `filled`/`required_without`. Not started.
+35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
+    0** instead of failing loud, silently changing which withdrawals need a
+    second approver. Not started.
+36. **Reseller Bot replies with the full command list to ordinary chat in an
+    already-linked WhatsApp group** — confirmed live via real
+    `ResellerBotCommandLog` rows ("Yow", "Wait i test", "Yeyy" all logged as
+    `unrecognized_command`). Missing the same `.`-prefix guard the
+    unlinked-group path already has. Not started.
+37. **Bot `.list {kod}` shows cost-price (0% markup)** for a reseller with no
+    `reseller_tier_id` assigned yet — `.order` already correctly blocks with
+    `NoResellerTierAssignedException`, `.list` doesn't guard the same case.
+    Not started.
+38. **`docs-site`'s `first-order.md`/`product-codes.md` walkthrough is
+    missing `checkout_input`** (the ADR-097 zone-id discovery field, live in
+    code + the auto-generated API Reference since 2026-09-16) — a developer
+    following only the hand-written guide would get stuck on a zone_id game.
+    Doc-only fix. Not started.
+
+**Low priority / needs a founder yes-no, not a grill:**
+
+39. CHIP payment description hardcodes `"PekanGame"` regardless of which
+    affiliate storefront the customer paid on — may be intentional (one
+    company CHIP account is the actual merchant of record), needs a founder
+    decision before touching it either way.
+40. Narrow `.topupbaki` race: the reseller is correctly charged and
+    credited, but can miss the WhatsApp confirmation if the CHIP webhook
+    resolves inside a tight window between `initiate()` and the bot's own
+    tracking row being created. Money-safe; notification-only gap.
+
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 ~~**CHIP credential `.env`→DB migration**~~ — **grilled + BUILT 2026-09-19,

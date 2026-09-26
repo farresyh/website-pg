@@ -1723,3 +1723,57 @@ The same session's Kimi-review discussion also verified (no code change needed, 
 - **Verified end-to-end for real, not just per-credential:** a WhatsApp message sent into the founder's own test group round-tripped — inbound `message.received` processed (`OpenWaSessionStatus` cache showed `ready`), outbound reply delivered (OpenWA's own `webhook_outbox_events` logged a matching `message.sent`), zero rows in `webhook_delivery_failures`.
 - **Found and fixed as a byproduct, not part of the bot migration itself** — asked directly by the founder to scan for other problems before closing the session: the old droplet's Horizon had been left fully live since the earlier `api.` cutover (deliberate, as rollback safety), and because `Supplier.api_config` for Digiflazz was copied into both databases, **both droplets had been independently running price-sync against the same real Digiflazz account concurrently since that cutover**, tripping Digiflazz's own rate limiter (`[83] Anda telah mencapai limitasi pengecekan pricelist`) repeatedly through the day on both sides — visible in both servers' logs going back to the `api.` cutover, not something the bot migration introduced. **Fixed:** founder paused the old droplet's Horizon/Reverb/Pulse daemons and Forge scheduler, deliberately leaving the OpenWA daemon running (still the rollback target). Confirmed via log check: zero further Digiflazz rate-limit errors after the pause.
 - `docs/adr.md`'s ADR-114 gained a full addendum with the per-credential mechanism, useful as a checklist if OpenWA is ever re-provisioned again. `docs/prd.md`'s OpenWA-resize backlog item corrected in a separate small PR (#291) after this session's own audit found its "nginx IP-restriction" half was already-stale wording, not a real gap.
+
+## 2026-09-26 — Full money-critical branch audit (4 background agents) + 2 grilled fixes decided, none built yet
+
+- Founder-requested comprehensive audit of every money-moving branch: Affiliate portal workflow (earnings ledger, withdrawal, tier fees, tenant isolation), Affiliate whitelabel storefront (custom-domain checkout/membership, brand isolation, theme rendering), Reseller WhatsApp Bot (command handling, webhook auth, wallet top-up safety), Reseller REST API + docs-site (code-vs-docs drift, external-developer usability). One background `general-purpose` agent per branch, each also running the `code-review` skill at high effort scoped to its own files, plus read-only production verification via `ssh pekangame-prod-lwf`/`tinker` (no mutating actions taken anywhere).
+- **Overall verdict: foundation is solid** — server-side pricing, ledger accuracy (0 sen drift between `ledger_entries` and `orders.affiliate_profit` live), and the whitelabel brand-isolation model (the 2026-09-24 CHIP-redirect fix, PR #284) all held up under adversarial review. One **critical** and four **high** findings surfaced; full findings list (including mediums/lows not repeated here) lives in this session's own conversation — the two that needed a design decision were grilled and are recorded as ADR addenda (not built this session):
+  - **[docs/adr.md ADR-074 addendum](./adr.md#adr-074-reseller-api-channel--per-tenant-api-keys-order-placementstatus-endpoints)** — Reseller API's `checkout_idempotency_key` lookup (`ResellerOrderPlacementService::placeOrder()`) had no per-reseller scope, letting one reseller's request match (and receive back) another reseller's real order data on a key collision — a real ADR-084 decision 2 invariant violation, not just a benign accidental-collision risk (a malicious caller could deliberately target a Bot-channel order's own `wa:...` key shape). Decided: a `STORED GENERATED` `idempotency_scope` column (`IFNULL(wallet_reseller_id, 0)`) + composite unique index, after two simpler approaches were grilled and rejected (a bare app-level `WHERE` filter leaves the race-recovery re-query's identical bug open; a naive composite index on the raw nullable column would have silently broken every guest/Affiliate-storefront order's own idempotency guarantee, since MySQL treats each `NULL` as distinct in a unique index).
+  - **[docs/adr.md ADR-059 addendum](./adr.md#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config--built--live-at-resellerpekangamespace-entity-later-renamed-resellerAffiliate-by-adr-072-the-app-now-also-serves-wallet-reseller-accounts)** — `Affiliate\WithdrawalController::store()` lets any `affiliate_user` override the saved profile's payout bank details per-request with zero cross-check, a real payout-redirect risk once an affiliate has multiple staff logins. First-draft fix (admin warning if the withdrawal differs from *current* profile) was self-corrected mid-grill — once the withdrawal always snapshots from profile, it can never differ from profile at approval time by construction, so that comparison would never fire. Decided instead: drop the per-request override fields entirely (withdrawal always reads profile) + an admin-approval warning comparing against the affiliate's *last admin-approved* withdrawal (a real "did the payout destination just change" signal). Accepted, tracked gap: the first payout after a malicious profile change still only warns, doesn't block — a cooling-off/notification mechanism (parked) would close that, not worth building yet for one real affiliate with one staff user.
+- **Findings triaged into two buckets, not built this session (all fixes are mechanical/pattern-following, no further grilling needed for these):**
+  - **Access control:** `SetAffiliateContext` never checks the parent `Affiliate.status` (a deactivated affiliate keeps full portal/withdrawal access); `EnsureAccountType` never checks `AffiliateUser.is_active` for `owner_type=reseller` either (same gap, reseller side).
+  - **Concurrency:** `Admin\WithdrawalController::reject()`/`complete()` and the platform `store()` path have no lock, unlike `approve()` in the same file (mirror its existing pattern).
+  - **`AffiliateTierFeeService::chargeCycle()`** — no due-date recheck inside its own lock (double-charge risk if invoked twice; zero live impact today since the one real affiliate's tier is RM0/month) + no `withTrashed()` on a soft-deleted tier relation (null-pointer crash risk).
+  - **Validation:** withdrawal bank-detail fields accept empty string, bypassing the "must have bank details" guard; `maker_checker_threshold_sen` silently coerces a missing config to 0 instead of failing loud.
+  - **Reseller Bot:** ordinary chat in an already-linked WhatsApp group triggers a full spam reply (confirmed live via real `ResellerBotCommandLog` rows) — missing the same `.`-prefix guard the unlinked-group path already has; `.list` shows cost-price (0% markup) for a reseller with no tier assigned yet, unlike `.order` which correctly blocks.
+  - **Docs:** `checkout_input` (the ADR-097 zone-id discovery field, live in code since 2026-09-16) is missing from `docs-site`'s hand-written `first-order.md`/`product-codes.md` walkthrough, though it is present in the auto-generated API Reference.
+  - **Low/cosmetic (not itemized further here):** CHIP payment description hardcodes "PekanGame" regardless of which affiliate storefront the customer paid on (needs a founder yes/no, not a grill — may be intentional single-merchant-of-record); a narrow `.topupbaki` notify-miss race (money safe, WhatsApp confirmation can be skipped); several stale docblocks/comments and one duplicated magic number.
+- **Nothing built this session** — this was audit + grill only, per the founder's own framing ("fix grill semua perkara yang perlu grill, note down yang boleh fix terus, next sesi settlekan satu per satu"). Next session's job: implement the two addenda above (migration + service-layer filter for ADR-074; request/controller change + approval-screen warning for ADR-059) plus work through the mechanical punch list, one PR at a time, each on its own `fix/*` branch off `staging` per the usual branch workflow.
+
+## 2026-09-26 — Item 28 built (Reseller API cross-reseller idempotency scope)
+
+- **[ADR-074 addendum](./adr.md#adr-074-reseller-api-channel--per-tenant-api-keys-order-placementstatus-endpoints).**
+  `ResellerOrderPlacementService::placeOrder()`'s two `checkout_idempotency_key`
+  lookups (lines 63/133) now both filter by `wallet_reseller_id`, backed by a
+  new generated `orders.idempotency_scope` column
+  (`IFNULL(wallet_reseller_id, 0)`) and a composite
+  `UNIQUE (idempotency_scope, checkout_idempotency_key)` index replacing the
+  old bare-column unique constraint. **Build-time revision:** the column is
+  `VIRTUAL`, not `STORED` as the addendum originally decided — sqlite (the
+  fast suite's driver, and the real local dev DB) refuses to add a `STORED`
+  generated column to a table that already has rows, confirmed empirically
+  against both an in-memory table and the actual `database.sqlite`; `VIRTUAL`
+  has no such restriction and indexes identically on both sqlite and MySQL
+  InnoDB. Added a regression test asserting two different resellers sharing
+  one idempotency key each get their own order, never a cross-tenant replay.
+  Backend 2248/2248 fast + 17/17 concurrency (real MySQL), both green. Local
+  dev DB migrated (plain `php artisan migrate`, confirmed via
+  `migrate:status`). Not yet released to `main`. Built on its own
+  `fix/adr074-reseller-idempotency-scope` branch off `staging`, its own PR,
+  per the usual branch workflow.
+- **Code-review follow-up, same PR, caught two real gaps in the first pass:**
+  the migration's `down()` unconditionally re-added the bare global-unique
+  constraint on `checkout_idempotency_key` — safe today (0 collisions
+  exist) but a real footgun the moment two resellers actually do share a
+  key post-deployment (the exact state this migration exists to allow):
+  the final statement would throw mid-rollback, leaving `idempotency_scope`
+  already dropped and the old constraint never restored either way. `down()`
+  now checks for any cross-reseller duplicate `checkout_idempotency_key`
+  first and throws a clear `RuntimeException` before touching schema at
+  all. Added a regression test for both the refusal and the clean-rollback
+  path. Separately, the two `wallet_reseller_id`-scoped idempotency lookups
+  in `ResellerOrderPlacementService` (pre-check + race-recovery) were
+  duplicated verbatim — extracted into one private `findByIdempotencyKey()`
+  so a future edit to the scoping predicate can't update one call site and
+  silently miss the other. Backend 2246/2246 fast + concurrency suite both
+  green.
