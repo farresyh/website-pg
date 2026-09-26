@@ -1739,3 +1739,25 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   - **Docs:** `checkout_input` (the ADR-097 zone-id discovery field, live in code since 2026-09-16) is missing from `docs-site`'s hand-written `first-order.md`/`product-codes.md` walkthrough, though it is present in the auto-generated API Reference.
   - **Low/cosmetic (not itemized further here):** CHIP payment description hardcodes "PekanGame" regardless of which affiliate storefront the customer paid on (needs a founder yes/no, not a grill — may be intentional single-merchant-of-record); a narrow `.topupbaki` notify-miss race (money safe, WhatsApp confirmation can be skipped); several stale docblocks/comments and one duplicated magic number.
 - **Nothing built this session** — this was audit + grill only, per the founder's own framing ("fix grill semua perkara yang perlu grill, note down yang boleh fix terus, next sesi settlekan satu per satu"). Next session's job: implement the two addenda above (migration + service-layer filter for ADR-074; request/controller change + approval-screen warning for ADR-059) plus work through the mechanical punch list, one PR at a time, each on its own `fix/*` branch off `staging` per the usual branch workflow.
+
+## 2026-09-26 — Item 29 built (Affiliate withdrawal payout-redirect fix)
+
+- **[ADR-059 addendum](./adr.md#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config--built--live-at-resellerpekangamespace-entity-later-renamed-resellerAffiliate-by-adr-072-the-app-now-also-serves-wallet-reseller-accounts).**
+  `CreateAffiliateWithdrawalRequest` no longer accepts
+  `bank_name`/`bank_account_no`/`bank_account_holder` at all — a withdrawal
+  request always reads the affiliate's saved profile
+  (`Affiliate\WithdrawalController::store()`), closing the payout-redirect
+  gap where any `affiliate_user` could silently override the payout
+  destination per request. Added a regression test asserting a bank-detail
+  override sent in the request body is fully ignored. `Admin\WithdrawalController::index()`
+  now also returns `bank_details_changed_since_last_approval` per withdrawal
+  (`null` for a platform withdrawal or an affiliate's first-ever payout,
+  otherwise a real diff against the affiliate's last admin-approved/completed
+  withdrawal — never against current profile, since a withdrawal already
+  always snapshots from profile at request time and so could never differ
+  from it by construction) — surfaced in `/admin/withdrawals` as a red "Bank
+  details changed since last payout" tag next to the row. Admin `tsc`/`eslint`
+  clean. Backend 2247/2247 fast, all green. Not yet released to `main`. Built
+  on its own `fix/adr059-withdrawal-payout-redirect` branch off `staging`,
+  its own PR, per the usual branch workflow (item 28's Reseller API
+  idempotency-scope fix landed the same session on its own separate branch/PR).

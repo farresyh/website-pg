@@ -1146,15 +1146,16 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
     index, plus scoping both lookups in `placeOrder()` by `wallet_reseller_id`.
     Zero live orders affected (0 real Reseller API orders exist in prod
     today, confirmed). Not started.
-29. **Affiliate withdrawal payout-redirect gap (was HIGH).** Any
-    `affiliate_user` can override the saved profile's bank details per
-    withdrawal request with no cross-check. Decided:
+29. ~~**Affiliate withdrawal payout-redirect gap (was HIGH).**~~ — **🟢 BUILT
+    2026-09-26.** Any `affiliate_user` could override the saved profile's
+    bank details per withdrawal request with no cross-check. Fixed per
     [ADR-059 addendum](./adr.md#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config--built--live-at-resellerpekangamespace-entity-later-renamed-resellerAffiliate-by-adr-072-the-app-now-also-serves-wallet-reseller-accounts)
-    — drop the per-request override fields (withdrawal always reads
+    — dropped the per-request override fields (withdrawal always reads
     profile), admin-approval warning compares against the affiliate's last
     *approved* withdrawal (not current profile — that comparison would never
     fire by construction). One real affiliate, one staff user today — policy
-    decided ahead of scale, not an active incident. Not started.
+    decided ahead of scale, not an active incident. Not yet released to
+    `main`.
 
 **Mechanical fixes, no grill needed (mirror an existing pattern in the same file/service):**
 
