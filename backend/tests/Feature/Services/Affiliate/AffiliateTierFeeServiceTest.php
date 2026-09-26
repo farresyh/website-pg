@@ -191,4 +191,63 @@ class AffiliateTierFeeServiceTest extends TestCase
         $this->assertSame(AffiliateSubscriptionStatus::Lapsed, $result->status);
         $this->assertSame(50000, $this->ledger()->balance('affiliate', $affiliate->id));
     }
+
+    /**
+     * Item 33 (2026-09-26 audit): a second chargeCycle() call for a
+     * subscription already charged this cycle (e.g. the scheduled command
+     * racing an admin's manual "Charge Now", which has no due-date filter
+     * of its own) must no-op rather than debit the fee again, even when
+     * the affiliate has more than enough earnings for a second charge.
+     */
+    public function test_charging_an_already_charged_cycle_again_is_a_noop(): void
+    {
+        $affiliate = $this->affiliate();
+        $tier = $this->tier(feeSen: 5000);
+        $subscription = $this->subscription($affiliate, $tier);
+        $this->fundEarnings($affiliate, 20000);
+
+        $first = $this->service()->chargeCycle($subscription);
+        $this->assertSame(AffiliateSubscriptionStatus::Active, $first->status);
+        $this->assertSame(15000, $this->ledger()->balance('affiliate', $affiliate->id));
+
+        $second = $this->service()->chargeCycle($first);
+
+        $this->assertSame(AffiliateSubscriptionStatus::Active, $second->status);
+        $this->assertSame(15000, $this->ledger()->balance('affiliate', $affiliate->id));
+        $this->assertSame(
+            1,
+            \App\Models\LedgerEntry::query()
+                ->where('owner_type', 'affiliate')
+                ->where('owner_id', $affiliate->id)
+                ->where('type', 'affiliate_tier_fee')
+                ->count(),
+        );
+    }
+
+    /**
+     * Item 33 (2026-09-26 audit): the eager-loaded `tier` relation must
+     * include a soft-deleted tier — without `withTrashed()`, a
+     * subscription whose tier was later deleted resolved `tier` to null,
+     * silently charging RM0 (`(int) null`) instead of the real fee.
+     */
+    public function test_a_soft_deleted_tier_still_charges_its_own_fee(): void
+    {
+        $affiliate = $this->affiliate();
+        $tier = $this->tier(feeSen: 5000);
+        $subscription = $this->subscription($affiliate, $tier);
+        $this->fundEarnings($affiliate, 12000);
+
+        $tier->delete();
+
+        $result = $this->service()->chargeCycle($subscription);
+
+        $this->assertSame(AffiliateSubscriptionStatus::Active, $result->status);
+        $this->assertDatabaseHas('ledger_entries', [
+            'owner_type' => 'affiliate',
+            'owner_id' => $affiliate->id,
+            'type' => 'affiliate_tier_fee',
+            'amount' => -5000,
+        ]);
+        $this->assertSame(7000, $this->ledger()->balance('affiliate', $affiliate->id));
+    }
 }

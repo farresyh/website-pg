@@ -1820,3 +1820,48 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   a narrower instance of the same already-accepted gap this ADR addendum's
   own Consequence-to-track already covers (first payout after a change only
   warns, doesn't block).
+
+## 2026-09-26 — Item 33 built (`AffiliateTierFeeService` double-charge + `withTrashed()`)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 item 33). The punch list's own suggested fix — recheck
+  `next_charge_at` inside the lock, mirroring `WithdrawalController::approve()`
+  — turned out to break a real, tested feature once built: a plain "is
+  `next_charge_at` in the future" check can't distinguish "already charged
+  this cycle" from "freshly assigned, never charged yet" — `assignTier()`
+  sets `next_charge_at` 30 days out on creation too, identically to a
+  just-charged row, and `Admin\AffiliateController::chargeTierFee()`'s
+  "Charge Now" deliberately has no due-date filter so it can force an
+  early first charge. Two existing tests
+  (`AffiliateControllerTest::test_charge_tier_fee_debits_earnings`/
+  `test_charge_tier_fee_starts_grace_when_earnings_short`) caught this
+  immediately.
+- Correct fix requires both signals together: `next_charge_at` in the
+  future **and** an `affiliate_tier_fee` ledger entry already exists for
+  this subscription. That combination is only ever true right after a
+  real completed charge — never on a freshly-assigned subscription (no
+  entry yet) — and resets correctly once a cycle naturally elapses
+  (`next_charge_at` back in the past, so the check is skipped regardless
+  of how many old entries exist from prior cycles).
+- Also fixed the `withTrashed()` gap: the eager-loaded `tier` relation
+  now includes soft-deleted tiers, so a subscription whose tier was later
+  deleted still charges its real fee instead of silently resolving to
+  `null` (`(int) null` = 0).
+- Found a second, related bug while building the fix: the pre-existing
+  `AffiliateTierFeeConcurrencyTest` funded exactly one fee and expected
+  `['active', 'grace']` as the outcome pair — the losing racer used to
+  attempt a debit against an already-drained balance and fail into
+  `grace`, even though this cycle's fee genuinely was already collected
+  by the winner (a subscription that's fully paid up should never show
+  `grace`). It now correctly recognizes the completed charge and no-ops
+  as `active` instead — updated that test's expectation to match, and
+  added a second concurrency test that funds *two* fees' worth (so a
+  second debit is financially possible) to specifically prove
+  `chargeCycle()` itself, not just the ledger balance check, is what
+  prevents the double-charge.
+- 4 new/updated tests total (2 feature, 2 concurrency), all confirmed
+  failing against the pre-fix code first. Backend 2252/2252 fast + 2/2
+  tier-fee concurrency green. Built on its own
+  `fix/affiliate-tier-fee-double-charge` branch off `staging`, per the
+  founder's plan to build several punch-list items and bundle them into
+  one PR. Not yet merged.
