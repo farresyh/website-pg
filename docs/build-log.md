@@ -1874,3 +1874,32 @@ The same session's Kimi-review discussion also verified (no code change needed, 
 - Backend 2250/2250 fast suite green, 6/6 withdrawal concurrency tests green
   (old approve test + 3 new). Built on its own `fix/withdrawal-reject-
   complete-lock` branch off `staging`. Not yet merged.
+
+## 2026-09-26 — Items 36/37 built (Reseller Bot `.list` unrecognized-chat spam + no-tier price leak)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 items 36/37). Founder revised item 36's scope mid-build: rather than
+  just adding the unlinked-group's existing `.`-prefix guard to the
+  linked-group path, an unlinked group now stays fully silent regardless of
+  the message (no more "Group ini belum dikaitkan..." reply even for a
+  dot-prefixed attempt) — only a linked group interacts at all, and only
+  with `.`-prefixed messages. Ordinary chat ("ok tq", "haha") in a linked
+  group parses as `Unrecognized` the same as a typo'd command, but is now
+  silently dropped in `ResellerBotService::handle()` before it reaches
+  either the command-list reply or the `unrecognized_command` failure log
+  — a dot-prefixed but malformed/unknown command still gets the helpful
+  reply, unchanged.
+- Item 37: `handleListGamePackages()` (`.list {kod}`) now guards on
+  `$reseller->tier === null` before computing a price, logging
+  `no_tier_assigned` and replying with a plain "belum ditetapkan tier
+  harga" message — mirrors `.order`'s existing
+  `NoResellerTierAssignedException` rejection. Before this, a reseller with
+  no `reseller_tier_id` got a 0%-markup price that silently equalled the
+  real cost price.
+- 4 new tests in `ResellerBotServiceTest`, all confirmed failing against
+  the pre-fix code first (2 assertion failures on the silence guards, 1
+  real `Attempt to read property "markup_percent" on null` reproducing the
+  exact leak/crash risk item 37 described). Backend 2253/2253 fast suite
+  green. Built on its own `fix/reseller-bot-list-unrecognized` branch off
+  `staging`, per the founder's plan to build several punch-list items and
+  bundle them into one PR. Not yet merged.
