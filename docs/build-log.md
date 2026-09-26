@@ -1739,3 +1739,25 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   - **Docs:** `checkout_input` (the ADR-097 zone-id discovery field, live in code since 2026-09-16) is missing from `docs-site`'s hand-written `first-order.md`/`product-codes.md` walkthrough, though it is present in the auto-generated API Reference.
   - **Low/cosmetic (not itemized further here):** CHIP payment description hardcodes "PekanGame" regardless of which affiliate storefront the customer paid on (needs a founder yes/no, not a grill — may be intentional single-merchant-of-record); a narrow `.topupbaki` notify-miss race (money safe, WhatsApp confirmation can be skipped); several stale docblocks/comments and one duplicated magic number.
 - **Nothing built this session** — this was audit + grill only, per the founder's own framing ("fix grill semua perkara yang perlu grill, note down yang boleh fix terus, next sesi settlekan satu per satu"). Next session's job: implement the two addenda above (migration + service-layer filter for ADR-074; request/controller change + approval-screen warning for ADR-059) plus work through the mechanical punch list, one PR at a time, each on its own `fix/*` branch off `staging` per the usual branch workflow.
+
+## 2026-09-26 — Item 28 built (Reseller API cross-reseller idempotency scope)
+
+- **[ADR-074 addendum](./adr.md#adr-074-reseller-api-channel--per-tenant-api-keys-order-placementstatus-endpoints).**
+  `ResellerOrderPlacementService::placeOrder()`'s two `checkout_idempotency_key`
+  lookups (lines 63/133) now both filter by `wallet_reseller_id`, backed by a
+  new generated `orders.idempotency_scope` column
+  (`IFNULL(wallet_reseller_id, 0)`) and a composite
+  `UNIQUE (idempotency_scope, checkout_idempotency_key)` index replacing the
+  old bare-column unique constraint. **Build-time revision:** the column is
+  `VIRTUAL`, not `STORED` as the addendum originally decided — sqlite (the
+  fast suite's driver, and the real local dev DB) refuses to add a `STORED`
+  generated column to a table that already has rows, confirmed empirically
+  against both an in-memory table and the actual `database.sqlite`; `VIRTUAL`
+  has no such restriction and indexes identically on both sqlite and MySQL
+  InnoDB. Added a regression test asserting two different resellers sharing
+  one idempotency key each get their own order, never a cross-tenant replay.
+  Backend 2248/2248 fast + 17/17 concurrency (real MySQL), both green. Local
+  dev DB migrated (plain `php artisan migrate`, confirmed via
+  `migrate:status`). Not yet released to `main`. Built on its own
+  `fix/adr074-reseller-idempotency-scope` branch off `staging`, its own PR,
+  per the usual branch workflow.
