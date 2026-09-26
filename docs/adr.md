@@ -87,7 +87,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-071** | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidati… |
 | **ADR-072** | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename… |
 | **ADR-073** | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit b… |
-| **ADR-074** | Reseller API channel — per-tenant API keys, order-placement/status endpoints. **2026-09-26 addendum:** cross-reseller idempotency-key isolation gap found (a 4-branch production audit), grilled, decided — `idempotency_scope` generated column + composite unique index. Not yet built |
+| **ADR-074** | Reseller API channel — per-tenant API keys, order-placement/status endpoints. **2026-09-26 addendum:** cross-reseller idempotency-key isolation gap found (a 4-branch production audit), grilled, decided, **BUILT** — `idempotency_scope` generated column + composite unique index |
 | **ADR-075** | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology |
 | **ADR-076** | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, re… |
 | **ADR-077** | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagati… |
@@ -4083,7 +4083,23 @@ Live-verified against the same real wallet order from the walkthrough above (`co
 - **`ResellerOrderPlacementService::placeOrder()`'s two lookups (lines 63 and 133) both gain an explicit `->where('wallet_reseller_id', $reseller->id)`** — the generated column makes the DB constraint correct; the app-level `SELECT`s still need their own filter, since the composite index prevents a bad *insert*, not a cross-tenant *read*.
 - **Bot-channel payload-hash (the related, separately-flagged gap) — investigated and dropped, not deferred.** `whatsapp_message_id` is 1:1 with one immutable message's content; OpenWA redelivering the same message id can only ever replay the identical original command, never a different order under the same key — the class of bug a payload hash exists to catch (same key, different content) is structurally impossible on this channel. A reseller also never sees or supplies this key (system-derived), so they cannot accidentally reuse it the way an API integrator can. Once `idempotency_scope` closes the cross-tenant path, no residual risk survives worth tracking.
 - **Landing spot, confirmed during the grill:** this addendum, not a new ADR number — it tightens this ADR's own decision 4 idempotency-check implementation and closes a gap against [ADR-084](#adr-084-reseller-api--developer-documentation-site-plus-the-surface-hardening-that-must-land-first) decision 2's already-declared invariant, rather than opening new architecture. Cross-referenced from ADR-084 and ADR-041.
-- **Not yet built** — this addendum records the grilled decision; implementation (migration + the two `placeOrder()` filters + a regression test asserting two different resellers on the same key never see each other's order) is the next session action.
+- **🟢 BUILT 2026-09-26.** Migration `2026_09_26_120000_add_idempotency_scope_to_orders_table` +
+  the two `placeOrder()` filters + a regression test asserting two different
+  resellers on the same key never see each other's order. Backend 2248/2248
+  fast + 17/17 concurrency, both green.
+  **Build-time revision:** the generated column is **`VIRTUAL`, not
+  `STORED`** as decided above — sqlite (the fast test suite's driver)
+  refuses `ALTER TABLE ADD COLUMN` for a `STORED` generated column once the
+  table already has rows (confirmed against both an in-memory table and the
+  real local dev DB — needs a full table rewrite sqlite's `ALTER TABLE`
+  can't do), and separately, MySQL's own `ADD COLUMN ... AFTER` isn't
+  reachable either since sqlite doesn't support the `AFTER` clause at all
+  (dropped, no functional loss — the column just lands at the end of the
+  table). `VIRTUAL` has neither restriction, and both InnoDB and sqlite can
+  still build a real index on a virtual generated column, so the composite
+  `UNIQUE` constraint works identically either way — no storage or
+  read-performance loss from the switch, since this column only exists to
+  be indexed and queried, never read as ordinary application data.
 
 ---
 

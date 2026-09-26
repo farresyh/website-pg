@@ -1137,15 +1137,19 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
 
 **Grilled, addendum written, ready to build:**
 
-28. **Reseller API cross-reseller idempotency-key leak (was CRITICAL).**
-    `ResellerOrderPlacementService::placeOrder()`'s idempotency lookup has no
-    per-reseller scope — a key collision (accidental or crafted) can hand one
-    reseller another reseller's real order data. Decided:
+28. ~~**Reseller API cross-reseller idempotency-key leak (was CRITICAL).**~~
+    — **🟢 BUILT 2026-09-26.**
+    `ResellerOrderPlacementService::placeOrder()`'s idempotency lookup had no
+    per-reseller scope — a key collision (accidental or crafted) could hand
+    one reseller another reseller's real order data. Fixed per
     [ADR-074 addendum](./adr.md#adr-074-reseller-api-channel--per-tenant-api-keys-order-placementstatus-endpoints)
-    — a `STORED GENERATED` `idempotency_scope` column + composite unique
-    index, plus scoping both lookups in `placeOrder()` by `wallet_reseller_id`.
-    Zero live orders affected (0 real Reseller API orders exist in prod
-    today, confirmed). Not started.
+    — a generated `idempotency_scope` column (`VIRTUAL`, not `STORED` as
+    originally decided — see the ADR's build-time revision note) + composite
+    unique index, plus scoping both lookups in `placeOrder()` by
+    `wallet_reseller_id`. Zero live orders were affected (0 real Reseller API
+    orders existed in prod, confirmed before building). Backend 2246/2246
+    fast + 17/17 concurrency green. 🟢 **MERGED TO `staging`** (PR #293,
+    2026-09-26) — not yet on `main`.
 29. ~~**Affiliate withdrawal payout-redirect gap (was HIGH).**~~ — **🟢 BUILT
     2026-09-26.** Any `affiliate_user` could override the saved profile's
     bank details per withdrawal request with no cross-check. Fixed per
@@ -1154,8 +1158,8 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
     profile), admin-approval warning compares against the affiliate's last
     *approved* withdrawal (not current profile — that comparison would never
     fire by construction). One real affiliate, one staff user today — policy
-    decided ahead of scale, not an active incident. Not yet released to
-    `main`.
+    decided ahead of scale, not an active incident. PR #294, not yet merged
+    to `staging`.
 
 **Mechanical fixes, no grill needed (mirror an existing pattern in the same file/service):**
 
