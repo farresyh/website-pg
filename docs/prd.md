@@ -1190,15 +1190,25 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
 35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
     0** instead of failing loud, silently changing which withdrawals need a
     second approver. Not started.
-36. **Reseller Bot replies with the full command list to ordinary chat in an
-    already-linked WhatsApp group** — confirmed live via real
-    `ResellerBotCommandLog` rows ("Yow", "Wait i test", "Yeyy" all logged as
-    `unrecognized_command`). Missing the same `.`-prefix guard the
-    unlinked-group path already has. Not started.
-37. **Bot `.list {kod}` shows cost-price (0% markup)** for a reseller with no
-    `reseller_tier_id` assigned yet — `.order` already correctly blocks with
-    `NoResellerTierAssignedException`, `.list` doesn't guard the same case.
-    Not started.
+36. ~~**Reseller Bot replies with the full command list to ordinary chat in
+    an already-linked WhatsApp group.**~~ — **🟢 BUILT 2026-09-26**, scope
+    revised by the founder mid-build: an unlinked group now stays fully
+    silent (no reply even to a dot-prefixed message — previously it replied
+    "belum dikaitkan"), and a linked group only replies to a `.`-prefixed
+    message; ordinary chat parses as `Unrecognized` same as a typo'd
+    command but is now silently dropped before it reaches the command-list
+    reply or the failure log. A dot-prefixed but malformed/unknown command
+    still gets the helpful "Arahan tidak dikenali" reply, unchanged.
+37. ~~**Bot `.list {kod}` shows cost-price (0% markup)** for a reseller with
+    no `reseller_tier_id` assigned yet.~~ — **🟢 BUILT 2026-09-26.**
+    `handleListGamePackages()` now guards on `$reseller->tier === null`
+    before pricing, mirroring `.order`'s existing
+    `NoResellerTierAssignedException` rejection (logged as
+    `no_tier_assigned`), instead of silently computing a 0%-markup price
+    that equalled cost. Backend 2253/2253 fast green, 4 new tests, all
+    confirmed red against the pre-fix code first. Built on its own
+    `fix/reseller-bot-list-unrecognized` branch off `staging`. Not yet
+    merged.
 38. **`docs-site`'s `first-order.md`/`product-codes.md` walkthrough is
     missing `checkout_input`** (the ADR-097 zone-id discovery field, live in
     code + the auto-generated API Reference since 2026-09-16) — a developer
