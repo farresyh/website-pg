@@ -1196,15 +1196,37 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
     Pending withdrawal must never leave the ledger debited while the row
     shows `Rejected`) — all 3 confirmed failing against the pre-fix code,
     passing after. Backend 2250/2250 fast + 6/6 withdrawal concurrency green.
-    Not yet merged to `staging`.
-33. **`AffiliateTierFeeService::chargeCycle()` can double-charge a billing
-    cycle** if invoked twice (no `next_charge_at` recheck inside its own
-    lock) — zero live impact today (the one real affiliate's tier is
-    RM0/month), becomes real the moment any affiliate is assigned a
-    nonzero-fee tier. Same method also has no `withTrashed()` on a
-    soft-deleted tier relation (null-pointer crash risk, confirmed
-    soft-deleted tiers are already reachable elsewhere in
-    `Admin\AffiliateController`). Not started.
+    Not yet merged to `staging`. (Still unaddressed, out of this item's
+    scope: the platform `store()` path has the same missing-lock pattern —
+    two concurrent `store()` calls could both pass the balance check and
+    create multiple Pending withdrawals summing past the available
+    balance. Lower severity than the reject/complete gap since `store()`
+    never debits the ledger itself — `approve()`'s own lock + balance
+    check is what actually prevents an overdraw — but worth a follow-up.)
+33. ~~**`AffiliateTierFeeService::chargeCycle()` can double-charge a billing
+    cycle** if invoked twice~~ — **🟢 BUILT 2026-09-26.** Build-time revision:
+    a naive "`next_charge_at` is in the future ⇒ already charged" recheck
+    (the punch list's own suggested fix) turned out to break a real, tested
+    feature — `Admin\AffiliateController::chargeTierFee()`'s "Charge Now"
+    deliberately has no due-date filter, so it can force an early first
+    charge on a freshly-assigned tier (`assignTier()` also sets
+    `next_charge_at` 30 days out, identically to a real just-charged row).
+    The actual fix requires **both** signals together: `next_charge_at` in
+    the future **and** an `affiliate_tier_fee` ledger entry already exists
+    for this subscription — that combination is only ever true right after
+    a real completed charge (never on a freshly-assigned, never-charged
+    subscription), and resets correctly once a cycle naturally elapses.
+    Also fixed the `withTrashed()` gap on the eager-loaded `tier` relation
+    (a soft-deleted tier was silently resolving to `null`, charging RM0).
+    Found + fixed a related bug while at it: the pre-existing concurrency
+    test's expected outcome (`['active', 'grace']`) was itself masking a
+    second bug — the losing racer used to fail into `grace` over a
+    duplicate attempt even though the fee was genuinely already collected
+    by the winner; it now correctly no-ops as `active`. Backend 2252/2252
+    fast + 2/2 tier-fee concurrency green, all new tests confirmed red
+    against the pre-fix code first. Built on its own
+    `fix/affiliate-tier-fee-double-charge` branch off `staging`. Not yet
+    merged.
 34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
     "must have bank details" guard (`$bankName === null` doesn't catch
     `""`). Tighten to `filled`/`required_without`. Not started.
