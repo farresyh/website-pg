@@ -246,9 +246,6 @@ export function createWithdrawal(
   token: string,
   body: {
     amount: number;
-    bank_name?: string;
-    bank_account_no?: string;
-    bank_account_holder?: string;
   },
 ) {
   return apiFetch<{ id: number; amount: number; status: WithdrawalStatus }>(

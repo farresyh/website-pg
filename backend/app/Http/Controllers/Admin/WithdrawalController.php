@@ -12,6 +12,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -37,9 +38,20 @@ class WithdrawalController extends Controller
             ]];
         });
 
+        $approvedByOwner = Withdrawal::query()
+            ->where('owner_type', LedgerOwnerType::Affiliate->value)
+            ->whereIn('owner_id', $withdrawals->where('owner_type', LedgerOwnerType::Affiliate->value)->pluck('owner_id')->unique())
+            ->whereIn('status', [WithdrawalStatus::Approved->value, WithdrawalStatus::Completed->value])
+            ->orderBy('id')
+            ->get()
+            ->groupBy('owner_id');
+
         $withdrawals = $withdrawals->map(fn (Withdrawal $w) => [
             ...$w->toArray(),
-            'bank_details_changed_since_last_approval' => $this->bankDetailsChangedSinceLastApproval($w),
+            'bank_details_changed_since_last_approval' => $this->bankDetailsChangedSinceLastApproval(
+                $w,
+                $approvedByOwner->get($w->owner_id) ?? collect(),
+            ),
         ]);
 
         return response()->json([
@@ -59,20 +71,22 @@ class WithdrawalController extends Controller
      * against (this owner's first-ever payout) or this isn't an
      * affiliate-owned withdrawal (the platform owner has no bank-detail
      * override risk to warn about).
+     *
+     * `$approvedForOwner` is this owner's own Approved/Completed withdrawals
+     * (ascending by id), pre-fetched once in `index()` for every affiliate
+     * owner in the current page — avoids one extra query per row.
+     *
+     * @param  Collection<int, Withdrawal>  $approvedForOwner
      */
-    private function bankDetailsChangedSinceLastApproval(Withdrawal $withdrawal): ?bool
+    private function bankDetailsChangedSinceLastApproval(Withdrawal $withdrawal, Collection $approvedForOwner): ?bool
     {
         if ($withdrawal->owner_type !== LedgerOwnerType::Affiliate->value) {
             return null;
         }
 
-        $lastApproved = Withdrawal::query()
-            ->where('owner_type', $withdrawal->owner_type)
-            ->where('owner_id', $withdrawal->owner_id)
-            ->whereIn('status', [WithdrawalStatus::Approved->value, WithdrawalStatus::Completed->value])
-            ->where('id', '<', $withdrawal->id)
-            ->orderByDesc('id')
-            ->first();
+        $lastApproved = $approvedForOwner
+            ->filter(fn (Withdrawal $candidate) => $candidate->id < $withdrawal->id)
+            ->last();
 
         if ($lastApproved === null) {
             return null;
