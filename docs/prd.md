@@ -1126,14 +1126,20 @@ accepted state, not a gap to chase. See §14.
     same way). Not urgent — a rerun always clears it — but worth a proper
     fix before it happens a third time. Not started.
 
-## 2026-09-26 money-critical branch audit — punch list, none built yet
+## 2026-09-26 money-critical branch audit — punch list, mostly built
 
 Full 4-branch background-agent audit (Affiliate portal, Affiliate whitelabel
 storefront, Reseller Bot, Reseller API+docs) — see `docs/build-log.md`'s
 2026-09-26 entry for the audit's own scope/method. Two items needed a design
 decision and were grilled to a decided-not-built addendum; the rest are
 mechanical fixes (existing pattern to mirror, no further grilling needed).
-Work through one at a time, each its own `fix/*` branch off `staging`.
+Each item was built on its own `fix/*` branch off `staging`, then bundled
+into one PR (`fix/2026-09-26-punch-list-bundle`) per the founder's call —
+items 28/29 shipped separately (already merged/in their own PRs before the
+bundling decision). Remaining open: item 34 (deliberately skipped by the
+founder this session), item 35 (re-checked against current code — not
+reproducible, likely already fixed or a stale description — no action), and
+items 39/40 (founder yes/no, not a grill).
 
 **Grilled, addendum written, ready to build:**
 
@@ -1229,10 +1235,17 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
     merged.
 34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
     "must have bank details" guard (`$bankName === null` doesn't catch
-    `""`). Tighten to `filled`/`required_without`. Not started.
+    `""`). Tighten to `filled`/`required_without`. **Deliberately skipped
+    2026-09-26 by founder call** — not built this session.
 35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
     0** instead of failing loud, silently changing which withdrawals need a
-    second approver. Not started.
+    second approver. **Re-checked 2026-09-26 against current code — not
+    reproducible.** Both `config/withdrawals.php` and `config/vouchers.php`
+    already have an explicit non-zero default (`env(..., 200_000)` /
+    `env(..., 50_000)`), and no `?? 0` pattern exists anywhere near either
+    threshold in the codebase today. Likely already fixed in an earlier
+    session, or this description referred to a config field that no longer
+    exists under this name. No action taken.
 36. ~~**Reseller Bot replies with the full command list to ordinary chat in
     an already-linked WhatsApp group.**~~ — **🟢 BUILT 2026-09-26**, scope
     revised by the founder mid-build: an unlinked group now stays fully
