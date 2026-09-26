@@ -2792,7 +2792,17 @@ Decision 2's "59c = storefront settings + catalog toggle + live preview" assumed
   3. **Option B (cooling-off period / email notification on a bank-detail change) is deliberately parked, not built** — heavier (a timer mechanism, a notification channel) for a risk that decisions 1+2 already substantially reduce given this is a solo-founder-approved-every-withdrawal workflow today (no separate ops team to phish around a human-in-the-loop check).
 - **Consequence to track — accepted gap, not silently missed:** the *first* payout after a malicious/compromised profile bank-detail change still only produces an admin-visible *warning*, not a hard block — it depends on the founder (today's sole approver) actually noticing it. This is the exact gap Option B (parked above) would close; revisit if affiliate staff headcount or per-affiliate payout value grows enough that "founder eyeballs every approval" stops being a credible control.
 - **Landing spot:** this addendum, not a new ADR number — tightens this ADR's own 59c withdrawal-request decision, no new architecture.
-- **Not yet built** — implementation (drop the two request fields + controller simplification, the approval-screen baseline-diff warning, a regression test asserting a withdrawal request can no longer carry its own bank fields) is a next-session action.
+- **🟢 BUILT 2026-09-26.** `CreateAffiliateWithdrawalRequest` no longer
+  accepts `bank_name`/`bank_account_no`/`bank_account_holder` at all;
+  `Affiliate\WithdrawalController::store()` always reads the affiliate's
+  saved profile. `Admin\WithdrawalController::index()` now returns
+  `bank_details_changed_since_last_approval` per withdrawal (`null` for a
+  platform withdrawal or an affiliate's first-ever payout, otherwise a real
+  diff against the affiliate's last admin-approved/completed withdrawal),
+  surfaced in `/admin/withdrawals` as a red "Bank details changed since last
+  payout" tag. Regression test asserts a bank-detail override sent in the
+  request body is fully ignored. Backend 2247/2247 fast, all green; admin
+  `tsc`/`eslint` clean.
 
 ---
 

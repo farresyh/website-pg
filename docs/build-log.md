@@ -1776,4 +1776,47 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   duplicated verbatim — extracted into one private `findByIdempotencyKey()`
   so a future edit to the scoping predicate can't update one call site and
   silently miss the other. Backend 2246/2246 fast + concurrency suite both
-  green.
+  green. 🟢 **MERGED TO `staging`** (PR #293, 2026-09-26) — not yet on `main`.
+
+## 2026-09-26 — Item 29 built (Affiliate withdrawal payout-redirect fix)
+
+- **[ADR-059 addendum](./adr.md#adr-059-reseller-portal--reseller-app-earnings-ledger-withdrawals-self-service-storefront-config--built--live-at-resellerpekangamespace-entity-later-renamed-resellerAffiliate-by-adr-072-the-app-now-also-serves-wallet-reseller-accounts).**
+  `CreateAffiliateWithdrawalRequest` no longer accepts
+  `bank_name`/`bank_account_no`/`bank_account_holder` at all — a withdrawal
+  request always reads the affiliate's saved profile
+  (`Affiliate\WithdrawalController::store()`), closing the payout-redirect
+  gap where any `affiliate_user` could silently override the payout
+  destination per request. Added a regression test asserting a bank-detail
+  override sent in the request body is fully ignored. `Admin\WithdrawalController::index()`
+  now also returns `bank_details_changed_since_last_approval` per withdrawal
+  (`null` for a platform withdrawal or an affiliate's first-ever payout,
+  otherwise a real diff against the affiliate's last admin-approved/completed
+  withdrawal — never against current profile, since a withdrawal already
+  always snapshots from profile at request time and so could never differ
+  from it by construction) — surfaced in `/admin/withdrawals` as a red "Bank
+  details changed since last payout" tag next to the row. Admin `tsc`/`eslint`
+  clean. Backend 2247/2247 fast, all green. Not yet released to `main`. Built
+  on its own `fix/adr059-withdrawal-payout-redirect` branch off `staging`,
+  its own PR, per the usual branch workflow (item 28's Reseller API
+  idempotency-scope fix landed the same session on its own separate branch/PR).
+- **Code-review follow-up, same PR, caught two real gaps in the first pass:**
+  the `reseller/` portal's own `/withdrawal` page still let an
+  `affiliate_user` type a "one-off" bank override and submit it — the
+  backend now silently ignores those fields, so the form was actively
+  misleading (looked like it worked, payout still went to profile). Replaced
+  the editable inputs with a read-only "Payout to" summary + a link to
+  Profile, and disabled submission when no bank details exist yet (mirrors
+  the backend's own 422 guard). Separately, `Admin\WithdrawalController::index()`
+  ran one extra query per affiliate-owned row to compute
+  `bank_details_changed_since_last_approval` — batched into a single query
+  per request instead (fetch every relevant owner's approved/completed
+  withdrawals once, group in PHP). A third, lower-severity finding — bank
+  fields are read from the in-memory `$affiliate` model before
+  `AffiliateWithdrawalService::request()`'s lock, so a concurrent Profile
+  bank-detail edit isn't covered by that lock — is accepted, not fixed:
+  the lock's declared purpose is serializing balance/open-request checks,
+  not bank-detail consistency, no `Affiliate`-row locking exists anywhere
+  else in the codebase (a Profile update doesn't lock either), and this is
+  a narrower instance of the same already-accepted gap this ADR addendum's
+  own Consequence-to-track already covers (first payout after a change only
+  warns, doesn't block).

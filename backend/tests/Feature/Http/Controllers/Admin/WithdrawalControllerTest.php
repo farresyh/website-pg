@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerService;
 use App\Services\Withdrawal\WithdrawalStatus;
@@ -274,6 +275,72 @@ class WithdrawalControllerTest extends TestCase
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/complete");
 
         $response->assertUnprocessable();
+    }
+
+    public function test_index_flags_an_affiliate_withdrawal_whose_bank_details_changed_since_last_approval(): void
+    {
+        $admin = AdminUser::factory()->superAdmin()->create();
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Acme', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
+        ]);
+
+        $first = Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id, 'amount' => 10_000,
+            'bank_name' => 'Maybank', 'bank_account_no' => '111', 'bank_account_holder' => 'Acme',
+            'status' => WithdrawalStatus::Approved, 'approved_by' => $admin->id,
+        ]);
+        $second = Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id, 'amount' => 5_000,
+            'bank_name' => 'CIMB', 'bank_account_no' => '999', 'bank_account_holder' => 'Someone Else',
+            'status' => WithdrawalStatus::Pending,
+        ]);
+
+        Sanctum::actingAs($admin);
+        $response = $this->getJson('/api/withdrawals');
+
+        $response->assertOk();
+        $byId = collect($response->json('withdrawals'))->keyBy('id');
+        $this->assertNull($byId[$first->id]['bank_details_changed_since_last_approval']);
+        $this->assertTrue($byId[$second->id]['bank_details_changed_since_last_approval']);
+    }
+
+    public function test_index_does_not_flag_an_affiliate_withdrawal_with_unchanged_bank_details(): void
+    {
+        $admin = AdminUser::factory()->superAdmin()->create();
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Acme', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
+        ]);
+
+        Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id, 'amount' => 10_000,
+            'bank_name' => 'Maybank', 'bank_account_no' => '111', 'bank_account_holder' => 'Acme',
+            'status' => WithdrawalStatus::Completed, 'approved_by' => $admin->id, 'processed_at' => now(),
+        ]);
+        $second = Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id, 'amount' => 5_000,
+            'bank_name' => 'Maybank', 'bank_account_no' => '111', 'bank_account_holder' => 'Acme',
+            'status' => WithdrawalStatus::Pending,
+        ]);
+
+        Sanctum::actingAs($admin);
+        $response = $this->getJson('/api/withdrawals');
+
+        $response->assertOk();
+        $byId = collect($response->json('withdrawals'))->keyBy('id');
+        $this->assertFalse($byId[$second->id]['bank_details_changed_since_last_approval']);
+    }
+
+    public function test_index_never_flags_a_platform_withdrawal(): void
+    {
+        $this->fundPlatformLedger(50_000);
+        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/withdrawals', $this->validPayload(['amount' => 5_000]))->assertCreated();
+
+        $response = $this->getJson('/api/withdrawals');
+
+        $response->assertOk();
+        $this->assertNull($response->json('withdrawals.0.bank_details_changed_since_last_approval'));
     }
 
     public function test_unauthenticated_request_is_rejected(): void
