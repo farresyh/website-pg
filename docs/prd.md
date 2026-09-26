@@ -670,6 +670,32 @@ deliberate, parked pricing-arbitrage decision on PUBG Mobile's 9 colliding
 denominations (PR #260, ADR-094 addendum — see §16). Everything else
 outstanding is polish or a deliberately-parked ADR — see §16.
 
+**2026-09-25:** **ADR-113** (dark mode for all 4 affiliate theme presets,
+Digital Architect retired from the affiliate picker) merged to `staging`
+(PR #288) — not yet on `main`. **ADR-114** (production infra split onto its
+own DigitalOcean team/billing) completed the same day — both the API and
+the WhatsApp bot now run on the new `pekangame-prod-lwf` droplet, the old
+droplet's daemons paused (rollback-only).
+
+**2026-09-26:** a 4-branch background-agent audit (Affiliate portal,
+Affiliate whitelabel storefront, Reseller Bot, Reseller API+docs) found one
+critical and one high-severity real gap plus a mechanical punch list.
+**Item 28** (ADR-074 addendum) — a Reseller API idempotency-key collision
+could hand one reseller another reseller's real order data; fixed with a
+per-reseller-scoped generated column + composite unique index (PR #293,
+merged to `staging`). **Item 29** (ADR-059 addendum) — any `affiliate_user`
+could override their saved payout bank details per withdrawal request with
+no cross-check; fixed by dropping the override entirely, a withdrawal
+always reads the profile (PR #294, merged to `staging`). The mechanical
+punch list (items 30-33, 36-38 — `WithdrawalController::reject()`/
+`complete()` missing a lock, a deactivated Reseller keeping full portal
+access, the Reseller Bot spamming ordinary chat + leaking cost price for an
+untiered reseller, a docs-site gap, and `AffiliateTierFeeService` double-
+charge risk) was bundled into one PR (#295, merged to `staging`) per the
+founder's call to build several items separately then release together —
+full narrative in `docs/build-log.md`'s five 2026-09-26 entries and
+`docs/prd.md` §16. None of #288/#293/#294/#295 are on `main` yet.
+
 - **Per-feature-area status:** §15 below.
 - **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md`.
 - **Decision rationale** (Context → Decision → Rationale → Consequence): `docs/adr.md`.
