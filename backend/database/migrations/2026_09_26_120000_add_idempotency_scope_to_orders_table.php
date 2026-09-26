@@ -10,11 +10,13 @@ return new class extends Migration
     /**
      * ADR-074 addendum (2026-09-26): `checkout_idempotency_key`'s bare
      * global-unique column let a key collision match across every
-     * reseller — `idempotency_scope` (STORED GENERATED from
-     * `IFNULL(wallet_reseller_id, 0)`) plus a composite unique index
-     * scopes it per-reseller while every guest/Affiliate-storefront order
-     * (`wallet_reseller_id IS NULL`) collapses to scope 0, preserving
-     * ADR-041's original global-uniqueness guarantee for that population.
+     * reseller — `idempotency_scope` (VIRTUAL GENERATED from
+     * `IFNULL(wallet_reseller_id, 0)` — originally decided as STORED, but
+     * revised to VIRTUAL at build time; see the `up()` comment below for
+     * why) plus a composite unique index scopes it per-reseller while
+     * every guest/Affiliate-storefront order (`wallet_reseller_id IS
+     * NULL`) collapses to scope 0, preserving ADR-041's original
+     * global-uniqueness guarantee for that population.
      */
     public function up(): void
     {
