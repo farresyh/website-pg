@@ -60,7 +60,10 @@ final class ResellerOrderPlacementService
             throw new ResellerInactiveException("Reseller #{$reseller->id} is deactivated.");
         }
 
-        $existing = Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->first();
+        $existing = Order::query()
+            ->where('wallet_reseller_id', $reseller->id)
+            ->where('checkout_idempotency_key', $request->idempotencyKey)
+            ->first();
         if ($existing !== null) {
             $this->assertPayloadMatches($existing, $request->payloadHash);
 
@@ -130,7 +133,10 @@ final class ResellerOrderPlacementService
             // this). Same no-op-replay outcome as finding it up front,
             // never a second debit — the transaction rolled back before
             // `debit()` ran.
-            $raced = Order::query()->where('checkout_idempotency_key', $request->idempotencyKey)->firstOrFail();
+            $raced = Order::query()
+                ->where('wallet_reseller_id', $reseller->id)
+                ->where('checkout_idempotency_key', $request->idempotencyKey)
+                ->firstOrFail();
             $this->assertPayloadMatches($raced, $request->payloadHash);
 
             return new ResellerOrderPlacementResult($raced, wasReplay: true);
