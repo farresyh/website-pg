@@ -1163,14 +1163,26 @@ Work through one at a time, each its own `fix/*` branch off `staging`.
 
 **Mechanical fixes, no grill needed (mirror an existing pattern in the same file/service):**
 
-30. **Deactivating an `Affiliate` doesn't block portal access.**
-    `SetAffiliateContext` only checks `AffiliateUser.is_active`, never the
-    parent `Affiliate.status` — `Admin\AffiliateController::updateStatus()`
-    never cascades to `affiliate_users.is_active` or revokes tokens. A
-    "deactivated" affiliate can still submit withdrawal requests. Not started.
-31. **Same gap, `Reseller` side.** `EnsureAccountType` never checks
-    `is_active` for `owner_type=reseller` — a deactivated reseller keeps full
-    wallet/orders/API-key access. Not started.
+30. ~~**Deactivating an `Affiliate` doesn't block portal access.**~~ —
+    **🟢 NOT A BUG, resolved 2026-09-26 by founder decision.** Re-checked
+    against [ADR-058 RES-5](./adr.md#adr-058-reseller-authentication--admin-reseller-management-res-1-6--built--live-guard-later-renamed-resellerAffiliate-by-adr-072),
+    which already decided a deactivated Affiliate keeps **read-only** portal
+    access with **earnings still withdrawable** (only new orders + the
+    branded storefront are blocked) — confirmed live in code by the already-
+    passing `BrandingControllerTest::test_a_deactivated_affiliate_is_read_only`.
+    The punch list's "can still submit withdrawal requests" framing was this
+    session mis-reading a deliberate decision as a gap. No code change.
+31. ~~**Same gap, `Reseller` side.**~~ — **🟢 BUILT 2026-09-26.**
+    `EnsureAccountType` now blocks the entire `reseller-portal/*` group when
+    `resellers.is_active` is false — matching the full block the REST API
+    (`EnsureResellerApiKey`) and the Bot (`ResellerBotService`/
+    `ResellerOrderPlacementService`) already enforce on the same column, so
+    all three Reseller channels are now consistent. Deliberately **not**
+    mirrored onto the Affiliate side (see item 30) — the two account types
+    have different, already-decided deactivation policies. Backend
+    2251/2251 fast green, 2 new tests (`EnsureAccountTypeTest`). Built on its
+    own `fix/deactivated-account-portal-access` branch off `staging`. Not
+    yet merged.
 32. ~~**`Admin\WithdrawalController::reject()`/`complete()` have no lock**,
     unlike `approve()` in the same file — a race can leave the ledger
     debited by a concurrent `approve()` while the row shows `Rejected`, no

@@ -1821,6 +1821,31 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   own Consequence-to-track already covers (first payout after a change only
   warns, doesn't block).
 
+## 2026-09-26 — Items 30/31 resolved (deactivated-account portal access)
+
+- From the 2026-09-26 money-critical branch audit punch list (`docs/prd.md`
+  §16 items 30/31), originally filed as one mechanical fix mirrored across
+  Affiliate + Reseller. Building it surfaced a real conflict: a blanket
+  "deactivated account = no portal access" gate breaks an already-decided,
+  already-tested business rule for the Affiliate side —
+  [ADR-058 RES-5](./adr.md) deliberately keeps a deactivated Affiliate's
+  portal **read-only** with **earnings still withdrawable** (only new
+  orders + the branded storefront are blocked), confirmed live by the
+  already-passing `BrandingControllerTest::test_a_deactivated_affiliate_is_read_only`.
+  Founder confirmed: item 30 is **not a bug**, no code change.
+- Item 31 (Reseller side) built as scoped: `EnsureAccountType` now blocks
+  the entire `reseller-portal/*` route group when `resellers.is_active` is
+  false, matching the full block the REST API (`EnsureResellerApiKey`) and
+  the Bot (`ResellerBotService`/`ResellerOrderPlacementService`) already
+  enforce on the same column — the portal was the one channel that stayed
+  fully open for a deactivated Reseller.
+- Added 1 new test (`EnsureAccountTypeTest::test_a_deactivated_reseller_cannot_reach_the_portal_even_with_an_active_login_row`),
+  confirmed it fails against the pre-fix code first. Backend 2251/2251 fast
+  suite green. Built on its own `fix/deactivated-account-portal-access`
+  branch off `staging`, per the founder's plan this session to build a few
+  more punch-list items and bundle them into one PR rather than one PR per
+  item. Not yet merged.
+
 ## 2026-09-26 — Item 32 built (`WithdrawalController::reject()`/`complete()` missing lock)
 
 - Mechanical fix from the 2026-09-26 money-critical branch audit punch list
