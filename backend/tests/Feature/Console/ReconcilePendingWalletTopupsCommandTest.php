@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Models\PaymentMethod;
 use App\Models\Reseller;
+use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -165,5 +166,84 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
         $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
 
         $this->assertSame(WalletTopupAttemptStatus::Pending, $attempt->fresh()->status);
+    }
+
+    /**
+     * Item 40 (2026-09-27 money-critical audit) — a `.topupbaki` Bot
+     * top-up that was charged/credited (attempt already Paid) but whose
+     * `ResellerBotWalletTopup` row was created after
+     * `ResellerBotWalletTopupNotifier::notifyPaid()` already ran once and
+     * found nothing (so `notified_at` stayed null forever). This command
+     * now sweeps for exactly that state and sends the missed reply.
+     */
+    public function test_a_paid_bot_topup_missing_its_notification_gets_notified(): void
+    {
+        $reseller = $this->reseller();
+        $attempt = WalletTopupAttempt::query()->create([
+            'reseller_id' => $reseller->id,
+            'reference' => 'WT-'.uniqid(),
+            'amount_sen' => 5000,
+            'total_charged_sen' => 5100,
+            'channel_code' => 'fpx',
+            'status' => WalletTopupAttemptStatus::Paid->value,
+            'expires_at' => now()->addMinutes(30),
+        ]);
+        $row = ResellerBotWalletTopup::query()->create([
+            'reseller_id' => $reseller->id,
+            'wallet_topup_attempt_id' => $attempt->id,
+            'whatsapp_group_id' => 'g1@g.us',
+        ]);
+
+        $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
+
+        $this->assertNotNull($row->fresh()->notified_at);
+    }
+
+    public function test_an_already_notified_bot_topup_is_left_alone(): void
+    {
+        $reseller = $this->reseller();
+        $attempt = WalletTopupAttempt::query()->create([
+            'reseller_id' => $reseller->id,
+            'reference' => 'WT-'.uniqid(),
+            'amount_sen' => 5000,
+            'total_charged_sen' => 5100,
+            'channel_code' => 'fpx',
+            'status' => WalletTopupAttemptStatus::Paid->value,
+            'expires_at' => now()->addMinutes(30),
+        ]);
+        $notifiedAt = now()->subMinute();
+        $row = ResellerBotWalletTopup::query()->create([
+            'reseller_id' => $reseller->id,
+            'wallet_topup_attempt_id' => $attempt->id,
+            'whatsapp_group_id' => 'g1@g.us',
+            'notified_at' => $notifiedAt,
+        ]);
+
+        $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
+
+        $this->assertSame($notifiedAt->toDateTimeString(), $row->fresh()->notified_at->toDateTimeString());
+    }
+
+    public function test_a_bot_topup_whose_attempt_is_still_pending_is_not_notified_yet(): void
+    {
+        $reseller = $this->reseller();
+        $attempt = WalletTopupAttempt::query()->create([
+            'reseller_id' => $reseller->id,
+            'reference' => 'WT-'.uniqid(),
+            'amount_sen' => 5000,
+            'total_charged_sen' => 5100,
+            'channel_code' => 'fpx',
+            'status' => WalletTopupAttemptStatus::Pending->value,
+            'expires_at' => now()->addMinutes(30),
+        ]);
+        $row = ResellerBotWalletTopup::query()->create([
+            'reseller_id' => $reseller->id,
+            'wallet_topup_attempt_id' => $attempt->id,
+            'whatsapp_group_id' => 'g1@g.us',
+        ]);
+
+        $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
+
+        $this->assertNull($row->fresh()->notified_at);
     }
 }

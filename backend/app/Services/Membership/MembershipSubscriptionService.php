@@ -164,7 +164,11 @@ final class MembershipSubscriptionService
             country: 'MY',
             channelCode: $attempt->channel_code,
             channelProperties: $channelProperties,
-            description: "PekanGame membership — {$attempt->membershipPlan->name}",
+            // Item 39 (2026-09-27 money-critical audit): brand name, not a
+            // hardcoded "PekanGame" — a member subscribing on an
+            // affiliate's whitelabel storefront should see that affiliate's
+            // own store name on CHIP's checkout page/receipt.
+            description: "{$this->storefrontBrand->displayName()} membership — {$attempt->membershipPlan->name}",
             customer: new PaymentCustomer(
                 referenceId: $attempt->subscription_number,
                 givenNames: 'Member',

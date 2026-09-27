@@ -3,9 +3,11 @@
 namespace App\Console\Commands\Reseller;
 
 use App\Models\PaymentMethod;
+use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Console\Attributes\Description;
@@ -27,13 +29,31 @@ use Illuminate\Support\Facades\Log;
  * own hard `expires_at` (decision 8's 30-minute window) for a
  * genuinely-abandoned attempt — never guesses from elapsed time alone
  * while the gateway might still have a live answer.
+ *
+ * Item 40 (2026-09-27 money-critical audit) also folded in here: a
+ * `.topupbaki` Bot top-up can be correctly charged and credited but miss
+ * its WhatsApp "berjaya" reply if `ResellerBotWalletTopupNotifier::notifyPaid()`
+ * ran before `ResellerBotWalletTopup::updateOrCreate()` recorded the
+ * tracking row (`ResellerBotService::handleTopupBaki()` creates it right
+ * after `initiate()` returns) — notifyPaid() finds no row yet and silently
+ * no-ops, with nothing else ever re-checking it. Rather than closing that
+ * one specific ordering gap (which would need a nullable FK plus orphan-row
+ * cleanup on every `initiate()` failure path, for a window that's otherwise
+ * unreachable — CHIP can't report a purchase paid before the customer has
+ * even received its checkout_url), this sweeps for ANY bot top-up left
+ * un-notified despite its attempt already being Paid — self-healing
+ * against that race and any other cause (a worker crash, OpenWA being
+ * briefly down) alike, on the same schedule this command already runs.
  */
 #[Signature('app:reconcile-pending-wallet-topups')]
 #[Description('Ask CHIP for the real status of stuck-pending self-serve wallet top-ups and complete or expire them.')]
 class ReconcilePendingWalletTopupsCommand extends Command
 {
-    public function handle(PaymentGatewayFactory $gatewayFactory, ResellerWalletService $wallets): int
-    {
+    public function handle(
+        PaymentGatewayFactory $gatewayFactory,
+        ResellerWalletService $wallets,
+        ResellerBotWalletTopupNotifier $botNotifier,
+    ): int {
         $pendingAfterMinutes = (int) config('services.wallet_topup_reconciliation.pending_after_minutes');
 
         $attempts = WalletTopupAttempt::query()
@@ -47,7 +67,28 @@ class ReconcilePendingWalletTopupsCommand extends Command
             $this->reconcile($attempt, $gatewayFactory, $wallets);
         }
 
+        $this->notifyMissedBotTopups($botNotifier);
+
         return self::SUCCESS;
+    }
+
+    private function notifyMissedBotTopups(ResellerBotWalletTopupNotifier $botNotifier): void
+    {
+        $missed = ResellerBotWalletTopup::query()
+            ->whereNull('notified_at')
+            ->whereHas('attempt', fn ($query) => $query->where('status', WalletTopupAttemptStatus::Paid->value))
+            ->with('attempt')
+            ->get();
+
+        if ($missed->isEmpty()) {
+            return;
+        }
+
+        $this->info("Sending {$missed->count()} missed Bot top-up confirmation(s)...");
+
+        foreach ($missed as $row) {
+            $botNotifier->notifyPaid($row->attempt);
+        }
     }
 
     private function reconcile(
