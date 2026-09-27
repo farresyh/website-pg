@@ -1313,7 +1313,7 @@ items 39/40 (founder yes/no, not a grill).
     package/game bought instead (order_number was already redundant with
     `reference`); membership now sends the resolved affiliate's own store
     name (`StorefrontBrand::displayName()`, new). See `docs/build-log.md`'s
-    2026-09-28 entry. Not yet merged to `staging`.
+    2026-09-28 entry. **Merged to `staging` (PR #298), not yet on `main`.**
 ~~40. Narrow `.topupbaki` race: the reseller is correctly charged and
     credited, but can miss the WhatsApp confirmation if the CHIP webhook
     resolves inside a tight window between `initiate()` and the bot's own
@@ -1322,7 +1322,7 @@ items 39/40 (founder yes/no, not a grill).
     backstop) now also sweeps for a Bot top-up whose attempt is already
     `Paid` but never got notified, self-healing against this and any other
     cause of a dropped notification. See `docs/build-log.md`'s 2026-09-28
-    entry. Not yet merged to `staging`.
+    entry. **Merged to `staging` (PR #298), not yet on `main`.**
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

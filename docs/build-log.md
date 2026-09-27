@@ -1969,7 +1969,7 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   founder's plan to build several punch-list items and bundle them into
   one PR. Not yet merged.
 
-## 2026-09-28 — Fix: CHIP payment description + missed Bot top-up notification (items 39/40, `fix/2026-09-28-payment-description-and-topup-notify`; not yet deployed)
+## 2026-09-28 — Fix: CHIP payment description + missed Bot top-up notification (items 39/40, PR #298, merged to `staging`; not yet on `main`)
 
 - **Item 39** — the CHIP purchase `description` (the line-item name shown
   on CHIP's own checkout page/receipt) was hardcoded `"PekanGame order
