@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Services\Checkout;
 
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\Package;
+use App\Models\Supplier;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
@@ -157,6 +160,28 @@ class CheckoutServiceTest extends TestCase
      * (that row is mutable admin config, the Order's own history must not
      * silently change if it's later edited).
      */
+    /**
+     * Item 39 (2026-09-27 money-critical audit): the CHIP purchase
+     * description is a line-item name shown on the checkout page/receipt —
+     * the order_number is already carried separately as `reference`, so
+     * this should describe what's being bought instead of repeating it.
+     */
+    public function test_initiate_sends_the_package_name_as_the_payment_description(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '278 Diamonds', 'denomination' => 278,
+            'cost_price' => 900, 'standard_selling_price' => 900, 'markup_percent' => 0,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'FFP5',
+        ]);
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-123']);
+
+        $this->service()->initiate($this->request(['gameId' => $game->id, 'packageId' => $package->id]), $gateway);
+
+        $this->assertSame('278 Diamonds', $gateway->receivedRequest->description);
+    }
+
     public function test_initiate_stamps_the_payment_gateway_and_channel_code_onto_the_order(): void
     {
         $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-123']);

@@ -1307,16 +1307,22 @@ items 39/40 (founder yes/no, not a grill).
     build` both clean. Built on its own `fix/docs-checkout-input-example`
     branch off `staging`. Not yet merged.
 
-**Low priority / needs a founder yes-no, not a grill:**
-
-39. CHIP payment description hardcodes `"PekanGame"` regardless of which
-    affiliate storefront the customer paid on — may be intentional (one
-    company CHIP account is the actual merchant of record), needs a founder
-    decision before touching it either way.
-40. Narrow `.topupbaki` race: the reseller is correctly charged and
+~~39. CHIP payment description hardcodes `"PekanGame"` regardless of which
+    affiliate storefront the customer paid on~~ — **🟢 BUILT 2026-09-28.**
+    Founder confirmed not intentional. Order checkout now describes the
+    package/game bought instead (order_number was already redundant with
+    `reference`); membership now sends the resolved affiliate's own store
+    name (`StorefrontBrand::displayName()`, new). See `docs/build-log.md`'s
+    2026-09-28 entry. Not yet merged to `staging`.
+~~40. Narrow `.topupbaki` race: the reseller is correctly charged and
     credited, but can miss the WhatsApp confirmation if the CHIP webhook
     resolves inside a tight window between `initiate()` and the bot's own
-    tracking row being created. Money-safe; notification-only gap.
+    tracking row being created.~~ — **🟢 BUILT 2026-09-28.**
+    `ReconcilePendingWalletTopupsCommand` (the existing stuck-pending
+    backstop) now also sweeps for a Bot top-up whose attempt is already
+    `Paid` but never got notified, self-healing against this and any other
+    cause of a dropped notification. See `docs/build-log.md`'s 2026-09-28
+    entry. Not yet merged to `staging`.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

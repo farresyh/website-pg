@@ -231,7 +231,12 @@ final class CheckoutService
             country: 'MY',
             channelCode: $channelCode,
             channelProperties: $channelProperties,
-            description: "PekanGame order {$order->order_number}",
+            // Item 39 (2026-09-27 money-critical audit): the order_number
+            // is already carried separately as `reference` above — this is
+            // the line-item name CHIP shows the customer on its checkout
+            // page/receipt, so it should describe what they're buying, not
+            // repeat the reference.
+            description: $order->package?->name ?? $order->game?->name ?? "Order {$order->order_number}",
             customer: new PaymentCustomer(
                 referenceId: $order->order_number,
                 givenNames: $order->customer_name,

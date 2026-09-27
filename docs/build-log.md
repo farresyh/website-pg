@@ -1968,3 +1968,56 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   `fix/affiliate-tier-fee-double-charge` branch off `staging`, per the
   founder's plan to build several punch-list items and bundle them into
   one PR. Not yet merged.
+
+## 2026-09-28 — Fix: CHIP payment description + missed Bot top-up notification (items 39/40, `fix/2026-09-28-payment-description-and-topup-notify`; not yet deployed)
+
+- **Item 39** — the CHIP purchase `description` (the line-item name shown
+  on CHIP's own checkout page/receipt) was hardcoded `"PekanGame order
+  {order_number}"` / `"PekanGame membership — {plan}"` regardless of which
+  affiliate whitelabel storefront the customer actually bought on, and
+  regardless of what was actually being bought — the order_number was
+  already carried separately as `reference`, so the description was pure
+  redundancy for orders and a wrong brand name for an affiliate's members.
+  **Fix:** order checkout now sends the package/game name instead
+  (`CheckoutService::requestPayment()`); membership now sends the
+  request's own resolved affiliate store name instead of a hardcoded
+  string. Added `StorefrontBrand::displayName()` (queries
+  `AffiliateBranding.store_name`, falls back to `'PekanGame'` for the
+  primary affiliate or a branding row with no store name yet) as the one
+  seam both callers use, rather than duplicating the query — same
+  `StorefrontBrand` class the 2026-09-24 return-url fix (PR #284) already
+  uses for this exact "which affiliate is this request for" resolution.
+  Reseller wallet top-up's own description (`ResellerWalletTopupService`)
+  was left alone — its `reference` already names the actual thing being
+  described adequately, and that channel isn't affiliate-storefront-scoped.
+- **Item 40** — a `.topupbaki` (WhatsApp Bot wallet top-up) could be
+  correctly charged and credited but never get its "top-up berjaya"
+  WhatsApp reply: `ResellerBotWalletTopupNotifier::notifyPaid()` looks up
+  the `ResellerBotWalletTopup` tracking row by `wallet_topup_attempt_id`
+  and silently no-ops if it isn't found yet — and nothing ever re-checks
+  once it later appears, since `ResellerBotService::handleTopupBaki()`
+  only creates that row *after* `ResellerWalletTopupService::initiate()`
+  returns. Considered closing the ordering gap directly (create the
+  tracking row before calling CHIP) but rejected it: the attempt id the
+  row is keyed on doesn't exist until `initiate()` returns, so that would
+  need a nullable FK plus orphan-row cleanup on every one of
+  `handleTopupBaki()`'s three failure paths, to fix a window that's
+  otherwise unreachable in production anyway (CHIP can't report a
+  purchase paid before the customer has even received its `checkout_url`)
+  — and it would still only cover this one specific cause, not a worker
+  crash or OpenWA being briefly down. **Fix instead:** extended the
+  already-scheduled `ReconcilePendingWalletTopupsCommand` (built for the
+  sibling "stuck-pending" backstop, ADR-076 PR-H's own "same backstop
+  every CHIP-triggered flow already has" pattern) with a second sweep —
+  any `ResellerBotWalletTopup` row with `notified_at` still null whose
+  attempt is already `Paid` gets `notifyPaid()` called again. Self-healing
+  against any cause of a dropped notification, not just this one, on the
+  existing schedule, no schema change.
+- No ADR needed for either — same precedent as PR #284: both extend an
+  already-established seam (`StorefrontBrand`, the CHIP reconciliation
+  backstop pattern) to a field/case that was missed, not a new decision or
+  a reversal of one.
+- New tests: `StorefrontBrandTest` (2), `CheckoutServiceTest::test_initiate_sends_the_package_name_as_the_payment_description`,
+  3 new cases in `ReconcilePendingWalletTopupsCommandTest` covering the
+  missed/already-notified/still-pending states. Full backend suite green:
+  2262/2262, 6061 assertions. No migration — no schema touched.
