@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Events\OrderStatusUpdated;
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Listeners\Broadcasting\LogFailedBroadcastJob;
 use App\Listeners\Reseller\DispatchResellerOrderWebhook;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
 use App\Models\AffiliateMembershipTier;
@@ -52,6 +53,7 @@ use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -429,6 +431,10 @@ class AppServiceProvider extends ServiceProvider
         BackupRun::observe(BackupRunObserver::class);
         AffiliateSubscription::observe(AffiliateSubscriptionObserver::class);
         AffiliateMembershipTier::observe(AffiliateMembershipTierObserver::class);
+
+        // ADR-047 2026-09-28 addendum — see LogFailedBroadcastJob's own
+        // doc comment for why this exists.
+        Event::listen(JobFailed::class, [LogFailedBroadcastJob::class, 'handle']);
 
         // ADR-048 addendum: same `web`-session/super_admin gate as
         // HorizonServiceProvider::gate() — Pulse doesn't generate its own
