@@ -1122,17 +1122,25 @@ accepted state, not a gap to chase. See §14.
     confirmed narrow as originally described — only `/api/affiliate/*` and
     `/api/reseller-portal/*`; Reseller API/Bot unaffected. New test:
     `UnauthenticatedApiRequestTest` (2 cases).
-~~27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
+27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
     `next dev` webServer — a recurring CI-environment flake, not a code
-    bug.**~~ — **🟢 BUILT 2026-09-28.** `e2e/playwright.config.ts`'s admin
-    (port 3000) *and* storefront (port 3001) webServer commands both now
-    pin `--webpack` — storefront carries the identical risk (same plain
-    `next dev`, same Next 16 Turbopack default) even though only admin had
-    actually hit the flake yet. Matches the existing `next build --webpack`
-    workaround already used elsewhere in this repo (2026-09-24, ADR-112
-    PR2). Verified the flag itself forces webpack cleanly (`Next.js 16.3.5
-    (webpack)`, ready in 356ms) and that the config still parses/lists all
-    5 golden-path specs via `npx playwright test --list`.
+    bug.** **Attempted 2026-09-28, reverted same day — made things worse,
+    not better.** Pinning `--webpack` (matching this repo's existing
+    `next build --webpack` workaround elsewhere) did stop the Turbopack
+    font-loader crash, but introduced a *consistent* new failure instead:
+    `admin-mark-delivered.spec.ts` and `admin-resend-delivery.spec.ts`
+    both timed out (exact same locator, exact same ~60s) waiting for the
+    orders search box to become fillable — reproduced identically across
+    2 separate CI runs. A clean A/B (revert `--webpack` only, keep items
+    26/34) proved this decisively: with `--webpack`, playwright fails
+    2/5 every time; without it, playwright passes clean. Root mechanism
+    not chased further — not worth it for a low-severity, rare flake
+    that a rerun always already clears; a real fix would need `next
+    build && next start` instead of `next dev` (deterministic, no
+    on-demand-compile timing at all, closes both this and the original
+    Turbopack crash at once) as its own separately-scoped piece of work,
+    not a one-line flag swap. Back to unstarted — see `docs/build-log.md`'s
+    2026-09-28 entry for the full investigation.
 
 ## 2026-09-26 money-critical branch audit — punch list, mostly built
 

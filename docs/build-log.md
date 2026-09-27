@@ -2022,7 +2022,7 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   missed/already-notified/still-pending states. Full backend suite green:
   2262/2262, 6061 assertions. No migration — no schema touched.
 
-## 2026-09-28 — Fix: items 26/27/34, all mechanical (`fix/2026-09-28-items-26-27-34`; not yet deployed)
+## 2026-09-28 — Fix: items 26/34 (mechanical); item 27 attempted + reverted (`fix/2026-09-28-items-26-27-34`; not yet deployed)
 
 - **Item 26** — an unauthenticated request to `/api/affiliate/*` or
   `/api/reseller-portal/*` without `Accept: application/json` (any plain
@@ -2045,20 +2045,30 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   no-Accept-header request against both affected route groups and asserts
   a clean 401 — both confirmed failing (500) against the pre-fix code
   first.
-- **Item 27** — `e2e/playwright.config.ts`'s `admin` *and* `storefront`
-  webServer commands (`npx next dev --port XXXX`) both now pin
-  `--webpack`. The 2026-09-24 finding only named admin (the one that had
-  actually hit the Turbopack Google-Fonts-loader flake twice), but
-  storefront runs the identical plain `next dev` on the same Next 16 —
-  same latent risk, fixed both rather than just the one that happened to
-  flake first. Matches this repo's own existing `next build --webpack`
-  workaround (2026-09-24, ADR-112 PR2) and `AGENTS.md`'s local-dev
-  gotcha for the same Turbopack failure class. Verified `--webpack`
-  forces the stable bundler cleanly (`▲ Next.js 16.3.5 (webpack)`,
-  ready in 356ms) and that the edited config still parses and lists all
-  5 golden-path specs via `npx playwright test --list` — the full e2e
-  run itself needs a port free of the founder's own local dev server, so
-  CI's fresh runner is the real verification.
+- **Item 27 — attempted, then reverted; back to unstarted.**
+  `e2e/playwright.config.ts`'s `admin`/`storefront` webServer commands
+  were pinned to `--webpack` (matching this repo's own existing `next
+  build --webpack` workaround, 2026-09-24 ADR-112 PR2) to stop the
+  Turbopack Google-Fonts-loader boot crash. Locally verified the flag
+  itself forces webpack cleanly (`▲ Next.js 16.3.5 (webpack)`, ready in
+  356ms) and the config still parsed/listed all 5 golden-path specs —
+  but real CI told a different story: `admin-mark-delivered.spec.ts` and
+  `admin-resend-delivery.spec.ts` both started timing out (60s, exact
+  same locator — `openOrder()`'s search box — exact same ~1.0m each run)
+  *every* run, not intermittently. Ran a clean A/B to be sure it was the
+  bundler and not items 26/34: reverted `--webpack` only, kept the other
+  two fixes, pushed — playwright passed clean. Re-added `--webpack`,
+  pushed again — same 2 specs failed identically a second time. That's a
+  deterministic regression, not a flake; `--webpack` made this measurably
+  worse than the rare Turbopack crash it was meant to fix (which a rerun
+  already always cleared). **Decision: not worth chasing further this
+  session** — reverted `--webpack` on both webServer commands back to
+  plain `next dev`, item 27 goes back to its original unstarted state. A
+  real fix, if ever wanted, is `next build && next start` instead of
+  `next dev` for e2e (deterministic, no dev-mode on-demand-compile timing
+  at all — closes both this new failure mode and the original Turbopack
+  one at the root), but that's CI workflow + config + `AGENTS.md` changes
+  of its own, not a one-line flag swap — scoped out of this session.
 - **Item 34** — `UpdateAffiliateProfileRequest`'s `bank_name`/
   `bank_account_no`/`bank_account_holder` were all `nullable`, which lets
   an empty string `""` through as a "valid" value — `Affiliate\
@@ -2070,9 +2080,11 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   three — allows omitting the field entirely (a partial update touching
   only other fields still works), rejects it outright if present and
   empty. 2 new cases in `AffiliateProfileTest`.
-- No ADR needed for any of the three — all mechanical fixes using
-  existing patterns (a framework config override, an existing
-  CI-workaround flag, tightening an existing validation rule), not new
-  decisions.
+- No ADR needed for items 26/34 — both mechanical fixes using existing
+  patterns (a framework config override, tightening an existing
+  validation rule), not new decisions. Item 27 wasn't actually built —
+  see above.
 - Full backend suite green: 2266/2266, 6071 assertions. No migration — no
-  schema touched.
+  schema touched. CI playwright: passes clean on this branch's final
+  state (plain `next dev`, no `--webpack`) — verified via a real CI run,
+  not just locally.
