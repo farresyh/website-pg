@@ -1110,47 +1110,29 @@ accepted state, not a gap to chase. See §14.
     explicit payment/delivery/compensation semantics and a versioned API
     contract; never sum the current paginated page in the browser. Requires a
     separate ADR before implementation.
-26. **Unauthenticated non-JSON request to a `auth:affiliate`-guarded portal
-    route crashes 500 instead of a clean 401 — found 2026-09-24, not started.**
-    Reproduced against production via `curl` (no `Accept: application/json`
-    header) on `/api/affiliate/orders` and `/api/reseller-portal/orders`:
-    Sanctum's `Authenticate` middleware falls into `redirectTo()` → `route(
-    'login')`, which throws `RouteNotFoundException` (this is an API-only
-    backend with no named `login` route) instead of returning a plain
-    `{"message":"Unauthenticated."}` 401. **Scope is narrow — confirmed by
-    reading the actual middleware, not assumed:** only the two portal login
-    surfaces sharing the `auth:affiliate` Sanctum guard
-    (`/api/affiliate/*`, `/api/reseller-portal/*`) are affected. The
-    Reseller **API** (`/api/reseller/v1/*`, partner-facing, bearer key from
-    `reseller_api_keys` set in `/admin/resellers`) uses its own
-    `EnsureResellerApiKey` middleware — a completely separate auth
-    boundary that never touches Sanctum or `Accept` headers and always
-    throws a clean `ResellerApiException` envelope (`MISSING_API_KEY`/
-    `INVALID_API_KEY`) — **not affected.** The Reseller Bot (WhatsApp/
-    OpenWA) doesn't go through this HTTP guard either. No customer impact:
-    every real frontend (`admin/`, `storefront/`, `reseller/`) always sends
-    `Accept: application/json` on its own API calls. Low-severity
-    robustness fix, not urgent — likely a small `Authenticate::redirectTo()`
-    override or `exceptions()` handler tweak so an unauthenticated
-    non-JSON request to an API-only guard always gets a clean 401.
-27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
+~~26. **Unauthenticated non-JSON request to a `auth:affiliate`-guarded portal
+    route crashes 500 instead of a clean 401.**~~ — **🟢 BUILT 2026-09-28.**
+    Real root cause (confirmed via a live repro test, not the middleware
+    read alone): Laravel's own `ApplicationBuilder::withMiddleware()`
+    unconditionally wires a default `redirectGuestsTo(fn () => route('login'))`
+    *before* this app's own `bootstrap/app.php` closure runs — the crash
+    happens building `AuthenticationException`'s redirect target, before
+    `shouldRenderJsonWhen()` ever gets a chance to help. Fix: `$middleware
+    ->redirectGuestsTo(fn () => null)` in `bootstrap/app.php`. Scope
+    confirmed narrow as originally described — only `/api/affiliate/*` and
+    `/api/reseller-portal/*`; Reseller API/Bot unaffected. New test:
+    `UnauthenticatedApiRequestTest` (2 cases).
+~~27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
     `next dev` webServer — a recurring CI-environment flake, not a code
-    bug.** Hit twice in one day (2026-09-24) on two unrelated PRs (#278:
-    security/portal-fixes release; #279: docs + `.claude/` config only, zero
-    app code) — same signature both times: Turbopack's Google Fonts loader
-    throws `Module not found: Can't resolve
-    '@vercel/turbopack-next/internal/font/google/font'` / `next/font/google
-    queries have exactly one entry` while compiling `layout.tsx`, so the
-    `webServer` never comes up and Playwright times out after 60s. A full
-    workflow rerun passed cleanly both times with no code change, and
-    PR #279 touched no app code at all — rules out a real regression.
-    `e2e/playwright.config.ts`'s admin `webServer` command is plain `npx
-    next dev --port 3000`, which defaults to Turbopack on Next 16; likely
-    fix is pinning it to `--webpack` (matching the known local-dev gotcha
-    already in `AGENTS.md`'s Build & Test section, where the same Turbopack
-    CSS-worker/font-loader class of failure was hit and worked around the
-    same way). Not urgent — a rerun always clears it — but worth a proper
-    fix before it happens a third time. Not started.
+    bug.**~~ — **🟢 BUILT 2026-09-28.** `e2e/playwright.config.ts`'s admin
+    (port 3000) *and* storefront (port 3001) webServer commands both now
+    pin `--webpack` — storefront carries the identical risk (same plain
+    `next dev`, same Next 16 Turbopack default) even though only admin had
+    actually hit the flake yet. Matches the existing `next build --webpack`
+    workaround already used elsewhere in this repo (2026-09-24, ADR-112
+    PR2). Verified the flag itself forces webpack cleanly (`Next.js 16.3.5
+    (webpack)`, ready in 356ms) and that the config still parses/lists all
+    5 golden-path specs via `npx playwright test --list`.
 
 ## 2026-09-26 money-critical branch audit — punch list, mostly built
 
@@ -1259,10 +1241,14 @@ items 39/40 (founder yes/no, not a grill).
     against the pre-fix code first. Built on its own
     `fix/affiliate-tier-fee-double-charge` branch off `staging`. Not yet
     merged.
-34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
+~~34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
     "must have bank details" guard (`$bankName === null` doesn't catch
-    `""`). Tighten to `filled`/`required_without`. **Deliberately skipped
-    2026-09-26 by founder call** — not built this session.
+    `""`).~~ — **🟢 BUILT 2026-09-28.** Only write-path confirmed:
+    `UpdateAffiliateProfileRequest` — `bank_name`/`bank_account_no`/
+    `bank_account_holder` all `nullable` → `filled` (allows omitting the
+    field for a partial update, rejects it outright if present and empty).
+    New tests in `AffiliateProfileTest` (empty-string rejected, omission
+    still allowed).
 35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
     0** instead of failing loud, silently changing which withdrawals need a
     second approver. **Re-checked 2026-09-26 against current code — not

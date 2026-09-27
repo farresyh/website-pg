@@ -2021,3 +2021,58 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   3 new cases in `ReconcilePendingWalletTopupsCommandTest` covering the
   missed/already-notified/still-pending states. Full backend suite green:
   2262/2262, 6061 assertions. No migration — no schema touched.
+
+## 2026-09-28 — Fix: items 26/27/34, all mechanical (`fix/2026-09-28-items-26-27-34`; not yet deployed)
+
+- **Item 26** — an unauthenticated request to `/api/affiliate/*` or
+  `/api/reseller-portal/*` without `Accept: application/json` (any plain
+  `curl`, not a real frontend — every real frontend always sends it)
+  crashed 500 instead of a clean 401. Re-derived the root cause from
+  scratch with a live repro test rather than trusting the 2026-09-24
+  finding's own description: it's not Sanctum's `Authenticate` middleware
+  reading the `Accept` header wrong — Laravel's own
+  `ApplicationBuilder::withMiddleware()` unconditionally wires a default
+  `redirectGuestsTo(fn () => route('login'))` *before* this app's
+  `bootstrap/app.php` closure runs, so building the redirect target for
+  `AuthenticationException` calls `route('login')` on an API-only backend
+  with no such route, throwing `RouteNotFoundException` — well before
+  `shouldRenderJsonWhen()` (already configured for `api/*`) ever gets a
+  chance to render a clean JSON response. **Fix:** one line,
+  `$middleware->redirectGuestsTo(fn () => null)`, added to `bootstrap
+  /app.php`'s existing `withMiddleware()` closure — correct everywhere in
+  this app, nothing here has a login page. New
+  `UnauthenticatedApiRequestTest` (2 cases) reproduces the exact
+  no-Accept-header request against both affected route groups and asserts
+  a clean 401 — both confirmed failing (500) against the pre-fix code
+  first.
+- **Item 27** — `e2e/playwright.config.ts`'s `admin` *and* `storefront`
+  webServer commands (`npx next dev --port XXXX`) both now pin
+  `--webpack`. The 2026-09-24 finding only named admin (the one that had
+  actually hit the Turbopack Google-Fonts-loader flake twice), but
+  storefront runs the identical plain `next dev` on the same Next 16 —
+  same latent risk, fixed both rather than just the one that happened to
+  flake first. Matches this repo's own existing `next build --webpack`
+  workaround (2026-09-24, ADR-112 PR2) and `AGENTS.md`'s local-dev
+  gotcha for the same Turbopack failure class. Verified `--webpack`
+  forces the stable bundler cleanly (`▲ Next.js 16.3.5 (webpack)`,
+  ready in 356ms) and that the edited config still parses and lists all
+  5 golden-path specs via `npx playwright test --list` — the full e2e
+  run itself needs a port free of the founder's own local dev server, so
+  CI's fresh runner is the real verification.
+- **Item 34** — `UpdateAffiliateProfileRequest`'s `bank_name`/
+  `bank_account_no`/`bank_account_holder` were all `nullable`, which lets
+  an empty string `""` through as a "valid" value — `Affiliate\
+  WithdrawalController::store()`'s own `$affiliate->bank_name === null`
+  guard doesn't catch that, so an affiliate could save blank bank details
+  and still pass the "must have bank details" check before withdrawing.
+  Confirmed this FormRequest is the only write-path for these three
+  columns before touching it. **Fix:** `nullable` → `filled` on all
+  three — allows omitting the field entirely (a partial update touching
+  only other fields still works), rejects it outright if present and
+  empty. 2 new cases in `AffiliateProfileTest`.
+- No ADR needed for any of the three — all mechanical fixes using
+  existing patterns (a framework config override, an existing
+  CI-workaround flag, tightening an existing validation rule), not new
+  decisions.
+- Full backend suite green: 2266/2266, 6071 assertions. No migration — no
+  schema touched.

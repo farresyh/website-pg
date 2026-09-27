@@ -88,4 +88,33 @@ class AffiliateProfileTest extends TestCase
             'email' => 'owner@acme.test',
         ]);
     }
+
+    /**
+     * Item 34: `filled` rejects an empty string outright — before this
+     * fix, `nullable` let it through as a "valid" bank_name, which
+     * Affiliate\WithdrawalController::store()'s `=== null` guard couldn't
+     * catch (an empty string isn't null).
+     */
+    public function test_update_rejects_an_empty_string_bank_name(): void
+    {
+        $affiliate = $this->affiliate();
+
+        $this->withToken($this->tokenFor($affiliate))->putJson('/api/affiliate/profile', [
+            'bank_name' => '',
+        ])->assertUnprocessable()->assertJsonValidationErrors('bank_name');
+
+        $this->assertDatabaseMissing('affiliates', ['id' => $affiliate->id, 'bank_name' => '']);
+    }
+
+    public function test_update_can_still_omit_bank_fields_entirely(): void
+    {
+        $affiliate = $this->affiliate();
+        $affiliate->update(['bank_name' => 'Maybank', 'bank_account_no' => '1234', 'bank_account_holder' => 'Acme Sdn Bhd']);
+
+        $this->withToken($this->tokenFor($affiliate))->putJson('/api/affiliate/profile', [
+            'phone' => '+60123456789',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('affiliates', ['id' => $affiliate->id, 'bank_name' => 'Maybank']);
+    }
 }
