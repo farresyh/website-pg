@@ -2021,3 +2021,70 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   3 new cases in `ReconcilePendingWalletTopupsCommandTest` covering the
   missed/already-notified/still-pending states. Full backend suite green:
   2262/2262, 6061 assertions. No migration — no schema touched.
+
+## 2026-09-28 — Fix: items 26/34 (mechanical); item 27 attempted + reverted (`fix/2026-09-28-items-26-27-34`; not yet deployed)
+
+- **Item 26** — an unauthenticated request to `/api/affiliate/*` or
+  `/api/reseller-portal/*` without `Accept: application/json` (any plain
+  `curl`, not a real frontend — every real frontend always sends it)
+  crashed 500 instead of a clean 401. Re-derived the root cause from
+  scratch with a live repro test rather than trusting the 2026-09-24
+  finding's own description: it's not Sanctum's `Authenticate` middleware
+  reading the `Accept` header wrong — Laravel's own
+  `ApplicationBuilder::withMiddleware()` unconditionally wires a default
+  `redirectGuestsTo(fn () => route('login'))` *before* this app's
+  `bootstrap/app.php` closure runs, so building the redirect target for
+  `AuthenticationException` calls `route('login')` on an API-only backend
+  with no such route, throwing `RouteNotFoundException` — well before
+  `shouldRenderJsonWhen()` (already configured for `api/*`) ever gets a
+  chance to render a clean JSON response. **Fix:** one line,
+  `$middleware->redirectGuestsTo(fn () => null)`, added to `bootstrap
+  /app.php`'s existing `withMiddleware()` closure — correct everywhere in
+  this app, nothing here has a login page. New
+  `UnauthenticatedApiRequestTest` (2 cases) reproduces the exact
+  no-Accept-header request against both affected route groups and asserts
+  a clean 401 — both confirmed failing (500) against the pre-fix code
+  first.
+- **Item 27 — attempted, then reverted; back to unstarted.**
+  `e2e/playwright.config.ts`'s `admin`/`storefront` webServer commands
+  were pinned to `--webpack` (matching this repo's own existing `next
+  build --webpack` workaround, 2026-09-24 ADR-112 PR2) to stop the
+  Turbopack Google-Fonts-loader boot crash. Locally verified the flag
+  itself forces webpack cleanly (`▲ Next.js 16.3.5 (webpack)`, ready in
+  356ms) and the config still parsed/listed all 5 golden-path specs —
+  but real CI told a different story: `admin-mark-delivered.spec.ts` and
+  `admin-resend-delivery.spec.ts` both started timing out (60s, exact
+  same locator — `openOrder()`'s search box — exact same ~1.0m each run)
+  *every* run, not intermittently. Ran a clean A/B to be sure it was the
+  bundler and not items 26/34: reverted `--webpack` only, kept the other
+  two fixes, pushed — playwright passed clean. Re-added `--webpack`,
+  pushed again — same 2 specs failed identically a second time. That's a
+  deterministic regression, not a flake; `--webpack` made this measurably
+  worse than the rare Turbopack crash it was meant to fix (which a rerun
+  already always cleared). **Decision: not worth chasing further this
+  session** — reverted `--webpack` on both webServer commands back to
+  plain `next dev`, item 27 goes back to its original unstarted state. A
+  real fix, if ever wanted, is `next build && next start` instead of
+  `next dev` for e2e (deterministic, no dev-mode on-demand-compile timing
+  at all — closes both this new failure mode and the original Turbopack
+  one at the root), but that's CI workflow + config + `AGENTS.md` changes
+  of its own, not a one-line flag swap — scoped out of this session.
+- **Item 34** — `UpdateAffiliateProfileRequest`'s `bank_name`/
+  `bank_account_no`/`bank_account_holder` were all `nullable`, which lets
+  an empty string `""` through as a "valid" value — `Affiliate\
+  WithdrawalController::store()`'s own `$affiliate->bank_name === null`
+  guard doesn't catch that, so an affiliate could save blank bank details
+  and still pass the "must have bank details" check before withdrawing.
+  Confirmed this FormRequest is the only write-path for these three
+  columns before touching it. **Fix:** `nullable` → `filled` on all
+  three — allows omitting the field entirely (a partial update touching
+  only other fields still works), rejects it outright if present and
+  empty. 2 new cases in `AffiliateProfileTest`.
+- No ADR needed for items 26/34 — both mechanical fixes using existing
+  patterns (a framework config override, tightening an existing
+  validation rule), not new decisions. Item 27 wasn't actually built —
+  see above.
+- Full backend suite green: 2266/2266, 6071 assertions. No migration — no
+  schema touched. CI playwright: passes clean on this branch's final
+  state (plain `next dev`, no `--webpack`) — verified via a real CI run,
+  not just locally.

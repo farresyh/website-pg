@@ -1110,47 +1110,37 @@ accepted state, not a gap to chase. See §14.
     explicit payment/delivery/compensation semantics and a versioned API
     contract; never sum the current paginated page in the browser. Requires a
     separate ADR before implementation.
-26. **Unauthenticated non-JSON request to a `auth:affiliate`-guarded portal
-    route crashes 500 instead of a clean 401 — found 2026-09-24, not started.**
-    Reproduced against production via `curl` (no `Accept: application/json`
-    header) on `/api/affiliate/orders` and `/api/reseller-portal/orders`:
-    Sanctum's `Authenticate` middleware falls into `redirectTo()` → `route(
-    'login')`, which throws `RouteNotFoundException` (this is an API-only
-    backend with no named `login` route) instead of returning a plain
-    `{"message":"Unauthenticated."}` 401. **Scope is narrow — confirmed by
-    reading the actual middleware, not assumed:** only the two portal login
-    surfaces sharing the `auth:affiliate` Sanctum guard
-    (`/api/affiliate/*`, `/api/reseller-portal/*`) are affected. The
-    Reseller **API** (`/api/reseller/v1/*`, partner-facing, bearer key from
-    `reseller_api_keys` set in `/admin/resellers`) uses its own
-    `EnsureResellerApiKey` middleware — a completely separate auth
-    boundary that never touches Sanctum or `Accept` headers and always
-    throws a clean `ResellerApiException` envelope (`MISSING_API_KEY`/
-    `INVALID_API_KEY`) — **not affected.** The Reseller Bot (WhatsApp/
-    OpenWA) doesn't go through this HTTP guard either. No customer impact:
-    every real frontend (`admin/`, `storefront/`, `reseller/`) always sends
-    `Accept: application/json` on its own API calls. Low-severity
-    robustness fix, not urgent — likely a small `Authenticate::redirectTo()`
-    override or `exceptions()` handler tweak so an unauthenticated
-    non-JSON request to an API-only guard always gets a clean 401.
+~~26. **Unauthenticated non-JSON request to a `auth:affiliate`-guarded portal
+    route crashes 500 instead of a clean 401.**~~ — **🟢 BUILT 2026-09-28.**
+    Real root cause (confirmed via a live repro test, not the middleware
+    read alone): Laravel's own `ApplicationBuilder::withMiddleware()`
+    unconditionally wires a default `redirectGuestsTo(fn () => route('login'))`
+    *before* this app's own `bootstrap/app.php` closure runs — the crash
+    happens building `AuthenticationException`'s redirect target, before
+    `shouldRenderJsonWhen()` ever gets a chance to help. Fix: `$middleware
+    ->redirectGuestsTo(fn () => null)` in `bootstrap/app.php`. Scope
+    confirmed narrow as originally described — only `/api/affiliate/*` and
+    `/api/reseller-portal/*`; Reseller API/Bot unaffected. New test:
+    `UnauthenticatedApiRequestTest` (2 cases).
 27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
     `next dev` webServer — a recurring CI-environment flake, not a code
-    bug.** Hit twice in one day (2026-09-24) on two unrelated PRs (#278:
-    security/portal-fixes release; #279: docs + `.claude/` config only, zero
-    app code) — same signature both times: Turbopack's Google Fonts loader
-    throws `Module not found: Can't resolve
-    '@vercel/turbopack-next/internal/font/google/font'` / `next/font/google
-    queries have exactly one entry` while compiling `layout.tsx`, so the
-    `webServer` never comes up and Playwright times out after 60s. A full
-    workflow rerun passed cleanly both times with no code change, and
-    PR #279 touched no app code at all — rules out a real regression.
-    `e2e/playwright.config.ts`'s admin `webServer` command is plain `npx
-    next dev --port 3000`, which defaults to Turbopack on Next 16; likely
-    fix is pinning it to `--webpack` (matching the known local-dev gotcha
-    already in `AGENTS.md`'s Build & Test section, where the same Turbopack
-    CSS-worker/font-loader class of failure was hit and worked around the
-    same way). Not urgent — a rerun always clears it — but worth a proper
-    fix before it happens a third time. Not started.
+    bug.** **Attempted 2026-09-28, reverted same day — made things worse,
+    not better.** Pinning `--webpack` (matching this repo's existing
+    `next build --webpack` workaround elsewhere) did stop the Turbopack
+    font-loader crash, but introduced a *consistent* new failure instead:
+    `admin-mark-delivered.spec.ts` and `admin-resend-delivery.spec.ts`
+    both timed out (exact same locator, exact same ~60s) waiting for the
+    orders search box to become fillable — reproduced identically across
+    2 separate CI runs. A clean A/B (revert `--webpack` only, keep items
+    26/34) proved this decisively: with `--webpack`, playwright fails
+    2/5 every time; without it, playwright passes clean. Root mechanism
+    not chased further — not worth it for a low-severity, rare flake
+    that a rerun always already clears; a real fix would need `next
+    build && next start` instead of `next dev` (deterministic, no
+    on-demand-compile timing at all, closes both this and the original
+    Turbopack crash at once) as its own separately-scoped piece of work,
+    not a one-line flag swap. Back to unstarted — see `docs/build-log.md`'s
+    2026-09-28 entry for the full investigation.
 
 ## 2026-09-26 money-critical branch audit — punch list, mostly built
 
@@ -1259,10 +1249,14 @@ items 39/40 (founder yes/no, not a grill).
     against the pre-fix code first. Built on its own
     `fix/affiliate-tier-fee-double-charge` branch off `staging`. Not yet
     merged.
-34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
+~~34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
     "must have bank details" guard (`$bankName === null` doesn't catch
-    `""`). Tighten to `filled`/`required_without`. **Deliberately skipped
-    2026-09-26 by founder call** — not built this session.
+    `""`).~~ — **🟢 BUILT 2026-09-28.** Only write-path confirmed:
+    `UpdateAffiliateProfileRequest` — `bank_name`/`bank_account_no`/
+    `bank_account_holder` all `nullable` → `filled` (allows omitting the
+    field for a partial update, rejects it outright if present and empty).
+    New tests in `AffiliateProfileTest` (empty-string rejected, omission
+    still allowed).
 35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
     0** instead of failing loud, silently changing which withdrawals need a
     second approver. **Re-checked 2026-09-26 against current code — not
