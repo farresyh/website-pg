@@ -38,6 +38,7 @@ import {
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getEcho } from "@/lib/echo";
+import { useReconcileOnResume } from "@/lib/useReconcileOnResume";
 import { ApiError } from "@/lib/api-client";
 import {
   type BackupRun,
@@ -156,6 +157,16 @@ export default function BackupsPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  // 2026-09-28 addendum — closes the "accepted degrade" the comment
+  // above names: an admin who comes back to this tab, or whose
+  // connection blips, gets refreshAll() re-run automatically instead
+  // of having to navigate away and back or hit refresh by hand.
+  useReconcileOnResume(
+    useCallback(() => {
+      if (session) refreshAll(session.token);
+    }, [session, refreshAll]),
+  );
 
   async function handleTrigger() {
     if (!session) return;
