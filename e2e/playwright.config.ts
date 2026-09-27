@@ -61,7 +61,7 @@ export default defineConfig({
       // same way). `--webpack` pins the stable bundler for this
       // CI-only boot, matching `next build --webpack`'s existing use
       // elsewhere in this repo (docs/build-log.md, 2026-09-24).
-      command: "npx next dev --port 3000 --webpack",
+      command: "npx next dev --port 3000",
       cwd: path.join(ROOT_DIR, "admin"),
       url: ADMIN_URL,
       reuseExistingServer: false,
@@ -69,7 +69,7 @@ export default defineConfig({
       env: { NEXT_PUBLIC_API_URL: BACKEND_URL },
     },
     {
-      command: "npx next dev --port 3001 --webpack",
+      command: "npx next dev --port 3001",
       cwd: path.join(ROOT_DIR, "storefront"),
       url: STOREFRONT_URL,
       reuseExistingServer: false,
