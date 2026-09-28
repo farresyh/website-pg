@@ -93,3 +93,33 @@ export interface UpdatePaymentSettlementValues {
 export function updatePaymentSettlement(token: string, id: number, values: UpdatePaymentSettlementValues) {
   return apiFetch<PaymentSettlement>(`/api/accounting/settlements/${id}`, { method: "PATCH", body: values, token });
 }
+
+/** 2026-09-28 addendum — a matched CHIP transaction as returned by the cross-window date-range view, carrying its parent upload window for a "View Window" link. */
+export interface ChipSettledTransactionWithWindow extends ChipSettledTransaction {
+  payment_settlement: { id: number; date_from: string; date_to: string };
+}
+
+export interface SettlementDateRangeFilters {
+  from?: string;
+  to?: string;
+  page?: number;
+  per_page?: number;
+}
+
+/**
+ * 2026-09-28 addendum — CHIP Settlement's cross-window date-range view:
+ * matched transactions across every upload window whose `settled_on`
+ * falls inside `from`/`to`, not one window's own drill-down. No
+ * double-count risk — `chip_settled_transactions.transaction_id` is
+ * already unique-dedup'd at ingest (ADR-110).
+ */
+export function getSettlementTransactionsByDateRange(token: string, filters: SettlementDateRangeFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.page) params.set("page", String(filters.page));
+  if (filters.per_page) params.set("per_page", String(filters.per_page));
+  const qs = params.toString();
+
+  return apiFetch<Paginated<ChipSettledTransactionWithWindow>>(`/api/accounting/settlements/transactions${qs ? `?${qs}` : ""}`, { token });
+}
