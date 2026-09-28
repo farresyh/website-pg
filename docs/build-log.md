@@ -2477,3 +2477,47 @@ own grilling session, not built here.
   `read_network_requests` (200 on `refresh-balance`), failure-surfacing
   fix confirmed live after the real local-dev credential failure above,
   nav placement + route move reconfirmed after the mid-build change.
+
+## 2026-09-28 — Part B grilled: Supplier balance comfortable-buffer forecast, `ADR-115` (design only, build parked)
+
+Same-day follow-on from the Balance page above (Part A). The founder's
+original ask covered a broader "Part B": a mechanism that learns a
+comfortable Digiflazz top-up buffer from real spending patterns across
+all three order channels, factoring in the 1-2 day bank/Airwallex
+top-up lag — explicitly split off Part A and grilled separately
+(`/mattpocock-skills:grilling`, 3 rounds) rather than built inline.
+
+- A fact-check fork ran in parallel with round 1, confirming: (a)
+  `supplier_ledger_entries` (ADR-083) already gives a clean per-order
+  drawdown data source in native currency, one join away from a daily
+  time series (net `REFUND` against `ORDER_DRAWDOWN`); (b) Gamevion's
+  launch gate is confirmed retired (`docs/prd.md` §16, 2026-09-24) —
+  scope narrows to Digiflazz alone; (c) `Supplier::fundingDrift()` is a
+  point-in-time check with no history to extend; (d)
+  `DashboardService::rollingWindowUtc()` (DASH-3) is a reusable
+  trailing-window pattern already in the codebase.
+- Real domain input from the founder reshaped the formula mid-grill:
+  MLBB in-game events cluster Friday afternoons at meaningfully higher
+  volume than an ordinary day. A naive "average daily spend ×
+  lead-time days" formula would underestimate whenever a top-up lands
+  right after one of those days. Reframed to a **rolling
+  lead-time-window-sum percentile** instead — sum spend inside every
+  historical window the length of the lead time (2 days), take a high
+  percentile (p90) of those window-sums — which captures the Friday
+  pattern automatically (any historical 2-day window spanning a
+  Friday is already inside the percentiled distribution) with no
+  day-of-week special-casing or hardcoded event calendar.
+- Full decision list (blended single buffer across all 3 channels, 2-day
+  lead time as one global config value, IDR+MYR shown side by side
+  rather than one converted figure, cold-start falls back to the
+  founder's own manual threshold, info-only output surfaced on the
+  Balance page + a Dashboard chip mirroring the existing funding-drift
+  chip, no external push channel) recorded in full as **ADR-115**.
+- **Deliberately parked, not built**: zero real external customers
+  exist yet (every order to date is the founder's own testing) — a
+  model trained on that data now would learn testing noise, not real
+  demand. No automatic build trigger; the founder will say when,
+  typically once real order volume exists. `docs/prd.md` §16 item 28
+  added, pointing at the ADR.
+- No code changes this entry — design/docs only. Branch
+  `docs/2026-09-28-adr-balance-buffer-forecast` off `staging`.

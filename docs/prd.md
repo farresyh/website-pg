@@ -1143,6 +1143,16 @@ accepted state, not a gap to chase. See §14.
     Turbopack crash at once) as its own separately-scoped piece of work,
     not a one-line flag swap. Back to unstarted — see `docs/build-log.md`'s
     2026-09-28 entry for the full investigation.
+28. **Supplier balance comfortable-buffer forecast — [ADR-115](./adr.md),
+    fully designed + grilled, build deliberately parked.** Digiflazz-only,
+    rolling lead-time-window-sum percentile (not a flat daily rate — a
+    real Friday MLBB-event spend pattern would otherwise be
+    underestimated), 2-day lead time, IDR+MYR side by side, info-only
+    (Balance page detail + a Dashboard chip mirroring the existing
+    funding-drift chip), cold-start falls back to the founder's own
+    manual threshold. No automatic trigger to start building — the
+    founder will say when, typically once real (non-testing) order
+    volume exists.
 
 ## 2026-09-26 money-critical branch audit — punch list, mostly built
 
