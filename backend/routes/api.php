@@ -739,6 +739,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/envelopes', [BudgetEnvelopeController::class, 'store']);
         Route::get('/envelopes/export', [BudgetEnvelopeController::class, 'export']);
         Route::post('/envelopes/allocate-monthly-profit', [BudgetEnvelopeController::class, 'allocateMonthlyProfit']);
+        // Rename and/or archive/reactivate — never a hard delete, see UpdateBudgetEnvelopeRequest's own doc comment.
+        Route::patch('/envelopes/{budgetEnvelope}', [BudgetEnvelopeController::class, 'update']);
         Route::get('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'entries']);
         Route::post('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'storeEntry']);
         Route::post('/envelope-entries/{entry}/void', [BudgetEnvelopeController::class, 'voidEntry']);

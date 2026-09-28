@@ -2317,6 +2317,99 @@ session.
   Bulanan") into the visible "Allocate Monthly Profit" button label and
   several doc comments — caught and fixed same session; the admin panel
   stays English throughout, matching the rest of `/admin`.
+- **Merged same day** — PR #304 to `staging`, then released `staging`→`main`
+  (PR #305, bundled with 4 other already-staging PRs: #298/#300/#302/#303)
+  by the founder's own merge.
+
+## 2026-09-28 — Envelope Ledger clarity fixes: rename/archive, Money In/Out badge, allocate safety warning, register type-label gap, CSV void-status column, Monthly Summary tooltips (`fix/2026-09-28-envelope-ledger-clarity-fixes`)
+
+Five real gaps, every one surfaced by the founder actually using the
+Envelope Ledger + Monthly Summary the day they went live in production
+— not speculative polish. See `docs/adr.md`'s second 2026-09-28 ADR-083
+addendum (decisions 2/4/7/10/11) for the full design record.
+
+1. **Rename and archive an envelope** — there was no way to fix a
+   mistakenly-named envelope or retire one; only creation existed. New
+   `budget_envelopes.is_active` column (same convention `Reseller`/
+   `Affiliate` already use) + `PATCH /accounting/envelopes/{id}`.
+   Deliberately never a hard delete — `budget_envelope_entries
+   .budget_envelope_id` is `restrictOnDelete()`, so a used envelope
+   could never be deleted anyway; archiving hides it from the active
+   grid while its full history stays visible/exportable.
+2. **Money In / Money Out badge for every category** — previously only
+   the "Adjustment" category (the one with an explicit direction
+   selector) showed which way an entry would move the balance; every
+   other category's sign was invisible until after submitting. Now
+   every category shows a green "Money in" / red "Money out" badge
+   right under the dropdown, computed from the same `typical_sign`
+   the backend already returns.
+3. **Allocate Monthly Profit had zero validation against real profit**
+   — founder could type any amount into any envelope, no warning. New
+   `current_month_rough_pl_estimate_sen` (backend, sums only the
+   P&L-shaped Monthly Summary lines) + a running "total being
+   allocated" display + a soft amber warning (never a hard block) when
+   the total exceeds that rough, explicitly-unaudited estimate.
+4. **Transaction Register frontend never learned the 3 new row types**
+   — the backend's `membershipRows()`/`walletTopupRows()`/
+   `withdrawalRows()` (built earlier the same day) each carry their own
+   `type`, but the frontend's `typeLabel`/`typeSeverity` maps and the
+   `TransactionRegisterRow["type"]` union were never updated. Live in
+   production, these rows would have rendered a blank/undefined type
+   badge and been unreachable from the type filter. Found by the
+   founder asking "don't these need their own status too?" — fixed
+   same session.
+5. **Envelope Ledger CSV export had no explicit void-status column** —
+   founder specifically asked whether this could repeat the old
+   Supplier Funding bug (UI showed void, register export silently
+   didn't). It structurally can't (a void is just another row in the
+   same append-only table, never a flag the export could forget to
+   check) — verified with a real download during this session showing
+   both the original and its reversal — but added a `Status`
+   (Active/Voided/Void reversal) column anyway for explicit per-row
+   clarity, computed without a date-range restriction so it stays
+   correct even when a void falls outside the export's own filter.
+6. **Monthly Summary was unclear even to the founder** — couldn't tell
+   what several lines meant, and couldn't find "profit" on the page at
+   all (by design: the 8 lines mix real P&L with capital-movement/
+   liability lines, so there was never a single profit figure there).
+   Added a plain-language `InfoTooltip` per line (the same component
+   ADR-045 established on the Dashboard) + a banner redirecting to
+   `/admin/reports`'s "Profit Analysis" tab (confirmed by reading
+   `ReportService` directly that this is where real `platform_profit`/
+   margin actually live). **Found and fixed a real, separate bug along
+   the way**: `InfoTooltip`'s popover was centered under its icon,
+   which clipped its first few words off-screen for an icon near a
+   container's left edge (the "COGS" row) — re-anchored to grow
+   rightward from the icon instead, fixed for every page that shares
+   the component, not just this one.
+- Backend: full suite **2313/2313** green (was 2308, +5 tests: rename,
+  duplicate-name rejection, archive/reactivate + history survival, the
+  rough-P&L-estimate field, the CSV void-status regression test).
+  `php artisan migrate` applied to local dev DB (`is_active` column).
+- Frontend: `tsc --noEmit`/`eslint`/`next build` all clean.
+- **Real-browser-verified twice** (Herd-served backend + `npm run dev`
+  admin): renamed "Capital Rolling" to a test name and back, archived
+  and reactivated it (confirmed it dropped out of/back into the active
+  grid, "Show archived (N)" toggle, history/balance survived
+  untouched), confirmed the Money In/red-green badges for both a
+  negative (`OPEX — Rent`) and positive (`Capital Injection`) category,
+  typed RM500 into an Allocate field against a real RM73.44 rough
+  estimate and confirmed the amber warning text and figures matched
+  exactly, confirmed the `InfoTooltip` fix on Monthly Summary renders
+  the full un-clipped definition, and confirmed the "Reports →" link
+  lands on a real "Owner Profit" figure. All test data cleaned up and
+  the temporarily-reset local `test@example.com` admin password
+  restored to the `password` default after verification.
+- **Same-day addendum, same branch — category list trimmed after direct
+  founder pushback** ("Rent tak perlu sebab topup store mana ada
+  office"): removed `OpexRent`/`OpexBankCharges` (no confirmed real
+  expense — generic textbook picks, cheap to re-add if either ever
+  becomes real), kept `OpexSalary`/`OpexProfessionalFees` despite
+  neither in use yet (founder's own call — both map to a real,
+  already-planned future expense), and `Adjustment` no longer appears
+  in the Record Entry picker at all (it's the void mechanism's own
+  internal tag). Backend **2314/2314** green (+1 test). No migration —
+  a plain PHP enum, never a DB-level constraint.
 - Not yet committed/pushed as of this entry — working tree on
-  `feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`
-  (branched off `staging`).
+  `fix/2026-09-28-envelope-ledger-clarity-fixes` (branched off
+  `staging`).

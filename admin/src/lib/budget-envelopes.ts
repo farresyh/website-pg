@@ -13,6 +13,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 export interface BudgetEnvelope {
   id: number;
   name: string;
+  /** Archived envelopes are hidden from the default active list but their entry history stays visible/exportable — never a hard delete, see the backend migration's own doc comment. */
+  is_active: boolean;
   balance_sen: number;
 }
 
@@ -28,6 +30,8 @@ export interface BudgetEnvelopeIndex {
   /** The same lines `/admin/accounting/summary` already shows, for the current month — reference context for the "Allocate Monthly Profit" decision, deliberately not a single derived "net profit" figure. */
   current_month_summary: Record<string, number>;
   current_month_label: string;
+  /** A rough, explicitly unaudited P&L estimate (sums the P&L-shaped lines only) — a soft-warning aid for Allocate Monthly Profit, never an authoritative figure. */
+  current_month_rough_pl_estimate_sen: number;
 }
 
 export interface BudgetEnvelopeEntry {
@@ -50,6 +54,11 @@ export function getBudgetEnvelopes(token: string) {
 
 export function createBudgetEnvelope(token: string, name: string) {
   return apiFetch<{ envelope: BudgetEnvelope }>("/api/accounting/envelopes", { method: "POST", token, body: { name } });
+}
+
+/** Rename and/or archive/reactivate — never a hard delete (a used envelope is protected at the DB layer regardless). */
+export function updateBudgetEnvelope(token: string, envelopeId: number, values: { name?: string; is_active?: boolean }) {
+  return apiFetch<{ envelope: BudgetEnvelope }>(`/api/accounting/envelopes/${envelopeId}`, { method: "PATCH", token, body: values });
 }
 
 export function getBudgetEnvelopeEntries(token: string, envelopeId: number, filters: { from?: string; to?: string } = {}) {

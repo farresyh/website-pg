@@ -52,6 +52,19 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertArrayHasKey('current_month_summary', $response->json());
     }
 
+    /** Adjustment is the void mechanism's own internal tag — never offered as something an admin picks manually. */
+    public function test_index_excludes_adjustment_from_the_pickable_categories(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $response = $this->getJson('/api/accounting/envelopes')->assertOk();
+
+        $values = collect($response->json('categories'))->pluck('value');
+        $this->assertFalse($values->contains(BudgetEnvelopeEntryCategory::Adjustment->value));
+        $this->assertTrue($values->contains(BudgetEnvelopeEntryCategory::OpexSalary->value));
+        $this->assertTrue($values->contains(BudgetEnvelopeEntryCategory::OpexProfessionalFees->value));
+    }
+
     public function test_can_create_a_new_envelope(): void
     {
         $this->actAsSuperAdmin();
@@ -70,6 +83,59 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->postJson('/api/accounting/envelopes', ['name' => 'Staff Bonus'])->assertUnprocessable();
     }
 
+    public function test_can_rename_an_envelope(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->create(['name' => 'Typo Nmae']);
+
+        $response = $this->patchJson("/api/accounting/envelopes/{$envelope->id}", ['name' => 'Correct Name'])->assertOk();
+
+        $this->assertSame('Correct Name', $response->json('envelope.name'));
+        $this->assertDatabaseHas('budget_envelopes', ['id' => $envelope->id, 'name' => 'Correct Name']);
+    }
+
+    public function test_renaming_to_an_existing_name_is_rejected(): void
+    {
+        $this->actAsSuperAdmin();
+        BudgetEnvelope::query()->create(['name' => 'Taken Name']);
+        $envelope = BudgetEnvelope::query()->create(['name' => 'Other Name']);
+
+        $this->patchJson("/api/accounting/envelopes/{$envelope->id}", ['name' => 'Taken Name'])->assertUnprocessable();
+    }
+
+    /** Never a hard delete — archiving hides it from the default index filter (frontend concern) but the row and its history stay fully intact. */
+    public function test_can_archive_and_reactivate_an_envelope(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 5000, 'description' => 'ARCHIVE-TEST',
+        ])->assertCreated();
+
+        $archived = $this->patchJson("/api/accounting/envelopes/{$envelope->id}", ['is_active' => false])->assertOk();
+        $this->assertFalse($archived->json('envelope.is_active'));
+
+        // History and balance survive archiving untouched.
+        $entries = $this->getJson("/api/accounting/envelopes/{$envelope->id}/entries")->assertOk()->json('entries');
+        $this->assertNotNull(collect($entries)->firstWhere('description', 'ARCHIVE-TEST'));
+        $this->assertSame(5000, $envelope->fresh()->balanceSen());
+
+        $reactivated = $this->patchJson("/api/accounting/envelopes/{$envelope->id}", ['is_active' => true])->assertOk();
+        $this->assertTrue($reactivated->json('envelope.is_active'));
+    }
+
+    public function test_index_includes_a_rough_unaudited_pl_estimate(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $response = $this->getJson('/api/accounting/envelopes')->assertOk();
+
+        $this->assertArrayHasKey('current_month_rough_pl_estimate_sen', $response->json());
+        $this->assertIsInt($response->json('current_month_rough_pl_estimate_sen'));
+        // No orders/memberships/vouchers recorded this month in this test — the estimate must be exactly 0, not null/missing.
+        $this->assertSame(0, $response->json('current_month_rough_pl_estimate_sen'));
+    }
+
     /** CapitalInjection's typical sign is positive — the request sends a plain magnitude, the controller applies the sign. */
     public function test_recording_a_capital_injection_credits_the_envelope(): void
     {
@@ -86,7 +152,7 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertSame(3000000, $envelope->fresh()->balanceSen());
     }
 
-    /** OpexRent's typical sign is negative — a plain positive magnitude in the request still debits the envelope. */
+    /** OpexAdvertising's typical sign is negative — a plain positive magnitude in the request still debits the envelope. */
     public function test_recording_an_opex_entry_debits_the_envelope(): void
     {
         $this->actAsSuperAdmin();

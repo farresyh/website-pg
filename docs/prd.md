@@ -1337,8 +1337,8 @@ items 39/40 (founder yes/no, not a grill).
     clean, real-browser-verified. See `docs/adr.md`'s ADR-083 2026-09-28
     addendum and `docs/build-log.md`'s matching entry.
 ~~42. **Envelope Ledger + Transaction Register/System Health completeness**~~
-    — **grilled + BUILT 2026-09-28** (`feature/2026-09-28-adr083-envelope-
-    ledger-and-register-gaps`, off `staging`, not yet merged). Re-grills
+    — **grilled + BUILT 2026-09-28, 🟢 LIVE PROD** (PR #304 → `staging`,
+    released `staging`→`main` same day via PR #305). Re-grills
     ADR-083 decision 11 ("the platform does not model equity, capital or
     drawings") after the founder actually tried Bukku's free trial and
     found it mismatched to this business (inventory/fixed assets/SST/50+
@@ -1361,6 +1361,23 @@ items 39/40 (founder yes/no, not a grill).
     bug found and fixed: a missing entries-list refresh after Allocate).
     See `docs/adr.md`'s second ADR-083 2026-09-28 addendum and
     `docs/build-log.md`'s matching entry.
+~~43. **Envelope Ledger clarity fixes**~~ — **grilled + BUILT 2026-09-28**
+    (`fix/2026-09-28-envelope-ledger-clarity-fixes`, off `staging`, not yet
+    merged). Six real gaps, every one surfaced by the founder actually
+    using item 42's screens the day they went live: rename/archive an
+    envelope (never a hard delete — a used envelope is DB-protected
+    anyway), a Money In/Out badge for every category (not just
+    Adjustment), a soft over-estimate warning on Allocate Monthly Profit
+    (a rough, explicitly-unaudited P&L figure — never a hard block, never
+    reopens the "no real net profit figure" decision), a Transaction
+    Register frontend type-label gap that would have shown blank badges
+    for the 3 new row types live in production, a CSV void-status column
+    on the Envelope Ledger export, and Monthly Summary tooltips + a
+    redirect banner to Reports → Profit Analysis (plus a real, separate
+    `InfoTooltip` left-edge-clipping bug found and fixed along the way).
+    Backend 2313/2313, frontend clean, real-browser-verified twice. See
+    `docs/adr.md`'s second ADR-083 2026-09-28 addendum (decisions
+    2/4/7/10/11) and `docs/build-log.md`'s matching entry.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
