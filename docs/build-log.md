@@ -2413,3 +2413,67 @@ addendum (decisions 2/4/7/10/11) for the full design record.
 - Not yet committed/pushed as of this entry — working tree on
   `fix/2026-09-28-envelope-ledger-clarity-fixes` (branched off
   `staging`).
+
+## 2026-09-28 — New `/admin/balance` page — supplier + Reseller wallet visibility (`feature/2026-09-28-balance-overview`)
+
+Founder asked for a dedicated "Balance" screen after a prior session's
+Reseller-wallet-vs-our-wallet liability comparison: current Digiflazz
+(supplier) balance with a live refresh, plus every Reseller's prepaid
+wallet balance (total + per-row). Framed as Part A of a two-part
+request — Part B (a forecast/learned "comfortable buffer" amount,
+factoring in bank/Airwallex top-up lag) is deliberately parked for its
+own grilling session, not built here.
+
+1. **Zero backend changes — pure composition of already-shipped
+   endpoints.** Supplier balance + refresh reuse ADR-046 decision 8's
+   `POST /middleware/suppliers/{id}/refresh-balance` (the same action
+   `/middleware/suppliers`' own "Refresh Balance" button already calls
+   — same DB row, so both screens stay in sync, just not live-pushed
+   across open tabs). Reseller wallets reuse `listResellers()`
+   (ADR-073, already unpaginated, ledger-derived via `LedgerService`)
+   — the total is a client-side sum, and the per-reseller table
+   deliberately has no pagination, matching `/admin/resellers`'s own
+   existing (unpaginated) convention; Reseller accounts are a small
+   B2B/wholesale set, not a consumer table expected to grow into the
+   hundreds.
+2. **Deliberately no cross-currency total.** Supplier balance is in
+   its own currency (Digiflazz = IDR); Reseller wallets are MYR sen.
+   Shown as two separate tables, never summed against each other —
+   flagged during the build's own planning pass as a real bug shape to
+   avoid, not discovered live.
+3. **Real bug found + fixed during live verification**: the Refresh
+   button correctly hit the real endpoint (confirmed via network tab,
+   `last_tested_at` bumped), but a failed check (local dev's Digiflazz
+   credentials — `[41] Signature Anda salah`) left the page showing no
+   indication anything had failed; `balance` just stayed "—" exactly
+   as before, indistinguishable from "never checked." Added
+   `last_test_result` failure text (red, under "Last checked") —
+   turns out this matches a pattern `/middleware/suppliers` already
+   had, not a new one invented here.
+4. **Nav placement corrected by the founder mid-build**: shipped first
+   nested under Accounting (`/admin/accounting/balance`), then moved
+   to a standalone Commerce-level item (`/admin/balance`, wallet icon)
+   on the founder's own reasoning — Part B will grow this into a
+   broader operational-monitoring surface, not a bookkeeping screen,
+   so it shouldn't read as an Accounting sub-page. Route path moved to
+   match, not just the nav entry.
+5. **No new ADR** — this is UI composition over already-decided
+   concepts (ADR-046 balance check, ADR-073 wallet ledger), not a new
+   architectural decision.
+6. **Found while answering the founder's own question, relevant to
+   Part B's eventual grill**: `Supplier.balance` already auto-polls
+   daily (`app:refresh-supplier-balances`, `routes/console.php`,
+   ADR-069 decision 12) — not just on manual click. That same command
+   already warns (`Log::warning`, no UI surface) when a balance drops
+   below a per-supplier `api_config['low_balance_threshold']`, and
+   separately checks supplier-funding-ledger drift (ADR-083 decision
+   6). An order does **not** trigger a balance check — the local
+   `balance` column is a polled snapshot, never locally decremented
+   per order. Part B's starting point is therefore "surface an
+   existing static threshold + silent log warning," not a blank slate.
+- Frontend: `tsc --noEmit`/`eslint`/`next build` all clean (admin).
+- **Real-browser-verified**: logged in as `test@example.com`, full
+  round-trip on both tables, Refresh confirmed via
+  `read_network_requests` (200 on `refresh-balance`), failure-surfacing
+  fix confirmed live after the real local-dev credential failure above,
+  nav placement + route move reconfirmed after the mid-build change.
