@@ -81,6 +81,17 @@ export interface DashboardHealth {
   stuck_orders: { value: number; definition: string };
   pending_payments: { value: number; definition: string };
   queue: { pending: number; failed: number; definition: string };
+  /**
+   * 2026-09-28 addendum — treasury/liquidity check: a reseller's wallet
+   * top-up credits them immediately, but the CHIP cash behind it only
+   * settles T+1/T+2. total_supplier_balance_myr_equivalent should stay
+   * comfortably above reseller_wallet_liability_sen. No alert threshold
+   * yet — side-by-side numbers only, revisit once real reseller volume
+   * gives a real buffer to tune against.
+   */
+  reseller_wallet_liability_sen: number;
+  total_supplier_balance_myr_equivalent: number;
+  reseller_wallet_liability_definition: string;
 }
 
 export interface DashboardFunnel {

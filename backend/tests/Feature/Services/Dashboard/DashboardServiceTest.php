@@ -3,6 +3,7 @@
 namespace Tests\Feature\Services\Dashboard;
 
 use App\Models\Game;
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
@@ -11,6 +12,7 @@ use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Dashboard\DashboardService;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
@@ -201,6 +203,29 @@ class DashboardServiceTest extends TestCase
 
         $this->assertSame('MYR', $rows['Gamevion']['currency']);
         $this->assertSame('IDR', $rows['Digiflazz']['currency']);
+    }
+
+    /**
+     * 2026-09-28 addendum: the reseller-wallet-float vs supplier-balance
+     * treasury check — sums every reseller's wallet ledger balance
+     * (owner_type=reseller_wallet) regardless of which reseller, and
+     * separately sums every supplier's own balance_myr_equivalent
+     * computed just above it.
+     */
+    public function test_health_sums_reseller_wallet_liability_across_all_resellers(): void
+    {
+        $this->fakeNoFxRateAvailable();
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-'.uniqid(), 'currency' => 'MYR', 'balance' => 50000, 'api_config' => []]);
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'wallet_topup', 'amount' => 30000]);
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'order_spend', 'amount' => -5000]);
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 2, 'type' => 'wallet_topup', 'amount' => 12000]);
+        // A different owner type must never leak into the wallet total.
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 99, 'type' => 'order_profit', 'amount' => 999999]);
+
+        $health = $this->dashboard->health();
+
+        $this->assertSame(37000, $health['reseller_wallet_liability_sen']);
+        $this->assertSame(50000.0, $health['total_supplier_balance_myr_equivalent']);
     }
 
     /** An already-MYR supplier needs no FX lookup — the equivalent is just its own balance. */

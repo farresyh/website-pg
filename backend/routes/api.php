@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\AffiliateController;
 use App\Http\Controllers\Admin\AffiliateImpersonationController;
 use App\Http\Controllers\Admin\AffiliateMembershipTierController;
 use App\Http\Controllers\Admin\BlacklistController;
+use App\Http\Controllers\Admin\BudgetEnvelopeController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\CustomerAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -728,6 +729,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // ADR-083 decision 8 — read-only Monthly Accounting Summary.
         Route::get('/summary', [AccountingSummaryController::class, 'show']);
+
+        // ADR-083 2026-09-28 "Envelope Ledger" addendum — discretionary,
+        // director-controlled budget tracking (Capital Rolling, Marketing
+        // Budget, etc.), separate from the operational Transaction
+        // Register above. /export must stay ABOVE /envelopes/{budgetEnvelope}
+        // or it gets bound as an envelope id.
+        Route::get('/envelopes', [BudgetEnvelopeController::class, 'index']);
+        Route::post('/envelopes', [BudgetEnvelopeController::class, 'store']);
+        Route::get('/envelopes/export', [BudgetEnvelopeController::class, 'export']);
+        Route::post('/envelopes/allocate-monthly-profit', [BudgetEnvelopeController::class, 'allocateMonthlyProfit']);
+        Route::get('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'entries']);
+        Route::post('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'storeEntry']);
+        Route::post('/envelope-entries/{entry}/void', [BudgetEnvelopeController::class, 'voidEntry']);
+        Route::get('/envelope-entries/{entry}/receipt', [BudgetEnvelopeController::class, 'downloadReceipt']);
     });
 
     // ADR-058 58b (RES-1..6) — admin Affiliate Management. Same

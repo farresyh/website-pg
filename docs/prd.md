@@ -1336,6 +1336,31 @@ items 39/40 (founder yes/no, not a grill).
     Adjust/Void-only). Backend 2291/2291, frontend `tsc`/`lint`/`build`
     clean, real-browser-verified. See `docs/adr.md`'s ADR-083 2026-09-28
     addendum and `docs/build-log.md`'s matching entry.
+~~42. **Envelope Ledger + Transaction Register/System Health completeness**~~
+    — **grilled + BUILT 2026-09-28** (`feature/2026-09-28-adr083-envelope-
+    ledger-and-register-gaps`, off `staging`, not yet merged). Re-grills
+    ADR-083 decision 11 ("the platform does not model equity, capital or
+    drawings") after the founder actually tried Bukku's free trial and
+    found it mismatched to this business (inventory/fixed assets/SST/50+
+    reports, almost none applicable). New `/admin/accounting/envelopes`
+    screen: 4 starter envelopes (Capital Rolling/Marketing Budget/
+    Maintenance/Company Savings), append-only categorized entries
+    (deliberately not double-entry — no balance sheet/trial balance),
+    void-by-reversal corrections, a manual "Allocate Monthly Profit"
+    action reading the existing Monthly Summary as reference context
+    (never a derived "net profit" figure). Bundled with two real gaps
+    found in the same session: Transaction Register was missing
+    membership-payment/wallet-topup/withdrawal-payout rows (added,
+    no backfill needed — computed live), and System Health gained a
+    reseller-wallet-liability-vs-supplier-balance figure (a real
+    treasury/liquidity risk, no alert threshold yet). LHDN e-Invoicing
+    stays explicitly out of scope, gated on real commercial launch. A
+    proposed full redesign of the 4 existing `/admin/accounting` screens
+    was re-challenged and dropped — no real interconnection gap existed.
+    Backend 2308/2308, frontend clean, real-browser-verified (one live
+    bug found and fixed: a missing entries-list refresh after Allocate).
+    See `docs/adr.md`'s second ADR-083 2026-09-28 addendum and
+    `docs/build-log.md`'s matching entry.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 
