@@ -1390,6 +1390,158 @@ items 39/40 (founder yes/no, not a grill).
     `docs/adr.md`'s second ADR-083 2026-09-28 addendum (decisions
     2/4/7/10/11) and `docs/build-log.md`'s matching entry.
 
+## 2026-09-29 full system audit — money/security/burst, all channels, 28 findings across 5 fix waves
+
+Founder-requested fresh, from-scratch read-only audit (not triggered by an
+incident — no external customers exist yet, see item 24's sibling note and
+`docs/build-log.md`'s 2026-09-29 entry) covering money flow (checkout,
+wallets, ledgers), security, and burst-traffic stability across every
+channel (direct storefront, affiliate whitelabel, reseller portal/API/bot).
+Five scopes ran as parallel background agents, cross-checked against
+`docs/adr.md`/this file before reporting anything as new, then every
+Critical/High finding was independently re-verified against the real code by
+hand. **Full narrative report (severity write-ups, code evidence, burst
+walk-through, channel-impact table):**
+`https://claude.ai/artifact/8WNoEKiD6A4BDpq7op6g7F` — a private Claude.ai
+link, not guaranteed durable; the list below is self-contained (every
+finding + its file reference) so this backlog entry doesn't depend on that
+link staying alive. Findings are labeled **M-** (money), **S-** (security),
+**K-** (stability/burst) matching the artifact's own numbering.
+
+44. ~~**Wave 1 — the 2 Critical + 2 High findings that can duplicate or
+    strand a delivery/credit under real supplier/webhook conditions.**~~ —
+    **🟢 BUILT 2026-09-29, merged to `staging`** (PR #309,
+    `fix/2026-09-29-fulfillment-critical-audit`). All root-cause bugfixes
+    restoring an already-documented invariant, no grill needed:
+    - **M-2 (Critical)** — `ResellerWalletService::completeTopup()` had no
+      row lock, so the CHIP webhook and the 15-minute reconcile backstop
+      could both credit the same top-up. Fixed with `lockForUpdate()`.
+    - **M-1 (Critical)** — `OrderFulfillmentService::fulfill()`'s
+      single-package path generated `reference_number` inside the same
+      transaction as the supplier call; a thrown exception (a real
+      timeout) rolled the reference back too, so a retry minted a new one
+      and could deliver the order twice. Split into the same two-phase
+      shape combo legs already use. Corrected a wrong claim in ADR-094's
+      2026-09-15 addendum (new ADR-094 addendum recorded).
+    - **M-3 (High)** — an ambiguous supplier response (circuit breaker
+      open, a real 5xx, an unparseable response) was finalized as a
+      *confirmed* Failed, both at `createOrder()` time and in the
+      scheduled reconcile poll — exactly what a real outage produces.
+      Fixed at the adapter source (`CircuitBreakingSupplierAdapter`,
+      `DigiflazzAdapter`, `GamevionAdapter`) and in
+      `SupplierDeliveryCheckService`'s poll path (now stays Pending and
+      retries automatically instead of finalizing).
+    - **M-4 (High)** — a paid order could be stranded with zero admin
+      visibility: (a) `delivery_status=not_started` had no reconcile
+      sweep — `ReconcilePendingDeliveriesCommand::retryStuckNotStarted()`
+      added; (b) `ChipWebhookController` dispatched fulfillment
+      unconditionally on any Paid event, including a late one for an
+      order already compensated (voucher restored) — now flags
+      NeedsReview instead.
+    Proven test-first (red→green), full fast suite 2324/2324, concurrency
+    suite 22/22 (checked 3x locally + CI's own `backend-concurrency` job).
+    See `docs/build-log.md`'s 2026-09-29 entry.
+
+45. **Wave 2 — compensation/checkout races (Medium, still money).** Not yet
+    built.
+    - **M-5** — `Admin\OrderController::refundToWallet()` and
+      `Admin\VoucherController::storeFromOrder()` don't call
+      `isAlreadyCompensated()` and don't re-check `delivery_status` inside
+      their lock — a wallet order can get both a voucher and a refund, or
+      a refund after a concurrent resend delivered it.
+    - **M-6** — `CheckoutService::settleWithVoucher()`'s full-voucher-cover
+      race (ADR-024's accepted residual race) can give away free goods
+      repeatedly since no payment moved in that branch — ADR-024's own
+      "customer already paid" rationale doesn't cover it. Needs a grill
+      (revisits ADR-024).
+    - **M-7** — `CheckoutController`/`CheckoutService::resume()` double-
+      submit can create two CHIP purchases for one order; if the customer
+      pays the orphaned one, the webhook can't match it back.
+    - **M-8** — `ResellerCatalogService::resolveByCode()` has no
+      `Game.is_active` check, so a reseller (API/bot) can order a game
+      admin deactivated. One-line fix.
+    - **M-9** — `MembershipQuotaService` has no `restore()` — quota spent
+      at CHIP payment-link creation is never given back on a failed/
+      abandoned checkout. Needs a small addendum to ADR-027/068.
+
+46. **Wave 3 — security (all S findings + Low security hardening).** Not
+    yet built.
+    - **S-1 (Medium)** — affiliate `store_name` isn't escaped in the
+      storefront's JSON-LD (`storefront/src/app/layout.tsx`,
+      `order/[slug]/page.tsx`) — stored XSS on that affiliate's whitelabel
+      storefront. One-line fix (`<`-escape).
+    - **S-2 (Medium)** — `ReportAssistant/SqlGuard.php`'s table-name regex
+      can be bypassed with a comma-join, exposing any table to the LLM
+      report feature; the scoped `report_assistant` MySQL user (ADR-087)
+      is still unprovisioned in prod.
+    - **S-3 (Medium)** — `Jobs/Reseller/DeliverResellerWebhook.php` has no
+      private-IP/redirect guard on a reseller-supplied webhook URL (SSRF,
+      status-code oracle onto the droplet's internal network).
+    - Low: OTP has no per-IP rate limit + `OtpService`'s attempt counter
+      has a check-then-increment race; admin/affiliate login has no
+      per-account throttle (only per-IP) and no MFA (AUTH-7, already
+      tracked at item 10 above); `AffiliateImpersonationController` tokens
+      aren't scope-restricted and writes made during impersonation aren't
+      attributed to the real admin (ADR-058 RES-4 gap); Reseller API
+      throttle is keyed on the raw bearer token (an invalid-key flood is
+      unthrottled); doc comments call `order_number` a ULID when it isn't.
+
+47. **Wave 4 — burst-traffic prep, before any promo/ad push.** Not yet
+    built. **`K-4` must land before `K-1`** (raising `maxProcesses`) or a
+    slow combo job can genuinely double-run.
+    - **K-4 (Medium)** — `orders-combo` queue's job timeout (300s,
+      `config/horizon.php`) exceeds Redis `retry_after` (90s,
+      `config/queue.php`) — harmless today only because `maxProcesses` is
+      1 everywhere.
+    - **K-3 (High)** — `CircuitBreakingSupplierAdapter::guarded()` never
+      calls `recordFailure()` on a thrown exception (only on a returned
+      `isServerError` response), so a supplier that just times out never
+      trips the breaker.
+    - **K-1 (High)** — `supervisor-orders` (`config/horizon.php`) is
+      `maxProcesses: 1` and shares its queue with broadcasts and bot
+      replies — a burst of ~300 orders in 5 minutes with a slow supplier
+      backs up for tens of minutes to hours. Deliberate per ADR-048
+      ("scale once real volume justifies it") — this is that trigger.
+      Needs a short grill (ADR-048 addendum) before raising it.
+    - **K-2 (High)** — `PlayerValidationController`'s validator chain has
+      no `connectTimeout`, no overall deadline, no cache — can hold a
+      php-fpm worker up to ~32s per request, saturating the pool under
+      burst.
+    - **K-5 (Medium)** — CHIP/OpenWA webhook throttle is a flat 120/min
+      per source IP — CHIP's own IPs or OpenWA's single localhost origin
+      could hit it during a burst.
+    - **K-6 (Medium)** — Reverb broadcast has no explicit HTTP timeout
+      (`config/broadcasting.php`); storefront's `apiFetch`
+      (`storefront/src/lib/api-client.ts`) has no `AbortSignal` timeout.
+    - **K-7 (Medium)** — Redis is a single point of failure for every
+      throttled route and cached read; verify `volatile-lru`/AOF were
+      re-applied on the ADR-114 droplet, not a code fix.
+    - Low: Horizon LongWait notifications are commented out
+      (`HorizonServiceProvider.php`); `horizon:snapshot` isn't scheduled;
+      `DashboardService`'s "queue pending" KPI reads the unused `jobs`
+      table instead of Redis (always shows 0); scheduler reconcile tasks
+      run inline/sequentially on the same 15-minute tick.
+
+48. **Wave 5 — remaining money hygiene + customer notifications.** Not yet
+    built.
+    - **M-10 (Medium)** — `SupplierTransferController::voidTransfer()`/
+      `recordManualAdjustment()` check `voided_at` before taking the lock,
+      not inside it — a double-click can write two `VOID_REVERSAL`
+      entries. Internal accounting only, hand-fixable if it ever recurs.
+    - **M-11 (Medium)** — no order emails exist at all (no `app/Mail`, no
+      templates) — a customer whose order fails and gets a voucher never
+      learns the code unless an admin contacts them manually. Overlaps
+      PRD §12's already-tracked Plunk order-email gap (item 6 area).
+    - Low: admin manual wallet credit (`ResellerWalletController`) has no
+      idempotency key; `ledger_entries` has no DB-level unique-index
+      backstop against a duplicate entry (app-level dedupe only);
+      `Package.combo_override_price` has no cost-floor check (a 500, not
+      a loss, if it drops below cost); `CurrencyRateService`'s stale-FX
+      fallback has no age alert; a late non-Paid CHIP event can overwrite
+      an already-Paid order (small race window); a hidden
+      (`AffiliateGame.is_visible=false`) game is still buyable via direct
+      checkout on an affiliate storefront.
+
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 ~~**CHIP credential `.env`→DB migration**~~ — **grilled + BUILT 2026-09-19,
