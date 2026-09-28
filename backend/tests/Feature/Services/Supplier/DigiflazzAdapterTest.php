@@ -568,6 +568,14 @@ class DigiflazzAdapterTest extends TestCase
 
         $this->assertSame(SupplierOutcome::Failure, $result->outcome);
         $this->assertTrue($result->isServerError);
+
+        // 2026-09-28 audit finding M-3: a real server error means we
+        // genuinely don't know whether Digiflazz processed the order
+        // before failing — must route to NeedsReview, never a confirmed
+        // Failed (which would let a resend/Issue Voucher act as if
+        // non-delivery were certain).
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        $this->assertFalse($result->outcomeConfirmedFailed);
     }
 
     /**
@@ -622,6 +630,11 @@ class DigiflazzAdapterTest extends TestCase
         $this->assertSame(SupplierOutcome::Failure, $result->outcome);
         $this->assertSame('400', $result->errorCode);
         $this->assertFalse($result->isServerError);
+
+        // 2026-09-28 audit finding M-3: a bodyless transport error is
+        // just as ambiguous as a real server error — same reasoning.
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        $this->assertFalse($result->outcomeConfirmedFailed);
     }
 
     /** A 5xx is a transport error regardless of what body it carries — the breaker must see it. */
@@ -638,6 +651,28 @@ class DigiflazzAdapterTest extends TestCase
         ));
 
         $this->assertTrue($result->isServerError);
+        // 2026-09-28 audit finding M-3.
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        $this->assertFalse($result->outcomeConfirmedFailed);
+    }
+
+    /**
+     * 2026-09-28 audit finding M-3: a 2xx with no usable envelope at all
+     * (no `status`, no `rc`) falls through to the generic 'unknown'
+     * failure — equally ambiguous, must not be treated as confirmed.
+     */
+    public function test_create_order_treats_an_envelope_less_2xx_as_ambiguous_not_confirmed_failed(): void
+    {
+        Http::fake(['api.digiflazz.com/*' => Http::response(['unexpected' => 'shape'], 200)]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '123456789',
+        ));
+
+        $this->assertSame(SupplierOutcome::Failure, $result->outcome);
+        $this->assertSame('unknown', $result->errorCode);
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        $this->assertFalse($result->outcomeConfirmedFailed);
     }
 
     /** cek-saldo / price-list carry only a bare `rc` — surface it whether it rides a 2xx or a 4xx. */

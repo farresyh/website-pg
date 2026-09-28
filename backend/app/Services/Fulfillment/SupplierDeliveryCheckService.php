@@ -83,6 +83,28 @@ final class SupplierDeliveryCheckService
                     $applied = true;
                     break;
                 case SupplierOutcome::Failure:
+                    // 2026-09-28 audit finding M-3: a poll (scheduled
+                    // reconcile or the admin's manual "Check from
+                    // Supplier") only ever finalizes a CONFIRMED
+                    // failure. An ambiguous one (circuit breaker open,
+                    // a 5xx, an unparseable response) must NOT close
+                    // the order out as Failed — it's re-checked, not
+                    // rejected, so leaving it exactly as Pending lets
+                    // the next scheduled poll retry automatically once
+                    // the supplier/breaker recovers, with no admin
+                    // action needed for what's usually a transient
+                    // blip. `finalizePendingDelivery()`'s own
+                    // NeedsReview-vs-Failed split (via the same two
+                    // flags) still applies to any confirmed-ambiguous-
+                    // but-unsafe-to-resubmit case that DOES reach it.
+                    if (! $result->outcomeConfirmedFailed) {
+                        Log::info('Supplier status check: ambiguous failure, leaving Pending for the next poll', [
+                            'error_code' => $result->errorCode,
+                            'error_message' => $result->errorMessage,
+                        ]);
+                        break;
+                    }
+
                     $this->fulfillment->finalizePendingDelivery(
                         $order,
                         SupplierOutcome::Failure,
@@ -172,6 +194,18 @@ final class SupplierDeliveryCheckService
                         $applied = true;
                         break;
                     case SupplierOutcome::Failure:
+                        // 2026-09-28 audit finding M-3 — same reasoning
+                        // as checkOrder()'s identical guard above, at
+                        // leg granularity.
+                        if (! $result->outcomeConfirmedFailed) {
+                            Log::info('Supplier status check: ambiguous leg failure, leaving Pending for the next poll', [
+                                'leg_id' => $leg->id,
+                                'error_code' => $result->errorCode,
+                                'error_message' => $result->errorMessage,
+                            ]);
+                            break;
+                        }
+
                         $this->fulfillment->finalizePendingDeliveryLeg(
                             $leg,
                             SupplierOutcome::Failure,

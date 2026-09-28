@@ -86,6 +86,13 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 'CIRCUIT_OPEN',
                 'Supplier circuit breaker is open - too many recent failures, calls are paused for a cooldown window.',
+                // 2026-09-28 audit finding M-3: the call was never
+                // sent, so we genuinely don't know what would have
+                // happened — resendUnsafeWithSameReference: true (never
+                // outcomeConfirmedFailed) routes this to NeedsReview
+                // instead of a confirmed Failed at every call site that
+                // branches on these two flags.
+                resendUnsafeWithSameReference: true,
             );
         }
 

@@ -134,6 +134,13 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         $this->assertSame('CIRCUIT_OPEN', $response->errorCode);
         $this->assertSame(1, $inner->calls);
 
+        // 2026-09-28 audit finding M-3: the call was never sent, so
+        // whatever the caller was trying to do (create/check an order)
+        // is genuinely unknown, never a confirmed rejection — must
+        // route to NeedsReview, not a confirmed Failed.
+        $this->assertTrue($response->resendUnsafeWithSameReference);
+        $this->assertFalse($response->outcomeConfirmedFailed);
+
         // ADR-051 decision 3 — the skipped call still gets a synthetic
         // request-log row, distinct from a real HTTP failure.
         Queue::assertPushed(LogSupplierRequestJob::class, fn ($job) => $job->entry()['slug'] === $breaker->name()

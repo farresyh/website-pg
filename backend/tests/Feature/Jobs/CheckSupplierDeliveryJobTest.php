@@ -134,7 +134,11 @@ class CheckSupplierDeliveryJobTest extends TestCase
     {
         $order = $this->pendingOrder();
         $fulfillment = $this->fulfillmentService($this->checkStatusAdapter(
-            SupplierResponse::failure('Gagal', 'Transaction failed'),
+            // 2026-09-28 audit finding M-3: outcomeConfirmedFailed must
+            // be explicitly true for this to actually be a CONFIRMED
+            // failure — the flag used to be irrelevant to reaching
+            // Failed from the poll path, which was exactly the bug.
+            SupplierResponse::failure('Gagal', 'Transaction failed', outcomeConfirmedFailed: true),
         ));
 
         (new CheckSupplierDeliveryJob($order))->handle($this->app->make(SupplierAdapterFactory::class), $fulfillment);
@@ -263,7 +267,9 @@ class CheckSupplierDeliveryJobTest extends TestCase
     {
         [$order, $legs] = $this->comboOrderWithLegs([DeliveryStatus::Delivered->value, DeliveryStatus::Pending->value]);
         $fulfillment = $this->fulfillmentService($this->checkStatusAdapter(
-            SupplierResponse::failure('Gagal', 'Transaction failed'),
+            // 2026-09-28 audit finding M-3 — see the identical note on
+            // test_finalizes_as_failed_when_supplier_confirms_failure().
+            SupplierResponse::failure('Gagal', 'Transaction failed', outcomeConfirmedFailed: true),
         ));
 
         (new CheckSupplierDeliveryJob($order))->handle($this->app->make(SupplierAdapterFactory::class), $fulfillment);
