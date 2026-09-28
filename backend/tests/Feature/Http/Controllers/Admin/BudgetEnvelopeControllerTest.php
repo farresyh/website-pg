@@ -1,0 +1,236 @@
+<?php
+
+namespace Tests\Feature\Http\Controllers\Admin;
+
+use App\Models\AdminUser;
+use App\Models\BudgetEnvelope;
+use App\Models\BudgetEnvelopeEntry;
+use App\Services\Accounting\BudgetEnvelopeEntryCategory;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+/**
+ * ADR-083 2026-09-28 "Envelope Ledger" addendum — discretionary,
+ * director-controlled budget tracking, added by re-grilling ADR-083
+ * decision 11. The 4 starter envelopes are seeded by the migration
+ * itself (Capital Rolling/Marketing Budget/Maintenance/Company Savings).
+ */
+class BudgetEnvelopeControllerTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function actAsSuperAdmin(): AdminUser
+    {
+        $admin = AdminUser::factory()->superAdmin()->create();
+        Sanctum::actingAs($admin);
+
+        return $admin;
+    }
+
+    public function test_regular_admin_is_forbidden(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->getJson('/api/accounting/envelopes')->assertForbidden();
+    }
+
+    public function test_index_lists_the_four_seeded_envelopes_with_zero_balance(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $response = $this->getJson('/api/accounting/envelopes')->assertOk();
+
+        $names = collect($response->json('envelopes'))->pluck('name');
+        $this->assertTrue($names->contains('Capital Rolling'));
+        $this->assertTrue($names->contains('Marketing Budget'));
+        $this->assertTrue($names->contains('Maintenance / Operations'));
+        $this->assertTrue($names->contains('Company Savings'));
+        $this->assertSame(0, collect($response->json('envelopes'))->firstWhere('name', 'Capital Rolling')['balance_sen']);
+        $this->assertArrayHasKey('current_month_summary', $response->json());
+    }
+
+    public function test_can_create_a_new_envelope(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $response = $this->postJson('/api/accounting/envelopes', ['name' => 'Staff Bonus'])->assertCreated();
+
+        $this->assertSame('Staff Bonus', $response->json('envelope.name'));
+        $this->assertDatabaseHas('budget_envelopes', ['name' => 'Staff Bonus']);
+    }
+
+    public function test_cannot_create_a_duplicate_envelope_name(): void
+    {
+        $this->actAsSuperAdmin();
+        BudgetEnvelope::query()->create(['name' => 'Staff Bonus']);
+
+        $this->postJson('/api/accounting/envelopes', ['name' => 'Staff Bonus'])->assertUnprocessable();
+    }
+
+    /** CapitalInjection's typical sign is positive — the request sends a plain magnitude, the controller applies the sign. */
+    public function test_recording_a_capital_injection_credits_the_envelope(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+
+        $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value,
+            'amount_sen' => 3000000,
+            'description' => 'Modal Lokman untuk rolling capital',
+        ])->assertCreated();
+
+        $this->assertSame(3000000, $response->json('balance_sen'));
+        $this->assertSame(3000000, $envelope->fresh()->balanceSen());
+    }
+
+    /** OpexRent's typical sign is negative — a plain positive magnitude in the request still debits the envelope. */
+    public function test_recording_an_opex_entry_debits_the_envelope(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Marketing Budget')->firstOrFail();
+        $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 1000000, 'description' => 'seed',
+        ]);
+
+        $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::OpexAdvertising->value,
+            'amount_sen' => 25000,
+            'description' => 'Facebook Ads September',
+        ])->assertCreated();
+
+        $this->assertSame(-25000, $response->json('entry.amount_sen'));
+        $this->assertSame(975000, $envelope->fresh()->balanceSen());
+    }
+
+    public function test_recording_a_receipt_stores_it_privately_and_it_can_be_downloaded(): void
+    {
+        Storage::fake(config('filesystems.accounting_disk'));
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Marketing Budget')->firstOrFail();
+
+        $response = $this->post("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::OpexSoftware->value,
+            'amount_sen' => 5000,
+            'description' => 'Canva subscription',
+            'receipt' => UploadedFile::fake()->create('receipt.pdf', 100, 'application/pdf'),
+        ])->assertCreated();
+
+        $entryId = $response->json('entry.id');
+        Storage::disk(config('filesystems.accounting_disk'))->assertExists($response->json('entry.receipt_path'));
+
+        $this->get("/api/accounting/envelope-entries/{$entryId}/receipt")->assertOk();
+    }
+
+    /** Adjustment is the one category allowed either sign — requires an explicit `direction`. */
+    public function test_adjustment_category_requires_a_direction(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+
+        $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::Adjustment->value,
+            'amount_sen' => 500,
+            'description' => 'typo correction',
+        ])->assertUnprocessable();
+
+        $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::Adjustment->value,
+            'amount_sen' => 500,
+            'description' => 'typo correction',
+            'direction' => 'out',
+        ])->assertCreated();
+
+        $this->assertSame(-500, $response->json('entry.amount_sen'));
+    }
+
+    /**
+     * The whole point of the append-only design: a void inserts a new,
+     * negated entry rather than editing the original — the envelope
+     * balance nets to exactly what it should via a plain SUM, and the
+     * original stays visible (never zeroed/deleted).
+     */
+    public function test_voiding_an_entry_reverses_the_balance_and_keeps_the_original_row(): void
+    {
+        $admin = $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $created = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 100000, 'description' => 'oops wrong amount',
+        ])->assertCreated();
+        $entryId = $created->json('entry.id');
+
+        $response = $this->postJson("/api/accounting/envelope-entries/{$entryId}/void", ['reason' => 'typed the wrong amount'])->assertCreated();
+
+        $this->assertSame(0, $response->json('balance_sen'));
+        $this->assertSame(-100000, $response->json('reversal.amount_sen'));
+        $this->assertDatabaseHas('budget_envelope_entries', ['id' => $entryId, 'amount_sen' => 100000]);
+
+        $entries = $this->getJson("/api/accounting/envelopes/{$envelope->id}/entries")->assertOk()->json('entries');
+        $original = collect($entries)->firstWhere('id', $entryId);
+        $this->assertTrue($original['is_voided']);
+    }
+
+    public function test_cannot_void_an_already_voided_entry(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $created = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 100000, 'description' => 'x',
+        ])->assertCreated();
+        $entryId = $created->json('entry.id');
+        $this->postJson("/api/accounting/envelope-entries/{$entryId}/void", ['reason' => 'first void'])->assertCreated();
+
+        $this->postJson("/api/accounting/envelope-entries/{$entryId}/void", ['reason' => 'second void'])->assertUnprocessable();
+    }
+
+    public function test_model_layer_rejects_updating_or_deleting_a_persisted_entry(): void
+    {
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $entry = BudgetEnvelopeEntry::query()->create([
+            'budget_envelope_id' => $envelope->id, 'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value,
+            'amount_sen' => 1000, 'description' => 'x',
+        ]);
+
+        $this->expectException(\LogicException::class);
+        $entry->update(['amount_sen' => 2000]);
+    }
+
+    public function test_allocate_monthly_profit_writes_one_entry_per_chosen_envelope(): void
+    {
+        $this->actAsSuperAdmin();
+        $capital = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $marketing = BudgetEnvelope::query()->where('name', 'Marketing Budget')->firstOrFail();
+
+        $response = $this->postJson('/api/accounting/envelopes/allocate-monthly-profit', [
+            'period_label' => 'September 2026',
+            'allocations' => [
+                ['budget_envelope_id' => $capital->id, 'amount_sen' => 500000],
+                ['budget_envelope_id' => $marketing->id, 'amount_sen' => 200000],
+            ],
+        ])->assertCreated();
+
+        $this->assertCount(2, $response->json('entries'));
+        $this->assertSame(500000, $capital->fresh()->balanceSen());
+        $this->assertSame(200000, $marketing->fresh()->balanceSen());
+        $this->assertSame('monthly_profit_allocation', $response->json('entries.0.category'));
+    }
+
+    public function test_export_streams_a_csv(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 100000, 'description' => 'CSV-TEST-DESC',
+        ])->assertCreated();
+
+        $response = $this->get('/api/accounting/envelopes/export');
+
+        $response->assertOk();
+        $this->assertStringContainsString('text/csv', $response->headers->get('Content-Type'));
+        $content = $response->streamedContent();
+        $this->assertStringContainsString('CSV-TEST-DESC', $content);
+        $this->assertStringContainsString('Date,Envelope,Category', $content);
+    }
+}
