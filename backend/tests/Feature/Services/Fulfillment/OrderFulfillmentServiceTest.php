@@ -184,6 +184,44 @@ class OrderFulfillmentServiceTest extends TestCase
     }
 
     /**
+     * 2026-09-28 audit finding M-1 — a supplier call that throws instead
+     * of returning a SupplierResponse (a real ConnectionException on
+     * timeout, but any Throwable is treated the same way).
+     */
+    private function throwingSupplierAdapter(\Throwable $exception): SupplierAdapter
+    {
+        return new class($exception) implements SupplierAdapter
+        {
+            public function __construct(private readonly \Throwable $exception) {}
+
+            public function checkBalance(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function listProducts(): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function createOrder(SupplierOrderRequest $request): SupplierResponse
+            {
+                throw $this->exception;
+            }
+
+            public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
+            {
+                throw new RuntimeException('not used in this test');
+            }
+
+            public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
+            {
+                throw new ValidationNotSupportedException('not used in this test');
+            }
+        };
+    }
+
+    /**
      * ADR-031: fulfill() resolves the adapter to call by the order's
      * own supplier_id, through SupplierAdapterFactory — never a single
      * globally-injected adapter. Two suppliers bound, order points at
@@ -589,6 +627,56 @@ class OrderFulfillmentServiceTest extends TestCase
      * below for the case where reuse is still the deliberate safety
      * mechanism.
      */
+    /**
+     * 2026-09-28 audit finding M-1: createOrder() used to run inside the
+     * SAME transaction that generated and persisted reference_number, so
+     * a thrown exception (a real supplier timeout — ConnectionException —
+     * included) rolled EVERYTHING back, including the reference. A retry
+     * then minted a brand-new reference via resolve(null), and if the
+     * supplier had actually processed the first, now-orphaned attempt,
+     * the order could be delivered twice. Proves the reference survives
+     * the throw and the order lands on NeedsReview (not stranded, not
+     * silently rolled back to NotStarted).
+     */
+    public function test_fulfill_persists_the_reference_number_and_moves_to_needs_review_when_the_supplier_call_throws(): void
+    {
+        $order = $this->paidOrder();
+
+        $adapter = $this->throwingSupplierAdapter(
+            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+        );
+
+        $result = $this->service($adapter)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $this->assertNotNull($result->reference_number);
+        $this->assertStringStartsWith('REF-', $result->reference_number);
+        $this->assertSame(PaymentStatus::Paid, $result->payment_status);
+    }
+
+    /**
+     * The actual money-critical guarantee M-1 closes: once the order is
+     * on NeedsReview after a throw, a retry must reuse the SAME
+     * reference — never mint a fresh one — so the supplier's own dedup
+     * on ref_id is what protects against a real double delivery if the
+     * first, exception-interrupted attempt actually reached them.
+     */
+    public function test_fulfill_reuses_the_persisted_reference_on_retry_after_a_supplier_exception(): void
+    {
+        $order = $this->paidOrder();
+
+        $needsReview = $this->service($this->throwingSupplierAdapter(
+            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+        ))->fulfill($order);
+        $firstReference = $needsReview->reference_number;
+
+        $delivered = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
+            ->fulfill($needsReview->fresh());
+
+        $this->assertSame($firstReference, $delivered->reference_number);
+        $this->assertSame(DeliveryStatus::Delivered, $delivered->delivery_status);
+    }
+
     public function test_fulfill_generates_a_fresh_reference_number_on_a_retry_from_failed(): void
     {
         $order = $this->paidOrder();

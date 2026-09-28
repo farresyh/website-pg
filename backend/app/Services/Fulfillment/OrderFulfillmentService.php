@@ -95,7 +95,25 @@ final class OrderFulfillmentService
         // branch actually runs and the adapter reported a price.
         $drawdownPrice = null;
 
-        $delivered = DB::transaction(function () use ($order, &$drawdownPrice, $triggeredBy, $note, $recordAttempt) {
+        // Phase 1 (2026-09-28 audit finding M-1 fix): every guard check,
+        // reference resolution, and the NotStarted/Failed/NeedsReview ->
+        // Processing transition — committed on its own, BEFORE the
+        // supplier call. This used to share ONE transaction with phase 2
+        // below, so a thrown exception on the supplier call (a real
+        // ConnectionException on a slow/timing-out supplier included)
+        // rolled EVERYTHING back — the reference and the Processing
+        // write both undone. A retry then minted a brand-new reference
+        // via resolve(null) (a non-null stored value is what makes reuse
+        // possible at all), and if the supplier had actually processed
+        // the first, now-orphaned attempt despite the timeout, the order
+        // could be submitted and delivered a second time under the new
+        // reference. Splitting phase 1 out means phase 2's catch block
+        // (below) always finds the order already durably at Processing
+        // with its reference already persisted, so it can transition to
+        // NeedsReview — markNeedsReview() only accepts Processing/Failed/
+        // Pending as the FROM state, which a full rollback would have
+        // undone had this stayed one transaction.
+        [$referenceNumber, $wasNotStarted] = DB::transaction(function () use ($order) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             // ADR-102 decision 1: the real, final defense-in-depth
@@ -146,8 +164,6 @@ final class OrderFulfillmentService
                 );
             }
 
-            $adapter = $this->supplierAdapters->make($locked->supplier->slug);
-
             // ORD-8, narrowed by ADR-102 decision 9: reused on every
             // retry EXCEPT one deliberate case — a resend initiated
             // from Failed always gets a fresh reference. Safe because
@@ -180,128 +196,182 @@ final class OrderFulfillmentService
                 'delivery_status' => $processingStatus->value,
             ]);
 
-            $result = $adapter->createOrder(new SupplierOrderRequest(
-                productRef: $locked->supplier_product_ref,
-                referenceNumber: $referenceNumber,
-                playerId: $locked->player_id,
-                serverId: $locked->server_id,
-                customerPhone: $locked->customer_phone,
-                // ADR-097 decision 15 — Digiflazz-specific, ignored by
-                // every other adapter.
-                customerNoSeparator: $locked->game?->customerNoSeparatorOverride(),
-                orderId: $locked->id,
-            ));
+            return [$referenceNumber, $wasNotStarted];
+        });
 
-            // ADR-032: branches on the adapter's normalized outcome,
-            // never on raw success/failure alone — a Pending response
-            // (async supplier, e.g. Digiflazz) is neither a clean
-            // delivery nor a rejection, and must never be mistaken for
-            // either.
-            if ($result->outcome === SupplierOutcome::Pending) {
-                $locked->update([
-                    'delivery_status' => $this->orderStatus->markPending($processingStatus)->value,
-                    'supplier_response' => $result->data,
-                ]);
+        // Phase 2: the actual supplier call and outcome handling, in its
+        // own transaction so a thrown exception here rolls back only
+        // this phase's own writes, never phase 1's already-committed
+        // Processing/reference state.
+        try {
+            $delivered = DB::transaction(function () use ($order, $referenceNumber, $wasNotStarted, &$drawdownPrice, $triggeredBy, $note, $recordAttempt) {
+                $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-                if ($recordAttempt) {
-                    $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
+                $adapter = $this->supplierAdapters->make($locked->supplier->slug);
+
+                $result = $adapter->createOrder(new SupplierOrderRequest(
+                    productRef: $locked->supplier_product_ref,
+                    referenceNumber: $referenceNumber,
+                    playerId: $locked->player_id,
+                    serverId: $locked->server_id,
+                    customerPhone: $locked->customer_phone,
+                    // ADR-097 decision 15 — Digiflazz-specific, ignored by
+                    // every other adapter.
+                    customerNoSeparator: $locked->game?->customerNoSeparatorOverride(),
+                    orderId: $locked->id,
+                ));
+
+                // ADR-032: branches on the adapter's normalized outcome,
+                // never on raw success/failure alone — a Pending response
+                // (async supplier, e.g. Digiflazz) is neither a clean
+                // delivery nor a rejection, and must never be mistaken for
+                // either.
+                if ($result->outcome === SupplierOutcome::Pending) {
+                    $locked->update([
+                        'delivery_status' => $this->orderStatus->markPending($locked->delivery_status)->value,
+                        'supplier_response' => $result->data,
+                    ]);
+
+                    if ($recordAttempt) {
+                        $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
+                    }
+
+                    Log::info('Delivery pending — awaiting async supplier confirmation', [
+                        'supplier_response' => $result->data,
+                    ]);
+
+                    return $locked->fresh();
                 }
 
-                Log::info('Delivery pending — awaiting async supplier confirmation', [
-                    'supplier_response' => $result->data,
-                ]);
+                if ($result->outcome === SupplierOutcome::Failure) {
+                    // ADR-026 / ADR-098, reclassified by ADR-102 decision 4:
+                    // needs_review is narrowed to a GENUINELY unknown
+                    // outcome — unsafe to resubmit with the same reference
+                    // AND not a confirmed Gagal. Gamevion's 409/
+                    // duplicate_reference is exactly that (unsafe, not
+                    // confirmed) and still routes here unchanged. Digiflazz's
+                    // own 20-code "Terbentuk Transaksi=Ya" table used to
+                    // route here too, but that was ADR-098's own modeling
+                    // flaw: Digiflazz's `status` field already told the
+                    // platform the definitive outcome (Gagal) for those
+                    // codes — "can't safely resubmit" isn't the same fact
+                    // as "outcome unknown". A confirmed Gagal now always
+                    // reaches Failed instead, whether or not resubmitting
+                    // is unsafe, so Issue Voucher is available immediately
+                    // instead of needing a Confirm-Failed detour first.
+                    $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
 
-                return $locked->fresh();
-            }
+                    $locked->update([
+                        'delivery_status' => $requiresManualReview
+                            ? $this->orderStatus->markNeedsReview($locked->delivery_status)->value
+                            : $this->orderStatus->markDeliveryFailed($locked->delivery_status)->value,
+                        'supplier_response' => [
+                            'error_code' => $result->errorCode,
+                            'error_message' => $result->errorMessage,
+                        ],
+                    ]);
 
-            if ($result->outcome === SupplierOutcome::Failure) {
-                // ADR-026 / ADR-098, reclassified by ADR-102 decision 4:
-                // needs_review is narrowed to a GENUINELY unknown
-                // outcome — unsafe to resubmit with the same reference
-                // AND not a confirmed Gagal. Gamevion's 409/
-                // duplicate_reference is exactly that (unsafe, not
-                // confirmed) and still routes here unchanged. Digiflazz's
-                // own 20-code "Terbentuk Transaksi=Ya" table used to
-                // route here too, but that was ADR-098's own modeling
-                // flaw: Digiflazz's `status` field already told the
-                // platform the definitive outcome (Gagal) for those
-                // codes — "can't safely resubmit" isn't the same fact
-                // as "outcome unknown". A confirmed Gagal now always
-                // reaches Failed instead, whether or not resubmitting
-                // is unsafe, so Issue Voucher is available immediately
-                // instead of needing a Confirm-Failed detour first.
-                $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
+                    if ($recordAttempt) {
+                        $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
+                    }
 
-                $locked->update([
-                    'delivery_status' => $requiresManualReview
-                        ? $this->orderStatus->markNeedsReview($processingStatus)->value
-                        : $this->orderStatus->markDeliveryFailed($processingStatus)->value,
-                    'supplier_response' => [
+                    // ADR-014: the one line a file-log admin actually needs
+                    // to notice without watching the Admin Orders screen —
+                    // a business-level failure (this branch) never throws,
+                    // so without this line it would be silent until someone
+                    // looks. Grep by reference_number/order_number to find
+                    // the matching webhook/job lines for full context.
+                    Log::warning($requiresManualReview ? 'Delivery ambiguous — needs manual review' : 'Delivery failed', [
                         'error_code' => $result->errorCode,
                         'error_message' => $result->errorMessage,
-                    ],
+                    ]);
+
+                    return $locked->fresh();
+                }
+
+                // ADR-111 decision 2/3: real per-transaction cost, captured
+                // regardless of the feature flag; only USED to recompute
+                // platform_profit when the flag is enabled (decision 8).
+                // Closes this branch's own gap ADR-111's Context called out
+                // as the biggest latent one — a plain successful delivery
+                // (first attempt or retry) never reconciled platform_profit
+                // against anything beyond the checkout-time catalog estimate.
+                $realCostPriceSen = $this->captureRealCostSen($result->data, $locked->supplier->currency);
+
+                $updateData = [
+                    'supplier_ref' => $result->data['supplier_ref'] ?? null,
+                    'supplier_response' => $result->data,
+                    'delivery_status' => $this->orderStatus->markDelivered($locked->delivery_status)->value,
+                    'delivered_at' => now(),
+                    'real_cost_price_sen' => $realCostPriceSen,
+                ];
+
+                if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                    $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
+                }
+
+                $locked->update($updateData);
+
+                if ($recordAttempt) {
+                    $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
+                }
+
+                $this->creditProfit($locked);
+
+                // ADR-024 decision #6 — both payment and delivery succeeded,
+                // the third and final outcome of the voucher-redemption
+                // three-outcome model: any reserved redemption this order
+                // made is now permanent, never restored. No-op if this
+                // order never used a voucher.
+                $this->vouchers->commit($locked->id);
+
+                if (isset($result->data['price'])) {
+                    $drawdownPrice = (float) $result->data['price'];
+                }
+
+                return $locked->fresh();
+            });
+        } catch (Throwable $e) {
+            // 2026-09-28 audit finding M-1: we genuinely don't know
+            // whether the supplier received this order before things
+            // broke, so the safe default mirrors attemptLeg()'s
+            // identical reasoning for combo legs — NeedsReview, never
+            // Failed (Failed implies "nothing happened, safe to retry
+            // from scratch," which isn't a safe assumption here). A
+            // subsequent resend reuses the SAME reference (ADR-102
+            // decision 9's NeedsReview carve-out) — if the supplier
+            // really did see it, its own dedup on that reference is
+            // what actually prevents a second delivery.
+            Log::error('Delivery attempt threw unexpectedly — marking NeedsReview rather than stranding the order at Processing', [
+                'order_id' => $order->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            $delivered = DB::transaction(function () use ($order, $wasNotStarted, $triggeredBy, $note, $recordAttempt, $e) {
+                $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+                // Same race-guard as attemptLeg()'s own catch handler —
+                // a different, faster concurrent attempt already
+                // resolved this order (Delivered) or has it in flight
+                // with a supplier that hasn't confirmed yet (Pending)
+                // while this attempt was still failing; never overwrite
+                // either.
+                if (in_array($locked->delivery_status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
+                    return $locked;
+                }
+
+                $locked->update([
+                    'delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value,
+                    'supplier_response' => ['error_message' => 'Delivery attempt failed unexpectedly: '.$e->getMessage()],
                 ]);
 
                 if ($recordAttempt) {
                     $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
                 }
 
-                // ADR-014: the one line a file-log admin actually needs
-                // to notice without watching the Admin Orders screen —
-                // a business-level failure (this branch) never throws,
-                // so without this line it would be silent until someone
-                // looks. Grep by reference_number/order_number to find
-                // the matching webhook/job lines for full context.
-                Log::warning($requiresManualReview ? 'Delivery ambiguous — needs manual review' : 'Delivery failed', [
-                    'error_code' => $result->errorCode,
-                    'error_message' => $result->errorMessage,
-                ]);
-
                 return $locked->fresh();
-            }
-
-            // ADR-111 decision 2/3: real per-transaction cost, captured
-            // regardless of the feature flag; only USED to recompute
-            // platform_profit when the flag is enabled (decision 8).
-            // Closes this branch's own gap ADR-111's Context called out
-            // as the biggest latent one — a plain successful delivery
-            // (first attempt or retry) never reconciled platform_profit
-            // against anything beyond the checkout-time catalog estimate.
-            $realCostPriceSen = $this->captureRealCostSen($result->data, $locked->supplier->currency);
-
-            $updateData = [
-                'supplier_ref' => $result->data['supplier_ref'] ?? null,
-                'supplier_response' => $result->data,
-                'delivery_status' => $this->orderStatus->markDelivered($processingStatus)->value,
-                'delivered_at' => now(),
-                'real_cost_price_sen' => $realCostPriceSen,
-            ];
-
-            if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
-                $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
-            }
-
-            $locked->update($updateData);
-
-            if ($recordAttempt) {
-                $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
-            }
-
-            $this->creditProfit($locked);
-
-            // ADR-024 decision #6 — both payment and delivery succeeded,
-            // the third and final outcome of the voucher-redemption
-            // three-outcome model: any reserved redemption this order
-            // made is now permanent, never restored. No-op if this
-            // order never used a voucher.
-            $this->vouchers->commit($locked->id);
-
-            if (isset($result->data['price'])) {
-                $drawdownPrice = (float) $result->data['price'];
-            }
-
-            return $locked->fresh();
-        });
+            });
+        }
 
         if ($drawdownPrice !== null) {
             $this->supplierFunding->recordOrderDrawdown($delivered, $drawdownPrice);
@@ -429,13 +499,22 @@ final class OrderFulfillmentService
      * (advancing the *order* to Processing) already commits before this
      * loop starts, so an uncaught exception here used to strand the
      * order at Processing forever — `resolveComboOutcome()` never ran.
-     * The ordinary single-supplier `fulfill()` doesn't have this gap
-     * (its Processing transition and its one supplier call share the
-     * *same* transaction, so an exception there rolls both back to a
-     * safe, retryable pre-attempt state) — this is specific to decision
-     * 7's deliberate per-leg-transaction design (avoiding a lock held
-     * across up to 3 sequential HTTP calls, ADR-077's own fixed lock-
-     * contention class).
+     *
+     * 2026-09-28 audit finding M-1 correction: this comment used to
+     * claim the ordinary single-supplier `fulfill()` "doesn't have this
+     * gap" because its Processing transition and its one supplier call
+     * shared the *same* transaction, rolling both back to "a safe,
+     * retryable pre-attempt state" on a thrown exception. That was
+     * wrong — a rollback losing the just-generated reference_number
+     * meant a retry minted a brand-new one via `resolve(null)`, and if
+     * the supplier had actually processed the exception-interrupted
+     * attempt, the retry could deliver a second time under the new
+     * reference. `fulfill()` now uses the same two-phase shape this
+     * method does (Processing committed on its own before the supplier
+     * call, a catch block routing an exception to NeedsReview while
+     * keeping the already-persisted reference) for exactly that reason
+     * — the two paths are no longer structurally different here, only
+     * per-leg vs per-order in scope.
      */
     private function attemptLeg(Order $order, OrderDeliveryLeg $leg, ?string $triggeredBy = null, ?string $note = null): void
     {
