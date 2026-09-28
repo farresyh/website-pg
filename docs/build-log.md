@@ -2230,3 +2230,93 @@ design in `docs/adr.md`'s ADR-083 2026-09-28 addendum, this entry is the build.
   toggle against real local data.
 - Not yet committed/pushed as of this entry — working tree on
   `feature/2026-09-28-adr083-accounting-ui` (branched off `staging`).
+
+## 2026-09-28 — Envelope Ledger + Transaction Register/System Health completeness (re-grilling ADR-083 decision 11, `feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`)
+
+Founder re-challenged ADR-083's original "the platform does not model
+equity, capital or drawings" call — not over cost, but because an
+auditor-ready complete money trail (director capital, OPEX, marketing,
+dividends) was the actual unmet need, and a hands-on Bukku free-trial
+session showed most of that product's surface (inventory, fixed assets,
+SST, 50+ reports) doesn't apply to this business. Grilled at length
+(`/mattpocock-skills:grilling`) — see `docs/adr.md`'s second 2026-09-28
+ADR-083 addendum for the full decision record. Three things shipped:
+
+1. **Envelope Ledger** (`/admin/accounting/envelopes`, new sidebar item)
+   — `budget_envelopes`/`budget_envelope_entries`, append-only (model-layer
+   enforced, mirrors `SupplierLedgerEntry`), 4 starter envelopes seeded
+   (Capital Rolling, Marketing Budget, Maintenance/Operations, Company
+   Savings). Deliberately **not** a double-entry engine — no balance
+   sheet, no trial balance. "Beginner friendly" by explicit founder
+   request: entries take a positive magnitude, the category's own
+   `typicalSign()` supplies the sign (`Adjustment` is the one category
+   needing an explicit direction). Corrections are void-by-reversal only
+   (a new negated entry, `reverses_entry_id` back-reference) — the
+   original never edited/deleted, balance is a plain `SUM(amount_sen)`.
+   "Allocate Monthly Profit" shows the real current-month Monthly Summary
+   lines as reference context (reused from `MonthlyAccountingSummaryService`,
+   never re-derived into a single "net profit" figure — that formula was
+   never grilled/pinned) and lets the founder type a manual split per
+   envelope. Receipts reuse the existing private-disk pattern; an
+   AI/OCR "Digital Shoebox" was requested mid-grill then withdrawn once
+   re-flagged as the exact prompt-injection risk ADR-083's original
+   decision 11 already rejected once.
+2. **Transaction Register — 3 missing row types.** `membershipRows()`,
+   `walletTopupRows()` (`status=Paid` only), `withdrawalRows()`
+   (`status=Completed` only, dated at `processed_at`) added to
+   `TransactionRegisterService`, closing a real "nothing is ever lost"
+   gap — membership fees and wallet top-ups were already matched by CHIP
+   Settlements and summed in the Monthly Summary, but never had their own
+   row in the one screen meant to be the complete, downloadable record.
+   No backfill needed — the register computes live from a date-range
+   query, so historical rows in `MembershipFeeRecord`/`WalletTopupAttempt`/
+   `Withdrawal` (all pre-existing tables) show up correctly the first time
+   a past period is viewed/exported.
+3. **System Health — reseller-wallet-liability vs. supplier-balance.**
+   `DashboardService::health()` gained `reseller_wallet_liability_sen`
+   (summed across every reseller's wallet ledger) alongside the existing
+   per-supplier balances, for a real treasury risk the founder flagged: a
+   reseller's wallet top-up credits their spendable balance immediately,
+   but the CHIP cash behind it settles T+1/T+2 — if spent immediately,
+   the live supplier balance can be drawn down ahead of the cash meant to
+   replenish it. Side-by-side numbers only, no alert threshold yet
+   (agreed to wait for real reseller volume before guessing a buffer %).
+
+**Also decided, not built:** a founder proposal to fully redesign the
+existing 4 `/admin/accounting` screens (to "sync like Bukku") was
+re-challenged before any code was touched — `AppSidebar.tsx` already
+groups all 4 under one always-visible "Accounting" section, and the
+Monthly Summary already derives from the same underlying ledger data the
+other screens write. No real interconnection gap existed; the perceived
+one was a surface comparison against a mature competitor product. The
+Envelope Ledger was added as a 5th item in the same sidebar group
+instead of touching the 4 already-tested screens. LHDN e-Invoicing/
+MyInvois submission was deliberately kept out of scope — a real,
+separate compliance requirement (already legally live for this
+company's revenue tier as of Jan 2026, confirmed via research) gated on
+actual commercial launch, still zero external customers as of this
+session.
+
+- Backend: full suite **2308/2308** green (was 2291, +17 tests — 3
+  register-gap, 1 dashboard-liability, 13 Envelope Ledger),
+  `php artisan migrate` applied to local dev DB.
+- Frontend: `tsc --noEmit`/`eslint`/`next build` all clean.
+- **Real-browser-verified** against the real local dev DB (Herd-served
+  backend + `npm run dev` admin): recorded a Capital Injection entry,
+  voided it (balance netted back to exactly RM0, original entry visible
+  and struck through), ran a real Allocate Monthly Profit against real
+  September 2026 Monthly Summary figures, downloaded and inspected a real
+  CSV export. **One real bug caught by this live pass** (not the test
+  suite): `handleAllocate()` refreshed envelope balances but not the
+  selected envelope's own entries list — a freshly-allocated entry was
+  invisible until a manual reload. Fixed and re-verified live in the
+  same session. All test data cleaned up and the temporarily-reset local
+  `test@example.com` admin password restored to the `password` default
+  afterward.
+- A first draft leaked the Malay working name ("Peruntukan Untung
+  Bulanan") into the visible "Allocate Monthly Profit" button label and
+  several doc comments — caught and fixed same session; the admin panel
+  stays English throughout, matching the rest of `/admin`.
+- Not yet committed/pushed as of this entry — working tree on
+  `feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`
+  (branched off `staging`).
