@@ -51,11 +51,19 @@ class BudgetEnvelopeController extends Controller
 
         return response()->json([
             'envelopes' => $envelopes,
-            'categories' => collect(BudgetEnvelopeEntryCategory::cases())->map(fn (BudgetEnvelopeEntryCategory $c) => [
-                'value' => $c->value,
-                'label' => $c->label(),
-                'typical_sign' => $c->typicalSign(),
-            ]),
+            // Adjustment excluded — it's the void mechanism's own internal
+            // tag (BudgetEnvelopeService::voidEntry() sets it automatically
+            // on a reversal entry), never something an admin should pick
+            // manually here. A loose correction with no specific
+            // originating entry to void still fits under "OPEX — Other".
+            'categories' => collect(BudgetEnvelopeEntryCategory::cases())
+                ->reject(fn (BudgetEnvelopeEntryCategory $c) => $c === BudgetEnvelopeEntryCategory::Adjustment)
+                ->map(fn (BudgetEnvelopeEntryCategory $c) => [
+                    'value' => $c->value,
+                    'label' => $c->label(),
+                    'typical_sign' => $c->typicalSign(),
+                ])
+                ->values(),
             'current_month_summary' => $monthSummary,
             // Deliberately labeled "rough"/"unaudited" — a soft warning
             // aid for Allocate Monthly Profit, never the authoritative

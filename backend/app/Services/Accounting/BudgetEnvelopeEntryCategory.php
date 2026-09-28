@@ -7,9 +7,20 @@ namespace App\Services\Accounting;
  * `BudgetEnvelopeEntry::amount_sen` carries the real signed value, this
  * never drives arithmetic on its own. `typicalSign()` only backs a
  * soft warning in the form request (catching an obvious mis-pick, e.g.
- * "OPEX Rent" typed as a positive inflow) — `Adjustment` is the one
+ * "OPEX Salary" typed as a positive inflow) — `Adjustment` is the one
  * category allowed either sign outright, mirroring
- * `SupplierLedgerEntryType::ManualAdjustment`.
+ * `SupplierLedgerEntryType::ManualAdjustment`. Deliberately trimmed
+ * 2026-09-28 (same-day follow-up, founder pushback): `OpexRent`
+ * (confirmed no physical office exists) and `OpexBankCharges`
+ * (no confirmed real recurring expense distinct from the fee already
+ * captured on `supplier_transfers.fee_myr`) were removed rather than
+ * kept "just in case" — add back with one enum case + one `label()`
+ * arm if either ever becomes a real, confirmed expense. `OpexSalary`
+ * and `OpexProfessionalFees` stayed despite not being in use yet —
+ * the founder's own explicit call, since both map to a real, already-
+ * planned future expense (staff salary; the year-end auditor/tax
+ * agent engagement this whole ADR exists to prepare for) rather than
+ * a speculative guess.
  */
 enum BudgetEnvelopeEntryCategory: string
 {
@@ -17,10 +28,8 @@ enum BudgetEnvelopeEntryCategory: string
     case MonthlyProfitAllocation = 'monthly_profit_allocation';
     case CapitalRepayment = 'capital_repayment';
     case DividendDrawing = 'dividend_drawing';
-    case OpexRent = 'opex_rent';
     case OpexAdvertising = 'opex_advertising';
     case OpexSoftware = 'opex_software';
-    case OpexBankCharges = 'opex_bank_charges';
     case OpexProfessionalFees = 'opex_professional_fees';
     case OpexSalary = 'opex_salary';
     case OpexOther = 'opex_other';
@@ -43,10 +52,8 @@ enum BudgetEnvelopeEntryCategory: string
             self::MonthlyProfitAllocation => 'Monthly Profit Allocation',
             self::CapitalRepayment => 'Capital Repayment',
             self::DividendDrawing => 'Dividend / Drawing',
-            self::OpexRent => 'OPEX — Rent',
             self::OpexAdvertising => 'OPEX — Advertising',
             self::OpexSoftware => 'OPEX — Software / Tools',
-            self::OpexBankCharges => 'OPEX — Bank Charges',
             self::OpexProfessionalFees => 'OPEX — Professional Fees',
             self::OpexSalary => 'OPEX — Salary',
             self::OpexOther => 'OPEX — Other',

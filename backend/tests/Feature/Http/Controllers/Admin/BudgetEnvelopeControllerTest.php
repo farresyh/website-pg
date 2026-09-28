@@ -52,6 +52,19 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertArrayHasKey('current_month_summary', $response->json());
     }
 
+    /** Adjustment is the void mechanism's own internal tag — never offered as something an admin picks manually. */
+    public function test_index_excludes_adjustment_from_the_pickable_categories(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $response = $this->getJson('/api/accounting/envelopes')->assertOk();
+
+        $values = collect($response->json('categories'))->pluck('value');
+        $this->assertFalse($values->contains(BudgetEnvelopeEntryCategory::Adjustment->value));
+        $this->assertTrue($values->contains(BudgetEnvelopeEntryCategory::OpexSalary->value));
+        $this->assertTrue($values->contains(BudgetEnvelopeEntryCategory::OpexProfessionalFees->value));
+    }
+
     public function test_can_create_a_new_envelope(): void
     {
         $this->actAsSuperAdmin();
@@ -139,7 +152,7 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertSame(3000000, $envelope->fresh()->balanceSen());
     }
 
-    /** OpexRent's typical sign is negative — a plain positive magnitude in the request still debits the envelope. */
+    /** OpexAdvertising's typical sign is negative — a plain positive magnitude in the request still debits the envelope. */
     public function test_recording_an_opex_entry_debits_the_envelope(): void
     {
         $this->actAsSuperAdmin();
