@@ -7,20 +7,24 @@ use App\Models\OrderDeliveryLeg;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
+use App\Models\SupplierTransferCorrection;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 /**
  * ADR-083 decision 2/3: the sole writer of `supplier_transfers` and
  * `supplier_ledger_entries` — mirrors `ResellerWalletService`'s role for
  * the reseller wallet ledger. `recordTransfer()` (TOPUP),
- * `recordOrderDrawdown()` (ORDER_DRAWDOWN), and — since the 2026-09-15
- * addendum — `recordManualAdjustment()`/`voidTransfer()`
- * (MANUAL_ADJUSTMENT) are the only writers; `REFUND` capture (from the
- * Digiflazz webhook path) lands here too once built.
+ * `recordOrderDrawdown()` (ORDER_DRAWDOWN), `recordManualAdjustment()`/
+ * `voidTransfer()` (MANUAL_ADJUSTMENT/VOID_REVERSAL, 2026-09-15 addendum),
+ * and `recordCorrection()` (metadata-only, 2026-09-28 addendum) are the
+ * only writers; `REFUND` capture (from the Digiflazz webhook path) lands
+ * here too once built.
  */
 final class SupplierFundingService
 {
@@ -105,17 +109,18 @@ final class SupplierFundingService
     /**
      * ADR-083 2026-09-15 addendum: a partial correction against an
      * already-recorded transfer — e.g. the founder forgot to capture
-     * the supplier's own deposit fee at entry time (the exact gap this
-     * addendum closes going forward, for a transfer recorded before
-     * the fix). Never edits/deletes the original `TOPUP` row
-     * (`SupplierLedgerEntry` enforces this at the model layer) —
-     * always a new, signed `MANUAL_ADJUSTMENT` entry referencing it,
-     * so the ledger's full history stays legible: what was recorded,
-     * and why it was later corrected. `$signedAmount` is in the
-     * transfer's own currency, positive or negative depending on
-     * which way the correction goes; `$reason` is required (the
-     * column itself is documented "required by app logic for
-     * MANUAL_ADJUSTMENT" since the original ADR-083 migration).
+     * the supplier's own deposit fee at entry time. Never edits/deletes
+     * the original `TOPUP` row (`SupplierLedgerEntry` enforces this at
+     * the model layer) — always a new, signed `MANUAL_ADJUSTMENT` entry
+     * referencing it, so the ledger's full history stays legible.
+     * `$signedAmount` is in the transfer's own currency; `$reason` is
+     * required.
+     *
+     * 2026-09-28 addendum: wrapped in its own transaction with
+     * `lockForUpdate()` on the transfer row — cheap insurance against a
+     * concurrent Adjust/Void race on the same transfer (realistically
+     * rare, single-admin usage — not worth a full subprocess-concurrency
+     * test the way `LedgerService::withdraw()` gets).
      */
     public function recordManualAdjustment(
         SupplierTransfer $transfer,
@@ -123,9 +128,70 @@ final class SupplierFundingService
         string $reason,
         int $adminUserId,
     ): SupplierLedgerEntry {
+        return DB::transaction(function () use ($transfer, $signedAmount, $reason, $adminUserId) {
+            $locked = SupplierTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+
+            return $this->writeLedgerCorrection($locked, SupplierLedgerEntryType::ManualAdjustment, $signedAmount, $reason, $adminUserId);
+        });
+    }
+
+    /**
+     * ADR-083 2026-09-15 addendum: the other correction shape — the
+     * money behind this transfer never actually reached the supplier
+     * at all. Marks the transfer `voided_at`/`void_reason` and writes a
+     * full-reversal `VOID_REVERSAL` ledger entry (distinct type from a
+     * partial `MANUAL_ADJUSTMENT`, since 2026-09-28) — the linked
+     * ledger entry stays immutable, only the transfer itself (never
+     * append-only) gains void metadata.
+     *
+     * 2026-09-28 addendum, real bug fix: previously reversed only the
+     * transfer's *original* net (`netForeignReceived()`), never its
+     * *current cumulative* net (original + every `MANUAL_ADJUSTMENT`
+     * already posted against it) — an Adjust-then-Void sequence left a
+     * permanent, silent residual in the supplier's ledger balance.
+     * Fixed to reverse `netForeignReceived() + SUM(prior adjustments)`.
+     * Verified against production before deciding a backfill was
+     * unneeded: 2 voided transfers existed, neither had a prior
+     * adjustment — the bug was real but never manifested, so this is a
+     * forward-looking fix only. Same `lockForUpdate()` treatment as
+     * `recordManualAdjustment()`, for the same reason.
+     */
+    public function voidTransfer(SupplierTransfer $transfer, string $reason, int $adminUserId): SupplierLedgerEntry
+    {
+        return DB::transaction(function () use ($transfer, $reason, $adminUserId) {
+            $locked = SupplierTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+
+            $priorAdjustments = (float) $locked->adjustments()->sum('amount');
+            $cumulativeNet = (float) $locked->netForeignReceived() + $priorAdjustments;
+
+            $reversal = $this->writeLedgerCorrection(
+                $locked,
+                SupplierLedgerEntryType::VoidReversal,
+                number_format(-$cumulativeNet, 4, '.', ''),
+                $reason,
+                $adminUserId,
+            );
+
+            $locked->update([
+                'voided_at' => now(),
+                'void_reason' => $reason,
+            ]);
+
+            return $reversal;
+        });
+    }
+
+    /** Shared writer for both correction shapes — only the `type` differs, so the register (2026-09-28 addendum) can tell a partial correction from a full void reversal. */
+    private function writeLedgerCorrection(
+        SupplierTransfer $transfer,
+        SupplierLedgerEntryType $type,
+        string $signedAmount,
+        string $reason,
+        int $adminUserId,
+    ): SupplierLedgerEntry {
         return SupplierLedgerEntry::query()->create([
             'supplier_id' => $transfer->supplier_id,
-            'type' => SupplierLedgerEntryType::ManualAdjustment->value,
+            'type' => $type->value,
             'amount' => $signedAmount,
             'currency' => $transfer->currency,
             'reference_type' => 'supplier_transfer',
@@ -136,36 +202,85 @@ final class SupplierFundingService
     }
 
     /**
-     * ADR-083 2026-09-15 addendum: the other correction shape — the
-     * money behind this transfer never actually reached the supplier
-     * at all (a genuinely failed send, not a typo or a missed fee).
-     * Reverses the transfer's *entire* ledger contribution in one
-     * `MANUAL_ADJUSTMENT` entry (the net amount the original TOPUP
-     * actually credited, negated) and marks the transfer itself
-     * `voided_at`/`void_reason` — `SupplierTransfer` was always
-     * documented as "not append-only itself" for exactly this kind of
-     * correction, so the transfer history never shows a failed send
-     * as if it were a real successful one, while the linked ledger
-     * entry stays immutable. One transaction: both writes succeed
-     * together or neither does.
+     * ADR-083 2026-09-28 addendum: a metadata-only correction — never
+     * touches the ledger. Only `source_channel`/`amount_myr_sent`/
+     * `fee_myr`/`reference_no` (+ an optional replacement receipt) are
+     * accepted; `amount_foreign_received`/`supplier_fee` are never even
+     * read out of `$changes` here — those two, and only those two, feed
+     * `netForeignReceived()` -> `SupplierLedgerEntry.amount` directly
+     * and must stay Adjust/Void-only. Diff-computed against the current
+     * row inside the lock; a no-op submit (nothing actually changed, no
+     * new receipt) is rejected rather than writing an empty audit row.
+     * A newly-uploaded receipt is only deleted-if-replaced (the old
+     * file) AFTER the DB transaction commits — never inside it, so a
+     * rolled-back write never leaves the real, still-referenced old
+     * file deleted.
      */
-    public function voidTransfer(SupplierTransfer $transfer, string $reason, int $adminUserId): SupplierLedgerEntry
-    {
-        return DB::transaction(function () use ($transfer, $reason, $adminUserId) {
-            $reversal = $this->recordManualAdjustment(
-                $transfer,
-                number_format(-(float) $transfer->netForeignReceived(), 4, '.', ''),
-                $reason,
-                $adminUserId,
-            );
+    public function recordCorrection(
+        SupplierTransfer $transfer,
+        array $changes,
+        string $reason,
+        int $adminUserId,
+        ?UploadedFile $receipt = null,
+    ): SupplierTransferCorrection {
+        $allowed = ['source_channel', 'amount_myr_sent', 'fee_myr', 'reference_no'];
+        $changes = array_intersect_key($changes, array_flip($allowed));
 
-            $transfer->update([
-                'voided_at' => now(),
-                'void_reason' => $reason,
-            ]);
+        $newReceiptPath = null;
+        if ($receipt !== null) {
+            $newReceiptPath = $receipt->store('accounting/supplier-transfers', config('filesystems.accounting_disk'));
+        }
 
-            return $reversal;
-        });
+        $oldReceiptPathToDelete = null;
+
+        try {
+            $correction = DB::transaction(function () use ($transfer, $changes, $reason, $adminUserId, $newReceiptPath, &$oldReceiptPathToDelete) {
+                $locked = SupplierTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+
+                $diff = [];
+                foreach ($changes as $field => $newValue) {
+                    $oldValue = $locked->getAttribute($field);
+                    if ((string) $oldValue !== (string) $newValue) {
+                        $diff[$field] = [$oldValue, $newValue];
+                    }
+                }
+
+                $updates = $changes;
+                if ($newReceiptPath !== null) {
+                    $diff['receipt_path'] = [$locked->receipt_path, $newReceiptPath];
+                    $oldReceiptPathToDelete = $locked->receipt_path;
+                    $updates['receipt_path'] = $newReceiptPath;
+                }
+
+                if ($diff === []) {
+                    throw ValidationException::withMessages([
+                        'changes' => ['Nothing was actually changed.'],
+                    ]);
+                }
+
+                $locked->update($updates);
+
+                return SupplierTransferCorrection::query()->create([
+                    'supplier_transfer_id' => $locked->id,
+                    'changes' => $diff,
+                    'reason' => $reason,
+                    'admin_user_id' => $adminUserId,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            // The write failed/rolled back — don't leave an orphan newly-uploaded receipt behind.
+            if ($newReceiptPath !== null) {
+                Storage::disk(config('filesystems.accounting_disk'))->delete($newReceiptPath);
+            }
+
+            throw $e;
+        }
+
+        if ($oldReceiptPathToDelete !== null) {
+            Storage::disk(config('filesystems.accounting_disk'))->delete($oldReceiptPathToDelete);
+        }
+
+        return $correction;
     }
 
     /**
@@ -246,12 +361,26 @@ final class SupplierFundingService
     }
 
     /**
+     * ADR-083 2026-09-28 addendum: `$from`/`$to` scope on `created_at`,
+     * `$voided` (`true` = voided only, `false` = active only, `null` =
+     * both) — backs the new dedicated Funding History page's filters.
+     * Eager-loads `corrections` alongside the existing `adjustments`.
+     *
      * @return LengthAwarePaginator<int, SupplierTransfer>
      */
-    public function transfers(Supplier $supplier, int $perPage = 20): LengthAwarePaginator
-    {
+    public function transfers(
+        Supplier $supplier,
+        int $perPage = 20,
+        ?CarbonInterface $from = null,
+        ?CarbonInterface $to = null,
+        ?bool $voided = null,
+    ): LengthAwarePaginator {
         return $supplier->transfers()
-            ->with('adjustments')
+            ->with(['adjustments', 'corrections'])
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($voided === true, fn ($q) => $q->whereNotNull('voided_at'))
+            ->when($voided === false, fn ($q) => $q->whereNull('voided_at'))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate($perPage);

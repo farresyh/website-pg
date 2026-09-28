@@ -86,4 +86,15 @@ class SupplierTransfer extends Model
 
         return number_format($gross - $fee, 4, '.', '');
     }
+
+    /**
+     * ADR-083 2026-09-28 addendum: every metadata-only correction
+     * (`amount_myr_sent`/`fee_myr`/`source_channel`/`reference_no`/
+     * receipt) made against this transfer — never a ledger-affecting
+     * one, those stay on `adjustments()` above.
+     */
+    public function corrections(): HasMany
+    {
+        return $this->hasMany(SupplierTransferCorrection::class)->orderByDesc('created_at');
+    }
 }

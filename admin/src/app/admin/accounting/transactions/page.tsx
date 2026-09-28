@@ -1,11 +1,17 @@
 "use client";
 
 /**
- * ADR-083 decision 9 — Transaction Register: read-only, "nothing is ever
- * lost" view across paid orders, supplier funding transfers, supplier
- * REFUND entries, and Path-B vouchers, plus a CSV export. Under
+ * ADR-083 decision 9 — Transaction Register: read-only, "nothing is
+ * ever lost" view across paid orders, supplier funding transfers,
+ * supplier REFUND entries, Path-B vouchers, and (2026-09-28 addendum)
+ * supplier-transfer corrections, plus a CSV export. Under
  * `/admin/accounting` alongside the Funding Ledger screen (PR-1) — same
  * bookkeeping-not-supplier-integration placement.
+ *
+ * 2026-09-28 addendum: real backend pagination (was every matching row,
+ * unbounded) + a `type` filter + a voided-row tag (figures stay the
+ * real originally-recorded ones, never zeroed — the reversal is its own
+ * `supplier_adjustment` row).
  */
 
 import { useEffect, useState } from "react";
@@ -34,6 +40,7 @@ import {
   type TransactionRegisterRow,
   type TransactionRegisterFilters,
 } from "@/lib/transaction-register";
+import type { Paginated } from "@/lib/payment-settlements";
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
 const TD = "px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400";
@@ -43,6 +50,15 @@ const typeSeverity: Record<TransactionRegisterRow["type"], "info" | "success" | 
   supplier_transfer: "success",
   supplier_refund: "warn",
   voucher_issued: "secondary",
+  supplier_adjustment: "secondary",
+};
+
+const typeLabel: Record<TransactionRegisterRow["type"], string> = {
+  order: "Order",
+  supplier_transfer: "Supplier transfer",
+  supplier_refund: "Supplier refund",
+  voucher_issued: "Voucher issued",
+  supplier_adjustment: "Supplier adjustment",
 };
 
 function formatRm(sen: number | null): string {
@@ -57,14 +73,15 @@ export default function TransactionRegisterPage() {
   const router = useRouter();
   const session = useClientSession();
   const token = session?.token ?? null;
-  const [rows, setRows] = useState<TransactionRegisterRow[] | null>(null);
+  const [page, setPage] = useState<Paginated<TransactionRegisterRow> | null>(null);
+  const [pageNo, setPageNo] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<TransactionRegisterFilters>({});
   const [exporting, setExporting] = useState(false);
 
-  function refresh(t: string, f: TransactionRegisterFilters) {
-    return getTransactionRegister(t, f)
-      .then((res) => setRows(res.rows))
+  function refresh(t: string, f: TransactionRegisterFilters, p: number) {
+    return getTransactionRegister(t, { ...f, page: p })
+      .then(setPage)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the transaction register."));
   }
 
@@ -74,13 +91,20 @@ export default function TransactionRegisterPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token, {});
+    refresh(s.token, {}, 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleFilter() {
     if (!token) return;
-    refresh(token, filters);
+    setPageNo(1);
+    refresh(token, filters, 1);
+  }
+
+  function handlePageChange(p: number) {
+    if (!token) return;
+    setPageNo(p);
+    refresh(token, filters, p);
   }
 
   async function handleExport() {
@@ -96,11 +120,11 @@ export default function TransactionRegisterPage() {
     }
   }
 
-  if (error && !rows) {
+  if (error && !page) {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !rows) {
+  if (!token || !page) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 
@@ -110,8 +134,8 @@ export default function TransactionRegisterPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Transaction Register</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Every money-moving event — paid orders, supplier top-ups, supplier refunds, and compensation vouchers —
-            in one place. What the year-end professional works from.
+            Every money-moving event — paid orders, supplier top-ups, supplier refunds, corrections, and compensation
+            vouchers — in one place. What the year-end professional works from.
           </p>
         </div>
         <Button variant="outlined" size="small" disabled={exporting} onClick={handleExport}>
@@ -128,6 +152,20 @@ export default function TransactionRegisterPage() {
           <Label htmlFor="txn_to">To</Label>
           <Input id="txn_to" type="date" value={filters.to ?? ""} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value || undefined }))} />
         </div>
+        <div>
+          <Label htmlFor="txn_type">Type</Label>
+          <select
+            id="txn_type"
+            value={filters.type ?? ""}
+            onChange={(e) => setFilters((f) => ({ ...f, type: (e.target.value || undefined) as TransactionRegisterRow["type"] | undefined }))}
+            className="h-11 rounded-lg border border-gray-300 bg-transparent px-3 text-theme-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
+          >
+            <option value="">All</option>
+            {(Object.keys(typeLabel) as TransactionRegisterRow["type"][]).map((t) => (
+              <option key={t} value={t}>{typeLabel[t]}</option>
+            ))}
+          </select>
+        </div>
         <Button size="small" onClick={handleFilter}>Filter</Button>
       </div>
 
@@ -137,7 +175,7 @@ export default function TransactionRegisterPage() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={rows} dataKey="reference">
+          <DataTable data={page.data} dataKey="reference">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
@@ -156,18 +194,24 @@ export default function TransactionRegisterPage() {
                 <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {({ item }) => {
                     const r = item as unknown as TransactionRegisterRow;
+                    const isVoided = r.status === "voided";
                     return (
                       <DataTableRow key={r.reference + r.date}>
                         <DataTableCell className={TD}>{formatDate(r.date)}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
-                          <Tag severity={typeSeverity[r.type]}>{r.type.replace("_", " ")}</Tag>
+                          <Tag severity={typeSeverity[r.type]}>{typeLabel[r.type]}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{r.reference}</DataTableCell>
                         <DataTableCell className={TD}>{r.description}</DataTableCell>
-                        <DataTableCell className={TD}>{formatRm(r.gross_sen)}</DataTableCell>
-                        <DataTableCell className={TD}>{formatRm(r.fee_sen)}</DataTableCell>
+                        <DataTableCell className={`${TD} ${isVoided ? "line-through" : ""}`}>{formatRm(r.gross_sen)}</DataTableCell>
+                        <DataTableCell className={`${TD} ${isVoided ? "line-through" : ""}`}>{formatRm(r.fee_sen)}</DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.cost_sen)}</DataTableCell>
-                        <DataTableCell className={TD}>{formatRm(r.net_sen)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4">
+                          <span className={isVoided ? "text-gray-400 line-through" : "text-theme-sm text-gray-500 dark:text-gray-400"}>
+                            {formatRm(r.net_sen)}
+                          </span>
+                          {isVoided && <Tag severity="danger" className="ml-2">Voided</Tag>}
+                        </DataTableCell>
                         <DataTableCell className={TD}>{r.amount_foreign ? `${r.currency} ${r.amount_foreign}` : "—"}</DataTableCell>
                       </DataTableRow>
                     );
@@ -176,11 +220,27 @@ export default function TransactionRegisterPage() {
               </DataTableTable>
             </DataTableTableContainer>
           </DataTable>
-          {rows.length === 0 && (
+          {page.data.length === 0 && (
             <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No transactions in this range.</p>
           )}
         </div>
       </div>
+
+      {page.last_page > 1 && (
+        <div className="mt-4 flex items-center justify-between text-theme-sm text-gray-500 dark:text-gray-400">
+          <span>
+            Page {page.current_page} of {page.last_page} ({page.total} total)
+          </span>
+          <div className="flex gap-2">
+            <Button size="small" variant="outlined" disabled={pageNo <= 1} onClick={() => handlePageChange(pageNo - 1)}>
+              Previous
+            </Button>
+            <Button size="small" variant="outlined" disabled={pageNo >= page.last_page} onClick={() => handlePageChange(pageNo + 1)}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

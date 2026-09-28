@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
+use App\Models\SupplierTransferCorrection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -372,10 +373,41 @@ class SupplierTransferControllerTest extends TestCase
 
         $this->assertDatabaseHas('supplier_transfers', ['id' => $transfer->id, 'void_reason' => 'Wrong account number — funds never arrived, confirmed with Wise support']);
         $this->assertNotNull($transfer->fresh()->voided_at);
+        // 2026-09-28 addendum: a void reversal is its own type, VOID_REVERSAL — distinct from a partial MANUAL_ADJUSTMENT.
         $this->assertDatabaseHas('supplier_ledger_entries', [
             'reference_type' => 'supplier_transfer', 'reference_id' => $transfer->id,
-            'type' => 'MANUAL_ADJUSTMENT', 'amount' => '-817672.0000', 'created_by' => $admin->id,
+            'type' => 'VOID_REVERSAL', 'amount' => '-817672.0000', 'created_by' => $admin->id,
         ]);
+    }
+
+    /**
+     * 2026-09-28 addendum: the real bug fix — void must reverse the
+     * transfer's CURRENT cumulative net (original TOPUP + every prior
+     * MANUAL_ADJUSTMENT), not just the original net. Adjust +50,000
+     * first, then void — the reversal must cancel 867,672 net total
+     * (817,672 original net + 50,000 adjustment), leaving a real zero
+     * ledger balance, not a stuck +50,000 residual.
+     */
+    public function test_void_reverses_the_cumulative_net_including_prior_adjustments(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
+            'amount_foreign_received' => 832672, 'supplier_fee' => 15000, // net 817,672
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/adjust", [
+            'amount' => '50000', 'reason' => 'found extra credit on Digiflazz statement',
+        ])->assertCreated();
+
+        $response = $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/void", [
+            'reason' => 'money never actually reached the supplier after all',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('entry.amount', '-867672.0000');
+        $response->assertJsonPath('ledger_balance', '0.0000');
     }
 
     public function test_void_requires_a_reason(): void
@@ -407,7 +439,8 @@ class SupplierTransferControllerTest extends TestCase
             ->assertUnprocessable();
 
         // Only the one real reversal entry exists — the rejected calls wrote nothing.
-        $this->assertSame(1, SupplierLedgerEntry::query()->where('type', 'MANUAL_ADJUSTMENT')->count());
+        $this->assertSame(1, SupplierLedgerEntry::query()->where('type', 'VOID_REVERSAL')->count());
+        $this->assertSame(0, SupplierLedgerEntry::query()->where('type', 'MANUAL_ADJUSTMENT')->count());
     }
 
     public function test_regular_admin_cannot_adjust_or_void(): void
@@ -423,6 +456,172 @@ class SupplierTransferControllerTest extends TestCase
 
         $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/adjust", ['amount' => '-1', 'reason' => 'x'])->assertForbidden();
         $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/void", ['reason' => 'x'])->assertForbidden();
+    }
+
+    // ── ADR-083 2026-09-28 addendum: "Edit Details" (metadata-only correction) ──
+
+    public function test_correct_edits_metadata_fields_and_writes_an_audit_row(): void
+    {
+        $admin = $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
+            'amount_foreign_received' => 832672, 'reference_no' => 'WISE-TYPO',
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $response = $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'amount_myr_sent' => 19950,
+            'reference_no' => 'WISE-REF-CORRECT',
+            'reason' => "Typo'd the RM sent and reference off the real receipt",
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('transfer.amount_myr_sent', 19950);
+        $response->assertJsonPath('transfer.reference_no', 'WISE-REF-CORRECT');
+        $response->assertJsonPath('correction.reason', "Typo'd the RM sent and reference off the real receipt");
+        $response->assertJsonPath('correction.changes.amount_myr_sent', [19889, 19950]);
+        $response->assertJsonPath('correction.changes.reference_no', ['WISE-TYPO', 'WISE-REF-CORRECT']);
+
+        $this->assertDatabaseHas('supplier_transfers', [
+            'id' => $transfer->id, 'amount_myr_sent' => 19950, 'reference_no' => 'WISE-REF-CORRECT',
+        ]);
+        $this->assertDatabaseHas('supplier_transfer_corrections', [
+            'supplier_transfer_id' => $transfer->id, 'admin_user_id' => $admin->id,
+        ]);
+    }
+
+    /** Editing RM sent must never move the ledger balance — that's the whole point of the ledger-affecting/metadata split. */
+    public function test_correct_never_touches_the_ledger_balance(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'amount_myr_sent' => 99999,
+            'reason' => 'RM sent was mistyped',
+        ])->assertCreated();
+
+        $this->assertSame('832672.0000', $supplier->fresh()->supplierLedgerBalance());
+    }
+
+    /**
+     * `amount_foreign_received`/`supplier_fee` must never be reachable
+     * through this endpoint — those two feed the ledger directly and
+     * stay Adjust/Void-only. The FormRequest doesn't even define these
+     * as accepted fields, so Laravel simply drops them from `validated()`.
+     */
+    public function test_correct_ignores_ledger_affecting_fields_even_if_sent(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'amount_foreign_received' => 999999,
+            'supplier_fee' => 5000,
+            'source_channel' => 'bank',
+            'reason' => 'trying to sneak a ledger-affecting field through',
+        ])->assertCreated();
+
+        $reloaded = $transfer->fresh();
+        $this->assertSame('832672.0000', $reloaded->amount_foreign_received);
+        $this->assertNull($reloaded->supplier_fee);
+        $this->assertSame('bank', $reloaded->source_channel);
+        $this->assertSame('832672.0000', $supplier->fresh()->supplierLedgerBalance());
+    }
+
+    public function test_correct_rejects_a_no_op_submit(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'source_channel' => 'wise', // same value as already recorded
+            'reason' => 'nothing actually changed',
+        ])->assertUnprocessable();
+
+        $this->assertSame(0, SupplierTransferCorrection::query()->count());
+    }
+
+    public function test_correct_requires_a_reason(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", ['amount_myr_sent' => 20000])
+            ->assertUnprocessable()->assertJsonValidationErrors('reason');
+    }
+
+    public function test_correct_is_blocked_on_an_already_voided_transfer(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/void", ['reason' => 'voided'])->assertCreated();
+
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'amount_myr_sent' => 20000, 'reason' => 'editing a voided transfer',
+        ])->assertUnprocessable();
+    }
+
+    public function test_regular_admin_cannot_correct(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'amount_myr_sent' => 20000, 'reason' => 'x',
+        ])->assertForbidden();
+    }
+
+    // ── ADR-083 2026-09-28 addendum: Funding History filters ────────────
+
+    public function test_index_filters_by_status_and_date_range(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $active = SupplierTransfer::query()->firstOrFail();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 50000, 'currency' => 'IDR', 'amount_foreign_received' => 1850000,
+        ])->assertCreated();
+        $voided = SupplierTransfer::query()->where('id', '!=', $active->id)->firstOrFail();
+        $this->postJson("/api/accounting/supplier-transfers/{$voided->id}/void", ['reason' => 'x'])->assertCreated();
+
+        $activeOnly = $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers?status=active")->assertOk();
+        $this->assertCount(1, $activeOnly->json('transfers.data'));
+        $this->assertSame($active->id, $activeOnly->json('transfers.data.0.id'));
+
+        $voidedOnly = $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers?status=voided")->assertOk();
+        $this->assertCount(1, $voidedOnly->json('transfers.data'));
+        $this->assertSame($voided->id, $voidedOnly->json('transfers.data.0.id'));
     }
 
     /** index()'s transfer history nests each transfer's own corrections, so an admin sees the full story in one place. */
