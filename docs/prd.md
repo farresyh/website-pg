@@ -1318,6 +1318,24 @@ items 39/40 (founder yes/no, not a grill).
     `Paid` but never got notified, self-healing against this and any other
     cause of a dropped notification. See `docs/build-log.md`'s 2026-09-28
     entry. **Merged to `staging` (PR #298), not yet on `main`.**
+~~41. **ADR-083's 2026-09-28 addendum**~~ — **grilled + BUILT 2026-09-28**
+    (`feature/2026-09-28-adr083-accounting-ui`, off `staging`, not yet
+    merged). Four bundled `/admin/accounting` gaps: a dedicated paginated
+    Funding History page (`SupplierTransferModal`'s history box was never
+    wired to the pagination the backend already supported), real backend
+    pagination on the Transaction Register (was fetching every row with no
+    `LIMIT`), a real correctness fix for void/adjustment invisibility in
+    that same register (a voided transfer's outflow stood as if real, and
+    corrections never showed at all — plus a latent `voidTransfer()` bug,
+    verified against production to have never actually manifested: 2
+    voided transfers total, neither with a prior adjustment), a
+    cross-window date-range view for CHIP Settlements, and a
+    ledger-affecting-vs-metadata split on the Supplier Transfer "Adjust"
+    action (RM-sent/fee/reference/channel/receipt become directly editable
+    with a new append-only audit trail; the actual FX ledger amount stays
+    Adjust/Void-only). Backend 2291/2291, frontend `tsc`/`lint`/`build`
+    clean, real-browser-verified. See `docs/adr.md`'s ADR-083 2026-09-28
+    addendum and `docs/build-log.md`'s matching entry.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

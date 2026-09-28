@@ -2162,3 +2162,71 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   Consequence-to-track for the three specific things to confirm on a real
   deploy (backgrounded-tab resume, a fast-finishing Price Sync run, the
   new failed-broadcast log line actually appearing).
+
+## 2026-09-28 — ADR-083 2026-09-28 addendum built: `/admin/accounting` Funding History page, Transaction Register pagination + void/adjustment visibility fix, CHIP cross-window date view, Supplier Transfer "Edit Details" (`feature/2026-09-28-adr083-accounting-ui`)
+
+Founder walkthrough of `/admin/accounting` surfaced four gaps, grilled together
+(`/mattpocock-skills:grilling`, 3 rounds) at the founder's own request — full
+design in `docs/adr.md`'s ADR-083 2026-09-28 addendum, this entry is the build.
+
+- **Real bug found and fixed, not just a missing feature:** `voidTransfer()`
+  reversed only a transfer's *original* net, never its *current cumulative*
+  net (original + prior `MANUAL_ADJUSTMENT`s) — an Adjust-then-Void sequence
+  left a silent residual permanently stuck in the supplier's ledger balance.
+  Checked against real production data before deciding on a backfill
+  (read-only, `pekangame-prod-lwf`): 2 voided transfers existed, neither had
+  a prior adjustment — never actually manifested, so no backfill, code fix
+  only. Live-verified post-fix in a real browser session: recorded a
+  transfer, Adjusted +50,000 IDR, Voided it — ledger balance landed at
+  exactly IDR 0.
+- New `SupplierLedgerEntryType::VoidReversal` distinguishes a full-void
+  reversal from a partial `MANUAL_ADJUSTMENT` in the ledger/register/CSV —
+  zero-migration (`type` is a plain `string` column). Both
+  `recordManualAdjustment()`/`voidTransfer()` now `lockForUpdate()` the
+  transfer row inside their transaction (cheap race insurance, not a full
+  subprocess-concurrency test — out of proportion for single-admin usage).
+- **Transaction Register correctness fix:** a voided `SupplierTransfer` row
+  used to show its full original outflow with no indication it was voided;
+  `MANUAL_ADJUSTMENT`/`VOID_REVERSAL` entries were never projected into the
+  register at all, so a correction was invisible to the CSV export the
+  year-end professional works from. Fixed: a voided row keeps its real
+  original figures (tagged VOIDED, never rewritten to zero — real
+  double-entry practice reverses, it doesn't edit history), and every
+  correction is now its own `supplier_adjustment` row dated at its own
+  `created_at`.
+- **Real backend pagination** on the Transaction Register (`rows()` used to
+  pull every matching row with no `LIMIT`) — a documented, deliberate
+  fetch-then-sort-in-PHP-then-slice approach (not a SQL `UNION`), verified
+  against real production volume first (~36 total rows today); flagged in
+  code to revisit once paid-order volume nears ~10k rows.
+- **New Funding History page** (`/admin/accounting/suppliers/{id}/transfers`)
+  — `SupplierFundingService::transfers()`'s pagination existed since PR-1 but
+  was never wired to any UI; `SupplierTransferModal` narrowed to just the
+  record-transfer form + balance card, linking out to the new page.
+- **New "Edit Details" correction action**, metadata-only
+  (`amount_myr_sent`/`fee_myr`/`source_channel`/`reference_no`/receipt) —
+  confirmed these have zero computed relationship to the FX ledger side
+  before building this (`amount_foreign_received` is independently
+  hand-typed off the same receipt, never derived from `amount_myr_sent`).
+  New append-only `supplier_transfer_corrections` table (model-enforced,
+  same `booted()` pattern as `SupplierLedgerEntry`), one row per edit
+  action with a JSON diff. `amount_foreign_received`/`supplier_fee` stay
+  Adjust/Void-only — those two, and only those two, feed the ledger amount
+  directly.
+- **CHIP Settlements cross-window date view** — new "View by: Upload Window
+  | Date Range" toggle queries `chip_settled_transactions.settled_on`
+  directly across every `payment_settlement_id`; no new table, no
+  double-count risk (ADR-110's unique `transaction_id` already covers it).
+- Built via two sequential forked sessions (backend, then frontend), each
+  independently verified by the coordinating session rather than trusted
+  blind: backend — full suite **2291/2291** green (was 2270, +21 tests),
+  `php artisan migrate` applied to local dev DB, route-collision ordering
+  for `/settlements/transactions` vs `/settlements/{settlement}` confirmed
+  correct. Frontend — `tsc --noEmit`/`eslint`/`next build` all clean
+  (re-run and confirmed directly, not just trusted from the build report);
+  real browser session against local dev servers additionally confirmed
+  the narrowed modal, the new page's filters/inline corrections, the
+  register's void tag + separate correction rows, and the CHIP date-range
+  toggle against real local data.
+- Not yet committed/pushed as of this entry — working tree on
+  `feature/2026-09-28-adr083-accounting-ui` (branched off `staging`).
