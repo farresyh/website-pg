@@ -89,6 +89,45 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
         Bus::assertNotDispatched(FulfillOrderJob::class);
     }
 
+    /**
+     * 2026-09-28 audit finding M-4: a paid order stuck at not_started
+     * (every FulfillOrderJob attempt exhausted, or the job never ran)
+     * had no sweep at all before this fix — silently stranded forever.
+     */
+    public function test_redispatches_a_stuck_not_started_paid_order_past_the_threshold(): void
+    {
+        Bus::fake();
+        $order = $this->stale($this->order(['delivery_status' => DeliveryStatus::NotStarted->value]));
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertDispatched(FulfillOrderJob::class, fn ($job) => $job->order->id === $order->id);
+    }
+
+    public function test_does_not_redispatch_a_not_started_order_still_within_the_threshold(): void
+    {
+        Bus::fake();
+        $this->order(['delivery_status' => DeliveryStatus::NotStarted->value]); // updated_at is "now"
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertNotDispatched(FulfillOrderJob::class);
+    }
+
+    /** An unpaid order sitting at not_started is normal (checkout abandoned) — never a stuck delivery. */
+    public function test_does_not_redispatch_a_stale_not_started_order_that_was_never_paid(): void
+    {
+        Bus::fake();
+        $this->stale($this->order([
+            'payment_status' => PaymentStatus::Pending->value,
+            'delivery_status' => DeliveryStatus::NotStarted->value,
+        ]));
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertNotDispatched(FulfillOrderJob::class);
+    }
+
     public function test_flags_a_stale_duplicate_reference_order_for_manual_review(): void
     {
         Bus::fake();

@@ -9,6 +9,8 @@ use App\Models\Order;
 use App\Models\WalletTopupAttempt;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSubscriptionService;
+use App\Services\Order\InvalidOrderTransitionException;
+use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -46,6 +48,7 @@ class ChipWebhookController extends Controller
         private readonly VoucherService $vouchers,
         private readonly MembershipSubscriptionService $subscriptions,
         private readonly ResellerWalletService $wallets,
+        private readonly OrderStatusService $orderStatus,
     ) {
         $this->paymentGateway = $gatewayFactory->make('chip');
     }
@@ -138,6 +141,38 @@ class ChipWebhookController extends Controller
             ]);
 
             return response()->json(['message' => 'amount mismatch'], 409);
+        }
+
+        // 2026-09-28 audit finding M-4: a late Paid event for an order
+        // that's already compensated (a voucher was issued or
+        // restored, or a wallet refund already paid out — most often
+        // reconcile marking it Failed and restoring a voucher just
+        // before this webhook finally arrives) must never be blindly
+        // dispatched to FulfillOrderJob — fulfill()'s own
+        // isAlreadyCompensated() guard would throw on every one of the
+        // job's 3 tries, silently stranding the order at
+        // payment_status=Paid forever with no admin visibility even
+        // though the customer genuinely paid. Flag NeedsReview instead
+        // (a valid transition from Failed, the only delivery_status an
+        // already-compensated order can realistically be in) so an
+        // admin sees it on the existing Needs Review queue.
+        if ($order->isAlreadyCompensated()) {
+            Log::error('CHIP webhook: paid event for an already-compensated order — flagging for manual review, not auto-fulfilling', [
+                'delivery_status' => $order->delivery_status->value,
+            ]);
+
+            try {
+                $needsReview = $this->orderStatus->markNeedsReview($order->delivery_status);
+                $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now(), 'delivery_status' => $needsReview->value]);
+            } catch (InvalidOrderTransitionException) {
+                // delivery_status isn't one markNeedsReview() accepts
+                // (e.g. already NeedsReview, or Delivered from an
+                // unrelated concurrent resolution) — leave it as-is,
+                // still record the payment.
+                $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
+            }
+
+            return response()->json(['message' => 'ok, flagged for manual review']);
         }
 
         $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
