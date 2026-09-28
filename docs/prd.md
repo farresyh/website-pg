@@ -1121,7 +1121,8 @@ accepted state, not a gap to chase. See §14.
     ->redirectGuestsTo(fn () => null)` in `bootstrap/app.php`. Scope
     confirmed narrow as originally described — only `/api/affiliate/*` and
     `/api/reseller-portal/*`; Reseller API/Bot unaffected. New test:
-    `UnauthenticatedApiRequestTest` (2 cases).
+    `UnauthenticatedApiRequestTest` (2 cases). **Merged to `staging`
+    (PR #300), not yet on `main`.**
 27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
     `next dev` webServer — a recurring CI-environment flake, not a code
     bug.** **Attempted 2026-09-28, reverted same day — made things worse,
@@ -1256,7 +1257,7 @@ items 39/40 (founder yes/no, not a grill).
     `bank_account_holder` all `nullable` → `filled` (allows omitting the
     field for a partial update, rejects it outright if present and empty).
     New tests in `AffiliateProfileTest` (empty-string rejected, omission
-    still allowed).
+    still allowed). **Merged to `staging` (PR #300), not yet on `main`.**
 35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
     0** instead of failing loud, silently changing which withdrawals need a
     second approver. **Re-checked 2026-09-26 against current code — not
