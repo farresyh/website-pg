@@ -3,18 +3,27 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\LedgerEntry;
+use App\Models\Membership;
+use App\Models\MembershipFeeRecord;
+use App\Models\MembershipPlan;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\WalletTopupAttempt;
+use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -397,5 +406,82 @@ class TransactionRegisterControllerTest extends TestCase
 
         $row = collect($response->json('data'))->firstWhere('reference', "Adjustment #{$entry->id} (Transfer #{$transfer->id})");
         $this->assertStringContainsString('Void reversal', $row['description']);
+    }
+
+    // ── 2026-09-28 register-completeness addendum: membership/wallet-topup/withdrawal rows ──
+
+    public function test_index_includes_a_membership_fee_row(): void
+    {
+        $this->actAsSuperAdmin();
+        $plan = MembershipPlan::query()->first() ?? MembershipPlan::query()->create([
+            'name' => 'Tier 1', 'fee_sen' => 890, 'quota_sen' => 10000, 'discount_percent' => 50,
+        ]);
+        $membership = Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'member@example.com', 'membership_plan_id' => $plan->id, 'status' => 'active',
+            'cycle_started_at' => now(), 'quota_remaining_sen' => $plan->quota_sen, 'expires_at' => now()->addMonth(),
+        ]);
+        $record = MembershipFeeRecord::query()->create([
+            'membership_id' => $membership->id, 'membership_plan_id' => $plan->id, 'amount_sen' => 890,
+        ]);
+
+        $response = $this->getJson('/api/accounting/transactions')->assertOk();
+
+        $row = collect($response->json('data'))->firstWhere('reference', "Membership Fee #{$record->id}");
+        $this->assertSame('membership_payment', $row['type']);
+        $this->assertSame(890, $row['gross_sen']);
+        $this->assertSame(890, $row['net_sen']);
+        $this->assertStringContainsString('member@example.com', $row['description']);
+    }
+
+    public function test_index_includes_a_paid_wallet_topup_row_but_not_a_pending_one(): void
+    {
+        $this->actAsSuperAdmin();
+        $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries']);
+        WalletTopupAttempt::query()->create([
+            'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PAID-1', 'amount_sen' => 30000,
+            'total_charged_sen' => 30500, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Paid->value,
+            'expires_at' => now()->addMinutes(30),
+        ]);
+        WalletTopupAttempt::query()->create([
+            'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PENDING-1', 'amount_sen' => 10000,
+            'total_charged_sen' => 10200, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Pending->value,
+            'expires_at' => now()->addMinutes(30),
+        ]);
+
+        $rows = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'));
+
+        $paidRow = $rows->firstWhere('reference', 'TOPUP-PAID-1');
+        $this->assertSame('reseller_wallet_topup', $paidRow['type']);
+        $this->assertSame(30000, $paidRow['net_sen']);
+        $this->assertSame(500, $paidRow['fee_sen']);
+        $this->assertStringContainsString('Naeem Industries', $paidRow['description']);
+        $this->assertNull($rows->firstWhere('reference', 'TOPUP-PENDING-1'));
+    }
+
+    public function test_index_includes_a_completed_withdrawal_row_but_not_a_pending_one(): void
+    {
+        $this->actAsSuperAdmin();
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Acme', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
+        ]);
+        $completed = Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id, 'amount' => 5000,
+            'bank_name' => 'Maybank', 'bank_account_no' => '111', 'bank_account_holder' => 'Acme',
+            'status' => WithdrawalStatus::Completed, 'processed_at' => now(),
+        ]);
+        Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id, 'amount' => 2000,
+            'bank_name' => 'Maybank', 'bank_account_no' => '111', 'bank_account_holder' => 'Acme',
+            'status' => WithdrawalStatus::Pending,
+        ]);
+
+        $rows = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'));
+
+        $row = $rows->firstWhere('reference', "Withdrawal #{$completed->id}");
+        $this->assertSame('withdrawal_payout', $row['type']);
+        $this->assertSame(-5000, $row['net_sen']);
+        $this->assertStringContainsString('Acme', $row['description']);
+        $this->assertSame(1, $rows->where('type', 'withdrawal_payout')->count());
     }
 }

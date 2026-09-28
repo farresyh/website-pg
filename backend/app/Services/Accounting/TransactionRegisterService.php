@@ -2,24 +2,41 @@
 
 namespace App\Services\Accounting;
 
+use App\Models\Affiliate;
 use App\Models\LedgerEntry;
+use App\Models\MembershipFeeRecord;
 use App\Models\Order;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\WalletTopupAttempt;
+use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\PaymentStatus;
+use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Withdrawal\WithdrawalStatus;
 use Carbon\CarbonInterface;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
- * ADR-083 decision 9 (+ 2026-09-28 addendum): the "nothing is ever lost"
+ * ADR-083 decision 9 (+ 2026-09-28 addenda): the "nothing is ever lost"
  * artifact the year-end professional works from — one row per
- * money-moving event across five otherwise-separate sources (paid
+ * money-moving event across eight otherwise-separate sources (paid
  * orders, supplier funding transfers, supplier manual corrections,
- * supplier REFUND entries, issued vouchers). Read-only: this never
- * writes anything, only projects existing rows into one flat,
+ * supplier REFUND entries, issued vouchers, membership fee payments,
+ * reseller wallet top-ups, and completed withdrawal payouts). Read-only:
+ * this never writes anything, only projects existing rows into one flat,
  * exportable shape.
+ *
+ * The last three sources were a real gap, not a deliberate omission:
+ * membership/wallet-topup cash inflows and affiliate withdrawal payouts
+ * are real money moving through the company bank account, but had no
+ * row here at all — only aggregated in the Monthly Summary (membership)
+ * or matched per-transaction in CHIP Settlements (membership + wallet
+ * top-up), never listed in the one screen meant to be a complete,
+ * downloadable record for the year-end professional. Found during a
+ * founder walkthrough of exactly this question ("if an auditor asks why
+ * a reseller paid us RM300, what does the register show?").
  *
  * A single flat schema can't carry every source's native columns
  * (an order's gross/fee/cost/net is MYR sen; a transfer's amount is a
@@ -39,6 +56,9 @@ final class TransactionRegisterService
             ...$this->supplierAdjustmentRows($from, $to),
             ...$this->supplierRefundRows($from, $to),
             ...$this->voucherRows($from, $to),
+            ...$this->membershipRows($from, $to),
+            ...$this->walletTopupRows($from, $to),
+            ...$this->withdrawalRows($from, $to),
         ];
 
         usort($rows, fn (array $a, array $b) => $b['date'] <=> $a['date']);
@@ -254,6 +274,123 @@ final class TransactionRegisterService
                 'fee_sen' => null,
                 'cost_sen' => null,
                 'net_sen' => -$voucher->amount,
+                'amount_foreign' => null,
+                'status' => 'active',
+            ])
+            ->all();
+    }
+
+    /**
+     * 2026-09-28 register-completeness addendum: a real customer-membership
+     * fee payment (`MembershipFeeRecord`, ADR-027) — the Monthly Summary
+     * already sums these into "Membership revenue" (decision 8), but no
+     * row for one ever existed here. `net_sen` equals `gross_sen` (no fee
+     * column on this table — the CHIP transaction fee for a membership
+     * checkout isn't separately tracked the way an order's is).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function membershipRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    {
+        return MembershipFeeRecord::query()
+            ->with(['membership', 'membershipPlan'])
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->get()
+            ->map(fn (MembershipFeeRecord $record) => [
+                'date' => $record->created_at->toIso8601String(),
+                'type' => 'membership_payment',
+                'reference' => "Membership Fee #{$record->id}",
+                'description' => 'Membership fee — '.($record->membership?->email ?? 'unknown member').' ('.($record->membershipPlan?->name ?? 'unknown plan').')'.($record->reason ? " — {$record->reason}" : ''),
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => $record->amount_sen,
+                'fee_sen' => null,
+                'cost_sen' => null,
+                'net_sen' => $record->amount_sen,
+                'amount_foreign' => null,
+                'status' => 'active',
+            ])
+            ->all();
+    }
+
+    /**
+     * 2026-09-28 register-completeness addendum: a completed reseller
+     * wallet top-up (`WalletTopupAttempt`, ADR-073) — real cash into the
+     * company bank account via CHIP, but a **liability** (usable reseller
+     * spend credit), never sales revenue. CHIP Settlements already
+     * matches these per-transaction; this is the first time one gets a
+     * row in the "nothing is ever lost" register itself. Only `Paid`
+     * attempts represent real money — a `pending`/`failed`/`expired`
+     * attempt never touched the bank account.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function walletTopupRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    {
+        return WalletTopupAttempt::query()
+            ->with('reseller')
+            ->where('status', WalletTopupAttemptStatus::Paid->value)
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->get()
+            ->map(fn (WalletTopupAttempt $topup) => [
+                'date' => $topup->created_at->toIso8601String(),
+                'type' => 'reseller_wallet_topup',
+                'reference' => $topup->reference,
+                'description' => 'Reseller wallet top-up — '.($topup->reseller?->business_name ?? 'unknown reseller'),
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => $topup->total_charged_sen,
+                'fee_sen' => $topup->total_charged_sen - $topup->amount_sen,
+                'cost_sen' => null,
+                'net_sen' => $topup->amount_sen,
+                'amount_foreign' => null,
+                'status' => 'active',
+            ])
+            ->all();
+    }
+
+    /**
+     * 2026-09-28 register-completeness addendum: a completed withdrawal
+     * payout (`Withdrawal`) — real cash leaving the company bank account
+     * to an affiliate. Only `Completed` (money actually sent, `processed_at`
+     * set) counts; `Pending`/`Approved`/`Rejected` never moved real money.
+     * Dated at `processed_at` (when the payout actually happened), not
+     * `created_at` (when it was merely requested) — same "date it by the
+     * real cash event" convention `orderRows()` uses (`paid_at`, not
+     * `created_at`). Affiliate names are batch-fetched to avoid an N+1,
+     * matching `orderRows()`'s own realized-profit batching.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function withdrawalRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    {
+        $withdrawals = Withdrawal::query()
+            ->where('status', WithdrawalStatus::Completed->value)
+            ->whereNotNull('processed_at')
+            ->when($from, fn ($q) => $q->where('processed_at', '>=', $from))
+            ->when($to, fn ($q) => $q->where('processed_at', '<=', $to))
+            ->get();
+
+        $affiliateNamesById = Affiliate::query()
+            ->whereIn('id', $withdrawals->where('owner_type', LedgerOwnerType::Affiliate->value)->pluck('owner_id')->unique())
+            ->pluck('business_name', 'id');
+
+        return $withdrawals
+            ->map(fn (Withdrawal $withdrawal) => [
+                'date' => $withdrawal->processed_at->toIso8601String(),
+                'type' => 'withdrawal_payout',
+                'reference' => "Withdrawal #{$withdrawal->id}",
+                'description' => 'Withdrawal payout — '.($withdrawal->owner_type === LedgerOwnerType::Affiliate->value
+                    ? ($affiliateNamesById[$withdrawal->owner_id] ?? 'unknown affiliate')
+                    : $withdrawal->owner_type),
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => null,
+                'fee_sen' => null,
+                'cost_sen' => null,
+                'net_sen' => -$withdrawal->amount,
                 'amount_foreign' => null,
                 'status' => 'active',
             ])
