@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdatePaymentSettlementRequest;
 use App\Http\Requests\Admin\UploadPaymentSettlementRequest;
+use App\Models\ChipSettledTransaction;
 use App\Models\PaymentSettlement;
 use App\Services\Accounting\SettlementReconciliationService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -45,6 +47,34 @@ class PaymentSettlementController extends Controller
             'transactions' => $settlement->transactions()->orderByDesc('settled_on')->paginate($perPage)->withQueryString(),
             'paid_but_not_settled' => $this->reconciliation->paidButNotSettled($settlement->date_from, $settlement->date_to),
         ]);
+    }
+
+    /**
+     * ADR-083 2026-09-28 addendum — cross-window date-range view: matched
+     * CHIP transactions across every upload window that falls inside
+     * `settled_on` between `from`/`to`, not one window's own drill-down.
+     * No new table — `chip_settled_transactions` is already indexed on
+     * `settled_on` and dedup-safe by its own unique `transaction_id`
+     * (ADR-110), so a cross-window read here carries no double-count
+     * risk. Each row also carries its parent settlement's window
+     * (`settlement_id`/`date_from`/`date_to`) so the frontend can link
+     * back to "View Window".
+     */
+    public function transactions(Request $request): JsonResponse
+    {
+        $from = $request->filled('from') ? CarbonImmutable::parse($request->query('from'))->startOfDay() : null;
+        $to = $request->filled('to') ? CarbonImmutable::parse($request->query('to'))->endOfDay() : null;
+        $perPage = (int) $request->query('per_page', 20);
+
+        return response()->json(
+            ChipSettledTransaction::query()
+                ->with('paymentSettlement')
+                ->when($from, fn ($q) => $q->where('settled_on', '>=', $from))
+                ->when($to, fn ($q) => $q->where('settled_on', '<=', $to))
+                ->orderByDesc('settled_on')
+                ->paginate($perPage)
+                ->withQueryString(),
+        );
     }
 
     public function store(UploadPaymentSettlementRequest $request): JsonResponse

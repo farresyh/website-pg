@@ -704,6 +704,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // ADR-083 2026-09-15 addendum — correction actions, never an edit/delete on the transfer itself.
         Route::post('/supplier-transfers/{supplierTransfer}/adjust', [SupplierTransferController::class, 'adjust']);
         Route::post('/supplier-transfers/{supplierTransfer}/void', [SupplierTransferController::class, 'void']);
+        // ADR-083 2026-09-28 addendum — "Edit Details": metadata-only correction (never the FX ledger amounts).
+        Route::post('/supplier-transfers/{supplierTransfer}/correct', [SupplierTransferController::class, 'correct']);
 
         // ADR-083 decision 9 — Transaction Register: read-only, plus a
         // CSV export, across orders/supplier transfers/supplier
@@ -717,6 +719,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // already-reconciled transaction (this ADR's own addendum).
         Route::get('/settlements', [PaymentSettlementController::class, 'index']);
         Route::post('/settlements', [PaymentSettlementController::class, 'store']);
+        // ADR-083 2026-09-28 addendum — cross-window date-range view; must
+        // stay ABOVE the {settlement} route below, or "transactions" gets
+        // bound as a {settlement} id.
+        Route::get('/settlements/transactions', [PaymentSettlementController::class, 'transactions']);
         Route::get('/settlements/{settlement}', [PaymentSettlementController::class, 'show']);
         Route::patch('/settlements/{settlement}', [PaymentSettlementController::class, 'update']);
 

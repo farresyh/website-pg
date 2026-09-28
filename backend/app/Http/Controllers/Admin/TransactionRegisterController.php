@@ -10,29 +10,35 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * ADR-083 decision 9 — read-only, "nothing is ever lost" view across the
- * four money-moving row kinds `TransactionRegisterService` projects. No
- * calculation lives here, same posture as `ReportController`.
+ * ADR-083 decision 9 (+ 2026-09-28 addendum) — read-only, "nothing is
+ * ever lost" view across the five money-moving row kinds
+ * `TransactionRegisterService` projects. No calculation lives here,
+ * same posture as `ReportController`.
  */
 class TransactionRegisterController extends Controller
 {
     public function __construct(private readonly TransactionRegisterService $register) {}
 
+    /** `type` filters to one row kind; `page`/`per_page` back real backend pagination (2026-09-28 addendum — was unpaginated before). */
     public function index(Request $request): JsonResponse
     {
         [$from, $to] = $this->rangeFromRequest($request);
+        $type = $request->filled('type') ? $request->query('type') : null;
+        $page = (int) $request->query('page', 1);
+        $perPage = (int) $request->query('per_page', 20);
 
-        return response()->json(['rows' => $this->register->rows($from, $to)]);
+        return response()->json($this->register->paginate($from, $to, $type, $page, $perPage));
     }
 
     public function export(Request $request): StreamedResponse
     {
         [$from, $to] = $this->rangeFromRequest($request);
-        $rows = $this->register->rows($from, $to);
+        $type = $request->filled('type') ? $request->query('type') : null;
+        $rows = $this->register->rows($from, $to, $type);
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost (RM)', 'Net (RM)', 'Amount (foreign)']);
+            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost (RM)', 'Net (RM)', 'Amount (foreign)', 'Status']);
 
             foreach ($rows as $row) {
                 fputcsv($out, [
@@ -47,6 +53,7 @@ class TransactionRegisterController extends Controller
                     $row['cost_sen'] !== null ? number_format($row['cost_sen'] / 100, 2, '.', '') : '',
                     $row['net_sen'] !== null ? number_format($row['net_sen'] / 100, 2, '.', '') : '',
                     $row['amount_foreign'] ?? '',
+                    $row['status'],
                 ]);
             }
 
