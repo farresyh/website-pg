@@ -14,6 +14,7 @@ import { Cog as SettingsIcon } from "@primeicons/react/cog";
 import { ChartLine as ChartLineIcon } from "@primeicons/react/chart-line";
 import { ArrowCircleUp as TrendUpIcon } from "@primeicons/react/arrow-circle-up";
 import { Tag as TagIcon } from "@primeicons/react/tag";
+import { Wallet as WalletIcon } from "@primeicons/react/wallet";
 
 /**
  * Admin Panel nav. Items reflect only screens that actually exist —
@@ -42,6 +43,7 @@ const sections: PanelNavSection[] = [
       { kind: "link", name: "Orders", href: "/admin/orders", icon: <ListIcon /> },
       { kind: "link", name: "Withdrawals", href: "/admin/withdrawals", icon: <DollarLineIcon /> },
       { kind: "link", name: "Vouchers", href: "/admin/vouchers", icon: <BoxLineIcon /> },
+      { kind: "link", name: "Balance", href: "/admin/balance", icon: <WalletIcon /> },
       {
         kind: "group",
         name: "Accounting",
