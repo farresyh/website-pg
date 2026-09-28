@@ -2400,6 +2400,16 @@ addendum (decisions 2/4/7/10/11) for the full design record.
   lands on a real "Owner Profit" figure. All test data cleaned up and
   the temporarily-reset local `test@example.com` admin password
   restored to the `password` default after verification.
+- **Same-day addendum, same branch — category list trimmed after direct
+  founder pushback** ("Rent tak perlu sebab topup store mana ada
+  office"): removed `OpexRent`/`OpexBankCharges` (no confirmed real
+  expense — generic textbook picks, cheap to re-add if either ever
+  becomes real), kept `OpexSalary`/`OpexProfessionalFees` despite
+  neither in use yet (founder's own call — both map to a real,
+  already-planned future expense), and `Adjustment` no longer appears
+  in the Record Entry picker at all (it's the void mechanism's own
+  internal tag). Backend **2314/2314** green (+1 test). No migration —
+  a plain PHP enum, never a DB-level constraint.
 - Not yet committed/pushed as of this entry — working tree on
   `fix/2026-09-28-envelope-ledger-clarity-fixes` (branched off
   `staging`).
