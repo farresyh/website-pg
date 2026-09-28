@@ -221,6 +221,75 @@ class PaymentSettlementControllerTest extends TestCase
         $this->assertSame('matched', $settlement->fresh()->status);
     }
 
+    // ── ADR-083 2026-09-28 addendum: cross-window date-range view ───────
+
+    public function test_transactions_returns_matched_chip_transactions_across_windows_in_a_date_range(): void
+    {
+        $this->actingAsAdmin();
+        $windowA = PaymentSettlement::query()->create($this->settlementAttributes(['date_from' => '2026-09-01', 'date_to' => '2026-09-07']));
+        $windowB = PaymentSettlement::query()->create($this->settlementAttributes(['date_from' => '2026-09-08', 'date_to' => '2026-09-14']));
+        $inRange = ChipSettledTransaction::query()->create([
+            'transaction_id' => 'tx-in-range', 'amount_sen' => 1100, 'fee_sen' => 100, 'net_amount_sen' => 1000,
+            'acquirer' => 'FPX', 'settled_on' => '2026-09-09', 'payment_settlement_id' => $windowB->id,
+        ]);
+        ChipSettledTransaction::query()->create([
+            'transaction_id' => 'tx-out-of-range', 'amount_sen' => 500, 'fee_sen' => 50, 'net_amount_sen' => 450,
+            'acquirer' => 'FPX', 'settled_on' => '2026-08-20', 'payment_settlement_id' => $windowA->id,
+        ]);
+
+        $response = $this->getJson('/api/accounting/settlements/transactions?from=2026-09-08&to=2026-09-14')->assertOk();
+
+        $rows = collect($response->json('data'));
+        $this->assertCount(1, $rows);
+        $this->assertSame('tx-in-range', $rows->first()['transaction_id']);
+        $this->assertSame($windowB->id, $rows->first()['payment_settlement_id']);
+    }
+
+    public function test_transactions_spans_multiple_windows_in_one_date_range(): void
+    {
+        $this->actingAsAdmin();
+        $windowA = PaymentSettlement::query()->create($this->settlementAttributes(['date_from' => '2026-09-01', 'date_to' => '2026-09-07']));
+        $windowB = PaymentSettlement::query()->create($this->settlementAttributes(['date_from' => '2026-09-08', 'date_to' => '2026-09-14']));
+        ChipSettledTransaction::query()->create([
+            'transaction_id' => 'tx-window-a', 'amount_sen' => 1100, 'fee_sen' => 100, 'net_amount_sen' => 1000,
+            'acquirer' => 'FPX', 'settled_on' => '2026-09-05', 'payment_settlement_id' => $windowA->id,
+        ]);
+        ChipSettledTransaction::query()->create([
+            'transaction_id' => 'tx-window-b', 'amount_sen' => 2200, 'fee_sen' => 200, 'net_amount_sen' => 2000,
+            'acquirer' => 'FPX', 'settled_on' => '2026-09-10', 'payment_settlement_id' => $windowB->id,
+        ]);
+
+        $response = $this->getJson('/api/accounting/settlements/transactions?from=2026-09-01&to=2026-09-14')->assertOk();
+
+        $ids = collect($response->json('data'))->pluck('transaction_id');
+        $this->assertTrue($ids->contains('tx-window-a'));
+        $this->assertTrue($ids->contains('tx-window-b'));
+    }
+
+    public function test_transactions_is_paginated(): void
+    {
+        $this->actingAsAdmin();
+        $window = PaymentSettlement::query()->create($this->settlementAttributes());
+        for ($i = 1; $i <= 3; $i++) {
+            ChipSettledTransaction::query()->create([
+                'transaction_id' => "tx-page-{$i}", 'amount_sen' => 1100, 'fee_sen' => 100, 'net_amount_sen' => 1000,
+                'acquirer' => 'FPX', 'settled_on' => '2026-09-07', 'payment_settlement_id' => $window->id,
+            ]);
+        }
+
+        $response = $this->getJson('/api/accounting/settlements/transactions?per_page=2')->assertOk();
+
+        $this->assertCount(2, $response->json('data'));
+        $this->assertSame(3, $response->json('total'));
+    }
+
+    public function test_transactions_regular_admin_is_forbidden(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->getJson('/api/accounting/settlements/transactions')->assertForbidden();
+    }
+
     /**
      * @return array<string, mixed>
      */

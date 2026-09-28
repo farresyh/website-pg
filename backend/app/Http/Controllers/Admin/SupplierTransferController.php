@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AdjustSupplierTransferRequest;
+use App\Http\Requests\Admin\CorrectSupplierTransferRequest;
 use App\Http\Requests\Admin\StoreSupplierTransferRequest;
 use App\Http\Requests\Admin\VoidSupplierTransferRequest;
 use App\Models\Supplier;
 use App\Models\SupplierTransfer;
 use App\Services\Accounting\SupplierFundingService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -25,12 +28,27 @@ class SupplierTransferController extends Controller
 {
     public function __construct(private readonly SupplierFundingService $funding) {}
 
-    public function index(Supplier $supplier): JsonResponse
+    /**
+     * ADR-083 2026-09-28 addendum: `from`/`to` (`Y-m-d`) + `status`
+     * (`active`/`voided`) query params back the new dedicated Funding
+     * History page's filters — same `from`/`to` parsing convention as
+     * `TransactionRegisterController::rangeFromRequest()`.
+     */
+    public function index(Request $request, Supplier $supplier): JsonResponse
     {
+        $from = $request->filled('from') ? CarbonImmutable::parse($request->query('from'))->startOfDay() : null;
+        $to = $request->filled('to') ? CarbonImmutable::parse($request->query('to'))->endOfDay() : null;
+        $voided = match ($request->query('status')) {
+            'voided' => true,
+            'active' => false,
+            default => null,
+        };
+        $perPage = (int) $request->query('per_page', 20);
+
         return response()->json([
             'ledger_balance' => $supplier->supplierLedgerBalance(),
             'currency' => $supplier->currency,
-            'transfers' => $this->funding->transfers($supplier),
+            'transfers' => $this->funding->transfers($supplier, $perPage, $from, $to, $voided),
         ]);
     }
 
@@ -127,6 +145,40 @@ class SupplierTransferController extends Controller
             'transfer' => $supplierTransfer->fresh(),
             'entry' => $entry,
             'ledger_balance' => $supplierTransfer->supplier->refresh()->supplierLedgerBalance(),
+        ], 201);
+    }
+
+    /**
+     * ADR-083 2026-09-28 addendum — "Edit Details": a metadata-only
+     * correction (RM sent/fee/channel/reference/receipt), never the FX
+     * ledger amounts. Blocked on an already-voided transfer, same guard
+     * as Adjust/Void — a voided transfer's own history is closed.
+     */
+    public function correct(CorrectSupplierTransferRequest $request, SupplierTransfer $supplierTransfer): JsonResponse
+    {
+        $this->assertNotVoided($supplierTransfer);
+
+        $data = $request->validated();
+        $reason = $data['reason'];
+        unset($data['reason'], $data['receipt']);
+
+        $correction = $this->funding->recordCorrection(
+            $supplierTransfer,
+            $data,
+            $reason,
+            $request->user()->id,
+            $request->file('receipt'),
+        );
+
+        Log::info('Supplier transfer details corrected', [
+            'supplier_transfer_id' => $supplierTransfer->id,
+            'changes' => $correction->changes,
+            'admin_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'transfer' => $supplierTransfer->fresh(),
+            'correction' => $correction,
         ], 201);
     }
 

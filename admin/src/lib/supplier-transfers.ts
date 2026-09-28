@@ -17,6 +17,13 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
  * confirmed to have never reached the supplier at all; `adjustments`
  * is every `MANUAL_ADJUSTMENT` ledger entry correcting this transfer
  * (never an edit to the fields above — see `SupplierLedgerAdjustment`).
+ *
+ * 2026-09-28 addendum: `adjustments` no longer includes a transfer's
+ * own void reversal (that's now a distinct `VOID_REVERSAL` ledger
+ * entry server-side, invisible here) — a voided transfer's
+ * `adjustments` are genuine prior corrections only. `corrections` is
+ * new: every metadata-only "Edit Details" action against this transfer
+ * (RM sent/fee/channel/reference/receipt) — never the ledger amounts.
  */
 export interface SupplierTransfer {
   id: number;
@@ -35,6 +42,7 @@ export interface SupplierTransfer {
   created_by: number | null;
   created_at: string;
   adjustments: SupplierLedgerAdjustment[];
+  corrections: SupplierTransferCorrection[];
 }
 
 /** A `MANUAL_ADJUSTMENT` ledger entry — always signed, always tied back to the transfer it corrects, never an edit of that transfer's own fields. */
@@ -44,6 +52,16 @@ export interface SupplierLedgerAdjustment {
   currency: string;
   reason: string;
   created_by: number | null;
+  created_at: string;
+}
+
+/** 2026-09-28 addendum — a metadata-only "Edit Details" action. `changes` is a JSON diff, one row per edit action (not per field): `{field: [old, new]}`. */
+export interface SupplierTransferCorrection {
+  id: number;
+  supplier_transfer_id: number;
+  changes: Record<string, [unknown, unknown]>;
+  reason: string;
+  admin_user_id: number | null;
   created_at: string;
 }
 
@@ -60,10 +78,25 @@ export interface SupplierFundingLedger {
   transfers: SupplierTransfersPage;
 }
 
-export function getSupplierTransfers(token: string, supplierId: number, page?: number) {
-  const qs = page ? `?page=${page}` : "";
+/** 2026-09-28 addendum — `from`/`to` (`Y-m-d`) + `status` back the dedicated Funding History page's filters. */
+export interface SupplierTransferFilters {
+  from?: string;
+  to?: string;
+  status?: "active" | "voided";
+  page?: number;
+  per_page?: number;
+}
 
-  return apiFetch<SupplierFundingLedger>(`/api/accounting/suppliers/${supplierId}/transfers${qs}`, { token });
+export function getSupplierTransfers(token: string, supplierId: number, filters: SupplierTransferFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.page) params.set("page", String(filters.page));
+  if (filters.per_page) params.set("per_page", String(filters.per_page));
+  const qs = params.toString();
+
+  return apiFetch<SupplierFundingLedger>(`/api/accounting/suppliers/${supplierId}/transfers${qs ? `?${qs}` : ""}`, { token });
 }
 
 export interface RecordSupplierTransferValues {
@@ -120,6 +153,32 @@ export function voidSupplierTransfer(token: string, transferId: number, reason: 
   return apiFetch<{ transfer: SupplierTransfer; entry: SupplierLedgerAdjustment; ledger_balance: string }>(
     `/api/accounting/supplier-transfers/${transferId}/void`,
     { method: "POST", token, body: { reason } },
+  );
+}
+
+/** 2026-09-28 addendum — "Edit Details": a metadata-only correction (RM sent/fee/channel/reference/receipt), never the FX ledger amounts. Only send the fields actually changed — the backend diffs against the current row and rejects a true no-op. */
+export interface CorrectSupplierTransferValues {
+  source_channel?: "wise" | "airwallex" | "bank";
+  amount_myr_sent?: number;
+  fee_myr?: number;
+  reference_no?: string;
+  receipt?: File | null;
+  reason: string;
+}
+
+export function correctSupplierTransfer(token: string, transferId: number, values: CorrectSupplierTransferValues) {
+  const formData = new FormData();
+  if (values.source_channel) formData.append("source_channel", values.source_channel);
+  if (values.amount_myr_sent !== undefined) formData.append("amount_myr_sent", String(values.amount_myr_sent));
+  if (values.fee_myr !== undefined) formData.append("fee_myr", String(values.fee_myr));
+  if (values.reference_no !== undefined) formData.append("reference_no", values.reference_no);
+  if (values.receipt) formData.append("receipt", values.receipt);
+  formData.append("reason", values.reason);
+
+  return apiUpload<{ transfer: SupplierTransfer; correction: SupplierTransferCorrection }>(
+    `/api/accounting/supplier-transfers/${transferId}/correct`,
+    formData,
+    { token },
   );
 }
 

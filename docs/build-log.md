@@ -1968,3 +1968,355 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   `fix/affiliate-tier-fee-double-charge` branch off `staging`, per the
   founder's plan to build several punch-list items and bundle them into
   one PR. Not yet merged.
+
+## 2026-09-28 — Fix: CHIP payment description + missed Bot top-up notification (items 39/40, PR #298, merged to `staging`; not yet on `main`)
+
+- **Item 39** — the CHIP purchase `description` (the line-item name shown
+  on CHIP's own checkout page/receipt) was hardcoded `"PekanGame order
+  {order_number}"` / `"PekanGame membership — {plan}"` regardless of which
+  affiliate whitelabel storefront the customer actually bought on, and
+  regardless of what was actually being bought — the order_number was
+  already carried separately as `reference`, so the description was pure
+  redundancy for orders and a wrong brand name for an affiliate's members.
+  **Fix:** order checkout now sends the package/game name instead
+  (`CheckoutService::requestPayment()`); membership now sends the
+  request's own resolved affiliate store name instead of a hardcoded
+  string. Added `StorefrontBrand::displayName()` (queries
+  `AffiliateBranding.store_name`, falls back to `'PekanGame'` for the
+  primary affiliate or a branding row with no store name yet) as the one
+  seam both callers use, rather than duplicating the query — same
+  `StorefrontBrand` class the 2026-09-24 return-url fix (PR #284) already
+  uses for this exact "which affiliate is this request for" resolution.
+  Reseller wallet top-up's own description (`ResellerWalletTopupService`)
+  was left alone — its `reference` already names the actual thing being
+  described adequately, and that channel isn't affiliate-storefront-scoped.
+- **Item 40** — a `.topupbaki` (WhatsApp Bot wallet top-up) could be
+  correctly charged and credited but never get its "top-up berjaya"
+  WhatsApp reply: `ResellerBotWalletTopupNotifier::notifyPaid()` looks up
+  the `ResellerBotWalletTopup` tracking row by `wallet_topup_attempt_id`
+  and silently no-ops if it isn't found yet — and nothing ever re-checks
+  once it later appears, since `ResellerBotService::handleTopupBaki()`
+  only creates that row *after* `ResellerWalletTopupService::initiate()`
+  returns. Considered closing the ordering gap directly (create the
+  tracking row before calling CHIP) but rejected it: the attempt id the
+  row is keyed on doesn't exist until `initiate()` returns, so that would
+  need a nullable FK plus orphan-row cleanup on every one of
+  `handleTopupBaki()`'s three failure paths, to fix a window that's
+  otherwise unreachable in production anyway (CHIP can't report a
+  purchase paid before the customer has even received its `checkout_url`)
+  — and it would still only cover this one specific cause, not a worker
+  crash or OpenWA being briefly down. **Fix instead:** extended the
+  already-scheduled `ReconcilePendingWalletTopupsCommand` (built for the
+  sibling "stuck-pending" backstop, ADR-076 PR-H's own "same backstop
+  every CHIP-triggered flow already has" pattern) with a second sweep —
+  any `ResellerBotWalletTopup` row with `notified_at` still null whose
+  attempt is already `Paid` gets `notifyPaid()` called again. Self-healing
+  against any cause of a dropped notification, not just this one, on the
+  existing schedule, no schema change.
+- No ADR needed for either — same precedent as PR #284: both extend an
+  already-established seam (`StorefrontBrand`, the CHIP reconciliation
+  backstop pattern) to a field/case that was missed, not a new decision or
+  a reversal of one.
+- New tests: `StorefrontBrandTest` (2), `CheckoutServiceTest::test_initiate_sends_the_package_name_as_the_payment_description`,
+  3 new cases in `ReconcilePendingWalletTopupsCommandTest` covering the
+  missed/already-notified/still-pending states. Full backend suite green:
+  2262/2262, 6061 assertions. No migration — no schema touched.
+
+## 2026-09-28 — Fix: items 26/34 (mechanical); item 27 attempted + reverted (`fix/2026-09-28-items-26-27-34`; not yet deployed)
+
+- **Item 26** — an unauthenticated request to `/api/affiliate/*` or
+  `/api/reseller-portal/*` without `Accept: application/json` (any plain
+  `curl`, not a real frontend — every real frontend always sends it)
+  crashed 500 instead of a clean 401. Re-derived the root cause from
+  scratch with a live repro test rather than trusting the 2026-09-24
+  finding's own description: it's not Sanctum's `Authenticate` middleware
+  reading the `Accept` header wrong — Laravel's own
+  `ApplicationBuilder::withMiddleware()` unconditionally wires a default
+  `redirectGuestsTo(fn () => route('login'))` *before* this app's
+  `bootstrap/app.php` closure runs, so building the redirect target for
+  `AuthenticationException` calls `route('login')` on an API-only backend
+  with no such route, throwing `RouteNotFoundException` — well before
+  `shouldRenderJsonWhen()` (already configured for `api/*`) ever gets a
+  chance to render a clean JSON response. **Fix:** one line,
+  `$middleware->redirectGuestsTo(fn () => null)`, added to `bootstrap
+  /app.php`'s existing `withMiddleware()` closure — correct everywhere in
+  this app, nothing here has a login page. New
+  `UnauthenticatedApiRequestTest` (2 cases) reproduces the exact
+  no-Accept-header request against both affected route groups and asserts
+  a clean 401 — both confirmed failing (500) against the pre-fix code
+  first.
+- **Item 27 — attempted, then reverted; back to unstarted.**
+  `e2e/playwright.config.ts`'s `admin`/`storefront` webServer commands
+  were pinned to `--webpack` (matching this repo's own existing `next
+  build --webpack` workaround, 2026-09-24 ADR-112 PR2) to stop the
+  Turbopack Google-Fonts-loader boot crash. Locally verified the flag
+  itself forces webpack cleanly (`▲ Next.js 16.3.5 (webpack)`, ready in
+  356ms) and the config still parsed/listed all 5 golden-path specs —
+  but real CI told a different story: `admin-mark-delivered.spec.ts` and
+  `admin-resend-delivery.spec.ts` both started timing out (60s, exact
+  same locator — `openOrder()`'s search box — exact same ~1.0m each run)
+  *every* run, not intermittently. Ran a clean A/B to be sure it was the
+  bundler and not items 26/34: reverted `--webpack` only, kept the other
+  two fixes, pushed — playwright passed clean. Re-added `--webpack`,
+  pushed again — same 2 specs failed identically a second time. That's a
+  deterministic regression, not a flake; `--webpack` made this measurably
+  worse than the rare Turbopack crash it was meant to fix (which a rerun
+  already always cleared). **Decision: not worth chasing further this
+  session** — reverted `--webpack` on both webServer commands back to
+  plain `next dev`, item 27 goes back to its original unstarted state. A
+  real fix, if ever wanted, is `next build && next start` instead of
+  `next dev` for e2e (deterministic, no dev-mode on-demand-compile timing
+  at all — closes both this new failure mode and the original Turbopack
+  one at the root), but that's CI workflow + config + `AGENTS.md` changes
+  of its own, not a one-line flag swap — scoped out of this session.
+- **Item 34** — `UpdateAffiliateProfileRequest`'s `bank_name`/
+  `bank_account_no`/`bank_account_holder` were all `nullable`, which lets
+  an empty string `""` through as a "valid" value — `Affiliate\
+  WithdrawalController::store()`'s own `$affiliate->bank_name === null`
+  guard doesn't catch that, so an affiliate could save blank bank details
+  and still pass the "must have bank details" check before withdrawing.
+  Confirmed this FormRequest is the only write-path for these three
+  columns before touching it. **Fix:** `nullable` → `filled` on all
+  three — allows omitting the field entirely (a partial update touching
+  only other fields still works), rejects it outright if present and
+  empty. 2 new cases in `AffiliateProfileTest`.
+- No ADR needed for items 26/34 — both mechanical fixes using existing
+  patterns (a framework config override, tightening an existing
+  validation rule), not new decisions. Item 27 wasn't actually built —
+  see above.
+- Full backend suite green: 2266/2266, 6071 assertions. No migration — no
+  schema touched. CI playwright: passes clean on this branch's final
+  state (plain `next dev`, no `--webpack`) — verified via a real CI run,
+  not just locally.
+
+## 2026-09-28 — Fix: ADR-047 addendum — realtime reconcile-on-resume safety net + two resubscribe races + broadcast-queue reliability (`fix/2026-09-28-reverb-reconcile-gaps`)
+
+- A founder question ("does everything really need a hard refresh?")
+  turned into a full audit of every Reverb/Echo polling-and-push consumer
+  built across ADR-047's own decisions and both prior addenda, not just
+  the one reported symptom (a customer's track-order page stuck on
+  "Failed" after an admin resend later delivered it). Grilled with the
+  founder (`/mattpocock-skills:grilling`) before any code touched — full
+  record in `docs/adr.md`'s new 2026-09-28 ADR-047 addendum.
+- **Root cause, one thing, not four:** no consumer of a push channel ever
+  had a designated moment to reconcile against REST truth once its first
+  subscription was live — so a missed delivery (a resubscribe race, a
+  backgrounded mobile tab whose WebSocket died silently, or the broadcast
+  job itself failing server-side) had no recovery path short of a hard
+  refresh.
+- **New `useReconcileOnResume(callback)` hook**, duplicated as a small
+  file in both `storefront/src/lib/` and `admin/src/lib/` (two separate
+  Next.js apps, no shared package today) — fires `callback` on
+  `visibilitychange` turning visible and on Echo's connection reaching
+  `connected` again. Wired into all four converted screens (storefront
+  `OrderStatusTracker`, admin `price-sync`/`backups`/`orders`) as a pure
+  addition; no existing poll/push logic touched.
+- **Two real resubscribe races found and fixed at the root**, not just
+  narrowed: `admin/src/app/middleware/price-sync/page.tsx`'s run-status
+  channel effect depended on `run?.status`, so it fully
+  `leave()`+resubscribed the private channel on every status tick
+  (including the tick the listener itself had just delivered) — a
+  fast-failing sync could flip `running→failed` inside that resubscribe's
+  own auth-round-trip window and land nowhere, sticking the card on
+  "running" forever (polling was already dropped here, per decision 4).
+  `admin/src/app/admin/orders/page.tsx`'s `admin-orders` channel effect
+  had the same shape, keyed to `orderFilters` instead. Both now subscribe
+  once per stable id (`run?.id`, or just `session`) and read the value
+  they used to depend on via a `useRef`, matching `backups`'/the
+  originally-shipped `admin-orders`' own "a subscription costs nothing
+  while idle" pattern.
+- **Storefront's terminal-state gap deliberately does NOT get its poll
+  loop revived.** Considered reintroducing a client-side "is this order
+  still resendable" check and rejected it — it would duplicate
+  `Order::isAlreadyCompensated()`-style business logic the backend
+  already owns, and resurrect the always-polling pattern ADR-047 decision
+  4 moved away from for settled orders. The reconcile hook above is
+  judged sufficient on its own.
+- **Broadcast-queue reliability, backend:** `config/horizon.php`'s
+  `supervisor-price-sync`/`supervisor-backups` both ran `tries: 1` —
+  correct for the queue's own job (`SyncSupplierPricesJob`/
+  `RunDatabaseBackupJob` each pin their own `public $tries = 1` at the
+  class level, confirmed unaffected by this change), but the generic
+  `Illuminate\Broadcasting\BroadcastEvent` job sharing that queue
+  inherited the same one-shot limit with no override of its own — a
+  transient Reverb hiccup at broadcast time was a silent, permanent drop,
+  with zero log line anywhere. Bumped both to `tries: 3` (matching
+  `supervisor-orders`) after confirming no other job shares either queue.
+  New `App\Listeners\Broadcasting\LogFailedBroadcastJob` (registered on
+  `Illuminate\Queue\Events\JobFailed` in `AppServiceProvider::boot()`)
+  logs when a `BroadcastEvent` job exhausts its retries on
+  `orders`/`price-sync`/`backups` — visibility only, Horizon's own
+  failed-jobs UI already has the full payload.
+- No new ADR number — this is an addendum to ADR-047 (a refinement of its
+  own decisions, not a new decision axis), per this repo's own
+  build-on-an-existing-ADR convention.
+- New tests: `LogFailedBroadcastJobTest` (3 cases — logs a `BroadcastEvent`
+  failure on a broadcast queue, ignores a non-broadcast job on the same
+  queue, ignores a `BroadcastEvent` failure on an unrelated queue). Full
+  backend suite green: 2269/2269, 6074 assertions. `tsc --noEmit`/
+  `eslint`/`next build` clean on both `storefront/` and `admin/`. No
+  migration — no schema touched.
+- **Live verification still owed by the founder** — no admin/customer
+  session available to this agent to watch a real WebSocket
+  drop-and-recover in a browser. See the ADR-047 addendum's own
+  Consequence-to-track for the three specific things to confirm on a real
+  deploy (backgrounded-tab resume, a fast-finishing Price Sync run, the
+  new failed-broadcast log line actually appearing).
+
+## 2026-09-28 — ADR-083 2026-09-28 addendum built: `/admin/accounting` Funding History page, Transaction Register pagination + void/adjustment visibility fix, CHIP cross-window date view, Supplier Transfer "Edit Details" (`feature/2026-09-28-adr083-accounting-ui`)
+
+Founder walkthrough of `/admin/accounting` surfaced four gaps, grilled together
+(`/mattpocock-skills:grilling`, 3 rounds) at the founder's own request — full
+design in `docs/adr.md`'s ADR-083 2026-09-28 addendum, this entry is the build.
+
+- **Real bug found and fixed, not just a missing feature:** `voidTransfer()`
+  reversed only a transfer's *original* net, never its *current cumulative*
+  net (original + prior `MANUAL_ADJUSTMENT`s) — an Adjust-then-Void sequence
+  left a silent residual permanently stuck in the supplier's ledger balance.
+  Checked against real production data before deciding on a backfill
+  (read-only, `pekangame-prod-lwf`): 2 voided transfers existed, neither had
+  a prior adjustment — never actually manifested, so no backfill, code fix
+  only. Live-verified post-fix in a real browser session: recorded a
+  transfer, Adjusted +50,000 IDR, Voided it — ledger balance landed at
+  exactly IDR 0.
+- New `SupplierLedgerEntryType::VoidReversal` distinguishes a full-void
+  reversal from a partial `MANUAL_ADJUSTMENT` in the ledger/register/CSV —
+  zero-migration (`type` is a plain `string` column). Both
+  `recordManualAdjustment()`/`voidTransfer()` now `lockForUpdate()` the
+  transfer row inside their transaction (cheap race insurance, not a full
+  subprocess-concurrency test — out of proportion for single-admin usage).
+- **Transaction Register correctness fix:** a voided `SupplierTransfer` row
+  used to show its full original outflow with no indication it was voided;
+  `MANUAL_ADJUSTMENT`/`VOID_REVERSAL` entries were never projected into the
+  register at all, so a correction was invisible to the CSV export the
+  year-end professional works from. Fixed: a voided row keeps its real
+  original figures (tagged VOIDED, never rewritten to zero — real
+  double-entry practice reverses, it doesn't edit history), and every
+  correction is now its own `supplier_adjustment` row dated at its own
+  `created_at`.
+- **Real backend pagination** on the Transaction Register (`rows()` used to
+  pull every matching row with no `LIMIT`) — a documented, deliberate
+  fetch-then-sort-in-PHP-then-slice approach (not a SQL `UNION`), verified
+  against real production volume first (~36 total rows today); flagged in
+  code to revisit once paid-order volume nears ~10k rows.
+- **New Funding History page** (`/admin/accounting/suppliers/{id}/transfers`)
+  — `SupplierFundingService::transfers()`'s pagination existed since PR-1 but
+  was never wired to any UI; `SupplierTransferModal` narrowed to just the
+  record-transfer form + balance card, linking out to the new page.
+- **New "Edit Details" correction action**, metadata-only
+  (`amount_myr_sent`/`fee_myr`/`source_channel`/`reference_no`/receipt) —
+  confirmed these have zero computed relationship to the FX ledger side
+  before building this (`amount_foreign_received` is independently
+  hand-typed off the same receipt, never derived from `amount_myr_sent`).
+  New append-only `supplier_transfer_corrections` table (model-enforced,
+  same `booted()` pattern as `SupplierLedgerEntry`), one row per edit
+  action with a JSON diff. `amount_foreign_received`/`supplier_fee` stay
+  Adjust/Void-only — those two, and only those two, feed the ledger amount
+  directly.
+- **CHIP Settlements cross-window date view** — new "View by: Upload Window
+  | Date Range" toggle queries `chip_settled_transactions.settled_on`
+  directly across every `payment_settlement_id`; no new table, no
+  double-count risk (ADR-110's unique `transaction_id` already covers it).
+- Built via two sequential forked sessions (backend, then frontend), each
+  independently verified by the coordinating session rather than trusted
+  blind: backend — full suite **2291/2291** green (was 2270, +21 tests),
+  `php artisan migrate` applied to local dev DB, route-collision ordering
+  for `/settlements/transactions` vs `/settlements/{settlement}` confirmed
+  correct. Frontend — `tsc --noEmit`/`eslint`/`next build` all clean
+  (re-run and confirmed directly, not just trusted from the build report);
+  real browser session against local dev servers additionally confirmed
+  the narrowed modal, the new page's filters/inline corrections, the
+  register's void tag + separate correction rows, and the CHIP date-range
+  toggle against real local data.
+- Not yet committed/pushed as of this entry — working tree on
+  `feature/2026-09-28-adr083-accounting-ui` (branched off `staging`).
+
+## 2026-09-28 — Envelope Ledger + Transaction Register/System Health completeness (re-grilling ADR-083 decision 11, `feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`)
+
+Founder re-challenged ADR-083's original "the platform does not model
+equity, capital or drawings" call — not over cost, but because an
+auditor-ready complete money trail (director capital, OPEX, marketing,
+dividends) was the actual unmet need, and a hands-on Bukku free-trial
+session showed most of that product's surface (inventory, fixed assets,
+SST, 50+ reports) doesn't apply to this business. Grilled at length
+(`/mattpocock-skills:grilling`) — see `docs/adr.md`'s second 2026-09-28
+ADR-083 addendum for the full decision record. Three things shipped:
+
+1. **Envelope Ledger** (`/admin/accounting/envelopes`, new sidebar item)
+   — `budget_envelopes`/`budget_envelope_entries`, append-only (model-layer
+   enforced, mirrors `SupplierLedgerEntry`), 4 starter envelopes seeded
+   (Capital Rolling, Marketing Budget, Maintenance/Operations, Company
+   Savings). Deliberately **not** a double-entry engine — no balance
+   sheet, no trial balance. "Beginner friendly" by explicit founder
+   request: entries take a positive magnitude, the category's own
+   `typicalSign()` supplies the sign (`Adjustment` is the one category
+   needing an explicit direction). Corrections are void-by-reversal only
+   (a new negated entry, `reverses_entry_id` back-reference) — the
+   original never edited/deleted, balance is a plain `SUM(amount_sen)`.
+   "Allocate Monthly Profit" shows the real current-month Monthly Summary
+   lines as reference context (reused from `MonthlyAccountingSummaryService`,
+   never re-derived into a single "net profit" figure — that formula was
+   never grilled/pinned) and lets the founder type a manual split per
+   envelope. Receipts reuse the existing private-disk pattern; an
+   AI/OCR "Digital Shoebox" was requested mid-grill then withdrawn once
+   re-flagged as the exact prompt-injection risk ADR-083's original
+   decision 11 already rejected once.
+2. **Transaction Register — 3 missing row types.** `membershipRows()`,
+   `walletTopupRows()` (`status=Paid` only), `withdrawalRows()`
+   (`status=Completed` only, dated at `processed_at`) added to
+   `TransactionRegisterService`, closing a real "nothing is ever lost"
+   gap — membership fees and wallet top-ups were already matched by CHIP
+   Settlements and summed in the Monthly Summary, but never had their own
+   row in the one screen meant to be the complete, downloadable record.
+   No backfill needed — the register computes live from a date-range
+   query, so historical rows in `MembershipFeeRecord`/`WalletTopupAttempt`/
+   `Withdrawal` (all pre-existing tables) show up correctly the first time
+   a past period is viewed/exported.
+3. **System Health — reseller-wallet-liability vs. supplier-balance.**
+   `DashboardService::health()` gained `reseller_wallet_liability_sen`
+   (summed across every reseller's wallet ledger) alongside the existing
+   per-supplier balances, for a real treasury risk the founder flagged: a
+   reseller's wallet top-up credits their spendable balance immediately,
+   but the CHIP cash behind it settles T+1/T+2 — if spent immediately,
+   the live supplier balance can be drawn down ahead of the cash meant to
+   replenish it. Side-by-side numbers only, no alert threshold yet
+   (agreed to wait for real reseller volume before guessing a buffer %).
+
+**Also decided, not built:** a founder proposal to fully redesign the
+existing 4 `/admin/accounting` screens (to "sync like Bukku") was
+re-challenged before any code was touched — `AppSidebar.tsx` already
+groups all 4 under one always-visible "Accounting" section, and the
+Monthly Summary already derives from the same underlying ledger data the
+other screens write. No real interconnection gap existed; the perceived
+one was a surface comparison against a mature competitor product. The
+Envelope Ledger was added as a 5th item in the same sidebar group
+instead of touching the 4 already-tested screens. LHDN e-Invoicing/
+MyInvois submission was deliberately kept out of scope — a real,
+separate compliance requirement (already legally live for this
+company's revenue tier as of Jan 2026, confirmed via research) gated on
+actual commercial launch, still zero external customers as of this
+session.
+
+- Backend: full suite **2308/2308** green (was 2291, +17 tests — 3
+  register-gap, 1 dashboard-liability, 13 Envelope Ledger),
+  `php artisan migrate` applied to local dev DB.
+- Frontend: `tsc --noEmit`/`eslint`/`next build` all clean.
+- **Real-browser-verified** against the real local dev DB (Herd-served
+  backend + `npm run dev` admin): recorded a Capital Injection entry,
+  voided it (balance netted back to exactly RM0, original entry visible
+  and struck through), ran a real Allocate Monthly Profit against real
+  September 2026 Monthly Summary figures, downloaded and inspected a real
+  CSV export. **One real bug caught by this live pass** (not the test
+  suite): `handleAllocate()` refreshed envelope balances but not the
+  selected envelope's own entries list — a freshly-allocated entry was
+  invisible until a manual reload. Fixed and re-verified live in the
+  same session. All test data cleaned up and the temporarily-reset local
+  `test@example.com` admin password restored to the `password` default
+  afterward.
+- A first draft leaked the Malay working name ("Peruntukan Untung
+  Bulanan") into the visible "Allocate Monthly Profit" button label and
+  several doc comments — caught and fixed same session; the admin panel
+  stays English throughout, matching the rest of `/admin`.
+- Not yet committed/pushed as of this entry — working tree on
+  `feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`
+  (branched off `staging`).

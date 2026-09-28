@@ -36,6 +36,20 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Item 26 (found 2026-09-24, fixed 2026-09-28): this API-only
+        // backend has no named `login` route, but ApplicationBuilder's own
+        // withMiddleware() unconditionally wires a default
+        // `redirectGuestsTo(fn () => route('login'))` *before* this
+        // closure runs — so an unauthenticated request that doesn't send
+        // `Accept: application/json` (any plain `curl`, not a real
+        // frontend) crashes 500 with `RouteNotFoundException` instead of a
+        // clean 401, inside Authenticate::redirectTo()'s call to
+        // route('login'), well before shouldRenderJsonWhen() below ever
+        // gets a chance to run. Overriding it to always return null is
+        // correct everywhere in this app — nothing here has a login page
+        // to redirect to.
+        $middleware->redirectGuestsTo(fn () => null);
+
         // ADR-078 decision 1: runs before the framework's HandleCors
         // (prepended to the global stack) so it can add an active custom
         // affiliate-domain (ADR-060) to `cors.allowed_origins` for this

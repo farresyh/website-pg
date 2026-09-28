@@ -1110,47 +1110,38 @@ accepted state, not a gap to chase. See §14.
     explicit payment/delivery/compensation semantics and a versioned API
     contract; never sum the current paginated page in the browser. Requires a
     separate ADR before implementation.
-26. **Unauthenticated non-JSON request to a `auth:affiliate`-guarded portal
-    route crashes 500 instead of a clean 401 — found 2026-09-24, not started.**
-    Reproduced against production via `curl` (no `Accept: application/json`
-    header) on `/api/affiliate/orders` and `/api/reseller-portal/orders`:
-    Sanctum's `Authenticate` middleware falls into `redirectTo()` → `route(
-    'login')`, which throws `RouteNotFoundException` (this is an API-only
-    backend with no named `login` route) instead of returning a plain
-    `{"message":"Unauthenticated."}` 401. **Scope is narrow — confirmed by
-    reading the actual middleware, not assumed:** only the two portal login
-    surfaces sharing the `auth:affiliate` Sanctum guard
-    (`/api/affiliate/*`, `/api/reseller-portal/*`) are affected. The
-    Reseller **API** (`/api/reseller/v1/*`, partner-facing, bearer key from
-    `reseller_api_keys` set in `/admin/resellers`) uses its own
-    `EnsureResellerApiKey` middleware — a completely separate auth
-    boundary that never touches Sanctum or `Accept` headers and always
-    throws a clean `ResellerApiException` envelope (`MISSING_API_KEY`/
-    `INVALID_API_KEY`) — **not affected.** The Reseller Bot (WhatsApp/
-    OpenWA) doesn't go through this HTTP guard either. No customer impact:
-    every real frontend (`admin/`, `storefront/`, `reseller/`) always sends
-    `Accept: application/json` on its own API calls. Low-severity
-    robustness fix, not urgent — likely a small `Authenticate::redirectTo()`
-    override or `exceptions()` handler tweak so an unauthenticated
-    non-JSON request to an API-only guard always gets a clean 401.
+~~26. **Unauthenticated non-JSON request to a `auth:affiliate`-guarded portal
+    route crashes 500 instead of a clean 401.**~~ — **🟢 BUILT 2026-09-28.**
+    Real root cause (confirmed via a live repro test, not the middleware
+    read alone): Laravel's own `ApplicationBuilder::withMiddleware()`
+    unconditionally wires a default `redirectGuestsTo(fn () => route('login'))`
+    *before* this app's own `bootstrap/app.php` closure runs — the crash
+    happens building `AuthenticationException`'s redirect target, before
+    `shouldRenderJsonWhen()` ever gets a chance to help. Fix: `$middleware
+    ->redirectGuestsTo(fn () => null)` in `bootstrap/app.php`. Scope
+    confirmed narrow as originally described — only `/api/affiliate/*` and
+    `/api/reseller-portal/*`; Reseller API/Bot unaffected. New test:
+    `UnauthenticatedApiRequestTest` (2 cases). **Merged to `staging`
+    (PR #300), not yet on `main`.**
 27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
     `next dev` webServer — a recurring CI-environment flake, not a code
-    bug.** Hit twice in one day (2026-09-24) on two unrelated PRs (#278:
-    security/portal-fixes release; #279: docs + `.claude/` config only, zero
-    app code) — same signature both times: Turbopack's Google Fonts loader
-    throws `Module not found: Can't resolve
-    '@vercel/turbopack-next/internal/font/google/font'` / `next/font/google
-    queries have exactly one entry` while compiling `layout.tsx`, so the
-    `webServer` never comes up and Playwright times out after 60s. A full
-    workflow rerun passed cleanly both times with no code change, and
-    PR #279 touched no app code at all — rules out a real regression.
-    `e2e/playwright.config.ts`'s admin `webServer` command is plain `npx
-    next dev --port 3000`, which defaults to Turbopack on Next 16; likely
-    fix is pinning it to `--webpack` (matching the known local-dev gotcha
-    already in `AGENTS.md`'s Build & Test section, where the same Turbopack
-    CSS-worker/font-loader class of failure was hit and worked around the
-    same way). Not urgent — a rerun always clears it — but worth a proper
-    fix before it happens a third time. Not started.
+    bug.** **Attempted 2026-09-28, reverted same day — made things worse,
+    not better.** Pinning `--webpack` (matching this repo's existing
+    `next build --webpack` workaround elsewhere) did stop the Turbopack
+    font-loader crash, but introduced a *consistent* new failure instead:
+    `admin-mark-delivered.spec.ts` and `admin-resend-delivery.spec.ts`
+    both timed out (exact same locator, exact same ~60s) waiting for the
+    orders search box to become fillable — reproduced identically across
+    2 separate CI runs. A clean A/B (revert `--webpack` only, keep items
+    26/34) proved this decisively: with `--webpack`, playwright fails
+    2/5 every time; without it, playwright passes clean. Root mechanism
+    not chased further — not worth it for a low-severity, rare flake
+    that a rerun always already clears; a real fix would need `next
+    build && next start` instead of `next dev` (deterministic, no
+    on-demand-compile timing at all, closes both this and the original
+    Turbopack crash at once) as its own separately-scoped piece of work,
+    not a one-line flag swap. Back to unstarted — see `docs/build-log.md`'s
+    2026-09-28 entry for the full investigation.
 
 ## 2026-09-26 money-critical branch audit — punch list, mostly built
 
@@ -1259,10 +1250,14 @@ items 39/40 (founder yes/no, not a grill).
     against the pre-fix code first. Built on its own
     `fix/affiliate-tier-fee-double-charge` branch off `staging`. Not yet
     merged.
-34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
+~~34. **Withdrawal bank-detail fields accept an empty string**, bypassing the
     "must have bank details" guard (`$bankName === null` doesn't catch
-    `""`). Tighten to `filled`/`required_without`. **Deliberately skipped
-    2026-09-26 by founder call** — not built this session.
+    `""`).~~ — **🟢 BUILT 2026-09-28.** Only write-path confirmed:
+    `UpdateAffiliateProfileRequest` — `bank_name`/`bank_account_no`/
+    `bank_account_holder` all `nullable` → `filled` (allows omitting the
+    field for a partial update, rejects it outright if present and empty).
+    New tests in `AffiliateProfileTest` (empty-string rejected, omission
+    still allowed). **Merged to `staging` (PR #300), not yet on `main`.**
 35. **`maker_checker_threshold_sen` silently coerces a missing/null config to
     0** instead of failing loud, silently changing which withdrawals need a
     second approver. **Re-checked 2026-09-26 against current code — not
@@ -1307,16 +1302,65 @@ items 39/40 (founder yes/no, not a grill).
     build` both clean. Built on its own `fix/docs-checkout-input-example`
     branch off `staging`. Not yet merged.
 
-**Low priority / needs a founder yes-no, not a grill:**
-
-39. CHIP payment description hardcodes `"PekanGame"` regardless of which
-    affiliate storefront the customer paid on — may be intentional (one
-    company CHIP account is the actual merchant of record), needs a founder
-    decision before touching it either way.
-40. Narrow `.topupbaki` race: the reseller is correctly charged and
+~~39. CHIP payment description hardcodes `"PekanGame"` regardless of which
+    affiliate storefront the customer paid on~~ — **🟢 BUILT 2026-09-28.**
+    Founder confirmed not intentional. Order checkout now describes the
+    package/game bought instead (order_number was already redundant with
+    `reference`); membership now sends the resolved affiliate's own store
+    name (`StorefrontBrand::displayName()`, new). See `docs/build-log.md`'s
+    2026-09-28 entry. **Merged to `staging` (PR #298), not yet on `main`.**
+~~40. Narrow `.topupbaki` race: the reseller is correctly charged and
     credited, but can miss the WhatsApp confirmation if the CHIP webhook
     resolves inside a tight window between `initiate()` and the bot's own
-    tracking row being created. Money-safe; notification-only gap.
+    tracking row being created.~~ — **🟢 BUILT 2026-09-28.**
+    `ReconcilePendingWalletTopupsCommand` (the existing stuck-pending
+    backstop) now also sweeps for a Bot top-up whose attempt is already
+    `Paid` but never got notified, self-healing against this and any other
+    cause of a dropped notification. See `docs/build-log.md`'s 2026-09-28
+    entry. **Merged to `staging` (PR #298), not yet on `main`.**
+~~41. **ADR-083's 2026-09-28 addendum**~~ — **grilled + BUILT 2026-09-28**
+    (`feature/2026-09-28-adr083-accounting-ui`, off `staging`, not yet
+    merged). Four bundled `/admin/accounting` gaps: a dedicated paginated
+    Funding History page (`SupplierTransferModal`'s history box was never
+    wired to the pagination the backend already supported), real backend
+    pagination on the Transaction Register (was fetching every row with no
+    `LIMIT`), a real correctness fix for void/adjustment invisibility in
+    that same register (a voided transfer's outflow stood as if real, and
+    corrections never showed at all — plus a latent `voidTransfer()` bug,
+    verified against production to have never actually manifested: 2
+    voided transfers total, neither with a prior adjustment), a
+    cross-window date-range view for CHIP Settlements, and a
+    ledger-affecting-vs-metadata split on the Supplier Transfer "Adjust"
+    action (RM-sent/fee/reference/channel/receipt become directly editable
+    with a new append-only audit trail; the actual FX ledger amount stays
+    Adjust/Void-only). Backend 2291/2291, frontend `tsc`/`lint`/`build`
+    clean, real-browser-verified. See `docs/adr.md`'s ADR-083 2026-09-28
+    addendum and `docs/build-log.md`'s matching entry.
+~~42. **Envelope Ledger + Transaction Register/System Health completeness**~~
+    — **grilled + BUILT 2026-09-28** (`feature/2026-09-28-adr083-envelope-
+    ledger-and-register-gaps`, off `staging`, not yet merged). Re-grills
+    ADR-083 decision 11 ("the platform does not model equity, capital or
+    drawings") after the founder actually tried Bukku's free trial and
+    found it mismatched to this business (inventory/fixed assets/SST/50+
+    reports, almost none applicable). New `/admin/accounting/envelopes`
+    screen: 4 starter envelopes (Capital Rolling/Marketing Budget/
+    Maintenance/Company Savings), append-only categorized entries
+    (deliberately not double-entry — no balance sheet/trial balance),
+    void-by-reversal corrections, a manual "Allocate Monthly Profit"
+    action reading the existing Monthly Summary as reference context
+    (never a derived "net profit" figure). Bundled with two real gaps
+    found in the same session: Transaction Register was missing
+    membership-payment/wallet-topup/withdrawal-payout rows (added,
+    no backfill needed — computed live), and System Health gained a
+    reseller-wallet-liability-vs-supplier-balance figure (a real
+    treasury/liquidity risk, no alert threshold yet). LHDN e-Invoicing
+    stays explicitly out of scope, gated on real commercial launch. A
+    proposed full redesign of the 4 existing `/admin/accounting` screens
+    was re-challenged and dropped — no real interconnection gap existed.
+    Backend 2308/2308, frontend clean, real-browser-verified (one live
+    bug found and fixed: a missing entries-list refresh after Allocate).
+    See `docs/adr.md`'s second ADR-083 2026-09-28 addendum and
+    `docs/build-log.md`'s matching entry.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

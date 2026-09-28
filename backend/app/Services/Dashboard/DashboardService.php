@@ -2,12 +2,14 @@
 
 namespace App\Services\Dashboard;
 
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -140,6 +142,22 @@ final class DashboardService
             ];
         })->values()->all();
 
+        // 2026-09-28 addendum: a real treasury/liquidity risk the founder
+        // flagged — a reseller's wallet top-up credits their spendable
+        // balance immediately, but the CHIP cash backing it only settles
+        // to the company bank T+1/T+2. Combined supplier balance
+        // (`$suppliers` above) must stay ahead of the total outstanding
+        // reseller wallet float, or a reseller spending against a
+        // freshly-credited top-up can draw a supplier balance down before
+        // the cash that's meant to replenish it has actually landed.
+        // Deliberately just the two raw numbers side by side for now — no
+        // threshold/alert yet (agreed: revisit once real reseller volume
+        // gives a real buffer % to tune against, not a guessed one).
+        $resellerWalletLiabilitySen = (int) LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->sum('amount');
+        $totalSupplierBalanceMyrEquivalent = collect($suppliers)->sum('balance_myr_equivalent');
+
         $staleAfterMinutes = (int) config('services.delivery_reconciliation.stale_after_minutes');
         $pendingStaleMinutes = (int) config('services.delivery_reconciliation.pending_stale_minutes');
         $nowUtc = CarbonImmutable::now('UTC');
@@ -171,6 +189,14 @@ final class DashboardService
         return [
             'suppliers' => $suppliers,
             'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it), in that supplier\'s own currency — never assume MYR. balance_myr_equivalent is a display-only conversion (CurrencyRateService, cached ~24h) for comparing suppliers at a glance; null means the conversion is unavailable right now, not that the balance is zero. drift (ADR-083 decision 6) compares that same balance against SUM(supplier_ledger_entries) — null when no drift_threshold is configured for this supplier, meaning "not watched", not "not drifted".',
+            // 2026-09-28 addendum: real-time reseller-wallet-float vs
+            // supplier-balance visibility (a genuine treasury risk, not
+            // a bookkeeping concern — see the comment above where this is
+            // computed). Side-by-side numbers only, no alert threshold
+            // yet.
+            'reseller_wallet_liability_sen' => $resellerWalletLiabilitySen,
+            'total_supplier_balance_myr_equivalent' => $totalSupplierBalanceMyrEquivalent,
+            'reseller_wallet_liability_definition' => 'reseller_wallet_liability_sen = SUM(ledger_entries.amount), sen, owner_type=reseller_wallet, across every reseller — the total outstanding spendable credit resellers are currently holding. total_supplier_balance_myr_equivalent sums every supplier\'s own balance_myr_equivalent above. This should stay comfortably above the wallet liability — a reseller can spend their wallet balance against supplier stock immediately, while the CHIP cash that funded that top-up only settles to the company bank T+1/T+2.',
             // PR-F build addendum decision 5 — an active health signal
             // for the Reseller Bot channel's OpenWA session, reversed
             // from this screen's usual "no live ping" posture only in

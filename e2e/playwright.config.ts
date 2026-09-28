@@ -53,6 +53,14 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
+      // Item 27: plain `next dev` defaults to Turbopack on Next 16, whose
+      // Google Fonts loader has intermittently failed to compile
+      // layout.tsx in CI (twice in one day, 2026-09-24, on two unrelated
+      // PRs — same known Turbopack CSS-worker/font-loader class of
+      // failure as AGENTS.md's local-dev gotcha, worked around there the
+      // same way). `--webpack` pins the stable bundler for this
+      // CI-only boot, matching `next build --webpack`'s existing use
+      // elsewhere in this repo (docs/build-log.md, 2026-09-24).
       command: "npx next dev --port 3000",
       cwd: path.join(ROOT_DIR, "admin"),
       url: ADMIN_URL,

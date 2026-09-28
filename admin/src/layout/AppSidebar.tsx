@@ -51,6 +51,7 @@ const sections: PanelNavSection[] = [
           { name: "Transaction Register", href: "/admin/accounting/transactions" },
           { name: "CHIP Settlements", href: "/admin/accounting/settlements" },
           { name: "Monthly Summary", href: "/admin/accounting/summary" },
+          { name: "Envelope Ledger", href: "/admin/accounting/envelopes" },
         ],
       },
     ],

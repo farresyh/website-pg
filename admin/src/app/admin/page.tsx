@@ -275,6 +275,21 @@ export default function AdminDashboardPage() {
                 <span className="text-theme-xs text-gray-400 dark:text-gray-500">Supplier status/balance</span>
                 <InfoTooltip definition={health.suppliers_definition} />
               </div>
+              {/* 2026-09-28 addendum — reseller-wallet-float vs supplier-balance treasury check. Side-by-side numbers only, no alert threshold yet. */}
+              <div className="flex items-center justify-between border-t border-gray-100 py-3 text-theme-sm dark:border-gray-800">
+                <span className="flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-200">
+                  Reseller wallet liability
+                  <InfoTooltip definition={health.reseller_wallet_liability_definition} />
+                </span>
+                <span className="text-right">
+                  <span className="tabular-nums text-gray-500 dark:text-gray-400">
+                    {formatRm(health.reseller_wallet_liability_sen)}
+                  </span>
+                  <span className="ml-1 text-theme-xs tabular-nums text-gray-400">
+                    vs {formatRm(Math.round(health.total_supplier_balance_myr_equivalent * 100))} supplier balance
+                  </span>
+                </span>
+              </div>
               <div className="grid grid-cols-3 gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
                 <div>
                   <p className="flex items-center gap-1 text-theme-xs text-gray-400 dark:text-gray-500">

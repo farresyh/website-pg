@@ -13,6 +13,7 @@ class SupplierLedgerEntryTypeTest extends TestCase
         $this->assertSame('ORDER_DRAWDOWN', SupplierLedgerEntryType::OrderDrawdown->value);
         $this->assertSame('REFUND', SupplierLedgerEntryType::Refund->value);
         $this->assertSame('MANUAL_ADJUSTMENT', SupplierLedgerEntryType::ManualAdjustment->value);
+        $this->assertSame('VOID_REVERSAL', SupplierLedgerEntryType::VoidReversal->value);
     }
 
     public function test_coerce_passes_an_enum_through_unchanged(): void

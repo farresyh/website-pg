@@ -6,6 +6,14 @@
  * transaction against orders/membership subscriptions/reseller wallet
  * top-ups and never re-counts an already-reconciled one (this ADR's
  * own addendum — a re-uploaded or date-overlapping file is safe).
+ *
+ * 2026-09-28 addendum: a "View by: Upload Window | Date Range" toggle —
+ * the per-window table below always existed, but there was no way to
+ * see matched transactions across an arbitrary date range spanning
+ * multiple upload windows. Date-range mode queries
+ * `chip_settled_transactions` directly (already dedup-safe per ADR-110,
+ * so a cross-window read carries no double-count risk) and links each
+ * row back to its own upload window.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -33,9 +41,11 @@ import {
   type PaymentSettlement,
   type Paginated,
   type SettlementIngestResult,
+  type ChipSettledTransactionWithWindow,
   listPaymentSettlements,
   uploadPaymentSettlement,
   updatePaymentSettlement,
+  getSettlementTransactionsByDateRange,
 } from "@/lib/payment-settlements";
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
@@ -56,6 +66,8 @@ export default function PaymentSettlementsPage() {
   const session = useClientSession();
   const token = session?.token ?? null;
 
+  const [viewMode, setViewMode] = useState<"window" | "date">("window");
+
   const [settlements, setSettlements] = useState<Paginated<PaymentSettlement> | null>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -65,11 +77,24 @@ export default function PaymentSettlementsPage() {
   const [editingBankFigure, setEditingBankFigure] = useState<number | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
 
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [dateRangePage, setDateRangePage] = useState(1);
+  const [dateRangeData, setDateRangeData] = useState<Paginated<ChipSettledTransactionWithWindow> | null>(null);
+  const [dateRangeError, setDateRangeError] = useState<string | null>(null);
+
   const refresh = useCallback((t: string, p: number) => {
     listPaymentSettlements(t, p)
       .then(setSettlements)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load settlements."));
   }, []);
+
+  const refreshDateRange = useCallback((t: string, p: number) => {
+    setDateRangeError(null);
+    getSettlementTransactionsByDateRange(t, { from: dateFrom || undefined, to: dateTo || undefined, page: p })
+      .then(setDateRangeData)
+      .catch((err: unknown) => setDateRangeError(err instanceof ApiError ? err.message : "Could not load transactions for this range."));
+  }, [dateFrom, dateTo]);
 
   useEffect(() => {
     const s = getClientSession();
@@ -80,6 +105,26 @@ export default function PaymentSettlementsPage() {
     refresh(s.token, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
+
+  /** Fetched on-demand (toggle click / Filter click), never as an effect — nothing external to synchronize with, just a user action. */
+  function handleViewModeChange(mode: "window" | "date") {
+    setViewMode(mode);
+    if (mode === "date" && token && !dateRangeData) {
+      refreshDateRange(token, dateRangePage);
+    }
+  }
+
+  function handleDateRangeFilter() {
+    if (!token) return;
+    setDateRangePage(1);
+    refreshDateRange(token, 1);
+  }
+
+  function handleDateRangePageChange(p: number) {
+    if (!token) return;
+    setDateRangePage(p);
+    refreshDateRange(token, p);
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -183,99 +228,216 @@ export default function PaymentSettlementsPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="max-w-full overflow-x-auto">
-          <DataTable data={settlements.data} dataKey="id">
-            <DataTableTableContainer>
-              <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
-                  <DataTableTHeadRow>
-                    <DataTableTHeadCell className={TH}>Window</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Matched Net</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>File Net</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Bank Figure (optional)</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}></DataTableTHeadCell>
-                  </DataTableTHeadRow>
-                </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {({ item }) => {
-                    const s = item as unknown as PaymentSettlement;
-                    const isEditing = editingBankFigure === s.id;
-                    return (
-                      <DataTableRow key={s.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                          {s.date_from} → {s.date_to}
-                        </DataTableCell>
-                        <DataTableCell className={TD}>{rm(s.matched_net_sen)}</DataTableCell>
-                        <DataTableCell className={TD}>{rm(s.file_net_sen)}</DataTableCell>
-                        <DataTableCell className="px-5 py-4">
-                          {isEditing ? (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                className="w-24"
-                                value={bankFigures[s.id] ?? (s.actual_bank_amount_sen !== null ? (s.actual_bank_amount_sen / 100).toFixed(2) : "")}
-                                onChange={(e) => setBankFigures((v) => ({ ...v, [s.id]: e.target.value }))}
-                              />
-                              <Button size="small" disabled={savingId === s.id} onClick={() => handleSaveBankFigure(s)}>
-                                Save
-                              </Button>
-                              <Button size="small" variant="outlined" onClick={() => setEditingBankFigure(null)}>
-                                Cancel
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span>{s.actual_bank_amount_sen !== null ? rm(s.actual_bank_amount_sen) : "—"}</span>
-                              <Button size="small" variant="outlined" onClick={() => setEditingBankFigure(s.id)}>
-                                {s.actual_bank_amount_sen !== null ? "Edit" : "Add"}
-                              </Button>
-                            </div>
-                          )}
-                        </DataTableCell>
-                        <DataTableCell className="px-5 py-4">
-                          <Tag severity={statusSeverity[s.status]}>{s.status}</Tag>
-                        </DataTableCell>
-                        <DataTableCell className={TD}>
-                          <Link href={`/admin/accounting/settlements/${s.id}`} className="text-brand-500 hover:underline">
-                            View transactions
-                          </Link>
-                        </DataTableCell>
-                      </DataTableRow>
-                    );
-                  }}
-                </DataTableTBody>
-              </DataTableTable>
-            </DataTableTableContainer>
-          </DataTable>
-          {settlements.data.length === 0 && (
-            <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No settlements uploaded yet.</p>
-          )}
-        </div>
+      <div className="mb-4 flex gap-2">
+        {(["window", "date"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => handleViewModeChange(mode)}
+            className={`rounded-lg px-3 py-1.5 text-theme-xs ${viewMode === mode ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+          >
+            {mode === "window" ? "View by: Upload Window" : "View by: Date Range"}
+          </button>
+        ))}
       </div>
 
-      {settlements.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-theme-sm text-gray-500 dark:text-gray-400">
-          <span>
-            Page {settlements.current_page} of {settlements.last_page} ({settlements.total} total)
-          </span>
-          <div className="flex gap-2">
-            <Button size="small" variant="outlined" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Previous
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              disabled={page >= settlements.last_page}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
+      {viewMode === "window" ? (
+        <>
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+            <div className="max-w-full overflow-x-auto">
+              <DataTable data={settlements.data} dataKey="id">
+                <DataTableTableContainer>
+                  <DataTableTable>
+                    <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                      <DataTableTHeadRow>
+                        <DataTableTHeadCell className={TH}>Window</DataTableTHeadCell>
+                        <DataTableTHeadCell className={TH}>Matched Net</DataTableTHeadCell>
+                        <DataTableTHeadCell className={TH}>File Net</DataTableTHeadCell>
+                        <DataTableTHeadCell className={TH}>Bank Figure (optional)</DataTableTHeadCell>
+                        <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
+                        <DataTableTHeadCell className={TH}></DataTableTHeadCell>
+                      </DataTableTHeadRow>
+                    </DataTableTHead>
+                    <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {({ item }) => {
+                        const s = item as unknown as PaymentSettlement;
+                        const isEditing = editingBankFigure === s.id;
+                        return (
+                          <DataTableRow key={s.id}>
+                            <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                              {s.date_from} → {s.date_to}
+                            </DataTableCell>
+                            <DataTableCell className={TD}>{rm(s.matched_net_sen)}</DataTableCell>
+                            <DataTableCell className={TD}>{rm(s.file_net_sen)}</DataTableCell>
+                            <DataTableCell className="px-5 py-4">
+                              {isEditing ? (
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    className="w-24"
+                                    value={bankFigures[s.id] ?? (s.actual_bank_amount_sen !== null ? (s.actual_bank_amount_sen / 100).toFixed(2) : "")}
+                                    onChange={(e) => setBankFigures((v) => ({ ...v, [s.id]: e.target.value }))}
+                                  />
+                                  <Button size="small" disabled={savingId === s.id} onClick={() => handleSaveBankFigure(s)}>
+                                    Save
+                                  </Button>
+                                  <Button size="small" variant="outlined" onClick={() => setEditingBankFigure(null)}>
+                                    Cancel
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span>{s.actual_bank_amount_sen !== null ? rm(s.actual_bank_amount_sen) : "—"}</span>
+                                  <Button size="small" variant="outlined" onClick={() => setEditingBankFigure(s.id)}>
+                                    {s.actual_bank_amount_sen !== null ? "Edit" : "Add"}
+                                  </Button>
+                                </div>
+                              )}
+                            </DataTableCell>
+                            <DataTableCell className="px-5 py-4">
+                              <Tag severity={statusSeverity[s.status]}>{s.status}</Tag>
+                            </DataTableCell>
+                            <DataTableCell className={TD}>
+                              <Link href={`/admin/accounting/settlements/${s.id}`} className="text-brand-500 hover:underline">
+                                View transactions
+                              </Link>
+                            </DataTableCell>
+                          </DataTableRow>
+                        );
+                      }}
+                    </DataTableTBody>
+                  </DataTableTable>
+                </DataTableTableContainer>
+              </DataTable>
+              {settlements.data.length === 0 && (
+                <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No settlements uploaded yet.</p>
+              )}
+            </div>
           </div>
-        </div>
+
+          {settlements.last_page > 1 && (
+            <div className="mt-4 flex items-center justify-between text-theme-sm text-gray-500 dark:text-gray-400">
+              <span>
+                Page {settlements.current_page} of {settlements.last_page} ({settlements.total} total)
+              </span>
+              <div className="flex gap-2">
+                <Button size="small" variant="outlined" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  Previous
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={page >= settlements.last_page}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+            <div>
+              <Label htmlFor="settled_from">From</Label>
+              <Input id="settled_from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="settled_to">To</Label>
+              <Input id="settled_to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+            <Button size="small" onClick={handleDateRangeFilter}>Filter</Button>
+          </div>
+
+          {dateRangeError && (
+            <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{dateRangeError}</p>
+          )}
+
+          {!dateRangeData ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          ) : (
+            <>
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+                <div className="max-w-full overflow-x-auto">
+                  <table className="w-full text-left text-theme-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-900">
+                      <tr>
+                        <th className={TH}>Transaction ID</th>
+                        <th className={TH}>Matched To</th>
+                        <th className={TH}>Amount</th>
+                        <th className={TH}>Fee</th>
+                        <th className={TH}>Net</th>
+                        <th className={TH}>Acquirer</th>
+                        <th className={TH}>Settled On</th>
+                        <th className={TH}>Window</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {dateRangeData.data.map((t) => {
+                        const grossMismatch = t.local_gross_sen !== null && t.local_gross_sen !== t.amount_sen;
+                        return (
+                          <tr key={t.id}>
+                            <td className="px-5 py-4 font-mono text-theme-xs text-gray-800 dark:text-white/90">{t.transaction_id}</td>
+                            <td className="px-5 py-4">
+                              {t.matched_type === null ? (
+                                <Tag severity="warn">unmatched</Tag>
+                              ) : grossMismatch ? (
+                                <Tag severity="danger">
+                                  {t.matched_type.replace(/_/g, " ")} #{t.matched_id} — gross {rm(t.local_gross_sen ?? 0)} vs file {rm(t.amount_sen)}
+                                </Tag>
+                              ) : (
+                                <Tag severity="success">{t.matched_type.replace(/_/g, " ")} #{t.matched_id}</Tag>
+                              )}
+                            </td>
+                            <td className={TD}>{rm(t.amount_sen)}</td>
+                            <td className={TD}>{rm(t.fee_sen)}</td>
+                            <td className={TD}>{rm(t.net_amount_sen)}</td>
+                            <td className={TD}>{t.acquirer}</td>
+                            <td className={TD}>{t.settled_on}</td>
+                            <td className={TD}>
+                              <Link href={`/admin/accounting/settlements/${t.payment_settlement.id}`} className="text-brand-500 hover:underline">
+                                {t.payment_settlement.date_from} → {t.payment_settlement.date_to}
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {dateRangeData.data.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="px-5 py-6 text-center text-theme-sm text-gray-400">No matched transactions in this range.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {dateRangeData.last_page > 1 && (
+                <div className="mt-4 flex items-center justify-between text-theme-sm text-gray-500 dark:text-gray-400">
+                  <span>
+                    Page {dateRangeData.current_page} of {dateRangeData.last_page} ({dateRangeData.total} total)
+                  </span>
+                  <div className="flex gap-2">
+                    <Button size="small" variant="outlined" disabled={dateRangePage <= 1} onClick={() => handleDateRangePageChange(dateRangePage - 1)}>
+                      Previous
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={dateRangePage >= dateRangeData.last_page}
+                      onClick={() => handleDateRangePageChange(dateRangePage + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );

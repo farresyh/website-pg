@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Affiliate;
+use App\Models\AffiliateBranding;
 
 /**
  * ADR-060 (2026-09-06 "domain lifecycle" addendum, section B): the
@@ -79,5 +80,20 @@ class StorefrontBrand
         }
 
         return rtrim((string) config('services.storefront.url'), '/');
+    }
+
+    /**
+     * The customer-facing brand name for this request — `AffiliateBranding`
+     * is a separate table (not an eager-loadable relation, ADR-028), so this
+     * is the one place that resolves it, rather than every payment-facing
+     * caller (CHIP purchase description, etc.) repeating the query. Falls
+     * back to `'PekanGame'` for the primary affiliate or an affiliate with
+     * no `store_name` set yet.
+     */
+    public function displayName(): string
+    {
+        return AffiliateBranding::query()
+            ->where('affiliate_id', $this->get()->id)
+            ->value('store_name') ?? 'PekanGame';
     }
 }
