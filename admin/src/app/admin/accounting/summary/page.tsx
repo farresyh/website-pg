@@ -8,10 +8,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { InfoTooltip } from "@/components/dashboard/InfoTooltip";
 import { type MonthlyAccountingSummary, getMonthlyAccountingSummary } from "@/lib/accounting-summary";
 
 function rm(sen: number): string {
@@ -20,15 +22,24 @@ function rm(sen: number): string {
   return negative ? `(${formatted})` : formatted;
 }
 
-const LINES: { key: keyof MonthlyAccountingSummary; label: string }[] = [
-  { key: "sales_revenue_sen", label: "Sales revenue" },
-  { key: "membership_revenue_sen", label: "Membership revenue" },
-  { key: "cogs_sen", label: "COGS" },
-  { key: "payment_processing_gain_loss_sen", label: "Payment processing net gain/(loss)" },
-  { key: "supplier_prepaid_topup_sen", label: "Supplier prepaid — top-up" },
-  { key: "supplier_prepaid_fx_variance_sen", label: "Supplier prepaid — FX variance true-up" },
-  { key: "affiliate_commission_expense_sen", label: "Affiliate commission expense" },
-  { key: "voucher_liability_issued_sen", label: "Voucher liability issued" },
+/**
+ * Added after the founder (this page's own target user) said the page
+ * was unclear even to them — these 8 lines deliberately mix real P&L
+ * (revenue/COGS/expense) with capital-movement/liability lines
+ * (supplier prepaid top-up/FX variance, voucher liability), which is
+ * exactly why there's no single "profit" figure on this page (see the
+ * note below the table) — each line needs its own plain-language
+ * explanation to be read correctly on its own.
+ */
+const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: string }[] = [
+  { key: "sales_revenue_sen", label: "Sales revenue", definition: "Total selling price of every order delivered this month — gross income, before subtracting what we paid suppliers. Not profit on its own." },
+  { key: "membership_revenue_sen", label: "Membership revenue", definition: "Total membership subscription fees collected this month." },
+  { key: "cogs_sen", label: "COGS", definition: "Cost of Goods Sold — the total we paid suppliers (e.g. Digiflazz) for those same delivered orders. Sales revenue minus this is roughly retail margin, still not the final profit figure." },
+  { key: "payment_processing_gain_loss_sen", label: "Payment processing net gain/(loss)", definition: "The gap between the transaction fee charged to customers and the real fee CHIP actually deducted — a small gain if we charged more than CHIP's real cut, a loss if less." },
+  { key: "supplier_prepaid_topup_sen", label: "Supplier prepaid — top-up", definition: "Capital sent this month to top up a supplier's prepaid balance (e.g. Digiflazz). A capital movement — not revenue, not an expense." },
+  { key: "supplier_prepaid_fx_variance_sen", label: "Supplier prepaid — FX variance true-up", definition: "The gap between the FX rate assumed when pricing packages and the real blended rate actually paid to suppliers this month — tells you whether the pricing buffer is set correctly, not a cash gain or loss." },
+  { key: "affiliate_commission_expense_sen", label: "Affiliate commission expense", definition: "Commission owed to affiliates from this month's sales, whether or not it has actually been paid out yet — a real expense against profit." },
+  { key: "voucher_liability_issued_sen", label: "Voucher liability issued", definition: "Value of store-credit vouchers issued this month to customers whose orders failed — a liability (credit we owe back), not a cash expense." },
 ];
 
 export default function MonthlyAccountingSummaryPage() {
@@ -66,6 +77,15 @@ export default function MonthlyAccountingSummaryPage() {
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Monthly Accounting Summary</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Read-only journal lines for one closed period — copy these into the external accounting SaaS each month.
+        </p>
+        <p className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-theme-sm text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+          This is a bookkeeping export, not a profit statement — these lines deliberately mix revenue/expenses with
+          capital movements (supplier top-ups, FX variance), so there is no single &quot;profit&quot; figure below.
+          For sales and profit, see{" "}
+          <Link href="/admin/reports" className="underline">
+            Reports
+          </Link>
+          {" "}→ Profit Analysis tab.
         </p>
       </div>
 
@@ -107,7 +127,12 @@ export default function MonthlyAccountingSummaryPage() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {LINES.map((line) => (
                 <tr key={line.key}>
-                  <td className="px-5 py-4 text-theme-sm text-gray-600 dark:text-gray-300">{line.label}</td>
+                  <td className="px-5 py-4 text-theme-sm text-gray-600 dark:text-gray-300">
+                    <span className="inline-flex items-center gap-1">
+                      {line.label}
+                      <InfoTooltip definition={line.definition} />
+                    </span>
+                  </td>
                   <td className="px-5 py-4 text-right font-mono text-theme-sm text-gray-800 dark:text-white/90">
                     {rm(summary[line.key])}
                   </td>

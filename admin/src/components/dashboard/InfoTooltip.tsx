@@ -30,7 +30,16 @@ export function InfoTooltip({ definition }: { definition: string }) {
         i
       </button>
       {open && (
-        <span className="absolute top-5 left-1/2 z-20 w-56 -translate-x-1/2 rounded-lg border border-gray-200 bg-white p-2.5 text-[11.5px] leading-snug text-gray-600 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+        // 2026-09-28 fix: was centered under the icon (`left-1/2
+        // -translate-x-1/2`) — for an icon near the left edge of a
+        // narrow container (found live on Monthly Summary's "COGS"
+        // row, close to the table's own left edge), that pushed the
+        // popover partly off-screen with its first few words clipped.
+        // Anchored to the icon's own left edge instead, growing
+        // rightward — safe on every page this component is used on,
+        // since labels/icons sit on the left of their row/card with
+        // room to the right, never the reverse.
+        <span className="absolute top-5 left-0 z-20 w-56 rounded-lg border border-gray-200 bg-white p-2.5 text-[11.5px] leading-snug text-gray-600 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
           {definition}
         </span>
       )}
