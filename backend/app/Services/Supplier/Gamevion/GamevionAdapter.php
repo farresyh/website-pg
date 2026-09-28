@@ -216,6 +216,18 @@ final class GamevionAdapter implements SupplierAdapter
      * Gamevion's error-response body shape isn't defined in the spec
      * for 400/409/422/500/404 (status + description only) — this reads
      * defensively rather than assuming a body exists at all.
+     *
+     * 2026-09-28 audit finding M-3: unlike Digiflazz's own `status`
+     * field, nothing here tells a genuine business rejection ("Gamevion
+     * looked at this and said no") apart from an ambiguous transport/
+     * server failure ("we don't know what Gamevion did") — so every
+     * branch below conservatively sets resendUnsafeWithSameReference:
+     * true (never outcomeConfirmedFailed), the same safe default the
+     * 409 duplicate_reference branch above already uses. This routes
+     * every Gamevion failure to NeedsReview rather than a confirmed
+     * Failed; a finer confirmed-vs-ambiguous split would need Gamevion's
+     * real per-code error catalogue, which isn't documented anywhere
+     * this codebase has access to.
      */
     private function failureFrom(Response $response): ?SupplierResponse
     {
@@ -226,6 +238,7 @@ final class GamevionAdapter implements SupplierAdapter
                 (string) $response->status(),
                 $body['message'] ?? "Gamevion request failed with HTTP {$response->status()}",
                 isServerError: $response->serverError(),
+                resendUnsafeWithSameReference: true,
             );
         }
 
@@ -233,6 +246,7 @@ final class GamevionAdapter implements SupplierAdapter
             return SupplierResponse::failure(
                 (string) ($response->json('code') ?? 'unknown'),
                 $response->json('message') ?? 'Unknown Gamevion error',
+                resendUnsafeWithSameReference: true,
             );
         }
 

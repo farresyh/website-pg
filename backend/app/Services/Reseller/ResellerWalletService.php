@@ -158,6 +158,16 @@ final class ResellerWalletService
      * `MembershipSubscriptionService::completePaidAttempt()` and the
      * Order webhook branch already take against a duplicate CHIP
      * delivery.
+     *
+     * 2026-09-28 audit finding M-2: the "already paid?" check used to
+     * read the caller's own (possibly stale) copy of $attempt with no
+     * lock, so the CHIP webhook and
+     * ReconcilePendingWalletTopupsCommand's 15-minute backstop could
+     * both observe `pending` and both credit — a real double credit,
+     * proven by ResellerWalletTopupCompleteConcurrencyTest. The cheap
+     * pre-check below is now just an optimisation (skip opening a
+     * transaction for the common already-processed case); the actual
+     * guard is the re-read under lockForUpdate() inside the transaction.
      */
     public function completeTopup(WalletTopupAttempt $attempt): void
     {
@@ -165,18 +175,32 @@ final class ResellerWalletService
             return;
         }
 
-        DB::transaction(function () use ($attempt) {
+        $credited = DB::transaction(function () use ($attempt) {
+            $locked = WalletTopupAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
+
+            if ($locked->status === WalletTopupAttemptStatus::Paid) {
+                return false;
+            }
+
             $this->ledger->credit(
                 LedgerOwnerType::ResellerWallet,
-                $attempt->reseller_id,
-                $attempt->amount_sen,
+                $locked->reseller_id,
+                $locked->amount_sen,
                 'wallet_topup',
                 referenceType: 'wallet_topup_attempt',
-                referenceId: $attempt->id,
+                referenceId: $locked->id,
             );
 
-            $attempt->update(['status' => WalletTopupAttemptStatus::Paid->value]);
+            $locked->update(['status' => WalletTopupAttemptStatus::Paid->value]);
+
+            return true;
         });
+
+        if (! $credited) {
+            return;
+        }
+
+        $attempt->refresh();
 
         // ADR-076 PR-H decision 2 — a paid top-up fires no event, so the
         // "top-up berjaya" WhatsApp reply is sent from here, the one seam

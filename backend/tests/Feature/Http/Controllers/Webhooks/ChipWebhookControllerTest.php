@@ -210,6 +210,49 @@ class ChipWebhookControllerTest extends TestCase
     }
 
     /**
+     * 2026-09-28 audit finding M-4: a late Paid event for an order
+     * that's already Failed WITH a restored voucher (isAlreadyCompensated())
+     * used to be dispatched to FulfillOrderJob exactly like a normal
+     * paid order — fulfill()'s own defense-in-depth guard then throws
+     * OrderFulfillmentException on every one of the job's 3 tries, and
+     * the order was left stuck at payment_status=Paid,
+     * delivery_status=Failed forever: the customer genuinely paid and
+     * received nothing, with no admin visibility. Must instead flag
+     * NeedsReview immediately and never dispatch fulfillment.
+     */
+    public function test_a_late_paid_event_for_an_already_compensated_order_flags_needs_review_instead_of_fulfilling(): void
+    {
+        Queue::fake();
+        $privateKey = $this->fakeChipPublicKey();
+        $order = $this->fakePaidOrder([
+            'payment_status' => PaymentStatus::Failed->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        $paidWith = \App\Models\Voucher::query()->create([
+            'affiliate_id' => $order->affiliate_id, 'code' => 'KRS-ORIGINAL-'.uniqid(), 'customer_email' => 'buyer@example.com',
+            'amount' => 1000, 'remaining' => 1000, 'status' => 'active', 'reason' => 'test',
+        ]);
+        \App\Models\VoucherRedemption::query()->create([
+            'voucher_id' => $paidWith->id, 'order_id' => $order->id, 'amount' => 1000, 'status' => 'restored',
+        ]);
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'paid',
+            'purchase' => ['total' => 1100],
+        ], $privateKey);
+
+        $response->assertOk();
+
+        $fresh = $order->fresh();
+        $this->assertSame(PaymentStatus::Paid, $fresh->payment_status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $fresh->delivery_status);
+        Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
+    /**
      * PAY-2: a repeat webhook delivery for an already-paid order must
      * be acknowledged, not reprocessed.
      */

@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
+use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -65,6 +66,7 @@ class ReconcilePendingDeliveriesCommand extends Command
         $staleAfterMinutes = (int) config('services.delivery_reconciliation.stale_after_minutes');
 
         $this->retryStuckProcessing($staleAfterMinutes);
+        $this->retryStuckNotStarted($staleAfterMinutes);
         $this->flagStaleDuplicateReferences($staleAfterMinutes, $orderStatus);
         $this->reclassifyConfirmedFailedNeedsReview($orderStatus);
         $this->checkStalePending($orderStatus);
@@ -90,6 +92,41 @@ class ReconcilePendingDeliveriesCommand extends Command
         foreach ($orders as $order) {
             Log::withContext(['order_number' => $order->order_number]);
             Log::info('Delivery reconciliation: re-dispatching stuck-processing order');
+
+            FulfillOrderJob::dispatch($order);
+        }
+    }
+
+    /**
+     * 2026-09-28 audit finding M-4: a paid order can be left stuck at
+     * delivery_status=not_started with no automatic recovery and no
+     * admin visibility — every FulfillOrderJob attempt exhausted its
+     * tries (a genuine data problem, e.g. a missing
+     * supplier_product_ref, throws OrderFulfillmentException from
+     * fulfill()'s own guard checks, BEFORE phase 1 ever commits
+     * Processing — never caught by fulfill()'s own NeedsReview-routing
+     * catch, since that only wraps phase 2), or the job was queued but
+     * never actually ran (a worker outage). Same shape as
+     * retryStuckProcessing() above, at the earlier NotStarted state —
+     * re-dispatching is safe (M-1's fix means phase 1 will regenerate
+     * and durably persist a reference this time, and a repeat failure
+     * now correctly routes to NeedsReview/Failed via M-1/M-3's fixes,
+     * both already surfaced on the existing admin KPI cards, rather
+     * than silently repeating the same stuck state).
+     */
+    private function retryStuckNotStarted(int $staleAfterMinutes): void
+    {
+        $orders = Order::query()
+            ->where('payment_status', PaymentStatus::Paid->value)
+            ->where('delivery_status', DeliveryStatus::NotStarted->value)
+            ->where('updated_at', '<=', now()->subMinutes($staleAfterMinutes))
+            ->get();
+
+        $this->info("Retrying {$orders->count()} stuck-not-started delivery(ies)...");
+
+        foreach ($orders as $order) {
+            Log::withContext(['order_number' => $order->order_number]);
+            Log::warning('Delivery reconciliation: re-dispatching a paid order stuck at not_started');
 
             FulfillOrderJob::dispatch($order);
         }
