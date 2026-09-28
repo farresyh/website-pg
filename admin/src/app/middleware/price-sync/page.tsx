@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getEcho } from "@/lib/echo";
+import { useReconcileOnResume } from "@/lib/useReconcileOnResume";
 import { ApiError } from "@/lib/api-client";
 import {
   type PriceSyncRun,
@@ -40,6 +41,7 @@ import {
   type PendingPriceChange,
   type CurrencyRatePage,
   triggerPriceSync,
+  getPriceSyncRun,
   getPriceSyncStats,
   listPriceSyncRuns,
   listPendingReactivations,
@@ -216,7 +218,22 @@ export default function PriceSyncPage() {
   // drop polling entirely once converted (unlike the storefront's
   // OrderStatusTracker) — if Reverb isn't reachable, this run's card
   // simply sits at its last-known state until the admin navigates away
-  // and back, an accepted degrade for internal ops tooling.
+  // and back, an accepted degrade for internal ops tooling (closed by
+  // the reconcile-on-resume hook below).
+  //
+  // ADR-047 2026-09-28 addendum: deps deliberately exclude `run?.status`
+  // now — it used to be a dep, which meant this effect fully
+  // leave()+resubscribe()'d the channel (a fresh private-channel auth
+  // round-trip) on every status tick, including the one the listener
+  // itself just received. A run that fails fast (SyncSupplierPricesJob
+  // throwing immediately, e.g. a supplier outage) can flip
+  // running→failed inside that resubscribe's own auth window — with
+  // this screen's own polling already dropped, that final event had
+  // nowhere else to land, leaving the card stuck on "running" forever.
+  // Subscribing once per `run.id` and staying subscribed regardless of
+  // later status ticks (same "a subscription costs nothing while idle"
+  // shape `admin-orders`/`backups` already use) closes the race instead
+  // of just narrowing it.
   useEffect(() => {
     if (!session || !run || !RUN_IN_FLIGHT.has(run.status) || !process.env.NEXT_PUBLIC_REVERB_APP_KEY) return;
 
@@ -234,7 +251,20 @@ export default function PriceSyncPage() {
       getEcho().leave(channelName);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, run?.id, run?.status]);
+  }, [session, run?.id]);
+
+  useReconcileOnResume(
+    useCallback(() => {
+      if (!session || !run) return;
+      refreshHistory(session.token, historyPageNumber);
+      if (RUN_IN_FLIGHT.has(run.status)) {
+        getPriceSyncRun(session.token, run.id).then(setRun).catch(() => {});
+      } else {
+        refreshAll(session.token);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session, run?.id, run?.status]),
+  );
 
   async function handleTrigger() {
     if (!session) return;

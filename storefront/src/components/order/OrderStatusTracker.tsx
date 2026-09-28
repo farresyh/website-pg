@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, WhatsappLogo, GameController, User, CreditCard } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
 import { getEcho } from "@/lib/echo";
+import { useReconcileOnResume } from "@/lib/useReconcileOnResume";
 import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
 import { useSiteConfig } from "@/context/SiteConfigContext";
 import Button from "@/components/ui/Button";
@@ -178,6 +179,23 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
       getEcho().leave(channelName);
     };
   }, [orderNumber]);
+
+  // ADR-047 2026-09-28 addendum — closes the gap the poll loop above
+  // and the push subscription above it both leave open once an order
+  // is "terminal" (poll stops, per isTerminal()) or the 6-minute watch
+  // window has lapsed: from that point on, a status change (e.g. an
+  // admin resend reviving a failed order) is 100% dependent on one
+  // WebSocket delivery arriving with no replay. Fires a best-effort,
+  // silent-on-failure refetch — never touches loading/error state — so
+  // a customer who left this tab in the background, or whose
+  // connection blipped, sees the true status the moment they come back
+  // to it instead of needing a hard refresh.
+  const reconcile = useCallback(() => {
+    trackOrder(orderNumber)
+      .then((result) => setOrder(result))
+      .catch(() => {});
+  }, [orderNumber]);
+  useReconcileOnResume(reconcile);
 
   if (loading) return <p className="text-sm text-on-surface-variant">Loading order…</p>;
   if (error) return <p className="rounded-md border-2 border-ink bg-surface-container p-4 text-sm text-on-surface-variant">{error}</p>;

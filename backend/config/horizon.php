@@ -207,13 +207,24 @@ return [
     // isolation — a slow price-sync/backup run must never starve an
     // urgent order job, or vice versa). `balance: off` since each
     // supervisor already owns exactly one queue — nothing to balance
-    // across. tries/timeout match each queue-worker-*'s own prior flags
-    // exactly (orders: --tries=3, price-sync/backups: --tries=1, all
-    // three: --sleep=3, Horizon's per-supervisor default). maxProcesses
-    // stays 1 everywhere — zero real production traffic yet (ADR-021) —
-    // scale per-supervisor here once real order volume justifies it, no
-    // container/compose change needed to do that (Horizon manages its
-    // own worker count, unlike the old `docker compose --scale` pattern).
+    // across. maxProcesses stays 1 everywhere — zero real production
+    // traffic yet (ADR-021) — scale per-supervisor here once real order
+    // volume justifies it, no container/compose change needed to do
+    // that (Horizon manages its own worker count, unlike the old
+    // `docker compose --scale` pattern).
+    //
+    // ADR-047 2026-09-28 addendum: `supervisor-price-sync`/
+    // `supervisor-backups` originally matched their old queue-worker-*
+    // container's `--tries=1` exactly (orders stayed `--tries=3`).
+    // Bumped both to 3 here — safe for the queue's own real job
+    // (SyncSupplierPricesJob/RunDatabaseBackupJob each declare their
+    // own `public $tries = 1` at the class level, which Laravel's
+    // worker honors over this supervisor default, so neither job's
+    // retry behavior changes) — this only gives the generic
+    // `Illuminate\Broadcasting\BroadcastEvent` job (PriceSyncRunUpdated/
+    // BackupRunUpdated share these same two queues, no class-level
+    // override of their own) real retries instead of one shot, closing
+    // a silent-drop gap the addendum's own audit found.
     'defaults' => [
         'supervisor-orders' => [
             'connection' => 'redis',
@@ -262,7 +273,7 @@ return [
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 128,
-            'tries' => 1,
+            'tries' => 3,
             'timeout' => 60,
             'nice' => 0,
         ],
@@ -286,7 +297,7 @@ return [
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 128,
-            'tries' => 1,
+            'tries' => 3,
             'timeout' => 60,
             'nice' => 0,
         ],

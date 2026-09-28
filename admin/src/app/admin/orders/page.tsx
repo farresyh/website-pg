@@ -21,7 +21,7 @@
  * a later pass.
  */
 
-import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DataTable,
@@ -52,6 +52,7 @@ import { Popover, PopoverPortal, PopoverPositioner, PopoverPopup } from "@/compo
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getEcho } from "@/lib/echo";
+import { useReconcileOnResume } from "@/lib/useReconcileOnResume";
 import { ApiError } from "@/lib/api-client";
 import {
   type OrderListItem,
@@ -483,6 +484,15 @@ function OrdersPageInner() {
     selectedRef.current = selected;
   }, [selected]);
 
+  // Same reasoning, same shape — read inside the listener without
+  // resubscribing every time a filter changes (2026-09-28 addendum, see
+  // the effect's own comment below for why that resubscribe was a bug,
+  // not just noise).
+  const orderFiltersRef = useRef(orderFilters);
+  useEffect(() => {
+    orderFiltersRef.current = orderFilters;
+  }, [orderFilters]);
+
   /**
    * ADR-047 addendum (2026-09-19) — replaces Resend Delivery's own bounded
    * poll and Retry Delivery's complete fire-and-forget gap. `OrderObserver`
@@ -496,14 +506,20 @@ function OrdersPageInner() {
    * own conversion used: a subscription costs nothing while idle, unlike
    * an interval timer. If Reverb is unreachable, an admin can still hit
    * "Refresh" manually — the same accepted degrade every other converted
-   * admin screen has.
+   * admin screen has (closed by the reconcile-on-resume hook below).
+   *
+   * 2026-09-28 addendum: deps deliberately exclude `orderFilters` — a
+   * filter change used to leave()+resubscribe() this channel same as
+   * every other filter tweak, a needless private-channel re-auth for a
+   * subscription that has nothing to do with which filters are active.
+   * Subscribes once per session, reads the current filters via a ref.
    */
   useEffect(() => {
     if (!session || !process.env.NEXT_PUBLIC_REVERB_APP_KEY) return;
 
     const channel = getEcho().private("admin-orders");
     channel.listen(".order.status.updated", (payload: { order_number: string }) => {
-      listOrders(session.token, orderFilters)
+      listOrders(session.token, orderFiltersRef.current)
         .then((p) => {
           setPage(p);
           setLastUpdatedAt(new Date());
@@ -535,7 +551,23 @@ function OrdersPageInner() {
     return () => {
       getEcho().leave("admin-orders");
     };
-  }, [session, orderFilters]);
+  }, [session]);
+
+  useReconcileOnResume(
+    useCallback(() => {
+      if (!session) return;
+      listOrders(session.token, orderFiltersRef.current)
+        .then((p) => {
+          setPage(p);
+          setLastUpdatedAt(new Date());
+        })
+        .catch(() => {});
+
+      const current = selectedRef.current;
+      if (!current) return;
+      getOrder(session.token, current.id).then(setSelected).catch(() => {});
+    }, [session]),
+  );
 
   // ADR-108 decision 6 — the Game filter's own dropdown options, loaded
   // once (games rarely change mid-session; a fresh admin session just
