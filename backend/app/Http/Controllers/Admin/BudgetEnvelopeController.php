@@ -192,11 +192,21 @@ class BudgetEnvelopeController extends Controller
             ->orderBy('created_at')
             ->get();
 
-        return response()->streamDownload(function () use ($entries) {
+        // Never date-scoped, unlike $entries above — a "Voided" tag must
+        // stay correct even when the export's own date range excludes
+        // the (possibly much later) void, same reasoning the Transaction
+        // Register's own void-visibility fix already established.
+        $reversedEntryIds = BudgetEnvelopeEntry::query()->whereNotNull('reverses_entry_id')->pluck('reverses_entry_id')->flip();
+
+        return response()->streamDownload(function () use ($entries, $reversedEntryIds) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Envelope', 'Category', 'Amount (RM)', 'Description', 'Recorded By', 'Has Receipt']);
+            fputcsv($out, ['Date', 'Envelope', 'Category', 'Amount (RM)', 'Description', 'Recorded By', 'Has Receipt', 'Status']);
 
             foreach ($entries as $entry) {
+                $status = $entry->reverses_entry_id !== null
+                    ? 'Void reversal'
+                    : ($reversedEntryIds->has($entry->id) ? 'Voided' : 'Active');
+
                 fputcsv($out, [
                     $entry->created_at->toIso8601String(),
                     $entry->budgetEnvelope->name,
@@ -205,6 +215,7 @@ class BudgetEnvelopeController extends Controller
                     $entry->description,
                     $entry->createdBy?->name ?? '',
                     $entry->receipt_path !== null ? 'Yes' : 'No',
+                    $status,
                 ]);
             }
 

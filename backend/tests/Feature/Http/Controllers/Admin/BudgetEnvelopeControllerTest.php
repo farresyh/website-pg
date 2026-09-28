@@ -233,4 +233,38 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertStringContainsString('CSV-TEST-DESC', $content);
         $this->assertStringContainsString('Date,Envelope,Category', $content);
     }
+
+    /**
+     * Regression guard for exactly the bug class this addendum's own
+     * grilling session flagged as a past incident (Supplier Funding's
+     * register once silently dropped void visibility): the export must
+     * show BOTH the original entry (tagged Voided, untouched figures)
+     * AND its reversal (tagged Void reversal) — never zero rows, never
+     * a silently-vanished original.
+     */
+    public function test_export_shows_both_a_voided_entry_and_its_reversal(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $created = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 100000, 'description' => 'EXPORT-VOID-TEST',
+        ])->assertCreated();
+        $entryId = $created->json('entry.id');
+        $this->postJson("/api/accounting/envelope-entries/{$entryId}/void", ['reason' => 'export test'])->assertCreated();
+
+        $rows = array_map(
+            fn (string $line) => str_getcsv($line),
+            array_filter(explode("\n", $this->get('/api/accounting/envelopes/export')->streamedContent())),
+        );
+
+        $original = collect($rows)->first(fn ($r) => ($r[4] ?? null) === 'EXPORT-VOID-TEST');
+        $reversal = collect($rows)->first(fn ($r) => str_contains($r[4] ?? '', "reversing entry #{$entryId}"));
+
+        $this->assertNotNull($original, 'the original entry must still appear in the export, never dropped');
+        $this->assertSame('1000.00', $original[3]);
+        $this->assertSame('Voided', $original[7]);
+        $this->assertNotNull($reversal);
+        $this->assertSame('-1000.00', $reversal[3]);
+        $this->assertSame('Void reversal', $reversal[7]);
+    }
 }
