@@ -2088,3 +2088,77 @@ The same session's Kimi-review discussion also verified (no code change needed, 
   schema touched. CI playwright: passes clean on this branch's final
   state (plain `next dev`, no `--webpack`) — verified via a real CI run,
   not just locally.
+
+## 2026-09-28 — Fix: ADR-047 addendum — realtime reconcile-on-resume safety net + two resubscribe races + broadcast-queue reliability (`fix/2026-09-28-reverb-reconcile-gaps`)
+
+- A founder question ("does everything really need a hard refresh?")
+  turned into a full audit of every Reverb/Echo polling-and-push consumer
+  built across ADR-047's own decisions and both prior addenda, not just
+  the one reported symptom (a customer's track-order page stuck on
+  "Failed" after an admin resend later delivered it). Grilled with the
+  founder (`/mattpocock-skills:grilling`) before any code touched — full
+  record in `docs/adr.md`'s new 2026-09-28 ADR-047 addendum.
+- **Root cause, one thing, not four:** no consumer of a push channel ever
+  had a designated moment to reconcile against REST truth once its first
+  subscription was live — so a missed delivery (a resubscribe race, a
+  backgrounded mobile tab whose WebSocket died silently, or the broadcast
+  job itself failing server-side) had no recovery path short of a hard
+  refresh.
+- **New `useReconcileOnResume(callback)` hook**, duplicated as a small
+  file in both `storefront/src/lib/` and `admin/src/lib/` (two separate
+  Next.js apps, no shared package today) — fires `callback` on
+  `visibilitychange` turning visible and on Echo's connection reaching
+  `connected` again. Wired into all four converted screens (storefront
+  `OrderStatusTracker`, admin `price-sync`/`backups`/`orders`) as a pure
+  addition; no existing poll/push logic touched.
+- **Two real resubscribe races found and fixed at the root**, not just
+  narrowed: `admin/src/app/middleware/price-sync/page.tsx`'s run-status
+  channel effect depended on `run?.status`, so it fully
+  `leave()`+resubscribed the private channel on every status tick
+  (including the tick the listener itself had just delivered) — a
+  fast-failing sync could flip `running→failed` inside that resubscribe's
+  own auth-round-trip window and land nowhere, sticking the card on
+  "running" forever (polling was already dropped here, per decision 4).
+  `admin/src/app/admin/orders/page.tsx`'s `admin-orders` channel effect
+  had the same shape, keyed to `orderFilters` instead. Both now subscribe
+  once per stable id (`run?.id`, or just `session`) and read the value
+  they used to depend on via a `useRef`, matching `backups`'/the
+  originally-shipped `admin-orders`' own "a subscription costs nothing
+  while idle" pattern.
+- **Storefront's terminal-state gap deliberately does NOT get its poll
+  loop revived.** Considered reintroducing a client-side "is this order
+  still resendable" check and rejected it — it would duplicate
+  `Order::isAlreadyCompensated()`-style business logic the backend
+  already owns, and resurrect the always-polling pattern ADR-047 decision
+  4 moved away from for settled orders. The reconcile hook above is
+  judged sufficient on its own.
+- **Broadcast-queue reliability, backend:** `config/horizon.php`'s
+  `supervisor-price-sync`/`supervisor-backups` both ran `tries: 1` —
+  correct for the queue's own job (`SyncSupplierPricesJob`/
+  `RunDatabaseBackupJob` each pin their own `public $tries = 1` at the
+  class level, confirmed unaffected by this change), but the generic
+  `Illuminate\Broadcasting\BroadcastEvent` job sharing that queue
+  inherited the same one-shot limit with no override of its own — a
+  transient Reverb hiccup at broadcast time was a silent, permanent drop,
+  with zero log line anywhere. Bumped both to `tries: 3` (matching
+  `supervisor-orders`) after confirming no other job shares either queue.
+  New `App\Listeners\Broadcasting\LogFailedBroadcastJob` (registered on
+  `Illuminate\Queue\Events\JobFailed` in `AppServiceProvider::boot()`)
+  logs when a `BroadcastEvent` job exhausts its retries on
+  `orders`/`price-sync`/`backups` — visibility only, Horizon's own
+  failed-jobs UI already has the full payload.
+- No new ADR number — this is an addendum to ADR-047 (a refinement of its
+  own decisions, not a new decision axis), per this repo's own
+  build-on-an-existing-ADR convention.
+- New tests: `LogFailedBroadcastJobTest` (3 cases — logs a `BroadcastEvent`
+  failure on a broadcast queue, ignores a non-broadcast job on the same
+  queue, ignores a `BroadcastEvent` failure on an unrelated queue). Full
+  backend suite green: 2269/2269, 6074 assertions. `tsc --noEmit`/
+  `eslint`/`next build` clean on both `storefront/` and `admin/`. No
+  migration — no schema touched.
+- **Live verification still owed by the founder** — no admin/customer
+  session available to this agent to watch a real WebSocket
+  drop-and-recover in a browser. See the ADR-047 addendum's own
+  Consequence-to-track for the three specific things to confirm on a real
+  deploy (backgrounded-tab resume, a fast-finishing Price Sync run, the
+  new failed-broadcast log line actually appearing).
