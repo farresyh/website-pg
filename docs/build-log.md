@@ -2521,3 +2521,109 @@ top-up lag — explicitly split off Part A and grilled separately
   added, pointing at the ADR.
 - No code changes this entry — design/docs only. Branch
   `docs/2026-09-28-adr-balance-buffer-forecast` off `staging`.
+
+## 2026-09-29 — Full system audit (money/security/burst, all channels) → Wave 1 of 5 built: 4 critical/high fulfillment bugs fixed (M-1 through M-4)
+
+Founder asked for a fresh, from-scratch read-only audit of the whole
+system — money flow, security, and burst stability, across every
+channel (direct storefront, affiliate whitelabel, reseller portal/API/
+bot). Five scopes ran as parallel background agents (checkout→
+fulfillment, wallets/ledgers, security, burst stability, cross-channel
+consistency), each explicitly told to check `docs/adr.md`/`docs/prd.md`
+§16 before reporting anything as new and to avoid re-litigating
+previously-fixed items. Every Critical/High finding was then
+independently re-verified against the real code by hand (not just
+trusted from the agent reports) before being written up. Full report
+published as a private artifact
+(`https://claude.ai/artifact/8WNoEKiD6A4BDpq7op6g7F`, in Malay) —
+28 findings total, grouped into 5 fix waves ordered by severity.
+Nothing has caused real loss so far (no external customers yet — see
+`docs/prd.md`'s live status), so this is prevention, not incident
+response.
+
+**Wave 1 (this branch, `fix/2026-09-29-fulfillment-critical-audit` off
+`staging`) — the 2 Critical + 2 High findings that can duplicate or
+strand a delivery under real-world supplier hiccups, all root-cause
+bugfixes restoring an already-documented invariant rather than new
+design decisions:**
+
+- **M-2 (Critical) — reseller wallet top-up could be credited twice.**
+  `ResellerWalletService::completeTopup()` checked "already paid?" on
+  an unlocked, possibly-stale copy of the attempt — the CHIP webhook
+  and `ReconcilePendingWalletTopupsCommand`'s 15-minute backstop could
+  both observe `pending` and both credit. Proven with a real two-
+  process concurrency test (one RM5,000 top-up became RM10,000 against
+  the old code). Fixed: re-read under `lockForUpdate()` inside the
+  transaction, re-check there. 22/22 concurrency suite green.
+- **M-1 (Critical) — a supplier timeout on the first delivery attempt
+  could deliver an order 2-3 times.** `OrderFulfillmentService::fulfill()`'s
+  single-package path generated and persisted `reference_number`
+  inside the SAME transaction as the actual supplier `createOrder()`
+  call, with no try/catch anywhere. A thrown `ConnectionException`
+  rolled the reference back too, so a job retry minted a brand-new one
+  via `resolve(null)` — if the supplier had actually processed the
+  interrupted attempt, the retry could submit and deliver a second
+  time under the new reference, undetected by the supplier's own
+  dedup-by-reference (the two references never matched). Split into
+  the same two-phase shape `attemptLeg()` (combo legs) already uses:
+  phase 1 commits Processing + the reference before the supplier call;
+  phase 2 wraps the call in try/catch, routing any Throwable to
+  NeedsReview while keeping the already-persisted reference, so a
+  resend correctly reuses it. Corrects the 2026-09-15 ADR-094 addendum,
+  which had claimed the single-order path "doesn't have this gap" —
+  the actual behavior was the inverse. New **ADR-094 addendum**
+  records the correction.
+- **M-3 (High) — an ambiguous supplier response (circuit breaker open,
+  a real 5xx, an unparseable response) was finalizing orders as a
+  CONFIRMED Failed**, both at `createOrder()` time and in
+  `SupplierDeliveryCheckService`'s scheduled poll — exactly the
+  condition a real supplier outage produces, meaning an outage could
+  wrongly close out every in-flight order as Failed, needing a manual
+  Retry/Issue-Voucher for each one. Fixed at the source
+  (`CircuitBreakingSupplierAdapter`, `DigiflazzAdapter`,
+  `GamevionAdapter` now set `resendUnsafeWithSameReference: true` on
+  every genuinely-ambiguous failure) plus in the poll path itself
+  (`SupplierDeliveryCheckService` now only finalizes a CONFIRMED
+  failure — anything else is left exactly as Pending for the next
+  scheduled poll to retry automatically, no admin action needed for a
+  transient blip). Found and fixed two pre-existing
+  `CheckSupplierDeliveryJobTest` fixtures whose names claimed
+  "confirms failure" but never actually set the confirming flag — true
+  before this fix only because the flag was irrelevant to reaching
+  Failed, which was exactly the bug.
+- **M-4 (High) — a paid order could be left permanently stuck with no
+  sweep and no admin visibility**, two related gaps: (a) a paid order
+  stranded at `delivery_status=not_started` (every `FulfillOrderJob`
+  attempt exhausted, or the job never ran) had no reconcile sweep at
+  all — `ReconcilePendingDeliveriesCommand` gains
+  `retryStuckNotStarted()`, mirroring the existing stuck-Processing
+  sweep, safe now that M-1 means a repeat failure correctly routes to
+  NeedsReview/Failed instead of silently repeating; (b)
+  `ChipWebhookController` used to dispatch `FulfillOrderJob`
+  unconditionally on ANY Paid event, including a late one arriving
+  after reconcile had already marked the order Failed and restored its
+  voucher — `fulfill()`'s own `isAlreadyCompensated()` guard then threw
+  on every job retry, stranding the order at `payment_status=Paid`
+  with `delivery_status` still Failed forever (the customer genuinely
+  paid, received nothing, zero visibility). Now checks
+  `isAlreadyCompensated()` before dispatching and flags NeedsReview
+  instead when true.
+
+**Verification:** every fix proven with a new test that fails against
+the pre-fix code and passes against the fix (TDD red→green, not
+retrofitted). Full fast suite **2324/2324** green after all four
+fixes. Full concurrency suite (real MySQL, real subprocesses) run
+after each fix individually — 22/22 green three times over (M-1, M-3,
+M-4), confirming the existing "exactly one of two simultaneous
+fulfillment attempts succeeds" guarantee survives the `fulfill()`
+restructure (just with a shorter lock hold, no longer spanning the
+HTTP call, rather than a longer one).
+
+**Waves 2-5** (compensation/checkout races, security hardening, burst-
+traffic prep, remaining money hygiene + customer notifications) not
+yet built — tracked in the published audit artifact, to be picked up
+in separate sessions per the project's normal grill-then-build
+workflow. Wave 4 (burst prep) explicitly needs `K-4` (combo job
+`retry_after` vs timeout mismatch) fixed BEFORE any `maxProcesses`
+increase, to avoid turning a currently-harmless mismatch into a real
+concurrent double-run.
