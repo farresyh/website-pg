@@ -2997,3 +2997,46 @@ Grilled with the founder. Recorded as the ADR-048 2026-09-29 addendum. Branch
   `sudo systemctl disable --now mysql` on `pekangame-prod-lwf`. The local
   mysqld (409 MB, 0 connections) is unused; the app runs on DO Managed MySQL.
   This frees RAM for the extra workers.
+
+## 2026-09-29 — Pre-release review of staging (#306–#317): PR-C bugfixes
+
+Before the staging→main release, the founder asked for a review of every wave
+against the original audit artifact (Part A) plus a `/code-review high` of
+`origin/main...staging` (Part B). The model re-verified all 10 review findings
+directly in the code. 8 were real, #8 had no effect (prod has 0
+`budget_envelope_entries` rows, so the removed enum cases break nothing), and #10
+was a design trade-off. This PR covers the ones that needed no new decision.
+Fast suite 2377/2377; concurrency 24/24.
+
+- **#4 (M-6 follow-up):** a replayed idempotency key on a full-cover-by-voucher
+  order (Pending mid-redeem, or Failed after losing the race) went through
+  `resume()` to CHIP as a RM0 purchase. `requestPayment()` now never calls the
+  gateway when `final_amount === 0`.
+- **#6 (M-7 follow-up):** the CHIP purchase and the voucher/quota reservation
+  shared one transaction, so an unexpected failure in the voucher lock (for
+  example a lock-wait timeout) rolled back `payment_ref` and orphaned a live
+  purchase. `payment_ref` now commits first; `reserveVoucherAndQuota()` runs
+  after it, still at most once per order. The founder confirmed the ADR-024
+  trade-off stays as-is: the voucher is locked once the CHIP purchase exists,
+  and the webhook/reconcile paths auto-restore it on failure.
+- **#5 (M-5 follow-up):** Issue Voucher's locked re-check used the pre-lock
+  `$isPartialComboDelivery`. It is now re-derived on `$locked`.
+- **#7 (S-3 follow-up):** a DNS failure at send time was treated like a
+  non-public address, so the delivery was marked terminal and silently dropped.
+  Added `OutboundUrlGuard::isUnresolvable()`: an unresolved host now takes the
+  normal retry/backoff path.
+- **#10 (Wave 3 PR-B follow-up):** the per-IP auth-failure lockout ran before
+  the token check, so a valid key from a locked-out IP (a reseller's one stale
+  worker, or a shared NAT) was also refused. The lockout now applies only to
+  requests that fail auth.
+- **Part A gap — Horizon liveness:** `/api/health` only checked DB + Redis.
+  With Horizon down nothing fulfils orders, and the new LongWait alert dies
+  with it. It now reports `checks.horizon` via `MasterSupervisorRepository`
+  (only when the queue runs on Redis). Verified live: Horizon running gives
+  `ok`, stopped gives `degraded`/503. **Founder-owed:** confirm an external
+  uptime monitor is actually watching `/api/health`.
+- **Held for PR-D (grill first):** #1/#2/#3/#9 — stuck-order recovery (late
+  Paid after compensation, uncapped NotStarted sweep, Processing stranded by a
+  killed worker, quota on late Paid) — plus auto-retry instead of NeedsReview
+  for CIRCUIT_OPEN / same-`ref_id` Digiflazz resends, and the checkout
+  10/min/IP limit behind mobile NAT.

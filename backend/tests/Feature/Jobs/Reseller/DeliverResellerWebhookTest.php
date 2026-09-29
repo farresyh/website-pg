@@ -133,6 +133,29 @@ class DeliverResellerWebhookTest extends TestCase
         $this->assertNull($delivery->fresh()->next_retry_at);
     }
 
+    /**
+     * 2026-09-29 pre-release review: a host that didn't resolve at all
+     * (resolver hiccup, DNS outage) is transient, not a non-public target
+     * — it must go through the normal retry/backoff, not be dropped.
+     */
+    public function test_an_endpoint_that_fails_to_resolve_is_retried_not_dropped(): void
+    {
+        $delivery = $this->setup_delivery();
+        $this->fakeOutboundDns(['example.test' => []]);
+        Http::fake();
+
+        try {
+            (new DeliverResellerWebhook($delivery->id))->handle();
+            $this->fail('Expected the job to throw so the queue retries.');
+        } catch (\RuntimeException $e) {
+            // expected
+        }
+
+        Http::assertNothingSent();
+        $this->assertSame('failed', $delivery->fresh()->status);
+        $this->assertNotNull($delivery->fresh()->next_retry_at);
+    }
+
     public function test_a_redirect_is_not_followed(): void
     {
         $delivery = $this->setup_delivery();

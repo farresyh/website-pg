@@ -76,7 +76,15 @@ final class DeliverResellerWebhook implements ShouldQueue
         // Wave 3 S-3: re-checked at send time (DNS may have been repointed
         // since the URL was saved). Terminal, like a disabled endpoint —
         // retrying an internal address never becomes safe.
-        $pinnedIp = app(OutboundUrlGuard::class)->publicAddressFor($webhook->url);
+        $guard = app(OutboundUrlGuard::class);
+        $pinnedIp = $guard->publicAddressFor($webhook->url);
+        if ($pinnedIp === null && $guard->isUnresolvable($webhook->url)) {
+            // 2026-09-29 pre-release review: DNS failure is transient —
+            // normal retry/backoff, not the terminal non-public branch.
+            $delivery->update(['attempts' => $attempt, 'status' => ResellerWebhookDelivery::STATUS_FAILED, 'next_retry_at' => $this->nextRetryAt($attempt)]);
+
+            throw new \RuntimeException("Reseller webhook host for {$webhook->url} did not resolve");
+        }
         if ($pinnedIp === null) {
             $delivery->update(['attempts' => $attempt, 'status' => ResellerWebhookDelivery::STATUS_FAILED, 'next_retry_at' => null]);
             Log::warning('Reseller webhook URL resolves to a non-public address; not sent', ['url' => $webhook->url]);

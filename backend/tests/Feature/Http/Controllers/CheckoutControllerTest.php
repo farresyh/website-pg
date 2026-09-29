@@ -29,6 +29,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -843,6 +844,60 @@ class CheckoutControllerTest extends TestCase
             FulfillOrderJob::class,
             fn ($job) => $job->order->id === $order->id,
         );
+    }
+
+    /**
+     * 2026-09-29 pre-release review: since M-6 a full-cover order can sit
+     * at Pending (mid-redeem) or Failed (lost the voucher race) with
+     * payment_ref null. A replayed idempotency key must never send that
+     * RM0 order to the gateway.
+     */
+    public function test_a_replayed_full_cover_checkout_never_reaches_the_gateway(): void
+    {
+        Queue::fake();
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $voucher = $this->voucher(['remaining' => 1000]);
+        $payload = $this->payload($game, $package, ['voucher_code' => $voucher->code]);
+
+        $this->postJson('/api/checkout', $payload)->assertCreated();
+        $order = Order::query()->firstOrFail();
+        $order->update(['payment_status' => 'failed']); // lost the M-6 redeem race
+
+        $replay = $this->postJson('/api/checkout', $payload);
+
+        $replay->assertOk();
+        $replay->assertJsonPath('payment_actions', []);
+        $this->assertNull($order->fresh()->payment_ref);
+    }
+
+    /**
+     * 2026-09-29 pre-release review: an unexpected failure inside the
+     * voucher lock (lock-wait timeout, deadlock) used to roll back
+     * payment_ref along with it — orphaning a live CHIP purchase the
+     * webhook could never match. payment_ref must survive.
+     */
+    public function test_a_voucher_lock_failure_after_the_gateway_call_keeps_the_payment_ref(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage(); // selling_price = 500
+        $voucher = $this->voucher(['remaining' => 200]); // partial cover — real gateway leg
+
+        DB::beforeExecuting(function (string $query) {
+            if (str_starts_with(strtolower($query), 'insert into "voucher_redemptions"')) {
+                throw new RuntimeException('Lock wait timeout exceeded');
+            }
+        });
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->postJson('/api/checkout', $this->payload($game, $package, ['voucher_code' => $voucher->code]));
+            $this->fail('the simulated lock failure should surface');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Lock wait timeout exceeded', $e->getMessage());
+        }
+
+        $this->assertSame('pr-checkout-test', Order::query()->firstOrFail()->payment_ref);
     }
 
     /**

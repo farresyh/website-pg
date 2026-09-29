@@ -42,26 +42,28 @@ class EnsureResellerApiKey
         // Wave 3 PR-B: the `reseller-api` limiter keys on the raw token, so
         // each made-up key got a fresh bucket. Failed auth is counted per
         // IP here instead — 20/min, then 429 until the minute is up.
+        // Pre-release review (2026-09-29): the lockout only applies to
+        // requests that fail auth — a valid key from a locked-out IP (a
+        // reseller's one stale worker, a shared NAT) still goes through.
+        // Brute-forcing a 48-char random key is infeasible, so the cost is only
+        // one indexed hash lookup per locked-out request.
         $failureKey = 'reseller-api-auth-failed:'.$request->ip();
-        if (RateLimiter::tooManyAttempts($failureKey, self::MAX_AUTH_FAILURES_PER_MINUTE)) {
-            // bootstrap/app.php renders this as the standard RATE_LIMITED envelope, headers kept.
-            throw new ThrottleRequestsException(headers: ['Retry-After' => RateLimiter::availableIn($failureKey)]);
-        }
-
-        $token = $request->bearerToken();
-        if ($token === null) {
-            RateLimiter::hit($failureKey);
-            throw ResellerApiException::missingApiKey();
-        }
 
         // Resolves + stamps `last_used_at` / `last_used_ip` on a hit — the
         // stamp lands even for a request that is then rejected on the IP
         // allowlist below, which is exactly the anomaly signal a reseller
         // watches the portal for.
-        $key = $this->apiKeys->resolve($token, $request->ip());
+        $token = $request->bearerToken();
+        $key = $token === null ? null : $this->apiKeys->resolve($token, $request->ip());
+
         if ($key === null) {
+            if (RateLimiter::tooManyAttempts($failureKey, self::MAX_AUTH_FAILURES_PER_MINUTE)) {
+                // bootstrap/app.php renders this as the standard RATE_LIMITED envelope, headers kept.
+                throw new ThrottleRequestsException(headers: ['Retry-After' => RateLimiter::availableIn($failureKey)]);
+            }
+
             RateLimiter::hit($failureKey);
-            throw ResellerApiException::invalidApiKey();
+            throw $token === null ? ResellerApiException::missingApiKey() : ResellerApiException::invalidApiKey();
         }
 
         $reseller = $key->reseller;

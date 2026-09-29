@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Throwable;
 
 /**
@@ -14,6 +15,12 @@ use Throwable;
  * reachable queue connection. Unauthenticated by design, same as any
  * infra health-check endpoint (nothing here reveals customer/order
  * data).
+ *
+ * `horizon` (2026-09-29 pre-release review): a reachable Redis doesn't
+ * mean anything is working the queue. With Horizon down no order is
+ * fulfilled and its own LongWait alert dies with it, so this endpoint
+ * (the uptime monitor's target) has to catch it. Only checked when the
+ * queue actually runs on Redis — sync/database drivers have no Horizon.
  */
 class HealthController extends Controller
 {
@@ -22,6 +29,7 @@ class HealthController extends Controller
         $checks = [
             'database' => $this->checkDatabase(),
             'queue' => $this->checkQueue(),
+            'horizon' => config('queue.default') !== 'redis' || $this->checkHorizon(),
         ];
 
         $healthy = ! in_array(false, $checks, true);
@@ -38,6 +46,15 @@ class HealthController extends Controller
             DB::connection()->getPdo();
 
             return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function checkHorizon(): bool
+    {
+        try {
+            return app(MasterSupervisorRepository::class)->all() !== [];
         } catch (Throwable) {
             return false;
         }

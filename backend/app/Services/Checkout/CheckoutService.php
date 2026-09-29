@@ -255,15 +255,32 @@ final class CheckoutService
      */
     private function requestPayment(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
     {
-        return DB::transaction(function () use ($order, $gateway, $channelCode, $channelProperties) {
+        [$order, $created] = DB::transaction(function () use ($order, $gateway, $channelCode, $channelProperties) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-            if ($locked->payment_ref !== null) {
-                return $locked;
+            // 2026-09-29 pre-release review: a full-cover-by-voucher order
+            // (final_amount 0) never has a gateway leg — since M-6 it can
+            // sit at Pending/Failed with payment_ref null, and a replayed
+            // idempotency key must not send it to CHIP as a RM0 purchase.
+            if ($locked->payment_ref !== null || $locked->final_amount === 0) {
+                return [$locked, false];
             }
 
-            return $this->createPaymentFor($locked, $gateway, $channelCode, $channelProperties);
+            return [$this->createPaymentFor($locked, $gateway, $channelCode, $channelProperties), true];
         });
+
+        // 2026-09-29 pre-release review: reservations run AFTER payment_ref
+        // commits, never in its transaction — an unexpected failure in the
+        // voucher/quota lock (lock-wait timeout, deadlock) used to roll back
+        // payment_ref too, orphaning a live CHIP purchase the webhook's
+        // strict payment_ref match could never find. `$created` is only
+        // true for the one request that won the lock above, so this still
+        // runs at most once per order.
+        if ($created) {
+            $this->reserveVoucherAndQuota($order);
+        }
+
+        return $order->fresh();
     }
 
     private function createPaymentFor(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
@@ -323,6 +340,11 @@ final class CheckoutService
             'payment_ref' => $payment->data['payment_request_id'] ?? null,
         ]);
 
+        return $order;
+    }
+
+    private function reserveVoucherAndQuota(Order $order): void
+    {
         // ADR-024 decision #1: the voucher lock happens here, after the
         // gateway has confirmed a real, redirectable payment request
         // exists — never before creating the Order or before this
@@ -348,8 +370,6 @@ final class CheckoutService
         }
 
         $this->decrementMembershipQuotaIfApplicable($order);
-
-        return $order->fresh();
     }
 
     /**
