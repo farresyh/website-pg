@@ -4,6 +4,7 @@ namespace Tests\Unit\Services\ReportAssistant;
 
 use App\Services\ReportAssistant\SqlGuard;
 use App\Services\ReportAssistant\UnsafeSqlException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -100,6 +101,45 @@ class SqlGuardTest extends TestCase
             'SELECT * FROM llm_report_orders WHERE order_id IN (SELECT id FROM admin_users)',
             200,
         );
+    }
+
+    /**
+     * Wave 3 S-2 (2026-09-29 audit): every one of these reaches a raw
+     * table without a `FROM <table>`/`JOIN <table>` shape the old regex
+     * recognised. Each pairs the bypass with a legitimate curated view so
+     * the "has a FROM" check alone can't be what rejects it.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function tableReferenceBypasses(): array
+    {
+        return [
+            'comma join' => ['SELECT a.password FROM llm_report_orders o, admin_users a'],
+            'comma join with alias AS' => ['SELECT a.password FROM llm_report_orders AS o, admin_users a'],
+            'comma join after a derived table' => ['SELECT a.password FROM (SELECT id FROM llm_report_orders) t, admin_users a'],
+            'parenthesised table' => ['SELECT o.order_number FROM llm_report_orders o JOIN (admin_users) a ON 1=1'],
+            'STRAIGHT_JOIN' => ['SELECT a.password FROM llm_report_orders o STRAIGHT_JOIN admin_users a'],
+            'backtick with no space' => ['SELECT * FROM llm_report_orders WHERE 1 IN (SELECT id FROM`admin_users`)'],
+            'block comment as separator' => ['SELECT * FROM llm_report_orders WHERE 1 IN (SELECT id FROM/**/admin_users)'],
+            'TABLE statement in a subquery' => ['SELECT * FROM llm_report_orders WHERE id IN (TABLE admin_users)'],
+        ];
+    }
+
+    #[DataProvider('tableReferenceBypasses')]
+    public function test_rejects_a_disallowed_table_reached_without_a_plain_from_or_join(string $sql): void
+    {
+        $this->expectException(UnsafeSqlException::class);
+        $this->guard->sanitize($sql, 200);
+    }
+
+    public function test_still_allows_a_derived_table_subquery(): void
+    {
+        $sql = $this->guard->sanitize(
+            'SELECT t.game_name FROM (SELECT game_name FROM llm_report_orders) t JOIN llm_report_catalog c ON c.game_name = t.game_name',
+            200,
+        );
+
+        $this->assertStringContainsString('LIMIT 200', $sql);
     }
 
     public function test_rejects_a_forbidden_keyword_even_inside_a_select(): void
