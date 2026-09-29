@@ -1446,8 +1446,7 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     **🟢 all 5 findings BUILT 2026-09-29.** M-5/M-7/M-8/M-9 merged to
     `staging` via PR #311 (`fix/2026-09-29-wave2-compensation-races`).
     M-6 grilled separately (revisits ADR-024, see its 2026-09-29
-    addendum) and built on `fix/2026-09-29-wave2-m6-full-cover-voucher-race`,
-    not yet merged as of this writing. Test-first throughout. Full fast
+    addendum), merged to `staging` via PR #313. Test-first throughout. Full fast
     suite **2334/2334** green, concurrency suite **24/24** green. Also
     fixed, mid-PR-#311: a genuinely pre-existing `SupplierControllerTest`
     bug (missing fake adapter bind → a live network call to
@@ -1509,19 +1508,20 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       no-op, not credited — a stale debit landing after the cycle
       already refilled quota would over-grant past the plan's cap.
 
-46. **Wave 3 — security (all S findings + Low security hardening).** Not
-    yet built.
-    - **S-1 (Medium)** — affiliate `store_name` isn't escaped in the
-      storefront's JSON-LD (`storefront/src/app/layout.tsx`,
-      `order/[slug]/page.tsx`) — stored XSS on that affiliate's whitelabel
-      storefront. One-line fix (`<`-escape).
-    - **S-2 (Medium)** — `ReportAssistant/SqlGuard.php`'s table-name regex
-      can be bypassed with a comma-join, exposing any table to the LLM
-      report feature; the scoped `report_assistant` MySQL user (ADR-087)
-      is still unprovisioned in prod.
-    - **S-3 (Medium)** — `Jobs/Reseller/DeliverResellerWebhook.php` has no
-      private-IP/redirect guard on a reseller-supplied webhook URL (SSRF,
-      status-code oracle onto the droplet's internal network).
+46. **Wave 3 — security (all S findings + Low security hardening).**
+    **S-1/S-2/S-3 🟢 BUILT 2026-09-29** (PR-A,
+    `fix/2026-09-29-wave3-security`, see `docs/build-log.md`). Low items
+    still open (PR-B).
+    - ~~**S-1 (Medium)**~~ — affiliate `store_name` wasn't escaped in the
+      storefront's JSON-LD — stored XSS. Fixed via `jsonLdHtml()`.
+    - ~~**S-2 (Medium)**~~ — `SqlGuard`'s table allow-list had 7 bypasses
+      (comma join + 6 more found writing the red tests). All rejected now
+      (ADR-087 addendum). **Founder-owed, still open:** provision the
+      scoped `report_assistant` MySQL user in prod. Until then the regex
+      is the only defense, not the backstop ADR-087 describes.
+    - ~~**S-3 (Medium)**~~ — reseller webhook SSRF. `OutboundUrlGuard`
+      checks at save + send, pins curl to the approved IP, stops
+      following redirects (ADR-084 addendum).
     - Low: OTP has no per-IP rate limit + `OtpService`'s attempt counter
       has a check-then-increment race; admin/affiliate login has no
       per-account throttle (only per-IP) and no MFA (AUTH-7, already
