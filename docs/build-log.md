@@ -2627,3 +2627,87 @@ workflow. Wave 4 (burst prep) explicitly needs `K-4` (combo job
 `retry_after` vs timeout mismatch) fixed BEFORE any `maxProcesses`
 increase, to avoid turning a currently-harmless mismatch into a real
 concurrent double-run.
+
+## 2026-09-29 — Wave 2 of 5 built: compensation/checkout races (M-5, M-7, M-8, M-9); M-6 deferred pending a grill
+
+Branch `fix/2026-09-29-wave2-compensation-races` off `staging`, continuing
+the 2026-09-29 full-system-audit backlog (`docs/prd.md` §16 item 45). Four
+of the five Wave 2 findings are root-cause bugfixes restoring an
+already-documented invariant (same category as Wave 1); **M-6 is
+deliberately NOT built here** — it revisits ADR-024's accepted rationale,
+which needs a grill, not a mechanical fix.
+
+- **M-5 — `refundToWallet()`/`storeFromOrder()` didn't re-check
+  compensation state inside their own lock.** Both already took
+  `Order::lockForUpdate()`, but `refundToWallet()` only checked
+  `isAlreadyRefundedToWallet()` (not the full `isAlreadyCompensated()`,
+  so a concurrent voucher-issue landing first was invisible to it), and
+  both re-checked `delivery_status` on the pre-lock `$order`, not the
+  locked row. Fixed by re-deriving every check from `$locked`, mirroring
+  `OrderFulfillmentService::fulfill()`'s own defense-in-depth pattern.
+  One deliberate asymmetry: `storeFromOrder()`'s added check is
+  `isAlreadyRefundedToWallet()` only, NOT the full `isAlreadyCompensated()`
+  — the existing `test_restore_only_action_is_idempotent_on_a_repeated_click`
+  test caught this immediately when the full check was tried first:
+  `isVoucherRestored()` being true is that action's own expected
+  idempotency marker on a repeat restore-only click (ADR-024's
+  2026-09-17 addendum), not a race to block. Good example of a test
+  surfacing a real design distinction rather than just a typo.
+- **M-7 — `CheckoutService::resume()` had no lock, so two concurrent
+  calls for the same Order could both call CHIP's `createPayment()`.**
+  Whichever `payment_ref` `update()` landed last silently discarded the
+  other's `payment_request_id`, orphaning a live, payable CHIP purchase
+  that `ChipWebhookController`'s strict `payment_ref` match can never
+  match back to an order. Fixed by wrapping `requestPayment()` (the
+  method both `initiate()` and `resume()` funnel through) in
+  `Order::lockForUpdate()`, checking `payment_ref !== null` before ever
+  reaching the gateway. This deliberately holds the lock across the live
+  gateway call — `initiate()`'s own doc comment argues against exactly
+  that pattern, but for a different reason (never risk a rolled-back
+  Order *INSERT* orphaning a CHIP purchase with zero matching Order
+  row). Here the Order already exists and is already committed before
+  `requestPayment()` is ever called, so a transaction failure mid-lock
+  only reproduces the pre-existing "stuck at Pending, retryable" state,
+  never a new failure mode — recorded as an inline comment rather than a
+  full ADR addendum, same "root-cause bugfix" bar as Wave 1. Proven with
+  a new `tests/Concurrency/CheckoutResumeConcurrencyTest.php` (two real
+  OS processes racing `resume()` on the same order, a fake gateway
+  counting its own call count into a shared file) — manually verified
+  red (gateway called twice) against the unlocked code via `git stash`,
+  green (called once) against the fix, 3x each to rule out scheduling
+  luck.
+- **M-8 — `ResellerCatalogService::resolveByCode()` had no `Game.is_active`
+  check**, so a reseller (API/bot) could keep ordering a game the admin
+  had deactivated even though it was already hidden everywhere else.
+  One-line fix (`->where('is_active', true)`).
+- **M-9 — `MembershipQuotaService` had no `restore()`.** Quota is spent
+  at CHIP payment-link creation (`requestPayment()`/`settleWithVoucher()`),
+  not at actual payment — so a failed or abandoned checkout never gave
+  it back, permanently shorting a member's remaining quota for the rest
+  of their cycle. Added `restore()`, mirroring `VoucherService::restore()`'s
+  reserved/restored idempotency shape exactly: a new nullable
+  `membership_quota_debits.restored_at` column (migration
+  `2026_09_29_121358`, this table was previously insert-only) marks a
+  debit settled so a webhook redelivery or the reconcile sweep catching
+  the same abandoned order twice can't double-credit. Wired into both
+  give-back triggers `VoucherService::restore()` already uses
+  (`ChipWebhookController`'s terminal-Failed branch,
+  `PaymentReconciliationService::markFailed()`'s stale-pending sweep).
+  One extra guard beyond the voucher analogue, since vouchers have no
+  equivalent mechanic: a debit from before the membership's current
+  `cycle_started_at` (ADR-027's 30-day quota refill) is left alone,
+  not credited — crediting a stale pre-cycle debit on top of an
+  already-refilled balance would over-grant quota past the plan's cap.
+  Covered by a dedicated test forcing that exact ordering.
+
+**Verification:** every fix proven test-first (red→green). Full fast
+suite **2332/2333** green — the one failure
+(`SupplierControllerTest::test_update_merges_api_config_instead_of_replacing_it`)
+is a pre-existing real-network timeout to `api.gamevion.com`, confirmed
+present on unmodified `staging` too (not a regression, not scoped to fix
+here). Full concurrency suite **23/23** green (22 from before Wave 1/2 +
+the new `CheckoutResumeConcurrencyTest`).
+
+**Not built in this session:** M-6 (needs a grill, revisits ADR-024) and
+Waves 3-5 (security hardening, burst-traffic prep, remaining money
+hygiene) — still tracked in `docs/prd.md` §16 items 45-48.

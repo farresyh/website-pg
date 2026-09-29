@@ -1442,27 +1442,56 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     suite 22/22 (checked 3x locally + CI's own `backend-concurrency` job).
     See `docs/build-log.md`'s 2026-09-29 entry.
 
-45. **Wave 2 — compensation/checkout races (Medium, still money).** Not yet
-    built.
-    - **M-5** — `Admin\OrderController::refundToWallet()` and
-      `Admin\VoucherController::storeFromOrder()` don't call
-      `isAlreadyCompensated()` and don't re-check `delivery_status` inside
-      their lock — a wallet order can get both a voucher and a refund, or
-      a refund after a concurrent resend delivered it.
+45. **Wave 2 — compensation/checkout races (Medium, still money).**
+    **🟢 M-5/M-7/M-8/M-9 BUILT 2026-09-29** (branch
+    `fix/2026-09-29-wave2-compensation-races`), test-first, full fast
+    suite 2332/2333 (the one failure is a pre-existing, unrelated
+    `SupplierControllerTest` real-network flake — confirmed present on
+    unmodified `staging` too), concurrency suite 23/23. **M-6 still not
+    built** — it needs a grill (revisits ADR-024), not a mechanical fix.
+    - ~~**M-5**~~ — `Admin\OrderController::refundToWallet()` and
+      `Admin\VoucherController::storeFromOrder()` didn't call
+      `isAlreadyCompensated()` and didn't re-check `delivery_status`
+      inside their lock. Fixed by re-deriving both from the locked row,
+      same defense-in-depth `OrderFulfillmentService::fulfill()` already
+      uses. `storeFromOrder()` deliberately checks
+      `isAlreadyRefundedToWallet()` only, not the full
+      `isAlreadyCompensated()` — `isVoucherRestored()` being true is that
+      action's own expected idempotency marker on a repeat restore-only
+      click (ADR-024's 2026-09-17 addendum), not a race to block.
     - **M-6** — `CheckoutService::settleWithVoucher()`'s full-voucher-cover
       race (ADR-024's accepted residual race) can give away free goods
       repeatedly since no payment moved in that branch — ADR-024's own
       "customer already paid" rationale doesn't cover it. Needs a grill
       (revisits ADR-024).
-    - **M-7** — `CheckoutController`/`CheckoutService::resume()` double-
-      submit can create two CHIP purchases for one order; if the customer
-      pays the orphaned one, the webhook can't match it back.
-    - **M-8** — `ResellerCatalogService::resolveByCode()` has no
-      `Game.is_active` check, so a reseller (API/bot) can order a game
-      admin deactivated. One-line fix.
-    - **M-9** — `MembershipQuotaService` has no `restore()` — quota spent
-      at CHIP payment-link creation is never given back on a failed/
-      abandoned checkout. Needs a small addendum to ADR-027/068.
+    - ~~**M-7**~~ — `CheckoutController`/`CheckoutService::resume()`
+      double-submit could create two CHIP purchases for one order,
+      orphaning whichever one lost the `payment_ref` write race. Fixed
+      by wrapping `requestPayment()` in `Order::lockForUpdate()`,
+      re-checking `payment_ref !== null` before ever calling the
+      gateway — deliberately holding the lock across the live CHIP call,
+      unlike `initiate()`'s own "never wrap the gateway call in a
+      transaction" rule (that rule protects against a rolled-back Order
+      *INSERT*; here the Order already exists and is already committed,
+      so a transaction failure only reproduces the pre-existing
+      "stuck at Pending, retryable" failure mode). Proven with a new
+      `CheckoutResumeConcurrencyTest` (two real OS processes racing
+      `resume()` on the same order) — verified red (gateway called
+      twice) against the unlocked code, green (called once) against the
+      fix.
+    - ~~**M-8**~~ — `ResellerCatalogService::resolveByCode()` had no
+      `Game.is_active` check. One-line fix.
+    - ~~**M-9**~~ — `MembershipQuotaService` had no `restore()`. Added,
+      mirroring `VoucherService::restore()`'s reserved/restored
+      idempotency pattern (`membership_quota_debits.restored_at`,
+      migration `2026_09_29_121358`), wired into both give-back triggers
+      `VoucherService::restore()` already uses
+      (`ChipWebhookController`'s Failed branch,
+      `PaymentReconciliationService::markFailed()`). One extra guard
+      beyond the voucher analogue: a debit from before the membership's
+      current `cycle_started_at` (ADR-027's 30-day quota refill) is a
+      no-op, not credited — a stale debit landing after the cycle
+      already refilled quota would over-grant past the plan's cap.
 
 46. **Wave 3 — security (all S findings + Low security hardening).** Not
     yet built.
