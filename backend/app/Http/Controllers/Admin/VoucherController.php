@@ -289,7 +289,10 @@ class VoucherController extends Controller
                 // that's this action's OWN expected idempotency marker on
                 // a repeat restore-only click (ADR-024 addendum), not a
                 // race to block.
-                if ($locked->delivery_status !== DeliveryStatus::Failed && ! $isPartialComboDelivery) {
+                // Re-derived on the locked row (2026-09-29 pre-release
+                // review) — the pre-lock $isPartialComboDelivery can be
+                // stale if the last leg delivered while we waited.
+                if ($locked->delivery_status !== DeliveryStatus::Failed && ! $locked->isPartialComboDelivery()) {
                     throw ValidationException::withMessages([
                         'order' => ['A voucher can only be issued for an order with a failed delivery.'],
                     ]);
