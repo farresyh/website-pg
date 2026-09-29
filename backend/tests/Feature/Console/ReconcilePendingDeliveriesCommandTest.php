@@ -53,14 +53,61 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
         return $order->fresh();
     }
 
-    public function test_redispatches_a_stuck_processing_order_past_the_threshold(): void
+    /**
+     * Review #3 (ADR-102 addendum, 2026-09-29): since M-1, a stale
+     * Processing order means a worker died mid-supplier-call — the outcome
+     * is unknown. Re-dispatching FulfillOrderJob could never work
+     * (startDelivery() rejects Processing), so it now goes to NeedsReview…
+     */
+    public function test_flags_a_stuck_processing_order_for_review_past_the_threshold(): void
     {
         Bus::fake();
         $order = $this->stale($this->order());
 
         $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
 
-        Bus::assertDispatched(FulfillOrderJob::class, fn ($job) => $job->order->id === $order->id);
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        Bus::assertNotDispatched(FulfillOrderJob::class);
+    }
+
+    /** …or, for a supplier that replays a known reference, to Pending with an auto-poll. */
+    public function test_parks_a_stuck_processing_digiflazz_order_at_pending_and_polls(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->stale($this->order(['supplier_id' => $supplier->id, 'reference_number' => 'REF-STUCK-1']));
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
+        Bus::assertDispatched(CheckSupplierDeliveryJob::class, fn ($job) => $job->order->id === $order->id);
+    }
+
+    public function test_does_not_redispatch_a_stuck_not_started_test_order(): void
+    {
+        Bus::fake();
+        $this->stale($this->order(['delivery_status' => DeliveryStatus::NotStarted->value, 'is_test' => true]));
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        Bus::assertNotDispatched(FulfillOrderJob::class);
+    }
+
+    /**
+     * ADR-102 addendum decision 4: a Pending order that hasn't moved in 2
+     * hours goes to an admin instead of polling for up to 90 days.
+     */
+    public function test_flags_a_pending_order_stuck_past_the_pending_window_for_review(): void
+    {
+        Bus::fake();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $order = $this->order(['supplier_id' => $supplier->id, 'delivery_status' => DeliveryStatus::Pending->value]);
+        $order->forceFill(['updated_at' => now()->subMinutes(121)])->save();
+
+        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        Bus::assertNotDispatched(CheckSupplierDeliveryJob::class);
     }
 
     public function test_does_not_redispatch_a_processing_order_still_within_the_threshold(): void
