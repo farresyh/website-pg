@@ -34,6 +34,7 @@ final class NexoneValidator implements PlayerValidator
         try {
             $page = Http::baseUrl($this->baseUrl)
                 ->timeout($this->timeoutSeconds)
+                ->connectTimeout(3)
                 ->withOptions(['cookies' => $jar])
                 ->get('/idchecker');
         } catch (Throwable $e) {
@@ -51,6 +52,7 @@ final class NexoneValidator implements PlayerValidator
         try {
             $response = Http::baseUrl($this->baseUrl)
                 ->timeout($this->timeoutSeconds)
+                ->connectTimeout(3)
                 ->asForm()
                 ->withOptions(['cookies' => $jar])
                 ->withHeaders(['Referer' => "{$this->baseUrl}/idchecker"])

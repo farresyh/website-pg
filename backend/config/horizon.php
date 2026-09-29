@@ -253,8 +253,11 @@ return [
         // own combo branch is leg-idempotent, so a whole-job retry just
         // resumes the not-yet-succeeded legs, never re-submits a
         // already-delivered one.
+        // 2026-09-29 audit K-4: `redis-long` (retry_after 330s) — on
+        // `redis`'s 90s a combo job still mid-legs would be re-handed to a
+        // second worker once maxProcesses > 1.
         'supervisor-orders-combo' => [
-            'connection' => 'redis',
+            'connection' => 'redis-long',
             'queue' => ['orders-combo'],
             'balance' => 'off',
             'maxProcesses' => 1,

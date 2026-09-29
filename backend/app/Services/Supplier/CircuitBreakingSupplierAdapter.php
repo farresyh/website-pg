@@ -4,6 +4,7 @@ namespace App\Services\Supplier;
 
 use App\Jobs\LogSupplierRequestJob;
 use App\Services\CircuitBreaker\CircuitBreaker;
+use Illuminate\Http\Client\ConnectionException;
 
 /**
  * Wraps a real SupplierAdapter (e.g. GamevionAdapter) with a
@@ -96,7 +97,23 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
             );
         }
 
-        $response = $call();
+        // 2026-09-29 audit K-3: a timeout/refused connection is thrown,
+        // never returned as an isServerError response — count it too, or
+        // a supplier that only hangs never trips the breaker. Rethrown
+        // unchanged: callers (M-1's reference persistence) rely on it.
+        // listProducts excluded: the heavy catalog pull times out routinely
+        // (prod: 109 Digiflazz timeouts by 2026-09-29, clustered by
+        // SyncSupplierPricesJob's own retries) without the order path
+        // being down — counting it would pause real orders for nothing.
+        try {
+            $response = $call();
+        } catch (ConnectionException $e) {
+            if ($callType !== 'listProducts') {
+                $this->breaker->recordFailure();
+            }
+
+            throw $e;
+        }
 
         if ($response->isServerError) {
             $this->breaker->recordFailure();

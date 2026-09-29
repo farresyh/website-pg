@@ -47,6 +47,22 @@ class HorizonQueueCoverageTest extends TestCase
         }
     }
 
+    /**
+     * 2026-09-29 audit K-4: a job still running when its connection's
+     * retry_after lapses is handed to a second worker — a double supplier
+     * call once maxProcesses > 1. retry_after is applied by the popping
+     * worker's connection, so each supervisor's own connection must
+     * outlast its timeout.
+     */
+    public function test_every_supervisor_timeout_is_shorter_than_its_connection_retry_after(): void
+    {
+        foreach (config('horizon.defaults') as $name => $supervisor) {
+            $retryAfter = config("queue.connections.{$supervisor['connection']}.retry_after");
+
+            $this->assertGreaterThan($supervisor['timeout'], $retryAfter, "`{$name}` timeout {$supervisor['timeout']}s must be < its connection's retry_after");
+        }
+    }
+
     public function test_send_membership_receipt_job_lands_on_a_supervised_queue(): void
     {
         $queue = (new SendMembershipReceiptJob(1, 'subscription', 100))->queue ?? 'default';

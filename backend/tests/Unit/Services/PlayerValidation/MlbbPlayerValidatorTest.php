@@ -6,6 +6,7 @@ use App\Services\PlayerValidation\MlbbPlayerValidator;
 use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\PlayerValidation\PlayerValidator;
 use App\Services\PlayerValidation\ProviderUnavailableException;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class MlbbPlayerValidatorTest extends TestCase
@@ -59,6 +60,31 @@ class MlbbPlayerValidatorTest extends TestCase
 
         $this->assertFalse($result->valid);
         $this->assertSame('acidgameshop', $result->provider);
+    }
+
+    /**
+     * 2026-09-29 audit K-2: the chain ran every provider to its own
+     * timeout (~32s worst case), holding a php-fpm worker the whole time.
+     * Once the deadline has passed, no further provider is started.
+     */
+    public function test_stops_falling_back_once_the_deadline_has_passed(): void
+    {
+        $slowDown = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                Carbon::setTestNow(now()->addSeconds(9));
+
+                throw new ProviderUnavailableException('timed out');
+            }
+        };
+        $second = $this->fakeProvider(PlayerValidationResult::valid('nexone', 'Prime.', 'MY'));
+
+        $chain = new MlbbPlayerValidator([$slowDown, $second], deadlineSeconds: 8);
+
+        $this->expectException(ProviderUnavailableException::class);
+
+        $chain->validate('51049607', '2005');
     }
 
     public function test_throws_when_every_provider_is_unavailable(): void
