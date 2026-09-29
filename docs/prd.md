@@ -1676,8 +1676,13 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     staging→main release.** Found by reviewing every wave against the audit
     artifact plus `/code-review high` of `origin/main...staging`
     (`docs/build-log.md` 2026-09-29 pre-release entry).
-    **PR-C 🟢 BUILT** (bugfixes #4/#5/#6/#7/#10 + `/api/health` Horizon check).
-    **PR-D — grill first, not built:**
+    **PR-C 🟢 BUILT** (PR #318, merged: bugfixes #4/#5/#6/#7/#10 + `/api/health` Horizon check).
+    **PR-D 🟢 BUILT** (grilled Q1–Q8; ADR-102 addendum + ADR-014 addendum),
+    covering every item below. Replay-safe suppliers (Digiflazz) now take
+    ambiguous outcomes to Pending with a ~2-min same-ref poll. Pending ages
+    out after 2h. A late Paid after a Failed payment goes to NeedsReview.
+    Exhausted `FulfillOrderJob` → NeedsReview. Stale Processing → Pending or
+    NeedsReview. Checkout is limited per customer. Originally:
     - **#1** — a late CHIP Paid on an already-compensated order stays
       `NotStarted`. `markNeedsReview()` rejects `NotStarted`, so the M-4
       webhook branch never actually flags it.
