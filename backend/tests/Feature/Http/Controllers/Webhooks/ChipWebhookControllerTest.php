@@ -253,6 +253,36 @@ class ChipWebhookControllerTest extends TestCase
     }
 
     /**
+     * Pre-release review #1/#9 (ADR-102 addendum, 2026-09-29): the REAL
+     * shape of a late Paid — payment was marked Failed by reconcile/
+     * webhook, delivery never started (NotStarted), and the voucher/quota
+     * were already given back. Any Paid arriving after a Failed payment
+     * goes to NeedsReview, with or without a voucher involved.
+     */
+    public function test_a_late_paid_event_after_a_failed_payment_flags_needs_review_from_not_started(): void
+    {
+        Queue::fake();
+        $privateKey = $this->fakeChipPublicKey();
+        $order = $this->fakePaidOrder([
+            'payment_status' => PaymentStatus::Failed->value,
+            'delivery_status' => DeliveryStatus::NotStarted->value,
+        ]);
+
+        $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'paid',
+            'purchase' => ['total' => 1100],
+        ], $privateKey)->assertOk();
+
+        $fresh = $order->fresh();
+        $this->assertSame(PaymentStatus::Paid, $fresh->payment_status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $fresh->delivery_status);
+        Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
+    /**
      * PAY-2: a repeat webhook delivery for an already-paid order must
      * be acknowledged, not reprocessed.
      */

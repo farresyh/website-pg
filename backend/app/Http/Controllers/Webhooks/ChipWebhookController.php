@@ -161,8 +161,14 @@ class ChipWebhookController extends Controller
         // (a valid transition from Failed, the only delivery_status an
         // already-compensated order can realistically be in) so an
         // admin sees it on the existing Needs Review queue.
-        if ($order->isAlreadyCompensated()) {
-            Log::error('CHIP webhook: paid event for an already-compensated order — flagging for manual review, not auto-fulfilling', [
+        // ADR-102 addendum (2026-09-29, review #1/#9): ANY Paid arriving
+        // after the payment was already marked Failed takes this path too —
+        // the Failed branch above has already given back the voucher AND
+        // the membership quota, so auto-fulfilling would deliver at a
+        // discount nothing was spent for. isAlreadyCompensated() alone
+        // missed the quota and the no-voucher case.
+        if ($order->payment_status === PaymentStatus::Failed || $order->isAlreadyCompensated()) {
+            Log::error('CHIP webhook: paid event after a failed payment or compensation — flagging for manual review, not auto-fulfilling', [
                 'delivery_status' => $order->delivery_status->value,
             ]);
 
