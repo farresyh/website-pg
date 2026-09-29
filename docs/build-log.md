@@ -2907,3 +2907,12 @@ test covers it.
 
 Not in this PR: impersonation scope/attribution (needs a grill,
 ADR-058), MFA (item 10), and the `doadmin` main-connection finding.
+
+**Addendum, same day: Wave 3 closed out.** After explanation, the founder
+decided (a) RES-4 impersonation stays unrestricted: won't-fix, recorded
+as an ADR-058 addendum with a re-open trigger (a second
+`super_admin`/staff user); and (b) the `doadmin` main-connection fix is
+deferred to be bundled with decommissioning the old `pekangame-prod`
+droplet and old DB (§16 item 46). Wave 3 has nothing left to build
+except MFA, which was already tracked separately as item 10. Next up:
+Wave 4 (item 47), where K-4 must land before K-1.
