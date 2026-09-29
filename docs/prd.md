@@ -731,8 +731,8 @@ production before building on it.
 48. **Wave 5 — remaining money hygiene + customer notifications.**
     **PR-A built 2026-09-29** (branch `fix/2026-09-29-wave5-money-hygiene`):
     M-10 and all six Lows below. See the build-log entry of the same date.
-    **Before merging to `main`**, run the prod duplicate check on
-    `ledger_entries`, or the new unique index fails the deploy migration.
+    The prod duplicate check on `ledger_entries` was run 2026-09-29 and is
+    clean for the final rule, so the migration is safe to deploy.
     Still open: **M-11 (PR-B)**, which needs an ADR and a grill first.
     - ~~**M-10 (Medium)**~~ — fixed in PR-A (the voided check moved under the lock).
     - **M-11 (Medium)** — no order emails exist at all (no `app/Mail`, no

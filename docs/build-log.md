@@ -1490,7 +1490,7 @@ test-first. Fast suite 2390/2390; concurrency 24/24.
 ## 2026-09-29 — Wave 5 PR-A: M-10 + money-hygiene Lows (PRD §16 item 48)
 
 Branch `fix/2026-09-29-wave5-money-hygiene`. Every finding was re-verified
-against code first, and all were still real. Fast suite 2403/2403; concurrency
+against code first, and all were still real. Fast suite 2404/2404; concurrency
 24/24 on MySQL. The ledger and wallet tests also ran against MySQL, to prove the
 virtual-column unique index fires there and not just on sqlite.
 
@@ -1527,8 +1527,14 @@ virtual-column unique index fires there and not just on sqlite.
 - **Manual wallet credit idempotency:** new `ledger_entries.idempotency_key`
   column (unique). The admin modal mints one key per credit and rotates it only
   after a success, because the form stays open. A replay returns the first entry.
-- **Deploy risk:** if prod already holds a duplicate in the five dedupe types,
-  the migration fails on deploy. Run the duplicate check before merging to `main`.
+- **Prod pre-check caught a real deploy failure.** Prod had two platform
+  `order_profit` rows on order 15. The second is the deliberate −10 sen ADR-105
+  manual correction (with a reason and `created_by=1`), not a double credit.
+  The dedupe now covers only automatic entries (`reason IS NULL`). Re-checked
+  prod with that rule: zero duplicates. MySQL 8.4.8, the longest key is 47 chars
+  (well under 191). **Gotcha:** the Docker test DB `kerox` had leftover
+  `llm_report_*` views from an earlier run, so every test failed with "view
+  already exists". `db:wipe --drop-views` against it fixed that.
 
 ## 2026-09-29 — Docs hygiene pass at session close
 
