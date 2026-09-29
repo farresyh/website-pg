@@ -22,9 +22,10 @@ class SendResellerBotReplyJobTest extends TestCase
         ));
     }
 
-    public function test_is_pinned_to_the_orders_queue(): void
+    /** ADR-048 addendum (2026-09-29): moved off the order lanes. */
+    public function test_is_pinned_to_the_default_queue(): void
     {
-        $this->assertSame('orders', (new SendResellerBotReplyJob('chat-1', 'hi'))->queue);
+        $this->assertSame('default', (new SendResellerBotReplyJob('chat-1', 'hi'))->queue);
     }
 
     public function test_handle_sends_via_open_wa_client(): void

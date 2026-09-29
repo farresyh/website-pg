@@ -63,14 +63,13 @@ final class OrderStatusUpdated implements ShouldBroadcast
     }
 
     /**
-     * The one queue this broadcast shares — it's part of the same order
-     * lifecycle FulfillOrderJob already runs on (ADR-020's
-     * `queue-worker-orders`), and is small/fast enough not to meaningfully
-     * delay it.
+     * ADR-048 addendum (2026-09-29, audit K-1): `default`, not `orders` —
+     * on `orders` an order burst queued every status push behind the
+     * supplier calls it was reporting on.
      */
     public function broadcastQueue(): string
     {
-        return 'orders';
+        return 'default';
     }
 
     public function broadcastWith(): array
