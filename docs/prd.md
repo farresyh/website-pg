@@ -1672,6 +1672,34 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     founder-owed now: flip `fixfastapp.com`'s record to DNS-only in
     Cloudflare.
 
+50. **Pre-release review of Waves 1–4 (2026-09-29) — must land before the
+    staging→main release.** Found by reviewing every wave against the audit
+    artifact plus `/code-review high` of `origin/main...staging`
+    (`docs/build-log.md` 2026-09-29 pre-release entry).
+    **PR-C 🟢 BUILT** (bugfixes #4/#5/#6/#7/#10 + `/api/health` Horizon check).
+    **PR-D — grill first, not built:**
+    - **#1** — a late CHIP Paid on an already-compensated order stays
+      `NotStarted`. `markNeedsReview()` rejects `NotStarted`, so the M-4
+      webhook branch never actually flags it.
+    - **#2** — `retryStuckNotStarted()` has no attempt cap. An order failing
+      `fulfill()`'s phase-1 guards (already compensated, null
+      `supplier_product_ref`) is re-dispatched every 15 minutes forever, and
+      no `is_test` filter is applied.
+    - **#3** — if a worker is killed mid-supplier-call (after M-1's phase 1
+      committed), the order is stranded at `Processing`.
+      `retryStuckProcessing()` re-dispatches it, but `startDelivery()`
+      rejects `Processing`.
+    - **#9** — a late Paid after a M-9 quota restore is fulfilled at member
+      price without consuming quota.
+    - **NeedsReview load** — `CIRCUIT_OPEN` (the call was never sent) goes to
+      manual NeedsReview. K-3 now counts timeouts, so during a Digiflazz slow
+      patch every order in the 60s cooldown needs an admin. Digiflazz docs say
+      re-sending the same `ref_id` acts as a status check, so an auto-retry
+      with the same ref may be safe per adapter. Needs an ADR-102/M-3
+      addendum.
+    - **Checkout 10/min/IP** (audit K-low, never carried into §16) — mobile
+      carrier NAT during a promo.
+
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 ~~**CHIP credential `.env`→DB migration**~~ — **grilled + BUILT 2026-09-19,
