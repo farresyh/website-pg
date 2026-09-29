@@ -46,6 +46,7 @@ final class MoogoldValidator implements PlayerValidator
         try {
             $response = Http::baseUrl($this->baseUrl)
                 ->timeout($this->timeoutSeconds)
+                ->connectTimeout(3)
                 ->asForm()
                 ->post('/wp-content/plugins/id-validation-new/id-validation-ajax.php', [
                     'attribute_amount' => '',

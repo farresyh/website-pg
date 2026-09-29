@@ -27,6 +27,7 @@ final class AcidGameShopValidator implements PlayerValidator
         try {
             $response = Http::baseUrl($this->baseUrl)
                 ->timeout($this->timeoutSeconds)
+                ->connectTimeout(3)
                 ->acceptJson()
                 ->post('/api/validate-mlbb', [
                     'id' => $playerId,
