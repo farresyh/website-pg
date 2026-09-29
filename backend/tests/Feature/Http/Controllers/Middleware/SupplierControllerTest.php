@@ -181,6 +181,14 @@ class SupplierControllerTest extends TestCase
         $supplier = $this->supplier([
             'api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'existing-secret', 'api_key' => 'existing-key', 'sandbox' => false],
         ]);
+        // ADR-069 decision 11: an api_config change makes update() probe
+        // the connection for real (via SupplierAdapterFactory) — every
+        // sibling test below binds a fake adapter first; this one didn't,
+        // so it was silently making a live network call to the real
+        // api.gamevion.com and either failing or hanging on whatever
+        // network the test happened to run on. Found 2026-09-29 when it
+        // started timing out in CI instead of erroring fast.
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true));
 
         // Frontend never re-sends a secret it was never shown (SUPP-5) —
         // only the visible base_url/sandbox fields are resubmitted.
