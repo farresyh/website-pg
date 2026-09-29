@@ -21,6 +21,7 @@ use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
 use App\Services\Voucher\VoucherService;
 use App\Support\StorefrontBrand;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -198,7 +199,42 @@ final class CheckoutService
         return $order->fresh();
     }
 
+    /**
+     * M-7, 2026-09-29 audit: two concurrent calls for the same Order
+     * (double-click retry, two tabs, a client-side timeout retry racing
+     * the still-in-flight first attempt) used to both read
+     * payment_ref===null and both call $gateway->createPayment() — CHIP's
+     * own reference-dedupe behaviour is unconfirmed (see the comment on
+     * initiate() above), so this could mint two live purchases for one
+     * order; whichever update() committed last silently discarded the
+     * other's payment_request_id, orphaning it (unpayable back to this
+     * order once ChipWebhookController's strict payment_ref match misses).
+     * Locked and re-checked exactly like OrderFulfillmentService's own
+     * defense-in-depth pattern, at the cost of holding this lock across
+     * the live gateway call — deliberately different from initiate()'s
+     * own "never wrap the gateway call in a transaction" rule above,
+     * which is about not risking a rolled-back Order INSERT; this Order
+     * already exists and is already committed, so a transaction failure
+     * here only reproduces the pre-existing "stuck at Pending, retryable"
+     * failure mode, never a worse one. A retry-storm on this path isn't
+     * expected (a customer-facing single-order retry, not a queued job),
+     * so the held-lock cost is accepted rather than building a separate
+     * reservation column.
+     */
     private function requestPayment(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
+    {
+        return DB::transaction(function () use ($order, $gateway, $channelCode, $channelProperties) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            if ($locked->payment_ref !== null) {
+                return $locked;
+            }
+
+            return $this->createPaymentFor($locked, $gateway, $channelCode, $channelProperties);
+        });
+    }
+
+    private function createPaymentFor(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
     {
         // The storefront can't put order_number in the return URLs it
         // sends with the checkout request — it doesn't have one yet at
