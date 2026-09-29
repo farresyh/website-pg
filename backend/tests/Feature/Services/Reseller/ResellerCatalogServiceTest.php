@@ -104,6 +104,19 @@ class ResellerCatalogServiceTest extends TestCase
         $this->assertNull(app(ResellerCatalogService::class)->resolveByCode('NOPE-14'));
     }
 
+    /** M-8, 2026-09-29 audit: a deactivated game must not stay orderable via the reseller channels. */
+    public function test_returns_null_for_a_deactivated_game(): void
+    {
+        $game = $this->game(['is_active' => false]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => '14 Diamond', 'denomination' => 14,
+            'cost_price' => 400, 'standard_selling_price' => 500,
+            'supplier_id' => $this->supplier()->id, 'supplier_package_ref' => 'A',
+        ]);
+
+        $this->assertNull(app(ResellerCatalogService::class)->resolveByCode('MLMY-14'));
+    }
+
     public function test_returns_null_when_no_active_package_matches(): void
     {
         $this->game();

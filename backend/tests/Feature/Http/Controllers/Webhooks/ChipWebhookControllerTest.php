@@ -321,6 +321,37 @@ class ChipWebhookControllerTest extends TestCase
         $this->assertSame(DeliveryStatus::NotStarted, $fresh->delivery_status);
     }
 
+    /** M-9, 2026-09-29 audit: quota debited at payment-link creation must be given back on a Failed callback. */
+    public function test_a_failure_event_restores_membership_quota_debited_for_that_order(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        $membership = Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'buyer@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 960,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $order = $this->fakePaidOrder(['membership_id' => $membership->id, 'selling_price' => 1000]);
+        \App\Models\MembershipQuotaDebit::query()->create([
+            'order_id' => $order->id, 'membership_id' => $membership->id, 'amount_sen' => 1000,
+        ]);
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.payment_failure',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'error',
+            'purchase' => ['total' => 1100],
+        ], $privateKey);
+
+        $response->assertOk();
+        $this->assertSame(1960, $membership->fresh()->quota_remaining_sen);
+    }
+
     // --- ADR-068: the self-serve membership-subscription branch ---
 
     private function pendingAttempt(array $overrides = []): MembershipCheckoutAttempt

@@ -47,7 +47,7 @@ final class ResellerCatalogService
 
         [$resellerCode, $rest] = $parts;
 
-        $game = Game::query()->where('reseller_code', $resellerCode)->first();
+        $game = Game::query()->where('reseller_code', $resellerCode)->where('is_active', true)->first();
         if ($game === null) {
             return null;
         }

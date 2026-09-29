@@ -778,9 +778,19 @@ class OrderController extends Controller
         DB::transaction(function () use ($order, $ledger) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-            if ($locked->isAlreadyRefundedToWallet()) {
+            if ($locked->delivery_status !== DeliveryStatus::Failed) {
                 throw ValidationException::withMessages([
-                    'order' => ['This order has already been refunded to the reseller\'s wallet.'],
+                    'order' => ['A wallet refund can only be issued for an order with a failed delivery.'],
+                ]);
+            }
+
+            // M-5, 2026-09-29 audit: isAlreadyRefundedToWallet() alone let a
+            // concurrent voucher-issue (storeFromOrder()) or resend land in
+            // the gap between the pre-check above and this lock — re-check
+            // every compensation kind, not just this action's own.
+            if ($locked->isAlreadyCompensated()) {
+                throw ValidationException::withMessages([
+                    'order' => ['This order has already been compensated (voucher issued/restored or wallet refunded).'],
                 ]);
             }
 
