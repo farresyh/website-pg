@@ -84,6 +84,10 @@ export async function apiFetch<T>(path: string, { body, token, headers, ...init 
 
   const response = await fetch(url, {
     ...init,
+    // 2026-09-29 audit K-6: no timeout meant a hung backend held the SSR
+    // render / spinner forever. 20s sits above the backend's own slowest
+    // path (MLBB player validation, ~17s worst case).
+    signal: init.signal ?? AbortSignal.timeout(20_000),
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
