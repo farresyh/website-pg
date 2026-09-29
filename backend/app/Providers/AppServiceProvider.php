@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Events\OrderStatusUpdated;
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Listeners\Horizon\AlertOnLongQueueWait;
 use App\Listeners\Broadcasting\LogFailedBroadcastJob;
 use App\Listeners\Reseller\DispatchResellerOrderWebhook;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
@@ -58,6 +59,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Horizon\Events\LongWaitDetected;
 use Intervention\Image\ImageManager;
 use Spatie\Backup\Events\BackupHasFailed;
 use Spatie\Backup\Events\CleanupHasFailed;
@@ -409,6 +411,9 @@ class AppServiceProvider extends ServiceProvider
         // `admin_users` row rather than one static config address.
         Event::listen(BackupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleBackupHasFailed']);
         Event::listen(CleanupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleCleanupHasFailed']);
+        // ADR-048 addendum (2026-09-29): Horizon long-wait → Plunk alert,
+        // since Horizon's own mail notification can't reach anyone in prod.
+        Event::listen(LongWaitDetected::class, [AlertOnLongQueueWait::class, 'handle']);
         // ADR-076 decision 5 — message 2 of the Bot channel's two-stage
         // order messaging. `broadcast()` (OrderObserver) dispatches
         // through the normal event dispatcher too, so this listener

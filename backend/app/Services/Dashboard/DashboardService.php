@@ -16,6 +16,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 
 /**
  * DASH-1..6 (docs/prd.md §6.2, ADR-045). Every figure here is grilled
@@ -32,8 +33,12 @@ final class DashboardService
 {
     public const TIMEZONE = ReportService::TIMEZONE;
 
-    /** `orders` is the only queue this screen monitors (ADR-045 decision 9) — see DashboardService::health(). */
-    private const MONITORED_QUEUE = 'orders';
+    /**
+     * The delivery-critical order lanes this screen monitors (ADR-045
+     * decision 9; lanes per the ADR-048 2026-09-29 addendum) — see
+     * DashboardService::health().
+     */
+    private const MONITORED_QUEUES = ['orders', 'orders-reseller', 'orders-combo'];
 
     public function __construct(
         private readonly ReportService $reports,
@@ -217,9 +222,11 @@ final class DashboardService
                 'definition' => 'COUNT(*) where payment_status=pending, excludes is_test orders — the same population app:reconcile-pending-payments (PAY-3) targets.',
             ],
             'queue' => [
-                'pending' => (int) DB::table('jobs')->where('queue', self::MONITORED_QUEUE)->count(),
-                'failed' => (int) DB::table('failed_jobs')->where('queue', self::MONITORED_QUEUE)->count(),
-                'definition' => "COUNT(*) from the jobs/failed_jobs tables, queue='".self::MONITORED_QUEUE."' only — the delivery-critical queue (FulfillOrderJob/ResendOrderDeliveryJob/CheckSupplierDeliveryJob). The default/price-sync/backups queues aren't part of the money-critical customer-facing path this screen monitors.",
+                // Live Redis queue size (waiting + delayed + reserved) — the
+                // `jobs` table this used to read is unused since ADR-048.
+                'pending' => (int) collect(self::MONITORED_QUEUES)->sum(fn (string $queue) => Queue::size($queue)),
+                'failed' => (int) DB::table('failed_jobs')->whereIn('queue', self::MONITORED_QUEUES)->count(),
+                'definition' => 'Pending = live Redis queue size (waiting + delayed + in-flight); failed = COUNT(*) from failed_jobs. Order lanes only ('.implode(', ', self::MONITORED_QUEUES).') — the delivery-critical FulfillOrderJob/ResendOrderDeliveryJob/CheckSupplierDeliveryJob path. The default/price-sync/backups queues aren\'t part of the money-critical customer-facing path this screen monitors.',
             ],
         ];
     }

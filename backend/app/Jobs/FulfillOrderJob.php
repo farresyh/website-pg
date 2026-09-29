@@ -62,7 +62,7 @@ final class FulfillOrderJob implements ShouldQueue
         // routes to its own queue/timeout tier (config/horizon.php's
         // supervisor-orders-combo, 300s) instead of supervisor-orders'
         // 60s — sized for one HTTP call.
-        $this->onQueue($order->package?->is_combo ? 'orders-combo' : 'orders');
+        $this->onQueue($order->package?->is_combo ? 'orders-combo' : $order->orderLane());
     }
 
     public function backoff(): array

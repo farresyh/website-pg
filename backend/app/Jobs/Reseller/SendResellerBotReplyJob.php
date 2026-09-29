@@ -22,10 +22,8 @@ use Throwable;
  * `PurgeNextCatalogCache`, whose retry shape (3 tries, short backoff,
  * `failed()` logs and stops) this mirrors.
  *
- * `orders` queue — same one `SendResellerBotOrderNotification` (message
- * 2 of the order lifecycle) already runs on; this is the same class of
- * low-volume, best-effort reseller-bot notification, not worth a
- * dedicated Horizon supervisor of its own.
+ * `default` queue (ADR-048 addendum, 2026-09-29) — was `orders`, where a
+ * burst of orders left replies queued behind every supplier call.
  */
 final class SendResellerBotReplyJob implements ShouldQueue
 {
@@ -40,7 +38,7 @@ final class SendResellerBotReplyJob implements ShouldQueue
         public readonly string $chatId,
         public readonly string $text,
     ) {
-        $this->onQueue('orders');
+        $this->onQueue('default');
     }
 
     public function handle(OpenWaClient $openWa): void

@@ -987,8 +987,11 @@ Route::middleware('auth:sanctum')->group(function () {
 // enabled at all, per bootstrap/app.php) — bounds the cost of an unsigned
 // flood before signature verification runs, without risking a real gateway
 // retry burst getting throttled. Found absent, fresh audit, 2026-08-14.
+// 120 → 600/min (ADR-048 addendum, 2026-09-29, audit K-5): 120 was within
+// reach of a real promo burst's webhooks plus gateway retries, and
+// OpenWA's traffic all arrives from one localhost IP.
 Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
-    ->middleware('throttle:120,1,webhook-chip')
+    ->middleware('throttle:600,1,webhook-chip')
     ->name('webhooks.chip');
 
 // ADR-069 — Digiflazz async-delivery finalization (the ADR-032
@@ -999,7 +1002,7 @@ Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
 // (ReconcilePendingDeliveriesCommand::checkStalePending) remains the
 // backstop for any missed callback.
 Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle'])
-    ->middleware('throttle:120,1,webhook-digiflazz')
+    ->middleware('throttle:600,1,webhook-digiflazz')
     ->name('webhooks.digiflazz');
 
 // ADR-075 / PR-F build addendum — the Reseller Bot channel's inbound
@@ -1010,7 +1013,7 @@ Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle']
 // Digiflazz's soft/log-only IP check). Same throttle rationale as the
 // webhook routes above.
 Route::post('/webhooks/openwa', [OpenWaWebhookController::class, 'handle'])
-    ->middleware('throttle:120,1,webhook-openwa')
+    ->middleware('throttle:600,1,webhook-openwa')
     ->name('webhooks.openwa');
 
 // ADR-074 — Reseller API channel. Not behind auth:sanctum:

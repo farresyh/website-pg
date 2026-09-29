@@ -35,8 +35,8 @@ final class CheckSupplierDeliveryJob implements ShouldQueue
     ) {
         // ADR-020 decision #5 — same queue as FulfillOrderJob: this is
         // money-adjacent and customer-facing, kept off the slower
-        // price-sync queue.
-        $this->onQueue('orders');
+        // price-sync queue. ADR-048 addendum: the order's own lane.
+        $this->onQueue($order->orderLane());
     }
 
     public function backoff(): array

@@ -24,17 +24,16 @@ use Illuminate\Support\Facades\DB;
  * wallet orders have no WhatsApp group and correctly never reach this
  * listener) — see the migration's own doc comment.
  *
- * Queued (`ShouldQueue`) on the same `orders` queue `OrderStatusUpdated`
- * itself broadcasts on (`$queue` below — a queued listener with no queue
- * set otherwise lands on `default`; see ADR-077 PR-3's note on the
- * missing `supervisor-default`) — small/fast, doesn't meaningfully delay
- * that queue, and keeps `OrderObserver`'s `DB::afterCommit()` closure
- * from ever blocking on an outbound OpenWA HTTP call.
+ * Queued (`ShouldQueue`) on `default`, the same queue `OrderStatusUpdated`
+ * broadcasts on (ADR-048 addendum, 2026-09-29 — both were on `orders`,
+ * where an order burst delayed every notification). Queued at all so
+ * `OrderObserver`'s `DB::afterCommit()` closure never blocks on an
+ * outbound OpenWA HTTP call.
  */
 final class SendResellerBotOrderNotification implements ShouldQueue
 {
-    /** @var string Match OrderStatusUpdated::broadcastQueue() — the order lifecycle's own queue. */
-    public $queue = 'orders';
+    /** @var string Match OrderStatusUpdated::broadcastQueue(). */
+    public $queue = 'default';
 
     public function __construct(private readonly OpenWaClient $openWa) {}
 
