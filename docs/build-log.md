@@ -2701,13 +2701,45 @@ which needs a grill, not a mechanical fix.
   Covered by a dedicated test forcing that exact ordering.
 
 **Verification:** every fix proven test-first (red→green). Full fast
-suite **2332/2333** green — the one failure
-(`SupplierControllerTest::test_update_merges_api_config_instead_of_replacing_it`)
-is a pre-existing real-network timeout to `api.gamevion.com`, confirmed
-present on unmodified `staging` too (not a regression, not scoped to fix
-here). Full concurrency suite **23/23** green (22 from before Wave 1/2 +
-the new `CheckoutResumeConcurrencyTest`).
+suite **2332/2333** green at the time of the initial 4 commits — the one
+failure (`SupplierControllerTest::test_update_merges_api_config_instead_of_replacing_it`)
+was a pre-existing real-network timeout to `api.gamevion.com`, confirmed
+present on unmodified `staging` too (not a regression from this Wave).
+Full concurrency suite **23/23** green (22 from before Wave 1/2 + the new
+`CheckoutResumeConcurrencyTest`). See the same-day addendum below — this
+one CI failure was fixed once it started blocking the PR.
 
 **Not built in this session:** M-6 (needs a grill, revisits ADR-024) and
 Waves 3-5 (security hardening, burst-traffic prep, remaining money
 hygiene) — still tracked in `docs/prd.md` §16 items 45-48.
+
+### Same-day addendum: PR #311 CI fix + a backend-level wallet-order guard for Issue Voucher
+
+Founder reviewed the Wave 2 summary and asked two things: (1) why PR
+#311's `backend-tests` CI job was red, and (2) whether an order can even
+reach `storeFromOrder()` (Issue Voucher) if it's reseller-wallet-owned,
+since `refundToWallet()` is supposed to replace it entirely.
+
+- **CI fix (unrelated to Wave 2's own scope, but blocking the PR):**
+  `SupplierControllerTest::test_update_merges_api_config_instead_of_replacing_it`
+  was the one test in that file that changes `api_config` without first
+  binding a fake `supplier-adapter.gamevion` — every sibling test right
+  below it does. `SupplierController::update()` probes the connection
+  for real after any `api_config` change (ADR-069 decision 11), so this
+  one test was quietly making a live HTTP call to `api.gamevion.com` on
+  every run; it used to fail fast, now times out (10s) instead, both
+  locally and on GitHub Actions' own runner — a genuine, deterministic
+  test bug, not environment-specific flakiness as first assumed. Fixed
+  by binding `$this->fakeAdapter(true)` like every sibling test.
+- **New guard, M-5 follow-up:** `Admin\VoucherController::storeFromOrder()`
+  had zero backend-level check against a wallet-owned order — ADR-073
+  decision 7's "refundToWallet() replaces Issue Voucher entirely for a
+  wallet order" was only enforced by the admin UI never showing the
+  button, never by the endpoint. Added a `wallet_reseller_id !== null`
+  guard rejecting the call outright. This made the in-lock
+  `isAlreadyRefundedToWallet()` re-check added earlier in this same PR
+  unreachable (that field is set once at order creation, never after,
+  so any order still reaching the transaction is guaranteed non-wallet)
+  — removed it rather than ship dead defense-in-depth code.
+- Full fast suite **2334/2334** green after both fixes. Pint clean on
+  every file touched.

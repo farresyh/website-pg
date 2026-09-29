@@ -1445,20 +1445,27 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
 45. **Wave 2 — compensation/checkout races (Medium, still money).**
     **🟢 M-5/M-7/M-8/M-9 BUILT 2026-09-29** (branch
     `fix/2026-09-29-wave2-compensation-races`), test-first, full fast
-    suite 2332/2333 (the one failure is a pre-existing, unrelated
-    `SupplierControllerTest` real-network flake — confirmed present on
-    unmodified `staging` too), concurrency suite 23/23. **M-6 still not
-    built** — it needs a grill (revisits ADR-024), not a mechanical fix.
+    suite **2334/2334** green, concurrency suite 23/23. Also fixed, mid-PR:
+    a genuinely pre-existing `SupplierControllerTest` bug (missing fake
+    adapter bind → a live network call to `api.gamevion.com` on every CI
+    run, timing out) unrelated to this Wave, caught because it was failing
+    PR #311's CI. **M-6 still not built** — it needs a grill (revisits
+    ADR-024), not a mechanical fix.
     - ~~**M-5**~~ — `Admin\OrderController::refundToWallet()` and
       `Admin\VoucherController::storeFromOrder()` didn't call
       `isAlreadyCompensated()` and didn't re-check `delivery_status`
       inside their lock. Fixed by re-deriving both from the locked row,
       same defense-in-depth `OrderFulfillmentService::fulfill()` already
-      uses. `storeFromOrder()` deliberately checks
-      `isAlreadyRefundedToWallet()` only, not the full
-      `isAlreadyCompensated()` — `isVoucherRestored()` being true is that
-      action's own expected idempotency marker on a repeat restore-only
-      click (ADR-024's 2026-09-17 addendum), not a race to block.
+      uses. Founder-prompted follow-up (2026-09-29): `storeFromOrder()`
+      also had no backend-level guard against a wallet-owned order at
+      all — ADR-073 decision 7's "refundToWallet() replaces Issue
+      Voucher entirely for a wallet order" was only enforced by the
+      admin UI hiding the button, never by the endpoint itself. Added a
+      `wallet_reseller_id !== null` guard rejecting the call outright,
+      which made the in-lock `isAlreadyRefundedToWallet()` re-check
+      unreachable/dead code (that field is set once at order creation,
+      never after) — removed it rather than leave it as dead
+      defense-in-depth.
     - **M-6** — `CheckoutService::settleWithVoucher()`'s full-voucher-cover
       race (ADR-024's accepted residual race) can give away free goods
       repeatedly since no payment moved in that branch — ADR-024's own
