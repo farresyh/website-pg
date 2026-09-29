@@ -2,6 +2,7 @@
 
 namespace App\Services\Fulfillment;
 
+use App\Jobs\CheckSupplierDeliveryJob;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
@@ -94,6 +95,7 @@ final class OrderFulfillmentService
         // the bottom of this method). Stays null unless the Success
         // branch actually runs and the adapter reported a price.
         $drawdownPrice = null;
+        $recoveryPollScheduled = false;
 
         // Phase 1 (2026-09-28 audit finding M-1 fix): every guard check,
         // reference resolution, and the NotStarted/Failed/NeedsReview ->
@@ -204,7 +206,7 @@ final class OrderFulfillmentService
         // this phase's own writes, never phase 1's already-committed
         // Processing/reference state.
         try {
-            $delivered = DB::transaction(function () use ($order, $referenceNumber, $wasNotStarted, &$drawdownPrice, $triggeredBy, $note, $recordAttempt) {
+            $delivered = DB::transaction(function () use ($order, $referenceNumber, $wasNotStarted, &$drawdownPrice, &$recoveryPollScheduled, $triggeredBy, $note, $recordAttempt) {
                 $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
                 $adapter = $this->supplierAdapters->make($locked->supplier->slug);
@@ -260,16 +262,22 @@ final class OrderFulfillmentService
                     // is unsafe, so Issue Voucher is available immediately
                     // instead of needing a Confirm-Failed detour first.
                     $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
+                    $supplierResponse = ['error_code' => $result->errorCode, 'error_message' => $result->errorMessage];
 
-                    $locked->update([
-                        'delivery_status' => $requiresManualReview
-                            ? $this->orderStatus->markNeedsReview($locked->delivery_status)->value
-                            : $this->orderStatus->markDeliveryFailed($locked->delivery_status)->value,
-                        'supplier_response' => [
-                            'error_code' => $result->errorCode,
-                            'error_message' => $result->errorMessage,
-                        ],
-                    ]);
+                    // ADR-102 addendum (2026-09-29): ambiguous on a supplier
+                    // whose same-ref re-submit replays the outcome → Pending,
+                    // auto-polled with this same reference, not an admin.
+                    if ($requiresManualReview && $this->resubmitReplaysOutcome($locked)) {
+                        $this->parkAmbiguousAsPending($locked, $supplierResponse);
+                        $recoveryPollScheduled = true;
+                    } else {
+                        $locked->update([
+                            'delivery_status' => $requiresManualReview
+                                ? $this->orderStatus->markNeedsReview($locked->delivery_status)->value
+                                : $this->orderStatus->markDeliveryFailed($locked->delivery_status)->value,
+                            'supplier_response' => $supplierResponse,
+                        ]);
+                    }
 
                     if ($recordAttempt) {
                         $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
@@ -281,7 +289,11 @@ final class OrderFulfillmentService
                     // so without this line it would be silent until someone
                     // looks. Grep by reference_number/order_number to find
                     // the matching webhook/job lines for full context.
-                    Log::warning($requiresManualReview ? 'Delivery ambiguous — needs manual review' : 'Delivery failed', [
+                    Log::warning(match (true) {
+                        $recoveryPollScheduled => 'Delivery ambiguous — Pending, auto-polling with the same reference',
+                        $requiresManualReview => 'Delivery ambiguous — needs manual review',
+                        default => 'Delivery failed',
+                    }, [
                         'error_code' => $result->errorCode,
                         'error_message' => $result->errorMessage,
                     ]);
@@ -347,7 +359,7 @@ final class OrderFulfillmentService
                 'exception' => $e->getMessage(),
             ]);
 
-            $delivered = DB::transaction(function () use ($order, $wasNotStarted, $triggeredBy, $note, $recordAttempt, $e) {
+            $delivered = DB::transaction(function () use ($order, $wasNotStarted, $triggeredBy, $note, $recordAttempt, $e, &$recoveryPollScheduled) {
                 $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
                 // Same race-guard as attemptLeg()'s own catch handler —
@@ -360,10 +372,18 @@ final class OrderFulfillmentService
                     return $locked;
                 }
 
-                $locked->update([
-                    'delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value,
-                    'supplier_response' => ['error_message' => 'Delivery attempt failed unexpectedly: '.$e->getMessage()],
-                ]);
+                $supplierResponse = ['error_message' => 'Delivery attempt failed unexpectedly: '.$e->getMessage()];
+
+                if ($this->resubmitReplaysOutcome($locked)) {
+                    // ADR-102 addendum (2026-09-29) — see the Failure branch.
+                    $this->parkAmbiguousAsPending($locked, $supplierResponse);
+                    $recoveryPollScheduled = true;
+                } else {
+                    $locked->update([
+                        'delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value,
+                        'supplier_response' => $supplierResponse,
+                    ]);
+                }
 
                 if ($recordAttempt) {
                     $this->recordFulfillmentAttempt($locked, $wasNotStarted, $triggeredBy, $note);
@@ -375,6 +395,10 @@ final class OrderFulfillmentService
 
         if ($drawdownPrice !== null) {
             $this->supplierFunding->recordOrderDrawdown($delivered, $drawdownPrice);
+        }
+
+        if ($recoveryPollScheduled) {
+            $this->scheduleRecoveryPoll($delivered);
         }
 
         return $delivered;
@@ -430,6 +454,7 @@ final class OrderFulfillmentService
         $order = $order->fresh();
 
         $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $parkedForRecovery = false;
 
         foreach ($legs as $leg) {
             // Delivered = already succeeded; Pending = already submitted,
@@ -441,10 +466,19 @@ final class OrderFulfillmentService
                 continue;
             }
 
-            $this->attemptLeg($order, $leg, $triggeredBy, $note);
+            $parkedForRecovery = $this->attemptLeg($order, $leg, $triggeredBy, $note) || $parkedForRecovery;
         }
 
-        return $this->resolveComboOutcome($order);
+        $resolved = $this->resolveComboOutcome($order);
+
+        // ADR-102 addendum (2026-09-29): a leg parked at Pending by the
+        // replay-safe rule gets its first poll in ~2 minutes rather than
+        // waiting for the 15-minute sweep.
+        if ($parkedForRecovery) {
+            $this->scheduleRecoveryPoll($resolved);
+        }
+
+        return $resolved;
     }
 
     /**
@@ -516,9 +550,10 @@ final class OrderFulfillmentService
      * — the two paths are no longer structurally different here, only
      * per-leg vs per-order in scope.
      */
-    private function attemptLeg(Order $order, OrderDeliveryLeg $leg, ?string $triggeredBy = null, ?string $note = null): void
+    private function attemptLeg(Order $order, OrderDeliveryLeg $leg, ?string $triggeredBy = null, ?string $note = null): bool
     {
         $drawdownPrice = null;
+        $parked = false; // ADR-102 addendum (2026-09-29): true when the replay-safe rule parked this leg at Pending
         $legId = $leg->id;
 
         // ADR-103 decision 3 — captured OUTSIDE the transaction below by
@@ -540,7 +575,7 @@ final class OrderFulfillmentService
         $wasLegNotStarted = false;
 
         try {
-            DB::transaction(function () use ($order, $leg, &$drawdownPrice, &$legReferenceNumber, &$wasLegNotStarted, $triggeredBy, $note) {
+            DB::transaction(function () use ($order, $leg, &$drawdownPrice, &$parked, &$legReferenceNumber, &$wasLegNotStarted, $triggeredBy, $note) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
@@ -603,6 +638,24 @@ final class OrderFulfillmentService
                     // ADR-098 / ADR-102 decision 4 — same split-flag
                     // routing fulfill()'s own Failure branch uses.
                     $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
+
+                    // ADR-102 addendum (2026-09-29): same replay-safe rule as
+                    // fulfill() — park at Pending, polled with this leg's
+                    // own same reference, instead of NeedsReview.
+                    if ($requiresManualReview && SupplierAdapterFactory::resubmitReplaysOutcome($component->supplier->slug)) {
+                        $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
+                        $parked = true;
+
+                        $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, [
+                            'error_code' => $result->errorCode,
+                            'error_message' => $result->errorMessage,
+                            'auto_recovery' => self::AUTO_RECOVERY_NOTE,
+                        ]);
+
+                        Log::warning('Combo leg ambiguous — Pending, auto-polling with the same reference', ['leg_id' => $lockedLeg->id, 'error_code' => $result->errorCode]);
+
+                        return;
+                    }
 
                     $lockedLeg->update(array_merge([
                         'status' => $requiresManualReview ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
@@ -670,12 +723,29 @@ final class OrderFulfillmentService
                 'exception' => $e->getMessage(),
             ]);
 
-            DB::transaction(function () use ($legId, $e, $legReferenceNumber, $wasLegNotStarted, $triggeredBy, $note) {
+            DB::transaction(function () use ($legId, $e, &$parked, $legReferenceNumber, $wasLegNotStarted, $triggeredBy, $note) {
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($legId);
 
                 if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
                     // Same race-guard as the main attempt above — another
                     // concurrent attempt already resolved this leg.
+                    return;
+                }
+
+                // ADR-102 addendum (2026-09-29) — replay-safe supplier: Pending
+                // under the reference it was genuinely attempted with.
+                if (SupplierAdapterFactory::resubmitReplaysOutcome((string) $lockedLeg->componentPackage?->supplier?->slug)) {
+                    $lockedLeg->update(array_filter([
+                        'status' => DeliveryStatus::Pending->value,
+                        'reference_number' => $legReferenceNumber,
+                    ]));
+                    $parked = true;
+
+                    $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, [
+                        'error_message' => $e->getMessage(),
+                        'auto_recovery' => self::AUTO_RECOVERY_NOTE,
+                    ]);
+
                     return;
                 }
 
@@ -695,12 +765,14 @@ final class OrderFulfillmentService
                 $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, ['error_message' => $e->getMessage()]);
             });
 
-            return;
+            return $parked;
         }
 
         if ($drawdownPrice !== null) {
             $this->supplierFunding->recordOrderDrawdown($order, $drawdownPrice, $leg->fresh());
         }
+
+        return $parked;
     }
 
     /**
@@ -1379,6 +1451,36 @@ final class OrderFulfillmentService
      * step already treats a null real cost as "fall back to today's
      * existing catalog-cost behavior for this one delivery."
      */
+    /**
+     * ADR-102 addendum (2026-09-29): recorded on the order (and so on the
+     * ADR-106 attempt row) wherever an ambiguous outcome was auto-parked
+     * at Pending instead of NeedsReview — the audit trail for decision 8.
+     */
+    public const AUTO_RECOVERY_NOTE = 'Ambiguous outcome — Pending, re-polled with the same reference (supplier replays a known ref).';
+
+    /** Digiflazz: don't re-check a ref within 1 minute; the breaker cools down in 60s. */
+    private const RECOVERY_POLL_DELAY_MINUTES = 2;
+
+    private function resubmitReplaysOutcome(Order $order): bool
+    {
+        return SupplierAdapterFactory::resubmitReplaysOutcome((string) $order->supplier?->slug);
+    }
+
+    /** Processing → Pending, keeping the stored reference; caller holds the row lock. */
+    private function parkAmbiguousAsPending(Order $locked, array $supplierResponse): void
+    {
+        $locked->update([
+            'delivery_status' => $this->orderStatus->markPending($locked->delivery_status)->value,
+            'supplier_response' => $supplierResponse + ['auto_recovery' => self::AUTO_RECOVERY_NOTE],
+        ]);
+    }
+
+    /** Public so the reconcile sweep's stale-Processing recovery reuses the same poll. */
+    public function scheduleRecoveryPoll(Order $order): void
+    {
+        CheckSupplierDeliveryJob::dispatch($order)->delay(now()->addMinutes(self::RECOVERY_POLL_DELAY_MINUTES));
+    }
+
     private function captureRealCostSen(?array $resultData, string $currency): ?int
     {
         if (! isset($resultData['price'])) {
