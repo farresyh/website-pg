@@ -259,8 +259,31 @@ class VoucherController extends Controller
         // unaffected — its amount is admin-typed and already floored at
         // `min:1` by StoreVoucherFromOrderRequest.
         try {
-            $voucher = DB::transaction(function () use ($order, $amount, $request) {
-                Order::query()->lockForUpdate()->findOrFail($order->id);
+            $voucher = DB::transaction(function () use ($order, $amount, $isPartialComboDelivery, $request) {
+                $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+                // M-5, 2026-09-29 audit: the checks above ran on the
+                // unlocked $order — re-derive from $locked, the same
+                // defense-in-depth OrderFulfillmentService::fulfill() uses,
+                // so a concurrent resend/refundToWallet that committed while
+                // this request waited for the lock is caught here instead
+                // of stacking a second compensation on top of it. Deliberately
+                // NOT the full isAlreadyCompensated() — isVoucherRestored()
+                // being true is this action's OWN expected idempotency marker
+                // on a repeat restore-only click (ADR-024 addendum), not a
+                // race to block.
+                if ($locked->delivery_status !== DeliveryStatus::Failed && ! $isPartialComboDelivery) {
+                    throw ValidationException::withMessages([
+                        'order' => ['A voucher can only be issued for an order with a failed delivery.'],
+                    ]);
+                }
+
+                if ($locked->isAlreadyRefundedToWallet()) {
+                    throw ValidationException::withMessages([
+                        'order' => ['This order has already been refunded to the reseller\'s wallet.'],
+                    ]);
+                }
+
                 $this->vouchers->restore($order->id);
 
                 if ($amount === 0) {

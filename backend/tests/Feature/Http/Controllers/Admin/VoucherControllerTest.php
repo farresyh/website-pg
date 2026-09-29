@@ -8,9 +8,11 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -380,6 +382,21 @@ class VoucherControllerTest extends TestCase
         $response = $this->postJson("/api/orders/{$order->id}/voucher");
 
         $response->assertUnprocessable();
+    }
+
+    /** M-5, 2026-09-29 audit: an order already refunded to a reseller's wallet must not also get a voucher. */
+    public function test_cannot_issue_a_voucher_for_an_order_already_refunded_to_wallet(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+        $order = $this->makeOrder(['wallet_reseller_id' => $reseller->id]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertOk();
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseCount('vouchers', 0);
     }
 
     public function test_cannot_issue_a_second_voucher_for_the_same_order(): void

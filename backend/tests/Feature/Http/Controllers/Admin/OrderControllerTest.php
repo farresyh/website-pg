@@ -2084,6 +2084,32 @@ class OrderControllerTest extends TestCase
         $this->assertSame(945, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
     }
 
+    /** M-5, 2026-09-29 audit: a voucher already issued for this order must block a wallet refund too, not just a repeat refund. */
+    public function test_refund_to_wallet_rejects_an_order_whose_voucher_has_already_been_issued(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $order = $this->order([
+            'wallet_reseller_id' => $reseller->id,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'final_amount' => 945,
+        ]);
+        Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_id' => $order->id,
+            'code' => 'KRS-ALREADY-ISSUED',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 945,
+            'remaining' => 945,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertUnprocessable();
+
+        $this->assertSame(0, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
     /**
      * ADR-076 decision 6 — refundToWallet() never touches
      * payment_status/delivery_status, so it's invisible to
