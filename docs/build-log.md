@@ -1487,6 +1487,55 @@ test-first. Fast suite 2390/2390; concurrency 24/24.
 - **Checkout:** a named `checkout` limiter allows 10/min per IP+email with a
   60/min ceiling per IP. Validate-player and voucher-preview go to 30/min/IP.
 
+## 2026-09-29 — Wave 5 PR-A: M-10 + money-hygiene Lows (PRD §16 item 48)
+
+Branch `fix/2026-09-29-wave5-money-hygiene`. Every finding was re-verified
+against code first, and all were still real. Fast suite 2404/2404; concurrency
+24/24 on MySQL. The ledger and wallet tests also ran against MySQL, to prove the
+virtual-column unique index fires there and not just on sqlite.
+
+- **M-10:** the `voided_at` check moved from the controller (before the lock)
+  into `SupplierFundingService::lockNotVoided()`, which re-reads under
+  `lockForUpdate()`. It covers Void, Adjust and Edit Details. A test holding a
+  stale model instance went red on the old code.
+- **Late non-Paid CHIP event over a Paid order:** new
+  `Order::setPaymentStatusUnlessPaid()`, a single conditional UPDATE. The webhook's
+  non-Paid branch and reconcile's `markFailed()` both use it, and skip the
+  voucher/quota give-back when the row is already Paid. Reconcile was the more
+  likely path, because its gateway lookup is the slow gap.
+- **Hidden game buyable:** `CheckoutController` `store()`/`previewTotal()` now
+  reject a game the brand set `is_visible=false`, using the same rule as
+  `CatalogController`.
+- **Combo override below cost:** the FormRequest rejects it against the *live*
+  component cost (`ComboPricingService::componentCost()`, not the stored
+  `cost_price`, which only moves on recompute). When a later cost rise
+  overtakes the override, `recompute()` falls back to the default sum and logs
+  a warning. The override stays stored. The old test comment "below cost, admin's
+  own deliberate call" was never an ADR decision, and `PricingService` refused
+  such a sale anyway, so it could only ever 500 (ADR-094 addendum).
+- **FX stale fallback:** a fallback rate is now cached for 15 min, not the full
+  day. A stored rate older than 48h alerts the admins through the
+  `BackupFailureAlerter` Plunk path, at most once a day per pair (ADR-033
+  addendum).
+- **Ledger DB backstop:** new virtual column `ledger_entries.dedupe_key` with a
+  unique index. It is non-null only for `order_profit`/`wallet_debit`/
+  `wallet_refund`/`wallet_topup`/`voucher_issued`, and `owner_id` is COALESCEd
+  because Platform rows have NULL. `membership_fee` and `affiliate_tier_fee`
+  are deliberately excluded because they repeat per cycle. **Gotcha:** a plain
+  5-column unique index would exceed InnoDB's 3072-byte key limit, since there
+  are three utf8mb4 varchar(255) columns (ADR-002 addendum).
+- **Manual wallet credit idempotency:** new `ledger_entries.idempotency_key`
+  column (unique). The admin modal mints one key per credit and rotates it only
+  after a success, because the form stays open. A replay returns the first entry.
+- **Prod pre-check caught a real deploy failure.** Prod had two platform
+  `order_profit` rows on order 15. The second is the deliberate −10 sen ADR-105
+  manual correction (with a reason and `created_by=1`), not a double credit.
+  The dedupe now covers only automatic entries (`reason IS NULL`). Re-checked
+  prod with that rule: zero duplicates. MySQL 8.4.8, the longest key is 47 chars
+  (well under 191). **Gotcha:** the Docker test DB `kerox` had leftover
+  `llm_report_*` views from an earlier run, so every test failed with "view
+  already exists". `db:wipe --drop-views` against it fixed that.
+
 ## 2026-09-29 — Docs hygiene pass at session close
 
 At the founder's request, so the next session starts from accurate docs:

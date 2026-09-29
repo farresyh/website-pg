@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Controllers;
 
 use App\Jobs\FulfillOrderJob;
 use App\Models\Affiliate;
+use App\Models\AffiliateGame;
 use App\Models\BlacklistEntry;
 use App\Models\Game;
 use App\Models\Membership;
@@ -222,6 +223,29 @@ class CheckoutControllerTest extends TestCase
         $order = Order::query()->firstOrFail();
         $this->assertSame('chip', $order->payment_gateway);
         $this->assertSame('FPX_ABMB', $order->channel_code);
+    }
+
+    /** 2026-09-29 audit: a game the brand hid was off the catalog but still buyable by direct POST. */
+    public function test_rejects_checkout_and_preview_of_a_game_the_brand_has_hidden(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        AffiliateGame::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'game_id' => $game->id,
+            'is_visible' => false,
+        ]);
+
+        $this->postJson('/api/checkout', $this->payload($game, $package))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('package_id');
+        $this->postJson('/api/checkout/preview-totals', [
+            'game_id' => $game->id,
+            'package_id' => $package->id,
+            'channel_code' => 'FPX_ABMB',
+        ])->assertUnprocessable()->assertJsonValidationErrors('package_id');
+
+        $this->assertSame(0, Order::query()->count());
     }
 
     public function test_attaches_the_primary_affiliate_to_the_order_at_zero_markup(): void

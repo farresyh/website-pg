@@ -111,13 +111,30 @@ class ComboPricingServiceTest extends TestCase
         $game = $this->game();
         $component = $this->componentPackage($game, $this->supplier());
         $combo = $this->combo($game, $component);
-        $combo->update(['combo_override_price' => 39900]);
+        $combo->update(['combo_override_price' => 42900]);
 
         $this->service()->recompute($combo);
 
         $combo->refresh();
         $this->assertSame(40000, $combo->cost_price);
-        $this->assertSame(39900, $combo->standard_selling_price); // below cost — admin's own deliberate call
+        $this->assertSame(42900, $combo->standard_selling_price);
+    }
+
+    /** 2026-09-29 audit: a component cost rise overtook the fixed price — below cost, checkout 500s. */
+    public function test_recompute_falls_back_to_default_pricing_when_the_fixed_override_drops_below_cost(): void
+    {
+        $game = $this->game();
+        $component = $this->componentPackage($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $combo->update(['combo_override_price' => 42900]);
+        $component->update(['cost_price' => 43000, 'standard_selling_price' => 47300]);
+
+        $this->service()->recompute($combo);
+
+        $combo->refresh();
+        $this->assertSame(43000, $combo->cost_price);
+        $this->assertSame(47300, $combo->standard_selling_price); // default sum, not the stale 42900
+        $this->assertSame(42900, $combo->combo_override_price); // kept, so the admin sees what they set
     }
 
     public function test_recompute_for_component_change_updates_every_active_combo_and_logs_it(): void

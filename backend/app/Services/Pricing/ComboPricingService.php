@@ -8,6 +8,7 @@ use App\Models\PackageReactivationLog;
 use App\Models\PriceChangeLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * ADR-094 decisions 5/6/13 (2026-09-15 stress-test addendum): the one
@@ -51,7 +52,17 @@ final class ComboPricingService
             $sellingPriceSum += $component->standard_selling_price * $quantity;
         }
 
-        if ($combo->combo_override_price !== null) {
+        // 2026-09-29 audit (Wave 5 Low): a component cost rise can overtake
+        // a fixed override price. Below cost, checkout 500s (PricingService
+        // refuses), so fall back to the default sum until the admin re-sets it.
+        if ($combo->combo_override_price !== null && $combo->combo_override_price < $costPrice) {
+            Log::warning('Combo override price is below cost, using default pricing', [
+                'package_id' => $combo->id,
+                'combo_override_price' => $combo->combo_override_price,
+                'cost_price' => $costPrice,
+            ]);
+            $sellingPrice = $sellingPriceSum;
+        } elseif ($combo->combo_override_price !== null) {
             $sellingPrice = $combo->combo_override_price;
         } elseif ($combo->combo_override_markup_percent !== null) {
             $sellingPrice = $this->markup->calculateStandardSellingPrice($costPrice, (float) $combo->combo_override_markup_percent);
@@ -77,6 +88,14 @@ final class ComboPricingService
         }
 
         return $changed;
+    }
+
+    /** Current cost from live component prices — never the combo's own stored `cost_price`, which only moves on recompute(). */
+    public function componentCost(Package $combo): int
+    {
+        return (int) $combo->components()->get()->sum(
+            fn (Package $component) => $component->cost_price * (int) $component->pivot->quantity,
+        );
     }
 
     /**

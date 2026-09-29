@@ -75,6 +75,7 @@ final class LedgerService
         ?int $referenceId = null,
         ?int $createdBy = null,
         ?string $reason = null,
+        ?string $idempotencyKey = null,
     ): LedgerEntry {
         return LedgerEntry::query()->create([
             'owner_type' => LedgerOwnerType::coerce($ownerType)->value,
@@ -85,6 +86,7 @@ final class LedgerService
             'reference_id' => $referenceId,
             'created_by' => $createdBy,
             'reason' => $reason,
+            'idempotency_key' => $idempotencyKey,
         ]);
     }
 

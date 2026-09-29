@@ -21,6 +21,13 @@ class LedgerEntry extends Model
         'reference_id',
         'created_by',
         'reason',
+        'idempotency_key',
+    ];
+
+    /** Both are DB-level double-write backstops (2026-09-29 audit), not data anyone reads. */
+    protected $hidden = [
+        'dedupe_key',
+        'idempotency_key',
     ];
 
     protected $casts = [

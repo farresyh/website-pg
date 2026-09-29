@@ -117,7 +117,11 @@ class ChipWebhookController extends Controller
         }
 
         if ($event->status !== PaymentStatus::Paid) {
-            $order->update(['payment_status' => $event->status->value]);
+            // A Paid webhook may have committed since the read above —
+            // never overwrite it, and never give back what it paid for.
+            if (! $order->setPaymentStatusUnlessPaid($event->status)) {
+                return response()->json(['message' => 'already processed']);
+            }
 
             // ADR-024 decision #6a: a terminal Failed status (never a
             // merely intermediate Pending update) gives back any

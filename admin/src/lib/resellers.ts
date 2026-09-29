@@ -145,11 +145,14 @@ export interface CreditResellerWalletValues {
   amount_sen: number;
   note?: string | null;
   receipt?: File | null;
+  /** One per opened credit form — a double-submit replays instead of crediting twice. */
+  idempotency_key: string;
 }
 
 export function creditResellerWallet(token: string, id: number, values: CreditResellerWalletValues) {
   const formData = new FormData();
   formData.append("amount_sen", String(values.amount_sen));
+  formData.append("idempotency_key", values.idempotency_key);
   if (values.note) formData.append("note", values.note);
   if (values.receipt) formData.append("receipt", values.receipt);
 

@@ -7,9 +7,11 @@ use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\SupplierTransferCorrection;
+use App\Services\Accounting\SupplierFundingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -441,6 +443,40 @@ class SupplierTransferControllerTest extends TestCase
         // Only the one real reversal entry exists — the rejected calls wrote nothing.
         $this->assertSame(1, SupplierLedgerEntry::query()->where('type', 'VOID_REVERSAL')->count());
         $this->assertSame(0, SupplierLedgerEntry::query()->where('type', 'MANUAL_ADJUSTMENT')->count());
+    }
+
+    /**
+     * M-10 (2026-09-29 audit): a double-click's second request loaded the
+     * transfer before the first committed its void. The stale instance
+     * below is exactly what that second request holds.
+     */
+    public function test_a_stale_copy_cannot_void_or_adjust_a_transfer_voided_since_it_was_read(): void
+    {
+        $admin = $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $stale = SupplierTransfer::query()->firstOrFail();
+        $funding = app(SupplierFundingService::class);
+
+        $funding->voidTransfer($stale, 'first click', $admin->id);
+
+        foreach ([
+            fn () => $funding->voidTransfer($stale, 'second click', $admin->id),
+            fn () => $funding->recordManualAdjustment($stale, '-1', 'late adjust', $admin->id),
+            fn () => $funding->recordCorrection($stale, ['amount_myr_sent' => 1], 'late edit', $admin->id),
+        ] as $call) {
+            try {
+                $call();
+                $this->fail('Expected the voided transfer to be rejected.');
+            } catch (ValidationException) {
+            }
+        }
+
+        $this->assertSame(1, SupplierLedgerEntry::query()->where('type', 'VOID_REVERSAL')->count());
+        $this->assertSame(0, SupplierLedgerEntry::query()->where('type', 'MANUAL_ADJUSTMENT')->count());
+        $this->assertSame(0, SupplierTransferCorrection::query()->count());
     }
 
     public function test_regular_admin_cannot_adjust_or_void(): void
