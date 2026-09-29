@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\Ledger;
 
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Ledger\LedgerService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -28,6 +29,31 @@ class LedgerServiceTest extends TestCase
         $service->credit('platform', null, 300, 'order_profit', 'order', 2);
 
         $this->assertSame(800, $service->balance('platform', null));
+    }
+
+    /** 2026-09-29 audit: DB-level backstop — Platform rows have a NULL owner_id, which must still collide. */
+    public function test_a_second_order_profit_for_the_same_owner_and_order_is_rejected_by_the_database(): void
+    {
+        $service = app(LedgerService::class);
+        $service->credit('platform', null, 500, 'order_profit', 'order', 1);
+        $service->credit('affiliate', 7, 50, 'order_profit', 'order', 1); // different owner, same order: fine
+
+        $this->expectException(UniqueConstraintViolationException::class);
+
+        $service->credit('platform', null, 500, 'order_profit', 'order', 1);
+    }
+
+    /** Recurring fees legitimately repeat against the same subscription/membership every cycle. */
+    public function test_recurring_fee_types_may_repeat_against_the_same_reference(): void
+    {
+        $service = app(LedgerService::class);
+        $service->credit('platform', null, 1990, 'membership_fee', 'membership', 3);
+        $service->credit('platform', null, 1990, 'membership_fee', 'membership', 3);
+        $service->credit('affiliate', 2, -5000, 'affiliate_tier_fee', 'affiliate_subscription', 4);
+        $service->credit('affiliate', 2, -5000, 'affiliate_tier_fee', 'affiliate_subscription', 4);
+
+        $this->assertSame(3980, $service->balance('platform', null));
+        $this->assertSame(-10000, $service->balance('affiliate', 2));
     }
 
     public function test_withdraw_decreases_balance_when_sufficient(): void

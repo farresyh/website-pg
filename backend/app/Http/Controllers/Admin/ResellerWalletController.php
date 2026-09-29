@@ -40,6 +40,7 @@ class ResellerWalletController extends Controller
             $data['note'] ?? null,
             $receiptFile,
             $request->user()->id,
+            $data['idempotency_key'],
         );
 
         Log::info('Reseller wallet manually credited', [

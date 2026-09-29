@@ -3,12 +3,15 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\LedgerEntry;
 use App\Models\Reseller;
 use App\Models\WalletTopupReceipt;
 use App\Services\Ledger\LedgerOwnerType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -32,6 +35,36 @@ class ResellerWalletControllerTest extends TestCase
         return Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
     }
 
+    /** @param  array<string, mixed>  $data */
+    private function postCredit(Reseller $reseller, array $data): TestResponse
+    {
+        return $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", $data + ['idempotency_key' => (string) Str::uuid()]);
+    }
+
+    public function test_resubmitting_the_same_idempotency_key_credits_only_once(): void
+    {
+        $this->actAsSuperAdmin();
+        $reseller = $this->makeReseller();
+
+        $first = $this->postCredit($reseller, ['amount_sen' => 5000, 'idempotency_key' => 'double-click-key']);
+        $second = $this->postCredit($reseller, ['amount_sen' => 5000, 'idempotency_key' => 'double-click-key']);
+
+        $first->assertCreated();
+        $second->assertCreated()->assertJsonPath('balance_sen', 5000);
+        $this->assertSame($first->json('entry.id'), $second->json('entry.id'));
+        $this->assertSame(1, LedgerEntry::query()->where('type', 'wallet_topup')->count());
+    }
+
+    public function test_credit_requires_an_idempotency_key(): void
+    {
+        $this->actAsSuperAdmin();
+        $reseller = $this->makeReseller();
+
+        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", ['amount_sen' => 5000])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('idempotency_key');
+    }
+
     public function test_regular_admin_is_forbidden(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
@@ -45,7 +78,7 @@ class ResellerWalletControllerTest extends TestCase
         $admin = $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
 
-        $response = $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", [
+        $response = $this->postCredit($reseller, [
             'amount_sen' => 5000,
             'note' => 'Bank transfer, ref #123',
         ]);
@@ -72,7 +105,7 @@ class ResellerWalletControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
 
-        $response = $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", [
+        $response = $this->postCredit($reseller, [
             'amount_sen' => 10000,
             'receipt' => UploadedFile::fake()->create('receipt.pdf', 200, 'application/pdf'),
         ]);
@@ -91,7 +124,7 @@ class ResellerWalletControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
 
-        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", ['amount_sen' => 0])
+        $this->postCredit($reseller, ['amount_sen' => 0])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('amount_sen');
     }
@@ -102,7 +135,7 @@ class ResellerWalletControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
 
-        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", [
+        $this->postCredit($reseller, [
             'amount_sen' => 1000,
             'receipt' => UploadedFile::fake()->create('malware.exe', 10),
         ])->assertUnprocessable()->assertJsonValidationErrors('receipt');
@@ -112,8 +145,8 @@ class ResellerWalletControllerTest extends TestCase
     {
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
-        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", ['amount_sen' => 2000])->assertCreated();
-        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", ['amount_sen' => 3000])->assertCreated();
+        $this->postCredit($reseller, ['amount_sen' => 2000])->assertCreated();
+        $this->postCredit($reseller, ['amount_sen' => 3000])->assertCreated();
 
         $response = $this->getJson("/api/resellers/{$reseller->id}/wallet");
 
@@ -126,8 +159,8 @@ class ResellerWalletControllerTest extends TestCase
         Storage::fake('local');
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
-        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", ['amount_sen' => 1000])->assertCreated();
-        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", [
+        $this->postCredit($reseller, ['amount_sen' => 1000])->assertCreated();
+        $this->postCredit($reseller, [
             'amount_sen' => 2000,
             'receipt' => UploadedFile::fake()->create('bank-slip.pdf', 30, 'application/pdf'),
         ])->assertCreated();
@@ -144,7 +177,7 @@ class ResellerWalletControllerTest extends TestCase
         Storage::fake('local');
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
-        $this->postJson("/api/resellers/{$reseller->id}/wallet/credit", [
+        $this->postCredit($reseller, [
             'amount_sen' => 1000,
             'receipt' => UploadedFile::fake()->create('receipt.pdf', 50, 'application/pdf'),
         ])->assertCreated();

@@ -26,6 +26,7 @@ class StoreResellerWalletCreditRequest extends FormRequest
             'amount_sen' => ['required', 'integer', 'min:1', 'max:100000000'],
             'note' => ['nullable', 'string', 'max:1000'],
             'receipt' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            'idempotency_key' => ['required', 'string', 'min:8', 'max:64'],
         ];
     }
 }
