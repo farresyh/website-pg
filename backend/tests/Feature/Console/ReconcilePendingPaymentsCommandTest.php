@@ -3,6 +3,9 @@
 namespace Tests\Feature\Console;
 
 use App\Jobs\FulfillOrderJob;
+use App\Models\Membership;
+use App\Models\MembershipPlan;
+use App\Models\MembershipQuotaDebit;
 use App\Models\Order;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
@@ -198,6 +201,36 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
 
         $this->assertSame(500, $voucher->fresh()->remaining);
         $this->assertSame('restored', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+    }
+
+    /** M-9, 2026-09-29 audit: the same stale-pending sweep must give back membership quota, not just a voucher. */
+    public function test_restores_membership_quota_debited_for_an_order_when_reconciliation_finds_a_terminal_failure(): void
+    {
+        Bus::fake();
+        $this->bindFakeGateway('error');
+
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        $membership = Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'buyer@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 960,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $order = $this->stalePending([
+            'order_number' => 'KRS-RECONCILE-QUOTA-ORDER',
+            'membership_id' => $membership->id,
+            'selling_price' => 1000,
+        ]);
+        MembershipQuotaDebit::query()->create([
+            'order_id' => $order->id, 'membership_id' => $membership->id, 'amount_sen' => 1000,
+        ]);
+
+        $this->artisan('app:reconcile-pending-payments')->assertExitCode(0);
+
+        $this->assertSame(1960, $membership->fresh()->quota_remaining_sen);
     }
 
     /**

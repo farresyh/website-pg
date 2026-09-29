@@ -63,4 +63,48 @@ final class MembershipQuotaService
             return true;
         }
     }
+
+    /**
+     * M-9, 2026-09-29 audit: quota spent at CHIP payment-link creation
+     * (`CheckoutService::requestPayment()`) was never given back on a
+     * failed/abandoned checkout. No-op if this order never actually
+     * debited quota (most orders) or was already restored, so every
+     * restore-trigger call site (`ChipWebhookController`'s Failed branch,
+     * `PaymentReconciliationService::markFailed()`) can invoke this
+     * unconditionally, mirroring `VoucherService::restore()`.
+     *
+     * `created_at >= cycle_started_at` guards against `Membership`'s own
+     * 30-day cycle reset (ADR-027 decision 7: quota refills to the plan's
+     * full amount at the boundary) having already run between the debit
+     * and this restore — crediting a stale debit back on top of an
+     * already-refilled balance would over-grant quota past the plan's
+     * cap. No test covers this edge directly (a 30-min reconcile window
+     * can't practically straddle a 30-day boundary), but the guard costs
+     * nothing to keep.
+     */
+    public function restore(int $orderId): void
+    {
+        DB::transaction(function () use ($orderId) {
+            $debit = MembershipQuotaDebit::query()
+                ->where('order_id', $orderId)
+                ->whereNull('restored_at')
+                ->lockForUpdate()
+                ->first();
+
+            if ($debit === null) {
+                return;
+            }
+
+            $membership = Membership::query()->lockForUpdate()->findOrFail($debit->membership_id);
+
+            if ($debit->created_at->lt($membership->cycle_started_at)) {
+                $debit->update(['restored_at' => now()]);
+
+                return;
+            }
+
+            $membership->increment('quota_remaining_sen', $debit->amount_sen);
+            $debit->update(['restored_at' => now()]);
+        });
+    }
 }

@@ -93,4 +93,64 @@ class MembershipQuotaServiceTest extends TestCase
         $this->assertSame(960, $membership->fresh()->quota_remaining_sen); // decremented once, not twice
         $this->assertSame(1, MembershipQuotaDebit::query()->where('order_id', $order->id)->count());
     }
+
+    /** M-9, 2026-09-29 audit: quota spent at payment-link creation is given back on a failed/abandoned checkout. */
+    public function test_restore_credits_the_debited_amount_back_to_quota(): void
+    {
+        $membership = $this->membership();
+        $order = $this->order();
+        $service = app(MembershipQuotaService::class);
+        $service->decrement($membership->id, $order->id, 1040);
+
+        $service->restore($order->id);
+
+        $this->assertSame(2000, $membership->fresh()->quota_remaining_sen);
+        $this->assertNotNull(MembershipQuotaDebit::query()->where('order_id', $order->id)->firstOrFail()->restored_at);
+    }
+
+    public function test_restore_is_a_noop_when_the_order_never_debited_quota(): void
+    {
+        $membership = $this->membership();
+        $order = $this->order();
+
+        app(MembershipQuotaService::class)->restore($order->id);
+
+        $this->assertSame(2000, $membership->fresh()->quota_remaining_sen);
+    }
+
+    public function test_restore_is_idempotent_on_a_repeat_call(): void
+    {
+        $membership = $this->membership();
+        $order = $this->order();
+        $service = app(MembershipQuotaService::class);
+        $service->decrement($membership->id, $order->id, 1040);
+
+        $service->restore($order->id);
+        $service->restore($order->id);
+
+        $this->assertSame(2000, $membership->fresh()->quota_remaining_sen); // credited once, not twice
+    }
+
+    /** The cycle-boundary edge case: a debit from a prior cycle must not be credited on top of an already-refilled balance. */
+    public function test_restore_is_a_noop_for_a_debit_from_before_the_current_cycle(): void
+    {
+        $membership = $this->membership(['cycle_started_at' => now()->subDay()]);
+        $order = $this->order();
+        app(MembershipQuotaService::class)->decrement($membership->id, $order->id, 1040);
+        $debit = MembershipQuotaDebit::query()->where('order_id', $order->id)->firstOrFail();
+        $debit->created_at = now()->subDays(2);
+        $debit->save();
+        // Cycle reset: refilled to a fresh full quota, independent of the
+        // stale debit above. fresh() first — $membership's in-memory
+        // quota_remaining_sen is still 2000 from creation (decrement()
+        // above touched a separately-fetched instance), so a plain
+        // ->update() here would see quota_remaining_sen as unchanged and
+        // silently skip writing it.
+        $membership->fresh()->update(['cycle_started_at' => now(), 'quota_remaining_sen' => 2000]);
+
+        app(MembershipQuotaService::class)->restore($order->id);
+
+        $this->assertSame(2000, $membership->fresh()->quota_remaining_sen); // not over-credited past the refill
+        $this->assertNotNull($debit->fresh()->restored_at); // still marked settled, so it can't be caught again
+    }
 }

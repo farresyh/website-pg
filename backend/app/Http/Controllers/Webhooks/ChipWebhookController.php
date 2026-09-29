@@ -8,6 +8,7 @@ use App\Models\MembershipCheckoutAttempt;
 use App\Models\Order;
 use App\Models\WalletTopupAttempt;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
+use App\Services\Membership\MembershipQuotaService;
 use App\Services\Membership\MembershipSubscriptionService;
 use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
@@ -46,6 +47,7 @@ class ChipWebhookController extends Controller
     public function __construct(
         PaymentGatewayFactory $gatewayFactory,
         private readonly VoucherService $vouchers,
+        private readonly MembershipQuotaService $membershipQuota,
         private readonly MembershipSubscriptionService $subscriptions,
         private readonly ResellerWalletService $wallets,
         private readonly OrderStatusService $orderStatus,
@@ -122,8 +124,11 @@ class ChipWebhookController extends Controller
             // reserved voucher redemption this order made — a no-op if
             // this order never used a voucher. Mirrored by
             // ReconcilePendingPaymentsCommand's own failure branch.
+            // M-9, 2026-09-29 audit: membership quota gets the same
+            // give-back — spent at payment-link creation, not at payment.
             if ($event->status === PaymentStatus::Failed) {
                 $this->vouchers->restore($order->id);
+                $this->membershipQuota->restore($order->id);
             }
 
             return response()->json(['message' => 'acknowledged']);
