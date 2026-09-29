@@ -19,7 +19,7 @@ change to those paths with the same care the existing code already does.
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
 | `docs-site/` | Astro 7 + Starlight — public Reseller API docs | The **4th frontend** (ADR-084). Deploys on Vercel → `docs.pekangame.space`; `/docs/api` on the backend 301s to it. Spec is generated (`php artisan scramble:export`), never hand-edited; CI drift-guards it |
-| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log — has an ADR index at the top), `build-log.md` (the running chronological build record — moved out of §14 on 2026-09-11; its pre-2026-09-01 foundation-build entries live in `build-log-archive.md`, split out 2026-09-22 to keep the live file shorter), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
+| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log — has an ADR index at the top), `build-log.md` (the running chronological build record, 2026-09-23 onward — everything older, incl. the foundation build and the 2026-09-01→09-22 production-era entries, lives verbatim in `build-log-archive.md`, moved there 2026-09-22 and 2026-09-29), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
 
 > **Terminology (ADR-072, 2026-09-04):** the old whitelabel "Reseller" was
 > renamed **Affiliate**; "Reseller" now means a prepaid-wallet account with
@@ -43,8 +43,8 @@ one-liner skips most of this. For anything that changes behaviour:
    parked ADR for this?), `docs/prd.md` §15 (already built?) and §16 (already
    on the backlog, or parked with a recorded reason?). Build on an existing ADR
    rather than writing a duplicate; if something was parked, surface *why*
-   before re-opening it. `docs/build-log.md` (grep by keyword) has the "was
-   this tried before" detail.
+   before re-opening it. `docs/build-log.md` + `docs/build-log-archive.md`
+   (grep both by keyword) have the "was this tried before" detail.
 2. **Decide + grill.** A non-trivial design or trade-off gets a numbered
    `docs/adr.md` entry (Context → Decision → Rationale → Consequence),
    stress-tested with `/mattpocock-skills:grilling` before it's marked Accepted.
@@ -92,7 +92,7 @@ one-liner skips most of this. For anything that changes behaviour:
   2026-08-29** — those source files are deleted. Build new screens with the
   PrimeReact-Tailwind components and the shared `globals.css` design tokens.
   `RichTextEditor` is the one hand-rolled primitive that stays (no PrimeReact
-  equivalent). Screen-by-screen migration history is in `docs/build-log.md`.
+  equivalent). Screen-by-screen migration history is in `docs/build-log-archive.md`.
 - **Money is never trusted from the client.** Price, cost, and profit are
   always computed server-side from stored `Package`/`Game` data at the moment
   of use — see ORD-9 in `docs/prd.md` and `PricingService`. If you find
@@ -220,7 +220,7 @@ session that adds a migration should run **plain `php artisan migrate`**
 done, not just the test suites. `migrate:fresh` **drops every table** — the
 local sqlite dev DB is gitignored with no backup, so a `migrate:fresh` there
 permanently wipes any locally-set-up games/packages/test data. See
-`docs/build-log.md`'s 2026-07-29 Blacklist/Fraud entry for the additive-migrate
+`docs/build-log-archive.md`'s 2026-07-29 Blacklist/Fraud entry for the additive-migrate
 gotcha and its 2026-08-31 ADR-061 PR-B entry for a `migrate:fresh` data-loss
 incident.
 
@@ -248,7 +248,7 @@ shell (no `GITHUB_ACTIONS` var there). Found in `e2e/scripts/boot-backend.sh`
 corrupted `APP_KEY` broke nothing until the first real encrypted write
 (`Supplier.api_config`, ADR-046), which then surfaced only as Playwright's
 generic "Process from config.webServer was not able to start" — see
-`docs/build-log.md`'s 2026-08-27 entry for the full root-cause chain. Any
+`docs/build-log-archive.md`'s 2026-08-27 entry for the full root-cause chain. Any
 script that captures `artisan` output into a variable needs `--no-ansi`.
 
 **Fifth known gotcha:** each of `admin/`, `storefront/`, `reseller/`,
