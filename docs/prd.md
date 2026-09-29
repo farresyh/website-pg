@@ -733,7 +733,9 @@ production before building on it.
     M-10 and all six Lows below. See the build-log entry of the same date.
     The prod duplicate check on `ledger_entries` was run 2026-09-29 and is
     clean for the final rule, so the migration is safe to deploy.
-    Still open: **M-11 (PR-B)**, which needs an ADR and a grill first.
+    Still open: **M-11 (PR-B)**. Grilled 2026-09-30 as
+    [ADR-116](./adr.md): WhatsApp through OpenWA, not email. The build is
+    split into PR-B1 (backend + vouchers) and PR-B2 (opt-in + receipts).
     - ~~**M-10 (Medium)**~~ — fixed in PR-A (the voided check moved under the lock).
     - **M-11 (Medium)** — no order emails exist at all (no `app/Mail`, no
       templates) — a customer whose order fails and gets a voucher never
