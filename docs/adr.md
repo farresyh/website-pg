@@ -371,6 +371,11 @@ Found and fixed in **all four** existing `Cache::remember()` call sites, not jus
 
 **Fix, applied uniformly:** every cached value must be a plain array/scalar tree — never a raw Model, Collection, or any nested object (Carbon included) — before it reaches `Cache::remember()`. In practice this means calling `->toArray()` on the Eloquent Collection (which also flattens any Carbon date attributes to strings) or building the array by hand and explicitly casting date fields (e.g. `$game->created_at?->toISOString()`).
 
+**Addendum, 2026-09-29 — storefront throttles vs mobile CGNAT (pre-release review PR-D, grilled Q4).** The original `throttle:10,1` per IP on `/checkout`, `/vouchers/preview` and `/games/{game}/validate-player` assumed one IP ≈ one customer. Malaysian mobile carriers put many subscribers behind one CGNAT address, so during a promo strangers sharing an IP would 429 each other. This was an audit K-low that never made it into PRD §16.
+- **Decision:** `/checkout` moves to a named `checkout` limiter: 10/min per customer (IP + `customer_email`) plus a 60/min ceiling per IP. `/vouchers/preview` and `/validate-player` go to 30/min per IP.
+- **Rationale:** a per-customer bucket still stops one person from flooding. The per-IP ceiling still caps a single source. Validate-player's per-call cost is already bounded by Wave 4 K-2's 8s chain deadline.
+- **Consequence to track:** email is client-supplied, so a flooder can rotate emails. The 60/min IP ceiling and FRAUD-4's velocity guard are what bound that.
+
 ---
 
 ## ADR-015: Price Sync — cost propagation + deactivation detection (built 2026-07-26)
@@ -6005,6 +6010,25 @@ Decision 12: `/admin/orders`' list gains 🎫/🎟️/💰 badges next to the de
 Decision 13: `NeedsReviewBanner` gains one contextual line, shown when `delivery_retry_unsafe_with_same_reference` is true, explaining in plain language why Resend/Retry is disabled and that a package swap doesn't help either.
 
 Verified: full backend suite **2065/2065** green, concurrency suite 16/16 (real MySQL, unaffected — no locking touched this phase), `admin/` `tsc`/`eslint`/`next build` all clean, Pint clean on every touched file.
+
+**Addendum, 2026-09-29 — automatic recovery instead of NeedsReview for replay-safe suppliers (pre-release review PR-D).** Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q8, every recommendation accepted).
+
+*Context:* audit fix M-3 routed every genuinely ambiguous outcome (a thrown timeout/connection error, a 5xx, `CIRCUIT_OPEN`) to NeedsReview. Wave 4 K-3 then made the breaker count timeouts. Together these meant that during a Digiflazz slow patch, every order in each 60s cooldown landed in NeedsReview, and an admin had to cross-check each one against the Digiflazz dashboard. The pre-release code review also found three stranded-order paths:
+- #1 / #9: a late CHIP Paid on an order whose payment had already been marked Failed stayed `NotStarted`, because `markNeedsReview()` rejected `NotStarted`. It was never flagged, and quota was already restored.
+- #2: the M-4 `NotStarted` sweep re-dispatched phase-1 guard failures forever.
+- #3: a worker killed mid-call (after M-1's phase 1) left the order at `Processing` permanently. `retryStuckProcessing()` re-dispatched it, but `startDelivery()` rejects `Processing`.
+
+*Decisions:*
+1. **Per-supplier replay safety is a protocol fact.** It lives in `SupplierAdapterFactory::resubmitReplaysOutcome()` (Digiflazz only). Digiflazz's `checkStatus()` already *is* a same-`ref_id` topup re-submit, and Digiflazz returns the stored result for a known `ref_id`. Gamevion answers a repeat with `duplicate_reference` and no status, so it stays NeedsReview.
+2. **For a replay-safe supplier, an ambiguous outcome goes to Pending, not NeedsReview.** This covers a thrown exception, a Failure with `resendUnsafeWithSameReference && ! outcomeConfirmedFailed` (which includes `CIRCUIT_OPEN`), and a stale `Processing`. It applies to plain orders and combo legs alike. The existing Pending poll re-submits with the same reference; if the first request never reached the supplier, that poll *is* the first send. Confirmed Gagal still goes to Failed (unchanged).
+3. **A delayed `CheckSupplierDeliveryJob` fires about 2 minutes after going Pending.** That respects Digiflazz's "don't re-check within 1 minute" and the breaker's 60s cooldown. The 15-minute reconcile stays as the backstop.
+4. **Pending ages out to NeedsReview after 2 hours**, measured from when the order went Pending (`updated_at`). A poll that is still Pending or ambiguous never writes to the order, so `updated_at` marks entry into Pending. A resend of an old order therefore isn't aged out on arrival (a small correction to the grill's "from order creation"). Overridable per supplier via `api_config['pending_max_hours']`. The existing 90-day `ref_id` limit stays as the last line.
+5. **A Paid webhook arriving after the payment was marked Failed** (voucher and quota already restored) always goes to NeedsReview with an error log, never auto-fulfilment. `markNeedsReview()` now also accepts `NotStarted`. This one rule covers voucher and quota (#1 + #9).
+6. **A paid order still `NotStarted` after `FulfillOrderJob` exhausts its tries goes to NeedsReview** (in `failed()`), whatever the cause: a data problem such as a null `supplier_product_ref`, or a compensated order. The M-4 sweep therefore only ever re-dispatches jobs that genuinely never ran, and it skips `is_test` orders.
+7. **Stale `Processing` (killed worker) goes to Pending** for a replay-safe supplier and to NeedsReview otherwise. It is never re-dispatched into a transition that can't succeed.
+8. **Audit trail:** the automatic choice is recorded in the order's `supplier_response` (and therefore in the ADR-106 attempt row) as an `auto_recovery` note. No new UI.
+
+*Consequence to track:* if Digiflazz ever changes its same-`ref_id` behaviour (their docs say more than 90 days creates a new transaction), decision 1 is the one place to revisit. The 2-hour window is a starting number; tune it from real Pending durations.
 
 ---
 
