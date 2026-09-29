@@ -53,6 +53,18 @@ final class OutboundUrlGuard
         return $addresses[0];
     }
 
+    /**
+     * True when the host didn't resolve at all (resolver down, NXDOMAIN) —
+     * a transient failure worth retrying, unlike a resolved non-public
+     * address, which never becomes safe.
+     */
+    public function isUnresolvable(string $url): bool
+    {
+        $host = trim((string) parse_url($url, PHP_URL_HOST), '[]');
+
+        return $host !== '' && filter_var($host, FILTER_VALIDATE_IP) === false && ($this->resolver)($host) === [];
+    }
+
     /** @return list<string> */
     private static function resolveDns(string $host): array
     {
