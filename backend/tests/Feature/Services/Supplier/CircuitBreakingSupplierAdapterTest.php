@@ -10,6 +10,7 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -44,8 +45,13 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
             public function checkBalance(): SupplierResponse
             {
                 $this->calls++;
+                $next = array_shift($this->responses);
 
-                return array_shift($this->responses);
+                if ($next instanceof \Throwable) {
+                    throw $next;
+                }
+
+                return $next;
             }
 
             public function listProducts(): SupplierResponse
@@ -112,6 +118,33 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         $adapter->checkBalance();
         $adapter->checkBalance();
         $adapter->checkBalance();
+
+        $this->assertTrue($breaker->isOpen());
+    }
+
+    /**
+     * 2026-09-29 audit K-3: a timeout surfaces as a thrown
+     * ConnectionException, never a returned isServerError response — it
+     * must count as a failure too, or a supplier that only hangs never
+     * trips the breaker.
+     */
+    public function test_repeated_connection_timeouts_trip_the_breaker(): void
+    {
+        $inner = $this->fakeInner([
+            new ConnectionException('cURL error 28: timed out'),
+            new ConnectionException('cURL error 28: timed out'),
+            new ConnectionException('cURL error 28: timed out'),
+        ]);
+        $breaker = new CircuitBreaker('test-'.uniqid(), failureThreshold: 3, cooldownSeconds: 60);
+        $adapter = new CircuitBreakingSupplierAdapter($inner, $breaker);
+
+        foreach (range(1, 3) as $_) {
+            try {
+                $adapter->checkBalance();
+                $this->fail('ConnectionException should propagate to the caller');
+            } catch (ConnectionException) {
+            }
+        }
 
         $this->assertTrue($breaker->isOpen());
     }
