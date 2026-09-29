@@ -1516,9 +1516,17 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       storefront's JSON-LD — stored XSS. Fixed via `jsonLdHtml()`.
     - ~~**S-2 (Medium)**~~ — `SqlGuard`'s table allow-list had 7 bypasses
       (comma join + 6 more found writing the red tests). All rejected now
-      (ADR-087 addendum). **Founder-owed, still open:** provision the
-      scoped `report_assistant` MySQL user in prod. Until then the regex
-      is the only defense, not the backstop ADR-087 describes.
+      (ADR-087 addendum). The scoped `report_assistant` MySQL user was
+      **provisioned in prod 2026-09-29** (`SELECT` on the three
+      `llm_report_*` views only; verified that `admin_users`/`orders`/
+      `reseller_api_keys` are denied with 1142).
+    - **New, found while provisioning (Low→Medium, not yet fixed):** the
+      app's main connection in prod runs as **`doadmin`**, the DO managed
+      MySQL superuser (`CREATE USER`, `DROP`, `GRANT OPTION` on `*.*`).
+      Any future SQL-injection-class bug would get full DB-admin power.
+      Fix: a dedicated app user with DML + DDL on `defaultdb` only (DDL
+      is still needed for `migrate --force` on deploy). Needs a careful
+      cutover (deploy migrations, view `DEFINER`s are `doadmin@%`).
     - ~~**S-3 (Medium)**~~ — reseller webhook SSRF. `OutboundUrlGuard`
       checks at save + send, pins curl to the approved IP, stops
       following redirects (ADR-084 addendum).

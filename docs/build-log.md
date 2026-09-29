@@ -2857,3 +2857,17 @@ locking changed.
 Also parked, mid-session (not security): affiliate custom-domain
 onboarding copy → §16 item 49. Found via `fixfastapp.com`'s Vercel
 "Proxy Detected" warning (its Cloudflare record is orange-cloud).
+
+**Addendum, same day: prod `report_assistant` user provisioned.** It was
+created over SSH on `pekangame-prod-lwf` via tinker on the main
+connection, with a password generated on the server that never left it.
+First attempt failed harmlessly: `CREATE USER ... IDENTIFIED BY ?` is
+rejected because MySQL doesn't allow a bound placeholder there, and the
+QueryException message echoed the generated password into the terminal.
+That password was never used (no user created, `.env` untouched), so it
+was discarded and regenerated. The retry passed the password through
+`PDO::quote` and only ever printed a result code. Verification
+(`CURRENT_USER`, row counts on the 3 views, 1142 denials, `SHOW GRANTS`)
+is recorded in the ADR-087 addendum. Also found: the app's main
+connection is `doadmin`, the DO superuser. This was added to §16 item 46
+as a new finding, not fixed here.
