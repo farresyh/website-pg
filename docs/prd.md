@@ -728,17 +728,18 @@ production before building on it.
 
     The model can watch Horizon and logs live over SSH while these run.
 
-48. **Wave 5 — remaining money hygiene + customer notifications.** Not yet
-    built.
-    - **M-10 (Medium)** — `SupplierTransferController::voidTransfer()`/
-      `recordManualAdjustment()` check `voided_at` before taking the lock,
-      not inside it — a double-click can write two `VOID_REVERSAL`
-      entries. Internal accounting only, hand-fixable if it ever recurs.
+48. **Wave 5 — remaining money hygiene + customer notifications.**
+    **PR-A built 2026-09-29** (branch `fix/2026-09-29-wave5-money-hygiene`):
+    M-10 and all six Lows below. See the build-log entry of the same date.
+    **Before merging to `main`**, run the prod duplicate check on
+    `ledger_entries`, or the new unique index fails the deploy migration.
+    Still open: **M-11 (PR-B)**, which needs an ADR and a grill first.
+    - ~~**M-10 (Medium)**~~ — fixed in PR-A (the voided check moved under the lock).
     - **M-11 (Medium)** — no order emails exist at all (no `app/Mail`, no
       templates) — a customer whose order fails and gets a voucher never
       learns the code unless an admin contacts them manually. Overlaps
       PRD §12's already-tracked Plunk order-email gap (item 6 area).
-    - Low: admin manual wallet credit (`ResellerWalletController`) has no
+    - ~~Low~~ (all fixed in PR-A): admin manual wallet credit (`ResellerWalletController`) has no
       idempotency key; `ledger_entries` has no DB-level unique-index
       backstop against a duplicate entry (app-level dedupe only);
       `Package.combo_override_price` has no cost-floor check (a 500, not
