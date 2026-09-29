@@ -117,8 +117,15 @@ final class CheckoutService
                 playerId: $request->playerId,
                 serverId: $request->serverId,
                 affiliateId: $request->affiliateId,
-                paymentStatus: $fullyCoveredByVoucher ? PaymentStatus::Paid : PaymentStatus::Pending,
-                paidAt: $fullyCoveredByVoucher ? now() : null,
+                // M-6, 2026-09-29 audit: a full-cover order used to be
+                // stamped Paid right here, before the voucher's own
+                // redeem() lock ever ran — settleWithVoucher() below is
+                // now the real commit checkpoint (mirrors decision #1's
+                // "lock only after the gateway confirms success", with
+                // redeem() itself standing in for the gateway since a
+                // full-cover order never calls one).
+                paymentStatus: PaymentStatus::Pending,
+                paidAt: null,
                 paymentMethod: $request->paymentMethod,
                 gameId: $request->gameId,
                 packageId: $request->packageId,
@@ -176,6 +183,19 @@ final class CheckoutService
      * involved, confirmed to never collide with
      * ReconcilePendingPaymentsCommand (its own query only ever selects
      * payment_status=pending, never Paid).
+     *
+     * M-6, 2026-09-29 audit (ADR-024 addendum): `redeem()` is this
+     * branch's real commit checkpoint, unlike the accepted residual
+     * race `requestPayment()` below still logs-and-proceeds through —
+     * there, real money (or a real gateway payment request) already
+     * exists by the time `redeem()` could lose, so ADR-004 forbids
+     * clawing it back. Here, nothing has moved yet: the Order is still
+     * Pending and `FulfillOrderJob` hasn't been dispatched, so a lost
+     * race can — and must — fail the checkout outright instead of
+     * shipping real goods for an unpaid, unbacked order. Otherwise N
+     * concurrent requests citing the same exactly-covering voucher
+     * would each pass `preview()` and each get fulfilled, repeatably,
+     * bounded only by how many an attacker sends.
      */
     private function settleWithVoucher(Order $order, VoucherPreview $voucherPreview): Order
     {
@@ -189,8 +209,20 @@ final class CheckoutService
                 $order->affiliate_id,
             );
         } catch (InvalidVoucherException $e) {
-            $this->logAcceptedVoucherRedemptionRace($order, $e);
+            $order->update(['payment_status' => PaymentStatus::Failed->value]);
+
+            Log::error('Full-cover checkout lost the voucher-redemption race', [
+                'order_number' => $order->order_number,
+                'voucher_id' => $voucherPreview->voucherId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new CheckoutFailedException(
+                "This voucher is no longer available for order {$order->order_number} — its balance was just used by another order.",
+            );
         }
+
+        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
 
         $this->decrementMembershipQuotaIfApplicable($order);
 
