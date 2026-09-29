@@ -6690,6 +6690,7 @@ The founder chose WhatsApp over email, because customers rarely read email. Ever
 4. **Events:**
    - **Proactive (cold allowed):** a voucher issued from a failed order; a voucher restored (restore-only, ADR-024 addendum); a standalone Path A voucher, but only when the admin fills in the new optional phone field.
    - **Opt-in only:** Delivered receipt with a review link.
+   - **The receipt fires on the transition into Delivered, whatever the path:** a first delivery, an admin Resend/Retry after a failure, a Pending order confirmed by poll or webhook, or an admin Mark Delivered from NeedsReview. All four already converge on `OrderFulfillmentService::creditProfit()`, which is the single trigger point. A receipt and a voucher can never both go out for one order, because a compensated order blocks resend (`isAlreadyCompensated()`). The unique index in decision 9 caps it at one receipt per order. A number that opts in only after the order was Delivered gets the receipt through the opt-in auto-reply.
    - Payment-received and failed/needs-review messages are not sent: the status page covers them live, and the outcome ends up as either Delivered or a voucher anyway.
 5. **Opt-in is per phone number, not per order, and it persists across orders and brands.** Two ways in:
    - A new **"Get updates on WhatsApp"** button on the order status page, with prefilled text the backend recognises. It opts the number in and replies at once: the receipt if the order is already Delivered, otherwise "we'll message you when it's complete".
