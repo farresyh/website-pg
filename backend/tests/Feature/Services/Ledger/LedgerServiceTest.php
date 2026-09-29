@@ -44,6 +44,16 @@ class LedgerServiceTest extends TestCase
     }
 
     /** Recurring fees legitimately repeat against the same subscription/membership every cycle. */
+    public function test_a_reasoned_correction_may_share_the_reference_of_the_original_entry(): void
+    {
+        // Prod shape (order 15, ADR-105): an admin correction on an order that already has its profit entry.
+        $service = app(LedgerService::class);
+        $service->credit('platform', null, 37, 'order_profit', 'order', 15);
+        $service->credit('platform', null, -10, 'order_profit', 'order', 15, 1, 'ADR-105 correction');
+
+        $this->assertSame(27, $service->balance('platform', null));
+    }
+
     public function test_recurring_fee_types_may_repeat_against_the_same_reference(): void
     {
         $service = app(LedgerService::class);

@@ -15,7 +15,11 @@ use Illuminate\Support\Facades\Schema;
  *    excludes `affiliate_tier_fee` and `membership_fee`, which legitimately
  *    repeat against the same subscription/membership every cycle.
  *    `owner_id` is COALESCEd because Platform rows have a NULL owner_id and
- *    NULLs never collide in a unique index. One concatenated column rather
+ *    NULLs never collide in a unique index. Only the automatic original
+ *    entry is deduped (`reason IS NULL`): a reasoned correction against the
+ *    same reference is legitimate. Prod already holds one, a -10 sen
+ *    `order_profit` fix on order 15 (ADR-105), which is why this condition
+ *    exists. One concatenated column rather
  *    than a 5-column index: three varchar(255) columns in utf8mb4 exceed
  *    InnoDB's 3072-byte key limit.
  * 2. `idempotency_key`: the admin manual wallet credit's double-submit
@@ -33,7 +37,7 @@ return new class extends Migration
 
         Schema::table('ledger_entries', function (Blueprint $table) use ($key) {
             $table->string('dedupe_key', 191)->nullable()->virtualAs(
-                'CASE WHEN type IN ('.self::ONCE_PER_REFERENCE_TYPES.") AND reference_id IS NOT NULL THEN {$key} END",
+                'CASE WHEN type IN ('.self::ONCE_PER_REFERENCE_TYPES.") AND reference_id IS NOT NULL AND reason IS NULL THEN {$key} END",
             );
             $table->string('idempotency_key', 64)->nullable();
 
