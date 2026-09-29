@@ -3,6 +3,7 @@
 namespace App\Services\Currency;
 
 use App\Models\CurrencyRate;
+use App\Services\Backup\BackupFailureAlerter;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -23,6 +24,10 @@ use Throwable;
  */
 final class CurrencyRateService
 {
+    private const FALLBACK_TTL_SECONDS = 900;
+
+    private const STALE_ALERT_HOURS = 48;
+
     /**
      * ADR-111 decision 1: the single conversion boundary, widened from
      * one call pattern (Price Sync's catalog conversion, via
@@ -50,15 +55,42 @@ final class CurrencyRateService
         return (int) ceil($price * $rate * 100);
     }
 
+    /**
+     * 2026-09-29 audit (Wave 5 Low): a fallback rate used to be cached for
+     * the full TTL like a live one — no live retry for a day, and nobody
+     * told when the stored rate kept aging. Now a fallback is cached for
+     * only 15 min, and a stored rate older than 48h alerts the admins
+     * (once a day per pair, same Plunk path as Horizon's LongWait alert).
+     */
     public function rate(string $from, string $to): float
     {
-        $ttl = (int) config('services.fx_api.cache_ttl_seconds', 86400);
+        $key = "currency_rate:{$from}:{$to}";
 
-        return Cache::remember(
-            "currency_rate:{$from}:{$to}",
-            $ttl,
-            fn () => $this->fetchLive($from, $to) ?? $this->lastKnown($from, $to),
-        );
+        $cached = Cache::get($key);
+        if ($cached !== null) {
+            return (float) $cached;
+        }
+
+        $live = $this->fetchLive($from, $to);
+        if ($live !== null) {
+            Cache::put($key, $live, (int) config('services.fx_api.cache_ttl_seconds', 86400));
+
+            return $live;
+        }
+
+        $last = $this->lastKnown($from, $to);
+        Cache::put($key, (float) $last->rate, self::FALLBACK_TTL_SECONDS);
+
+        if ($last->fetched_at->lt(now()->subHours(self::STALE_ALERT_HOURS))
+            && Cache::add("currency_rate_stale_alert:{$from}:{$to}", true, 86400)) {
+            app(BackupFailureAlerter::class)->alert(
+                "{$from}->{$to} FX rate is stale",
+                "The live FX API has been failing. Prices are using the stored rate from {$last->fetched_at->toDateTimeString()} ({$last->fetched_at->diffForHumans()}).",
+                'FX',
+            );
+        }
+
+        return (float) $last->rate;
     }
 
     private function fetchLive(string $from, string $to): ?float
@@ -91,7 +123,7 @@ final class CurrencyRateService
         return (float) $rate;
     }
 
-    private function lastKnown(string $from, string $to): float
+    private function lastKnown(string $from, string $to): CurrencyRate
     {
         $last = CurrencyRate::query()
             ->where('from', $from)
@@ -105,6 +137,6 @@ final class CurrencyRateService
             );
         }
 
-        return (float) $last->rate;
+        return $last;
     }
 }
