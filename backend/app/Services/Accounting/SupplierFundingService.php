@@ -129,7 +129,7 @@ final class SupplierFundingService
         int $adminUserId,
     ): SupplierLedgerEntry {
         return DB::transaction(function () use ($transfer, $signedAmount, $reason, $adminUserId) {
-            $locked = SupplierTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+            $locked = $this->lockNotVoided($transfer);
 
             return $this->writeLedgerCorrection($locked, SupplierLedgerEntryType::ManualAdjustment, $signedAmount, $reason, $adminUserId);
         });
@@ -159,7 +159,7 @@ final class SupplierFundingService
     public function voidTransfer(SupplierTransfer $transfer, string $reason, int $adminUserId): SupplierLedgerEntry
     {
         return DB::transaction(function () use ($transfer, $reason, $adminUserId) {
-            $locked = SupplierTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+            $locked = $this->lockNotVoided($transfer);
 
             $priorAdjustments = (float) $locked->adjustments()->sum('amount');
             $cumulativeNet = (float) $locked->netForeignReceived() + $priorAdjustments;
@@ -179,6 +179,25 @@ final class SupplierFundingService
 
             return $reversal;
         });
+    }
+
+    /**
+     * 2026-09-29 audit M-10: the "already voided?" check used to run in
+     * the controller, before the lock — a double-clicked Void could see
+     * `voided_at = null` twice and write two `VOID_REVERSAL` entries.
+     * Re-read under the lock, so the second caller sees the first's void.
+     */
+    private function lockNotVoided(SupplierTransfer $transfer): SupplierTransfer
+    {
+        $locked = SupplierTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+
+        if ($locked->voided_at !== null) {
+            throw ValidationException::withMessages([
+                'transfer' => ['This transfer has already been voided.'],
+            ]);
+        }
+
+        return $locked;
     }
 
     /** Shared writer for both correction shapes — only the `type` differs, so the register (2026-09-28 addendum) can tell a partial correction from a full void reversal. */
@@ -235,7 +254,7 @@ final class SupplierFundingService
 
         try {
             $correction = DB::transaction(function () use ($transfer, $changes, $reason, $adminUserId, $newReceiptPath, &$oldReceiptPathToDelete) {
-                $locked = SupplierTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+                $locked = $this->lockNotVoided($transfer);
 
                 $diff = [];
                 foreach ($changes as $field => $newValue) {
