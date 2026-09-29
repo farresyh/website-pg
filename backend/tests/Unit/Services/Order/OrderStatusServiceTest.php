@@ -146,13 +146,23 @@ class OrderStatusServiceTest extends TestCase
         $this->assertSame(DeliveryStatus::NeedsReview, $result);
     }
 
-    public function test_rejects_marking_needs_review_when_not_processing_or_failed(): void
+    public function test_rejects_marking_needs_review_from_delivered(): void
     {
         $service = new OrderStatusService;
 
         $this->expectException(InvalidOrderTransitionException::class);
 
-        $service->markNeedsReview(DeliveryStatus::NotStarted);
+        $service->markNeedsReview(DeliveryStatus::Delivered);
+    }
+
+    /**
+     * ADR-102 addendum (2026-09-29): a paid order that never started —
+     * a late Paid after a Failed payment, or FulfillOrderJob exhausting
+     * its tries — must be able to reach the admin's review queue.
+     */
+    public function test_marks_needs_review_from_not_started(): void
+    {
+        $this->assertSame(DeliveryStatus::NeedsReview, (new OrderStatusService)->markNeedsReview(DeliveryStatus::NotStarted));
     }
 
     /**

@@ -382,6 +382,12 @@ return [
         // review instead of polled. Overridable per-supplier via
         // Supplier.api_config['max_reconcile_age_days'].
         'max_reconcile_age_days' => (int) env('DELIVERY_RECONCILIATION_MAX_RECONCILE_AGE_DAYS', 90),
+
+        // ADR-102 addendum (2026-09-29): a Pending order that hasn't moved
+        // (updated_at) in this many hours goes to NeedsReview instead of
+        // polling for up to max_reconcile_age_days. Overridable per
+        // supplier via Supplier.api_config['pending_max_hours'].
+        'pending_max_hours' => (int) env('DELIVERY_RECONCILIATION_PENDING_MAX_HOURS', 2),
     ],
 
     // ADR-096 decision 8 — cooldown for the admin "Check from

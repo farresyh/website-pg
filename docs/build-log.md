@@ -3040,3 +3040,40 @@ Fast suite 2377/2377; concurrency 24/24.
   killed worker, quota on late Paid) — plus auto-retry instead of NeedsReview
   for CIRCUIT_OPEN / same-`ref_id` Digiflazz resends, and the checkout
   10/min/IP limit behind mobile NAT.
+
+## 2026-09-29 — PR-D built: automatic order recovery (pre-release review #1/#2/#3/#9 + NeedsReview load + checkout CGNAT)
+
+Grilled with the founder (Q1–Q8, every recommendation accepted), recorded as
+the ADR-102 2026-09-29 addendum plus an ADR-014 addendum. Everything was built
+test-first. Fast suite 2390/2390; concurrency 24/24.
+
+- **Replay-safe rule** (`SupplierAdapterFactory::resubmitReplaysOutcome()`,
+  Digiflazz only). For Digiflazz, an ambiguous outcome is parked at **Pending**
+  instead of NeedsReview. That covers a thrown timeout, `CIRCUIT_OPEN`, a
+  5xx-class unconfirmed failure, and a stale Processing order. It applies to
+  plain orders and combo legs alike, and the reference is kept.
+  `scheduleRecoveryPoll()` then dispatches a `CheckSupplierDeliveryJob` about
+  2 minutes later. Digiflazz's `checkStatus` *is* a same-`ref_id` re-submit,
+  so this is what an admin's Retry did by hand. Gamevion stays NeedsReview
+  because a repeated ref only returns `duplicate_reference`.
+- **Audit trail:** `supplier_response.auto_recovery` on the order, or on the
+  leg's attempt row.
+- **Combo:** `attemptLeg()` now returns whether it parked the leg, so
+  `fulfillCombo()` schedules the poll only for parked legs. Genuine async
+  Pending legs keep their old behaviour.
+- **Pending window:** a Pending order whose `updated_at` is older than 2h goes
+  to NeedsReview (`pending_max_hours`, overridable per supplier). This uses
+  `updated_at`, not `created_at`: a still-Pending or ambiguous poll never writes
+  to the order, and a resend of an old order must not age out on arrival.
+- **#1/#9:** any CHIP Paid arriving after the payment was marked Failed now
+  goes to NeedsReview. `markNeedsReview()` accepts `NotStarted`. **Gotcha:**
+  the M-4 test had used `delivery_status=Failed`, a shape a payment-failed
+  order never reaches, which is why the real bug slipped past it. The new
+  test uses `NotStarted`.
+- **#2:** `FulfillOrderJob::failed()` moves a paid `NotStarted` order to
+  NeedsReview, and the NotStarted sweep skips `is_test` orders.
+- **#3:** `retryStuckProcessing()` no longer re-dispatches, because
+  `startDelivery()` rejects `Processing`. A plain order on Digiflazz goes to
+  Pending plus a poll; anything else goes to NeedsReview.
+- **Checkout:** a named `checkout` limiter allows 10/min per IP+email with a
+  60/min ceiling per IP. Validate-player and voucher-preview go to 30/min/IP.

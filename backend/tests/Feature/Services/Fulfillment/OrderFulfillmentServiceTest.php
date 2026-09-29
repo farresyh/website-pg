@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services\Fulfillment;
 
+use App\Jobs\CheckSupplierDeliveryJob;
 use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\LedgerEntry;
@@ -33,6 +34,7 @@ use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -675,6 +677,52 @@ class OrderFulfillmentServiceTest extends TestCase
 
         $this->assertSame($firstReference, $delivered->reference_number);
         $this->assertSame(DeliveryStatus::Delivered, $delivered->delivery_status);
+    }
+
+    /**
+     * ADR-102 addendum (2026-09-29, PR-D): for a supplier whose same-ref
+     * re-submit replays the stored outcome (Digiflazz), an ambiguous
+     * outcome goes to Pending and gets auto-polled with the SAME ref —
+     * not to manual NeedsReview.
+     */
+    private function digiflazzOrder(SupplierAdapter $adapter): array
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'MYR']);
+        $this->app->bind('supplier-adapter.digiflazz', fn () => $adapter);
+
+        return [$this->paidOrder(['supplier_id' => $supplier->id]), $this->service($this->fakeSupplierAdapter(true))];
+    }
+
+    public function test_a_digiflazz_exception_goes_to_pending_and_schedules_a_same_ref_poll(): void
+    {
+        Queue::fake();
+        [$order, $service] = $this->digiflazzOrder($this->throwingSupplierAdapter(
+            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+        ));
+
+        $result = $service->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+        $this->assertNotNull($result->reference_number);
+        $this->assertArrayHasKey('auto_recovery', $result->supplier_response);
+        Queue::assertPushed(CheckSupplierDeliveryJob::class, fn ($job) => $job->order->id === $order->id && $job->delay !== null);
+    }
+
+    public function test_a_digiflazz_circuit_open_goes_to_pending_not_needs_review(): void
+    {
+        Queue::fake();
+        [$order, $service] = $this->digiflazzOrder($this->fakeSupplierAdapter(false, null, 'CIRCUIT_OPEN', 'breaker open', resendUnsafeWithSameReference: true));
+
+        $this->assertSame(DeliveryStatus::Pending, $service->fulfill($order)->delivery_status);
+    }
+
+    public function test_a_digiflazz_confirmed_gagal_still_fails(): void
+    {
+        Queue::fake();
+        [$order, $service] = $this->digiflazzOrder($this->fakeSupplierAdapter(false, null, '02', 'Gagal', resendUnsafeWithSameReference: true, outcomeConfirmedFailed: true));
+
+        $this->assertSame(DeliveryStatus::Failed, $service->fulfill($order)->delivery_status);
+        Queue::assertNotPushed(CheckSupplierDeliveryJob::class);
     }
 
     public function test_fulfill_generates_a_fresh_reference_number_on_a_retry_from_failed(): void

@@ -437,6 +437,23 @@ class CheckoutControllerTest extends TestCase
     }
 
     /**
+     * ADR-014 addendum (2026-09-29, PR-D): mobile carriers put many
+     * customers behind one CGNAT address — during a promo, different
+     * buyers sharing an IP must not throttle each other. The per-customer
+     * 10/min bucket stays; the shared IP gets a 60/min ceiling.
+     */
+    public function test_different_customers_behind_one_ip_do_not_throttle_each_other(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        for ($i = 0; $i < 15; $i++) {
+            $this->postJson('/api/checkout', $this->payload($game, $package, ['customer_email' => "buyer{$i}@example.com"]))
+                ->assertCreated();
+        }
+    }
+
+    /**
      * The real gap this closes: a direct API call could always skip
      * PlayerValidationController entirely — the storefront wizard's
      * "Proceed to Payment" gate is client-side React state only, not a

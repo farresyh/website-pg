@@ -498,6 +498,18 @@ class AppServiceProvider extends ServiceProvider
         // catch from multiple source IPs).
         // Wave 3 PR-B: plus 10/hour per IP — the email bucket alone let one
         // IP mail-bomb unlimited different inboxes, 3 each.
+        // ADR-014 addendum (2026-09-29, PR-D): checkout was 10/min per IP,
+        // but mobile carriers put many customers behind one CGNAT address —
+        // during a promo, strangers sharing an IP throttled each other.
+        // 10/min per customer (IP + email) keeps one person from flooding;
+        // 60/min per IP still caps a single source.
+        RateLimiter::for('checkout', function (Request $request) {
+            return [
+                Limit::perMinute(10)->by('customer:'.$request->ip().'|'.strtolower((string) $request->input('customer_email'))),
+                Limit::perMinute(60)->by('ip:'.$request->ip()),
+            ];
+        });
+
         RateLimiter::for('otp-request', function (Request $request) {
             return [
                 Limit::perHour(3)->by('email:'.$request->input('email')),

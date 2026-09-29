@@ -40,6 +40,22 @@ final class SupplierAdapterFactory
     }
 
     /**
+     * ADR-102 addendum (2026-09-29): suppliers whose re-submit of the SAME
+     * reference replays the stored outcome instead of creating a second
+     * transaction — Digiflazz's own checkStatus() *is* that re-submit.
+     * For these, an ambiguous outcome is safely auto-polled (Pending)
+     * rather than handed to an admin (NeedsReview). Gamevion answers a
+     * repeat with `duplicate_reference` and no status, so it's absent.
+     * A protocol fact per supplier, not a business setting.
+     */
+    private const RESUBMIT_REPLAYS_OUTCOME = ['digiflazz'];
+
+    public static function resubmitReplaysOutcome(string $slug): bool
+    {
+        return in_array($slug, self::RESUBMIT_REPLAYS_OUTCOME, true);
+    }
+
+    /**
      * ADR-046 decision 4: the Supplier Management screen's `slug`
      * dropdown reads this rather than a hardcoded list, so it stays
      * accurate the moment a new supplier gets its own container
