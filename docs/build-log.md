@@ -2916,3 +2916,36 @@ deferred to be bundled with decommissioning the old `pekangame-prod`
 droplet and old DB (§16 item 46). Wave 3 has nothing left to build
 except MFA, which was already tracked separately as item 10. Next up:
 Wave 4 (item 47), where K-4 must land before K-1.
+
+## 2026-09-29 — Wave 4 PR-A built: burst timeouts (K-4, K-3, K-2, K-6)
+
+Branch `fix/2026-09-29-wave4-burst-timeouts`. Test-first where there was logic
+(K-4, K-3, K-2 each red → green); K-6 is config only. Fast suite 2366/2366.
+
+- **K-4 — combo job could run twice once `maxProcesses` > 1.** `orders-combo`
+  jobs may run 300s while Redis `retry_after` was 90s. Fix: a second queue
+  connection `redis-long` (same Redis keys, retry_after 330s) used only by
+  `supervisor-orders-combo`. **Gotcha worth knowing:** `retry_after` is applied
+  by the *popping worker's* connection (`RedisQueue::retrieveNextJob`), so
+  producers keep dispatching on `redis` — `FulfillOrderJob` is unchanged.
+  Verified live via tinker (`Laravel\Horizon\RedisQueue retryAfter=330`). New
+  `HorizonQueueCoverageTest` case guards every supervisor, not just combo.
+  Chose this over raising the global `retry_after` to 330s, which would have
+  slowed crash recovery for every other queue to 5.5 min.
+- **K-3 — timeouts never tripped the breaker.** Adapters don't catch
+  `ConnectionException` (M-1 relies on it propagating), so `guarded()` never
+  saw it. Now caught, `recordFailure()`, rethrown unchanged. Only
+  `ConnectionException` counts — not any `Throwable` — so a code bug can't
+  masquerade as a supplier outage.
+- **K-2 — MLBB player validation could hold a php-fpm worker ~32s.** Added an
+  8s chain deadline in `MlbbPlayerValidator` (no new fallback started past it)
+  plus `connectTimeout(3)` per provider HTTP call. An Acid timeout (8s) now ends
+  the chain; a fast Acid failure still falls back once (~17s realistic worst).
+  No cache: burst traffic is distinct players, so a cache would only help retries.
+- **K-6 — Reverb/storefront timeouts.** The audit said "no timeout", but Laravel's
+  `BroadcastManager::pusher()` actually defaults to 10s connect / 30s total. That
+  is still too long on the shared `orders` worker, so it's now 2s/5s. Storefront
+  `apiFetch` now gets `AbortSignal.timeout(20s)` unless the caller passes its
+  own signal. 20s is set above K-2's ~17s worst case.
+
+Next: grill K-1/K-5 (ADR-048 addendum, 2-lane proposal), K-7 SSH check, Lows.

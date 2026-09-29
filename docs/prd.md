@@ -1549,14 +1549,26 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       throttle is keyed on the raw bearer token (an invalid-key flood is
       unthrottled); doc comments call `order_number` a ULID when it isn't.
 
-47. **Wave 4 — burst-traffic prep, before any promo/ad push.** Not yet
-    built. **`K-4` must land before `K-1`** (raising `maxProcesses`) or a
+47. **Wave 4 — burst-traffic prep, before any promo/ad push.**
+    **K-4/K-3/K-2/K-6 🟢 BUILT 2026-09-29** (PR-A,
+    `fix/2026-09-29-wave4-burst-timeouts`). Still open: K-1 + K-5 (grill
+    first, ADR-048 addendum — founder leaning to 2 lanes,
+    `orders-retail`/`orders-reseller`, not one worker per channel; needs
+    prod Digiflazz latency from `supplier_request_logs` + Digiflazz's own
+    answer on rate limits, their public docs list none), K-7 (SSH check),
+    and the Lows. **`K-4` must land before `K-1`** (raising `maxProcesses`) or a
     slow combo job can genuinely double-run.
-    - **K-4 (Medium)** — `orders-combo` queue's job timeout (300s,
+    - ~~**K-4 (Medium)**~~ — fixed: new `redis-long` queue connection
+      (retry_after 330s) used only by `supervisor-orders-combo`; a test
+      now asserts every supervisor's timeout < its connection's
+      retry_after.
+    - **K-4 (Medium, original)** — `orders-combo` queue's job timeout (300s,
       `config/horizon.php`) exceeds Redis `retry_after` (90s,
       `config/queue.php`) — harmless today only because `maxProcesses` is
       1 everywhere.
-    - **K-3 (High)** — `CircuitBreakingSupplierAdapter::guarded()` never
+    - ~~**K-3 (High)**~~ — fixed: `guarded()` records a failure on a thrown
+      `ConnectionException` (rethrown unchanged).
+    - **K-3 (original)** — `CircuitBreakingSupplierAdapter::guarded()` never
       calls `recordFailure()` on a thrown exception (only on a returned
       `isServerError` response), so a supplier that just times out never
       trips the breaker.
@@ -1566,14 +1578,21 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       backs up for tens of minutes to hours. Deliberate per ADR-048
       ("scale once real volume justifies it") — this is that trigger.
       Needs a short grill (ADR-048 addendum) before raising it.
-    - **K-2 (High)** — `PlayerValidationController`'s validator chain has
+    - ~~**K-2 (High)**~~ — fixed: `MlbbPlayerValidator` 8s chain deadline
+      (no new fallback started after it) + `connectTimeout(3)` per
+      provider; ~32s → ~17s realistic worst. Cache skipped (burst traffic
+      is distinct players, a cache only helps retries).
+    - **K-2 (original)** — `PlayerValidationController`'s validator chain has
       no `connectTimeout`, no overall deadline, no cache — can hold a
       php-fpm worker up to ~32s per request, saturating the pool under
       burst.
     - **K-5 (Medium)** — CHIP/OpenWA webhook throttle is a flat 120/min
       per source IP — CHIP's own IPs or OpenWA's single localhost origin
       could hit it during a burst.
-    - **K-6 (Medium)** — Reverb broadcast has no explicit HTTP timeout
+    - ~~**K-6 (Medium)**~~ — fixed: Reverb client 2s connect / 5s total
+      (Laravel's default was 10s/30s, not unbounded); storefront `apiFetch`
+      `AbortSignal.timeout(20s)` unless the caller passes its own signal.
+    - **K-6 (original)** — Reverb broadcast has no explicit HTTP timeout
       (`config/broadcasting.php`); storefront's `apiFetch`
       (`storefront/src/lib/api-client.ts`) has no `AbortSignal` timeout.
     - **K-7 (Medium)** — Redis is a single point of failure for every
