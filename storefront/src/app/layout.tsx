@@ -11,7 +11,7 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import BottomNav from "@/components/layout/BottomNav";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
-import { getSeoSettings, renderTemplate } from "@/lib/seo";
+import { getSeoSettings, jsonLdHtml, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 import { getThemePreset, generateThemeCss } from "@/lib/theme-presets";
 
@@ -100,7 +100,7 @@ export default async function RootLayout({
           <style id="pg-theme-preset" dangerouslySetInnerHTML={{ __html: themeCss }} />
         )}
         {organizationJsonLd && (
-          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }} />
+          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml(organizationJsonLd) }} />
         )}
         {/* ADR-101 decision 9: ADR-029 addendum decision 13's admin-authored
           * free-text head/body_end <script> feed is removed (reversed) — it

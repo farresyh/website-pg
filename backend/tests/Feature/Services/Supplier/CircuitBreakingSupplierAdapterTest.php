@@ -10,6 +10,7 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -44,8 +45,13 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
             public function checkBalance(): SupplierResponse
             {
                 $this->calls++;
+                $next = array_shift($this->responses);
 
-                return array_shift($this->responses);
+                if ($next instanceof \Throwable) {
+                    throw $next;
+                }
+
+                return $next;
             }
 
             public function listProducts(): SupplierResponse
@@ -116,6 +122,54 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         $this->assertTrue($breaker->isOpen());
     }
 
+    /**
+     * 2026-09-29 audit K-3: a timeout surfaces as a thrown
+     * ConnectionException, never a returned isServerError response — it
+     * must count as a failure too, or a supplier that only hangs never
+     * trips the breaker.
+     */
+    public function test_repeated_connection_timeouts_trip_the_breaker(): void
+    {
+        $inner = $this->fakeInner([
+            new ConnectionException('cURL error 28: timed out'),
+            new ConnectionException('cURL error 28: timed out'),
+            new ConnectionException('cURL error 28: timed out'),
+        ]);
+        $breaker = new CircuitBreaker('test-'.uniqid(), failureThreshold: 3, cooldownSeconds: 60);
+        $adapter = new CircuitBreakingSupplierAdapter($inner, $breaker);
+
+        foreach (range(1, 3) as $_) {
+            try {
+                $adapter->checkBalance();
+                $this->fail('ConnectionException should propagate to the caller');
+            } catch (ConnectionException) {
+            }
+        }
+
+        $this->assertTrue($breaker->isOpen());
+    }
+
+    /**
+     * Prod data (2026-09-29): listProducts (the heavy catalog pull) times
+     * out routinely and clusters under SyncSupplierPricesJob's own retries
+     * — counting it would pause real order calls for no order-path reason.
+     */
+    public function test_catalog_timeouts_do_not_trip_the_breaker(): void
+    {
+        $inner = $this->fakeInner(array_fill(0, 3, new ConnectionException('cURL error 28: timed out')));
+        $breaker = new CircuitBreaker('test-'.uniqid(), failureThreshold: 3, cooldownSeconds: 60);
+        $adapter = new CircuitBreakingSupplierAdapter($inner, $breaker);
+
+        foreach (range(1, 3) as $_) {
+            try {
+                $adapter->listProducts();
+            } catch (ConnectionException) {
+            }
+        }
+
+        $this->assertFalse($breaker->isOpen());
+    }
+
     public function test_an_open_circuit_short_circuits_without_calling_the_inner_adapter(): void
     {
         $inner = $this->fakeInner([
@@ -133,6 +187,13 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         $this->assertFalse($response->success);
         $this->assertSame('CIRCUIT_OPEN', $response->errorCode);
         $this->assertSame(1, $inner->calls);
+
+        // 2026-09-28 audit finding M-3: the call was never sent, so
+        // whatever the caller was trying to do (create/check an order)
+        // is genuinely unknown, never a confirmed rejection — must
+        // route to NeedsReview, not a confirmed Failed.
+        $this->assertTrue($response->resendUnsafeWithSameReference);
+        $this->assertFalse($response->outcomeConfirmedFailed);
 
         // ADR-051 decision 3 — the skipped call still gets a synthetic
         // request-log row, distinct from a real HTTP failure.

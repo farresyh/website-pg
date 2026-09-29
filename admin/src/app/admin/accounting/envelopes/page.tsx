@@ -24,6 +24,7 @@ import { ApiError } from "@/lib/api-client";
 import {
   getBudgetEnvelopes,
   createBudgetEnvelope,
+  updateBudgetEnvelope,
   getBudgetEnvelopeEntries,
   recordBudgetEnvelopeEntry,
   voidBudgetEnvelopeEntry,
@@ -66,6 +67,7 @@ export default function EnvelopeLedgerPage() {
   const [categories, setCategories] = useState<BudgetEnvelopeCategory[]>([]);
   const [monthSummary, setMonthSummary] = useState<Record<string, number>>({});
   const [monthLabel, setMonthLabel] = useState("");
+  const [monthRoughPlEstimateSen, setMonthRoughPlEstimateSen] = useState(0);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [entries, setEntries] = useState<BudgetEnvelopeEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +75,9 @@ export default function EnvelopeLedgerPage() {
 
   const [newEnvelopeName, setNewEnvelopeName] = useState("");
   const [showNewEnvelope, setShowNewEnvelope] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
 
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [category, setCategory] = useState("");
@@ -96,7 +101,8 @@ export default function EnvelopeLedgerPage() {
         setCategories(data.categories);
         setMonthSummary(data.current_month_summary);
         setMonthLabel(data.current_month_label);
-        setSelectedId((current) => current ?? data.envelopes[0]?.id ?? null);
+        setMonthRoughPlEstimateSen(data.current_month_rough_pl_estimate_sen);
+        setSelectedId((current) => current ?? data.envelopes.find((e) => e.is_active)?.id ?? data.envelopes[0]?.id ?? null);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load envelopes."));
   }
@@ -135,6 +141,31 @@ export default function EnvelopeLedgerPage() {
       await loadIndex(token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create envelope.");
+    }
+  }
+
+  async function handleRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !selectedEnvelope || !renameValue.trim()) return;
+    setError(null);
+    try {
+      await updateBudgetEnvelope(token, selectedEnvelope.id, { name: renameValue.trim() });
+      setRenaming(false);
+      await loadIndex(token);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not rename this envelope.");
+    }
+  }
+
+  /** Never a hard delete — see updateBudgetEnvelope's own doc comment. Archiving just hides it from the active list; its entry history stays fully visible/exportable. */
+  async function handleToggleArchive(envelope: BudgetEnvelope) {
+    if (!token) return;
+    setError(null);
+    try {
+      await updateBudgetEnvelope(token, envelope.id, { is_active: !envelope.is_active });
+      await loadIndex(token);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update this envelope.");
     }
   }
 
@@ -272,7 +303,7 @@ export default function EnvelopeLedgerPage() {
       )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {envelopes.map((envelope) => (
+        {envelopes.filter((e) => e.is_active).map((envelope) => (
           <button
             key={envelope.id}
             type="button"
@@ -289,25 +320,66 @@ export default function EnvelopeLedgerPage() {
         ))}
       </div>
 
-      {!showNewEnvelope ? (
-        <button type="button" onClick={() => setShowNewEnvelope(true)} className="mb-6 text-theme-sm text-brand-500 hover:underline">
-          + New envelope
-        </button>
-      ) : (
-        <form onSubmit={handleCreateEnvelope} className="mb-6 flex items-end gap-2">
-          <div>
-            <Label htmlFor="new_envelope_name">Envelope name</Label>
-            <Input id="new_envelope_name" value={newEnvelopeName} onChange={(e) => setNewEnvelopeName(e.target.value)} placeholder="Staff Bonus" />
-          </div>
-          <Button type="submit" size="small">Create</Button>
-          <Button type="button" size="small" variant="outlined" onClick={() => setShowNewEnvelope(false)}>Cancel</Button>
-        </form>
+      <div className="mb-6 flex items-center gap-4">
+        {!showNewEnvelope ? (
+          <button type="button" onClick={() => setShowNewEnvelope(true)} className="text-theme-sm text-brand-500 hover:underline">
+            + New envelope
+          </button>
+        ) : (
+          <form onSubmit={handleCreateEnvelope} className="flex items-end gap-2">
+            <div>
+              <Label htmlFor="new_envelope_name">Envelope name</Label>
+              <Input id="new_envelope_name" value={newEnvelopeName} onChange={(e) => setNewEnvelopeName(e.target.value)} placeholder="Staff Bonus" />
+            </div>
+            <Button type="submit" size="small">Create</Button>
+            <Button type="button" size="small" variant="outlined" onClick={() => setShowNewEnvelope(false)}>Cancel</Button>
+          </form>
+        )}
+        {envelopes.some((e) => !e.is_active) && (
+          <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-theme-sm text-gray-400 hover:underline">
+            {showArchived ? "Hide" : "Show"} archived ({envelopes.filter((e) => !e.is_active).length})
+          </button>
+        )}
+      </div>
+
+      {showArchived && (
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {envelopes.filter((e) => !e.is_active).map((envelope) => (
+            <div key={envelope.id} className="flex items-center justify-between rounded-lg border border-dashed border-gray-200 p-3 text-theme-sm dark:border-gray-800">
+              <button type="button" onClick={() => setSelectedId(envelope.id)} className="text-left text-gray-500 hover:underline dark:text-gray-400">
+                {envelope.name} — {formatRm(envelope.balance_sen)}
+              </button>
+              <Button type="button" size="small" variant="outlined" onClick={() => handleToggleArchive(envelope)}>Reactivate</Button>
+            </div>
+          ))}
+        </div>
       )}
 
       {selectedEnvelope && (
         <>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">{selectedEnvelope.name}</h2>
+            {!renaming ? (
+              <span className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">{selectedEnvelope.name}</h2>
+                {!selectedEnvelope.is_active && <Tag severity="secondary">Archived</Tag>}
+                <button
+                  type="button"
+                  onClick={() => { setRenaming(true); setRenameValue(selectedEnvelope.name); }}
+                  className="text-theme-xs text-gray-400 hover:underline"
+                >
+                  Rename
+                </button>
+                <button type="button" onClick={() => handleToggleArchive(selectedEnvelope)} className="text-theme-xs text-gray-400 hover:underline">
+                  {selectedEnvelope.is_active ? "Archive" : "Reactivate"}
+                </button>
+              </span>
+            ) : (
+              <form onSubmit={handleRename} className="flex items-center gap-2">
+                <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} className="h-9 w-48" />
+                <Button type="submit" size="small">Save</Button>
+                <Button type="button" size="small" variant="outlined" onClick={() => setRenaming(false)}>Cancel</Button>
+              </form>
+            )}
             <div className="flex gap-2">
               <Button size="small" variant="outlined" onClick={() => setShowAllocate((v) => !v)}>
                 Allocate Monthly Profit
@@ -332,7 +404,7 @@ export default function EnvelopeLedgerPage() {
                 ))}
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {envelopes.map((envelope) => (
+                {envelopes.filter((e) => e.is_active).map((envelope) => (
                   <div key={envelope.id}>
                     <Label htmlFor={`alloc_${envelope.id}`}>{envelope.name} (RM)</Label>
                     <Input
@@ -344,6 +416,21 @@ export default function EnvelopeLedgerPage() {
                   </div>
                 ))}
               </div>
+              {(() => {
+                const totalSen = Object.values(allocationAmounts).reduce((sum, v) => {
+                  const n = Math.round(parseFloat(v || "0") * 100);
+                  return sum + (Number.isFinite(n) ? n : 0);
+                }, 0);
+                const overEstimate = totalSen > monthRoughPlEstimateSen;
+
+                return (
+                  <div className={`rounded-lg px-3 py-2 text-theme-xs ${overEstimate ? "bg-warning-50 text-warning-600 dark:bg-warning-500/15 dark:text-warning-400" : "bg-gray-50 text-gray-500 dark:bg-white/[0.02] dark:text-gray-400"}`}>
+                    Total being allocated: <span className="font-mono font-medium">{formatRm(totalSen)}</span>
+                    {" — "}rough P&amp;L estimate for {monthLabel} (unaudited): <span className="font-mono font-medium">{formatRm(monthRoughPlEstimateSen)}</span>
+                    {overEstimate && " — this allocation is more than the rough estimate above. Still fine if you're allocating from profit built up in earlier months, but double-check the amounts first."}
+                  </div>
+                );
+              })()}
               <div className="flex justify-end">
                 <Button type="submit" size="small" disabled={allocating}>{allocating ? "Saving…" : "Allocate"}</Button>
               </div>
@@ -367,6 +454,11 @@ export default function EnvelopeLedgerPage() {
                       <option key={c.value} value={c.value}>{c.label}</option>
                     ))}
                   </select>
+                  {selectedCategory && selectedCategory.typical_sign !== "either" && (
+                    <Tag severity={selectedCategory.typical_sign === "positive" ? "success" : "danger"} className="mt-1.5">
+                      {selectedCategory.typical_sign === "positive" ? "Money in — adds to the balance" : "Money out — subtracts from the balance"}
+                    </Tag>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="entry_amount">Amount (RM)</Label>

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AllocateMonthlyProfitRequest;
 use App\Http\Requests\Admin\StoreBudgetEnvelopeEntryRequest;
 use App\Http\Requests\Admin\StoreBudgetEnvelopeRequest;
+use App\Http\Requests\Admin\UpdateBudgetEnvelopeRequest;
 use App\Http\Requests\Admin\VoidBudgetEnvelopeEntryRequest;
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
@@ -35,25 +36,47 @@ class BudgetEnvelopeController extends Controller
         private readonly MonthlyAccountingSummaryService $summary,
     ) {}
 
-    /** Every envelope with its live balance, plus the current month's Monthly Summary lines as reference context for the "Allocate Monthly Profit" decision — deliberately not a single derived "net profit" figure (that formula was never grilled/pinned; the founder reads the same lines the existing Monthly Summary screen already shows and decides the split themselves). */
+    /** Every envelope (active and archived — an archived one's history must stay visible/exportable) with its live balance, plus the current month's Monthly Summary lines as reference context for the "Allocate Monthly Profit" decision — deliberately not a single derived "net profit" figure (that formula was never grilled/pinned; the founder reads the same lines the existing Monthly Summary screen already shows and decides the split themselves). */
     public function index(): JsonResponse
     {
         $envelopes = BudgetEnvelope::query()->orderBy('id')->get()->map(fn (BudgetEnvelope $envelope) => [
             'id' => $envelope->id,
             'name' => $envelope->name,
+            'is_active' => $envelope->is_active,
             'balance_sen' => $envelope->balanceSen(),
         ]);
 
         $now = Carbon::now();
+        $monthSummary = $this->summary->forPeriod($now->year, $now->month);
 
         return response()->json([
             'envelopes' => $envelopes,
-            'categories' => collect(BudgetEnvelopeEntryCategory::cases())->map(fn (BudgetEnvelopeEntryCategory $c) => [
-                'value' => $c->value,
-                'label' => $c->label(),
-                'typical_sign' => $c->typicalSign(),
-            ]),
-            'current_month_summary' => $this->summary->forPeriod($now->year, $now->month),
+            // Adjustment excluded — it's the void mechanism's own internal
+            // tag (BudgetEnvelopeService::voidEntry() sets it automatically
+            // on a reversal entry), never something an admin should pick
+            // manually here. A loose correction with no specific
+            // originating entry to void still fits under "OPEX — Other".
+            'categories' => collect(BudgetEnvelopeEntryCategory::cases())
+                ->reject(fn (BudgetEnvelopeEntryCategory $c) => $c === BudgetEnvelopeEntryCategory::Adjustment)
+                ->map(fn (BudgetEnvelopeEntryCategory $c) => [
+                    'value' => $c->value,
+                    'label' => $c->label(),
+                    'typical_sign' => $c->typicalSign(),
+                ])
+                ->values(),
+            'current_month_summary' => $monthSummary,
+            // Deliberately labeled "rough"/"unaudited" — a soft warning
+            // aid for Allocate Monthly Profit, never the authoritative
+            // "net profit" figure the founder's own grilling session
+            // decided against computing. Sums the P&L-shaped lines only
+            // (never supplier_prepaid_topup/fx_variance — those are
+            // capital movements, not P&L).
+            'current_month_rough_pl_estimate_sen' => $monthSummary['sales_revenue_sen']
+                + $monthSummary['membership_revenue_sen']
+                - $monthSummary['cogs_sen']
+                + $monthSummary['payment_processing_gain_loss_sen']
+                - $monthSummary['affiliate_commission_expense_sen']
+                - $monthSummary['voucher_liability_issued_sen'],
             'current_month_label' => $now->format('F Y'),
         ]);
     }
@@ -63,6 +86,28 @@ class BudgetEnvelopeController extends Controller
         $envelope = BudgetEnvelope::query()->create($request->validated());
 
         return response()->json(['envelope' => $envelope], 201);
+    }
+
+    /**
+     * Rename and/or archive/reactivate — found missing the day after
+     * launch (founder question). Never a hard delete: an envelope with
+     * any recorded entry is protected by `restrictOnDelete()` at the DB
+     * layer regardless, so "delete" was never a safe verb to offer here
+     * in the first place — archiving hides a mistaken/retired envelope
+     * from the active list while its full entry history stays visible/
+     * exportable forever.
+     */
+    public function update(UpdateBudgetEnvelopeRequest $request, BudgetEnvelope $budgetEnvelope): JsonResponse
+    {
+        $budgetEnvelope->update($request->validated());
+
+        Log::info('Budget envelope updated', [
+            'budget_envelope_id' => $budgetEnvelope->id,
+            'changes' => $request->validated(),
+            'admin_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json(['envelope' => $budgetEnvelope->fresh()]);
     }
 
     /**

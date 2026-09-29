@@ -132,13 +132,15 @@ Route::post('/client-errors', [ClientErrorController::class, 'store'])->middlewa
 // Game/Package config, never from this request's own body.
 // ADR-014: throttle:10,1 — 10/minute/IP, loose enough for a genuine
 // customer retrying a failed attempt, tight enough to blunt a flood.
+// ADR-014 addendum (2026-09-29): now the named `checkout` limiter —
+// 10/min per IP+email, 60/min per IP (mobile CGNAT), AppServiceProvider.
 //
 // ADR-060 PR-4c: `storefront.brand` resolves the `X-Storefront-Host`
 // brand so checkout prices against THAT brand's wholesale tier +
 // markup and attributes the order (hence the ledger profit split) to
 // it. No header / a `primary_hosts` header → `Affiliate::primary()`,
 // byte-identical to before. An unknown/suspended host 404s here too.
-Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['throttle:10,1,checkout', 'storefront.brand']);
+Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['throttle:checkout', 'storefront.brand']);
 
 // ADR-024 decision #1's "Apply" button — read-only preview, never
 // locks or spends a voucher's remaining balance (VoucherService::
@@ -146,16 +148,17 @@ Route::post('/checkout', [CheckoutController::class, 'store'])->middleware(['thr
 // throttle as checkout: a bearer-code-guessing probe is exactly the
 // abuse this rate limit exists to blunt, and the ownership-lock check
 // inside VoucherService::preview() already keeps a wrong guess from
-// revealing anything either way.
+// revealing anything either way. 10 → 30/min/IP (ADR-014 addendum,
+// 2026-09-29): mobile CGNAT puts many customers on one IP during a promo.
 // ADR-060 PR-4c: `storefront.brand` — the discount preview prices the
 // package against the `Host`-resolved brand, same as the real checkout.
-Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware(['throttle:10,1,voucher-preview', 'storefront.brand']);
+Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->middleware(['throttle:30,1,voucher-preview', 'storefront.brand']);
 
 // Bug fix, 2026-08-30: read-only Package Price/Transaction Fee/Voucher
 // Discount/Total breakdown, fetched by the storefront's Order Summary
 // sidebar and Review Modal on every package/channel/voucher change —
 // see CheckoutController::previewTotal()'s own doc comment. Looser
-// than checkout/voucher-preview's 10/min: this is normal browsing
+// than checkout's per-customer 10/min: this is normal browsing
 // telemetry (no gateway call, no guessable secret, unlike a voucher
 // code), debounced client-side, but still worth a limit since it's a
 // public unauthenticated endpoint doing real DB work.
@@ -168,10 +171,13 @@ Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTota
 // follow-up, docs/prd.md §14. Same throttle as checkout: this hits
 // unofficial third-party provider APIs (ADR-005 addendum), tighter
 // abuse-blunting matters more here than for a normal read endpoint.
-Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:10,1,validate-player');
+// 10 → 30/min/IP (ADR-014 addendum, 2026-09-29) for mobile CGNAT; K-2's
+// 8s chain deadline already bounds each call's cost.
+Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:30,1,validate-player');
 
-// Public "Track Order" lookup (ADR-011) — order_number (a ULID) is
-// high-entropy enough to be treated as proof of ownership on its own,
+// Public "Track Order" lookup (ADR-011) — order_number (12 random
+// base-36 chars, ~4.7e18 space — see OrderNumberService; no longer a
+// ULID) is high-entropy enough to be treated as proof of ownership on its own,
 // same trust model as a courier tracking number. Read-only, but still
 // throttled — a bit looser than checkout/validate since it's not
 // hitting a third-party API, just blunting scraping/enumeration.
@@ -739,6 +745,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/envelopes', [BudgetEnvelopeController::class, 'store']);
         Route::get('/envelopes/export', [BudgetEnvelopeController::class, 'export']);
         Route::post('/envelopes/allocate-monthly-profit', [BudgetEnvelopeController::class, 'allocateMonthlyProfit']);
+        // Rename and/or archive/reactivate — never a hard delete, see UpdateBudgetEnvelopeRequest's own doc comment.
+        Route::patch('/envelopes/{budgetEnvelope}', [BudgetEnvelopeController::class, 'update']);
         Route::get('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'entries']);
         Route::post('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'storeEntry']);
         Route::post('/envelope-entries/{entry}/void', [BudgetEnvelopeController::class, 'voidEntry']);
@@ -984,8 +992,11 @@ Route::middleware('auth:sanctum')->group(function () {
 // enabled at all, per bootstrap/app.php) — bounds the cost of an unsigned
 // flood before signature verification runs, without risking a real gateway
 // retry burst getting throttled. Found absent, fresh audit, 2026-08-14.
+// 120 → 600/min (ADR-048 addendum, 2026-09-29, audit K-5): 120 was within
+// reach of a real promo burst's webhooks plus gateway retries, and
+// OpenWA's traffic all arrives from one localhost IP.
 Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
-    ->middleware('throttle:120,1,webhook-chip')
+    ->middleware('throttle:600,1,webhook-chip')
     ->name('webhooks.chip');
 
 // ADR-069 — Digiflazz async-delivery finalization (the ADR-032
@@ -996,7 +1007,7 @@ Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
 // (ReconcilePendingDeliveriesCommand::checkStalePending) remains the
 // backstop for any missed callback.
 Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle'])
-    ->middleware('throttle:120,1,webhook-digiflazz')
+    ->middleware('throttle:600,1,webhook-digiflazz')
     ->name('webhooks.digiflazz');
 
 // ADR-075 / PR-F build addendum — the Reseller Bot channel's inbound
@@ -1007,7 +1018,7 @@ Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle']
 // Digiflazz's soft/log-only IP check). Same throttle rationale as the
 // webhook routes above.
 Route::post('/webhooks/openwa', [OpenWaWebhookController::class, 'handle'])
-    ->middleware('throttle:120,1,webhook-openwa')
+    ->middleware('throttle:600,1,webhook-openwa')
     ->name('webhooks.openwa');
 
 // ADR-074 — Reseller API channel. Not behind auth:sanctum:

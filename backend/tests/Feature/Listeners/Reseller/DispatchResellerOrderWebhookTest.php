@@ -24,6 +24,12 @@ class DispatchResellerOrderWebhookTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->fakeOutboundDns();
+    }
+
     private function resellerWithWebhook(bool $active = true): Reseller
     {
         $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true]);

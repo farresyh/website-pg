@@ -99,7 +99,10 @@ return [
     'waits' => [
         'redis:revalidation' => 60,
         'redis:orders' => 60,
-        'redis:orders-combo' => 60,
+        'redis:orders-reseller' => 60,
+        // K-4: combo's supervisor runs on `redis-long` — the waits key is
+        // connection-scoped, so `redis:orders-combo` would never match.
+        'redis-long:orders-combo' => 60,
         'redis:price-sync' => 300,
         'redis:backups' => 300,
         'redis:supplier-request-logs' => 300,
@@ -226,11 +229,19 @@ return [
     // override of their own) real retries instead of one shot, closing
     // a silent-drop gap the addendum's own audit found.
     'defaults' => [
+        // ADR-048 addendum (2026-09-29, audit K-1): two lanes — `orders`
+        // (storefront + affiliate) and `orders-reseller` (wallet orders:
+        // portal/API/bot, Order::orderLane()) — one pool, auto-balanced,
+        // at least one worker per lane so neither can starve the other.
         'supervisor-orders' => [
             'connection' => 'redis',
-            'queue' => ['orders'],
-            'balance' => 'off',
-            'maxProcesses' => 1,
+            'queue' => ['orders', 'orders-reseller'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'minProcesses' => 1,
+            'maxProcesses' => 4,
+            'balanceMaxShift' => 1,
+            'balanceCooldown' => 3,
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 128,
@@ -253,8 +264,11 @@ return [
         // own combo branch is leg-idempotent, so a whole-job retry just
         // resumes the not-yet-succeeded legs, never re-submits a
         // already-delivered one.
+        // 2026-09-29 audit K-4: `redis-long` (retry_after 330s) — on
+        // `redis`'s 90s a combo job still mid-legs would be re-handed to a
+        // second worker once maxProcesses > 1.
         'supervisor-orders-combo' => [
-            'connection' => 'redis',
+            'connection' => 'redis-long',
             'queue' => ['orders-combo'],
             'balance' => 'off',
             'maxProcesses' => 1,
@@ -361,8 +375,8 @@ return [
 
     'environments' => [
         'production' => [
-            'supervisor-orders' => ['maxProcesses' => 1],
-            'supervisor-orders-combo' => ['maxProcesses' => 1],
+            'supervisor-orders' => ['maxProcesses' => 4],
+            'supervisor-orders-combo' => ['maxProcesses' => 2],
             'supervisor-price-sync' => ['maxProcesses' => 1],
             'supervisor-revalidation' => ['maxProcesses' => 1],
             'supervisor-backups' => ['maxProcesses' => 1],
@@ -372,7 +386,7 @@ return [
         ],
 
         'local' => [
-            'supervisor-orders' => ['maxProcesses' => 1],
+            'supervisor-orders' => ['maxProcesses' => 2],
             'supervisor-orders-combo' => ['maxProcesses' => 1],
             'supervisor-price-sync' => ['maxProcesses' => 1],
             'supervisor-revalidation' => ['maxProcesses' => 1],

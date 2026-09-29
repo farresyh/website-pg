@@ -4,12 +4,16 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Order\InvalidOrderTransitionException;
+use App\Services\Order\OrderStatusService;
+use App\Services\Order\PaymentStatus;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -62,7 +66,7 @@ final class FulfillOrderJob implements ShouldQueue
         // routes to its own queue/timeout tier (config/horizon.php's
         // supervisor-orders-combo, 300s) instead of supervisor-orders'
         // 60s — sized for one HTTP call.
-        $this->onQueue($order->package?->is_combo ? 'orders-combo' : 'orders');
+        $this->onQueue($order->package?->is_combo ? 'orders-combo' : $order->orderLane());
     }
 
     public function backoff(): array
@@ -99,5 +103,18 @@ final class FulfillOrderJob implements ShouldQueue
     {
         Log::withContext(['order_number' => $this->order->order_number]);
         Log::error('FulfillOrderJob exhausted all retries', ['exception' => $exception->getMessage()]);
+
+        // ADR-102 addendum (2026-09-29, review #2): a paid order that never
+        // got past NotStarted (a data problem — null supplier_product_ref,
+        // an already-compensated order — or repeated worker failure) goes
+        // to NeedsReview, so an admin sees it and the M-4 NotStarted sweep
+        // stops re-dispatching it every 15 minutes forever.
+        DB::transaction(function () {
+            $locked = Order::query()->lockForUpdate()->find($this->order->id);
+
+            if ($locked?->payment_status === PaymentStatus::Paid && $locked->delivery_status === DeliveryStatus::NotStarted) {
+                $locked->update(['delivery_status' => app(OrderStatusService::class)->markNeedsReview($locked->delivery_status)->value]);
+            }
+        });
     }
 }

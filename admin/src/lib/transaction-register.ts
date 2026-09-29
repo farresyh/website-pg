@@ -16,7 +16,15 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
  */
 export interface TransactionRegisterRow {
   date: string;
-  type: "order" | "supplier_transfer" | "supplier_refund" | "voucher_issued" | "supplier_adjustment";
+  type:
+    | "order"
+    | "supplier_transfer"
+    | "supplier_refund"
+    | "voucher_issued"
+    | "supplier_adjustment"
+    | "membership_payment"
+    | "reseller_wallet_topup"
+    | "withdrawal_payout";
   reference: string;
   description: string;
   supplier: string | null;

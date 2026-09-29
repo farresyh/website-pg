@@ -1,5 +1,5 @@
 <x-mail::message>
-# System Alert: Backup Failure
+# System Alert: {{ $heading ?? 'Backup Failure' }}
 
 **Context:** {{ $context }}
 

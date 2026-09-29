@@ -43,6 +43,11 @@ return [
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                // 2026-09-29 audit K-6: Laravel's default is 10s connect /
+                // 30s total — too long to hold the shared `orders` worker
+                // (OrderStatusUpdated's broadcastQueue) when Reverb hangs.
+                'connect_timeout' => 2,
+                'timeout' => 5,
             ],
         ],
 

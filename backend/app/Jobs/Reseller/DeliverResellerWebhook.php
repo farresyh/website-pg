@@ -4,6 +4,7 @@ namespace App\Jobs\Reseller;
 
 use App\Models\ResellerWebhookDelivery;
 use App\Services\Reseller\Webhook\ResellerWebhookService;
+use App\Support\OutboundUrlGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -72,9 +73,30 @@ final class DeliverResellerWebhook implements ShouldQueue
 
         Log::withContext(['reseller_webhook_delivery_id' => $delivery->id, 'event_id' => $delivery->event_id]);
 
+        // Wave 3 S-3: re-checked at send time (DNS may have been repointed
+        // since the URL was saved). Terminal, like a disabled endpoint —
+        // retrying an internal address never becomes safe.
+        $guard = app(OutboundUrlGuard::class);
+        $pinnedIp = $guard->publicAddressFor($webhook->url);
+        if ($pinnedIp === null && $guard->isUnresolvable($webhook->url)) {
+            // 2026-09-29 pre-release review: DNS failure is transient —
+            // normal retry/backoff, not the terminal non-public branch.
+            $delivery->update(['attempts' => $attempt, 'status' => ResellerWebhookDelivery::STATUS_FAILED, 'next_retry_at' => $this->nextRetryAt($attempt)]);
+
+            throw new \RuntimeException("Reseller webhook host for {$webhook->url} did not resolve");
+        }
+        if ($pinnedIp === null) {
+            $delivery->update(['attempts' => $attempt, 'status' => ResellerWebhookDelivery::STATUS_FAILED, 'next_retry_at' => null]);
+            Log::warning('Reseller webhook URL resolves to a non-public address; not sent', ['url' => $webhook->url]);
+
+            return;
+        }
+
         try {
             $response = Http::timeout(10)
                 ->connectTimeout(5)
+                ->withoutRedirecting()
+                ->withOptions(['curl' => [CURLOPT_RESOLVE => [$this->resolveEntry($webhook->url, $pinnedIp)]]])
                 ->withBody($rawBody, 'application/json')
                 ->withHeaders([
                     'X-Hub-Signature-256' => ResellerWebhookService::sign($webhook->secret, $rawBody),
@@ -130,6 +152,15 @@ final class DeliverResellerWebhook implements ShouldQueue
             'reseller_webhook_delivery_id' => $this->deliveryId,
             'exception' => $e->getMessage(),
         ]);
+    }
+
+    /** `host:port:ip` — pins curl to the address OutboundUrlGuard approved. */
+    private function resolveEntry(string $url, string $ip): string
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        $port = parse_url($url, PHP_URL_PORT) ?? 443;
+
+        return "{$host}:{$port}:".(str_contains($ip, ':') ? "[{$ip}]" : $ip);
     }
 
     /** null once the last attempt is spent — nothing more is scheduled. */

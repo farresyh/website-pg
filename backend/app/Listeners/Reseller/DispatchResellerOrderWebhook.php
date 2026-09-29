@@ -24,15 +24,15 @@ use Illuminate\Contracts\Queue\ShouldQueue;
  * is what collapses `OrderObserver`'s noisy multi-write stream into at
  * most one delivery per (order, event).
  *
- * Queued on the `orders` queue `OrderStatusUpdated` itself broadcasts on
- * — the dispatcher does no external I/O (it only writes a row and queues
+ * Queued on `default`, the queue `OrderStatusUpdated` itself broadcasts on
+ * (ADR-048 addendum, 2026-09-29 — was `orders`) — the dispatcher does no external I/O (it only writes a row and queues
  * `DeliverResellerWebhook` on the isolated `reseller-webhooks` queue), so
  * it never meaningfully delays that queue.
  */
 final class DispatchResellerOrderWebhook implements ShouldQueue
 {
     /** @var string Match OrderStatusUpdated::broadcastQueue(). */
-    public $queue = 'orders';
+    public $queue = 'default';
 
     public function __construct(private readonly ResellerWebhookDispatcher $dispatcher) {}
 

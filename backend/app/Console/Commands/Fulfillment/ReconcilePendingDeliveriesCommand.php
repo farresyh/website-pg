@@ -6,9 +6,12 @@ use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
+use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
+use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -60,11 +63,12 @@ use Illuminate\Support\Facades\Log;
 #[Description('Retry ambiguously-stuck deliveries once, and flag genuinely unresolvable ones for manual review.')]
 class ReconcilePendingDeliveriesCommand extends Command
 {
-    public function handle(OrderStatusService $orderStatus): int
+    public function handle(OrderStatusService $orderStatus, OrderFulfillmentService $fulfillment): int
     {
         $staleAfterMinutes = (int) config('services.delivery_reconciliation.stale_after_minutes');
 
-        $this->retryStuckProcessing($staleAfterMinutes);
+        $this->retryStuckProcessing($staleAfterMinutes, $orderStatus, $fulfillment);
+        $this->retryStuckNotStarted($staleAfterMinutes);
         $this->flagStaleDuplicateReferences($staleAfterMinutes, $orderStatus);
         $this->reclassifyConfirmedFailedNeedsReview($orderStatus);
         $this->checkStalePending($orderStatus);
@@ -73,23 +77,89 @@ class ReconcilePendingDeliveriesCommand extends Command
     }
 
     /**
-     * Gap X. No row-locking needed here — dispatching a job doesn't
-     * mutate the row itself; FulfillOrderJob->fulfill() does its own
-     * lockForUpdate() exactly as a fresh delivery attempt would.
+     * Gap X, reworked by the ADR-102 addendum (2026-09-29, review #3).
+     * Since M-1 commits Processing just before the supplier call, a stale
+     * Processing order with no supplier_ref means the worker died mid-call
+     * (timeout SIGKILL, OOM) — the outcome is genuinely unknown. The old
+     * re-dispatch could never succeed (startDelivery() rejects Processing),
+     * so: a plain order on a supplier that replays a known reference goes
+     * to Pending and is polled with that same reference; anything else
+     * (another supplier, a combo mid-legs) goes to NeedsReview.
      */
-    private function retryStuckProcessing(int $staleAfterMinutes): void
+    private function retryStuckProcessing(int $staleAfterMinutes, OrderStatusService $orderStatus, OrderFulfillmentService $fulfillment): void
     {
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Processing->value)
             ->whereNull('supplier_ref')
             ->where('updated_at', '<=', now()->subMinutes($staleAfterMinutes))
+            ->with(['supplier', 'package'])
             ->get();
 
-        $this->info("Retrying {$orders->count()} stuck-processing delivery(ies)...");
+        $this->info("Recovering {$orders->count()} stuck-processing delivery(ies)...");
+
+        foreach ($orders as $order) {
+            $parked = DB::transaction(function () use ($order, $orderStatus) {
+                $locked = Order::query()->lockForUpdate()->find($order->id);
+
+                if ($locked === null || $locked->delivery_status !== DeliveryStatus::Processing) {
+                    return false;
+                }
+
+                $replaySafe = ! $order->package?->is_combo
+                    && SupplierAdapterFactory::resubmitReplaysOutcome((string) $order->supplier?->slug);
+
+                $locked->update($replaySafe
+                    ? [
+                        'delivery_status' => $orderStatus->markPending($locked->delivery_status)->value,
+                        'supplier_response' => ['error_message' => 'Worker stopped mid-delivery', 'auto_recovery' => OrderFulfillmentService::AUTO_RECOVERY_NOTE],
+                    ]
+                    : ['delivery_status' => $orderStatus->markNeedsReview($locked->delivery_status)->value]);
+
+                Log::withContext(['order_number' => $locked->order_number]);
+                Log::warning($replaySafe
+                    ? 'Delivery reconciliation: stuck-processing order parked at Pending for a same-reference poll'
+                    : 'Delivery reconciliation: stuck-processing order flagged for review');
+
+                return $replaySafe;
+            });
+
+            if ($parked) {
+                $fulfillment->scheduleRecoveryPoll($order->fresh());
+            }
+        }
+    }
+
+    /**
+     * 2026-09-28 audit finding M-4: a paid order can be left stuck at
+     * delivery_status=not_started with no automatic recovery and no
+     * admin visibility — every FulfillOrderJob attempt exhausted its
+     * tries (a genuine data problem, e.g. a missing
+     * supplier_product_ref, throws OrderFulfillmentException from
+     * fulfill()'s own guard checks, BEFORE phase 1 ever commits
+     * Processing — never caught by fulfill()'s own NeedsReview-routing
+     * catch, since that only wraps phase 2), or the job was queued but
+     * never actually ran (a worker outage). Same shape as
+     * retryStuckProcessing() above, at the earlier NotStarted state —
+     * re-dispatching is safe (M-1's fix means phase 1 will regenerate
+     * and durably persist a reference this time, and a repeat failure
+     * now correctly routes to NeedsReview/Failed via M-1/M-3's fixes,
+     * both already surfaced on the existing admin KPI cards, rather
+     * than silently repeating the same stuck state).
+     */
+    private function retryStuckNotStarted(int $staleAfterMinutes): void
+    {
+        $orders = Order::query()
+            ->where('payment_status', PaymentStatus::Paid->value)
+            ->where('delivery_status', DeliveryStatus::NotStarted->value)
+            ->where('is_test', false)
+            ->where('updated_at', '<=', now()->subMinutes($staleAfterMinutes))
+            ->get();
+
+        $this->info("Retrying {$orders->count()} stuck-not-started delivery(ies)...");
 
         foreach ($orders as $order) {
             Log::withContext(['order_number' => $order->order_number]);
-            Log::info('Delivery reconciliation: re-dispatching stuck-processing order');
+            Log::warning('Delivery reconciliation: re-dispatching a paid order stuck at not_started');
 
             FulfillOrderJob::dispatch($order);
         }
@@ -214,6 +284,7 @@ class ReconcilePendingDeliveriesCommand extends Command
     {
         $defaultStaleMinutes = (int) config('services.delivery_reconciliation.pending_stale_minutes');
         $defaultMaxAgeDays = (int) config('services.delivery_reconciliation.max_reconcile_age_days');
+        $defaultMaxHours = (int) config('services.delivery_reconciliation.pending_max_hours');
 
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Pending->value)
@@ -227,8 +298,13 @@ class ReconcilePendingDeliveriesCommand extends Command
             $apiConfig = $supplier?->api_config ?? [];
             $staleMinutes = $apiConfig['pending_stale_minutes'] ?? $defaultStaleMinutes;
             $maxAgeDays = $apiConfig['max_reconcile_age_days'] ?? $defaultMaxAgeDays;
+            $maxHours = $apiConfig['pending_max_hours'] ?? $defaultMaxHours;
 
-            if ($order->created_at->lte(now()->subDays($maxAgeDays))) {
+            // ADR-102 addendum (2026-09-29): also age out a Pending order
+            // that hasn't moved in `pending_max_hours` — updated_at marks
+            // entry into Pending, since a still-Pending/ambiguous poll never
+            // writes to the order.
+            if ($order->created_at->lte(now()->subDays($maxAgeDays)) || $order->updated_at->lte(now()->subHours($maxHours))) {
                 DB::transaction(function () use ($order, $orderStatus) {
                     $locked = Order::query()->lockForUpdate()->find($order->id);
 
@@ -246,7 +322,7 @@ class ReconcilePendingDeliveriesCommand extends Command
                         ->update(['status' => DeliveryStatus::NeedsReview->value]);
 
                     Log::withContext(['order_number' => $locked->order_number]);
-                    Log::warning('Delivery reconciliation: Pending order too old to safely re-poll, flagged for review');
+                    Log::warning('Delivery reconciliation: Pending order too old to re-poll, or stuck past the pending window — flagged for review');
                 });
 
                 continue;

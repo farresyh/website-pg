@@ -47,6 +47,27 @@ class HorizonQueueCoverageTest extends TestCase
         }
     }
 
+    /**
+     * 2026-09-29 audit K-4: a job still running when its connection's
+     * retry_after lapses is handed to a second worker — a double supplier
+     * call once maxProcesses > 1. retry_after is applied by the popping
+     * worker's connection, so each supervisor's own connection must
+     * outlast its timeout.
+     */
+    public function test_every_supervisor_timeout_is_shorter_than_its_connection_retry_after(): void
+    {
+        foreach (config('horizon.defaults') as $name => $supervisor) {
+            $retryAfter = config("queue.connections.{$supervisor['connection']}.retry_after");
+
+            $this->assertGreaterThan($supervisor['timeout'], $retryAfter, "`{$name}` timeout {$supervisor['timeout']}s must be < its connection's retry_after");
+        }
+    }
+
+    public function test_the_reseller_order_lane_is_supervised(): void
+    {
+        $this->assertContains('orders-reseller', $this->supervisedQueues());
+    }
+
     public function test_send_membership_receipt_job_lands_on_a_supervised_queue(): void
     {
         $queue = (new SendMembershipReceiptJob(1, 'subscription', 100))->queue ?? 'default';
@@ -54,20 +75,21 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertContains($queue, $this->supervisedQueues());
     }
 
-    public function test_reseller_bot_order_notification_is_pinned_to_the_orders_queue(): void
+    /** ADR-048 addendum (2026-09-29): notifications moved off the order lanes. */
+    public function test_reseller_bot_order_notification_is_pinned_to_the_default_queue(): void
     {
         $listener = new SendResellerBotOrderNotification(app(OpenWaClient::class));
 
-        $this->assertSame('orders', $listener->queue);
+        $this->assertSame('default', $listener->queue);
         $this->assertContains($listener->queue, $this->supervisedQueues());
     }
 
     /** E8 hardening: OpenWaClient::sendText() now dispatches this job instead of calling out inline. */
-    public function test_send_reseller_bot_reply_job_is_pinned_to_the_orders_queue(): void
+    public function test_send_reseller_bot_reply_job_is_pinned_to_the_default_queue(): void
     {
         $job = new SendResellerBotReplyJob('chat-1', 'hello');
 
-        $this->assertSame('orders', $job->queue);
+        $this->assertSame('default', $job->queue);
         $this->assertContains($job->queue, $this->supervisedQueues());
     }
 }

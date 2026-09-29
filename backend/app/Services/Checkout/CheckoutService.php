@@ -21,6 +21,7 @@ use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
 use App\Services\Voucher\VoucherService;
 use App\Support\StorefrontBrand;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -116,8 +117,15 @@ final class CheckoutService
                 playerId: $request->playerId,
                 serverId: $request->serverId,
                 affiliateId: $request->affiliateId,
-                paymentStatus: $fullyCoveredByVoucher ? PaymentStatus::Paid : PaymentStatus::Pending,
-                paidAt: $fullyCoveredByVoucher ? now() : null,
+                // M-6, 2026-09-29 audit: a full-cover order used to be
+                // stamped Paid right here, before the voucher's own
+                // redeem() lock ever ran — settleWithVoucher() below is
+                // now the real commit checkpoint (mirrors decision #1's
+                // "lock only after the gateway confirms success", with
+                // redeem() itself standing in for the gateway since a
+                // full-cover order never calls one).
+                paymentStatus: PaymentStatus::Pending,
+                paidAt: null,
                 paymentMethod: $request->paymentMethod,
                 gameId: $request->gameId,
                 packageId: $request->packageId,
@@ -175,6 +183,19 @@ final class CheckoutService
      * involved, confirmed to never collide with
      * ReconcilePendingPaymentsCommand (its own query only ever selects
      * payment_status=pending, never Paid).
+     *
+     * M-6, 2026-09-29 audit (ADR-024 addendum): `redeem()` is this
+     * branch's real commit checkpoint, unlike the accepted residual
+     * race `requestPayment()` below still logs-and-proceeds through —
+     * there, real money (or a real gateway payment request) already
+     * exists by the time `redeem()` could lose, so ADR-004 forbids
+     * clawing it back. Here, nothing has moved yet: the Order is still
+     * Pending and `FulfillOrderJob` hasn't been dispatched, so a lost
+     * race can — and must — fail the checkout outright instead of
+     * shipping real goods for an unpaid, unbacked order. Otherwise N
+     * concurrent requests citing the same exactly-covering voucher
+     * would each pass `preview()` and each get fulfilled, repeatably,
+     * bounded only by how many an attacker sends.
      */
     private function settleWithVoucher(Order $order, VoucherPreview $voucherPreview): Order
     {
@@ -188,8 +209,20 @@ final class CheckoutService
                 $order->affiliate_id,
             );
         } catch (InvalidVoucherException $e) {
-            $this->logAcceptedVoucherRedemptionRace($order, $e);
+            $order->update(['payment_status' => PaymentStatus::Failed->value]);
+
+            Log::error('Full-cover checkout lost the voucher-redemption race', [
+                'order_number' => $order->order_number,
+                'voucher_id' => $voucherPreview->voucherId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new CheckoutFailedException(
+                "This voucher is no longer available for order {$order->order_number} — its balance was just used by another order.",
+            );
         }
+
+        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
 
         $this->decrementMembershipQuotaIfApplicable($order);
 
@@ -198,7 +231,59 @@ final class CheckoutService
         return $order->fresh();
     }
 
+    /**
+     * M-7, 2026-09-29 audit: two concurrent calls for the same Order
+     * (double-click retry, two tabs, a client-side timeout retry racing
+     * the still-in-flight first attempt) used to both read
+     * payment_ref===null and both call $gateway->createPayment() — CHIP's
+     * own reference-dedupe behaviour is unconfirmed (see the comment on
+     * initiate() above), so this could mint two live purchases for one
+     * order; whichever update() committed last silently discarded the
+     * other's payment_request_id, orphaning it (unpayable back to this
+     * order once ChipWebhookController's strict payment_ref match misses).
+     * Locked and re-checked exactly like OrderFulfillmentService's own
+     * defense-in-depth pattern, at the cost of holding this lock across
+     * the live gateway call — deliberately different from initiate()'s
+     * own "never wrap the gateway call in a transaction" rule above,
+     * which is about not risking a rolled-back Order INSERT; this Order
+     * already exists and is already committed, so a transaction failure
+     * here only reproduces the pre-existing "stuck at Pending, retryable"
+     * failure mode, never a worse one. A retry-storm on this path isn't
+     * expected (a customer-facing single-order retry, not a queued job),
+     * so the held-lock cost is accepted rather than building a separate
+     * reservation column.
+     */
     private function requestPayment(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
+    {
+        [$order, $created] = DB::transaction(function () use ($order, $gateway, $channelCode, $channelProperties) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            // 2026-09-29 pre-release review: a full-cover-by-voucher order
+            // (final_amount 0) never has a gateway leg — since M-6 it can
+            // sit at Pending/Failed with payment_ref null, and a replayed
+            // idempotency key must not send it to CHIP as a RM0 purchase.
+            if ($locked->payment_ref !== null || $locked->final_amount === 0) {
+                return [$locked, false];
+            }
+
+            return [$this->createPaymentFor($locked, $gateway, $channelCode, $channelProperties), true];
+        });
+
+        // 2026-09-29 pre-release review: reservations run AFTER payment_ref
+        // commits, never in its transaction — an unexpected failure in the
+        // voucher/quota lock (lock-wait timeout, deadlock) used to roll back
+        // payment_ref too, orphaning a live CHIP purchase the webhook's
+        // strict payment_ref match could never find. `$created` is only
+        // true for the one request that won the lock above, so this still
+        // runs at most once per order.
+        if ($created) {
+            $this->reserveVoucherAndQuota($order);
+        }
+
+        return $order->fresh();
+    }
+
+    private function createPaymentFor(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
     {
         // The storefront can't put order_number in the return URLs it
         // sends with the checkout request — it doesn't have one yet at
@@ -255,6 +340,11 @@ final class CheckoutService
             'payment_ref' => $payment->data['payment_request_id'] ?? null,
         ]);
 
+        return $order;
+    }
+
+    private function reserveVoucherAndQuota(Order $order): void
+    {
         // ADR-024 decision #1: the voucher lock happens here, after the
         // gateway has confirmed a real, redirectable payment request
         // exists — never before creating the Order or before this
@@ -280,8 +370,6 @@ final class CheckoutService
         }
 
         $this->decrementMembershipQuotaIfApplicable($order);
-
-        return $order->fresh();
     }
 
     /**

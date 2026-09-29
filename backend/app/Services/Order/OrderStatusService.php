@@ -62,12 +62,17 @@ final class OrderStatusService
      * ADR-032 decision 6 adds a third: a Pending order too old to
      * safely re-poll (Digiflazz's 90-day re-submit rule) is flagged
      * here too, rather than left polling forever or silently dropped.
+     *
+     * ADR-102 addendum (2026-09-29) adds NotStarted: a paid order whose
+     * delivery never began — a late Paid after a Failed payment, or
+     * FulfillOrderJob exhausting its tries on a data problem — must be
+     * able to reach the review queue instead of sitting invisible.
      */
     public function markNeedsReview(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
     {
-        if (! in_array($currentDeliveryStatus, [DeliveryStatus::Processing, DeliveryStatus::Failed, DeliveryStatus::Pending], true)) {
+        if (! in_array($currentDeliveryStatus, [DeliveryStatus::NotStarted, DeliveryStatus::Processing, DeliveryStatus::Failed, DeliveryStatus::Pending], true)) {
             throw new InvalidOrderTransitionException(
-                "Cannot mark needs review: delivery_status is {$currentDeliveryStatus->value}, must be processing, failed, or pending",
+                "Cannot mark needs review: delivery_status is {$currentDeliveryStatus->value}, must be not_started, processing, failed, or pending",
             );
         }
 

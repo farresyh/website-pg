@@ -51,6 +51,9 @@ const typeSeverity: Record<TransactionRegisterRow["type"], "info" | "success" | 
   supplier_refund: "warn",
   voucher_issued: "secondary",
   supplier_adjustment: "secondary",
+  membership_payment: "info",
+  reseller_wallet_topup: "success",
+  withdrawal_payout: "warn",
 };
 
 const typeLabel: Record<TransactionRegisterRow["type"], string> = {
@@ -59,6 +62,9 @@ const typeLabel: Record<TransactionRegisterRow["type"], string> = {
   supplier_refund: "Supplier refund",
   voucher_issued: "Voucher issued",
   supplier_adjustment: "Supplier adjustment",
+  membership_payment: "Membership payment",
+  reseller_wallet_topup: "Reseller wallet top-up",
+  withdrawal_payout: "Withdrawal payout",
 };
 
 function formatRm(sen: number | null): string {

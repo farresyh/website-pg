@@ -40,7 +40,13 @@ final class SqlGuard
         'GRANT', 'REVOKE', 'ATTACH', 'DETACH', 'PRAGMA', 'REPLACE', 'MERGE',
         'CALL', 'EXEC', 'EXECUTE', 'VACUUM', 'LOAD_FILE', 'OUTFILE', 'DUMPFILE',
         'INFORMATION_SCHEMA', 'SLEEP', 'BENCHMARK',
+        // MySQL 8's `TABLE t` statement reads a whole table and is legal
+        // inside a subquery, with no FROM/JOIN for the table check to see.
+        'TABLE',
     ];
+
+    /** Keywords that end a FROM clause's table list at the same paren depth. */
+    private const FROM_CLAUSE_TERMINATORS = ['WHERE', 'GROUP', 'HAVING', 'ORDER', 'LIMIT', 'UNION', 'WINDOW', 'SELECT'];
 
     /**
      * Validates `$sql` and returns it with the row-limit cap applied
@@ -82,7 +88,23 @@ final class SqlGuard
             }
         }
 
-        if (! preg_match_all('/\b(?:FROM|JOIN)\s+`?([a-zA-Z_][a-zA-Z0-9_]*)`?/i', $trimmed, $matches)) {
+        // Wave 3 S-2: everything below assumes each table reference is a
+        // plain `FROM t` / `JOIN t`. Reject the shapes that reach a table
+        // without one — a comment as the separator, a parenthesised table
+        // name, a comma join — rather than try to parse them.
+        if (preg_match('~/\*|--|#~', $trimmed)) {
+            throw new UnsafeSqlException('SQL comments are not allowed.');
+        }
+
+        if (preg_match('/\b(?:FROM|(?:STRAIGHT_)?JOIN)\s*\(\s*(?!select\b|with\b)/i', $trimmed)) {
+            throw new UnsafeSqlException('Parenthesised table references are not allowed; use a plain table name or a subquery.');
+        }
+
+        if ($this->hasCommaJoin($trimmed)) {
+            throw new UnsafeSqlException('Comma joins are not allowed; use an explicit JOIN.');
+        }
+
+        if (! preg_match_all('/\b(?:FROM|(?:STRAIGHT_)?JOIN)(?:\s+|(?=`))`?([a-zA-Z_][a-zA-Z0-9_]*)`?/i', $trimmed, $matches)) {
             throw new UnsafeSqlException('Query has no FROM clause.');
         }
 
@@ -100,6 +122,40 @@ final class SqlGuard
         }
 
         return $this->capRowLimit($trimmed, $rowLimit);
+    }
+
+    /**
+     * A comma at the same paren depth as a FROM, before that FROM's
+     * clause ends, is a comma join — the table after it has no FROM/JOIN
+     * in front of it. Tracked per depth so a derived table's own inner
+     * FROM, or a function's argument list, doesn't confuse the outer one.
+     */
+    private function hasCommaJoin(string $sql): bool
+    {
+        $sql = preg_replace("/'(?:[^'\\\\]|\\\\.)*'|\"(?:[^\"\\\\]|\\\\.)*\"/", "''", $sql);
+        preg_match_all('/[(),]|[A-Za-z_]+/', $sql, $tokens);
+
+        $depth = 0;
+        $inFrom = [];
+        foreach ($tokens[0] as $token) {
+            $upper = strtoupper($token);
+            if ($token === '(') {
+                $depth++;
+            } elseif ($token === ')') {
+                unset($inFrom[$depth]);
+                $depth--;
+            } elseif ($token === ',') {
+                if ($inFrom[$depth] ?? false) {
+                    return true;
+                }
+            } elseif ($upper === 'FROM') {
+                $inFrom[$depth] = true;
+            } elseif (in_array($upper, self::FROM_CLAUSE_TERMINATORS, true)) {
+                $inFrom[$depth] = false;
+            }
+        }
+
+        return false;
     }
 
     /**

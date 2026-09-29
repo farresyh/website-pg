@@ -736,6 +736,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork asset itself still placeholder. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin-side live verification still owed | ADR-062–065, 071, 077–079, 089, 090, 109 |
 | Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file | ADR-083, ADR-110 |
+| Balance / Wallet Visibility | 🟢 Part A built 2026-09-28 — standalone `/admin/balance` (deliberately not nested under Accounting — a Commerce-level item, since Part B grows it into operational monitoring, not bookkeeping): live-refreshable supplier balance per supplier + every Reseller's prepaid wallet balance (total + per-row), zero new backend, reuses ADR-046/073. Part B (learned "comfortable buffer" forecast, factoring supplier top-up lag) parked — not yet grilled | ADR-046, ADR-073 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
 TailAdmin primitive in `admin/` migrated or deleted; `RichTextEditor` is the one
@@ -1142,6 +1143,16 @@ accepted state, not a gap to chase. See §14.
     Turbopack crash at once) as its own separately-scoped piece of work,
     not a one-line flag swap. Back to unstarted — see `docs/build-log.md`'s
     2026-09-28 entry for the full investigation.
+28. **Supplier balance comfortable-buffer forecast — [ADR-115](./adr.md),
+    fully designed + grilled, build deliberately parked.** Digiflazz-only,
+    rolling lead-time-window-sum percentile (not a flat daily rate — a
+    real Friday MLBB-event spend pattern would otherwise be
+    underestimated), 2-day lead time, IDR+MYR side by side, info-only
+    (Balance page detail + a Dashboard chip mirroring the existing
+    funding-drift chip), cold-start falls back to the founder's own
+    manual threshold. No automatic trigger to start building — the
+    founder will say when, typically once real (non-testing) order
+    volume exists.
 
 ## 2026-09-26 money-critical branch audit — punch list, mostly built
 
@@ -1337,8 +1348,8 @@ items 39/40 (founder yes/no, not a grill).
     clean, real-browser-verified. See `docs/adr.md`'s ADR-083 2026-09-28
     addendum and `docs/build-log.md`'s matching entry.
 ~~42. **Envelope Ledger + Transaction Register/System Health completeness**~~
-    — **grilled + BUILT 2026-09-28** (`feature/2026-09-28-adr083-envelope-
-    ledger-and-register-gaps`, off `staging`, not yet merged). Re-grills
+    — **grilled + BUILT 2026-09-28, 🟢 LIVE PROD** (PR #304 → `staging`,
+    released `staging`→`main` same day via PR #305). Re-grills
     ADR-083 decision 11 ("the platform does not model equity, capital or
     drawings") after the founder actually tried Bukku's free trial and
     found it mismatched to this business (inventory/fixed assets/SST/50+
@@ -1361,6 +1372,338 @@ items 39/40 (founder yes/no, not a grill).
     bug found and fixed: a missing entries-list refresh after Allocate).
     See `docs/adr.md`'s second ADR-083 2026-09-28 addendum and
     `docs/build-log.md`'s matching entry.
+~~43. **Envelope Ledger clarity fixes**~~ — **grilled + BUILT 2026-09-28**
+    (`fix/2026-09-28-envelope-ledger-clarity-fixes`, off `staging`, not yet
+    merged). Six real gaps, every one surfaced by the founder actually
+    using item 42's screens the day they went live: rename/archive an
+    envelope (never a hard delete — a used envelope is DB-protected
+    anyway), a Money In/Out badge for every category (not just
+    Adjustment), a soft over-estimate warning on Allocate Monthly Profit
+    (a rough, explicitly-unaudited P&L figure — never a hard block, never
+    reopens the "no real net profit figure" decision), a Transaction
+    Register frontend type-label gap that would have shown blank badges
+    for the 3 new row types live in production, a CSV void-status column
+    on the Envelope Ledger export, and Monthly Summary tooltips + a
+    redirect banner to Reports → Profit Analysis (plus a real, separate
+    `InfoTooltip` left-edge-clipping bug found and fixed along the way).
+    Backend 2313/2313, frontend clean, real-browser-verified twice. See
+    `docs/adr.md`'s second ADR-083 2026-09-28 addendum (decisions
+    2/4/7/10/11) and `docs/build-log.md`'s matching entry.
+
+## 2026-09-29 full system audit — money/security/burst, all channels, 28 findings across 5 fix waves
+
+Founder-requested fresh, from-scratch read-only audit (not triggered by an
+incident — no external customers exist yet, see item 24's sibling note and
+`docs/build-log.md`'s 2026-09-29 entry) covering money flow (checkout,
+wallets, ledgers), security, and burst-traffic stability across every
+channel (direct storefront, affiliate whitelabel, reseller portal/API/bot).
+Five scopes ran as parallel background agents, cross-checked against
+`docs/adr.md`/this file before reporting anything as new, then every
+Critical/High finding was independently re-verified against the real code by
+hand. **Full narrative report (severity write-ups, code evidence, burst
+walk-through, channel-impact table):**
+`https://claude.ai/artifact/8WNoEKiD6A4BDpq7op6g7F` — a private Claude.ai
+link, not guaranteed durable; the list below is self-contained (every
+finding + its file reference) so this backlog entry doesn't depend on that
+link staying alive. Findings are labeled **M-** (money), **S-** (security),
+**K-** (stability/burst) matching the artifact's own numbering.
+
+44. ~~**Wave 1 — the 2 Critical + 2 High findings that can duplicate or
+    strand a delivery/credit under real supplier/webhook conditions.**~~ —
+    **🟢 BUILT 2026-09-29, merged to `staging`** (PR #309,
+    `fix/2026-09-29-fulfillment-critical-audit`). All root-cause bugfixes
+    restoring an already-documented invariant, no grill needed:
+    - **M-2 (Critical)** — `ResellerWalletService::completeTopup()` had no
+      row lock, so the CHIP webhook and the 15-minute reconcile backstop
+      could both credit the same top-up. Fixed with `lockForUpdate()`.
+    - **M-1 (Critical)** — `OrderFulfillmentService::fulfill()`'s
+      single-package path generated `reference_number` inside the same
+      transaction as the supplier call; a thrown exception (a real
+      timeout) rolled the reference back too, so a retry minted a new one
+      and could deliver the order twice. Split into the same two-phase
+      shape combo legs already use. Corrected a wrong claim in ADR-094's
+      2026-09-15 addendum (new ADR-094 addendum recorded).
+    - **M-3 (High)** — an ambiguous supplier response (circuit breaker
+      open, a real 5xx, an unparseable response) was finalized as a
+      *confirmed* Failed, both at `createOrder()` time and in the
+      scheduled reconcile poll — exactly what a real outage produces.
+      Fixed at the adapter source (`CircuitBreakingSupplierAdapter`,
+      `DigiflazzAdapter`, `GamevionAdapter`) and in
+      `SupplierDeliveryCheckService`'s poll path (now stays Pending and
+      retries automatically instead of finalizing).
+    - **M-4 (High)** — a paid order could be stranded with zero admin
+      visibility: (a) `delivery_status=not_started` had no reconcile
+      sweep — `ReconcilePendingDeliveriesCommand::retryStuckNotStarted()`
+      added; (b) `ChipWebhookController` dispatched fulfillment
+      unconditionally on any Paid event, including a late one for an
+      order already compensated (voucher restored) — now flags
+      NeedsReview instead.
+    Proven test-first (red→green), full fast suite 2324/2324, concurrency
+    suite 22/22 (checked 3x locally + CI's own `backend-concurrency` job).
+    See `docs/build-log.md`'s 2026-09-29 entry.
+
+45. **Wave 2 — compensation/checkout races (Medium, still money).**
+    **🟢 all 5 findings BUILT 2026-09-29.** M-5/M-7/M-8/M-9 merged to
+    `staging` via PR #311 (`fix/2026-09-29-wave2-compensation-races`).
+    M-6 grilled separately (revisits ADR-024, see its 2026-09-29
+    addendum), merged to `staging` via PR #313. Test-first throughout. Full fast
+    suite **2334/2334** green, concurrency suite **24/24** green. Also
+    fixed, mid-PR-#311: a genuinely pre-existing `SupplierControllerTest`
+    bug (missing fake adapter bind → a live network call to
+    `api.gamevion.com` on every CI run, timing out) unrelated to this
+    Wave, caught because it was failing PR #311's CI.
+    - ~~**M-5**~~ — `Admin\OrderController::refundToWallet()` and
+      `Admin\VoucherController::storeFromOrder()` didn't call
+      `isAlreadyCompensated()` and didn't re-check `delivery_status`
+      inside their lock. Fixed by re-deriving both from the locked row,
+      same defense-in-depth `OrderFulfillmentService::fulfill()` already
+      uses. Founder-prompted follow-up (2026-09-29): `storeFromOrder()`
+      also had no backend-level guard against a wallet-owned order at
+      all — ADR-073 decision 7's "refundToWallet() replaces Issue
+      Voucher entirely for a wallet order" was only enforced by the
+      admin UI hiding the button, never by the endpoint itself. Added a
+      `wallet_reseller_id !== null` guard rejecting the call outright,
+      which made the in-lock `isAlreadyRefundedToWallet()` re-check
+      unreachable/dead code (that field is set once at order creation,
+      never after) — removed it rather than leave it as dead
+      defense-in-depth.
+    - ~~**M-6**~~ — `CheckoutService::settleWithVoucher()`'s full-voucher-
+      cover race (ADR-024's accepted residual race) could give away free
+      goods repeatedly since no payment moved in that branch — ADR-024's
+      own "customer already paid" rationale didn't cover it. Fixed by
+      making `VoucherService::redeem()` the full-cover branch's real
+      commit checkpoint (order created `Pending`, flips to `Paid` only
+      after `redeem()` succeeds; flips to `Failed` with a customer-facing
+      error if it loses the race) — see ADR-024's 2026-09-29 addendum.
+      Proven with a new `CheckoutSettleWithVoucherConcurrencyTest` (two
+      real OS processes racing the same exactly-covering voucher),
+      manually verified red (both sides won, voucher double-spent)
+      against the pre-fix code, green against the fix, 3x each.
+    - ~~**M-7**~~ — `CheckoutController`/`CheckoutService::resume()`
+      double-submit could create two CHIP purchases for one order,
+      orphaning whichever one lost the `payment_ref` write race. Fixed
+      by wrapping `requestPayment()` in `Order::lockForUpdate()`,
+      re-checking `payment_ref !== null` before ever calling the
+      gateway — deliberately holding the lock across the live CHIP call,
+      unlike `initiate()`'s own "never wrap the gateway call in a
+      transaction" rule (that rule protects against a rolled-back Order
+      *INSERT*; here the Order already exists and is already committed,
+      so a transaction failure only reproduces the pre-existing
+      "stuck at Pending, retryable" failure mode). Proven with a new
+      `CheckoutResumeConcurrencyTest` (two real OS processes racing
+      `resume()` on the same order) — verified red (gateway called
+      twice) against the unlocked code, green (called once) against the
+      fix.
+    - ~~**M-8**~~ — `ResellerCatalogService::resolveByCode()` had no
+      `Game.is_active` check. One-line fix.
+    - ~~**M-9**~~ — `MembershipQuotaService` had no `restore()`. Added,
+      mirroring `VoucherService::restore()`'s reserved/restored
+      idempotency pattern (`membership_quota_debits.restored_at`,
+      migration `2026_09_29_121358`), wired into both give-back triggers
+      `VoucherService::restore()` already uses
+      (`ChipWebhookController`'s Failed branch,
+      `PaymentReconciliationService::markFailed()`). One extra guard
+      beyond the voucher analogue: a debit from before the membership's
+      current `cycle_started_at` (ADR-027's 30-day quota refill) is a
+      no-op, not credited — a stale debit landing after the cycle
+      already refilled quota would over-grant past the plan's cap.
+
+46. **Wave 3 — security (all S findings + Low security hardening).**
+    **S-1/S-2/S-3 🟢 BUILT 2026-09-29** (PR-A #314, merged). **PR-B
+    (`fix/2026-09-29-wave3-low-security`) 🟢 BUILT 2026-09-29:** OTP
+    per-IP limit + atomic attempt counter, per-account login lockout,
+    Reseller API failed-auth limit, ULID comment (ADR-019 addendum).
+    Impersonation scope/attribution was **closed by founder decision
+    (won't-fix, see the ADR-058 addendum)**. Still open: MFA (item 10) and
+    the `doadmin` finding below, which is deferred.
+    - ~~**S-1 (Medium)**~~ — affiliate `store_name` wasn't escaped in the
+      storefront's JSON-LD — stored XSS. Fixed via `jsonLdHtml()`.
+    - ~~**S-2 (Medium)**~~ — `SqlGuard`'s table allow-list had 7 bypasses
+      (comma join + 6 more found writing the red tests). All rejected now
+      (ADR-087 addendum). The scoped `report_assistant` MySQL user was
+      **provisioned in prod 2026-09-29** (`SELECT` on the three
+      `llm_report_*` views only; verified that `admin_users`/`orders`/
+      `reseller_api_keys` are denied with 1142).
+    - **New, found while provisioning (Low→Medium, not yet fixed):** the
+      app's main connection in prod runs as **`doadmin`**, the DO managed
+      MySQL superuser (`CREATE USER`, `DROP`, `GRANT OPTION` on `*.*`).
+      Any future SQL-injection-class bug would get full DB-admin power.
+      Fix: a dedicated app user with DML + DDL on `defaultdb` only (DDL
+      is still needed for `migrate --force` on deploy). Needs a careful
+      cutover (deploy migrations, view `DEFINER`s are `doadmin@%`).
+      **Deferred by the founder (2026-09-29):** to be done in the same
+      session as decommissioning the old `pekangame-prod` droplet and its
+      old managed DB (ADR-114 rollback leftovers). Both are prod DB
+      credential/infra work, and doing them together means one
+      carefully-monitored maintenance window instead of two.
+    - ~~**S-3 (Medium)**~~ — reseller webhook SSRF. `OutboundUrlGuard`
+      checks at save + send, pins curl to the approved IP, stops
+      following redirects (ADR-084 addendum).
+    - Low: OTP has no per-IP rate limit + `OtpService`'s attempt counter
+      has a check-then-increment race; admin/affiliate login has no
+      per-account throttle (only per-IP) and no MFA (AUTH-7, already
+      tracked at item 10 above); ~~`AffiliateImpersonationController` tokens
+      aren't scope-restricted and writes made during impersonation aren't
+      attributed to the real admin~~ (won't-fix, founder decision, see the
+      ADR-058 addendum); Reseller API
+      throttle is keyed on the raw bearer token (an invalid-key flood is
+      unthrottled); doc comments call `order_number` a ULID when it isn't.
+
+47. **Wave 4 — burst-traffic prep, before any promo/ad push.**
+    **K-4/K-3/K-2/K-6 🟢 BUILT 2026-09-29** (PR-A #316, merged).
+    **K-1/K-5 + Lows a/b/c 🟢 BUILT 2026-09-29** (PR-B,
+    `fix/2026-09-29-wave4-order-lanes`; grilled, ADR-048 2026-09-29
+    addendum): two lanes (`orders` retail + `orders-reseller`), auto-balanced
+    max 4, combo 2, notifications moved to `default`, webhook throttle 600/min,
+    LongWait alert via Plunk, `horizon:snapshot` scheduled, and a live
+    queue-size KPI. **K-7 🟢 APPLIED LIVE 2026-09-29** (Redis config, ops).
+    Founder-owed before release: disable the unused local `mysqld` on
+    `pekangame-prod-lwf`. Deferred: parallel scheduler reconcile (not slow
+    today). **`K-4` must land before `K-1`** (raising `maxProcesses`) or a
+    slow combo job can genuinely double-run.
+    - ~~**K-4 (Medium)**~~ — fixed: new `redis-long` queue connection
+      (retry_after 330s) used only by `supervisor-orders-combo`; a test
+      now asserts every supervisor's timeout < its connection's
+      retry_after.
+    - **K-4 (Medium, original)** — `orders-combo` queue's job timeout (300s,
+      `config/horizon.php`) exceeds Redis `retry_after` (90s,
+      `config/queue.php`) — harmless today only because `maxProcesses` is
+      1 everywhere.
+    - ~~**K-3 (High)**~~ — fixed: `guarded()` records a failure on a thrown
+      `ConnectionException` (rethrown unchanged) — except `listProducts`,
+      whose catalog-pull timeouts are routine (prod had 5 would-trip windows
+      on Digiflazz, all 2026-09-06) and say nothing about the order path.
+    - **K-3 (original)** — `CircuitBreakingSupplierAdapter::guarded()` never
+      calls `recordFailure()` on a thrown exception (only on a returned
+      `isServerError` response), so a supplier that just times out never
+      trips the breaker.
+    - **K-1 (High)** — `supervisor-orders` (`config/horizon.php`) is
+      `maxProcesses: 1` and shares its queue with broadcasts and bot
+      replies — a burst of ~300 orders in 5 minutes with a slow supplier
+      backs up for tens of minutes to hours. Deliberate per ADR-048
+      ("scale once real volume justifies it") — this is that trigger.
+      Needs a short grill (ADR-048 addendum) before raising it.
+    - ~~**K-2 (High)**~~ — fixed: `MlbbPlayerValidator` 8s chain deadline
+      (no new fallback started after it) + `connectTimeout(3)` per
+      provider; ~32s → ~17s realistic worst. Cache skipped (burst traffic
+      is distinct players, a cache only helps retries).
+    - **K-2 (original)** — `PlayerValidationController`'s validator chain has
+      no `connectTimeout`, no overall deadline, no cache — can hold a
+      php-fpm worker up to ~32s per request, saturating the pool under
+      burst.
+    - **K-5 (Medium)** — CHIP/OpenWA webhook throttle is a flat 120/min
+      per source IP — CHIP's own IPs or OpenWA's single localhost origin
+      could hit it during a burst.
+    - ~~**K-6 (Medium)**~~ — fixed: Reverb client 2s connect / 5s total
+      (Laravel's default was 10s/30s, not unbounded); storefront `apiFetch`
+      `AbortSignal.timeout(20s)` unless the caller passes its own signal.
+    - **K-6 (original)** — Reverb broadcast has no explicit HTTP timeout
+      (`config/broadcasting.php`); storefront's `apiFetch`
+      (`storefront/src/lib/api-client.ts`) has no `AbortSignal` timeout.
+    - **K-7 prod check (2026-09-29, `pekangame-prod-lwf`):** confirmed a
+      real gap — Redis `maxmemory-policy noeviction`, `appendonly no`,
+      `maxmemory 0` (2.6 MB used; box 3.9 GB RAM, ~1.5 GB available, 2 vCPU,
+      php-fpm `max_children 20`). Not fixed yet.
+    - **Grill inputs (prod, 2026-09-29):** Digiflazz `createOrder` n=43,
+      p50 0.16s / p95 6.3s / p99 7.8s — 34/37 successes return rc `03`
+      (pending, confirmed later by callback/`checkStatus`). Busiest day so
+      far: 6 orders.
+    - **Digiflazz CS answer (2026-09-29, founder asked directly):**
+      **topup has no transaction/concurrency limit.** Full price list
+      (`listProducts`) is limited to **1 call per 5 minutes**; over that
+      returns `rc: "83"` ("Anda telah mencapai limitasi pengecekan
+      pricelist"). Per-product-code price lookup is unlimited. So K-1's
+      real ceiling is our own box (RAM/CPU/fpm), not Digiflazz. This
+      explains the 2026-09-25 double-sync incident. Also: the HTTP retry
+      (`[200, 500, 1000]` ms) on `listProducts` can never succeed if the
+      first request reached Digiflazz, because a retry within 5 min is
+      guaranteed rc 83. Harmless at our 30-min sync interval; it would only
+      matter if a sync ever got retried, or if someone clicks manual "Sync
+      now" right after a scheduled run.
+    - **K-7 (Medium)** — Redis is a single point of failure for every
+      throttled route and cached read; verify `volatile-lru`/AOF were
+      re-applied on the ADR-114 droplet, not a code fix.
+    - Low: Horizon LongWait notifications are commented out
+      (`HorizonServiceProvider.php`); `horizon:snapshot` isn't scheduled;
+      `DashboardService`'s "queue pending" KPI reads the unused `jobs`
+      table instead of Redis (always shows 0); scheduler reconcile tasks
+      run inline/sequentially on the same 15-minute tick.
+
+48. **Wave 5 — remaining money hygiene + customer notifications.** Not yet
+    built.
+    - **M-10 (Medium)** — `SupplierTransferController::voidTransfer()`/
+      `recordManualAdjustment()` check `voided_at` before taking the lock,
+      not inside it — a double-click can write two `VOID_REVERSAL`
+      entries. Internal accounting only, hand-fixable if it ever recurs.
+    - **M-11 (Medium)** — no order emails exist at all (no `app/Mail`, no
+      templates) — a customer whose order fails and gets a voucher never
+      learns the code unless an admin contacts them manually. Overlaps
+      PRD §12's already-tracked Plunk order-email gap (item 6 area).
+    - Low: admin manual wallet credit (`ResellerWalletController`) has no
+      idempotency key; `ledger_entries` has no DB-level unique-index
+      backstop against a duplicate entry (app-level dedupe only);
+      `Package.combo_override_price` has no cost-floor check (a 500, not
+      a loss, if it drops below cost); `CurrencyRateService`'s stale-FX
+      fallback has no age alert; a late non-Paid CHIP event can overwrite
+      an already-Paid order (small race window); a hidden
+      (`AffiliateGame.is_visible=false`) game is still buyable via direct
+      checkout on an affiliate storefront.
+
+49. **Affiliate custom-domain onboarding copy (ADR-060) — parked
+    2026-09-29, not security, raised mid-Wave 3.** Found via
+    `fixfastapp.com` showing Vercel's "Proxy Detected" warning (its
+    Cloudflare record is Proxied/orange-cloud — risks SSL renewal failure,
+    a redirect loop under Cloudflare "Flexible" SSL, and blinds Vercel's
+    bot/DDoS tooling). The reseller portal's Domains screen
+    (`reseller/src/app/(portal)/domains/page.tsx`) is a single English
+    paragraph that never mentions the proxy trap or any other
+    provider-specific pitfall. Founder-agreed shape: **bilingual (EN+BM)**,
+    numbered generic steps (log in to DNS provider → delete any existing
+    record for that name → add record with Host = `shop` only, not the full
+    name → "Check now"), plus a collapsible "Tips by provider" —
+    Cloudflare: set Proxy status to **DNS only** (grey cloud); GoDaddy:
+    delete the "Parked" record + turn off Domain Forwarding; others: don't
+    type the full hostname in Host (provider auto-appends it). Keep
+    ADR-060's provider-opaque rule (never name *our* host; naming the
+    affiliate's own DNS provider is fine). No per-provider screenshots
+    (provider UIs change, screenshots rot). **Follow-up, only once a real
+    affiliate hits it:** detect a proxied domain on "Check now" and show a
+    specific warning instead of a misleading `active`. Separately
+    founder-owed now: flip `fixfastapp.com`'s record to DNS-only in
+    Cloudflare.
+
+50. **Pre-release review of Waves 1–4 (2026-09-29) — must land before the
+    staging→main release.** Found by reviewing every wave against the audit
+    artifact plus `/code-review high` of `origin/main...staging`
+    (`docs/build-log.md` 2026-09-29 pre-release entry).
+    **PR-C 🟢 BUILT** (PR #318, merged: bugfixes #4/#5/#6/#7/#10 + `/api/health` Horizon check).
+    **PR-D 🟢 BUILT** (grilled Q1–Q8; ADR-102 addendum + ADR-014 addendum),
+    covering every item below. Replay-safe suppliers (Digiflazz) now take
+    ambiguous outcomes to Pending with a ~2-min same-ref poll. Pending ages
+    out after 2h. A late Paid after a Failed payment goes to NeedsReview.
+    Exhausted `FulfillOrderJob` → NeedsReview. Stale Processing → Pending or
+    NeedsReview. Checkout is limited per customer. Originally:
+    - **#1** — a late CHIP Paid on an already-compensated order stays
+      `NotStarted`. `markNeedsReview()` rejects `NotStarted`, so the M-4
+      webhook branch never actually flags it.
+    - **#2** — `retryStuckNotStarted()` has no attempt cap. An order failing
+      `fulfill()`'s phase-1 guards (already compensated, null
+      `supplier_product_ref`) is re-dispatched every 15 minutes forever, and
+      no `is_test` filter is applied.
+    - **#3** — if a worker is killed mid-supplier-call (after M-1's phase 1
+      committed), the order is stranded at `Processing`.
+      `retryStuckProcessing()` re-dispatches it, but `startDelivery()`
+      rejects `Processing`.
+    - **#9** — a late Paid after a M-9 quota restore is fulfilled at member
+      price without consuming quota.
+    - **NeedsReview load** — `CIRCUIT_OPEN` (the call was never sent) goes to
+      manual NeedsReview. K-3 now counts timeouts, so during a Digiflazz slow
+      patch every order in the 60s cooldown needs an admin. Digiflazz docs say
+      re-sending the same `ref_id` acts as a status check, so an auto-retry
+      with the same ref may be safe per adapter. Needs an ADR-102/M-3
+      addendum.
+    - **Checkout 10/min/IP** (audit K-low, never carried into §16) — mobile
+      carrier NAT during a promo.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

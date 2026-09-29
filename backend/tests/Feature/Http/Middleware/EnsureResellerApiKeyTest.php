@@ -34,6 +34,47 @@ class EnsureResellerApiKeyTest extends TestCase
             ->getJson('/api/reseller/v1/balance', ['Authorization' => "Bearer {$key}"]);
     }
 
+    /**
+     * Wave 3 PR-B: the `reseller-api` limiter keys on the raw bearer
+     * token, so every made-up key got its own fresh 60/min bucket — a
+     * key-guessing flood was effectively unthrottled. Failed auth now
+     * counts per IP: 20/min, then 429 for the rest of the minute.
+     */
+    public function test_repeated_invalid_keys_from_one_ip_are_rate_limited(): void
+    {
+        [, $validKey] = $this->issueKey();
+
+        for ($i = 0; $i < 20; $i++) {
+            $this->hit("pgk_bogus_{$i}", '203.0.113.50')->assertStatus(401);
+        }
+
+        $this->hit('pgk_bogus_next', '203.0.113.50')
+            ->assertStatus(429)
+            ->assertJsonPath('error', 'RATE_LIMITED')
+            ->assertHeader('Retry-After');
+
+        // Other IPs are unaffected.
+        $this->hit($validKey, '198.51.100.7')->assertOk();
+    }
+
+    /**
+     * 2026-09-29 pre-release review: the lockout was checked before the
+     * token, so one stale/revoked key in a reseller's worker (or a noisy
+     * neighbour behind the same NAT) also blocked their valid-key orders.
+     * Only invalid attempts are locked out.
+     */
+    public function test_a_valid_key_still_works_from_a_locked_out_ip(): void
+    {
+        [, $validKey] = $this->issueKey();
+
+        for ($i = 0; $i < 21; $i++) {
+            $this->hit("pgk_revoked_{$i}", '203.0.113.60');
+        }
+
+        $this->hit($validKey, '203.0.113.60')->assertOk();
+        $this->hit('pgk_revoked_again', '203.0.113.60')->assertStatus(429);
+    }
+
     public function test_an_empty_allowlist_permits_any_ip(): void
     {
         [, $key] = $this->issueKey(allowedIps: []);

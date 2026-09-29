@@ -8,7 +8,10 @@ use App\Models\MembershipCheckoutAttempt;
 use App\Models\Order;
 use App\Models\WalletTopupAttempt;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
+use App\Services\Membership\MembershipQuotaService;
 use App\Services\Membership\MembershipSubscriptionService;
+use App\Services\Order\InvalidOrderTransitionException;
+use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -44,8 +47,10 @@ class ChipWebhookController extends Controller
     public function __construct(
         PaymentGatewayFactory $gatewayFactory,
         private readonly VoucherService $vouchers,
+        private readonly MembershipQuotaService $membershipQuota,
         private readonly MembershipSubscriptionService $subscriptions,
         private readonly ResellerWalletService $wallets,
+        private readonly OrderStatusService $orderStatus,
     ) {
         $this->paymentGateway = $gatewayFactory->make('chip');
     }
@@ -119,8 +124,11 @@ class ChipWebhookController extends Controller
             // reserved voucher redemption this order made — a no-op if
             // this order never used a voucher. Mirrored by
             // ReconcilePendingPaymentsCommand's own failure branch.
+            // M-9, 2026-09-29 audit: membership quota gets the same
+            // give-back — spent at payment-link creation, not at payment.
             if ($event->status === PaymentStatus::Failed) {
                 $this->vouchers->restore($order->id);
+                $this->membershipQuota->restore($order->id);
             }
 
             return response()->json(['message' => 'acknowledged']);
@@ -138,6 +146,44 @@ class ChipWebhookController extends Controller
             ]);
 
             return response()->json(['message' => 'amount mismatch'], 409);
+        }
+
+        // 2026-09-28 audit finding M-4: a late Paid event for an order
+        // that's already compensated (a voucher was issued or
+        // restored, or a wallet refund already paid out — most often
+        // reconcile marking it Failed and restoring a voucher just
+        // before this webhook finally arrives) must never be blindly
+        // dispatched to FulfillOrderJob — fulfill()'s own
+        // isAlreadyCompensated() guard would throw on every one of the
+        // job's 3 tries, silently stranding the order at
+        // payment_status=Paid forever with no admin visibility even
+        // though the customer genuinely paid. Flag NeedsReview instead
+        // (a valid transition from Failed, the only delivery_status an
+        // already-compensated order can realistically be in) so an
+        // admin sees it on the existing Needs Review queue.
+        // ADR-102 addendum (2026-09-29, review #1/#9): ANY Paid arriving
+        // after the payment was already marked Failed takes this path too —
+        // the Failed branch above has already given back the voucher AND
+        // the membership quota, so auto-fulfilling would deliver at a
+        // discount nothing was spent for. isAlreadyCompensated() alone
+        // missed the quota and the no-voucher case.
+        if ($order->payment_status === PaymentStatus::Failed || $order->isAlreadyCompensated()) {
+            Log::error('CHIP webhook: paid event after a failed payment or compensation — flagging for manual review, not auto-fulfilling', [
+                'delivery_status' => $order->delivery_status->value,
+            ]);
+
+            try {
+                $needsReview = $this->orderStatus->markNeedsReview($order->delivery_status);
+                $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now(), 'delivery_status' => $needsReview->value]);
+            } catch (InvalidOrderTransitionException) {
+                // delivery_status isn't one markNeedsReview() accepts
+                // (e.g. already NeedsReview, or Delivered from an
+                // unrelated concurrent resolution) — leave it as-is,
+                // still record the payment.
+                $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
+            }
+
+            return response()->json(['message' => 'ok, flagged for manual review']);
         }
 
         $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);

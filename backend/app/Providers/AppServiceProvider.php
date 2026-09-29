@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Events\OrderStatusUpdated;
 use App\Listeners\Backup\LogAndAlertBackupFailure;
+use App\Listeners\Horizon\AlertOnLongQueueWait;
 use App\Listeners\Broadcasting\LogFailedBroadcastJob;
 use App\Listeners\Reseller\DispatchResellerOrderWebhook;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
@@ -58,6 +59,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Horizon\Events\LongWaitDetected;
 use Intervention\Image\ImageManager;
 use Spatie\Backup\Events\BackupHasFailed;
 use Spatie\Backup\Events\CleanupHasFailed;
@@ -409,6 +411,9 @@ class AppServiceProvider extends ServiceProvider
         // `admin_users` row rather than one static config address.
         Event::listen(BackupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleBackupHasFailed']);
         Event::listen(CleanupHasFailed::class, [LogAndAlertBackupFailure::class, 'handleCleanupHasFailed']);
+        // ADR-048 addendum (2026-09-29): Horizon long-wait → Plunk alert,
+        // since Horizon's own mail notification can't reach anyone in prod.
+        Event::listen(LongWaitDetected::class, [AlertOnLongQueueWait::class, 'handle']);
         // ADR-076 decision 5 — message 2 of the Bot channel's two-stage
         // order messaging. `broadcast()` (OrderObserver) dispatches
         // through the normal event dispatcher too, so this listener
@@ -491,8 +496,25 @@ class AppServiceProvider extends ServiceProvider
         // other `throttle:` route in this app — the abuse case here is
         // spamming one target inbox, which an IP-only bucket wouldn't
         // catch from multiple source IPs).
+        // Wave 3 PR-B: plus 10/hour per IP — the email bucket alone let one
+        // IP mail-bomb unlimited different inboxes, 3 each.
+        // ADR-014 addendum (2026-09-29, PR-D): checkout was 10/min per IP,
+        // but mobile carriers put many customers behind one CGNAT address —
+        // during a promo, strangers sharing an IP throttled each other.
+        // 10/min per customer (IP + email) keeps one person from flooding;
+        // 60/min per IP still caps a single source.
+        RateLimiter::for('checkout', function (Request $request) {
+            return [
+                Limit::perMinute(10)->by('customer:'.$request->ip().'|'.strtolower((string) $request->input('customer_email'))),
+                Limit::perMinute(60)->by('ip:'.$request->ip()),
+            ];
+        });
+
         RateLimiter::for('otp-request', function (Request $request) {
-            return Limit::perHour(3)->by((string) $request->input('email'));
+            return [
+                Limit::perHour(3)->by('email:'.$request->input('email')),
+                Limit::perHour(10)->by('ip:'.$request->ip()),
+            ];
         });
 
         // ADR-068 S18 — the self-serve subscribe endpoint, keyed on the

@@ -51,18 +51,25 @@ final class OtpService
             ->orderByDesc('id')
             ->first();
 
-        if ($otp === null || $otp->attempts >= self::MAX_ATTEMPTS) {
+        if ($otp === null) {
             return false;
         }
 
-        $otp->increment('attempts');
+        // Wave 3 PR-B: claim an attempt slot atomically. A read-then-
+        // increment let N parallel requests at attempts=4 each get a guess.
+        $claimed = MembershipOtpCode::query()
+            ->whereKey($otp->id)
+            ->where('attempts', '<', self::MAX_ATTEMPTS)
+            ->increment('attempts');
 
-        if (! Hash::check($code, $otp->code_hash)) {
+        if ($claimed === 0 || ! Hash::check($code, $otp->code_hash)) {
             return false;
         }
 
-        $otp->update(['consumed_at' => now()]);
-
-        return true;
+        // Same for consumption: only one request may redeem the code.
+        return MembershipOtpCode::query()
+            ->whereKey($otp->id)
+            ->whereNull('consumed_at')
+            ->update(['consumed_at' => now()]) === 1;
     }
 }

@@ -210,6 +210,79 @@ class ChipWebhookControllerTest extends TestCase
     }
 
     /**
+     * 2026-09-28 audit finding M-4: a late Paid event for an order
+     * that's already Failed WITH a restored voucher (isAlreadyCompensated())
+     * used to be dispatched to FulfillOrderJob exactly like a normal
+     * paid order — fulfill()'s own defense-in-depth guard then throws
+     * OrderFulfillmentException on every one of the job's 3 tries, and
+     * the order was left stuck at payment_status=Paid,
+     * delivery_status=Failed forever: the customer genuinely paid and
+     * received nothing, with no admin visibility. Must instead flag
+     * NeedsReview immediately and never dispatch fulfillment.
+     */
+    public function test_a_late_paid_event_for_an_already_compensated_order_flags_needs_review_instead_of_fulfilling(): void
+    {
+        Queue::fake();
+        $privateKey = $this->fakeChipPublicKey();
+        $order = $this->fakePaidOrder([
+            'payment_status' => PaymentStatus::Failed->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+        $paidWith = \App\Models\Voucher::query()->create([
+            'affiliate_id' => $order->affiliate_id, 'code' => 'KRS-ORIGINAL-'.uniqid(), 'customer_email' => 'buyer@example.com',
+            'amount' => 1000, 'remaining' => 1000, 'status' => 'active', 'reason' => 'test',
+        ]);
+        \App\Models\VoucherRedemption::query()->create([
+            'voucher_id' => $paidWith->id, 'order_id' => $order->id, 'amount' => 1000, 'status' => 'restored',
+        ]);
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'paid',
+            'purchase' => ['total' => 1100],
+        ], $privateKey);
+
+        $response->assertOk();
+
+        $fresh = $order->fresh();
+        $this->assertSame(PaymentStatus::Paid, $fresh->payment_status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $fresh->delivery_status);
+        Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
+    /**
+     * Pre-release review #1/#9 (ADR-102 addendum, 2026-09-29): the REAL
+     * shape of a late Paid — payment was marked Failed by reconcile/
+     * webhook, delivery never started (NotStarted), and the voucher/quota
+     * were already given back. Any Paid arriving after a Failed payment
+     * goes to NeedsReview, with or without a voucher involved.
+     */
+    public function test_a_late_paid_event_after_a_failed_payment_flags_needs_review_from_not_started(): void
+    {
+        Queue::fake();
+        $privateKey = $this->fakeChipPublicKey();
+        $order = $this->fakePaidOrder([
+            'payment_status' => PaymentStatus::Failed->value,
+            'delivery_status' => DeliveryStatus::NotStarted->value,
+        ]);
+
+        $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'paid',
+            'purchase' => ['total' => 1100],
+        ], $privateKey)->assertOk();
+
+        $fresh = $order->fresh();
+        $this->assertSame(PaymentStatus::Paid, $fresh->payment_status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $fresh->delivery_status);
+        Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
+    /**
      * PAY-2: a repeat webhook delivery for an already-paid order must
      * be acknowledged, not reprocessed.
      */
@@ -276,6 +349,37 @@ class ChipWebhookControllerTest extends TestCase
         $fresh = $order->fresh();
         $this->assertSame(PaymentStatus::Failed, $fresh->payment_status);
         $this->assertSame(DeliveryStatus::NotStarted, $fresh->delivery_status);
+    }
+
+    /** M-9, 2026-09-29 audit: quota debited at payment-link creation must be given back on a Failed callback. */
+    public function test_a_failure_event_restores_membership_quota_debited_for_that_order(): void
+    {
+        $privateKey = $this->fakeChipPublicKey();
+        $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
+        $membership = Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'buyer@example.com',
+            'membership_plan_id' => $plan->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => 960,
+            'expires_at' => now()->addDays(20),
+        ]);
+        $order = $this->fakePaidOrder(['membership_id' => $membership->id, 'selling_price' => 1000]);
+        \App\Models\MembershipQuotaDebit::query()->create([
+            'order_id' => $order->id, 'membership_id' => $membership->id, 'amount_sen' => 1000,
+        ]);
+
+        $response = $this->postSignedWebhook([
+            'event_type' => 'purchase.payment_failure',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'error',
+            'purchase' => ['total' => 1100],
+        ], $privateKey);
+
+        $response->assertOk();
+        $this->assertSame(1960, $membership->fresh()->quota_remaining_sen);
     }
 
     // --- ADR-068: the self-serve membership-subscription branch ---

@@ -402,6 +402,15 @@ class GamevionAdapterTest extends TestCase
         $this->assertSame('400', $result->errorCode);
         $this->assertSame('Insufficient balance', $result->errorMessage);
         $this->assertFalse($result->isServerError);
+
+        // 2026-09-28 audit finding M-3: unlike Digiflazz's own `status`
+        // field, Gamevion's error body shape is undocumented (see
+        // failureFrom()'s own doc comment) — this codebase has no way
+        // to tell "Gamevion definitively rejected this" apart from "we
+        // don't know what happened", so every failureFrom() branch is
+        // conservatively treated as ambiguous (never outcomeConfirmedFailed).
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        $this->assertFalse($result->outcomeConfirmedFailed);
     }
 
     /**
@@ -424,6 +433,9 @@ class GamevionAdapterTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertTrue($result->isServerError);
+        // 2026-09-28 audit finding M-3 — same reasoning as above.
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+        $this->assertFalse($result->outcomeConfirmedFailed);
     }
 
     /**

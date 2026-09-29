@@ -22,13 +22,25 @@ final class MlbbPlayerValidator implements PlayerValidator
     /**
      * @param  PlayerValidator[]  $providers  ordered by priority
      */
-    public function __construct(private readonly array $providers) {}
+    public function __construct(
+        private readonly array $providers,
+        // 2026-09-29 audit K-2: without it, three providers each running to
+        // their own timeout held a php-fpm worker ~32s. Checked before each
+        // fallback: a first provider that times out (8s) ends the chain; one
+        // that fails fast still gets a fallback (~17s worst realistic case).
+        private readonly int $deadlineSeconds = 8,
+    ) {}
 
     public function validate(string $playerId, ?string $serverId): PlayerValidationResult
     {
         $lastException = null;
+        $deadline = now()->addSeconds($this->deadlineSeconds);
 
         foreach ($this->providers as $provider) {
+            if ($lastException !== null && now()->gte($deadline)) {
+                break;
+            }
+
             try {
                 return $provider->validate($playerId, $serverId);
             } catch (ProviderUnavailableException $e) {

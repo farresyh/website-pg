@@ -182,3 +182,7 @@ Schedule::command('app:sync-affiliate-domain-status')
     ->daily()
     ->name('affiliate-domain-status-sync')
     ->withoutOverlapping();
+
+// ADR-048 addendum (2026-09-29, audit Wave 4 Low): Horizon's metrics/graphs
+// stay empty without this — snapshots are never taken on their own.
+Schedule::command('horizon:snapshot')->everyFiveMinutes();

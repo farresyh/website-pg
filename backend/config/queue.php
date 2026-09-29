@@ -73,6 +73,19 @@ return [
             'after_commit' => false,
         ],
 
+        // 2026-09-29 audit K-4: same Redis keys as `redis`, longer
+        // retry_after — used only by horizon's supervisor-orders-combo
+        // (300s timeout). retry_after is applied by the worker that pops
+        // the job, so producers keep dispatching on `redis` unchanged.
+        'redis-long' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_QUEUE', 'default'),
+            'retry_after' => 330,
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],

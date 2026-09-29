@@ -220,11 +220,18 @@ final class DigiflazzAdapter implements SupplierAdapter
         // A real 5xx means Digiflazz itself is down — surface it as a
         // server error so the circuit breaker sees it, whatever any body
         // claims. Everything below trusts the response body.
+        //
+        // 2026-09-28 audit finding M-3: also genuinely ambiguous — we
+        // don't know whether Digiflazz processed the request before
+        // failing to respond, so resendUnsafeWithSameReference: true
+        // (never outcomeConfirmedFailed) routes this to NeedsReview
+        // rather than a confirmed Failed.
         if ($response->serverError()) {
             return SupplierResponse::failure(
                 (string) $response->status(),
                 "Digiflazz request failed with HTTP {$response->status()}",
                 isServerError: true,
+                resendUnsafeWithSameReference: true,
             );
         }
 
@@ -283,16 +290,21 @@ final class DigiflazzAdapter implements SupplierAdapter
 
         // No usable envelope — a genuine transport-level 4xx (a gateway
         // error page, an empty body, a connection reset that exhausted
-        // the retries).
+        // the retries). 2026-09-28 audit finding M-3: same "genuinely
+        // don't know" reasoning as the 5xx branch above — never
+        // confirmed, so resendUnsafeWithSameReference: true here too.
         if ($response->failed()) {
             return SupplierResponse::failure(
                 (string) $response->status(),
                 "Digiflazz request failed with HTTP {$response->status()}",
                 isServerError: false,
+                resendUnsafeWithSameReference: true,
             );
         }
 
-        return SupplierResponse::failure('unknown', 'Unknown Digiflazz error');
+        // A 2xx with a body that isn't Digiflazz's documented envelope
+        // shape at all — equally ambiguous (M-3), same reasoning.
+        return SupplierResponse::failure('unknown', 'Unknown Digiflazz error', resendUnsafeWithSameReference: true);
     }
 
     /**

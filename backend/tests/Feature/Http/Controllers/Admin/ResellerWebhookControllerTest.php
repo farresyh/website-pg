@@ -16,6 +16,12 @@ class ResellerWebhookControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->fakeOutboundDns();
+    }
+
     private function actAsSuperAdmin(): void
     {
         Sanctum::actingAs(AdminUser::factory()->superAdmin()->create());
@@ -80,5 +86,16 @@ class ResellerWebhookControllerTest extends TestCase
 
         $this->postJson("/api/resellers/{$reseller->id}/webhook", ['url' => 'http://example.test/hook'])
             ->assertUnprocessable();
+    }
+
+    /** Wave 3 S-3: same guard as the portal-side request. */
+    public function test_rejects_a_url_reaching_a_non_public_address(): void
+    {
+        $this->actAsSuperAdmin();
+        $reseller = $this->reseller();
+
+        $this->postJson("/api/resellers/{$reseller->id}/webhook", ['url' => 'https://169.254.169.254/latest'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('url');
     }
 }

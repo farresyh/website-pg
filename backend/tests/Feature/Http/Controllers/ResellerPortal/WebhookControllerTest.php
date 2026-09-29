@@ -18,6 +18,12 @@ class WebhookControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->fakeOutboundDns(['internal.example' => ['10.0.0.5']]);
+    }
+
     private function reseller(): Reseller
     {
         return Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true]);
@@ -71,6 +77,18 @@ class WebhookControllerTest extends TestCase
             ->assertUnprocessable();
         $this->withToken($token)->postJson('/api/reseller-portal/webhook', ['url' => 'not-a-url'])
             ->assertUnprocessable();
+    }
+
+    /** Wave 3 S-3: SSRF onto the droplet's own network. */
+    public function test_store_rejects_a_url_reaching_a_non_public_address(): void
+    {
+        $token = $this->tokenFor($this->reseller());
+
+        foreach (['https://127.0.0.1/hook', 'https://169.254.169.254/latest', 'https://internal.example/hook'] as $url) {
+            $this->withToken($token)->postJson('/api/reseller-portal/webhook', ['url' => $url])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('url');
+        }
     }
 
     public function test_rotate_secret_returns_a_new_one(): void

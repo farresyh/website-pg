@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services\Fulfillment;
 
+use App\Jobs\CheckSupplierDeliveryJob;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
@@ -29,6 +30,7 @@ use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -138,7 +140,9 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
             public function createOrder(SupplierOrderRequest $request): SupplierResponse
             {
-                return $this->responses[$this->index++] ?? throw new RuntimeException('no more queued responses');
+                $next = $this->responses[$this->index++] ?? throw new RuntimeException('no more queued responses');
+
+                return $next instanceof \Throwable ? throw $next : $next;
             }
 
             public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
@@ -151,6 +155,57 @@ class OrderFulfillmentServiceComboTest extends TestCase
                 throw new ValidationNotSupportedException('not used in this test');
             }
         };
+    }
+
+    /**
+     * ADR-102 addendum (2026-09-29, PR-D): the same replay-safe rule at
+     * leg granularity — an ambiguous Digiflazz leg (breaker open, or a
+     * thrown timeout) is parked at Pending and auto-polled with its own
+     * same reference; the order rolls up to Pending, not NeedsReview.
+     *
+     * @return array{0: Order, 1: OrderFulfillmentService}
+     */
+    private function digiflazzCombo(array $responses): array
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'MYR']);
+        $adapter = $this->queuedAdapter($responses); // one instance, so responses advance across legs
+        $this->app->bind('supplier-adapter.digiflazz', fn () => $adapter);
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $combo = $this->comboPackage($gameId, [
+            ['package' => $this->componentPackage($supplier, $gameId), 'quantity' => 1],
+            ['package' => $this->componentPackage($supplier, $gameId), 'quantity' => 1],
+        ]);
+
+        return [$this->paidComboOrder($combo), $this->service($this->queuedAdapter([]))];
+    }
+
+    public function test_an_ambiguous_digiflazz_leg_is_parked_at_pending_and_polled(): void
+    {
+        Queue::fake();
+        [$order, $service] = $this->digiflazzCombo([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::failure('CIRCUIT_OPEN', 'breaker open', resendUnsafeWithSameReference: true),
+        ]);
+
+        $result = $service->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Pending, $result->delivery_status);
+        $this->assertSame(DeliveryStatus::Pending, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->value('status'));
+        Queue::assertPushed(CheckSupplierDeliveryJob::class, fn ($job) => $job->order->id === $order->id && $job->delay !== null);
+    }
+
+    public function test_a_digiflazz_leg_that_throws_is_parked_at_pending_with_its_reference_kept(): void
+    {
+        Queue::fake();
+        [$order, $service] = $this->digiflazzCombo([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+        ]);
+
+        $this->assertSame(DeliveryStatus::Pending, $service->fulfill($order)->delivery_status);
+        $leg = OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->firstOrFail();
+        $this->assertSame(DeliveryStatus::Pending, $leg->status);
+        $this->assertNotNull($leg->reference_number);
     }
 
     public function test_full_success_delivers_the_order_and_records_a_leg_per_component(): void

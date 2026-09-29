@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Currency\CurrencyRateService;
@@ -152,6 +154,45 @@ class FulfillOrderJobTest extends TestCase
         $job = new FulfillOrderJob($order);
 
         $this->assertSame('orders-combo', $job->queue);
+    }
+
+    /**
+     * ADR-048 addendum (2026-09-29, audit K-1): a reseller-wallet order
+     * (portal/API/bot) gets its own lane, so a reseller bulk run can
+     * never starve storefront buyers on `orders`.
+     */
+    public function test_a_reseller_wallet_order_runs_on_the_reseller_lane(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+
+        $order = $this->paidOrder(['wallet_reseller_id' => $reseller->id]);
+
+        $this->assertSame('orders-reseller', (new FulfillOrderJob($order))->queue);
+        $this->assertSame('orders-reseller', (new CheckSupplierDeliveryJob($order))->queue);
+    }
+
+    /**
+     * Review #2 (ADR-102 addendum, 2026-09-29): once every try is spent,
+     * a paid order still at NotStarted (a data problem such as a null
+     * supplier_product_ref, or a compensated order) goes to NeedsReview —
+     * visible to an admin, and out of the M-4 sweep's re-dispatch loop.
+     */
+    public function test_exhausting_every_try_on_a_not_started_order_flags_needs_review(): void
+    {
+        $order = $this->paidOrder(['supplier_product_ref' => null]);
+
+        (new FulfillOrderJob($order))->failed(new RuntimeException('Order has no supplier_product_ref'));
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    public function test_exhausting_every_try_leaves_an_order_that_already_moved_on_alone(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Delivered->value]);
+
+        (new FulfillOrderJob($order))->failed(new RuntimeException('late failure'));
+
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
     }
 
     public function test_handle_fulfills_the_order(): void

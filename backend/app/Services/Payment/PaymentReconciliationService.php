@@ -4,6 +4,7 @@ namespace App\Services\Payment;
 
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\Log;
@@ -27,6 +28,7 @@ final class PaymentReconciliationService
     public function __construct(
         private readonly PaymentGatewayFactory $gatewayFactory,
         private readonly VoucherService $vouchers,
+        private readonly MembershipQuotaService $membershipQuota,
     ) {}
 
     /**
@@ -102,13 +104,15 @@ final class PaymentReconciliationService
      * the webhook's own terminal-Failed branch) that can catch a
      * customer who applied a voucher then abandoned the gateway page
      * entirely, without even the webhook ever firing. restore() is a
-     * no-op if this order never used a voucher.
+     * no-op if this order never used a voucher. M-9, 2026-09-29 audit:
+     * same give-back for membership quota spent at payment-link creation.
      */
     private function markFailed(Order $order): bool
     {
         $order->update(['payment_status' => PaymentStatus::Failed->value]);
 
         $this->vouchers->restore($order->id);
+        $this->membershipQuota->restore($order->id);
 
         return true;
     }
