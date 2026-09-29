@@ -21,6 +21,12 @@ class DeliverResellerWebhookTest extends TestCase
 
     private string $secret;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->fakeOutboundDns();
+    }
+
     private function setup_delivery(string $event = 'order.delivered'): ResellerWebhookDelivery
     {
         $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true]);
@@ -107,6 +113,42 @@ class DeliverResellerWebhookTest extends TestCase
 
         $this->assertSame('failed', $delivery->fresh()->status);
         Http::assertNothingSent();
+    }
+
+    /**
+     * Wave 3 S-3: the URL was checked when it was saved, but DNS can be
+     * repointed afterwards (rebinding). Re-checked at send time; a
+     * non-public target is terminal, not retried.
+     */
+    public function test_an_endpoint_now_resolving_to_a_private_address_is_never_called(): void
+    {
+        $delivery = $this->setup_delivery();
+        $this->fakeOutboundDns(['example.test' => ['169.254.169.254']]);
+        Http::fake();
+
+        (new DeliverResellerWebhook($delivery->id))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame('failed', $delivery->fresh()->status);
+        $this->assertNull($delivery->fresh()->next_retry_at);
+    }
+
+    public function test_a_redirect_is_not_followed(): void
+    {
+        $delivery = $this->setup_delivery();
+        Http::fake([
+            'https://example.test/hook' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest/meta-data']),
+            '*' => Http::response('secret-metadata', 200),
+        ]);
+
+        try {
+            (new DeliverResellerWebhook($delivery->id))->handle();
+        } catch (\RuntimeException) {
+            // a 3xx is a non-2xx: recorded + retried like any other
+        }
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '169.254.169.254'));
+        $this->assertSame(302, $delivery->fresh()->last_response_code);
     }
 
     public function test_an_already_delivered_row_is_a_noop(): void

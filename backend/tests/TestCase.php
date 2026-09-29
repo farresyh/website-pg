@@ -3,10 +3,26 @@
 namespace Tests;
 
 use App\Models\Affiliate;
+use App\Support\OutboundUrlGuard;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+    /**
+     * Wave 3 S-3: `*.test` hostnames never resolve, so a test that saves
+     * or delivers to a reseller webhook URL resolves every host to one
+     * public address unless `$dns` maps it elsewhere.
+     *
+     * @param  array<string, list<string>>  $dns
+     */
+    protected function fakeOutboundDns(array $dns = []): void
+    {
+        $this->app->instance(
+            OutboundUrlGuard::class,
+            new OutboundUrlGuard(fn (string $host) => $dns[$host] ?? ['93.184.215.14']),
+        );
+    }
+
     /**
      * ADR-061: the single `is_primary` Affiliate — the fallback tenant
      * every non-`Host` code path resolves via `Affiliate::primary()`.
