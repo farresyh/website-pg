@@ -101,10 +101,16 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
         // never returned as an isServerError response — count it too, or
         // a supplier that only hangs never trips the breaker. Rethrown
         // unchanged: callers (M-1's reference persistence) rely on it.
+        // listProducts excluded: the heavy catalog pull times out routinely
+        // (prod: 109 Digiflazz timeouts by 2026-09-29, clustered by
+        // SyncSupplierPricesJob's own retries) without the order path
+        // being down — counting it would pause real orders for nothing.
         try {
             $response = $call();
         } catch (ConnectionException $e) {
-            $this->breaker->recordFailure();
+            if ($callType !== 'listProducts') {
+                $this->breaker->recordFailure();
+            }
 
             throw $e;
         }

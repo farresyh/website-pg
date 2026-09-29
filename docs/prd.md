@@ -1567,7 +1567,9 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       `config/queue.php`) — harmless today only because `maxProcesses` is
       1 everywhere.
     - ~~**K-3 (High)**~~ — fixed: `guarded()` records a failure on a thrown
-      `ConnectionException` (rethrown unchanged).
+      `ConnectionException` (rethrown unchanged) — except `listProducts`,
+      whose catalog-pull timeouts are routine (prod had 5 would-trip windows
+      on Digiflazz, all 2026-09-06) and say nothing about the order path.
     - **K-3 (original)** — `CircuitBreakingSupplierAdapter::guarded()` never
       calls `recordFailure()` on a thrown exception (only on a returned
       `isServerError` response), so a supplier that just times out never
@@ -1595,6 +1597,15 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     - **K-6 (original)** — Reverb broadcast has no explicit HTTP timeout
       (`config/broadcasting.php`); storefront's `apiFetch`
       (`storefront/src/lib/api-client.ts`) has no `AbortSignal` timeout.
+    - **K-7 prod check (2026-09-29, `pekangame-prod-lwf`):** confirmed a
+      real gap — Redis `maxmemory-policy noeviction`, `appendonly no`,
+      `maxmemory 0` (2.6 MB used; box 3.9 GB RAM, ~1.5 GB available, 2 vCPU,
+      php-fpm `max_children 20`). Not fixed yet.
+    - **Grill inputs (prod, 2026-09-29):** Digiflazz `createOrder` n=43,
+      p50 0.16s / p95 6.3s / p99 7.8s — 34/37 successes return rc `03`
+      (pending, confirmed later by callback/`checkStatus`). Busiest day so
+      far: 6 orders. Digiflazz documents no rate limit, but the 2026-09-25
+      two-server double-sync did trip one.
     - **K-7 (Medium)** — Redis is a single point of failure for every
       throttled route and cached read; verify `volatile-lru`/AOF were
       re-applied on the ADR-114 droplet, not a code fix.

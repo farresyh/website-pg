@@ -2936,7 +2936,15 @@ Branch `fix/2026-09-29-wave4-burst-timeouts`. Test-first where there was logic
   `ConnectionException` (M-1 relies on it propagating), so `guarded()` never
   saw it. Now caught, `recordFailure()`, rethrown unchanged. Only
   `ConnectionException` counts — not any `Throwable` — so a code bug can't
-  masquerade as a supplier outage.
+  masquerade as a supplier outage. **Same-day correction after pulling prod
+  data:** `listProducts` is excluded too. The heavy catalog pull timed out 109×
+  on Digiflazz, clustered by `SyncSupplierPricesJob`'s own retries, which would
+  have opened the breaker 5 times on 2026-09-06 alone. Each opening pauses real
+  `createOrder` calls for 60s and pushes those orders to NeedsReview (M-3), even
+  though the order path was fine.
+- **Prod findings for the K-1/K-7 grill** are recorded in `prd.md` §16 item 47:
+  Redis runs `noeviction` / AOF off, the box has ~1.5 GB free RAM, and Digiflazz
+  `createOrder` p95 is 6.3s.
 - **K-2 — MLBB player validation could hold a php-fpm worker ~32s.** Added an
   8s chain deadline in `MlbbPlayerValidator` (no new fallback started past it)
   plus `connectTimeout(3)` per provider HTTP call. An Acid timeout (8s) now ends

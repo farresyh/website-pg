@@ -149,6 +149,27 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         $this->assertTrue($breaker->isOpen());
     }
 
+    /**
+     * Prod data (2026-09-29): listProducts (the heavy catalog pull) times
+     * out routinely and clusters under SyncSupplierPricesJob's own retries
+     * — counting it would pause real order calls for no order-path reason.
+     */
+    public function test_catalog_timeouts_do_not_trip_the_breaker(): void
+    {
+        $inner = $this->fakeInner(array_fill(0, 3, new ConnectionException('cURL error 28: timed out')));
+        $breaker = new CircuitBreaker('test-'.uniqid(), failureThreshold: 3, cooldownSeconds: 60);
+        $adapter = new CircuitBreakingSupplierAdapter($inner, $breaker);
+
+        foreach (range(1, 3) as $_) {
+            try {
+                $adapter->listProducts();
+            } catch (ConnectionException) {
+            }
+        }
+
+        $this->assertFalse($breaker->isOpen());
+    }
+
     public function test_an_open_circuit_short_circuits_without_calling_the_inner_adapter(): void
     {
         $inner = $this->fakeInner([
