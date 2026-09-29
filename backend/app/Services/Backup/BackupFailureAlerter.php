@@ -29,9 +29,13 @@ class BackupFailureAlerter
 {
     public function __construct(private readonly PlunkMailer $mailer) {}
 
-    public function alert(string $context, string $message): void
+    /**
+     * `$area` (ADR-048 addendum, 2026-09-29): the same Plunk-to-every-admin
+     * path also carries Horizon long-wait alerts — see AlertOnLongQueueWait.
+     */
+    public function alert(string $context, string $message, string $area = 'Backup'): void
     {
-        Log::critical("[Backup] {$context}: {$message}");
+        Log::critical("[{$area}] {$context}: {$message}");
 
         $recipients = AdminUser::query()->where('is_active', true)->pluck('email');
 
@@ -39,9 +43,10 @@ class BackupFailureAlerter
             try {
                 $this->mailer->sendView(
                     $email,
-                    "[PekanGame Backup] {$context}",
+                    "[PekanGame {$area}] {$context}",
                     'emails.backup-failure',
                     [
+                        'heading' => $area === 'Backup' ? 'Backup Failure' : $area,
                         'context' => $context,
                         'messageText' => $message,
                     ]
@@ -52,7 +57,7 @@ class BackupFailureAlerter
                 // itself already inside the "something is wrong" path,
                 // so there's no further alert to send about an alert
                 // failing.
-                Log::critical("[Backup] failed to send failure alert to {$email}: {$e->getMessage()}");
+                Log::critical("[{$area}] failed to send failure alert to {$email}: {$e->getMessage()}");
             }
         }
     }
