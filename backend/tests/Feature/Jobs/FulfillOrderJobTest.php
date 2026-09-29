@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Currency\CurrencyRateService;
@@ -152,6 +154,21 @@ class FulfillOrderJobTest extends TestCase
         $job = new FulfillOrderJob($order);
 
         $this->assertSame('orders-combo', $job->queue);
+    }
+
+    /**
+     * ADR-048 addendum (2026-09-29, audit K-1): a reseller-wallet order
+     * (portal/API/bot) gets its own lane, so a reseller bulk run can
+     * never starve storefront buyers on `orders`.
+     */
+    public function test_a_reseller_wallet_order_runs_on_the_reseller_lane(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+
+        $order = $this->paidOrder(['wallet_reseller_id' => $reseller->id]);
+
+        $this->assertSame('orders-reseller', (new FulfillOrderJob($order))->queue);
+        $this->assertSame('orders-reseller', (new CheckSupplierDeliveryJob($order))->queue);
     }
 
     public function test_handle_fulfills_the_order(): void

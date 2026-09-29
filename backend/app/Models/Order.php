@@ -230,6 +230,18 @@ class Order extends Model
         return ['cost' => $catalogTotal, 'basis' => 'estimated'];
     }
 
+    /**
+     * ADR-048 addendum (2026-09-29, audit K-1): the order lane every
+     * fulfillment job for this order runs on — reseller-wallet orders
+     * (portal/API/bot) get their own so a reseller bulk run can't starve
+     * storefront buyers. Retail keeps `orders` so jobs queued before
+     * this split still drain.
+     */
+    public function orderLane(): string
+    {
+        return $this->wallet_reseller_id !== null ? 'orders-reseller' : 'orders';
+    }
+
     public function isPartialComboDelivery(): bool
     {
         if ($this->delivery_status !== DeliveryStatus::NeedsReview) {
