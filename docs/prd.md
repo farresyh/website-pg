@@ -1587,6 +1587,29 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       (`AffiliateGame.is_visible=false`) game is still buyable via direct
       checkout on an affiliate storefront.
 
+49. **Affiliate custom-domain onboarding copy (ADR-060) — parked
+    2026-09-29, not security, raised mid-Wave 3.** Found via
+    `fixfastapp.com` showing Vercel's "Proxy Detected" warning (its
+    Cloudflare record is Proxied/orange-cloud — risks SSL renewal failure,
+    a redirect loop under Cloudflare "Flexible" SSL, and blinds Vercel's
+    bot/DDoS tooling). The reseller portal's Domains screen
+    (`reseller/src/app/(portal)/domains/page.tsx`) is a single English
+    paragraph that never mentions the proxy trap or any other
+    provider-specific pitfall. Founder-agreed shape: **bilingual (EN+BM)**,
+    numbered generic steps (log in to DNS provider → delete any existing
+    record for that name → add record with Host = `shop` only, not the full
+    name → "Check now"), plus a collapsible "Tips by provider" —
+    Cloudflare: set Proxy status to **DNS only** (grey cloud); GoDaddy:
+    delete the "Parked" record + turn off Domain Forwarding; others: don't
+    type the full hostname in Host (provider auto-appends it). Keep
+    ADR-060's provider-opaque rule (never name *our* host; naming the
+    affiliate's own DNS provider is fine). No per-provider screenshots
+    (provider UIs change, screenshots rot). **Follow-up, only once a real
+    affiliate hits it:** detect a proxied domain on "Check now" and show a
+    specific warning instead of a misleading `active`. Separately
+    founder-owed now: flip `fixfastapp.com`'s record to DNS-only in
+    Cloudflare.
+
 ## Parked by founder decision (2026-09-09) — not scheduled
 
 ~~**CHIP credential `.env`→DB migration**~~ — **grilled + BUILT 2026-09-19,
