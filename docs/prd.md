@@ -1443,13 +1443,14 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     See `docs/build-log.md`'s 2026-09-29 entry.
 
 45. **Wave 2 — compensation/checkout races (Medium, still money).**
-    **🟢 M-5/M-7/M-8/M-9 BUILT 2026-09-29** (branch
-    `fix/2026-09-29-wave2-compensation-races`), test-first, full fast
-    suite **2334/2334** green, concurrency suite 23/23. Also fixed, mid-PR:
-    a genuinely pre-existing `SupplierControllerTest` bug (missing fake
-    adapter bind → a live network call to `api.gamevion.com` on every CI
-    run, timing out) unrelated to this Wave, caught because it was failing
-    PR #311's CI. **M-6 still not built** — it needs a grill (revisits
+    **🟡 M-5/M-7/M-8/M-9 MERGED TO `staging` 2026-09-29** (PR #311,
+    `fix/2026-09-29-wave2-compensation-races`, not yet on `main`),
+    test-first, full fast suite **2334/2334** green, concurrency suite
+    23/23. Also fixed, mid-PR: a genuinely pre-existing
+    `SupplierControllerTest` bug (missing fake adapter bind → a live
+    network call to `api.gamevion.com` on every CI run, timing out)
+    unrelated to this Wave, caught because it was failing PR #311's CI.
+    **M-6 still not built** — it needs a grill (revisits
     ADR-024), not a mechanical fix.
     - ~~**M-5**~~ — `Admin\OrderController::refundToWallet()` and
       `Admin\VoucherController::storeFromOrder()` didn't call
