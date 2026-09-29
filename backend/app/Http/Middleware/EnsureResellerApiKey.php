@@ -6,7 +6,9 @@ use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Models\ResellerApiKey;
 use App\Services\Reseller\ResellerApiKeyService;
 use Closure;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -28,6 +30,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureResellerApiKey
 {
+    private const MAX_AUTH_FAILURES_PER_MINUTE = 20;
+
     public function __construct(private readonly ResellerApiKeyService $apiKeys) {}
 
     /**
@@ -35,8 +39,18 @@ class EnsureResellerApiKey
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // Wave 3 PR-B: the `reseller-api` limiter keys on the raw token, so
+        // each made-up key got a fresh bucket. Failed auth is counted per
+        // IP here instead — 20/min, then 429 until the minute is up.
+        $failureKey = 'reseller-api-auth-failed:'.$request->ip();
+        if (RateLimiter::tooManyAttempts($failureKey, self::MAX_AUTH_FAILURES_PER_MINUTE)) {
+            // bootstrap/app.php renders this as the standard RATE_LIMITED envelope, headers kept.
+            throw new ThrottleRequestsException(headers: ['Retry-After' => RateLimiter::availableIn($failureKey)]);
+        }
+
         $token = $request->bearerToken();
         if ($token === null) {
+            RateLimiter::hit($failureKey);
             throw ResellerApiException::missingApiKey();
         }
 
@@ -46,6 +60,7 @@ class EnsureResellerApiKey
         // watches the portal for.
         $key = $this->apiKeys->resolve($token, $request->ip());
         if ($key === null) {
+            RateLimiter::hit($failureKey);
             throw ResellerApiException::invalidApiKey();
         }
 

@@ -101,6 +101,26 @@ class OtpServiceTest extends TestCase
         $this->assertFalse($service->verify($this->rid, 'member@example.com', $code));
     }
 
+    /**
+     * Wave 3 PR-B: the attempt check read `attempts` then incremented
+     * separately, so N parallel verify() calls against a code at 4
+     * attempts each got a guess — the 5-attempt cap only held serially.
+     * Simulated deterministically: a concurrent request's increment lands
+     * right after this one reads the row.
+     */
+    public function test_a_concurrent_attempt_that_used_the_last_slot_blocks_this_one(): void
+    {
+        $service = new OtpService;
+        $code = $service->generate($this->rid, 'member@example.com');
+        MembershipOtpCode::query()->update(['attempts' => 4]);
+
+        MembershipOtpCode::retrieved(function (MembershipOtpCode $otp) {
+            MembershipOtpCode::query()->whereKey($otp->id)->increment('attempts');
+        });
+
+        $this->assertFalse($service->verify($this->rid, 'member@example.com', $code));
+    }
+
     /** A fresh generate() for the same email must not let an old code (or its attempt count) interfere. */
     public function test_verify_only_matches_the_most_recently_generated_code(): void
     {

@@ -92,6 +92,22 @@ class AffiliateAuthControllerTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrorFor('email');
     }
 
+    /** Wave 3 PR-B (ADR-019 addendum): same per-account lockout as admin login. */
+    public function test_login_locks_an_account_after_10_failures_from_any_ips(): void
+    {
+        $user = $this->affiliateUser();
+
+        for ($i = 1; $i <= 10; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+                ->postJson('/api/affiliate/login', ['email' => $user->email, 'password' => 'wrong'])
+                ->assertStatus(422);
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1'])
+            ->postJson('/api/affiliate/login', ['email' => $user->email, 'password' => 'secret-password'])
+            ->assertStatus(429);
+    }
+
     public function test_login_rejects_a_deactivated_user(): void
     {
         $user = $this->affiliateUser(['is_active' => false]);

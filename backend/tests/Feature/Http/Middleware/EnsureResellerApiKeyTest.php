@@ -34,6 +34,29 @@ class EnsureResellerApiKeyTest extends TestCase
             ->getJson('/api/reseller/v1/balance', ['Authorization' => "Bearer {$key}"]);
     }
 
+    /**
+     * Wave 3 PR-B: the `reseller-api` limiter keys on the raw bearer
+     * token, so every made-up key got its own fresh 60/min bucket — a
+     * key-guessing flood was effectively unthrottled. Failed auth now
+     * counts per IP: 20/min, then 429 for the rest of the minute.
+     */
+    public function test_repeated_invalid_keys_from_one_ip_are_rate_limited(): void
+    {
+        [, $validKey] = $this->issueKey();
+
+        for ($i = 0; $i < 20; $i++) {
+            $this->hit("pgk_bogus_{$i}", '203.0.113.50')->assertStatus(401);
+        }
+
+        $this->hit('pgk_bogus_next', '203.0.113.50')
+            ->assertStatus(429)
+            ->assertJsonPath('error', 'RATE_LIMITED')
+            ->assertHeader('Retry-After');
+
+        // Other IPs are unaffected.
+        $this->hit($validKey, '198.51.100.7')->assertOk();
+    }
+
     public function test_an_empty_allowlist_permits_any_ip(): void
     {
         [, $key] = $this->issueKey(allowedIps: []);

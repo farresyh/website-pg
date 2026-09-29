@@ -57,6 +57,21 @@ class MembershipOtpControllerTest extends TestCase
             ->assertStatus(429);
     }
 
+    /**
+     * Wave 3 PR-B: the per-email bucket alone lets one IP mail-bomb as
+     * many different inboxes as it likes (3 each). 10/hour per IP caps
+     * that while leaving room for several people behind one NAT.
+     */
+    public function test_send_is_rate_limited_per_ip_across_different_emails(): void
+    {
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/membership/otp/send', ['email' => "member{$i}@example.com"])->assertOk();
+        }
+
+        $this->postJson('/api/membership/otp/send', ['email' => 'someone-new@example.com'])
+            ->assertStatus(429);
+    }
+
     public function test_a_different_email_is_not_blocked_by_another_emails_rate_limit(): void
     {
         for ($i = 0; $i < 3; $i++) {

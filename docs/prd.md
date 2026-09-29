@@ -1509,9 +1509,13 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       already refilled quota would over-grant past the plan's cap.
 
 46. **Wave 3 — security (all S findings + Low security hardening).**
-    **S-1/S-2/S-3 🟢 BUILT 2026-09-29** (PR-A,
-    `fix/2026-09-29-wave3-security`, see `docs/build-log.md`). Low items
-    still open (PR-B).
+    **S-1/S-2/S-3 🟢 BUILT 2026-09-29** (PR-A #314, merged). **PR-B
+    (`fix/2026-09-29-wave3-low-security`) 🟢 BUILT 2026-09-29:** OTP
+    per-IP limit + atomic attempt counter, per-account login lockout,
+    Reseller API failed-auth limit, ULID comment (ADR-019 addendum).
+    Still open from the Low list: impersonation scope/attribution (needs
+    a grill, ADR-058) and MFA (item 10). Also still open: the `doadmin`
+    finding below.
     - ~~**S-1 (Medium)**~~ — affiliate `store_name` wasn't escaped in the
       storefront's JSON-LD — stored XSS. Fixed via `jsonLdHtml()`.
     - ~~**S-2 (Medium)**~~ — `SqlGuard`'s table allow-list had 7 bypasses

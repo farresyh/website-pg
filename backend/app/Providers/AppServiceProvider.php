@@ -491,8 +491,13 @@ class AppServiceProvider extends ServiceProvider
         // other `throttle:` route in this app — the abuse case here is
         // spamming one target inbox, which an IP-only bucket wouldn't
         // catch from multiple source IPs).
+        // Wave 3 PR-B: plus 10/hour per IP — the email bucket alone let one
+        // IP mail-bomb unlimited different inboxes, 3 each.
         RateLimiter::for('otp-request', function (Request $request) {
-            return Limit::perHour(3)->by((string) $request->input('email'));
+            return [
+                Limit::perHour(3)->by('email:'.$request->input('email')),
+                Limit::perHour(10)->by('ip:'.$request->ip()),
+            ];
         });
 
         // ADR-068 S18 — the self-serve subscribe endpoint, keyed on the

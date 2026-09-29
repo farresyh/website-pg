@@ -170,8 +170,9 @@ Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTota
 // abuse-blunting matters more here than for a normal read endpoint.
 Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:10,1,validate-player');
 
-// Public "Track Order" lookup (ADR-011) — order_number (a ULID) is
-// high-entropy enough to be treated as proof of ownership on its own,
+// Public "Track Order" lookup (ADR-011) — order_number (12 random
+// base-36 chars, ~4.7e18 space — see OrderNumberService; no longer a
+// ULID) is high-entropy enough to be treated as proof of ownership on its own,
 // same trust model as a courier tracking number. Read-only, but still
 // throttled — a bit looser than checkout/validate since it's not
 // hitting a third-party API, just blunting scraping/enumeration.

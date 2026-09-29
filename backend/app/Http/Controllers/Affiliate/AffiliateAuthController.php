@@ -7,6 +7,7 @@ use App\Http\Requests\Affiliate\AffiliateLoginRequest;
 use App\Http\Requests\Affiliate\AffiliateSetPasswordRequest;
 use App\Models\AffiliateImpersonationSession;
 use App\Models\AffiliateUser;
+use App\Support\AccountLoginThrottle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -27,12 +28,16 @@ class AffiliateAuthController extends Controller
     public function login(AffiliateLoginRequest $request): JsonResponse
     {
         $email = $request->validated('email');
+        $throttle = new AccountLoginThrottle('affiliate', $email);
+        $throttle->ensureNotLocked();
+
         $user = AffiliateUser::query()->where('email', $email)->first();
 
         // A row whose invite is still unaccepted has a null password —
         // Hash::check() would throw on null, so short-circuit to the same
         // generic error an unknown email gets.
         if (! $user || $user->password === null || ! Hash::check($request->validated('password'), $user->password)) {
+            $throttle->recordFailure();
             Log::warning('Affiliate login failed: invalid credentials', [
                 'email' => $email,
                 'ip' => $request->ip(),
@@ -54,6 +59,7 @@ class AffiliateAuthController extends Controller
             ]);
         }
 
+        $throttle->clear();
         $user->forceFill(['last_login_at' => now()])->save();
 
         Log::info('Affiliate login succeeded', [
