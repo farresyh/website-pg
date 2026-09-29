@@ -1443,15 +1443,16 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     See `docs/build-log.md`'s 2026-09-29 entry.
 
 45. **Wave 2 — compensation/checkout races (Medium, still money).**
-    **🟡 M-5/M-7/M-8/M-9 MERGED TO `staging` 2026-09-29** (PR #311,
-    `fix/2026-09-29-wave2-compensation-races`, not yet on `main`),
-    test-first, full fast suite **2334/2334** green, concurrency suite
-    23/23. Also fixed, mid-PR: a genuinely pre-existing
-    `SupplierControllerTest` bug (missing fake adapter bind → a live
-    network call to `api.gamevion.com` on every CI run, timing out)
-    unrelated to this Wave, caught because it was failing PR #311's CI.
-    **M-6 still not built** — it needs a grill (revisits
-    ADR-024), not a mechanical fix.
+    **🟢 all 5 findings BUILT 2026-09-29.** M-5/M-7/M-8/M-9 merged to
+    `staging` via PR #311 (`fix/2026-09-29-wave2-compensation-races`).
+    M-6 grilled separately (revisits ADR-024, see its 2026-09-29
+    addendum) and built on `fix/2026-09-29-wave2-m6-full-cover-voucher-race`,
+    not yet merged as of this writing. Test-first throughout. Full fast
+    suite **2334/2334** green, concurrency suite **24/24** green. Also
+    fixed, mid-PR-#311: a genuinely pre-existing `SupplierControllerTest`
+    bug (missing fake adapter bind → a live network call to
+    `api.gamevion.com` on every CI run, timing out) unrelated to this
+    Wave, caught because it was failing PR #311's CI.
     - ~~**M-5**~~ — `Admin\OrderController::refundToWallet()` and
       `Admin\VoucherController::storeFromOrder()` didn't call
       `isAlreadyCompensated()` and didn't re-check `delivery_status`
@@ -1467,11 +1468,18 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       unreachable/dead code (that field is set once at order creation,
       never after) — removed it rather than leave it as dead
       defense-in-depth.
-    - **M-6** — `CheckoutService::settleWithVoucher()`'s full-voucher-cover
-      race (ADR-024's accepted residual race) can give away free goods
-      repeatedly since no payment moved in that branch — ADR-024's own
-      "customer already paid" rationale doesn't cover it. Needs a grill
-      (revisits ADR-024).
+    - ~~**M-6**~~ — `CheckoutService::settleWithVoucher()`'s full-voucher-
+      cover race (ADR-024's accepted residual race) could give away free
+      goods repeatedly since no payment moved in that branch — ADR-024's
+      own "customer already paid" rationale didn't cover it. Fixed by
+      making `VoucherService::redeem()` the full-cover branch's real
+      commit checkpoint (order created `Pending`, flips to `Paid` only
+      after `redeem()` succeeds; flips to `Failed` with a customer-facing
+      error if it loses the race) — see ADR-024's 2026-09-29 addendum.
+      Proven with a new `CheckoutSettleWithVoucherConcurrencyTest` (two
+      real OS processes racing the same exactly-covering voucher),
+      manually verified red (both sides won, voucher double-spent)
+      against the pre-fix code, green against the fix, 3x each.
     - ~~**M-7**~~ — `CheckoutController`/`CheckoutService::resume()`
       double-submit could create two CHIP purchases for one order,
       orphaning whichever one lost the `payment_ref` write race. Fixed

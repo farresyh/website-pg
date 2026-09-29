@@ -2743,3 +2743,66 @@ since `refundToWallet()` is supposed to replace it entirely.
   — removed it rather than ship dead defense-in-depth code.
 - Full fast suite **2334/2334** green after both fixes. Pint clean on
   every file touched.
+
+## 2026-09-29 — M-6 built: full-voucher-cover checkout race (ADR-024 addendum), grilled with the founder
+
+Last remaining Wave 2 finding (`docs/prd.md` §16 item 45). Grilled via
+`/mattpocock-skills:grilling` before any code changed — 4 decisions,
+founder deferred the technical two (reorder-vs-detect-after, scope lock)
+to the model's judgment, confirmed the other two (visible Failed order,
+quota-decrement timing) directly. Branch
+`fix/2026-09-29-wave2-m6-full-cover-voucher-race` off `staging`.
+
+The bug: a full-voucher-cover order (`voucher.remaining >= sellingPrice`)
+used to be stamped `payment_status=Paid` and dispatched to
+`FulfillOrderJob` at `Order::create()` time — *before*
+`VoucherService::redeem()` (the real, row-locked serialization point)
+ever ran. The 2026-08-13 addendum's "accepted residual race" (log and
+proceed regardless) was written for the *partial*-cover path, where real
+money had already moved by the time `redeem()` could lose — that
+premise was silently also being relied on for full-cover, where it's
+false (zero cash ever moves, `payment_ref` stays permanently null). N
+concurrent checkout requests from the same customer citing one
+exactly-covering voucher could each pass the unlocked `preview()`, each
+get created `Paid`, and each get fulfilled — only the first `redeem()`
+call actually spent the voucher; every other "winner" shipped real goods
+for free, repeatably.
+
+Fix: `CheckoutService::initiate()` no longer special-cases a full-cover
+order's `payment_status`/`paid_at` at creation — always `Pending`/`null`,
+same starting state as partial-cover. `settleWithVoucher()` is now the
+real commit checkpoint: `redeem()` succeeds → order flips to
+`Paid`/`paid_at=now()`, membership quota decrements (moved here from
+running unconditionally regardless of outcome), `FulfillOrderJob`
+dispatches. `redeem()` throws `InvalidVoucherException` (lost the race)
+→ order flips to `Failed`, nothing dispatched, no quota touched, customer
+gets a generic `CheckoutFailedException` message (reusing the same
+exception class/handling the partial-cover gateway-failure path already
+has). The losing order stays visible in the DB as `Failed` — same
+audit-trail discipline as every other failed checkout in this codebase,
+not deleted or silently absent.
+
+Couldn't deterministically simulate the lost-race branch via a fake
+`VoucherService` in a fast feature test — it's `final`, and this
+project's own convention avoids introducing an interface for a single
+implementation just to make it mockable. Proven instead with a new
+`tests/Concurrency/CheckoutSettleWithVoucherConcurrencyTest.php`, same
+shape as every other money-critical race test in this codebase: two real
+OS processes (`app:checkout-test-initiate-full-cover`, new test-only
+command) racing `CheckoutService::initiate()` against the same
+exactly-covering voucher. Manually verified red (both sides settled
+`Paid`, voucher spent twice) against the pre-fix code via `git stash`,
+green (exactly one `Paid`, one `Failed`, voucher spent once) against the
+fix, 3x each way to rule out scheduling luck. One fixture gotcha found
+mid-build: the winning side's `FulfillOrderJob` dispatch actually *runs*
+inline if `QUEUE_CONNECTION` isn't overridden away from `sync` in the
+subprocess env (this test has no real supplier fixture, so it blew up on
+a missing `supplier_product_ref`) — set to `database` instead, so the
+job queues but never executes (no worker running in this test), matching
+what this test actually needs to prove.
+
+Full fast suite **2334/2334** green, full concurrency suite **24/24**
+green (23 before this + the new test). Pint clean. New ADR-024 addendum
+(2026-09-29) records the 4 grilled decisions. `docs/prd.md` §16 item 45
+updated — all 5 Wave 2 findings now built (M-5/M-7/M-8/M-9 merged via
+PR #311, M-6 on its own branch, not yet merged as of this writing).
