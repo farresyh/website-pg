@@ -104,3 +104,13 @@ export function renderTemplate(template: string, tokens: Record<string, string>)
     template,
   );
 }
+
+/**
+ * Wave 3 S-1: JSON.stringify alone doesn't escape `<`, so an
+ * affiliate-controlled `store_name` of `</script><script>…` breaks out
+ * of an inline `<script type="application/ld+json">`. The unicode
+ * escape is still valid JSON, so crawlers read the same value.
+ */
+export function jsonLdHtml(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}

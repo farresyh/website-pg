@@ -1446,8 +1446,7 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     **🟢 all 5 findings BUILT 2026-09-29.** M-5/M-7/M-8/M-9 merged to
     `staging` via PR #311 (`fix/2026-09-29-wave2-compensation-races`).
     M-6 grilled separately (revisits ADR-024, see its 2026-09-29
-    addendum) and built on `fix/2026-09-29-wave2-m6-full-cover-voucher-race`,
-    not yet merged as of this writing. Test-first throughout. Full fast
+    addendum), merged to `staging` via PR #313. Test-first throughout. Full fast
     suite **2334/2334** green, concurrency suite **24/24** green. Also
     fixed, mid-PR-#311: a genuinely pre-existing `SupplierControllerTest`
     bug (missing fake adapter bind → a live network call to
@@ -1509,19 +1508,28 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       no-op, not credited — a stale debit landing after the cycle
       already refilled quota would over-grant past the plan's cap.
 
-46. **Wave 3 — security (all S findings + Low security hardening).** Not
-    yet built.
-    - **S-1 (Medium)** — affiliate `store_name` isn't escaped in the
-      storefront's JSON-LD (`storefront/src/app/layout.tsx`,
-      `order/[slug]/page.tsx`) — stored XSS on that affiliate's whitelabel
-      storefront. One-line fix (`<`-escape).
-    - **S-2 (Medium)** — `ReportAssistant/SqlGuard.php`'s table-name regex
-      can be bypassed with a comma-join, exposing any table to the LLM
-      report feature; the scoped `report_assistant` MySQL user (ADR-087)
-      is still unprovisioned in prod.
-    - **S-3 (Medium)** — `Jobs/Reseller/DeliverResellerWebhook.php` has no
-      private-IP/redirect guard on a reseller-supplied webhook URL (SSRF,
-      status-code oracle onto the droplet's internal network).
+46. **Wave 3 — security (all S findings + Low security hardening).**
+    **S-1/S-2/S-3 🟢 BUILT 2026-09-29** (PR-A,
+    `fix/2026-09-29-wave3-security`, see `docs/build-log.md`). Low items
+    still open (PR-B).
+    - ~~**S-1 (Medium)**~~ — affiliate `store_name` wasn't escaped in the
+      storefront's JSON-LD — stored XSS. Fixed via `jsonLdHtml()`.
+    - ~~**S-2 (Medium)**~~ — `SqlGuard`'s table allow-list had 7 bypasses
+      (comma join + 6 more found writing the red tests). All rejected now
+      (ADR-087 addendum). The scoped `report_assistant` MySQL user was
+      **provisioned in prod 2026-09-29** (`SELECT` on the three
+      `llm_report_*` views only; verified that `admin_users`/`orders`/
+      `reseller_api_keys` are denied with 1142).
+    - **New, found while provisioning (Low→Medium, not yet fixed):** the
+      app's main connection in prod runs as **`doadmin`**, the DO managed
+      MySQL superuser (`CREATE USER`, `DROP`, `GRANT OPTION` on `*.*`).
+      Any future SQL-injection-class bug would get full DB-admin power.
+      Fix: a dedicated app user with DML + DDL on `defaultdb` only (DDL
+      is still needed for `migrate --force` on deploy). Needs a careful
+      cutover (deploy migrations, view `DEFINER`s are `doadmin@%`).
+    - ~~**S-3 (Medium)**~~ — reseller webhook SSRF. `OutboundUrlGuard`
+      checks at save + send, pins curl to the approved IP, stops
+      following redirects (ADR-084 addendum).
     - Low: OTP has no per-IP rate limit + `OtpService`'s attempt counter
       has a check-then-increment race; admin/affiliate login has no
       per-account throttle (only per-IP) and no MFA (AUTH-7, already
@@ -1586,6 +1594,29 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       an already-Paid order (small race window); a hidden
       (`AffiliateGame.is_visible=false`) game is still buyable via direct
       checkout on an affiliate storefront.
+
+49. **Affiliate custom-domain onboarding copy (ADR-060) — parked
+    2026-09-29, not security, raised mid-Wave 3.** Found via
+    `fixfastapp.com` showing Vercel's "Proxy Detected" warning (its
+    Cloudflare record is Proxied/orange-cloud — risks SSL renewal failure,
+    a redirect loop under Cloudflare "Flexible" SSL, and blinds Vercel's
+    bot/DDoS tooling). The reseller portal's Domains screen
+    (`reseller/src/app/(portal)/domains/page.tsx`) is a single English
+    paragraph that never mentions the proxy trap or any other
+    provider-specific pitfall. Founder-agreed shape: **bilingual (EN+BM)**,
+    numbered generic steps (log in to DNS provider → delete any existing
+    record for that name → add record with Host = `shop` only, not the full
+    name → "Check now"), plus a collapsible "Tips by provider" —
+    Cloudflare: set Proxy status to **DNS only** (grey cloud); GoDaddy:
+    delete the "Parked" record + turn off Domain Forwarding; others: don't
+    type the full hostname in Host (provider auto-appends it). Keep
+    ADR-060's provider-opaque rule (never name *our* host; naming the
+    affiliate's own DNS provider is fine). No per-provider screenshots
+    (provider UIs change, screenshots rot). **Follow-up, only once a real
+    affiliate hits it:** detect a proxied domain on "Check now" and show a
+    specific warning instead of a misleading `active`. Separately
+    founder-owed now: flip `fixfastapp.com`'s record to DNS-only in
+    Cloudflare.
 
 ## Parked by founder decision (2026-09-09) — not scheduled
 

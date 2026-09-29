@@ -12,7 +12,7 @@ import { listPaymentChannels } from "@/lib/payment-methods";
 import { listPlans } from "@/lib/membership";
 import { getGameReviews } from "@/lib/review";
 import { getBranding } from "@/lib/branding";
-import { getSeoSettings, renderTemplate } from "@/lib/seo";
+import { getSeoSettings, jsonLdHtml, renderTemplate } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 
 interface OrderPageProps {
@@ -93,10 +93,10 @@ export default async function OrderPage({ params }: OrderPageProps) {
   return (
     <>
       {productJsonLd && (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml(productJsonLd) }} />
       )}
       {breadcrumbJsonLd && (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml(breadcrumbJsonLd) }} />
       )}
       <main className="pb-nav lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 pt-5">

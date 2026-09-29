@@ -2806,3 +2806,68 @@ green (23 before this + the new test). Pint clean. New ADR-024 addendum
 (2026-09-29) records the 4 grilled decisions. `docs/prd.md` §16 item 45
 updated — all 5 Wave 2 findings now built (M-5/M-7/M-8/M-9 merged via
 PR #311, M-6 on its own branch, not yet merged as of this writing).
+
+## 2026-09-29 — Wave 3 PR-A built: S-1 JSON-LD XSS, S-2 SqlGuard bypasses, S-3 webhook SSRF
+
+The three Medium security findings from the 2026-09-28 audit
+(`docs/prd.md` §16 item 46). Branch `fix/2026-09-29-wave3-security` off
+`staging`. No grill needed: all three restore an invariant the code
+already claimed to have. The S-3 shape was model-decided with the
+founder's go-ahead and is recorded as an ADR-084 addendum. S-2 gets an
+ADR-087 addendum because that ADR's "hard backstop" claim isn't true in
+prod yet. The Low items (OTP, login throttle, impersonation, API
+throttle key, ULID comment) are left for PR-B.
+
+- **S-1** — `storefront/src/lib/seo.ts` `jsonLdHtml()` escapes `<` as
+  `<` for all three JSON-LD `<script>` tags (Organization in
+  `layout.tsx`, Product + Breadcrumb in `order/[slug]/page.tsx`).
+  Storefront has no test runner, so the check was a node assert
+  (no raw `<` in the output, and `JSON.parse` round-trips the value)
+  plus tsc/lint.
+- **S-2** — the audit named the comma join. While writing the red
+  tests, six more bypasses turned up, all proven red: a comma join after
+  a derived table, a parenthesised table, `STRAIGHT_JOIN` (`\bJOIN`
+  never matches after `_`), a backtick with no space before it,
+  `/**/` as the separator, and MySQL 8's `TABLE t` inside a subquery.
+  All of these are now rejected outright rather than parsed. Comma joins
+  are detected per paren depth, not by regex, so a derived table's own
+  inner FROM doesn't confuse the outer one. Also confirmed:
+  `config/database.php`'s `report_assistant` connection falls back to
+  the main DB user when `REPORT_ASSISTANT_DB_USERNAME` is unset, so in
+  prod this regex was the *only* defense. Provisioning that user is
+  still owed by the founder.
+- **S-3** — new `App\Support\OutboundUrlGuard`. It uses
+  `FILTER_FLAG_GLOBAL_RANGE` on every A/AAAA record, and an unresolvable
+  host is rejected. The URL is checked at save (a closure rule shared by
+  both `Store*WebhookRequest`s) and again at send; a failure at send is
+  terminal, with no retry. The send is pinned via `CURLOPT_RESOLVE`, and
+  redirects are no longer followed. Gotcha: the red test proved Laravel's
+  `Http::fake` *does* follow a faked 302 through Guzzle's redirect
+  middleware, so the redirect test is a genuine red→green, not a
+  tautology. `Http::fake` can't prove the curl pin, so it was verified
+  with a real request instead (`example.com` pinned to `127.0.0.1`
+  landed on localhost's TLS cert). Tests that touch webhook URLs call
+  the new `TestCase::fakeOutboundDns()`, because `*.test` never
+  resolves. Four test files needed it; one of them (`DispatchResellerOrderWebhookTest`)
+  was only caught by the full-suite run.
+
+Full fast suite **2357/2357** green. Concurrency suite not re-run: no
+locking changed.
+
+Also parked, mid-session (not security): affiliate custom-domain
+onboarding copy → §16 item 49. Found via `fixfastapp.com`'s Vercel
+"Proxy Detected" warning (its Cloudflare record is orange-cloud).
+
+**Addendum, same day: prod `report_assistant` user provisioned.** It was
+created over SSH on `pekangame-prod-lwf` via tinker on the main
+connection, with a password generated on the server that never left it.
+First attempt failed harmlessly: `CREATE USER ... IDENTIFIED BY ?` is
+rejected because MySQL doesn't allow a bound placeholder there, and the
+QueryException message echoed the generated password into the terminal.
+That password was never used (no user created, `.env` untouched), so it
+was discarded and regenerated. The retry passed the password through
+`PDO::quote` and only ever printed a result code. Verification
+(`CURRENT_USER`, row counts on the 3 views, 1142 denials, `SHOW GRANTS`)
+is recorded in the ADR-087 addendum. Also found: the app's main
+connection is `doadmin`, the DO superuser. This was added to §16 item 46
+as a new finding, not fixed here.

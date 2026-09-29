@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\ResellerPortal;
 
+use App\Support\OutboundUrlGuard;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -24,7 +25,15 @@ class StoreWebhookRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'url' => ['required', 'string', 'url:https', 'max:2048'],
+            'url' => ['required', 'string', 'url:https', 'max:2048', self::publicAddress(...)],
         ];
+    }
+
+    /** Wave 3 S-3 — shared with `Admin\StoreResellerWebhookRequest`. */
+    public static function publicAddress(string $attribute, mixed $value, \Closure $fail): void
+    {
+        if (is_string($value) && app(OutboundUrlGuard::class)->publicAddressFor($value) === null) {
+            $fail('The webhook URL must resolve to a public internet address.');
+        }
     }
 }
