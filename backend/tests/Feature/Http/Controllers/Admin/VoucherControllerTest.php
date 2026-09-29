@@ -384,6 +384,25 @@ class VoucherControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
+    /**
+     * ADR-073 decision 7: refundToWallet() replaces Issue Voucher
+     * entirely for a wallet order — enforced by the admin UI hiding the
+     * button, but until 2026-09-29 nothing stopped this endpoint itself
+     * from being called directly for a wallet order, refunded or not.
+     */
+    public function test_cannot_issue_a_voucher_for_a_wallet_owned_order_at_all(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+        $order = $this->makeOrder(['wallet_reseller_id' => $reseller->id]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson("/api/orders/{$order->id}/voucher");
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseCount('vouchers', 0);
+    }
+
     /** M-5, 2026-09-29 audit: an order already refunded to a reseller's wallet must not also get a voucher. */
     public function test_cannot_issue_a_voucher_for_an_order_already_refunded_to_wallet(): void
     {

@@ -207,6 +207,19 @@ class VoucherController extends Controller
             ]);
         }
 
+        // ADR-073 decision 7: refundToWallet() REPLACES Issue Voucher
+        // entirely for a wallet-owned order — a Voucher's email-keyed
+        // mechanism has no meaning for a B2B wallet account. That's
+        // enforced by the admin UI never showing both buttons together,
+        // but until now nothing stopped this endpoint itself from being
+        // called directly for a wallet order. Backend-level guard added
+        // 2026-09-29, following M-5's own compensation-race fix above.
+        if ($order->wallet_reseller_id !== null) {
+            throw ValidationException::withMessages([
+                'order' => ['This order belongs to a Reseller wallet — use Refund to Wallet instead of Issue Voucher.'],
+            ]);
+        }
+
         if (Voucher::query()->where('order_id', $order->id)->exists()) {
             throw ValidationException::withMessages([
                 'order' => ['A voucher has already been issued for this order.'],
@@ -262,25 +275,23 @@ class VoucherController extends Controller
             $voucher = DB::transaction(function () use ($order, $amount, $isPartialComboDelivery, $request) {
                 $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-                // M-5, 2026-09-29 audit: the checks above ran on the
-                // unlocked $order — re-derive from $locked, the same
-                // defense-in-depth OrderFulfillmentService::fulfill() uses,
-                // so a concurrent resend/refundToWallet that committed while
-                // this request waited for the lock is caught here instead
-                // of stacking a second compensation on top of it. Deliberately
-                // NOT the full isAlreadyCompensated() — isVoucherRestored()
-                // being true is this action's OWN expected idempotency marker
-                // on a repeat restore-only click (ADR-024 addendum), not a
+                // M-5, 2026-09-29 audit: the delivery_status check above
+                // ran on the unlocked $order — re-derive from $locked, the
+                // same defense-in-depth OrderFulfillmentService::fulfill()
+                // uses, so a concurrent resend that delivered this order
+                // while this request waited for the lock is caught here.
+                // No isAlreadyRefundedToWallet()/isAlreadyCompensated()
+                // check needed here: the wallet_reseller_id guard above
+                // already rejects every wallet order before this
+                // transaction is ever reached, and that field is set once
+                // at order creation, never after — a plain
+                // isVoucherRestored() would also be wrong here, since
+                // that's this action's OWN expected idempotency marker on
+                // a repeat restore-only click (ADR-024 addendum), not a
                 // race to block.
                 if ($locked->delivery_status !== DeliveryStatus::Failed && ! $isPartialComboDelivery) {
                     throw ValidationException::withMessages([
                         'order' => ['A voucher can only be issued for an order with a failed delivery.'],
-                    ]);
-                }
-
-                if ($locked->isAlreadyRefundedToWallet()) {
-                    throw ValidationException::withMessages([
-                        'order' => ['This order has already been refunded to the reseller\'s wallet.'],
                     ]);
                 }
 
