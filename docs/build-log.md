@@ -2957,3 +2957,43 @@ Branch `fix/2026-09-29-wave4-burst-timeouts`. Test-first where there was logic
   own signal. 20s is set above K-2's ~17s worst case.
 
 Next: grill K-1/K-5 (ADR-048 addendum, 2-lane proposal), K-7 SSH check, Lows.
+
+## 2026-09-29 — Wave 4 PR-B built: order lanes + worker scaling (K-1, K-5, K-7, Lows)
+
+Grilled with the founder. Recorded as the ADR-048 2026-09-29 addendum. Branch
+`fix/2026-09-29-wave4-order-lanes`. Fast suite 2370/2370; concurrency 24/24.
+
+- **K-1 — lanes, not one worker per channel.** `Order::orderLane()` sends a
+  wallet order (portal/API/bot) to `orders-reseller`; retail keeps `orders`,
+  so jobs already queued at deploy time still drain. `FulfillOrderJob`
+  (non-combo), `CheckSupplierDeliveryJob` and `ResendOrderDeliveryJob` all
+  read the lane from the order, so webhook, reconcile and admin-retry
+  dispatches route themselves. `supervisor-orders` now covers both queues with
+  `balance: auto`, min 1 per lane and max 4 (prod). Combo goes to 2.
+  **Verified live on local Horizon:** a job pushed to each lane was popped
+  within 1s by its own worker.
+- **Notifications off the order lanes.** Bot replies, the bot order
+  notification listener, the reseller webhook dispatcher and the
+  `OrderStatusUpdated` broadcast all move to `default`. During a burst they no
+  longer wait behind supplier calls.
+- **K-5:** CHIP/Digiflazz/OpenWA webhook throttles raised from 120 to 600/min.
+- **K-7 (ops, live):** prod Redis on the ADR-114 droplet had AOF **off** and
+  `noeviction`. ADR-048 decision 2's AOF prerequisite never made it onto the
+  new box. It is now `maxmemory 256mb` / `volatile-lru` / `appendonly yes` /
+  `everysec`, set via `CONFIG SET` + `CONFIG REWRITE` (no restart). Port 6379
+  confirmed filtered from the internet.
+- **Lows:**
+  - LongWait alert. **Gotcha:** Horizon's own mail notification uses `Mail::`,
+    which is `log` in prod, so it could never reach anyone. The alert now goes
+    through `BackupFailureAlerter`'s Plunk path, which gained an `$area` param,
+    throttled to one alert per queue per 15 min.
+  - `horizon:snapshot` scheduled every 5 min.
+  - Dashboard "queue pending" read the `jobs` table that ADR-048 made unused, so
+    it always showed 0. It now reads `Queue::size()` across all 3 order lanes.
+- **PR-A side effect caught here:** Horizon's `waits` key is connection-scoped,
+  so after K-4 moved combo to `redis-long`, `redis:orders-combo` silently
+  stopped matching. Renamed to `redis-long:orders-combo`.
+- **Founder-owed before the staging→main release:** run
+  `sudo systemctl disable --now mysql` on `pekangame-prod-lwf`. The local
+  mysqld (409 MB, 0 connections) is unused; the app runs on DO Managed MySQL.
+  This frees RAM for the extra workers.

@@ -1550,13 +1550,16 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       unthrottled); doc comments call `order_number` a ULID when it isn't.
 
 47. **Wave 4 — burst-traffic prep, before any promo/ad push.**
-    **K-4/K-3/K-2/K-6 🟢 BUILT 2026-09-29** (PR-A,
-    `fix/2026-09-29-wave4-burst-timeouts`). Still open: K-1 + K-5 (grill
-    first, ADR-048 addendum — founder leaning to 2 lanes,
-    `orders-retail`/`orders-reseller`, not one worker per channel; needs
-    prod Digiflazz latency from `supplier_request_logs` + Digiflazz's own
-    answer on rate limits, their public docs list none), K-7 (SSH check),
-    and the Lows. **`K-4` must land before `K-1`** (raising `maxProcesses`) or a
+    **K-4/K-3/K-2/K-6 🟢 BUILT 2026-09-29** (PR-A #316, merged).
+    **K-1/K-5 + Lows a/b/c 🟢 BUILT 2026-09-29** (PR-B,
+    `fix/2026-09-29-wave4-order-lanes`; grilled, ADR-048 2026-09-29
+    addendum): two lanes (`orders` retail + `orders-reseller`), auto-balanced
+    max 4, combo 2, notifications moved to `default`, webhook throttle 600/min,
+    LongWait alert via Plunk, `horizon:snapshot` scheduled, and a live
+    queue-size KPI. **K-7 🟢 APPLIED LIVE 2026-09-29** (Redis config, ops).
+    Founder-owed before release: disable the unused local `mysqld` on
+    `pekangame-prod-lwf`. Deferred: parallel scheduler reconcile (not slow
+    today). **`K-4` must land before `K-1`** (raising `maxProcesses`) or a
     slow combo job can genuinely double-run.
     - ~~**K-4 (Medium)**~~ — fixed: new `redis-long` queue connection
       (retry_after 330s) used only by `supervisor-orders-combo`; a test
