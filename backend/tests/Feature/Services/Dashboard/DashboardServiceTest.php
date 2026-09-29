@@ -21,6 +21,7 @@ use App\Services\Report\ReportService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -388,26 +389,22 @@ class DashboardServiceTest extends TestCase
         $this->assertSame(1, $health['pending_payments']['value']);
     }
 
-    public function test_queue_depth_scoped_to_orders_queue_only(): void
+    /**
+     * Wave 4 audit Low (2026-09-29): `pending` read the `jobs` table, which
+     * nothing writes since ADR-048 moved the queue to Redis — it was
+     * always 0. Now the live queue size across every order lane.
+     */
+    public function test_queue_depth_counts_every_order_lane_from_the_live_queue(): void
     {
-        DB::table('jobs')->insert([
-            'queue' => 'orders',
-            'payload' => '{}',
-            'attempts' => 0,
-            'available_at' => now()->timestamp,
-            'created_at' => now()->timestamp,
-        ]);
-        DB::table('jobs')->insert([
-            'queue' => 'price-sync',
-            'payload' => '{}',
-            'attempts' => 0,
-            'available_at' => now()->timestamp,
-            'created_at' => now()->timestamp,
-        ]);
+        Queue::fake();
+        Queue::pushOn('orders', 'retail-job');
+        Queue::pushOn('orders-reseller', 'reseller-job');
+        Queue::pushOn('orders-combo', 'combo-job');
+        Queue::pushOn('price-sync', 'not-an-order-job');
 
         $health = $this->dashboard->health();
 
-        $this->assertSame(1, $health['queue']['pending']);
+        $this->assertSame(3, $health['queue']['pending']);
     }
 
     // --- funnel() / DASH-3 ------------------------------------------------
