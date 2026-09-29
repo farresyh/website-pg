@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Models\AdminUser;
+use App\Support\AccountLoginThrottle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -22,9 +23,13 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $email = $request->validated('email');
+        $throttle = new AccountLoginThrottle('admin', $email);
+        $throttle->ensureNotLocked();
+
         $admin = AdminUser::query()->where('email', $email)->first();
 
         if (! $admin || ! Hash::check($request->validated('password'), $admin->password)) {
+            $throttle->recordFailure();
             // ADR-019: no audit trail existed for a brute-force attempt
             // or a compromised account before this line — email only,
             // never the attempted password.
@@ -49,6 +54,8 @@ class AuthController extends Controller
                 'email' => ['This account has been deactivated.'],
             ]);
         }
+
+        $throttle->clear();
 
         Log::info('Admin login succeeded', [
             'admin_id' => $admin->id,

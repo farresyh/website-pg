@@ -2871,3 +2871,48 @@ was discarded and regenerated. The retry passed the password through
 is recorded in the ADR-087 addendum. Also found: the app's main
 connection is `doadmin`, the DO superuser. This was added to §16 item 46
 as a new finding, not fixed here.
+
+## 2026-09-29 — Wave 3 PR-B built: Low security hardening (OTP, login lockout, Reseller API auth flood)
+
+Branch `fix/2026-09-29-wave3-low-security` off `staging` (after PR #314
+merged). Every item was red first, then green. Decisions are in the
+ADR-019 addendum; the numbers were proposed by the model and accepted by
+the founder.
+
+- **OTP send:** 10/hour per IP added alongside 3/hour per email. The
+  named limiter now returns two `Limit`s, with an explicit `email:`/`ip:`
+  prefix on each key.
+- **OTP attempt race:** `verify()` claims an attempt slot with a
+  conditional `increment()` and consumes the code with a conditional
+  `update()`, checking the affected row count each time. The red test
+  simulates the concurrent request deterministically: a `retrieved` model
+  event bumps `attempts` right after this request reads the row. A real
+  2-process concurrency test would be overkill for a counter.
+- **Login lockout:** `App\Support\AccountLoginThrottle` is shared by the
+  admin and affiliate logins. Tests spread failures across
+  `REMOTE_ADDR`s so the existing per-IP 5/min bucket doesn't trip first.
+- **Reseller API:** failed auth is counted per IP in
+  `EnsureResellerApiKey`. On the limit it throws Laravel's own
+  `ThrottleRequestsException`, not `ResellerApiException::rateLimited()`,
+  because only the `bootstrap/app.php` mapping keeps the `Retry-After`
+  header that the public docs promise. Throwing the envelope directly
+  would have dropped it.
+- The ULID comment in `routes/api.php` (Track Order) was corrected. The
+  one in `OrderFulfillmentService` refers to the reference suffix and is
+  accurate, so it was left alone.
+
+Full fast suite **2363/2363** green. Concurrency suite not re-run: no
+DB-lock code changed. The OTP fix is a conditional UPDATE, and the red
+test covers it.
+
+Not in this PR: impersonation scope/attribution (needs a grill,
+ADR-058), MFA (item 10), and the `doadmin` main-connection finding.
+
+**Addendum, same day: Wave 3 closed out.** After explanation, the founder
+decided (a) RES-4 impersonation stays unrestricted: won't-fix, recorded
+as an ADR-058 addendum with a re-open trigger (a second
+`super_admin`/staff user); and (b) the `doadmin` main-connection fix is
+deferred to be bundled with decommissioning the old `pekangame-prod`
+droplet and old DB (§16 item 46). Wave 3 has nothing left to build
+except MFA, which was already tracked separately as item 10. Next up:
+Wave 4 (item 47), where K-4 must land before K-1.

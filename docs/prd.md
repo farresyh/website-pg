@@ -1509,9 +1509,13 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       already refilled quota would over-grant past the plan's cap.
 
 46. **Wave 3 — security (all S findings + Low security hardening).**
-    **S-1/S-2/S-3 🟢 BUILT 2026-09-29** (PR-A,
-    `fix/2026-09-29-wave3-security`, see `docs/build-log.md`). Low items
-    still open (PR-B).
+    **S-1/S-2/S-3 🟢 BUILT 2026-09-29** (PR-A #314, merged). **PR-B
+    (`fix/2026-09-29-wave3-low-security`) 🟢 BUILT 2026-09-29:** OTP
+    per-IP limit + atomic attempt counter, per-account login lockout,
+    Reseller API failed-auth limit, ULID comment (ADR-019 addendum).
+    Impersonation scope/attribution was **closed by founder decision
+    (won't-fix, see the ADR-058 addendum)**. Still open: MFA (item 10) and
+    the `doadmin` finding below, which is deferred.
     - ~~**S-1 (Medium)**~~ — affiliate `store_name` wasn't escaped in the
       storefront's JSON-LD — stored XSS. Fixed via `jsonLdHtml()`.
     - ~~**S-2 (Medium)**~~ — `SqlGuard`'s table allow-list had 7 bypasses
@@ -1527,15 +1531,21 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
       Fix: a dedicated app user with DML + DDL on `defaultdb` only (DDL
       is still needed for `migrate --force` on deploy). Needs a careful
       cutover (deploy migrations, view `DEFINER`s are `doadmin@%`).
+      **Deferred by the founder (2026-09-29):** to be done in the same
+      session as decommissioning the old `pekangame-prod` droplet and its
+      old managed DB (ADR-114 rollback leftovers). Both are prod DB
+      credential/infra work, and doing them together means one
+      carefully-monitored maintenance window instead of two.
     - ~~**S-3 (Medium)**~~ — reseller webhook SSRF. `OutboundUrlGuard`
       checks at save + send, pins curl to the approved IP, stops
       following redirects (ADR-084 addendum).
     - Low: OTP has no per-IP rate limit + `OtpService`'s attempt counter
       has a check-then-increment race; admin/affiliate login has no
       per-account throttle (only per-IP) and no MFA (AUTH-7, already
-      tracked at item 10 above); `AffiliateImpersonationController` tokens
+      tracked at item 10 above); ~~`AffiliateImpersonationController` tokens
       aren't scope-restricted and writes made during impersonation aren't
-      attributed to the real admin (ADR-058 RES-4 gap); Reseller API
+      attributed to the real admin~~ (won't-fix, founder decision, see the
+      ADR-058 addendum); Reseller API
       throttle is keyed on the raw bearer token (an invalid-key flood is
       unthrottled); doc comments call `order_number` a ULID when it isn't.
 

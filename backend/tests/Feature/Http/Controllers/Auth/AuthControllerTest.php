@@ -81,6 +81,48 @@ class AuthControllerTest extends TestCase
     }
 
     /**
+     * Wave 3 PR-B (ADR-019 addendum): the per-IP bucket alone doesn't stop
+     * a distributed guess against ONE account. 10 failures in 15 minutes
+     * from any mix of IPs locks that account for 15 minutes — even the
+     * correct password is refused until it expires.
+     */
+    public function test_login_locks_an_account_after_10_failures_from_any_ips(): void
+    {
+        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
+
+        for ($i = 1; $i <= 10; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+                ->postJson('/api/login', ['email' => $admin->email, 'password' => 'wrong-password'])
+                ->assertUnprocessable();
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1'])
+            ->postJson('/api/login', ['email' => $admin->email, 'password' => 'secret-password'])
+            ->assertStatus(429);
+
+        $this->travel(16)->minutes();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.2'])
+            ->postJson('/api/login', ['email' => $admin->email, 'password' => 'secret-password'])
+            ->assertOk();
+    }
+
+    public function test_a_successful_login_resets_the_account_failure_count(): void
+    {
+        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
+        $attempt = fn (int $i, string $password) => $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+            ->postJson('/api/login', ['email' => $admin->email, 'password' => $password]);
+
+        for ($i = 1; $i <= 9; $i++) {
+            $attempt($i, 'wrong-password')->assertUnprocessable();
+        }
+        $attempt(20, 'secret-password')->assertOk();
+
+        $attempt(21, 'wrong-password')->assertUnprocessable();
+        $attempt(22, 'secret-password')->assertOk();
+    }
+
+    /**
      * Found live, 2026-08-27: ThrottleRequests' default key is
      * sha1($route->getDomain().'|'.$request->ip()) — no route path at
      * all — so every throttle:N,1 route without its own prefix shares
