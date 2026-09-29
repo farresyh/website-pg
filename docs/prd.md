@@ -1604,8 +1604,19 @@ link staying alive. Findings are labeled **M-** (money), **S-** (security),
     - **Grill inputs (prod, 2026-09-29):** Digiflazz `createOrder` n=43,
       p50 0.16s / p95 6.3s / p99 7.8s — 34/37 successes return rc `03`
       (pending, confirmed later by callback/`checkStatus`). Busiest day so
-      far: 6 orders. Digiflazz documents no rate limit, but the 2026-09-25
-      two-server double-sync did trip one.
+      far: 6 orders.
+    - **Digiflazz CS answer (2026-09-29, founder asked directly):**
+      **topup has no transaction/concurrency limit.** Full price list
+      (`listProducts`) is limited to **1 call per 5 minutes**; over that
+      returns `rc: "83"` ("Anda telah mencapai limitasi pengecekan
+      pricelist"). Per-product-code price lookup is unlimited. So K-1's
+      real ceiling is our own box (RAM/CPU/fpm), not Digiflazz. This
+      explains the 2026-09-25 double-sync incident. Also: the HTTP retry
+      (`[200, 500, 1000]` ms) on `listProducts` can never succeed if the
+      first request reached Digiflazz, because a retry within 5 min is
+      guaranteed rc 83. Harmless at our 30-min sync interval; it would only
+      matter if a sync ever got retried, or if someone clicks manual "Sync
+      now" right after a scheduled run.
     - **K-7 (Medium)** — Redis is a single point of failure for every
       throttled route and cached read; verify `volatile-lru`/AOF were
       re-applied on the ADR-114 droplet, not a code fix.
