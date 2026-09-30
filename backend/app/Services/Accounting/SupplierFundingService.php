@@ -280,6 +280,24 @@ final class SupplierFundingService
                     $updates['receipt_path'] = $newReceiptPath;
                 }
 
+                // 2026-10-01 fix: `effective_rate` is derived from
+                // `amount_myr_sent` (the only side of the rate this
+                // correction path can touch — `amount_foreign_received`/
+                // `supplier_fee` stay Adjust/Void-only) but was never
+                // recomputed here, leaving it silently stale after any
+                // "Edit Details" correction to the sent amount. Found
+                // live: two real corrections this session left the
+                // Funding History page's own "Rate" column wrong, though
+                // with zero effect on any real total —
+                // `MonthlyAccountingSummaryService::weightedAverageRate()`
+                // always recomputes fresh from `amount_myr_sent` directly,
+                // never reads this stored column.
+                if (array_key_exists('amount_myr_sent', $updates)) {
+                    $newRate = $this->effectiveRate((int) $updates['amount_myr_sent'], $locked->netForeignReceived());
+                    $diff['effective_rate'] = [$locked->effective_rate, $newRate];
+                    $updates['effective_rate'] = $newRate;
+                }
+
                 if ($diff === []) {
                     throw ValidationException::withMessages([
                         'changes' => ['Nothing was actually changed.'],
