@@ -776,21 +776,18 @@ production before building on it.
     - (c) a **full-voucher-cover** order: Paid with no CHIP step, then
       Delivered, voucher balance reduced (the M-6 flow);
     - (d) the WhatsApp paths still owed in item 54 (b)–(c);
-    - (e) **2026-09-30 accounting audit fixes (PR #329, merged `staging`,
-      not yet `main`)** — verify against real production data once live:
-      `TransactionRegisterService::rows()`'s `cost_sen` is `null` for a
-      real non-delivered order, a real wallet-refunded order shows its new
-      `reseller_wallet_refund` row, a real wallet-paid order's
-      `funding_source` is `reseller_wallet`, a real membership row with a
-      matching `MembershipCheckoutAttempt` shows the real CHIP fee, and
-      `MonthlyAccountingSummaryService::forPeriod()`'s
-      `bank_transfer_fees_sen` + `supplier_prepaid_topup_sen` split still
-      sums to the same total the old bundled figure did. Deliberately
-      skipped a pre-`main` scratch-checkout verification against the real
-      prod DB (would have needed copying live `.env` credentials into a
-      scratch directory on the prod box — founder can run it
-      himself if wanted, command was handed over) in favour of checking
-      live after the real deploy instead.
+    - (e) ~~2026-09-30 accounting audit fixes~~ — **done 2026-10-01.**
+      Released to `main` via PR #332 (bundled with #326/#327/#328; #333
+      fixed an unrelated pre-existing CI timezone flake found along the
+      way). Live-verified against real production data post-deploy:
+      `cost_sen` null for the real order, its `reseller_wallet_refund` row
+      present, CSV footer total, `bank_transfer_fees_sen` split correct,
+      `reseller_wallet_balance_sen` matched the founder's own previously-
+      verified Balance page figure exactly. The underlying RM14.36
+      data-entry mistake the external reviewer found was also corrected
+      live (Edit Details, both transfers) — Monthly Summary now reads
+      RM 742.97, matching the reviewer's own receipts-based figure exactly.
+      Full detail: `docs/build-log.md`'s 2026-10-01 entry.
 
     The model can watch Horizon and logs live over SSH while these run.
 
