@@ -1892,3 +1892,78 @@ just the isolated test DB): recorded and voided a real Envelope Ledger
 entry with all 3 new fields, confirmed `reseller_wallet_balance_sen`
 returns a real RM13.25 locally, confirmed the CSV footer total computes
 correctly against 190 real local register rows.
+
+## 2026-10-01 — Accounting audit fixes released to `main`, live-verified, and the underlying data-entry mistake corrected
+
+PR #329 + #331 released to `main` via PR #332 (bundled with the pending
+WhatsApp order-card fix, #326, and docs #327/#328 — all already on
+`staging`). CI on #332 caught one real failure first: `backend-tests` on
+`CustomerAnalyticsServiceTest::test_monthly_trend_buckets_by_paid_month` —
+unrelated pre-existing flake (built `paid_at` with UTC `now()`, but
+`CustomerAnalyticsService::monthlyTrend()` buckets by Asia/Kuala_Lumpur;
+near KL midnight the two disagree about which month "now" is). Fixed via
+PR #333, merged to `staging`, #332 re-ran green, merged to `main`.
+
+**Live-verified against real production data post-deploy** (read-only SSH
++ a real browser session, per `docs/prd.md` §16 item 51(e)):
+`cost_sen` null for `PG-B7RB8MON6Q9I`, its `reseller_wallet_refund` row
+present, CSV footer total computes without error, `bank_transfer_fees_sen`
+correctly split from `supplier_prepaid_topup_sen` (still summing to the
+same RM757.33 pre-correction total), `reseller_wallet_balance_sen` =
+RM347.96 — matching the founder's own previously-verified Balance page
+figure exactly, a strong real-world confirmation the new line is correct.
+
+**The underlying data-entry mistake the external reviewer found (RM14.36
+gap, see the first 2026-09-30 addendum above) was also corrected live**,
+using the now-live "Edit Details" flow (driven via a real browser session
+against the real admin panel, founder's own logged-in session): the 19 Sep
+and 21 Sep Digiflazz transfers both had the gross Wise receipt total
+entered into "Amount sent" with the Wise fee then added a second time —
+corrected to the net figures (RM193.59 and RM336.13), and the 19 Sep
+transfer's missing Wise reference (`#2380779917`) was added too. Verified
+immediately after: `MonthlyAccountingSummaryService::forPeriod(2026, 9)`
+now returns exactly RM 742.97 (RM 721.91 topup + RM 21.06 fee) — matching
+the external reviewer's own from-the-receipts figure to the cent. Both
+corrections are visible in Funding History with their full "Edited:
+field old→new" audit trail and reason text, never a silent edit.
+
+Every finding from the external accounting review has now either shipped
+as a code fix, been corrected as data, or been grilled and deliberately
+parked (`docs/prd.md` §16 item 55) — see the receipt-storage incident
+below, surfaced by this same correction work, for the one loose end it
+led to.
+
+**Same-session incident, found while correcting the 19/21 Sep receipts
+above: Supplier Funding receipt downloads were 500ing — a real droplet-
+migration gap, not a new bug.** The founder's own receipt-download attempt
+threw `League\Flysystem\UnableToRetrieveMetadata`. Traced to `config/
+filesystems.php`'s `accounting_disk` being the `local` driver — a real
+directory on whichever droplet is currently serving traffic — and ADR-114's
+2026-09-25 droplet migration (decision 2) only `mysqldump`'d the database,
+never rsynced `storage/app/private`. Every `supplier_transfers.receipt_path`
+created before that cutover (5 rows, all 14–21 Sep) pointed at a file that
+only ever existed on the old droplet — destroyed the same day as this
+session, 2026-09-30, closing off any recovery path.
+
+Scoped precisely before doing anything: exactly 5 affected, zero
+`BudgetEnvelopeEntry` receipts (none existed yet at migration time). 2
+belong to already-voided transfers (`id` 1, 2) — `recordCorrection()`'s
+own `lockNotVoided()` guard means a voided transfer's receipt can't be
+replaced even if wanted (confirmed live: the UI doesn't render "Correct…"
+for one at all), and since a voided row is excluded from every real total
+already, its lost receipt has zero effect on any figure. The other 3 (`id`
+3/4/5 — the same active transfers the RM 742.97 correction above depends
+on) were re-uploaded by the founder from his own kept Wise receipts via
+the now-live "Edit Details" → Replace receipt flow — verified live not
+just by a 200 on the download route but by `Storage::exists()`/`size()`
+against the real file on the real persistent path
+(`/home/forge/api.pekangame.space/storage/app/private`, confirmed
+correctly symlinked outside the release folder so this specific class of
+loss can't recur from a plain deploy — only from a future full-droplet
+move without an explicit storage-rsync step).
+
+**Underlying durability gap tracked, not fixed this session:**
+`accounting_disk` staying on `local` will reproduce this exact incident on
+any future droplet move. `Gallery` already solved the identical problem
+for public images via R2 (ADR-095) — `docs/prd.md` §16 item 56, full
+writeup `docs/adr.md`'s ADR-114 2026-10-01 addendum.
