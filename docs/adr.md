@@ -128,7 +128,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-113** | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md` written, Digital Architect retired from the affiliate picker (PekanGame's own primary-brand identity only, no dark mode), + a real WCAG contrast bug in Cyber Bumblebee found and fixed along the way. **Merged to `staging` (PR #288), not yet on `main`** |
 | **ADR-114** | Production infra — rebuild (not transfer) `pekangame-prod`'s droplet + managed MySQL into a new DigitalOcean team (`LWF Group Sdn Bhd`), separating PekanGame's billing/infra from the Nakhoda-sharing DO account as a real entity-separation step. Core cutover + OpenWA WhatsApp bot migration both live and verified 2026-09-25 (same day, two sessions) — old droplet's daemons/scheduler paused pending full decommission |
 | **ADR-115** | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (Digiflazz only). Fully designed and grilled 2026-09-28; build deliberately **parked** — no automatic trigger, founder will say when. Companion to the `/admin/balance` page (PR #307) |
-| **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323, backend + vouchers) and PR-B2 (opt-in + receipts) both built and released 2026-09-30, with the switch default OFF until the founder's post-deploy steps (PRD §16 item 54) |
+| **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323) and PR-B2 (#324) released 2026-09-30 via #325; the switch is ON and live-tested. The post-live-test addendum (the order number is the opt-in, a timeline status card, a not-found reply, `START`, skipped revival) is **#326, on `staging`, not yet on `main`** |
 
 ---
 
@@ -6676,7 +6676,9 @@ Two facts, checked against real code before grilling further:
 
 ## ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
 
-**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 both built 2026-09-30**, released `staging`→`main` the same day. See the build addendum at the end of this entry.
+**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 (#324) both built 2026-09-30** and released `staging`→`main` the same day (#325). The switch is ON and was live-tested by the founder. Read the two addenda at the end of this entry before building on it:
+- The **build addendum's items 1–2 are superseded** by the **post-live-test addendum**: the order number is the opt-in, and there is one timeline status card.
+- That follow-up is **#326, merged to `staging` but not yet on `main`** as of 2026-09-30 close.
 
 **Context:** the 2026-09-28 audit (M-11) found no customer order notification of any kind. PRD §7.1 step 11 (notify on delivery, invite a review) and §7.5 step 4 (the customer receives their voucher code) were specified but never built. The sharp edge is §7.5: a customer whose order fails gets a store-credit voucher (ADR-004), but the code is never sent anywhere and the track-order page doesn't show it, so the refund only reaches the customer if an admin contacts them by hand.
 
