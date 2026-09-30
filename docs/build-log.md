@@ -1660,7 +1660,12 @@ set it through OpenWA's `PUT /api/sessions/:id/webhooks/:id` from the backend
 **Fix branch `fix/2026-09-30-whatsapp-order-card`** (see the ADR-116 addendum
 of the same date):
 - The order number in any message is the opt-in, with no "update" keyword.
-- One English `OrderStatusCard` serves both the reply and the receipt.
+- One English `OrderStatusCard` serves both the reply and the receipt. It is a
+  three-step timeline matching the order page's stepper. The founder's
+  reference screenshot was a competitor's, so the layout was made
+  deliberately different.
+- A mistyped order number gets a "not found" reply (at most every 10 minutes
+  per number) pointing to the order page or the CHIP receipt email.
 - The same card isn't repeated within 30 minutes unless the status changed.
 - `START`/`STOP`; an order-number message never undoes a STOP.
 - Skipped rows are revived through a conditional update.

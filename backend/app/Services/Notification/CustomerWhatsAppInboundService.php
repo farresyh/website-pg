@@ -11,10 +11,11 @@ use Illuminate\Support\Facades\Log;
  * ADR-116 decision 5 and its 2026-09-30 addendum: a direct message to the
  * customer-support number.
  * - `STOP` opts the number out of receipts; `START` opts it back in.
- * - Any message carrying a valid order number (`PG-…`), whichever button
+ * - Any message carrying an order number (`PG-…`), whichever button
  *   prefilled it or typed by hand, opts the number in and gets that order's
- *   status card back. Messaging with an order number is the opt-in, since
- *   what we need to know is that this number wrote to us first.
+ *   status card back, or a "not found" reply for a mistyped number. Messaging
+ *   with an order number is the opt-in, since what we need to know is that
+ *   this number wrote to us first.
  * - An order-number message never undoes a STOP; only START does. Otherwise
  *   a customer who said STOP and later chats with support would get receipts
  *   they turned off.
@@ -58,13 +59,18 @@ final class CustomerWhatsAppInboundService
             return;
         }
 
-        // An unknown order number stays silent, so the bot can't be used to probe order numbers.
-        $order = Order::query()->where('order_number', strtoupper($match[0]))->first();
+        $this->contact($phone);
+
+        // Usually a typo. Order numbers are random per purchase, so saying "not
+        // found" gives away nothing guessable (founder's call, ADR-116 addendum).
+        $orderNumber = strtoupper($match[0]);
+        $order = Order::query()->where('order_number', $orderNumber)->first();
         if ($order === null) {
+            $this->notifications->orderNotFound($orderNumber, $phone, $messageId);
+
             return;
         }
 
-        $this->contact($phone);
         $this->notifications->orderStatusCard($order, $phone, $messageId);
     }
 

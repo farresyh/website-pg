@@ -9,9 +9,12 @@ use App\Services\Order\PaymentStatus;
 /**
  * ADR-116 2026-09-30 addendum: the one WhatsApp layout for an order,
  * used for the reply to any customer message that carries an order number and
- * for the Delivered receipt. It shows only what the public track-order page
- * already shows to anyone holding the order number, never the full email or
- * phone.
+ * for the Delivered receipt. It is a three-step timeline in the same language
+ * as the order page's own stepper (Payment → Processing → Delivered),
+ * deliberately not a competitor's "label: value" list.
+ *
+ * It shows only what the public track-order page already shows to anyone
+ * holding the order number, never the full email or phone.
  */
 final class OrderStatusCard
 {
@@ -19,40 +22,39 @@ final class OrderStatusCard
     public static function render(Order $order, array $brand): string
     {
         $player = $order->player_id.($order->server_id ? " ({$order->server_id})" : '');
+        $item = ($order->package?->name ?? 'Top up').($order->game?->name ? ' · '.$order->game->name : '');
 
-        $lines = [
-            "📦 *Order: {$order->order_number}*",
-            "🏪 Store: {$brand['name']}",
-            '🎮 Game: '.($order->game?->name ?? '—'),
-            '💎 Package: '.($order->package?->name ?? 'Top up'),
-            "👤 Player ID: {$player}",
-            '💰 Amount: RM'.number_format($order->final_amount / 100, 2),
-            '💳 Payment: '.strtoupper((string) ($order->payment_method ?: '—')),
-            '🔄 Payment status: '.self::paymentStatus($order->payment_status),
-            '🚀 Delivery status: '.self::deliveryStatus($order),
+        return implode("\n", [
+            "*{$brand['name']}* · Order {$order->order_number}",
+            '',
+            ...self::timeline($order, $player),
+            '',
+            $item,
             '',
             self::closingLine($order, $brand),
-        ];
-
-        return implode("\n", $lines);
+        ]);
     }
 
-    private static function paymentStatus(PaymentStatus $status): string
+    /** @return list<string> */
+    private static function timeline(Order $order, string $player): array
     {
-        return match ($status) {
-            PaymentStatus::Paid => '✅ Payment received',
-            PaymentStatus::Failed => '❌ Payment failed',
-            default => '⏳ Awaiting payment',
-        };
-    }
+        $amount = 'RM'.number_format($order->final_amount / 100, 2);
+        $method = strtoupper((string) ($order->payment_method ?: ''));
+        $paid = $amount.($method !== '' ? " via {$method}" : '');
 
-    private static function deliveryStatus(Order $order): string
-    {
+        if ($order->payment_status === PaymentStatus::Failed) {
+            return ["❌ Payment failed · {$amount}"];
+        }
+
+        if ($order->payment_status !== PaymentStatus::Paid) {
+            return ["⏳ Awaiting payment · {$amount}", '○ Processing', '○ Delivery'];
+        }
+
         return match ($order->delivery_status) {
-            DeliveryStatus::Delivered => '✅ Delivered',
-            DeliveryStatus::Failed => '❌ Failed',
-            DeliveryStatus::NeedsReview => '🔎 Under review',
-            default => $order->payment_status === PaymentStatus::Paid ? '⏳ Processing' : '— Not started',
+            DeliveryStatus::Delivered => ["✅ Paid · {$paid}", '✅ Processed', "✅ Delivered to Player ID {$player}"],
+            DeliveryStatus::Failed => ["✅ Paid · {$paid}", "❌ Delivery failed · Player ID {$player}"],
+            DeliveryStatus::NeedsReview => ["✅ Paid · {$paid}", '🔎 Under review', "○ Delivery to Player ID {$player}"],
+            default => ["✅ Paid · {$paid}", '⏳ Processing', "○ Delivery to Player ID {$player}"],
         };
     }
 
@@ -68,10 +70,10 @@ final class OrderStatusCard
         }
 
         return match ($order->delivery_status) {
-            DeliveryStatus::Delivered => "Your top-up is in your game account. Enjoyed it? Leave a quick review: https://{$brand['host']}/order/status/{$order->order_number}",
+            DeliveryStatus::Delivered => "Your top-up is in your game account. Enjoyed it? Leave a quick review:\nhttps://{$brand['host']}/order/status/{$order->order_number}",
             DeliveryStatus::Failed => "We couldn't complete this order. Our team is on it, and if it can't be delivered you'll receive a voucher for the full amount here.",
             DeliveryStatus::NeedsReview => "Our team is checking this order manually. We'll message you here as soon as it's resolved.",
-            default => "Your order is being processed. We'll message you here once it's delivered. Thanks for your patience!",
+            default => "We'll message you here once it's delivered. Thanks for your patience!",
         };
     }
 }

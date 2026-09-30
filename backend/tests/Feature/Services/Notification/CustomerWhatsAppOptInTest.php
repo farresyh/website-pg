@@ -92,7 +92,7 @@ class CustomerWhatsAppOptInTest extends TestCase
         $card = CustomerNotification::query()->sole();
         $this->assertSame('status_card', $card->event);
         $this->assertSame(self::ORDER_PHONE, $card->phone);
-        foreach (["Order: {$order->order_number}", 'Store: PekanGame', 'Player ID: 51049607 (2005)', 'Amount: RM10.90', 'Payment: FPX', '✅ Payment received', '✅ Delivered', "/order/status/{$order->order_number}"] as $line) {
+        foreach (["*PekanGame* · Order {$order->order_number}", '✅ Paid · RM10.90 via FPX', '✅ Processed', '✅ Delivered to Player ID 51049607 (2005)', "/order/status/{$order->order_number}"] as $line) {
             $this->assertStringContainsString($line, $card->message);
         }
         $this->assertStringNotContainsString('buyer@example.com', $card->message);
@@ -107,6 +107,7 @@ class CustomerWhatsAppOptInTest extends TestCase
 
         $message = CustomerNotification::query()->sole()->message;
         $this->assertStringContainsString('⏳ Processing', $message);
+        $this->assertStringContainsString('○ Delivery to Player ID', $message);
         $this->assertStringContainsString("We'll message you here once it's delivered", $message);
     }
 
@@ -117,7 +118,7 @@ class CustomerWhatsAppOptInTest extends TestCase
         $this->inbound("tolong update order {$order->order_number}");
 
         $message = CustomerNotification::query()->sole()->message;
-        $this->assertStringContainsString('❌ Failed', $message);
+        $this->assertStringContainsString('❌ Delivery failed', $message);
         $this->assertStringContainsString('voucher for the full amount', $message);
     }
 
@@ -148,12 +149,31 @@ class CustomerWhatsAppOptInTest extends TestCase
         $this->assertSame('60199999999', WhatsappContact::query()->sole()->phone);
     }
 
-    public function test_an_unknown_order_number_stays_silent(): void
+    public function test_a_mistyped_order_number_gets_a_not_found_reply_at_most_every_10_minutes(): void
     {
-        $this->inbound('order PG-DOESNOTEXIST');
+        $this->inbound('order pg-typo12345');
+        $this->inbound('sorry, PG-TYPO67890');
 
-        $this->assertSame(0, CustomerNotification::query()->count());
-        $this->assertSame(0, WhatsappContact::query()->count());
+        $reply = CustomerNotification::query()->sole();
+        $this->assertSame('order_not_found', $reply->event);
+        $this->assertStringContainsString("We couldn't find order PG-TYPO12345", $reply->message);
+        $this->assertStringContainsString('payment receipt sent to your email', $reply->message);
+        $this->assertSame(1, WhatsappContact::query()->count()); // they wrote first: still opted in
+
+        $this->travel(11)->minutes();
+        $this->inbound('PG-TYPO67890');
+        $this->assertSame(2, CustomerNotification::query()->count());
+    }
+
+    public function test_the_awaiting_payment_card_leaves_later_steps_open(): void
+    {
+        $order = $this->order(['payment_status' => PaymentStatus::Pending->value, 'delivery_status' => DeliveryStatus::NotStarted->value]);
+
+        $this->inbound("order {$order->order_number}");
+
+        $message = CustomerNotification::query()->sole()->message;
+        $this->assertStringContainsString('⏳ Awaiting payment · RM10.90', $message);
+        $this->assertStringContainsString("We haven't received payment", $message);
     }
 
     public function test_a_later_order_from_an_opted_in_number_gets_its_receipt_on_delivery(): void
@@ -169,7 +189,8 @@ class CustomerWhatsAppOptInTest extends TestCase
         $receipt = CustomerNotification::query()->where('order_id', $second->id)->sole();
         $this->assertSame('delivered_receipt', $receipt->event);
         $this->assertSame(self::ORDER_PHONE, $receipt->phone);
-        $this->assertStringContainsString("Order: {$second->order_number}", $receipt->message);
+        $this->assertStringContainsString("Order {$second->order_number}", $receipt->message);
+        $this->assertStringContainsString('✅ Delivered to Player ID', $receipt->message);
         $this->assertStringContainsString('Reply STOP', $receipt->message);
     }
 

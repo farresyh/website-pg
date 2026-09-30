@@ -47,6 +47,10 @@ final class CustomerNotificationService
 
     public const EVENT_START_REPLY = 'start_reply';
 
+    public const EVENT_ORDER_NOT_FOUND = 'order_not_found';
+
+    private const NOT_FOUND_REPEAT_SECONDS = 600;
+
     private const SLOT_KEY = 'whatsapp:next-send-slot';
 
     private const STATUS_CARD_REPEAT_SECONDS = 1800;
@@ -94,6 +98,30 @@ final class CustomerNotificationService
             rawPhone: $phone,
             message: OrderStatusCard::render($order->loadMissing(['game:id,name', 'package:id,name']), $this->brand($order->affiliate_id)),
             orderId: $order->id,
+            voucherId: null,
+        );
+    }
+
+    /**
+     * ADR-116 addendum: the message quoted an order number we don't have,
+     * usually a typo. No brand (there's no order to take it from), and at most
+     * one reply per number every 10 minutes so a run of wrong guesses doesn't
+     * become a run of replies.
+     */
+    public function orderNotFound(string $orderNumber, string $phone, string $inboundMessageId): void
+    {
+        if (! Cache::add("whatsapp:order-not-found:{$phone}", true, self::NOT_FOUND_REPEAT_SECONDS)) {
+            return;
+        }
+
+        $this->queue(
+            event: self::EVENT_ORDER_NOT_FOUND,
+            dedupeKey: self::EVENT_ORDER_NOT_FOUND.':message:'.$inboundMessageId,
+            rawPhone: $phone,
+            message: "We couldn't find order {$orderNumber}. Please check the order number for typos.\n\n"
+                ."You can find it on your order page right after payment, or in the payment receipt sent to your email.\n\n"
+                .'Still stuck? Just reply here and our team will help.',
+            orderId: null,
             voucherId: null,
         );
     }

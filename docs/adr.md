@@ -6778,14 +6778,23 @@ first, and the order number already proves that.
 1. **Any direct message on the CS session carrying a valid order number** opts
    the sender in and gets that order's **status card** back. It doesn't
    matter which button prefilled it or whether it was typed by hand. There is
-   no keyword and no "support vs updates" split. An unknown order number stays
-   silent, so the bot can't be used to probe order numbers.
-2. **One status card layout (`OrderStatusCard`), in English,** modelled on
-   the founder's reference screenshot: order, store (the order's brand),
-   game, package, Player ID, amount, payment method, payment status and
-   delivery status, plus an honest closing line per state (awaiting payment,
-   processing, under review, delivered with review link, failed with the
-   voucher promise).
+   no keyword and no "support vs updates" split.
+   - An order number we don't have (usually a typo) gets a brand-less "not
+     found" reply: check for typos; the number is on the order page right
+     after payment or in the CHIP payment receipt email. It goes out at most
+     once per number every 10 minutes.
+   - The founder's call: order numbers are random per purchase, so "not found"
+     gives away nothing guessable. This reverses the first draft, which stayed
+     silent.
+2. **One status card layout (`OrderStatusCard`), in English:** a three-step
+   timeline in the same language as the order page's own stepper
+   (`✅ Paid · RM… via FPX` / `✅ Processed` or `⏳ Processing` /
+   `✅ Delivered to Player ID …` or `○ Delivery…`). It carries the brand and
+   order number on top, the item line, and an honest closing line per state
+   (awaiting payment, processing, under review, delivered with review link,
+   failed with the voucher promise). The founder's reference screenshot came
+   from a competitor, so the layout was deliberately made different from its
+   "emoji label: value" list (option A of three, chosen by the founder).
    - The Delivered receipt is the same card plus the STOP line.
    - The card shows only what the public track-order page shows, so it goes
      to **whoever sent the order number**. This drops the earlier
