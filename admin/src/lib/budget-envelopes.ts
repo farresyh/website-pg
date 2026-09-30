@@ -24,9 +24,16 @@ export interface BudgetEnvelopeCategory {
   typical_sign: "positive" | "negative" | "either";
 }
 
+/** 2026-09-30 addendum — shared with Supplier Funding's `paid_by` (same real-world set of payers funds both). */
+export interface PaidFromOption {
+  value: string;
+  label: string;
+}
+
 export interface BudgetEnvelopeIndex {
   envelopes: BudgetEnvelope[];
   categories: BudgetEnvelopeCategory[];
+  paid_from_options: PaidFromOption[];
   /** The same lines `/admin/accounting/summary` already shows, for the current month — reference context for the "Allocate Monthly Profit" decision, deliberately not a single derived "net profit" figure. */
   current_month_summary: Record<string, number>;
   current_month_label: string;
@@ -40,7 +47,12 @@ export interface BudgetEnvelopeEntry {
   category_label: string;
   /** Signed — positive = money in, negative = money out. */
   amount_sen: number;
+  /** The day money actually moved — null on an older entry recorded before this field existed. */
+  transaction_date: string | null;
   description: string;
+  paid_from: string | null;
+  paid_from_label: string | null;
+  reference_no: string | null;
   has_receipt: boolean;
   reverses_entry_id: number | null;
   is_voided: boolean;
@@ -74,9 +86,13 @@ export interface RecordBudgetEnvelopeEntryValues {
   category: string;
   /** Always a positive magnitude — the backend applies the category's own sign. */
   amount_sen: number;
+  /** The day money actually moved — Y-m-d. Defaults to today on the backend when omitted. */
+  transaction_date?: string;
   description: string;
   /** Required only when category is "adjustment", the one category allowed either sign. */
   direction?: "in" | "out";
+  paid_from?: string;
+  reference_no?: string;
   receipt?: File | null;
 }
 
@@ -84,8 +100,11 @@ export function recordBudgetEnvelopeEntry(token: string, envelopeId: number, val
   const formData = new FormData();
   formData.append("category", values.category);
   formData.append("amount_sen", String(values.amount_sen));
+  if (values.transaction_date) formData.append("transaction_date", values.transaction_date);
   formData.append("description", values.description);
   if (values.direction) formData.append("direction", values.direction);
+  if (values.paid_from) formData.append("paid_from", values.paid_from);
+  if (values.reference_no) formData.append("reference_no", values.reference_no);
   if (values.receipt) formData.append("receipt", values.receipt);
 
   return apiUpload<{ entry: BudgetEnvelopeEntry; balance_sen: number }>(

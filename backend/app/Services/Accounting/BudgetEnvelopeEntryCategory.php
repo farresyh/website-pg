@@ -28,6 +28,18 @@ enum BudgetEnvelopeEntryCategory: string
     case MonthlyProfitAllocation = 'monthly_profit_allocation';
     case CapitalRepayment = 'capital_repayment';
     case DividendDrawing = 'dividend_drawing';
+    /**
+     * 2026-09-30 addendum: a real cash-out event repaying a director for
+     * money they personally advanced the company (e.g. pre-capital
+     * spending). Deliberately no matching "Director Advance" category —
+     * the advance itself never moves envelope cash (the director spent
+     * their own money, not the company's), so it doesn't fit this
+     * table's "amount_sen is real money moving through THIS envelope"
+     * model. The advance is just a fact the founder remembers/notes
+     * until the day it's actually repaid, which is what this category
+     * records.
+     */
+    case DirectorRepayment = 'director_repayment';
     case OpexAdvertising = 'opex_advertising';
     case OpexSoftware = 'opex_software';
     case OpexProfessionalFees = 'opex_professional_fees';
@@ -57,6 +69,7 @@ enum BudgetEnvelopeEntryCategory: string
             self::OpexProfessionalFees => 'OPEX — Professional Fees',
             self::OpexSalary => 'OPEX — Salary',
             self::OpexOther => 'OPEX — Other',
+            self::DirectorRepayment => 'Director Repayment',
             self::Adjustment => 'Adjustment',
         };
     }

@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\StoreSupplierTransferRequest;
 use App\Http\Requests\Admin\VoidSupplierTransferRequest;
 use App\Models\Supplier;
 use App\Models\SupplierTransfer;
+use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierFundingService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -48,6 +49,9 @@ class SupplierTransferController extends Controller
             'ledger_balance' => $supplier->supplierLedgerBalance(),
             'currency' => $supplier->currency,
             'transfers' => $this->funding->transfers($supplier, $perPage, $from, $to, $voided),
+            'paid_from_options' => collect(PaidFrom::cases())
+                ->map(fn (PaidFrom $p) => ['value' => $p->value, 'label' => $p->label()])
+                ->values(),
         ]);
     }
 
@@ -66,6 +70,7 @@ class SupplierTransferController extends Controller
             $data['reference_no'] ?? null,
             $request->file('receipt'),
             $request->user()->id,
+            isset($data['paid_by']) ? PaidFrom::from($data['paid_by']) : null,
         );
 
         Log::info('Supplier transfer recorded', [

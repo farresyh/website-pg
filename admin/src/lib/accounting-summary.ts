@@ -11,6 +11,8 @@ export interface MonthlyAccountingSummary {
   supplier_prepaid_fx_variance_sen: number;
   affiliate_commission_expense_sen: number;
   voucher_liability_issued_sen: number;
+  /** Always the CURRENT balance, never scoped to the viewed period — see MonthlyAccountingSummaryService::resellerWalletBalance()'s doc comment. */
+  reseller_wallet_balance_sen: number;
 }
 
 export function getMonthlyAccountingSummary(token: string, year: number, month: number) {

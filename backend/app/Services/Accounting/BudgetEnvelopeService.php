@@ -28,6 +28,14 @@ final class BudgetEnvelopeService
      * soft warning, never a hard block — see
      * `BudgetEnvelopeEntryCategory::typicalSign()`).
      */
+    /**
+     * 2026-09-30 addendum: `$transactionDate` (the day money actually
+     * moved, defaults to today when omitted — an entry recorded days
+     * after the fact shouldn't silently claim it happened today),
+     * `$paidFrom` (which real account funded it — `PaidFrom`, optional),
+     * `$referenceNo` (optional free text — a bank reference, invoice
+     * number, etc.).
+     */
     public function recordEntry(
         BudgetEnvelope $envelope,
         BudgetEnvelopeEntryCategory $category,
@@ -35,8 +43,11 @@ final class BudgetEnvelopeService
         string $description,
         ?UploadedFile $receipt,
         int $adminUserId,
+        ?\Carbon\CarbonInterface $transactionDate = null,
+        ?PaidFrom $paidFrom = null,
+        ?string $referenceNo = null,
     ): BudgetEnvelopeEntry {
-        return DB::transaction(function () use ($envelope, $category, $amountSen, $description, $receipt, $adminUserId) {
+        return DB::transaction(function () use ($envelope, $category, $amountSen, $description, $receipt, $adminUserId, $transactionDate, $paidFrom, $referenceNo) {
             $receiptPath = $receipt !== null
                 ? $receipt->store('accounting/budget-envelopes', config('filesystems.accounting_disk'))
                 : null;
@@ -45,7 +56,10 @@ final class BudgetEnvelopeService
                 'budget_envelope_id' => $envelope->id,
                 'category' => $category->value,
                 'amount_sen' => $amountSen,
+                'transaction_date' => ($transactionDate ?? now())->toDateString(),
                 'description' => $description,
+                'paid_from' => $paidFrom?->value,
+                'reference_no' => $referenceNo,
                 'receipt_path' => $receiptPath,
                 'created_by' => $adminUserId,
             ]);

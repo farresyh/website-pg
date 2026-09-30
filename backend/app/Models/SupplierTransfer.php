@@ -20,6 +20,7 @@ class SupplierTransfer extends Model
     protected $fillable = [
         'supplier_id',
         'source_channel',
+        'paid_by',
         'amount_myr_sent',
         'fee_myr',
         'currency',
@@ -40,6 +41,7 @@ class SupplierTransfer extends Model
         'supplier_fee' => 'decimal:4',
         'effective_rate' => 'decimal:8',
         'voided_at' => 'datetime',
+        'paid_by' => \App\Services\Accounting\PaidFrom::class,
     ];
 
     public function supplier(): BelongsTo
