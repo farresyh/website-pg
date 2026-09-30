@@ -12,7 +12,6 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\WhatsappContact;
 use App\Services\Affiliate\AffiliateDomainStatus;
-use App\Services\Order\DeliveryStatus;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -42,11 +41,15 @@ final class CustomerNotificationService
 
     public const EVENT_DELIVERED_RECEIPT = 'delivered_receipt';
 
-    public const EVENT_OPTIN_REPLY = 'optin_reply';
+    public const EVENT_STATUS_CARD = 'status_card';
 
     public const EVENT_STOP_REPLY = 'stop_reply';
 
+    public const EVENT_START_REPLY = 'start_reply';
+
     private const SLOT_KEY = 'whatsapp:next-send-slot';
+
+    private const STATUS_CARD_REPEAT_SECONDS = 1800;
 
     /**
      * ADR-116 decision 4: the order just became Delivered. A receipt goes out
@@ -66,45 +69,44 @@ final class CustomerNotificationService
     }
 
     /**
-     * ADR-116 decision 5: the customer tapped "Get updates on WhatsApp" for this
-     * order. Receipts only ever go to the phone used on the order: opt-in is per
-     * number, and an order number alone shouldn't redirect someone else's
-     * receipts. From that number, a Delivered order gets its receipt now and
-     * anything else gets a promise of one.
+     * ADR-116 2026-09-30 addendum: any message carrying a valid order number
+     * gets that order's status card back, whichever button sent it or even if
+     * it was typed by hand. The card holds only what the public track-order
+     * page shows, so it goes to whoever sent the number. The same card isn't
+     * repeated to the same number within 30 minutes unless the order's status
+     * changed, so a support chat that keeps quoting the order number isn't
+     * flooded.
      */
-    public function optInReply(Order $order, string $phone, string $inboundMessageId): void
+    public function orderStatusCard(Order $order, string $phone, string $inboundMessageId): void
     {
         if (! $this->inScope($order)) {
             return;
         }
 
-        $brand = $this->brand($order->affiliate_id);
-
-        if (! PhoneNumber::same($order->customer_phone, $phone)) {
-            $this->queue(
-                event: self::EVENT_OPTIN_REPLY,
-                dedupeKey: self::EVENT_OPTIN_REPLY.':message:'.$inboundMessageId,
-                rawPhone: $phone,
-                message: "*{$brand['name']}*: Updates for order {$order->order_number} go to the phone number used at checkout. Please message us from that number to get them.",
-                orderId: $order->id,
-                voucherId: null,
-            );
-
-            return;
-        }
-
-        if ($order->delivery_status === DeliveryStatus::Delivered) {
-            $this->queueReceipt($order->loadMissing(['game:id,name', 'package:id,name']), $phone);
-
+        $throttleKey = "whatsapp:status-card:{$phone}:{$order->id}:{$order->payment_status->value}:{$order->delivery_status->value}";
+        if (! Cache::add($throttleKey, true, self::STATUS_CARD_REPEAT_SECONDS)) {
             return;
         }
 
         $this->queue(
-            event: self::EVENT_OPTIN_REPLY,
-            dedupeKey: self::EVENT_OPTIN_REPLY.':message:'.$inboundMessageId,
+            event: self::EVENT_STATUS_CARD,
+            dedupeKey: self::EVENT_STATUS_CARD.':message:'.$inboundMessageId,
             rawPhone: $phone,
-            message: "*{$brand['name']}*: Thanks! We'll message you here when order {$order->order_number} is complete.",
+            message: OrderStatusCard::render($order->loadMissing(['game:id,name', 'package:id,name']), $this->brand($order->affiliate_id)),
             orderId: $order->id,
+            voucherId: null,
+        );
+    }
+
+    /** ADR-116 addendum: confirms a START, which undoes an earlier STOP. */
+    public function startReply(string $phone, string $inboundMessageId): void
+    {
+        $this->queue(
+            event: self::EVENT_START_REPLY,
+            dedupeKey: self::EVENT_START_REPLY.':message:'.$inboundMessageId,
+            rawPhone: $phone,
+            message: "You're back on. We'll send your order receipts here again. Reply STOP anytime to stop them.",
+            orderId: null,
             voucherId: null,
         );
     }
@@ -116,7 +118,7 @@ final class CustomerNotificationService
             event: self::EVENT_STOP_REPLY,
             dedupeKey: self::EVENT_STOP_REPLY.':message:'.$inboundMessageId,
             rawPhone: $phone,
-            message: "Done. You won't receive order receipts here anymore. If an order ever needs a refund voucher, we'll still send you its code.",
+            message: "Done. You won't receive order receipts here anymore. If an order ever needs a refund voucher, we'll still send you its code. Reply START to turn receipts back on.",
             orderId: null,
             voucherId: null,
         );
@@ -124,23 +126,11 @@ final class CustomerNotificationService
 
     private function queueReceipt(Order $order, string $phone): void
     {
-        $brand = $this->brand($order->affiliate_id);
-        $package = $order->package?->name ?? 'Top up';
-        $game = $order->game?->name;
-
         $this->queue(
             event: self::EVENT_DELIVERED_RECEIPT,
             dedupeKey: self::EVENT_DELIVERED_RECEIPT.':order:'.$order->id,
             rawPhone: $phone,
-            message: implode("\n", [
-                "*{$brand['name']}*: Your order {$order->order_number} is complete ✅",
-                $package.($game !== null ? " for {$game}" : '')." → Player ID {$order->player_id}",
-                "Paid: RM{$this->rm($order->final_amount)}",
-                '',
-                "Enjoyed it? Leave a quick review: https://{$brand['host']}/order/status/{$order->order_number}",
-                '',
-                'Reply STOP to stop receipts.',
-            ]),
+            message: OrderStatusCard::render($order, $this->brand($order->affiliate_id))."\n\nReply STOP to stop receipts.",
             orderId: $order->id,
             voucherId: null,
         );
@@ -245,7 +235,24 @@ final class CustomerNotificationService
                 'error' => $skipReason,
             ]);
         } catch (UniqueConstraintViolationException) {
-            return; // already recorded for this event, never send twice
+            // Already recorded for this event. Sent, queued or failed: never
+            // again. Only a row skipped for a reason that no longer applies (the
+            // switch was off, the phone was unusable) gets its one real chance,
+            // via a conditional update so two callers can't both revive it.
+            if ($skipReason !== null) {
+                return;
+            }
+
+            $revived = CustomerNotification::query()
+                ->where('dedupe_key', $dedupeKey)
+                ->where('status', CustomerNotification::STATUS_SKIPPED)
+                ->update(['status' => CustomerNotification::STATUS_QUEUED, 'phone' => $phone, 'message' => $message, 'error' => null]);
+
+            if ($revived === 0) {
+                return;
+            }
+
+            $notification = CustomerNotification::query()->where('dedupe_key', $dedupeKey)->firstOrFail();
         }
 
         if ($skipReason === null) {

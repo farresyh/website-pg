@@ -20,7 +20,7 @@ return new class extends Migration
             $table->id();
             $table->string('phone', 20)->unique();
             $table->timestamp('opted_in_at');
-            $table->string('opt_in_source', 20); // updates | support
+            $table->string('opt_in_source', 20); // message (updates | support on rows before the 2026-09-30 addendum)
             $table->timestamp('opted_out_at')->nullable();
             $table->timestamps();
         });
