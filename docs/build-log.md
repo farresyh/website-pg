@@ -1760,3 +1760,67 @@ of work — every step was additive until the final `.env` swap, which reverts i
 droplet destroy-confirmation name, and the `CREATE USER`/`GRANT` SQL itself (flagged
 "[Secret-Store Writes]" once, "[Permission Grant]" once) — both times the model prepared the exact
 command, the founder ran it themselves, and the model verified + continued everything else.
+
+## 2026-09-30 — Accounting external-review fixes (ADR-083 addendum, `fix/2026-09-30-accounting-audit-fixes`)
+
+A second LLM the founder specifically trained on accounting/finance audited the live
+`/admin/accounting` screens at his request (admin panel visibility only, no backend access).
+Every finding was checked against this codebase and real production data (read-only SSH) before
+anything shipped, not taken at face value — full write-up in `docs/adr.md`'s ADR-083 2026-09-30
+addendum.
+
+**Two of the reviewer's findings were wrong, not the system:** its manual reconciliation of
+September's Digiflazz top-ups (RM 742.97) vs. the Monthly Summary (RM 757.33) picked up a *voided*
+transfer's amount instead of its same-day corrected re-recording (both legitimately share
+Digiflazz's own reference number — not a paging bug, a consequence of void-by-reversal) and left
+out our own Wise/Airwallex transfer fee from all three transfers. Verified live: the system's
+RM 757.33 matches `SUM(amount_myr_sent + fee_myr)` over the real non-voided September transfers
+exactly.
+
+**Three real correctness bugs fixed in `TransactionRegisterService`:**
+1. `orderRows()`'s `cost_sen` showed the checkout-time catalog price regardless of delivery
+   outcome — `recordOrderDrawdown()` only runs on a successful delivery, so a failed/undelivered
+   order never actually drew down supplier cost. Now `null` unless `delivery_status = Delivered`,
+   the same gate `MonthlyAccountingSummaryService::cogs()` already uses. Verified against real
+   production order `PG-B7RB8MON6Q9I` (the reviewer's own example) and 16 real non-delivered
+   orders in the local dev DB.
+2. A wallet-refunded failed order had no refund row at all — looked exactly like a normal
+   completed sale. New `walletRefundRows()` (mirrors `supplierRefundRows()`'s shape) makes the
+   `wallet_refund` ledger event its own row; the original order row keeps its real figures
+   untouched (same "never rewrite history in place" discipline a voided supplier transfer already
+   follows).
+3. `membershipRows()` never carried a real CHIP fee, only the plan price — `fee_sen` on
+   `MembershipCheckoutAttempt` is confusingly named (it's the *plan* fee, not CHIP's), the real
+   fee is `total_charged_sen - fee_sen`. Now joined via `MembershipFeeRecord.idempotency_key` =
+   `MembershipCheckoutAttempt.subscription_number` (an already-existing link,
+   `MembershipSubscriptionService::completePaidAttempt()` writes it) — falls back to the old
+   fee-less shape when no matching attempt exists (an admin-issued/comped record).
+
+**Two presentation fixes:**
+4. New structured `funding_source: "chip" | "reseller_wallet" | null` field on every register row
+   (its own JSON/CSV/UI column, a "Wallet-funded" tag on the frontend table) — a wallet-paid
+   order's `gross_sen` is spend from an already-collected balance, not a fresh bank inflow, and
+   summing the whole Gross column previously double-counted that cash. Rejected a free-text label
+   (not reliably filterable in a CSV) for a real column, same precedent `status` already set.
+5. CSV export's `Reference` column now prefixes `[VOIDED] ` for a voided row — the admin UI
+   already strikes these through with a red tag, CSV had no equivalent and a plain-text `Status`
+   column is easy to miss scanning by eye (likely what caused the reviewer's RM 757.33 mix-up
+   above).
+
+**`MonthlyAccountingSummaryService` change:** `supplier_prepaid_topup_sen` used to bundle our own
+Wise/Airwallex transfer fee into the capital figure; now capital-only, with a new
+`bank_transfer_fees_sen` line carrying the fee as its own genuinely-additive amount — so copying
+both into the external accounting SaaS each month adds two real, distinct figures instead of
+double-counting the fee portion inside a bundled total.
+
+**Verification:** backend full suite 2448/2448 green (12 new/updated tests across
+`TransactionRegisterControllerTest`/`MonthlyAccountingSummaryServiceTest`); frontend
+`tsc --noEmit`/`eslint`/`next build` all clean; no migration needed (both new fields are
+computed at read-time). Ran the real service against the actual local dev DB via `php artisan
+tinker` (not just the isolated test DB) — 183/183 real local order rows got a correct non-null
+`funding_source`, all 16 real non-delivered local orders correctly show `cost_sen: null`.
+
+**Not touched:** the reviewer's remaining suggestions (Envelope Ledger date/paid-from/reference
+fields, a per-director loan category, opening-balance entries, a reseller-wallet-balance line on
+Monthly Summary, a "paid by" field on Supplier Funding) are real, confirmed-missing feature
+requests, not bugs — scoped as a separate follow-up, not bundled into this fix batch.

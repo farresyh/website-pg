@@ -53,6 +53,7 @@ const typeSeverity: Record<TransactionRegisterRow["type"], "info" | "success" | 
   supplier_adjustment: "secondary",
   membership_payment: "info",
   reseller_wallet_topup: "success",
+  reseller_wallet_refund: "warn",
   withdrawal_payout: "warn",
 };
 
@@ -64,6 +65,7 @@ const typeLabel: Record<TransactionRegisterRow["type"], string> = {
   supplier_adjustment: "Supplier adjustment",
   membership_payment: "Membership payment",
   reseller_wallet_topup: "Reseller wallet top-up",
+  reseller_wallet_refund: "Reseller wallet refund",
   withdrawal_payout: "Withdrawal payout",
 };
 
@@ -208,7 +210,12 @@ export default function TransactionRegisterPage() {
                           <Tag severity={typeSeverity[r.type]}>{typeLabel[r.type]}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{r.reference}</DataTableCell>
-                        <DataTableCell className={TD}>{r.description}</DataTableCell>
+                        <DataTableCell className={TD}>
+                          {r.description}
+                          {r.funding_source === "reseller_wallet" && (
+                            <Tag severity="secondary" className="ml-2">Wallet-funded</Tag>
+                          )}
+                        </DataTableCell>
                         <DataTableCell className={`${TD} ${isVoided ? "line-through" : ""}`}>{formatRm(r.gross_sen)}</DataTableCell>
                         <DataTableCell className={`${TD} ${isVoided ? "line-through" : ""}`}>{formatRm(r.fee_sen)}</DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.cost_sen)}</DataTableCell>
