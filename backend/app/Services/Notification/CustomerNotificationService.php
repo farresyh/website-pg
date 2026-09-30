@@ -10,7 +10,9 @@ use App\Models\Order;
 use App\Models\PlatformSettings;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Models\WhatsappContact;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Order\DeliveryStatus;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -18,7 +20,8 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * ADR-116: the one place a customer WhatsApp notification is decided,
- * worded, recorded and queued. Callers (VoucherController) name the event;
+ * worded, recorded and queued. Callers (VoucherController,
+ * OrderFulfillmentService, CustomerWhatsAppInboundService) name the event;
  * this class applies every rule:
  * - scope: storefront orders only, never reseller-wallet or `is_test`;
  * - the master switch and CS-session config (a `skipped` row, so the admin
@@ -28,7 +31,8 @@ use Illuminate\Support\Facades\Cache;
  * - per-brand wording;
  * - pacing: each send gets a slot 10–30s after the previous one.
  *
- * Call it after the DB transaction that created the voucher has committed.
+ * Call it after the DB transaction that created the voucher or delivered
+ * the order has committed.
  */
 final class CustomerNotificationService
 {
@@ -36,7 +40,111 @@ final class CustomerNotificationService
 
     public const EVENT_VOUCHER_RESTORED = 'voucher_restored';
 
+    public const EVENT_DELIVERED_RECEIPT = 'delivered_receipt';
+
+    public const EVENT_OPTIN_REPLY = 'optin_reply';
+
+    public const EVENT_STOP_REPLY = 'stop_reply';
+
     private const SLOT_KEY = 'whatsapp:next-send-slot';
+
+    /**
+     * ADR-116 decision 4: the order just became Delivered. A receipt goes out
+     * only if the order's phone has opted in and not opted out. Otherwise
+     * there is no row at all, since not sending is the normal case.
+     */
+    public function orderDelivered(int $orderId): void
+    {
+        $order = Order::query()->with(['game:id,name', 'package:id,name'])->find($orderId);
+        $phone = PhoneNumber::normalize($order?->customer_phone);
+
+        if ($order === null || ! $this->inScope($order) || $phone === null || ! WhatsappContact::receivesReceipts($phone)) {
+            return;
+        }
+
+        $this->queueReceipt($order, $phone);
+    }
+
+    /**
+     * ADR-116 decision 5: the customer tapped "Get updates on WhatsApp" for this
+     * order. Receipts only ever go to the phone used on the order: opt-in is per
+     * number, and an order number alone shouldn't redirect someone else's
+     * receipts. From that number, a Delivered order gets its receipt now and
+     * anything else gets a promise of one.
+     */
+    public function optInReply(Order $order, string $phone, string $inboundMessageId): void
+    {
+        if (! $this->inScope($order)) {
+            return;
+        }
+
+        $brand = $this->brand($order->affiliate_id);
+
+        if (! PhoneNumber::same($order->customer_phone, $phone)) {
+            $this->queue(
+                event: self::EVENT_OPTIN_REPLY,
+                dedupeKey: self::EVENT_OPTIN_REPLY.':message:'.$inboundMessageId,
+                rawPhone: $phone,
+                message: "*{$brand['name']}*: Updates for order {$order->order_number} go to the phone number used at checkout. Please message us from that number to get them.",
+                orderId: $order->id,
+                voucherId: null,
+            );
+
+            return;
+        }
+
+        if ($order->delivery_status === DeliveryStatus::Delivered) {
+            $this->queueReceipt($order->loadMissing(['game:id,name', 'package:id,name']), $phone);
+
+            return;
+        }
+
+        $this->queue(
+            event: self::EVENT_OPTIN_REPLY,
+            dedupeKey: self::EVENT_OPTIN_REPLY.':message:'.$inboundMessageId,
+            rawPhone: $phone,
+            message: "*{$brand['name']}*: Thanks! We'll message you here when order {$order->order_number} is complete.",
+            orderId: $order->id,
+            voucherId: null,
+        );
+    }
+
+    /** ADR-116 decision 5: confirms a STOP. Voucher messages still come, since that is the customer's money. */
+    public function stopReply(string $phone, string $inboundMessageId): void
+    {
+        $this->queue(
+            event: self::EVENT_STOP_REPLY,
+            dedupeKey: self::EVENT_STOP_REPLY.':message:'.$inboundMessageId,
+            rawPhone: $phone,
+            message: "Done. You won't receive order receipts here anymore. If an order ever needs a refund voucher, we'll still send you its code.",
+            orderId: null,
+            voucherId: null,
+        );
+    }
+
+    private function queueReceipt(Order $order, string $phone): void
+    {
+        $brand = $this->brand($order->affiliate_id);
+        $package = $order->package?->name ?? 'Top up';
+        $game = $order->game?->name;
+
+        $this->queue(
+            event: self::EVENT_DELIVERED_RECEIPT,
+            dedupeKey: self::EVENT_DELIVERED_RECEIPT.':order:'.$order->id,
+            rawPhone: $phone,
+            message: implode("\n", [
+                "*{$brand['name']}*: Your order {$order->order_number} is complete ✅",
+                $package.($game !== null ? " for {$game}" : '')." → Player ID {$order->player_id}",
+                "Paid: RM{$this->rm($order->final_amount)}",
+                '',
+                "Enjoyed it? Leave a quick review: https://{$brand['host']}/order/status/{$order->order_number}",
+                '',
+                'Reply STOP to stop receipts.',
+            ]),
+            orderId: $order->id,
+            voucherId: null,
+        );
+    }
 
     /** A new voucher: from a failed order (Path B) or standalone with a phone (Path A). */
     public function voucherIssued(Voucher $voucher): void

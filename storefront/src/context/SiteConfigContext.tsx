@@ -16,11 +16,15 @@ import { resolveWhatsappHref } from "@/lib/whatsapp";
  *  - `branding` — the admin Store Branding record.
  *  - `whatsappHref` — the resolved support link (ADR-071 PR0), or null
  *    when no WhatsApp target is configured.
+ *  - `orderWhatsappHref` — ADR-116 decision 6: the order status page's
+ *    WhatsApp link, always the platform customer-support number (the one
+ *    OpenWA reads), whatever the brand. Falls back to `whatsappHref`.
  */
 interface SiteConfig {
   membershipEnabled: boolean;
   branding: Branding;
   whatsappHref: string | null;
+  orderWhatsappHref: string | null;
 }
 
 const SiteConfigContext = createContext<SiteConfig | null>(null);
@@ -32,9 +36,12 @@ export function SiteConfigProvider({
   value: { membershipEnabled: boolean; branding: Branding };
   children: ReactNode;
 }) {
+  const whatsappHref = resolveWhatsappHref(value.branding);
+  const orderDigits = value.branding.orderSupportPhone?.replace(/\D/g, "") ?? "";
   const config: SiteConfig = {
     ...value,
-    whatsappHref: resolveWhatsappHref(value.branding),
+    whatsappHref,
+    orderWhatsappHref: orderDigits ? `https://wa.me/${orderDigits}` : whatsappHref,
   };
   return <SiteConfigContext.Provider value={config}>{children}</SiteConfigContext.Provider>;
 }

@@ -128,7 +128,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-113** | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md` written, Digital Architect retired from the affiliate picker (PekanGame's own primary-brand identity only, no dark mode), + a real WCAG contrast bug in Cyber Bumblebee found and fixed along the way. **Merged to `staging` (PR #288), not yet on `main`** |
 | **ADR-114** | Production infra — rebuild (not transfer) `pekangame-prod`'s droplet + managed MySQL into a new DigitalOcean team (`LWF Group Sdn Bhd`), separating PekanGame's billing/infra from the Nakhoda-sharing DO account as a real entity-separation step. Core cutover + OpenWA WhatsApp bot migration both live and verified 2026-09-25 (same day, two sessions) — old droplet's daemons/scheduler paused pending full decommission |
 | **ADR-115** | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (Digiflazz only). Fully designed and grilled 2026-09-28; build deliberately **parked** — no automatic trigger, founder will say when. Companion to the `/admin/balance` page (PR #307) |
-| **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. Build split into PR-B1 (backend + vouchers) and PR-B2 (opt-in + receipts) |
+| **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323, backend + vouchers) and PR-B2 (opt-in + receipts) both built and released 2026-09-30, with the switch default OFF until the founder's post-deploy steps (PRD §16 item 54) |
 
 ---
 
@@ -6676,7 +6676,7 @@ Two facts, checked against real code before grilling further:
 
 ## ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
 
-**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 built 2026-09-30** (branch `feature/2026-09-30-whatsapp-customer-notifications`). PR-B2 is not built.
+**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 both built 2026-09-30**, released `staging`→`main` the same day. See the build addendum at the end of this entry.
 
 **Context:** the 2026-09-28 audit (M-11) found no customer order notification of any kind. PRD §7.1 step 11 (notify on delivery, invite a review) and §7.5 step 4 (the customer receives their voucher code) were specified but never built. The sharp edge is §7.5: a customer whose order fails gets a store-credit voucher (ADR-004), but the code is never sent anywhere and the track-order page doesn't show it, so the refund only reaches the customer if an admin contacts them by hand.
 
@@ -6722,3 +6722,42 @@ The founder chose WhatsApp over email, because customers rarely read email. Ever
 - **The founder must do three things before the switch goes ON:** turn on `SEND_PACING` in OpenWA's `.env` and restart it; create a CS-session webhook to the backend endpoint (needed for PR-B2); issue an API key with CS-session access.
 - There is no email fallback. If WhatsApp delivery proves unreliable in the `customer_notifications` data, adding email is the first lever.
 - A per-affiliate WhatsApp session (a brand's own number) is out of scope and would be a future ADR, triggered when a real affiliate asks.
+
+### Build addendum (2026-09-30) — decisions settled while building PR-B1/PR-B2
+
+1. **The receipt goes only to the order's own phone number.** The grill left
+   open what happens when the "Get updates" message comes from a number other
+   than the one on the order. Knowing an order number must not redirect
+   someone else's receipt, which carries the Player ID and amount. So a
+   mismatched number gets a reply asking them to message from the checkout
+   number, and the order's phone is never changed. Opt-in stays per phone
+   (decision 5), so this is consistent with it.
+2. **Opt-in and STOP detection.** A direct message (`kind=individual`, not
+   `fromMe`) on the CS session:
+   - that is exactly `STOP` (any case) → opt-out;
+   - that contains `PG-…` plus the word "update" → the updates button:
+     opt in, reply, and clear an earlier STOP;
+   - that contains `PG-…` alone → the support button: silent opt-in, never
+     clearing a STOP.
+
+   The sender comes from `from` (`@c.us`), or OpenWA's `senderPhone` for a
+   WhatsApp privacy id (`@lid`). No usable phone means the message is ignored.
+3. **Every receipt carries "Reply STOP to stop receipts",** not just the
+   first. It's simpler, and it never leaves a customer without the way out.
+4. **The "Get updates" button is hidden on a failed order.** That customer's
+   next message is the voucher, which goes out proactively anyway.
+5. **Receipt trigger:** `OrderFulfillmentService::creditProfit()` schedules
+   `CustomerNotificationService::orderDelivered()` in `DB::afterCommit`. The
+   send is never tied to a delivery that rolled back. It is wrapped in
+   try/catch, so a notification problem can never fail or retry a delivery.
+6. **Pacing mechanics:**
+   - Each queued message reserves a send slot 10–30s after the previous one
+     (a Redis value under a lock) and is dispatched with that delay.
+   - A 429 `SEND_PACING_LIMITED` from OpenWA releases the job for
+     `retryAfterSeconds`. Because a release also counts as a Laravel attempt,
+     the job uses `retryUntil()` (2 days) plus `$maxExceptions = 3` instead of
+     `$tries`.
+7. **Webhook ordering at release:** the CS session's OpenWA webhook must be
+   created only after this code is live. The code before this release has no
+   `sessionId` routing, so a CS group message would have reached the reseller
+   bot.

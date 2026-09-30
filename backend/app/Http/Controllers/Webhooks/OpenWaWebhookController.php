@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
+use App\Services\Notification\CustomerWhatsAppInboundService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Reseller\Bot\ResellerBotService;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class OpenWaWebhookController extends Controller
     public function __construct(
         private readonly ResellerBotService $bot,
         private readonly OpenWaSessionStatus $sessionStatus,
+        private readonly CustomerWhatsAppInboundService $customerInbound,
     ) {}
 
     public function handle(Request $request): JsonResponse
@@ -62,14 +64,16 @@ class OpenWaWebhookController extends Controller
         $event = (string) $request->input('event', '');
 
         // ADR-116 decision 11: the customer-support session never reaches the
-        // reseller bot. Only its status is recorded for now; its inbound
-        // messages (opt-in) arrive with PR-B2. An envelope with no sessionId
-        // (older OpenWA) is treated as the bot, as before.
+        // reseller bot. Its direct messages go to the opt-in/STOP handler
+        // only. An envelope with no sessionId (older OpenWA) is treated as the
+        // bot, as before.
         $csSessionId = config('services.openwa.cs_session_id');
         if ($csSessionId !== null && $request->input('sessionId') === $csSessionId) {
-            if ($event === 'session.status') {
-                $this->recordStatus($request, OpenWaSessionStatus::CUSTOMER_SUPPORT);
-            }
+            match ($event) {
+                'session.status' => $this->recordStatus($request, OpenWaSessionStatus::CUSTOMER_SUPPORT),
+                'message.received' => $this->customerInbound->handle((array) $request->input('data', [])),
+                default => null,
+            };
 
             return response()->json(['message' => 'ok']);
         }

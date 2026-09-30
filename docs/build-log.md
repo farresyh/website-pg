@@ -1605,3 +1605,42 @@ were running, and a real send needs the prod OpenWA (it listens on
      issue a second key.
   3. Set `OPENWA_CS_SESSION_ID` in the backend `.env`.
   4. Test with his own number.
+
+## 2026-09-30 — ADR-116 PR-B2 built: opt-in, STOP, Delivered receipts; docs refreshed for the Wave 5 release
+
+Branch `feature/2026-09-30-whatsapp-optin-receipts`. Fast suite 2440/2440.
+Concurrency suite 24/24 on MySQL; `creditProfit()` changed, so it was rerun.
+The notification tests pass 21/21 on MySQL. Storefront and admin tsc and
+eslint are clean. **Not browser-verified.** The order-status buttons are covered by CI's Playwright
+golden path, and the real WhatsApp round trip is the founder's §16 item 54(c).
+
+- **`whatsapp_contacts`:** one row per phone, holding `opted_in_at` and its
+  source (`updates` | `support`) and `opted_out_at`.
+- **`CustomerWhatsAppInboundService`:** handles direct messages on the CS
+  session: `STOP`, `PG-…` + "update", or `PG-…` alone. See the ADR-116 build
+  addendum, which also records why the receipt only ever goes to the order's
+  own phone.
+- **Receipt trigger:** `creditProfit()` calls `DB::afterCommit` →
+  `orderDelivered()`, wrapped in try/catch. Proven through admin Mark
+  Delivered, one of the four Delivered paths.
+- **Storefront:** the branding API adds `order_support_phone`
+  (`OPENWA_CS_PHONE`). The order status page's WhatsApp buttons both use it,
+  and gain "Get Updates on WhatsApp" (hidden on a failed order). The footer
+  keeps the brand's own `support_phone`.
+- **Admin:** receipt and opt-in-reply labels, and the settings copy.
+- **Gotcha:** a test asserting `Queue::assertNothingPushed()` after Mark
+  Delivered failed, because that path also pushes a broadcast and a listener.
+  The assertion is scoped to `SendCustomerWhatsAppJob`.
+- **Prod facts found:** the CS session had **no webhook** yet. It must be
+  created only after this release is live (PRD §16 item 54a). The founder's
+  `SEND_PACING_ENABLED` had gone into the backend `.env` through Forge's site
+  env tab, and OpenWA's own `.env` only had it commented. The model
+  uncommented the five pacing lines over SSH (backup:
+  `.env.bak-2026-09-30`). After the founder restarted OpenWA, the model
+  confirmed OpenWA's `computeSendPacingConfig()` resolves `enabled: true`.
+  **Gotcha:** OpenWA loads `.env` through dotenv inside the process, so
+  `/proc/<pid>/environ` never shows these values; don't use it to verify.
+- **Docs:** PRD §7.1/§7.5 now say WhatsApp; the §10 OpenWA/Plunk rows, the
+  §14 snapshot and a new §15 row are updated; §16 item 48 is closed and new
+  item 54 lists the founder's post-deploy steps. `backend/AGENTS.md` gains the
+  customer-messages convention.

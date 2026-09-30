@@ -31,6 +31,9 @@ const BrandingWireSchema = z.object({
   theme_mode: z.enum(["light", "dark"]).nullable().optional(),
   support_email: z.string().nullable(),
   support_phone: z.string().nullable(),
+  // ADR-116 decision 6 — the platform customer-support number for the
+  // order status page's WhatsApp buttons. Optional so an older backend still parses.
+  order_support_phone: z.string().nullable().optional(),
   telegram_contact_link: z.string().nullable(),
   social_links: z
     .object({
@@ -54,6 +57,7 @@ export interface Branding {
   themeMode: "light" | "dark";
   supportEmail: string | null;
   supportPhone: string | null;
+  orderSupportPhone: string | null;
   socialLinks: { facebook?: string; instagram?: string; tiktok?: string; youtube?: string; whatsapp?: string };
   footerText: string | null;
   footerGames: { id: number; name: string; slug: string }[];
@@ -68,6 +72,7 @@ const BRANDING_FALLBACK: Branding = {
   themeMode: "light",
   supportEmail: null,
   supportPhone: null,
+  orderSupportPhone: null,
   socialLinks: {},
   footerText: null,
   footerGames: [],
@@ -95,6 +100,7 @@ export async function getBranding(): Promise<Branding> {
         themeMode: wire.theme_mode ?? "light",
         supportEmail: wire.support_email,
         supportPhone: wire.support_phone,
+        orderSupportPhone: wire.order_support_phone ?? null,
         socialLinks: wire.social_links ?? {},
         footerText: wire.footer_text,
         footerGames: wire.footer_games,

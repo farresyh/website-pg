@@ -11,6 +11,7 @@ use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Notification\CustomerNotificationService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
@@ -1577,5 +1578,17 @@ final class OrderFulfillmentService
 
         $this->ledger->credit(LedgerOwnerType::Platform, null, $order->platform_profit, 'order_profit', 'order', $order->id);
         $this->ledger->credit(LedgerOwnerType::Affiliate, $order->affiliate_id, $order->affiliate_profit, 'order_profit', 'order', $order->id);
+
+        // ADR-116 decision 4: every path into Delivered runs through here,
+        // so this is the one receipt trigger. After commit (never message
+        // for a rolled-back delivery), and never allowed to fail the delivery.
+        $orderId = $order->id;
+        DB::afterCommit(function () use ($orderId) {
+            try {
+                app(CustomerNotificationService::class)->orderDelivered($orderId);
+            } catch (Throwable $e) {
+                Log::warning('Delivered receipt not queued', ['order_id' => $orderId, 'exception' => $e->getMessage()]);
+            }
+        });
     }
 }
