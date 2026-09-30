@@ -36,6 +36,7 @@ export default function PlatformSettingsSection({
   const [telegramEnabled, setTelegramEnabled] = useState(platform.telegram_notifications_enabled);
   const [telegramBotToken, setTelegramBotToken] = useState(platform.telegram_bot_token ?? "");
   const [telegramChatId, setTelegramChatId] = useState(platform.telegram_chat_id ?? "");
+  const [whatsappEnabled, setWhatsappEnabled] = useState(platform.whatsapp_notifications_enabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +61,7 @@ export default function PlatformSettingsSection({
         telegram_notifications_enabled: telegramEnabled,
         telegram_bot_token: telegramBotToken || null,
         telegram_chat_id: telegramChatId || null,
+        whatsapp_notifications_enabled: whatsappEnabled,
       });
       onSaved();
     } catch (err) {
@@ -157,6 +159,18 @@ export default function PlatformSettingsSection({
             />
           </div>
         )}
+      </div>
+
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Customer WhatsApp notifications</h3>
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+              Sends voucher codes to customers from the customer-support WhatsApp number. Turn off to stop all sends at once.
+            </p>
+          </div>
+          <Switch checked={whatsappEnabled} onChange={setWhatsappEnabled} />
+        </div>
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
