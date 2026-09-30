@@ -52,13 +52,34 @@ final class OpenWaClient
     }
 
     /**
-     * The actual HTTP call — only `SendResellerBotReplyJob` calls this.
-     * Throws on failure (unlike `sendText()`) so the job's queue retry
-     * kicks in; `session_id`/`api_key` are assumed already validated by
-     * `sendText()` at dispatch time.
+     * ADR-116 decision 11: the same client pointed at the `customer-support`
+     * session. The container binding above stays the reseller bot's.
+     */
+    public static function customerSupport(): self
+    {
+        $config = config('services.openwa');
+
+        return new self(
+            baseUrl: $config['base_url'],
+            sessionId: $config['cs_session_id'],
+            apiKey: $config['cs_api_key'],
+            timeoutSeconds: $config['timeout'],
+            connectTimeoutSeconds: $config['connect_timeout'],
+        );
+    }
+
+    /**
+     * The actual HTTP call — `SendResellerBotReplyJob` and
+     * `SendCustomerWhatsAppJob` call this. Throws on failure (unlike
+     * `sendText()`) so the job's queue retry kicks in. A pacing refusal
+     * throws `OpenWaPacingLimitedException` (ADR-116), which is not a failure.
      */
     public function sendNow(string $chatId, string $text): void
     {
+        if ($this->sessionId === null || $this->apiKey === null) {
+            throw new RuntimeException('OpenWaClient: session_id/api_key not configured');
+        }
+
         $response = Http::baseUrl($this->baseUrl)
             ->withToken((string) $this->apiKey)
             ->acceptJson()
@@ -68,6 +89,10 @@ final class OpenWaClient
                 'chatId' => $chatId,
                 'text' => $text,
             ]);
+
+        if ($response->status() === 429 && $response->json('code') === 'SEND_PACING_LIMITED') {
+            throw new OpenWaPacingLimitedException(max(1, (int) $response->json('retryAfterSeconds', 900)));
+        }
 
         if ($response->failed()) {
             throw new RuntimeException("OpenWaClient: send-text failed with status {$response->status()}");

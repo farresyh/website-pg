@@ -27,24 +27,37 @@ use Illuminate\Support\Facades\Cache;
  * the ADR: if OpenWA sends no `session.status` for a full hour the chip
  * reverts to the "no recent event" rendering until the next event; a
  * genuine state change re-writes the key immediately.
+ *
+ * ADR-116 decision 11: tracked per session. There are two now, and one
+ * shared key would let the customer-support session's status overwrite the
+ * reseller bot's. The bot keeps the original key.
  */
 final class OpenWaSessionStatus
 {
+    public const RESELLER_BOT = 'reseller-bot';
+
+    public const CUSTOMER_SUPPORT = 'customer-support';
+
     private const CACHE_KEY = 'openwa:session_status';
 
     private const TTL_SECONDS = 3600;
 
-    public function record(string $status): void
+    public function record(string $status, string $session = self::RESELLER_BOT): void
     {
-        Cache::put(self::CACHE_KEY, [
+        Cache::put($this->key($session), [
             'status' => $status,
             'at' => now()->toIso8601String(),
         ], self::TTL_SECONDS);
     }
 
     /** @return array{status: string, at: string}|null */
-    public function current(): ?array
+    public function current(string $session = self::RESELLER_BOT): ?array
     {
-        return Cache::get(self::CACHE_KEY);
+        return Cache::get($this->key($session));
+    }
+
+    private function key(string $session): string
+    {
+        return $session === self::RESELLER_BOT ? self::CACHE_KEY : self::CACHE_KEY.':'.$session;
     }
 }

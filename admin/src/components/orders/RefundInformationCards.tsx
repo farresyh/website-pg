@@ -40,6 +40,7 @@ import { Receipt } from "@primeicons/react/receipt";
 import { Wallet } from "@primeicons/react/wallet";
 import { Reply } from "@primeicons/react/reply";
 import { ExclamationTriangle } from "@primeicons/react/exclamation-triangle";
+import { Whatsapp } from "@primeicons/react/whatsapp";
 import { Tag } from "@/components/ui/tag";
 import type { OrderDetail } from "@/lib/orders";
 import type { ComponentType, ReactNode } from "react";
@@ -47,6 +48,18 @@ import type { ComponentType, ReactNode } from "react";
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
+
+const NOTIFICATION_EVENT_LABEL: Record<string, string> = {
+  voucher_issued: "Voucher code",
+  voucher_restored: "Voucher restored",
+};
+
+const NOTIFICATION_STATUS_SEVERITY = {
+  queued: "info",
+  sent: "success",
+  failed: "danger",
+  skipped: "warn",
+} as const;
 
 interface Field {
   label: string;
@@ -128,7 +141,8 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
     Number(!!order.voucher) +
     Number(!!order.wallet_refund) +
     Number(order.has_voucher_restored) +
-    Number(order.profit_reconciled_flagged);
+    Number(order.profit_reconciled_flagged) +
+    order.customer_notifications.length;
 
   if (cardCount === 0) return null;
 
@@ -188,6 +202,27 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
           ]}
         />
       )}
+      {/* ADR-116 decision 9 — failed/skipped means the customer never got it: contact them by hand. */}
+      {order.customer_notifications.map((n) => (
+        <CompensationCard
+          key={n.id}
+          icon={Whatsapp}
+          title="Customer WhatsApp"
+          badge={NOTIFICATION_EVENT_LABEL[n.event] ?? n.event}
+          tone="refund"
+          fields={[
+            {
+              label: "Status",
+              value: <Tag severity={NOTIFICATION_STATUS_SEVERITY[n.status]}>{n.status}</Tag>,
+            },
+            { label: "Phone", value: n.phone ?? "—" },
+            {
+              label: n.status === "sent" ? "Sent" : "Note",
+              value: n.status === "sent" && n.sent_at ? new Date(n.sent_at).toLocaleString() : (n.error ?? "Waiting to send"),
+            },
+          ]}
+        />
+      ))}
       {order.profit_reconciled_flagged && (
         <WarningCard icon={ExclamationTriangle} title="Profit Adjusted">
           This order delivered, but its reported platform profit reconciled to{" "}

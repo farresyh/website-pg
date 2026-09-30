@@ -1548,3 +1548,60 @@ At the founder's request, so the next session starts from accurate docs:
 - **`build-log.md` (3,079 → ~1,490 lines):** the old §14 table, the PrimeReact tracker and the 2026-09-01→09-22 entries moved verbatim to `build-log-archive.md`.
 - **`AGENTS.md`:** references now point to the archive. **`backend/AGENTS.md`:** added the queue-lane and ambiguous-outcome conventions.
 - **`adr.md` index:** 2026-09-29 addenda flagged on ADR-014/048/102. Stale "PR open" / "merged to staging" / "phases not built" wording removed (ADR-098/102/112).
+
+## 2026-09-30 — ADR-116 PR-B1 built: voucher codes reach the customer on WhatsApp (audit M-11)
+
+Grilled with the founder over five rounds. WhatsApp through OpenWA's
+`customer-support` session, not email. See ADR-116 for the decisions. Fast
+suite 2431/2431. The new notification tests also pass on MySQL, where
+`SHOW INDEX` confirms the `dedupe_key` unique index and the `order_id`/
+`voucher_id` indexes. Admin tsc and eslint are clean. **Not browser-verified:** no local servers
+were running, and a real send needs the prod OpenWA (it listens on
+127.0.0.1 on the box).
+
+- **`CustomerNotificationService`:** the one place a message is decided,
+  worded per brand, recorded in `customer_notifications`, and queued. It is
+  called by `VoucherController` for:
+  - Issue Voucher (Path B), whose message also mentions the original voucher
+    when that voucher was restored;
+  - restore-only;
+  - a Path A standalone voucher, only if the admin filled in the new
+    optional phone field.
+
+  Reseller-wallet and `is_test` orders never get a row. With the switch off,
+  no CS session configured, or an unusable phone, the row is `skipped` and
+  carries the reason, so the admin sees why.
+- **Pacing:** each send takes a slot 10–30s after the previous one
+  (`nextSendSlot()`, a Redis value under a lock, dispatched with a delay).
+  That runs on the new one-worker `whatsapp` Horizon lane.
+  `SendCustomerWhatsAppJob` releases on OpenWA's 429 `SEND_PACING_LIMITED`
+  for `retryAfterSeconds`. **Gotcha:** a `release()` also counts against
+  `$tries`, so a paced message would have "failed" after three pacing
+  refusals. The job uses `retryUntil()` (2 days) plus `$maxExceptions = 3`
+  instead.
+- **OpenWA:** `OpenWaClient::customerSupport()` targets the second session.
+  The webhook now routes by the envelope's `sessionId`: CS traffic records
+  its status only and never reaches `ResellerBotService`, and an unknown
+  session is dropped. `OpenWaSessionStatus` is per session, and the dashboard
+  shows both chips.
+- **Phones:** `App\Support\PhoneNumber` normalises at comparison and send
+  time only. `VoucherService::assertUsable()` now matches `012…` with
+  `+6012…`, a real bug where the raw strings were compared.
+- **Admin:**
+  - the Settings switch "Customer WhatsApp notifications" (default OFF);
+  - per-message status cards on the order detail page, next to the refund
+    cards;
+  - a status line on the voucher detail page;
+  - an optional phone field on Create Voucher.
+- **Also fixed:** the Plunk `from` default in `config/services.php` still
+  said `send.fixfastapp.com`. Prod already overrides it
+  (`noreply@pekangame.space`).
+- **New env (backend):** `OPENWA_CS_SESSION_ID`, `OPENWA_CS_PHONE` (PR-B2
+  uses it), and optionally `OPENWA_CS_API_KEY` (falls back to
+  `OPENWA_API_KEY`), plus `OPENWA_NOTIFICATION_GAP_MIN/MAX_SECONDS`.
+- **Founder steps before the switch goes ON:**
+  1. In OpenWA's `.env`, set `SEND_PACING_ENABLED=true` and restart it.
+  2. Give the backend's key access to the `customer-support` session, or
+     issue a second key.
+  3. Set `OPENWA_CS_SESSION_ID` in the backend `.env`.
+  4. Test with his own number.

@@ -108,6 +108,17 @@ export interface OrderDeliveryLeg {
   supplier: { id: number; name: string } | null;
 }
 
+export interface CustomerNotification {
+  id: number;
+  event: "voucher_issued" | "voucher_restored" | string;
+  phone: string | null;
+  status: "queued" | "sent" | "failed" | "skipped";
+  attempts: number;
+  error: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
 export interface OrderDetail extends OrderListItem {
   reference_number: string | null;
   customer_phone: string | null;
@@ -157,6 +168,8 @@ export interface OrderDetail extends OrderListItem {
   paid_with_voucher: Voucher | null;
   // ADR-094 decision 12: empty for every ordinary order.
   delivery_legs: OrderDeliveryLeg[];
+  // ADR-116 decision 9 — WhatsApp messages sent (or skipped) to the customer.
+  customer_notifications: CustomerNotification[];
   // ADR-094 decision 9: true only for a combo order whose legs
   // genuinely split Delivered/Failed (not the ordinary leg-level-
   // ambiguity needs_review, which stays blocked exactly as ADR-026

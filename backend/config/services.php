@@ -201,8 +201,8 @@ return [
     'plunk' => [
         'base_url' => env('PLUNK_BASE_URL', 'https://next-api.useplunk.com'),
         'api_key' => env('PLUNK_API_KEY'),
-        'from_email' => env('PLUNK_FROM_EMAIL', 'no-reply@send.fixfastapp.com'),
-        'from_name' => env('PLUNK_FROM_NAME', 'FixFastApp'),
+        'from_email' => env('PLUNK_FROM_EMAIL', 'noreply@pekangame.space'),
+        'from_name' => env('PLUNK_FROM_NAME', 'PekanGame'),
         'timeout' => (int) env('PLUNK_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('PLUNK_CONNECT_TIMEOUT_SECONDS', 5),
     ],
@@ -435,6 +435,21 @@ return [
         // PR-F build addendum decision 2 — reseller_bot_command_logs
         // retention, matching player_validations' own PII-adjacent window.
         'command_log_retention_days' => (int) env('OPENWA_COMMAND_LOG_RETENTION_DAYS', 7),
+
+        // ADR-116 — the second session: customer order notifications from
+        // the general customer-support number. The key falls back to
+        // OPENWA_API_KEY for when the founder widens that key's session
+        // scope rather than issuing a second one.
+        'cs_session_id' => env('OPENWA_CS_SESSION_ID'),
+        'cs_api_key' => env('OPENWA_CS_API_KEY', env('OPENWA_API_KEY')),
+        'cs_phone' => env('OPENWA_CS_PHONE'),
+
+        // ADR-116 decision 7 — our side of the pacing (OpenWA's own
+        // SEND_PACING is the daily/cold cap). Random gap between two
+        // recipients, in seconds. Knobs, not constants: WhatsApp's real
+        // thresholds are unpublished.
+        'notification_gap_min_seconds' => (int) env('OPENWA_NOTIFICATION_GAP_MIN_SECONDS', 10),
+        'notification_gap_max_seconds' => (int) env('OPENWA_NOTIFICATION_GAP_MAX_SECONDS', 30),
     ],
 
     // ADR-084 PR-4 decision 7 — the Starlight docs site. When set,

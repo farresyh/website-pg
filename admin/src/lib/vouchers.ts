@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
+import type { CustomerNotification } from "@/lib/orders";
 
 export type VoucherStatus = "active" | "exhausted" | "expired" | "revoked" | "merged";
 
@@ -68,6 +69,8 @@ export interface VoucherDetail extends Voucher {
   // voucher's own status is "merged").
   merges_as_target: VoucherMergeRef[];
   merge_as_source: VoucherMergeRef | null;
+  // ADR-116 decision 9 — WhatsApp messages sent (or skipped) about this voucher.
+  customer_notifications: CustomerNotification[];
 }
 
 export interface VoucherShowResponse {
@@ -84,6 +87,8 @@ export interface VoucherShowResponse {
 
 export interface CreateVoucherValues {
   customer_email: string;
+  // ADR-116: optional — when set, the code is sent to this number on WhatsApp.
+  customer_phone?: string | null;
   amount: number;
   reason: string;
   expires_at?: string | null;

@@ -53,6 +53,12 @@ class Voucher extends Model
         return $this->belongsTo(Order::class, 'order_id');
     }
 
+    /** ADR-116 decision 9 — WhatsApp messages sent (or skipped) about this voucher. */
+    public function customerNotifications(): HasMany
+    {
+        return $this->hasMany(CustomerNotification::class);
+    }
+
     /**
      * ADR-060 PR-4d, decision 5 — the storefront brand this voucher
      * belongs to. It is redeemable only on this brand's storefront

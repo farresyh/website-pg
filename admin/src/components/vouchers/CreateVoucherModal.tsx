@@ -40,6 +40,7 @@ interface CreateVoucherModalProps {
  */
 function CreateVoucherFields({ onClose, onSubmit, brands }: Omit<CreateVoucherModalProps, "isOpen">) {
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [amountRm, setAmountRm] = useState("");
   const [reason, setReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -78,6 +79,7 @@ function CreateVoucherFields({ onClose, onSubmit, brands }: Omit<CreateVoucherMo
     try {
       await onSubmit({
         customer_email: customerEmail,
+        customer_phone: customerPhone.trim() || null,
         amount: amountSen,
         reason,
         expires_at: expiresAt || null,
@@ -122,6 +124,13 @@ function CreateVoucherFields({ onClose, onSubmit, brands }: Omit<CreateVoucherMo
         <div>
           <Label htmlFor="customer_email">Customer Email</Label>
           <Input id="customer_email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} required />
+        </div>
+        <div>
+          <Label htmlFor="customer_phone">Customer Phone (optional)</Label>
+          <Input id="customer_phone" type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="0123456789" />
+          <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+            If filled, the code is sent to this number on WhatsApp and the voucher can also be used with it.
+          </p>
         </div>
         <div>
           <Label htmlFor="amount">Amount (RM)</Label>

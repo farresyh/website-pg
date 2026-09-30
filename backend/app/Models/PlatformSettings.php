@@ -25,6 +25,7 @@ class PlatformSettings extends Model
         'telegram_bot_token',
         'telegram_chat_id',
         'membership_enabled',
+        'whatsapp_notifications_enabled',
     ];
 
     protected $casts = [
@@ -32,6 +33,7 @@ class PlatformSettings extends Model
         'maintenance_mode' => 'boolean',
         'telegram_notifications_enabled' => 'boolean',
         'membership_enabled' => 'boolean',
+        'whatsapp_notifications_enabled' => 'boolean',
     ];
 
     public static function current(): self
@@ -46,6 +48,7 @@ class PlatformSettings extends Model
             'currency' => 'MYR',
             'vip_spend_threshold_sen' => 500000,
             'membership_enabled' => false,
+            'whatsapp_notifications_enabled' => false,
         ]);
     }
 }

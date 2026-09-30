@@ -128,6 +128,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-113** | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md` written, Digital Architect retired from the affiliate picker (PekanGame's own primary-brand identity only, no dark mode), + a real WCAG contrast bug in Cyber Bumblebee found and fixed along the way. **Merged to `staging` (PR #288), not yet on `main`** |
 | **ADR-114** | Production infra — rebuild (not transfer) `pekangame-prod`'s droplet + managed MySQL into a new DigitalOcean team (`LWF Group Sdn Bhd`), separating PekanGame's billing/infra from the Nakhoda-sharing DO account as a real entity-separation step. Core cutover + OpenWA WhatsApp bot migration both live and verified 2026-09-25 (same day, two sessions) — old droplet's daemons/scheduler paused pending full decommission |
 | **ADR-115** | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (Digiflazz only). Fully designed and grilled 2026-09-28; build deliberately **parked** — no automatic trigger, founder will say when. Companion to the `/admin/balance` page (PR #307) |
+| **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. Build split into PR-B1 (backend + vouchers) and PR-B2 (opt-in + receipts) |
 
 ---
 
@@ -6670,3 +6671,54 @@ Two facts, checked against real code before grilling further:
 - If an `is_test_order` flag (or equivalent) is ever built for other reasons, revisit decision 1 — an automatic trigger (e.g. "N real orders in the last 30 days") becomes possible and may be preferable to a manual call.
 - The 60-day trailing window and p90 percentile (decision 4) are defaults recorded here, not proven against real data (none exists yet) — treat them, like the rest of this design, as fully re-arguable once real spend data actually exists to tune against, not just numbers to tweak in isolation.
 - If Gamevion is ever re-funded/re-activated (reversing the 2026-09-24 launch-gate retirement this ADR's scope decision 2 relies on), this ADR's single-supplier scope needs revisiting.
+
+---
+
+## ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
+
+**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 built 2026-09-30** (branch `feature/2026-09-30-whatsapp-customer-notifications`). PR-B2 is not built.
+
+**Context:** the 2026-09-28 audit (M-11) found no customer order notification of any kind. PRD §7.1 step 11 (notify on delivery, invite a review) and §7.5 step 4 (the customer receives their voucher code) were specified but never built. The sharp edge is §7.5: a customer whose order fails gets a store-credit voucher (ADR-004), but the code is never sent anywhere and the track-order page doesn't show it, so the refund only reaches the customer if an admin contacts them by hand.
+
+The founder chose WhatsApp over email, because customers rarely read email. Every storefront checkout already requires a phone number (`customer_phone`, required since 2026-07-30). OpenWA (ADR-075/114) already runs on the prod box with two sessions: `reseller-bot` (+65 8275 1992) and `customer-support` (+60 11-4301 3150, a general number). The Laravel backend's OpenWA key is scoped to `reseller-bot` only.
+
+**Decisions:**
+
+1. **Channel: WhatsApp only, sent from the `customer-support` session.** No email, and Plunk stays for OTP, receipts and ops alerts. **The voucher code is never shown on the track-order page**: the founder ruled it out on privacy grounds, even though redemption also needs the full email or phone. When a WhatsApp send fails, the admin handles it manually from the order's notification status (decision 9).
+2. **Scope: storefront orders only**, including affiliate brands. Reseller wallet orders (they refund to the wallet, and the bot/portal already informs them) and `is_test` orders are excluded.
+3. **Per-brand message text from one general number.** Every message opens with the order's brand `store_name` and links to that brand's storefront (its verified primary `affiliate_domains` hostname, else the default storefront URL). The number itself stays the platform's general CS number, so its WhatsApp profile name must stay brand-neutral.
+4. **Events:**
+   - **Proactive (cold allowed):** a voucher issued from a failed order; a voucher restored (restore-only, ADR-024 addendum); a standalone Path A voucher, but only when the admin fills in the new optional phone field.
+   - **Opt-in only:** Delivered receipt with a review link.
+   - **The receipt fires on the transition into Delivered, whatever the path:** a first delivery, an admin Resend/Retry after a failure, a Pending order confirmed by poll or webhook, or an admin Mark Delivered from NeedsReview. All four already converge on `OrderFulfillmentService::creditProfit()`, which is the single trigger point. A receipt and a voucher can never both go out for one order, because a compensated order blocks resend (`isAlreadyCompensated()`). The unique index in decision 9 caps it at one receipt per order. A number that opts in only after the order was Delivered gets the receipt through the opt-in auto-reply.
+   - Payment-received and failed/needs-review messages are not sent: the status page covers them live, and the outcome ends up as either Delivered or a voucher anyway.
+5. **Opt-in is per phone number, not per order, and it persists across orders and brands.** Two ways in:
+   - A new **"Get updates on WhatsApp"** button on the order status page, with prefilled text the backend recognises. It opts the number in and replies at once: the receipt if the order is already Delivered, otherwise "we'll message you when it's complete".
+   - The existing **Contact Support** button already prefills the `PG-…` order number. Any message on the CS session containing one opts the number in **silently**, with no auto-reply, so staff can take the conversation.
+
+   **Opt-out:** replying `STOP` stops receipts. Voucher messages still go out, since that is the customer's money. The first receipt carries a "Reply STOP to stop receipts" line. The reason is anti-ban: a customer who feels spammed taps Report/Block, and reports are what get numbers banned.
+6. **Both order-page WhatsApp buttons (support and opt-in) point to the platform CS number** (`OPENWA_CS_PHONE`). A brand's panel-configured `support_phone` is used only in the footer and on the price-list page. Consequence: order issues from affiliate-brand customers reach platform CS staff, who reply as that brand.
+7. **Anti-ban is mostly OpenWA's, not ours.** The prod box runs OpenWA v0.23.7, which already ships:
+   - `SIMULATE_TYPING` (on by default: a length-scaled, jittered typing pause, max 5s);
+   - `SEND_PACING` (off by default; the founder turns it on with the default warm-up `20,40,80,160,320,640,1000`/day, `SEND_PACING_COLD_DAILY_CAP` `5,10,20,40,60,80,100`, and a failure breaker of 5 failures → 15 min pause).
+
+   OpenWA counts a message as a cold reachout only when there is no chat history in either direction, and answers to a customer who wrote first are never capped. Over the limit, it answers HTTP 429 `SEND_PACING_LIMITED` with `retryAfterSeconds`. On our side: a dedicated `whatsapp` queue lane with **one** worker, a random 10–30s gap between recipients, and on 429 the job is released for `retryAfterSeconds` (never dropped). Any other failure gets 3 tries, then status `failed`. Every number is a config knob: WhatsApp's real thresholds are unpublished, and this starts from WAHA's and baileys-antiban's published guidance.
+8. **Phone numbers are normalised only at send time.** Strip non-digits, turn a leading `0` into `60`, keep an existing country code, and log-and-skip anything implausible. The stored `customer_phone` is never rewritten, because the same field goes to suppliers (Gamevion's `telp` format has bitten before). The same normalisation fixes a related bug: voucher phone ownership (`VoucherService::assertUsable()`) now compares normalised digits instead of the raw string, so `012…` at checkout matches `+6012…` at redemption.
+9. **`customer_notifications` table:** one row per outbound message (`order_id`/`voucher_id`, event, normalised phone, status `queued|sent|failed|skipped`, attempts, `sent_at`, error). A unique index on (event, reference) makes a job retry or a repeated event never double-send. The admin order page shows the WhatsApp status, so the admin knows when to contact the customer by hand. Opt-in and opt-out live in a separate per-phone table (normalised phone, opted_in_at + source, opted_out_at).
+10. **Master switch** `PlatformSettings.whatsapp_notifications_enabled`, **default OFF**. The founder turns it on to test, and off if anything misbehaves. There are no per-event toggles (SET-8 stays unbuilt, YAGNI).
+11. **OpenWA wiring:**
+    - New env `OPENWA_CS_SESSION_ID` and `OPENWA_CS_PHONE`, plus an API key with access to the CS session.
+    - `OpenWaWebhookController` filters on the envelope's `sessionId`: `reseller-bot` traffic goes to `ResellerBotService` exactly as today, and CS traffic only ever reaches the opt-in handler, never the bot.
+    - `OpenWaSessionStatus` is tracked per session (it is one global cache key today, so a second session's status would overwrite the bot's). The admin dashboard shows both.
+12. **Language:** messages are in English for now. The customer's prefilled button text may stay BM, like the existing support text.
+13. **Build split:**
+    - **PR-B1** (closes M-11's core): voucher notifications, `customer_notifications`, the switch, the `whatsapp` lane with pacing and 429 handling, the webhook `sessionId` filter and per-session status, phone normalisation plus the voucher-match fix, and the Path A phone field.
+    - **PR-B2:** the opt-in table and detection, the storefront button, both order-page buttons moved to `OPENWA_CS_PHONE`, the auto-reply, and Delivered receipts with STOP handling.
+
+**Rationale:** WhatsApp reaches customers who ignore email. OpenWA and a general CS number already exist. The real ban risk is cold reachouts, not speed (WAHA: *"never initiate a conversation"*). So only the rare, high-value voucher message goes out cold, and the high-volume receipt waits for the customer to write first. Leaning on OpenWA's own pacing means the refusal, cap and breaker logic is tested upstream instead of reinvented here.
+
+**Consequences to track:**
+- **OpenWA is unofficial WhatsApp Web automation, not the Business API.** A ban on the CS number takes the human support channel down with it. If volume grows, or a restriction (error 463) ever appears, revisit a move to the official WhatsApp Business Cloud API as its own ADR.
+- **The founder must do three things before the switch goes ON:** turn on `SEND_PACING` in OpenWA's `.env` and restart it; create a CS-session webhook to the backend endpoint (needed for PR-B2); issue an API key with CS-session access.
+- There is no email fallback. If WhatsApp delivery proves unreliable in the `customer_notifications` data, adding email is the first lever.
+- A per-affiliate WhatsApp session (a brand's own number) is out of scope and would be a future ADR, triggered when a real affiliate asks.
