@@ -889,6 +889,9 @@ class OrderController extends Controller
             // as the fallback figure alongside its own real_cost_price_sen.
             'deliveryLegs.componentPackage:id,name,denomination,standard_selling_price,supplier_package_ref,cost_price',
             'deliveryLegs.supplier:id,name',
+            // ADR-116 decision 9: every WhatsApp message sent (or not) to the
+            // customer about this order, so the admin knows when to step in.
+            'customerNotifications' => fn ($query) => $query->select(['id', 'order_id', 'event', 'phone', 'status', 'attempts', 'error', 'sent_at', 'created_at'])->oldest(),
         ]);
 
         return response()->json([

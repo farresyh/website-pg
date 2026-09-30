@@ -37,6 +37,7 @@ export interface PlatformSettings {
   telegram_bot_token: string | null;
   telegram_chat_id: string | null;
   membership_enabled: boolean;
+  whatsapp_notifications_enabled: boolean;
 }
 
 export interface SettingsIndexResponse {
@@ -63,6 +64,7 @@ export type UpdatePlatformValues = Pick<
   | "telegram_notifications_enabled"
   | "telegram_bot_token"
   | "telegram_chat_id"
+  | "whatsapp_notifications_enabled"
 >;
 
 export function getSettings(token: string) {

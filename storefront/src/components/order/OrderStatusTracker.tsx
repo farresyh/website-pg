@@ -98,7 +98,7 @@ function isTerminal(order: TrackedOrder): boolean {
 }
 
 export default function OrderStatusTracker({ orderNumber }: { orderNumber: string }) {
-  const { whatsappHref, branding } = useSiteConfig();
+  const { orderWhatsappHref: whatsappHref, branding } = useSiteConfig();
   const storeName = branding.storeName;
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -353,16 +353,27 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           {hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
         </p>
         {whatsappHref && (() => {
-          const supportText = encodeURIComponent(
-            `Salam support ${storeName}, saya perlukan bantuan untuk order ${order.order_number} (${order.game?.name ?? "Top Up"}).`
-          );
-          const contextualWhatsappHref = whatsappHref.includes("?")
-            ? `${whatsappHref}&text=${supportText}`
-            : `${whatsappHref}?text=${supportText}`;
+          const withText = (text: string) =>
+            `${whatsappHref}${whatsappHref.includes("?") ? "&" : "?"}text=${encodeURIComponent(text)}`;
           return (
-            <Button href={contextualWhatsappHref} className="justify-center">
-              <WhatsappLogo size={16} weight="fill" /> Contact {storeName} Support
-            </Button>
+            <>
+              {/* ADR-116 decision 5: the backend reads "update" + the order number as an opt-in and replies with the receipt. */}
+              {!hasFailure && (
+                <Button
+                  href={withText(`Salam, saya nak terima update order ${order.order_number} di WhatsApp.`)}
+                  variant="outline"
+                  className="justify-center"
+                >
+                  <WhatsappLogo size={16} weight="fill" /> Get Updates on WhatsApp
+                </Button>
+              )}
+              <Button
+                href={withText(`Salam support ${storeName}, saya perlukan bantuan untuk order ${order.order_number} (${order.game?.name ?? "Top Up"}).`)}
+                className="justify-center"
+              >
+                <WhatsappLogo size={16} weight="fill" /> Contact {storeName} Support
+              </Button>
+            </>
           );
         })()}
         {order.game && (

@@ -66,6 +66,9 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  // Reused across resubmits of one credit (double-click, retry after a
+  // timeout); rotated only after a success, since the form stays open.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   function refresh(p: number = page) {
     return getResellerWallet(token, reseller.id, p)
@@ -90,7 +93,8 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
 
     setSubmitting(true);
     try {
-      await creditResellerWallet(token, reseller.id, { amount_sen: amountSen, note: note || null, receipt });
+      await creditResellerWallet(token, reseller.id, { amount_sen: amountSen, note: note || null, receipt, idempotency_key: idempotencyKey });
+      setIdempotencyKey(crypto.randomUUID());
       setAmountRm("");
       setNote("");
       setReceipt(null);

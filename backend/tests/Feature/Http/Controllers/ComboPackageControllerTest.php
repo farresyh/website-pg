@@ -332,11 +332,25 @@ class ComboPackageControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $response = $this->patchJson("/api/packages/{$combo->id}/combo-override", [
-            'combo_override_price' => 39900,
+            'combo_override_price' => 42900,
         ]);
 
         $response->assertOk();
-        $this->assertSame(39900, $combo->refresh()->standard_selling_price);
+        $this->assertSame(42900, $combo->refresh()->standard_selling_price);
+    }
+
+    /** 2026-09-29 audit: PricingService refuses below-cost sales, so this only ever surfaced as a checkout 500. */
+    public function test_update_combo_override_rejects_a_fixed_price_below_the_live_component_cost(): void
+    {
+        $game = $this->game();
+        $component = $this->package($game, $this->supplier());
+        $combo = $this->combo($game, $component); // stored cost_price is still 0 — the check must not read it
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$combo->id}/combo-override", ['combo_override_price' => 39900])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['combo_override_price']);
+        $this->assertNull($combo->refresh()->combo_override_price);
     }
 
     public function test_update_combo_override_rejects_both_fields_set_at_once(): void

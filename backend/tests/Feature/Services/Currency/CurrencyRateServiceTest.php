@@ -3,6 +3,7 @@
 namespace Tests\Feature\Services\Currency;
 
 use App\Models\CurrencyRate;
+use App\Services\Backup\BackupFailureAlerter;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,6 +53,49 @@ class CurrencyRateServiceTest extends TestCase
         $this->assertSame(0.000230, $rate);
         // The failed live attempt must never write a new row.
         $this->assertSame(1, CurrencyRate::query()->count());
+    }
+
+    /** 2026-09-29 audit: a fallback used to be cached for the full day-long TTL, blocking any live retry. */
+    public function test_a_fallback_rate_is_retried_live_after_fifteen_minutes(): void
+    {
+        CurrencyRate::query()->create([
+            'from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000230, 'source' => 'open.er-api.com', 'fetched_at' => now()->subDay(),
+        ]);
+        Http::fakeSequence('open.er-api.com/*')
+            ->push(['message' => 'Server error'], 500)
+            ->push(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200);
+        $service = new CurrencyRateService;
+
+        $this->assertSame(0.000230, $service->rate('IDR', 'MYR'));
+        $this->travel(16)->minutes();
+
+        $this->assertSame(0.000228, $service->rate('IDR', 'MYR'));
+    }
+
+    public function test_a_fallback_older_than_48h_alerts_the_admins_once_a_day(): void
+    {
+        CurrencyRate::query()->create([
+            'from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000230, 'source' => 'open.er-api.com', 'fetched_at' => now()->subDays(3),
+        ]);
+        Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
+        $this->mock(BackupFailureAlerter::class)
+            ->shouldReceive('alert')->once()->withArgs(fn ($context, $message, $area) => $area === 'FX' && str_contains($context, 'IDR->MYR'));
+        $service = new CurrencyRateService;
+
+        $service->rate('IDR', 'MYR');
+        $this->travel(16)->minutes(); // past the fallback cache, inside the alert throttle
+        $service->rate('IDR', 'MYR');
+    }
+
+    public function test_a_recent_fallback_does_not_alert(): void
+    {
+        CurrencyRate::query()->create([
+            'from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000230, 'source' => 'open.er-api.com', 'fetched_at' => now()->subDay(),
+        ]);
+        Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
+        $this->mock(BackupFailureAlerter::class)->shouldNotReceive('alert');
+
+        (new CurrencyRateService)->rate('IDR', 'MYR');
     }
 
     public function test_rate_falls_back_when_the_target_currency_is_missing_from_the_response(): void

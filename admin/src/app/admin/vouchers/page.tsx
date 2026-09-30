@@ -300,6 +300,24 @@ export default function VouchersPage() {
           </div>
         )}
 
+        {/* ADR-116 decision 9 — failed/skipped means the customer never got the code: send it by hand. */}
+        {voucher.customer_notifications.length > 0 && (
+          <div className="mb-6 space-y-2 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+            {voucher.customer_notifications.map((n) => (
+              <p key={n.id} className="flex flex-wrap items-center gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
+                <span className="font-medium">Customer WhatsApp</span>
+                <Tag severity={n.status === "sent" ? "success" : n.status === "failed" ? "danger" : n.status === "skipped" ? "warn" : "info"}>
+                  {n.status}
+                </Tag>
+                <span className="text-gray-500 dark:text-gray-400">{n.phone ?? "no phone"}</span>
+                <span className="text-theme-xs text-gray-400">
+                  {n.status === "sent" && n.sent_at ? formatDate(n.sent_at) : (n.error ?? "Waiting to send")}
+                </span>
+              </p>
+            ))}
+          </div>
+        )}
+
         <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
           {DETAIL_STAT_CARDS.map(({ key, label, isRm }) => (
             <div key={key} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">

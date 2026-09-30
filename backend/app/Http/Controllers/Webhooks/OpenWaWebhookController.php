@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
+use App\Services\Notification\CustomerWhatsAppInboundService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Reseller\Bot\ResellerBotService;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class OpenWaWebhookController extends Controller
     public function __construct(
         private readonly ResellerBotService $bot,
         private readonly OpenWaSessionStatus $sessionStatus,
+        private readonly CustomerWhatsAppInboundService $customerInbound,
     ) {}
 
     public function handle(Request $request): JsonResponse
@@ -61,9 +63,33 @@ class OpenWaWebhookController extends Controller
 
         $event = (string) $request->input('event', '');
 
+        // ADR-116 decision 11: the customer-support session never reaches the
+        // reseller bot. Its direct messages go to the opt-in/STOP handler
+        // only. An envelope with no sessionId (older OpenWA) is treated as the
+        // bot, as before.
+        $csSessionId = config('services.openwa.cs_session_id');
+        if ($csSessionId !== null && $request->input('sessionId') === $csSessionId) {
+            match ($event) {
+                'session.status' => $this->recordStatus($request, OpenWaSessionStatus::CUSTOMER_SUPPORT),
+                'message.received' => $this->customerInbound->handle((array) $request->input('data', [])),
+                default => null,
+            };
+
+            return response()->json(['message' => 'ok']);
+        }
+
+        // Any other session that isn't the bot's own is dropped, never guessed at.
+        $botSessionId = config('services.openwa.session_id');
+        $sessionId = $request->input('sessionId');
+        if ($sessionId !== null && $botSessionId !== null && $sessionId !== $botSessionId) {
+            Log::info('OpenWA webhook: ignored event from an unknown session', ['session_id' => $sessionId]);
+
+            return response()->json(['message' => 'ok']);
+        }
+
         match ($event) {
             'message.received' => $this->handleMessageReceived($request),
-            'session.status' => $this->handleSessionStatus($request),
+            'session.status' => $this->recordStatus($request, OpenWaSessionStatus::RESELLER_BOT),
             default => Log::info('OpenWA webhook: ignored event', ['event' => $event ?: '(none)']),
         };
 
@@ -123,12 +149,12 @@ class OpenWaWebhookController extends Controller
         return (bool) ($data['isGroup'] ?? false);
     }
 
-    private function handleSessionStatus(Request $request): void
+    private function recordStatus(Request $request, string $session): void
     {
         $status = $request->input('data.status') ?? $request->input('status');
 
         if (is_string($status)) {
-            $this->sessionStatus->record($status);
+            $this->sessionStatus->record($status, $session);
         }
     }
 }

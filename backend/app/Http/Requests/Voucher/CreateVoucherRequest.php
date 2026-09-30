@@ -22,6 +22,10 @@ class CreateVoucherRequest extends FormRequest
     {
         return [
             'customer_email' => ['required', 'email'],
+            // ADR-116 decision 4: optional. When set, the code is sent to
+            // this number on WhatsApp, and the voucher is also redeemable
+            // by it (VoucherService::assertUsable()).
+            'customer_phone' => ['nullable', 'string', 'max:32'],
             // ADR-060 PR-4d, decision 5: a promo voucher is scoped to one
             // storefront brand and redeemable only there. Required — the
             // CreateVoucherModal picker defaults it to the primary brand.

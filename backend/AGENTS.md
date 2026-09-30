@@ -17,7 +17,8 @@ Laravel-specific, loaded only when working inside `backend/`.
   store-credit `Voucher`, not a reversed payment.
 - **Supplier and payment integrations are behind adapters** —
   `SupplierAdapter` (`GamevionAdapter` and `DigiflazzAdapter` are the two
-  real, production-wired implementations — ADR-030/067; resolved per-order
+  real, production-wired implementations — ADR-030/067; only Digiflazz is
+  funded/live since 2026-09-24, Gamevion stays integrated but unfunded; resolved per-order
   by `supplier_id` via `SupplierAdapterFactory`, ADR-031) and `PaymentGateway`
   (`ChipGateway` is the one real implementation since ADR-022's 2026-09-01
   addendum removed Xendit; still resolved per-channel via
@@ -36,7 +37,25 @@ Laravel-specific, loaded only when working inside `backend/`.
   (ADR-014) — `FulfillOrderJob`/`ResendOrderDeliveryJob`/
   `SyncSupplierPricesJob`. A controller that needs to call a supplier or
   payment gateway synchronously on the customer-facing path is very likely
-  wrong; dispatch a job instead.
+  wrong; dispatch a job instead. Order jobs pick their queue lane from the
+  order itself (`Order::orderLane()`: `orders` retail, `orders-reseller`
+  wallet, `orders-combo` on the `redis-long` connection — ADR-048's
+  2026-09-29 addendum); `HorizonQueueCoverageTest` guards that every queue
+  is supervised and every supervisor timeout < its connection's retry_after.
+- **An ambiguous supplier outcome is never guessed.** Confirmed Gagal →
+  Failed; genuinely unknown → Pending + same-reference poll for a supplier
+  whose re-submit replays the stored result
+  (`SupplierAdapterFactory::resubmitReplaysOutcome()`, Digiflazz), else
+  NeedsReview (ADR-102 + its 2026-09-29 addendum). Never mint a new
+  reference for an order that may already have reached the supplier (M-1).
+- **Customer messages go only through `CustomerNotificationService`**
+  (ADR-116): WhatsApp from the OpenWA `customer-support` session, never
+  email, never a direct `OpenWaClient` call. It owns scope, the master
+  switch, opt-in, de-duplication (`customer_notifications.dedupe_key`),
+  per-brand wording and pacing (the one-worker `whatsapp` lane). A new
+  customer-facing event is a new method there. Compare or send a phone
+  number only through `App\Support\PhoneNumber`, since stored
+  `customer_phone` is raw customer input and is never rewritten.
 - **Public API responses never leak internal financial fields** —
   `cost_price`, `standard_selling_price`, `platform_profit`, `affiliate_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing

@@ -7,6 +7,7 @@ use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Support\PhoneNumber;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -377,9 +378,9 @@ final class VoucherService
         }
 
         $emailMatches = Str::lower($voucher->customer_email) === Str::lower($customerEmail);
-        $phoneMatches = $voucher->customer_phone !== null
-            && $customerPhone !== null
-            && $voucher->customer_phone === $customerPhone;
+        // ADR-116 decision 8: compare the normalised number, not the raw
+        // string — `012…` typed at checkout must match `+6012…` at redemption.
+        $phoneMatches = PhoneNumber::same($voucher->customer_phone, $customerPhone);
 
         if (! $emailMatches && ! $phoneMatches) {
             throw new InvalidVoucherException($genericMessage);

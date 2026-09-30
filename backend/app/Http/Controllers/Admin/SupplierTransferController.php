@@ -14,7 +14,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -97,8 +96,6 @@ class SupplierTransferController extends Controller
      */
     public function adjust(AdjustSupplierTransferRequest $request, SupplierTransfer $supplierTransfer): JsonResponse
     {
-        $this->assertNotVoided($supplierTransfer);
-
         $entry = $this->funding->recordManualAdjustment(
             $supplierTransfer,
             (string) $request->validated('amount'),
@@ -126,8 +123,6 @@ class SupplierTransferController extends Controller
      */
     public function void(VoidSupplierTransferRequest $request, SupplierTransfer $supplierTransfer): JsonResponse
     {
-        $this->assertNotVoided($supplierTransfer);
-
         $entry = $this->funding->voidTransfer(
             $supplierTransfer,
             $request->validated('reason'),
@@ -156,8 +151,6 @@ class SupplierTransferController extends Controller
      */
     public function correct(CorrectSupplierTransferRequest $request, SupplierTransfer $supplierTransfer): JsonResponse
     {
-        $this->assertNotVoided($supplierTransfer);
-
         $data = $request->validated();
         $reason = $data['reason'];
         unset($data['reason'], $data['receipt']);
@@ -180,15 +173,5 @@ class SupplierTransferController extends Controller
             'transfer' => $supplierTransfer->fresh(),
             'correction' => $correction,
         ], 201);
-    }
-
-    /** Shared guard for both correction actions — a voided transfer is already fully reversed, a second correction on it would be a real double-count. */
-    private function assertNotVoided(SupplierTransfer $transfer): void
-    {
-        if ($transfer->voided_at !== null) {
-            throw ValidationException::withMessages([
-                'transfer' => ['This transfer has already been voided.'],
-            ]);
-        }
     }
 }

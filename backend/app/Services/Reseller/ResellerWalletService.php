@@ -11,6 +11,7 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -105,6 +106,12 @@ final class ResellerWalletService
      * receipt file first (if any), then the ledger credit references it
      * — one transaction, so a failed upload never leaves an orphan
      * ledger entry and vice versa.
+     *
+     * 2026-09-29 audit (Wave 5 Low): `$idempotencyKey` is minted once per
+     * open credit form — a double-click or client retry returns the first
+     * entry instead of crediting twice. The unique index on
+     * `ledger_entries.idempotency_key` is the real guard; the lookup is
+     * only the fast path.
      */
     public function manualCredit(
         Reseller $reseller,
@@ -112,8 +119,29 @@ final class ResellerWalletService
         ?string $note,
         ?UploadedFile $receipt,
         int $adminUserId,
+        string $idempotencyKey,
     ): LedgerEntry {
-        return DB::transaction(function () use ($reseller, $amountSen, $note, $receipt, $adminUserId) {
+        $existing = LedgerEntry::query()->where('idempotency_key', $idempotencyKey)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        try {
+            return $this->writeManualCredit($reseller, $amountSen, $note, $receipt, $adminUserId, $idempotencyKey);
+        } catch (UniqueConstraintViolationException) {
+            return LedgerEntry::query()->where('idempotency_key', $idempotencyKey)->firstOrFail();
+        }
+    }
+
+    private function writeManualCredit(
+        Reseller $reseller,
+        int $amountSen,
+        ?string $note,
+        ?UploadedFile $receipt,
+        int $adminUserId,
+        string $idempotencyKey,
+    ): LedgerEntry {
+        return DB::transaction(function () use ($reseller, $amountSen, $note, $receipt, $adminUserId, $idempotencyKey) {
             $receiptRow = null;
 
             if ($receipt !== null) {
@@ -139,6 +167,7 @@ final class ResellerWalletService
                 referenceId: $receiptRow?->id,
                 createdBy: $adminUserId,
                 reason: $note,
+                idempotencyKey: $idempotencyKey,
             );
         });
     }

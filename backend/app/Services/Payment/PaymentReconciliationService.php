@@ -109,7 +109,10 @@ final class PaymentReconciliationService
      */
     private function markFailed(Order $order): bool
     {
-        $order->update(['payment_status' => PaymentStatus::Failed->value]);
+        // A Paid webhook may have landed during the gateway lookup.
+        if (! $order->setPaymentStatusUnlessPaid(PaymentStatus::Failed)) {
+            return false;
+        }
 
         $this->vouchers->restore($order->id);
         $this->membershipQuota->restore($order->id);

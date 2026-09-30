@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Games;
 
+use App\Services\Pricing\ComboPricingService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -46,6 +47,15 @@ class UpdateComboPackageOverrideRequest extends FormRequest
 
             if ($this->input('combo_override_markup_percent') !== null && $this->input('combo_override_price') !== null) {
                 $validator->errors()->add('combo_override_price', 'Set either a custom markup or a custom price, never both.');
+            }
+
+            // 2026-09-29 audit (Wave 5 Low): PricingService refuses to sell below cost, so a below-cost override only ever surfaced as a checkout 500.
+            $price = $this->input('combo_override_price');
+            if ($package !== null && is_numeric($price)) {
+                $cost = app(ComboPricingService::class)->componentCost($package);
+                if ((int) $price < $cost) {
+                    $validator->errors()->add('combo_override_price', 'The custom price cannot be below the combo\'s current cost (RM '.number_format($cost / 100, 2).').');
+                }
             }
         });
     }

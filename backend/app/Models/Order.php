@@ -414,9 +414,41 @@ class Order extends Model
      * resend from delivering the goods on top of the refund already
      * given).
      */
+    /** ADR-116 decision 9 — WhatsApp messages sent (or skipped) to this order's customer. */
+    public function customerNotifications(): HasMany
+    {
+        return $this->hasMany(CustomerNotification::class);
+    }
+
     public function isAlreadyCompensated(): bool
     {
         return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet() || $this->isVoucherRestored();
+    }
+
+    /**
+     * 2026-09-29 audit (Wave 5 Low): writes a non-Paid payment_status
+     * (Pending/Failed) only if the row isn't already Paid, in one atomic
+     * UPDATE. The CHIP webhook's non-Paid branch and reconcile's
+     * markFailed() both read the order, then wrote — a Paid webhook
+     * committing in between got overwritten back to Failed, and the
+     * voucher/quota give-back ran on a paid order. Returns false when the
+     * row was already Paid, so the caller skips its give-back.
+     */
+    public function setPaymentStatusUnlessPaid(PaymentStatus $status): bool
+    {
+        $updated = static::query()
+            ->whereKey($this->id)
+            ->where('payment_status', '!=', PaymentStatus::Paid->value)
+            ->update(['payment_status' => $status->value]);
+
+        if ($updated === 0) {
+            return false;
+        }
+
+        $this->payment_status = $status;
+        $this->syncOriginalAttribute('payment_status');
+
+        return true;
     }
 
     /**

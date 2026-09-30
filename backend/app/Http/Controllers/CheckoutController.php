@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Http\Requests\Checkout\PreviewCheckoutTotalRequest;
+use App\Models\AffiliateGame;
 use App\Models\Game;
 use App\Models\Membership;
 use App\Models\Order;
@@ -91,7 +92,7 @@ class CheckoutController extends Controller
             ]);
         }
 
-        if (! $game->is_active || ! $package->is_active) {
+        if (! $game->is_active || ! $package->is_active || $this->isHiddenOnThisBrand($game)) {
             throw ValidationException::withMessages([
                 'package_id' => ['This package is not currently available.'],
             ]);
@@ -233,7 +234,7 @@ class CheckoutController extends Controller
             ]);
         }
 
-        if (! $game->is_active || ! $package->is_active) {
+        if (! $game->is_active || ! $package->is_active || $this->isHiddenOnThisBrand($game)) {
             throw ValidationException::withMessages([
                 'package_id' => ['This package is not currently available.'],
             ]);
@@ -437,6 +438,20 @@ class CheckoutController extends Controller
      * use the response to distinguish "wrong value, try another" from
      * "you're rate-limited, wait it out."
      */
+    /**
+     * 2026-09-29 audit (Wave 5 Low): CatalogController already hides a
+     * game the brand turned off (`affiliate_game.is_visible = false`), but
+     * a direct POST with its ids still checked out. Same rule, same table.
+     */
+    private function isHiddenOnThisBrand(Game $game): bool
+    {
+        return AffiliateGame::query()
+            ->where('affiliate_id', $this->storefrontBrand->get()->id)
+            ->where('game_id', $game->id)
+            ->where('is_visible', false)
+            ->exists();
+    }
+
     private function assertNotBlacklisted(string $playerId, string $email, ?string $phone, ?string $ip): void
     {
         if ($ip !== null && $this->velocityGuard->tooManyRecentHits($ip)) {
