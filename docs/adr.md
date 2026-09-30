@@ -6676,7 +6676,7 @@ Two facts, checked against real code before grilling further:
 
 ## ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
 
-**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. Not yet built.
+**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 built 2026-09-30** (branch `feature/2026-09-30-whatsapp-customer-notifications`). PR-B2 is not built.
 
 **Context:** the 2026-09-28 audit (M-11) found no customer order notification of any kind. PRD §7.1 step 11 (notify on delivery, invite a review) and §7.5 step 4 (the customer receives their voucher code) were specified but never built. The sharp edge is §7.5: a customer whose order fails gets a store-credit voucher (ADR-004), but the code is never sent anywhere and the track-order page doesn't show it, so the refund only reaches the customer if an admin contacts them by hand.
 
