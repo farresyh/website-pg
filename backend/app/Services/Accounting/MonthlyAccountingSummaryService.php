@@ -44,6 +44,7 @@ final class MonthlyAccountingSummaryService
             'cogs_sen' => $this->cogs($from, $toExclusive),
             'payment_processing_gain_loss_sen' => $this->paymentProcessingGainLoss($from, $toExclusive),
             'supplier_prepaid_topup_sen' => $this->supplierPrepaidTopup($from, $toExclusive),
+            'bank_transfer_fees_sen' => $this->bankTransferFees($from, $toExclusive),
             'supplier_prepaid_fx_variance_sen' => $this->supplierPrepaidFxVarianceTrueUp($from, $toExclusive),
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
             'voucher_liability_issued_sen' => $this->voucherLiabilityIssued($from, $toExclusive),
@@ -103,13 +104,35 @@ final class MonthlyAccountingSummaryService
         return (int) $totals->matched_fee - (int) $totals->file_fee;
     }
 
+    /**
+     * 2026-09-30 audit fix: used to be `SUM(amount_myr_sent) +
+     * SUM(fee_myr)` — capital sent to the supplier bundled with our own
+     * Wise/Airwallex fee for moving it. Now capital-only; the fee gets
+     * its own line (`bankTransferFees()`) so a founder manually copying
+     * these two lines into the external accounting SaaS each month adds
+     * two genuinely distinct amounts, never double-counts the fee
+     * portion by summing a line that already includes it plus a second
+     * line for the same fee.
+     */
     private function supplierPrepaidTopup(Carbon $from, Carbon $toExclusive): int
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
             ->whereBetween('created_at', [$from, $toExclusive])
-            ->selectRaw('COALESCE(SUM(amount_myr_sent), 0) + COALESCE(SUM(fee_myr), 0) as total')
-            ->value('total');
+            ->sum('amount_myr_sent');
+    }
+
+    /**
+     * 2026-09-30 audit fix — split out of `supplierPrepaidTopup()`: our
+     * own Wise/Airwallex fee for sending capital to a supplier, a real
+     * bank-charge expense distinct from the capital movement itself.
+     */
+    private function bankTransferFees(Carbon $from, Carbon $toExclusive): int
+    {
+        return (int) SupplierTransfer::query()
+            ->whereNull('voided_at')
+            ->whereBetween('created_at', [$from, $toExclusive])
+            ->sum('fee_myr');
     }
 
     /**

@@ -38,13 +38,22 @@ class TransactionRegisterController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost (RM)', 'Net (RM)', 'Amount (foreign)', 'Status']);
+            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost (RM)', 'Net (RM)', 'Amount (foreign)', 'Status', 'Funding source']);
 
             foreach ($rows as $row) {
+                // 2026-09-30 audit fix: a voided row already carries a
+                // `Status` column, but a spreadsheet reader scanning by
+                // eye (not filtering columns) can still miss it — the
+                // admin UI itself already strikes voided rows through in
+                // red (see `admin/.../transactions/page.tsx`), CSV has no
+                // equivalent, so the reference itself gets the same
+                // signal a plain-text export can actually carry.
+                $reference = $row['status'] === 'voided' ? '[VOIDED] '.$row['reference'] : $row['reference'];
+
                 fputcsv($out, [
                     $row['date'],
                     $row['type'],
-                    $row['reference'],
+                    $reference,
                     $row['description'],
                     $row['supplier'] ?? '',
                     $row['currency'],
@@ -54,6 +63,7 @@ class TransactionRegisterController extends Controller
                     $row['net_sen'] !== null ? number_format($row['net_sen'] / 100, 2, '.', '') : '',
                     $row['amount_foreign'] ?? '',
                     $row['status'],
+                    $row['funding_source'] ?? '',
                 ]);
             }
 

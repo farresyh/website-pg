@@ -4,6 +4,7 @@ namespace App\Services\Accounting;
 
 use App\Models\Affiliate;
 use App\Models\LedgerEntry;
+use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
 use App\Models\Order;
 use App\Models\SupplierLedgerEntry;
@@ -12,6 +13,7 @@ use App\Models\Voucher;
 use App\Models\WalletTopupAttempt;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
@@ -46,7 +48,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 final class TransactionRegisterService
 {
     /**
-     * @return list<array{date: string, type: string, reference: string, description: string, supplier: ?string, currency: string, gross_sen: ?int, fee_sen: ?int, cost_sen: ?int, net_sen: ?int, amount_foreign: ?string, status: string}>
+     * @return list<array{date: string, type: string, reference: string, description: string, supplier: ?string, currency: string, gross_sen: ?int, fee_sen: ?int, cost_sen: ?int, net_sen: ?int, amount_foreign: ?string, status: string, funding_source: ?string}>
      */
     public function rows(?CarbonInterface $from, ?CarbonInterface $to, ?string $type = null): array
     {
@@ -58,6 +60,7 @@ final class TransactionRegisterService
             ...$this->voucherRows($from, $to),
             ...$this->membershipRows($from, $to),
             ...$this->walletTopupRows($from, $to),
+            ...$this->walletRefundRows($from, $to),
             ...$this->withdrawalRows($from, $to),
         ];
 
@@ -135,10 +138,29 @@ final class TransactionRegisterService
                 'currency' => 'MYR',
                 'gross_sen' => $order->selling_price,
                 'fee_sen' => $order->transaction_fee,
-                'cost_sen' => $order->cost_price,
+                // 2026-09-30 audit fix: `cost_price` is a checkout-time
+                // catalog snapshot, not proof the supplier was actually
+                // charged — `SupplierFundingService::recordOrderDrawdown()`
+                // only ever runs on a *successful* delivery
+                // (`OrderFulfillmentService::fulfill()`'s success branch).
+                // A paid-but-undelivered/failed order never drew down real
+                // supplier cost, so showing `cost_price` here would invent
+                // a COGS figure that was never actually spent — the same
+                // `delivery_status = Delivered` gate
+                // `MonthlyAccountingSummaryService::cogs()` already uses.
+                'cost_sen' => $order->delivery_status === DeliveryStatus::Delivered ? $order->cost_price : null,
                 'net_sen' => (int) ($realizedProfitByOrderId[$order->id] ?? 0),
                 'amount_foreign' => null,
                 'status' => 'active',
+                // 2026-09-30 audit fix: a reseller wallet-paid order's
+                // `gross_sen` is spend from an *already-collected* wallet
+                // balance, not a fresh bank inflow the way a CHIP-paid
+                // order's is — summing the Gross column across both kinds
+                // double-counts the same cash. This surfaces the
+                // distinction as its own machine-readable field (mirrors
+                // `status` already being a column, not text baked into
+                // `description`) rather than a free-text label.
+                'funding_source' => $order->wallet_reseller_id !== null ? 'reseller_wallet' : 'chip',
             ])
             ->all();
     }
@@ -176,6 +198,7 @@ final class TransactionRegisterService
                 'net_sen' => -($transfer->amount_myr_sent + $transfer->fee_myr),
                 'amount_foreign' => $transfer->amount_foreign_received,
                 'status' => $transfer->voided_at !== null ? 'voided' : 'active',
+                'funding_source' => null,
             ])
             ->all();
     }
@@ -218,6 +241,7 @@ final class TransactionRegisterService
                 'net_sen' => null,
                 'amount_foreign' => (string) $entry->amount,
                 'status' => 'active',
+                'funding_source' => null,
             ])
             ->all();
     }
@@ -244,6 +268,7 @@ final class TransactionRegisterService
                 'net_sen' => null,
                 'amount_foreign' => $entry->amount,
                 'status' => 'active',
+                'funding_source' => null,
             ])
             ->all();
     }
@@ -276,6 +301,7 @@ final class TransactionRegisterService
                 'net_sen' => -$voucher->amount,
                 'amount_foreign' => null,
                 'status' => 'active',
+                'funding_source' => null,
             ])
             ->all();
     }
@@ -284,33 +310,61 @@ final class TransactionRegisterService
      * 2026-09-28 register-completeness addendum: a real customer-membership
      * fee payment (`MembershipFeeRecord`, ADR-027) — the Monthly Summary
      * already sums these into "Membership revenue" (decision 8), but no
-     * row for one ever existed here. `net_sen` equals `gross_sen` (no fee
-     * column on this table — the CHIP transaction fee for a membership
-     * checkout isn't separately tracked the way an order's is).
+     * row for one ever existed here.
+     *
+     * 2026-09-30 audit fix: `net_sen` used to just equal `gross_sen`
+     * (`amount_sen` — the plan price, e.g. RM19.90) because no fee was
+     * tracked here at all. The real CHIP transaction fee (e.g. RM1.00,
+     * making the customer's actual charge RM20.90) already exists on
+     * `MembershipCheckoutAttempt.total_charged_sen`/`fee_sen` (confusingly
+     * named — `fee_sen` there is the *plan* fee, not CHIP's fee; the real
+     * CHIP fee is `total_charged_sen - fee_sen`, exactly the computation
+     * `SettlementReconciliationService::resolveMatch()` already does).
+     * `MembershipFeeService::recordFeePaid()` writes the attempt's own
+     * `subscription_number` into `MembershipFeeRecord.idempotency_key`
+     * (see `MembershipSubscriptionService::completePaidAttempt()`) — the
+     * reliable join key between the two tables. An admin-issued/free fee
+     * record (no real CHIP checkout, e.g. a comped membership) has no
+     * matching attempt — `gross_sen`/`fee_sen` fall back to the
+     * fee-less shape rather than guessing.
      *
      * @return list<array<string, mixed>>
      */
     private function membershipRows(?CarbonInterface $from, ?CarbonInterface $to): array
     {
-        return MembershipFeeRecord::query()
+        $records = MembershipFeeRecord::query()
             ->with(['membership', 'membershipPlan'])
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
             ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
-            ->get()
-            ->map(fn (MembershipFeeRecord $record) => [
-                'date' => $record->created_at->toIso8601String(),
-                'type' => 'membership_payment',
-                'reference' => "Membership Fee #{$record->id}",
-                'description' => 'Membership fee — '.($record->membership?->email ?? 'unknown member').' ('.($record->membershipPlan?->name ?? 'unknown plan').')'.($record->reason ? " — {$record->reason}" : ''),
-                'supplier' => null,
-                'currency' => 'MYR',
-                'gross_sen' => $record->amount_sen,
-                'fee_sen' => null,
-                'cost_sen' => null,
-                'net_sen' => $record->amount_sen,
-                'amount_foreign' => null,
-                'status' => 'active',
-            ])
+            ->get();
+
+        $attemptsBySubscriptionNumber = MembershipCheckoutAttempt::query()
+            ->whereIn('subscription_number', $records->pluck('idempotency_key')->filter()->unique())
+            ->get(['subscription_number', 'total_charged_sen', 'fee_sen'])
+            ->keyBy('subscription_number');
+
+        return $records
+            ->map(function (MembershipFeeRecord $record) use ($attemptsBySubscriptionNumber) {
+                $attempt = $attemptsBySubscriptionNumber->get($record->idempotency_key);
+                $grossSen = $attempt?->total_charged_sen ?? $record->amount_sen;
+                $chipFeeSen = $attempt !== null ? $attempt->total_charged_sen - $attempt->fee_sen : null;
+
+                return [
+                    'date' => $record->created_at->toIso8601String(),
+                    'type' => 'membership_payment',
+                    'reference' => "Membership Fee #{$record->id}",
+                    'description' => 'Membership fee — '.($record->membership?->email ?? 'unknown member').' ('.($record->membershipPlan?->name ?? 'unknown plan').')'.($record->reason ? " — {$record->reason}" : ''),
+                    'supplier' => null,
+                    'currency' => 'MYR',
+                    'gross_sen' => $grossSen,
+                    'fee_sen' => $chipFeeSen,
+                    'cost_sen' => null,
+                    'net_sen' => $record->amount_sen,
+                    'amount_foreign' => null,
+                    'status' => 'active',
+                    'funding_source' => null,
+                ];
+            })
             ->all();
     }
 
@@ -347,6 +401,60 @@ final class TransactionRegisterService
                 'net_sen' => $topup->amount_sen,
                 'amount_foreign' => null,
                 'status' => 'active',
+                // `funding_source` exists to flag which *orders* were
+                // paid from an already-collected wallet balance (the
+                // double-count risk) — this row's own `type` already
+                // says "reseller_wallet_topup" unambiguously, so it adds
+                // nothing here.
+                'funding_source' => null,
+            ])
+            ->all();
+    }
+
+    /**
+     * 2026-09-30 audit fix: a failed order that already drew from a
+     * reseller's wallet gets refunded via a `wallet_refund` ledger entry
+     * (`Order::isAlreadyRefundedToWallet()`, ADR-073) — real money moving
+     * back into the reseller's usable balance. `orderRows()` deliberately
+     * keeps the original order's `gross_sen`/`cost_sen` untouched (the
+     * sale/attempt genuinely happened, same "never rewrite history in
+     * place" discipline `supplierTransferRows()` already follows for a
+     * voided transfer) — this is the row that makes the refund itself
+     * visible, mirroring `supplierRefundRows()`'s own shape. Before this,
+     * a failed wallet-paid order looked exactly like a normal completed
+     * sale here, with no trace of the money going back.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function walletRefundRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    {
+        $entries = LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('type', 'wallet_refund')
+            ->where('reference_type', 'order')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->get();
+
+        $orderNumbersById = Order::query()
+            ->whereIn('id', $entries->pluck('reference_id')->unique())
+            ->pluck('order_number', 'id');
+
+        return $entries
+            ->map(fn (LedgerEntry $entry) => [
+                'date' => $entry->created_at->toIso8601String(),
+                'type' => 'reseller_wallet_refund',
+                'reference' => 'Ledger entry #'.$entry->id,
+                'description' => 'Reseller wallet refund — Order '.($orderNumbersById[$entry->reference_id] ?? "#{$entry->reference_id}"),
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => null,
+                'fee_sen' => null,
+                'cost_sen' => null,
+                'net_sen' => $entry->amount,
+                'amount_foreign' => null,
+                'status' => 'active',
+                'funding_source' => null,
             ])
             ->all();
     }
@@ -393,6 +501,7 @@ final class TransactionRegisterService
                 'net_sen' => -$withdrawal->amount,
                 'amount_foreign' => null,
                 'status' => 'active',
+                'funding_source' => null,
             ])
             ->all();
     }
