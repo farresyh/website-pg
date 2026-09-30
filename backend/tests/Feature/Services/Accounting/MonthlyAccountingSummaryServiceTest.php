@@ -109,7 +109,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame((100 - 90) + (50 - 55), $summary['payment_processing_gain_loss_sen']);
     }
 
-    public function test_supplier_prepaid_topup_sums_transfers_excluding_voided(): void
+    public function test_supplier_prepaid_topup_sums_transfers_excluding_voided_and_excluding_fee(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
 
@@ -127,7 +127,48 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
 
         $summary = $this->service()->forPeriod(2026, 9);
 
-        $this->assertSame(20500, $summary['supplier_prepaid_topup_sen']);
+        // 2026-09-30 audit fix: capital-only now (was 20500, capital + fee
+        // bundled) — the fee gets its own additive line below, so a
+        // founder manually copying both into the external SaaS never
+        // double-counts the fee portion.
+        $this->assertSame(20000, $summary['supplier_prepaid_topup_sen']);
+        $this->assertSame(500, $summary['bank_transfer_fees_sen']);
+    }
+
+    public function test_bank_transfer_fees_excludes_voided(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+
+        $voided = SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 99999, 'fee_myr' => 777,
+            'currency' => 'MYR', 'amount_foreign_received' => '99999.0000', 'voided_at' => now(),
+        ]);
+        $voided->forceFill(['created_at' => '2026-09-06 00:00:00'])->save();
+
+        $summary = $this->service()->forPeriod(2026, 9);
+
+        $this->assertSame(0, $summary['bank_transfer_fees_sen']);
+    }
+
+    /**
+     * 2026-09-30 addendum — Bucket C decision 9: "money you hold for
+     * resellers, which isn't yours." Always the CURRENT total across
+     * every reseller's wallet ledger, never period-scoped — a request
+     * for a past month's period still returns today's real balance
+     * (there's no historical snapshot mechanism).
+     */
+    public function test_reseller_wallet_balance_is_the_current_total_across_every_reseller(): void
+    {
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'wallet_topup', 'amount' => 30000, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => 1]);
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'wallet_debit', 'amount' => -5000, 'reference_type' => 'order', 'reference_id' => 1]);
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 2, 'type' => 'wallet_topup', 'amount' => 10000, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => 2]);
+        // A different owner type must never leak into this total.
+        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::Platform->value, 'owner_id' => null, 'type' => 'order_profit', 'amount' => 999999, 'reference_type' => 'order', 'reference_id' => 1]);
+
+        // Requesting a period from months ago must still return today's real total, not zero/historical.
+        $summary = $this->service()->forPeriod(2020, 1);
+
+        $this->assertSame(30000 - 5000 + 10000, $summary['reseller_wallet_balance_sen']);
     }
 
     public function test_voucher_liability_issued_sums_vouchers_created_in_period(): void

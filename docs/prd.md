@@ -374,7 +374,7 @@ MUI-11 is the same screen as DEV-1/2 (§6.18 Admin — Developer Tools) — both
 8. Xendit webhook confirms payment (verified per PAY-1) → `payment_status = paid`. **Only now** may delivery proceed (ORD-11) — `delivery_status` moves to `processing`.
 9. System submits order to the appropriate supplier via the Adapter layer, using the same `reference_number` on any retry.
 10. Supplier delivers credits and returns success response (normalized via Adapter) → `delivery_status = delivered`. A reconciliation job independently confirms this via the supplier's status-check endpoint if no callback is received within a threshold (ORD-10).
-11. Customer receives a WhatsApp receipt with a review link, **if their phone number has opted in** (the "Get updates on WhatsApp" button or any support chat on the customer-support number; `STOP` opts out). No email. See [ADR-116](./adr.md).
+11. Customer receives a WhatsApp receipt (the order status card plus a review link), **if their phone number has opted in**. Opting in means messaging the customer-support number with any order number, from either WhatsApp button on the order page or typed by hand, and that message is answered with the order's status card. `STOP` opts out and `START` opts back in. No email. See [ADR-116](./adr.md) and its 2026-09-30 addendum.
 
 ## 7.2 Order Failure & Resolution (no cash refund, per ADR-004)
 
@@ -597,8 +597,23 @@ every order so far is the founder's own testing.
 - PR-B1 #323 and PR-B2: customer order notifications over WhatsApp
   (ADR-116, M-11). Voucher codes are sent proactively; Delivered receipts go
   to opted-in numbers only. Both go through the OpenWA `customer-support`
-  session on a paced one-worker lane, behind a master switch that is
-  **default OFF**. The founder's post-deploy steps are §16 item 54.
+  session on a paced one-worker lane, behind a master switch that was
+  **default OFF**. The founder turned it on the same day after the post-deploy
+  steps (§16 item 54).
+
+**On `staging`, not yet released to `main` (as of 2026-09-30 close):** #326,
+the ADR-116 follow-up from the first live test.
+- Any message carrying an order number opts the sender in and gets a
+  timeline status card back.
+- A mistyped number gets a "not found" reply.
+- `START`/`STOP`, the 30-minute card throttle, and a fix that revives a
+  `skipped` notification.
+- The order page help card is reordered (Contact Support → Get Updates → Buy
+  Again, one filled button per state).
+
+Until #326 is released, **prod still runs #325's first version**: the
+"update" keyword decides between an auto-reply and a silent opt-in, and
+receipts use the older plain layout.
 
 **Previous release, 2026-09-29 (`staging`→`main`, PR #320, #306–#319):**
 - The 2026-09-28 full system audit's Waves 1–4 (money, races, security, burst
@@ -651,7 +666,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
-| Customer notifications (WhatsApp) | 🟡 Built, released 2026-09-30, switch **OFF** until the founder's post-deploy steps (§16 item 54) are done. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers, where opt-in is per phone via the order page's WhatsApp buttons and `STOP` opts out. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used | ADR-116 |
+| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. **The voucher path is not yet live-tested** (it needs a failed purchase). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 is on `staging`, unreleased** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
@@ -727,21 +742,30 @@ production before building on it.
 
 ## Next up
 
-54. **Turn on customer WhatsApp notifications (founder, after the
-    2026-09-30 deploy).** Already done: the OpenWA `SEND_PACING` flags are
-    live, and `OPENWA_CS_SESSION_ID` / `OPENWA_CS_PHONE` / `OPENWA_CS_API_KEY`
-    are set and verified. Still to do, in this order:
-    - (a) **Only after the deploy is live:** in the OpenWA dashboard, add a
-      webhook on the `customer-support` session to
-      `https://api.pekangame.space/api/webhooks/openwa`, with events
-      `message.received` and `session.status` and the same secret as the
-      bot's webhook. It must not exist before the deploy: the pre-release code
-      has no `sessionId` filter, so CS group messages would reach the reseller
-      bot.
-    - (b) Admin → Settings → turn on **Customer WhatsApp notifications**.
-    - (c) Test with the founder's own number: Issue Voucher on a failed test
-      order (code arrives), then tap "Get Updates on WhatsApp" on a delivered
-      order (receipt arrives), then `STOP`.
+54. **Customer WhatsApp: release the follow-up and finish live testing.**
+    Done 2026-09-30:
+    - OpenWA `SEND_PACING` on;
+    - CS env set;
+    - CS-session webhook added (secret corrected to `OPENWA_WEBHOOK_SECRET`
+      through OpenWA's API);
+    - switch ON;
+    - receipt and `STOP` live-tested.
+
+    Still to do:
+    - (a) Release #326 (`staging` → `main`) when the founder asks.
+    - (b) After release, retest on prod with the founder's own number:
+      - message an order number from each order-page button (the timeline
+        card should come back);
+      - a mistyped number (not-found reply);
+      - `START`, since the founder's number is currently opted out after the
+        STOP test.
+    - (c) The **voucher path**: Issue Voucher on a failed purchase made with the
+      founder's number; the code should arrive on WhatsApp.
+    - (d) Optionally re-send the one `skipped` receipt (order
+      `PG-EGMBKUWJEVX2`, recorded before the switch was saved). After #326, it
+      is revived only when that exact event fires again, which for a receipt
+      won't happen. Messaging that order number now gets the status card
+      instead.
 
 51. **Founder real-order smoke test of the 2026-09-29 and 2026-09-30
     releases** — deferred by the founder. Place real orders on the founder's
@@ -751,7 +775,22 @@ production before building on it.
       reply via `default`, wallet debited);
     - (c) a **full-voucher-cover** order: Paid with no CHIP step, then
       Delivered, voucher balance reduced (the M-6 flow);
-    - (d) once item 54 is done, the WhatsApp paths in 54(c).
+    - (d) the WhatsApp paths still owed in item 54 (b)–(c);
+    - (e) **2026-09-30 accounting audit fixes (PR #329, merged `staging`,
+      not yet `main`)** — verify against real production data once live:
+      `TransactionRegisterService::rows()`'s `cost_sen` is `null` for a
+      real non-delivered order, a real wallet-refunded order shows its new
+      `reseller_wallet_refund` row, a real wallet-paid order's
+      `funding_source` is `reseller_wallet`, a real membership row with a
+      matching `MembershipCheckoutAttempt` shows the real CHIP fee, and
+      `MonthlyAccountingSummaryService::forPeriod()`'s
+      `bank_transfer_fees_sen` + `supplier_prepaid_topup_sen` split still
+      sums to the same total the old bundled figure did. Deliberately
+      skipped a pre-`main` scratch-checkout verification against the real
+      prod DB (would have needed copying live `.env` credentials into a
+      scratch directory on the prod box — founder can run it
+      himself if wanted, command was handed over) in favour of checking
+      live after the real deploy instead.
 
     The model can watch Horizon and logs live over SSH while these run.
 
@@ -769,21 +808,15 @@ production before building on it.
     any is down), but nothing external polls it yet; Horizon's own LongWait
     alert (Plunk) can't fire if Horizon itself is dead. Point an uptime
     monitor (UptimeRobot/Better Stack) at `https://api.pekangame.space/api/health`.
+    **Partial progress 2026-09-30:** DigitalOcean's own free Droplet
+    monitoring (`do-agent`) installed on `pekangame-prod-lwf` (founder-run via
+    DO's Launch Console, root/sudo required), plus two resource alerts
+    (Memory and Disk Utilization, both >80% for 5 min, emailing the founder)
+    — covers resource-exhaustion visibility on the droplet itself. The
+    external-uptime-of-the-API-endpoint gap (UptimeRobot/Better Stack style)
+    is still open; this only covers the box's own CPU/memory/disk, not
+    whether `api.pekangame.space` itself is reachable from outside.
 
-52. **Prod DB least-privilege + old-droplet decommission (one maintenance
-    window, founder-deferred 2026-09-29).**
-    Found 2026-09-29 while provisioning `report_assistant`: the
-      app's main connection in prod runs as **`doadmin`**, the DO managed
-      MySQL superuser (`CREATE USER`, `DROP`, `GRANT OPTION` on `*.*`).
-      Any future SQL-injection-class bug would get full DB-admin power.
-      Fix: a dedicated app user with DML + DDL on `defaultdb` only (DDL
-      is still needed for `migrate --force` on deploy). Needs a careful
-      cutover (deploy migrations, view `DEFINER`s are `doadmin@%`).
-      **Deferred by the founder (2026-09-29):** to be done in the same
-      session as decommissioning the old `pekangame-prod` droplet and its
-      old managed DB (ADR-114 rollback leftovers). Both are prod DB
-      credential/infra work, and doing them together means one
-      carefully-monitored maintenance window instead of two.
 
 ## Polish (not blocking)
 
@@ -864,7 +897,13 @@ production before building on it.
     separate ADR before implementation.
 27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
     `next dev` webServer — a recurring CI-environment flake, not a code
-    bug.** **Attempted 2026-09-28, reverted same day — made things worse,
+    bug.** **Recurred 2026-09-30 on PR #324,** failing twice in a row. The
+    signature was the same Turbopack `next/font/google` crash on JetBrains
+    Mono in `admin/src/app/layout.tsx`, with no test ever running. The same
+    code booted admin cleanly locally, and attempt 3 passed. Two consecutive
+    failures now make "a rerun always clears it" less reliable, which is more
+    reason for the `next build && next start` fix below.
+    **Attempted 2026-09-28, reverted same day — made things worse,
     not better.** Pinning `--webpack` (matching this repo's existing
     `next build --webpack` workaround elsewhere) did stop the Turbopack
     font-loader crash, but introduced a *consistent* new failure instead:
@@ -895,6 +934,21 @@ production before building on it.
     reconcile tasks run inline and sequentially on the same 15-minute tick.
     Not slow today; revisit if a slow CHIP lookup visibly delays delivery
     reconcile.
+55. **Test/internal order flag — grilled 2026-09-30, deliberately parked**
+    (ADR-083 2026-09-30 second addendum, `docs/adr.md`). The founder's own
+    self-purchases on the live storefront count as real "Sales revenue" —
+    real gap, but no urgent trigger to build: at ~30 orders ever, manually
+    remembering which were self-testing still works, and the platform's own
+    operating model (founder hand-types one journal into the external SaaS
+    monthly, auditor only at year-end) already gives a natural correction
+    point. **Not** every current order is the founder's own testing — a real
+    reseller's real customer order (e.g. Naeem Industries) sits in the same
+    table, so any future build here needs per-order judgment, never a
+    blanket assumption or an email-based auto-detect. Same park-until-real-
+    volume trigger as item 28 (ADR-115) — revisit together if either comes
+    up.
+      question: no historical wallet-balance snapshot exists today, only
+      current balance).
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
@@ -919,6 +973,7 @@ production before building on it.
     dedupe is scoped to `reason IS NULL`.
   - PR-B1 #323 and PR-B2: M-11 as WhatsApp notifications (ADR-116).
 - **50** Pre-release review — PR-C #318 (checkout/voucher/webhook/API fixes, Horizon health) and PR-D #319 (automatic order recovery, ADR-102 addendum; checkout CGNAT throttle, ADR-014 addendum). Released 2026-09-29.
+- **52** Prod DB least-privilege + old-droplet decommission — both done 2026-09-30. `doadmin` replaced by scoped `pekangame_app` user (ADR-117), verified via a real backup run; old `pekangame-prod` droplet + its managed MySQL + Reserved IP destroyed after a pre-destroy audit found zero live risk (ADR-114's 2026-09-30 addendum).
 
 ## Parked by founder decision — not scheduled
 

@@ -51,6 +51,7 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
   const [ledger, setLedger] = useState<SupplierFundingLedger | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceChannel, setSourceChannel] = useState<"wise" | "airwallex" | "bank">("wise");
+  const [paidBy, setPaidBy] = useState("");
   const [amountMyr, setAmountMyr] = useState("");
   const [feeMyr, setFeeMyr] = useState("");
   const [amountForeign, setAmountForeign] = useState("");
@@ -89,6 +90,7 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
     try {
       await recordSupplierTransfer(token, supplier.id, {
         source_channel: sourceChannel,
+        paid_by: paidBy || undefined,
         amount_myr_sent: amountSen,
         fee_myr: feeSen,
         currency: supplier.currency,
@@ -102,6 +104,7 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
       setAmountForeign("");
       setSupplierFee("");
       setReferenceNo("");
+      setPaidBy("");
       setReceipt(null);
       await refresh();
     } catch (err) {
@@ -160,6 +163,20 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
           <div>
             <Label htmlFor="transfer_reference">Reference no. (optional)</Label>
             <Input id="transfer_reference" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="WISE-REF-123" />
+          </div>
+          <div>
+            <Label htmlFor="transfer_paid_by">Paid by (optional)</Label>
+            <select
+              id="transfer_paid_by"
+              value={paidBy}
+              onChange={(e) => setPaidBy(e.target.value)}
+              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-theme-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
+            >
+              <option value="">Not specified</option>
+              {ledger.paid_from_options.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
           </div>
           <div>
             <Label htmlFor="transfer_amount_myr">Amount sent (RM)</Label>

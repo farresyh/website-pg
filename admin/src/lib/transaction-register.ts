@@ -24,6 +24,7 @@ export interface TransactionRegisterRow {
     | "supplier_adjustment"
     | "membership_payment"
     | "reseller_wallet_topup"
+    | "reseller_wallet_refund"
     | "withdrawal_payout";
   reference: string;
   description: string;
@@ -35,6 +36,8 @@ export interface TransactionRegisterRow {
   net_sen: number | null;
   amount_foreign: string | null;
   status: "active" | "voided";
+  /** 2026-09-30 audit fix: "chip" (real bank inflow) vs "reseller_wallet" (spend from an already-collected wallet balance, or a top-up itself) — lets the Gross column be filtered/grouped instead of naively summed across two different kinds of money. Null where the distinction doesn't apply. */
+  funding_source: "chip" | "reseller_wallet" | null;
 }
 
 export interface TransactionRegisterFilters {

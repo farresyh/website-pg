@@ -126,9 +126,10 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-111** | Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site (delivery, not just Price Sync), replacing every fulfillment path's `platform_profit` calculation with one basis-agnostic residual formula fed by the supplier's own real per-transaction price instead of a possibly-stale `Package.cost_price` catalog snapshot. Sparked by a real production order (`PG-B2BL0G1YDMVS`) where a combo leg retried at a different Digiflazz-internal seller for a genuinely higher real price, but `platform_profit` still reflected the OLD (failed) seller's stale catalog cost — traced to raw request-log payloads, not assumed. Cross-references ADR-033 (conversion boundary), ADR-105 (the residual-profit identity this reuses), ADR-107 (combo's own cost-source, now replaced). **Decided + grilled 2026-09-21/22, BUILT 2026-09-22, 🟢 LIVE PROD (flag enabled, verified against a real order same day).** |
 | **ADR-112** | Affiliate/Reseller portal mobile-first redesign — shared role-aware shell, useful dashboards and readable mobile Orders; frontend-only, no backend/payment/ledger changes — live in prod (#278, 2026-09-24) |
 | **ADR-113** | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md` written, Digital Architect retired from the affiliate picker (PekanGame's own primary-brand identity only, no dark mode), + a real WCAG contrast bug in Cyber Bumblebee found and fixed along the way. **Merged to `staging` (PR #288), not yet on `main`** |
-| **ADR-114** | Production infra — rebuild (not transfer) `pekangame-prod`'s droplet + managed MySQL into a new DigitalOcean team (`LWF Group Sdn Bhd`), separating PekanGame's billing/infra from the Nakhoda-sharing DO account as a real entity-separation step. Core cutover + OpenWA WhatsApp bot migration both live and verified 2026-09-25 (same day, two sessions) — old droplet's daemons/scheduler paused pending full decommission |
+| **ADR-114** | Production infra — rebuild (not transfer) `pekangame-prod`'s droplet + managed MySQL into a new DigitalOcean team (`LWF Group Sdn Bhd`), separating PekanGame's billing/infra from the Nakhoda-sharing DO account as a real entity-separation step. Core cutover + OpenWA WhatsApp bot migration both live and verified 2026-09-25 (same day, two sessions). Old droplet + its managed MySQL + Reserved IP fully destroyed 2026-09-30, closing the ADR |
 | **ADR-115** | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (Digiflazz only). Fully designed and grilled 2026-09-28; build deliberately **parked** — no automatic trigger, founder will say when. Companion to the `/admin/balance` page (PR #307) |
-| **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323, backend + vouchers) and PR-B2 (opt-in + receipts) both built and released 2026-09-30, with the switch default OFF until the founder's post-deploy steps (PRD §16 item 54) |
+| **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323) and PR-B2 (#324) released 2026-09-30 via #325; the switch is ON and live-tested. The post-live-test addendum (the order number is the opt-in, a timeline status card, a not-found reply, `START`, skipped revival) is **#326, on `staging`, not yet on `main`** |
+| **ADR-117** | Prod DB least-privilege — `doadmin` superuser replaced by dedicated scoped user `pekangame_app`@`%` (`defaultdb` only, no `CREATE USER`/`GRANT OPTION`/replication). `doadmin` itself never modified — pure break-glass fallback. Live 2026-09-30, verified via health check + a real backup run |
 
 ---
 
@@ -4822,7 +4823,7 @@ This ADR documents the shipped design, records the grill decisions, and lists th
 
 ## ADR-083: Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS
 
-**Status:** Accepted, **PR-1 built 2026-09-11** (`feature/adr-083-supplier-funding-ledger`, PR to `staging` — see `docs/build-log.md`), **supplier-fee + correction-mechanism addendum built 2026-09-15**; PR-2 built 2026-09-19 ([ADR-110](#adr-110-chip-integration-hardening--purchase-status-mapping--expiry-settlement-reconciliation-fills-adr-083-pr-2-and-credential-migration) PR-B). **UI/correction-scope addendum grilled + built 2026-09-28** (`feature/2026-09-28-adr083-accounting-ui`, off `staging`, not yet merged) — see that entry below. **Envelope Ledger + Transaction Register/System Health completeness addendum, re-grilling decision 11, grilled + built 2026-09-28** (`feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`, merged `staging`→`main` same day) — **plus a same-day follow-up round** (rename/archive an envelope, a Money In/Out badge per category, an Allocate-over-estimate soft warning, a Transaction Register frontend type-label gap, a CSV void-status column, Monthly Summary tooltips + an `InfoTooltip` left-edge-clipping fix — `fix/2026-09-28-envelope-ledger-clarity-fixes`, off `staging`, not yet merged) — see the second 2026-09-28 entry below. First drafted with the founder 2026-09-09; **fully re-grilled and materially reshaped 2026-09-10** (`/mattpocock-skills:grilling`, 6 rounds / 26 questions) after a stress-test against the codebase and the live CHIP / supplier APIs. The first draft (a self-contained corporate accounting system: per-order FIFO COGS, a polled "CHIP Settlement/Payout API", `expenses` / `marketing_budgets` / `capital_injections` / `capital_repayments` tables, a Malaysian-bank-statement reconciliation engine, Gemini-Vision receipt parsing, a bespoke Investor Dashboard, a 4-PR build) was found to be **over-scoped for a solo-run pre-launch business and built on two facts that do not hold** — see Context §1–2. This entry is the reshaped design. Scheduled for 2 PRs. **This fills in ADR-070 (RESERVED).**
+**Status:** Accepted, **PR-1 built 2026-09-11** (`feature/adr-083-supplier-funding-ledger`, PR to `staging` — see `docs/build-log.md`), **supplier-fee + correction-mechanism addendum built 2026-09-15**; PR-2 built 2026-09-19 ([ADR-110](#adr-110-chip-integration-hardening--purchase-status-mapping--expiry-settlement-reconciliation-fills-adr-083-pr-2-and-credential-migration) PR-B). **UI/correction-scope addendum grilled + built 2026-09-28** (`feature/2026-09-28-adr083-accounting-ui`, off `staging`, not yet merged) — see that entry below. **Envelope Ledger + Transaction Register/System Health completeness addendum, re-grilling decision 11, grilled + built 2026-09-28** (`feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`, merged `staging`→`main` same day) — **plus a same-day follow-up round** (rename/archive an envelope, a Money In/Out badge per category, an Allocate-over-estimate soft warning, a Transaction Register frontend type-label gap, a CSV void-status column, Monthly Summary tooltips + an `InfoTooltip` left-edge-clipping fix — `fix/2026-09-28-envelope-ledger-clarity-fixes`, off `staging`, not yet merged) — see the second 2026-09-28 entry below. **External accounting review addendum, built 2026-09-30** (`fix/2026-09-30-accounting-audit-fixes`, off `staging`) — a second LLM (trained specifically on accounting) audited the live `/admin/accounting` screens at the founder's request; findings verified line-by-line against this codebase + real production data before any code changed — see that entry below. **External accounting review, Bucket C addendum, grilled + built 2026-09-30** (`feature/2026-09-30-adr083-envelope-ledger-paidby-wallet-line`, off `staging`) — the 4 real-trade-off items from the same review, grilled before building; a 5th item (a test/internal order flag) was grilled and deliberately **parked**, not built — see that entry below. First drafted with the founder 2026-09-09; **fully re-grilled and materially reshaped 2026-09-10** (`/mattpocock-skills:grilling`, 6 rounds / 26 questions) after a stress-test against the codebase and the live CHIP / supplier APIs. The first draft (a self-contained corporate accounting system: per-order FIFO COGS, a polled "CHIP Settlement/Payout API", `expenses` / `marketing_budgets` / `capital_injections` / `capital_repayments` tables, a Malaysian-bank-statement reconciliation engine, Gemini-Vision receipt parsing, a bespoke Investor Dashboard, a 4-PR build) was found to be **over-scoped for a solo-run pre-launch business and built on two facts that do not hold** — see Context §1–2. This entry is the reshaped design. Scheduled for 2 PRs. **This fills in ADR-070 (RESERVED).**
 
 **Context:**
 
@@ -4966,6 +4967,51 @@ Checking a real Wise receipt against the founder's own already-recorded transfer
 - The Envelope Ledger's receipt-upload/void/append-only mechanics are close enough to `SupplierFundingService`'s own that a future shared-trait extraction is plausible if a third ledger of this shape ever appears — not built now (two instances isn't a pattern yet).
 - LHDN e-Invoicing/MyInvois (decision 6) stays a real, tracked open item — revisit once real commercial launch happens (still zero external customers as of this addendum, per the same-day check against production).
 - This entry itself needed a same-day correction: the second addendum's content was first mis-inserted mid-way through the *first* addendum's own body (splitting its decision list from its own intro), found and fixed while writing this note — a reminder to re-read a large doc edit's actual rendered position, not just trust that an Edit call targeting the right anchor text landed in the right place.
+
+**2026-09-30 addendum — external accounting review: 3 real correctness gaps in the Transaction Register + Monthly Summary, plus 2 presentation gaps, found by a second LLM the founder specifically trained on accounting/finance, auditing the live `/admin/accounting` screens at his request (it has no backend visibility, admin panel only). Every finding was independently verified against this codebase and real production data (read-only SSH) before anything shipped — two of the reviewer's own findings turned out to be wrong (see below), so nothing was taken at face value.**
+
+Two findings were traced to a **real discrepancy the reviewer hit, not a system bug**: the reviewer's own manual reconciliation of September's Digiflazz top-ups (RM 742.97) vs. the Monthly Summary's figure (RM 757.33) picked up the *voided* `#2372201021` transfer's amount instead of its same-day corrected re-recording (both share Digiflazz's own reference number, a legitimate consequence of the void-by-reversal design, not a bug — see decision 5 below) and omitted the Wise/Airwallex fee from all three transfers. Verified against production: `MonthlyAccountingSummaryService::forPeriod(2026, 9)['supplier_prepaid_topup_sen']` = exactly `75733` (RM 757.33), matching `SUM(amount_myr_sent + fee_myr)` over the three real non-voided September transfers precisely. The system was right; the reviewer's own manual tally was wrong.
+
+**Real gaps, fixed:**
+
+1. **`TransactionRegisterService::orderRows()`'s `cost_sen` showed a checkout-time catalog snapshot regardless of delivery outcome — inventing COGS that was never actually spent.** `SupplierFundingService::recordOrderDrawdown()` only ever runs on a *successful* delivery (`OrderFulfillmentService::fulfill()`'s success branch) — a paid-but-undelivered or failed order never drew down real supplier cost. `MonthlyAccountingSummaryService::cogs()` already gates on `delivery_status = Delivered` for exactly this reason; `orderRows()` didn't. Fixed: `cost_sen` is now `null` unless the order is `Delivered`, same rule. `gross_sen` stays populated regardless — the customer's payment is a real event independent of delivery outcome. Verified against production order `PG-B7RB8MON6Q9I` (a real failed reseller-wallet order the reviewer flagged, RM 343.51 gross / RM 333.50 cost) before deciding this was the right fix, not a one-off patch.
+2. **No row existed for a wallet-refunded order at all.** A failed order that already drew from a reseller's wallet gets refunded via a `wallet_refund` ledger entry (`Order::isAlreadyRefundedToWallet()`, ADR-073) — `ReportService`/`CustomerAnalyticsService` already net this out of "Net Sales", but the Register (a different artifact, meant to show every event, not a net figure) had no row for the refund event itself, so a failed wallet order looked exactly like a normal completed sale. Considered and rejected: subtracting the refund from the original order row's `gross_sen` — that would hide the fact that a sale attempt genuinely happened, the same "never rewrite history in place" violation a zeroed-out voided transfer would be. Fixed the same way a voided transfer already works: the original order row keeps its real figures, and a new `wallet_refund` row type (mirrors `supplierRefundRows()`'s shape) makes the refund itself visible.
+3. **Membership fee rows never carried a real CHIP transaction fee**, only the plan price (e.g. RM 19.90, when CHIP actually charged RM 20.90 with a RM 1.00 fee) — `membership_fee_records` has no fee column at all. The real fee already exists elsewhere: `MembershipCheckoutAttempt.total_charged_sen - fee_sen` (that model's `fee_sen` is confusingly named — it's the *plan* fee, not CHIP's fee), the exact computation `SettlementReconciliationService::resolveMatch()` already uses for settlement matching. `MembershipSubscriptionService::completePaidAttempt()` already writes the attempt's own `subscription_number` into `MembershipFeeRecord.idempotency_key` — a reliable, already-existing join key. Fixed: `membershipRows()` now joins on it and shows the real `gross_sen`/`fee_sen` when a matching attempt exists (an admin-issued/comped fee record with no real checkout falls back to the old fee-less shape rather than guessing). Confirms the Monthly Summary's own aggregate fee line was *already* correct (it sources from real CHIP settlement files, not this table) — this gap was Register-display-only, never a real-money miscalculation.
+
+**Presentation gaps, fixed:**
+
+4. A CHIP-paid order and a reseller-wallet-paid order both populate `orderRows()`'s `Gross` column, but they're not the same kind of money — a wallet-paid order is spend from an *already-collected* wallet balance (itself already counted once, as a `reseller_wallet_topup` row), not a fresh bank inflow. Summing the whole Gross column double-counts that cash. Rejected a free-text label in `description` (not machine-filterable — a CSV/spreadsheet consumer can't reliably act on it, and it would just relocate the same problem the reviewer's finding was about). Added a genuine structured field instead, `funding_source: "chip" | "reseller_wallet" | null`, its own JSON/CSV column — same precedent `status` already set (a real column, never text baked into `description`).
+5. A voided `supplier_transfer` row and its same-day corrected re-recording can legitimately share Digiflazz's own external reference number (see the RM 757.33 case above) — the admin UI already strikes a voided row through with a red "Voided" tag (`admin/.../transactions/page.tsx`), but CSV export has no visual equivalent, only a plain-text `Status` column easy to miss scanning by eye. Fixed: the CSV export's `Reference` column now prefixes `[VOIDED] ` for a voided row, so the signal survives being read outside the app.
+
+**Consequence to track:**
+
+- Built off `fix/2026-09-30-accounting-audit-fixes` (`staging`). Backend: full suite 2448/2448 green, no migration needed (both new fields are computed at read-time, nothing persisted). Frontend: `tsc --noEmit`/`eslint`/`next build` clean. Functionally verified against the real local dev DB (not just the isolated test DB) via `php artisan tinker`: 183/183 real local order rows correctly got a non-null `funding_source`, all 16 real non-delivered local orders correctly show `cost_sen: null`.
+- `MonthlyAccountingSummaryService::supplierPrepaidTopup()` changed meaning (was capital + our own transfer fee bundled together, now capital-only) — a new `bank_transfer_fees_sen` line carries the fee as its own genuinely-additive figure, so a founder manually copying both into the external accounting SaaS each month adds two distinct amounts rather than double-counting the fee portion inside a bundled total with a "don't add this again" caveat.
+- No new business term, no new ledger/append-only table, no new correction mechanism — every fix reuses an already-established pattern in this exact ADR family (delivery-gated cost recognition, a dedicated row per correction event, a structured column over a text label, a join over a redundant new column).
+
+**2026-09-30 second addendum — the same external accounting review's remaining 5 findings, split into "grill and build now" (4 items, genuine trade-offs but no ambiguity once decided) vs. "grill and park" (1 item, real design question with no urgent trigger). Grilled via `/mattpocock-skills:grilling`, decisions confirmed by the founder before any code.**
+
+1. **Test/internal order flag — grilled, then explicitly parked, not built.** The founder's own self-purchases on the live storefront (real CHIP charges, real Digiflazz cost — unlike the existing `is_test` flag, which only ever covers zero-money Reseller-API-sandbox orders) currently count as real "Sales revenue." Real accounting principle: a related-party self-purchase shouldn't count as market-driven revenue for a year-end professional's books, regardless of whether real money moved. But this platform's own operating model (Farres keeps the books himself, hand-types one journal into the external SaaS each month, auditor/tax agent only at year-end) already gives a natural correction point — at ~30 total orders ever, the founder can reliably remember which ones were his own testing without a system feature. Building a flag now would also need a manual per-order judgment call regardless (the founder corrected this session's first assumption that "every current order is testing" — a real reseller's real customer order, e.g. `PG-B7RB8MON6Q9I`, sits in the exact same table), so an automatic heuristic was never viable anyway. **Parked, same trigger condition as [ADR-115](#adr-115)**: revisit once real order volume is large enough that manual year-end recall genuinely breaks down, not before. Tracked as `docs/prd.md` §16 item 55, deliberately not a headline backlog item.
+
+2. **Voided supplier-transfer Net-column reconciliation.** A voided transfer's row keeps its real original MYR figures untouched (the append-only "never rewrite history in place" design, unchanged) — but its `VOID_REVERSAL` correction is FX-currency-only, so summing the Register's whole Net column across a period spanning a void never reconciles to a real bank statement. This was, concretely, what caused the external reviewer's own RM 14.36 reconciliation error the same session (picked up a voided row's figure instead of its corrected re-recording, both sharing Digiflazz's own reference number). Considered a full reconciling `bank_net_sen` column (translating the FX-only reversal back to MYR via the transfer's own `effective_rate`) — rejected: only 2 voided transfers exist in this project's entire history, building a dedicated reconciliation mechanism for that frequency is premature. Built instead: a computed CSV footer row, `TOTAL Net (excluding voided rows)` — the one number that actually reconciles, without inventing a synthetic MYR figure for an FX-only correction. `TransactionRegisterController::export()`.
+3. **Envelope Ledger gaps** (`budget_envelope_entries`, built 2026-09-28): no date field for when money actually moved (only auto `created_at`), no "paid from" field, no reference-number field, no way to track a director's personal advance to the company and its later repayment, no opening-balance mechanism for the 4 starter envelopes (seeded with names only, RM0). Built:
+   - `transaction_date` (nullable date, defaults to today when omitted — `BudgetEnvelopeService::recordEntry()`), `paid_from` (nullable `PaidFrom` enum), `reference_no` (nullable string) — all genuinely optional, never forced on a category where "which account" isn't known/relevant (e.g. a small OPEX line).
+   - **Director loan — deliberately only ONE new category, `DirectorRepayment`, never a matching "Director Advance."** The advance itself (a director personally spending their own money on the company's behalf, e.g. Luqman's real ~RM3,000 pre-capital spend) never moves envelope cash — the money was never the company's to begin with, so it doesn't fit `amount_sen`'s "real money moving through THIS envelope" model. Recording it as an entry would be inventing a cash movement that never happened. The advance is just a fact the founder remembers until the day it's genuinely repaid — `DirectorRepayment` records that real cash-out event, paired with `paid_from` to say which account paid it back.
+   - **Opening balance needs no new mechanism at all** — decided the founder just records one, dated via the new `transaction_date` field, using the existing `CapitalInjection` category with a description like "Opening balance." A dedicated category would differ from a normal Capital Injection only in timing, not kind.
+4. **"Paid by" on Supplier Funding + a reseller-wallet-balance line on Monthly Summary.** `supplier_transfers.source_channel` (wise/airwallex/bank) is the payment *rail*, never *whose* money funded a top-up — real gap for tracing top-ups funded with reseller money. New `supplier_transfers.paid_by`, same `PaidFrom` enum as decision 3's `paid_from` (**one shared list**, not two independently-maintained ones — the same small set of real payers funds both kinds of entries), correctable via the existing "Edit Details" mechanism too. Separately, `MonthlyAccountingSummaryService::forPeriod()` gained `reseller_wallet_balance_sen` — challenged during the grill whether a true historical month-end snapshot was needed (it would require new scheduled-snapshot infrastructure, since a reseller wallet balance is only ever queryable as a live current figure via `LedgerEntry` `SUM(amount)`) versus just the current balance, clearly labeled. Decided: **current balance**, since the line's whole purpose — "don't forget resellers' money isn't yours" — is already served without a historical snapshot for a solo-founder's once-a-month copy-paste ritual. The frontend shows a live "as of [timestamp]" next to this one line specifically, so it's never mistaken for that period's own month-end figure even when viewing a past month.
+5. **`PaidFrom` enum** (`app/Services/Accounting/PaidFrom.php`) — the shared list decision 3 and 4 both use: `Farres`, `Luqman`, `Wheng` (personal), `CompanyAccount`. A fixed list, not free text — same convention `BudgetEnvelopeEntryCategory` already set for a stable, known set of values.
+
+**Real bug found and fixed while building decision 4:** `SupplierFundingService::recordCorrection()`'s diff-building loop did `(string) $oldValue` directly against `$locked->getAttribute($field)` — fine for every existing correctable field (all plain strings/integers), but `paid_by`'s `PaidFrom` cast returns a `BackedEnum` instance, which has no `__toString()` and throws a fatal error on cast. Fixed by normalizing a `BackedEnum` to its `->value` before the diff comparison — a generic fix, not `paid_by`-specific, so it won't recur if a future correctable field is ever enum-cast too.
+
+**Also found and fixed, adjacent to this work (same file already being edited):** `BudgetEnvelopeController::index()`'s `current_month_rough_pl_estimate_sen` (a soft-warning aid for "Allocate Monthly Profit") never included `bank_transfer_fees_sen` — a real expense split out of `supplier_prepaid_topup_sen` by this same day's *first* addendum, above. Missing it from the rough P&L estimate would have been exactly the kind of invisible-cost gap that figure exists to catch. Fixed in the same formula; `reseller_wallet_balance_sen` (a balance snapshot, not P&L) deliberately stays excluded, same as the capital-movement lines already were.
+
+**Consequence to track:**
+
+- Built off `feature/2026-09-30-adr083-envelope-ledger-paidby-wallet-line` (`staging`). Backend: 2 new migrations (`budget_envelope_entries` gains `transaction_date`/`paid_from`/`reference_no`; `supplier_transfers` gains `paid_by`), `php artisan migrate` applied to local dev DB. Full suite 2455/2455 green (was 2448), 8 new/updated tests. Frontend: `tsc --noEmit`/`eslint`/`next build` clean.
+- Functionally verified against the real local dev DB (not just the isolated test DB) via `php artisan tinker`: recorded and voided a real Envelope Ledger entry with all 3 new fields, confirmed `reseller_wallet_balance_sen` returns a real non-zero figure (RM13.25 locally), confirmed the Transaction Register CSV footer computes a real total against 190 real local rows.
+- `Order.wallet_reseller_id`-owned orders and reseller wallet activity are real customer/business data, not founder testing — this addendum's decision 1 (parking the test flag) exists precisely because that distinction turned out to matter and can't be assumed from the data alone.
+
+Related: [[project_pekangame_no_external_customers_yet_2026_09_25]], the first 2026-09-30 addendum above.
 
 ---
 
@@ -6629,6 +6675,19 @@ PekanGame and Nakhoda (a separate, older business with real external customers) 
 - Old droplet's daemons/scheduler are paused, not removed — full decommission (per the original ADR's decision 6) still has no date set. A future session doing that decommission should also formally retire the old droplet's now-idle `Supplier.api_config` credentials from being live-callable at all (currently just dormant because nothing schedules a call, not because access was revoked).
 - If OpenWA is ever re-provisioned again (another droplet move, a disaster-recovery rebuild, a second bot instance), **the three credentials above must be treated as a checklist, not assumed to travel with a `.env` copy**: (1) webhook registration secret, set manually per registration; (2) an issued API key, generated fresh, no old key is valid; (3) the session ID, read from the `sessions` table after QR link, never reused from the old instance. `AGENTS.md` or this project's OpenWA-specific runbook (none exists yet) would be a better home for this than only living in this ADR addendum — worth writing up as a standalone runbook if OpenWA is ever re-provisioned a third time.
 
+### Addendum (2026-09-30) — old droplet/DB decommissioned, closing the original ADR's decision 6
+
+**Status:** Old-droplet decommission (no date previously set, both prior addenda above) is now done. `docs/prd.md` §16 item 52 split this off from the `doadmin` least-privilege fix it was originally bundled with — that fix remains open, unrelated to this teardown.
+
+**Pre-destroy audit (model-driven, live SSH + DO dashboard, before any teardown action):** found the old droplet's Horizon/Reverb/Pulse were **not actually paused** as the 2026-09-25 addendum assumed — a leftover Forge Quick-Deploy-style auto-pull on the *old* site was still triggering on every push to `main` (confirmed: the old droplet's backend HEAD matched the day's latest `main` merge commit, and `supervisor.service`'s own uptime showed a fresh restart minutes after that merge), independent of the CI-driven `FORGE_DEPLOY_HOOK` this project's `deploy` job actually calls. This explains the recurring daemon-alive state neither prior addendum caught. Despite that, real risk was zero: the old box's own local Redis queues were empty (`LLEN` 0 on every queue), nginx's access log showed only internet background port-scanning (HTTP 444-dropped, no real application traffic), and the old `topup-prod-mysql` cluster's last real order (`orders.created_at`) was 2026-09-24 11:01 — frozen since *before* the 2026-09-25 cutover, confirming zero data divergence risk from destroying it.
+
+**Destroyed via DO dashboard (founder's own final confirmation click, per this session's safety classifier — the model filled every field but was blocked from typing the destroy-confirmation name itself):** the `pekangame-prod` droplet, the `topup-prod-mysql` managed MySQL cluster, and the droplet's Reserved IP (`137.184.250.200` — a separate $5/mo line DO does not auto-delete with the droplet unless explicitly selected in the destroy dialog). All three confirmed gone from the DO dashboard afterward. The stray duplicate `schedule:run` entry and the dormant `Supplier.api_config` credentials (both flagged in the first addendum's consequence list) are moot now that the droplet itself no longer exists.
+
+**Consequence to track:**
+
+- The old droplet's Forge server entry (Forge's own dashboard, not DO's) is now orphaned — pointing at a destroyed droplet. Not a cost or security issue (Forge itself doesn't bill per-server the way DO does), but worth removing from Forge's server list next time someone is in there, for hygiene.
+- This closes the original ADR's decision 6 and every "decommission timing" consequence bullet across both prior addenda. Nothing about this ADR remains open except the unrelated `doadmin` least-privilege item tracked separately in `docs/prd.md` §16 item 52.
+
 ---
 
 ## ADR-115: Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (design only, build parked)
@@ -6676,7 +6735,9 @@ Two facts, checked against real code before grilling further:
 
 ## ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
 
-**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 both built 2026-09-30**, released `staging`→`main` the same day. See the build addendum at the end of this entry.
+**Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 (#324) both built 2026-09-30** and released `staging`→`main` the same day (#325). The switch is ON and was live-tested by the founder. Read the two addenda at the end of this entry before building on it:
+- The **build addendum's items 1–2 are superseded** by the **post-live-test addendum**: the order number is the opt-in, and there is one timeline status card.
+- That follow-up is **#326, merged to `staging` but not yet on `main`** as of 2026-09-30 close.
 
 **Context:** the 2026-09-28 audit (M-11) found no customer order notification of any kind. PRD §7.1 step 11 (notify on delivery, invite a review) and §7.5 step 4 (the customer receives their voucher code) were specified but never built. The sharp edge is §7.5: a customer whose order fails gets a store-credit voucher (ADR-004), but the code is never sent anywhere and the track-order page doesn't show it, so the refund only reaches the customer if an admin contacts them by hand.
 
@@ -6761,3 +6822,156 @@ The founder chose WhatsApp over email, because customers rarely read email. Ever
    created only after this code is live. The code before this release has no
    `sessionId` routing, so a CS group message would have reached the reseller
    bot.
+
+### Addendum (2026-09-30, after the first live test) — the order number is the opt-in; one status card for every reply
+
+**Context:** the founder's first live test surfaced two problems.
+- Opt-in detection rested on the word "update", which Malaysian customers
+  write in ordinary support chats all the time ("tolong update order PG-…").
+  The bot would have cut into a staff conversation.
+- A message `skipped` while the switch was still off could never be sent,
+  because the `dedupe_key` blocked it forever.
+
+The founder's point: the goal is only to learn which number wrote to us
+first, and the order number already proves that.
+
+**Decisions** (they supersede build-addendum items 1 and 2):
+1. **Any direct message on the CS session carrying a valid order number** opts
+   the sender in and gets that order's **status card** back. It doesn't
+   matter which button prefilled it or whether it was typed by hand. There is
+   no keyword and no "support vs updates" split.
+   - An order number we don't have (usually a typo) gets a brand-less "not
+     found" reply: check for typos; the number is on the order page right
+     after payment or in the CHIP payment receipt email. It goes out at most
+     once per number every 10 minutes.
+   - The founder's call: order numbers are random per purchase, so "not found"
+     gives away nothing guessable. This reverses the first draft, which stayed
+     silent.
+2. **One status card layout (`OrderStatusCard`), in English:** a three-step
+   timeline in the same language as the order page's own stepper
+   (`✅ Paid · RM… via FPX` / `✅ Processed` or `⏳ Processing` /
+   `✅ Delivered to Player ID …` or `○ Delivery…`). It carries the brand and
+   order number on top, the item line, and an honest closing line per state
+   (awaiting payment, processing, under review, delivered with review link,
+   failed with the voucher promise). The founder's reference screenshot came
+   from a competitor, so the layout was deliberately made different from its
+   "emoji label: value" list (option A of three, chosen by the founder).
+   - The Delivered receipt is the same card plus the STOP line.
+   - The card shows only what the public track-order page shows, so it goes
+     to **whoever sent the order number**. This drops the earlier
+     checkout-number-only rule.
+   - Future automatic receipts still go only to the order's own phone, and
+     only when that phone is opted in.
+3. **The same card isn't repeated to the same number within 30 minutes** unless
+   the order's payment or delivery status changed, so a support chat that
+   keeps quoting the order number isn't flooded.
+4. **An order-number message never undoes a STOP.** Otherwise a customer who
+   said STOP and then chats with support would silently get receipts again.
+   `START` is the explicit way back in.
+5. **A skipped row is revived once its reason no longer applies.** It goes
+   back to `queued` through a conditional update, so two callers can't both
+   revive it. `sent`, `queued` and `failed` rows stay final, so a message
+   still never goes out twice.
+6. **Order-status card UI:** the button order is Contact Support → Get Updates
+   → Buy Again (the founder's call). Exactly one button is filled per state
+   (decided with the impeccable skill): Get Updates while paid and waiting,
+   Buy Again once delivered, and Contact Support on a failure or before
+   payment. Get Updates is hidden until the order is paid, and on a failure.
+   Its label is "Notify Me on WhatsApp" while waiting and "Send Receipt to
+   WhatsApp" once delivered. The card heading and body follow the state.
+
+---
+
+## ADR-117: Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user
+
+**Status:** Accepted & built — live in production 2026-09-30, verified end-to-end (health check, Horizon, a real backup run).
+
+**Context:**
+
+Found 2026-09-29 while provisioning the `report_assistant` connection (ADR-087): the app's main
+database connection ran as **`doadmin`**, the DigitalOcean managed-MySQL cluster's own superuser.
+`SHOW GRANTS` confirmed `SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, CREATE USER,
+CREATE VIEW, CREATE ROUTINE, EVENT, TRIGGER ... ON *.* ... WITH GRANT OPTION` — full admin power
+over every database on the cluster, plus the ability to create new users and grant them arbitrary
+privileges. A SQL-injection-class bug anywhere in the app would hand an attacker that same power,
+not just access to this app's own tables. Originally bundled with the old-`pekangame-prod`-droplet
+decommission (ADR-114) into one founder-deferred maintenance window (`docs/prd.md` §16 item 52,
+2026-09-29); split apart 2026-09-30 once the decommission's own pre-destroy audit gave enough
+confidence to treat these as two independent, separately-schedulable changes.
+
+**Pre-build audit (money-critical DB, founder explicitly asked for a solid, no-data-loss-risk
+check before touching anything):**
+- **Views:** the 3 `llm_report_*` views (ADR-087) are all `SQL SECURITY DEFINER = doadmin@%` —
+  they keep running under doadmin's own privileges regardless of which user queries them, as long
+  as the `doadmin` account itself still exists. Confirmed via `information_schema.views`.
+- **Triggers / stored routines / events:** all zero in `defaultdb`. None of doadmin's
+  `EVENT`/`TRIGGER`/`CREATE ROUTINE`/`ALTER ROUTINE` grants are actually exercised by anything.
+- **Migration history:** grepped every migration for raw SQL beyond standard DDL. Found a
+  recurring `CREATE VIEW`/`DROP VIEW` pattern (the LLM report views were created, redefined, and
+  redefined again across three separate migrations) — a future migration doing the same needs
+  `CREATE VIEW`/`SHOW VIEW`, so the new user needs those even though no *currently pending*
+  migration uses them.
+- **Backups (ADR-039/095):** `spatie/laravel-backup` resolves its dump credentials from the same
+  `mysql` connection the app uses — a credential switch here also changes what the nightly backup
+  runs as. `config/database.php`'s `dump` options confirmed `useSingleTransaction => true` (no
+  `LOCK TABLES` needed) and `mysql_gtid_purged => 'OFF'` (no replication privilege needed) — the
+  dump only actually needs `SELECT` + `SHOW VIEW`.
+- **Precedent already in this codebase:** `report_assistant`@`%` (ADR-087, provisioned
+  2026-09-29) is the exact same pattern — a narrowly-scoped MySQL user for a specific purpose,
+  with its own documented `CREATE USER`/rollback recipe. Reused that same shape here.
+
+**Decision:**
+
+1. **Create a new user, never touch `doadmin`.** `pekangame_app`@`%`, `GRANT SELECT, INSERT,
+   UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES, CREATE VIEW, SHOW VIEW, CREATE TEMPORARY
+   TABLES ON defaultdb.* TO 'pekangame_app'@'%'` — no `CREATE USER`, no `GRANT OPTION`, no
+   `RELOAD`/`PROCESS`/replication grants, no access outside `defaultdb`. `doadmin` keeps existing,
+   unmodified, as a break-glass account — every step of this change is additive (`CREATE USER` +
+   `GRANT`) until the final `.env` swap, which is a config change, not a data change, and is
+   instantly revertible from a `.env` backup.
+2. **Test the new user in isolation before touching the live app.** Five checks run directly
+   against the new user, none touching real data: `SELECT` on `orders` (real table), `SELECT` on
+   all 3 `llm_report_*` views, a full `CREATE TABLE`+`ALTER`+`CREATE INDEX`+`INSERT`+`DROP` cycle
+   on a throwaway table, a denied `SELECT` on `mysql.user` (proves the `defaultdb`-only scope), and
+   a denied `CREATE USER` (proves no privilege escalation). All five passed exactly as expected —
+   the DDL test's first attempt failed on DO's own `sql_require_primary_key` server setting
+   (unrelated to grants; the retry used a table with a primary key and passed clean).
+3. **Cutover:** backed up `.env` (`.env.bak-2026-09-30-doadmin-least-privilege`), swapped
+   `DB_USERNAME`/`DB_PASSWORD`, `config:cache` + `horizon:terminate`. Verified via `artisan
+   tinker`'s `SELECT CURRENT_USER()` (`pekangame_app@%`), `/api/health` (all green), and — the
+   real proof — a manual `artisan backup:run --only-db`, which dumped, zipped, verified, and
+   uploaded to R2 successfully under the new restricted credentials. php-fpm's own
+   `opcache.validate_timestamps=On` (2s revalidate) meant no manual fpm reload was needed either.
+4. **Two production-sensitive steps (`CREATE USER`/`GRANT`, and the droplet-destroy confirmation
+   in the paired ADR-114 decommission work the same session) were executed by the founder
+   directly, not the model** — Claude Code's own auto-mode safety classifier blocked both as
+   sensitive infra actions requiring a human's own hand on the final step, consistent with this
+   project's existing practice of the founder doing root/sudo-gated actions themselves ([[reference_forge_box_ssh]]'s sudo-password note). The model prepared the exact commands, the founder ran them, the model then verified and continued the rest (`.env` swap, `config:cache`, `horizon:terminate`, testing) itself once the underlying MySQL user existed.
+
+**Rationale:**
+
+- Never modifying or dropping `doadmin` means the entire change is reversible at every step short
+  of the final `.env` swap, and that step itself reverts in seconds from a plain file backup — no
+  scenario in this plan risks losing or corrupting existing data.
+- Testing the new user against real tables/views *before* pointing the live app at it turns "will
+  this work" into a verified fact rather than a theoretical grant list — the primary-key DDL
+  hiccup is exactly the kind of surprise that audit was designed to catch before it could hit a
+  real deploy.
+- Reusing the `report_assistant` precedent (ADR-087) rather than inventing a new pattern keeps
+  this project's credential-provisioning practice consistent and gives future sessions one place
+  to look, not two different conventions.
+
+**Consequence to track:**
+
+- `.env.bak-2026-09-30-doadmin-least-privilege` is the rollback path if anything about the new
+  user's grants turns out to be insufficient later (e.g. a future migration needs a privilege not
+  in this grant list) — revert `.env`, `config:cache`, `horizon:terminate`, fix the grant, re-swap.
+  `doadmin`'s own credentials are unchanged throughout, so this is always available.
+- If a future migration needs a privilege outside this grant list (e.g. `CREATE ROUTINE` if this
+  project ever adds a stored procedure), it will fail loudly on `migrate --force` during deploy —
+  the fix is `GRANT <privilege> ON defaultdb.* TO 'pekangame_app'@'%'` via `doadmin`, not reverting
+  to `doadmin` for the app connection.
+- `docs/prd.md` §16 item 52 (which originally bundled this with the old-droplet decommission) is
+  now fully closed on both halves.
+
+---

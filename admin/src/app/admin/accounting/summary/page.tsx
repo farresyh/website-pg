@@ -36,10 +36,12 @@ const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: s
   { key: "membership_revenue_sen", label: "Membership revenue", definition: "Total membership subscription fees collected this month." },
   { key: "cogs_sen", label: "COGS", definition: "Cost of Goods Sold — the total we paid suppliers (e.g. Digiflazz) for those same delivered orders. Sales revenue minus this is roughly retail margin, still not the final profit figure." },
   { key: "payment_processing_gain_loss_sen", label: "Payment processing net gain/(loss)", definition: "The gap between the transaction fee charged to customers and the real fee CHIP actually deducted — a small gain if we charged more than CHIP's real cut, a loss if less." },
-  { key: "supplier_prepaid_topup_sen", label: "Supplier prepaid — top-up", definition: "Capital sent this month to top up a supplier's prepaid balance (e.g. Digiflazz). A capital movement — not revenue, not an expense." },
+  { key: "supplier_prepaid_topup_sen", label: "Supplier prepaid — top-up", definition: "Capital sent this month to top up a supplier's prepaid balance (e.g. Digiflazz), excluding our own bank/transfer fee (see the line below). A capital movement — not revenue, not an expense." },
+  { key: "bank_transfer_fees_sen", label: "Bank / transfer fees", definition: "Our own Wise/Airwallex fee for sending the top-up above to the supplier — a real expense, separate from the capital movement itself. Add this to the top-up line above to get the full amount that left the bank." },
   { key: "supplier_prepaid_fx_variance_sen", label: "Supplier prepaid — FX variance true-up", definition: "The gap between the FX rate assumed when pricing packages and the real blended rate actually paid to suppliers this month — tells you whether the pricing buffer is set correctly, not a cash gain or loss." },
   { key: "affiliate_commission_expense_sen", label: "Affiliate commission expense", definition: "Commission owed to affiliates from this month's sales, whether or not it has actually been paid out yet — a real expense against profit." },
   { key: "voucher_liability_issued_sen", label: "Voucher liability issued", definition: "Value of store-credit vouchers issued this month to customers whose orders failed — a liability (credit we owe back), not a cash expense." },
+  { key: "reseller_wallet_balance_sen", label: "Reseller wallet balance", definition: "Money resellers have prepaid into their wallets, which isn't ours — a liability, not revenue. Always the CURRENT balance (see the \"as of\" timestamp next to it), never this period's own month-end figure — no historical snapshot exists." },
 ];
 
 export default function MonthlyAccountingSummaryPage() {
@@ -50,10 +52,17 @@ export default function MonthlyAccountingSummaryPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [summary, setSummary] = useState<MonthlyAccountingSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // reseller_wallet_balance_sen is always the CURRENT balance, never scoped
+  // to the viewed period — this timestamps exactly when that snapshot was
+  // taken, so it's never mistaken for a real month-end figure.
+  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
 
   function load(token: string, y: number, m: number) {
     getMonthlyAccountingSummary(token, y, m)
-      .then(setSummary)
+      .then((s) => {
+        setSummary(s);
+        setFetchedAt(new Date());
+      })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the summary."));
   }
 
@@ -131,6 +140,11 @@ export default function MonthlyAccountingSummaryPage() {
                     <span className="inline-flex items-center gap-1">
                       {line.label}
                       <InfoTooltip definition={line.definition} />
+                      {line.key === "reseller_wallet_balance_sen" && fetchedAt && (
+                        <span className="text-theme-xs text-gray-400 dark:text-gray-500">
+                          (as of {fetchedAt.toLocaleString("en-MY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right font-mono text-theme-sm text-gray-800 dark:text-white/90">

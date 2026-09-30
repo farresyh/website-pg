@@ -33,6 +33,7 @@ import {
   type BudgetEnvelope,
   type BudgetEnvelopeCategory,
   type BudgetEnvelopeEntry,
+  type PaidFromOption,
 } from "@/lib/budget-envelopes";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
@@ -53,9 +54,13 @@ const SUMMARY_LINE_LABELS: Record<string, string> = {
   cogs_sen: "COGS",
   payment_processing_gain_loss_sen: "Payment processing net gain/(loss)",
   supplier_prepaid_topup_sen: "Supplier prepaid — top-up",
+  // 2026-09-30 fix: two keys forPeriod() already returned were missing
+  // here, falling back to the raw snake_case key on screen.
+  bank_transfer_fees_sen: "Bank / transfer fees",
   supplier_prepaid_fx_variance_sen: "Supplier prepaid — FX variance true-up",
   affiliate_commission_expense_sen: "Affiliate commission expense",
   voucher_liability_issued_sen: "Voucher liability issued",
+  reseller_wallet_balance_sen: "Reseller wallet balance (current, not month-end)",
 };
 
 export default function EnvelopeLedgerPage() {
@@ -65,6 +70,7 @@ export default function EnvelopeLedgerPage() {
 
   const [envelopes, setEnvelopes] = useState<BudgetEnvelope[]>([]);
   const [categories, setCategories] = useState<BudgetEnvelopeCategory[]>([]);
+  const [paidFromOptions, setPaidFromOptions] = useState<PaidFromOption[]>([]);
   const [monthSummary, setMonthSummary] = useState<Record<string, number>>({});
   const [monthLabel, setMonthLabel] = useState("");
   const [monthRoughPlEstimateSen, setMonthRoughPlEstimateSen] = useState(0);
@@ -82,7 +88,10 @@ export default function EnvelopeLedgerPage() {
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
+  const [transactionDate, setTransactionDate] = useState("");
   const [description, setDescription] = useState("");
+  const [paidFrom, setPaidFrom] = useState("");
+  const [referenceNo, setReferenceNo] = useState("");
   const [direction, setDirection] = useState<"in" | "out">("out");
   const [receipt, setReceipt] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -99,6 +108,7 @@ export default function EnvelopeLedgerPage() {
       .then((data) => {
         setEnvelopes(data.envelopes);
         setCategories(data.categories);
+        setPaidFromOptions(data.paid_from_options);
         setMonthSummary(data.current_month_summary);
         setMonthLabel(data.current_month_label);
         setMonthRoughPlEstimateSen(data.current_month_rough_pl_estimate_sen);
@@ -189,13 +199,19 @@ export default function EnvelopeLedgerPage() {
       await recordBudgetEnvelopeEntry(token, selectedEnvelope.id, {
         category,
         amount_sen: amountSen,
+        transaction_date: transactionDate || undefined,
         description: description.trim(),
         direction: selectedCategory.typical_sign === "either" ? direction : undefined,
+        paid_from: paidFrom || undefined,
+        reference_no: referenceNo.trim() || undefined,
         receipt,
       });
       setCategory("");
       setAmount("");
+      setTransactionDate("");
       setDescription("");
+      setPaidFrom("");
+      setReferenceNo("");
       setReceipt(null);
       setShowRecordForm(false);
       await Promise.all([loadIndex(token), loadEntries(token, selectedEnvelope.id)]);
@@ -478,9 +494,32 @@ export default function EnvelopeLedgerPage() {
                     </select>
                   </div>
                 )}
+                <div>
+                  <Label htmlFor="entry_transaction_date">Transaction date</Label>
+                  <Input id="entry_transaction_date" type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                  <span className="mt-1 block text-theme-xs text-gray-400">The day money actually moved — defaults to today if left blank.</span>
+                </div>
+                <div>
+                  <Label htmlFor="entry_paid_from">Paid from</Label>
+                  <select
+                    id="entry_paid_from"
+                    value={paidFrom}
+                    onChange={(e) => setPaidFrom(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-theme-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
+                  >
+                    <option value="">Not specified</option>
+                    {paidFromOptions.map((p) => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor="entry_description">Description</Label>
                   <Input id="entry_description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Facebook Ads — September" required />
+                </div>
+                <div>
+                  <Label htmlFor="entry_reference_no">Reference number</Label>
+                  <Input id="entry_reference_no" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="Optional — invoice/bank reference" />
                 </div>
                 <div>
                   <Label htmlFor="entry_receipt">Receipt</Label>
@@ -517,7 +556,12 @@ export default function EnvelopeLedgerPage() {
                     const isReversal = entry.reverses_entry_id !== null;
                     return (
                       <tr key={entry.id} className={entry.is_voided ? "opacity-60" : undefined}>
-                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatDate(entry.created_at)}</td>
+                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                          {entry.transaction_date ?? formatDate(entry.created_at)}
+                          {entry.transaction_date && (
+                            <span className="block text-theme-xs text-gray-400">recorded {formatDate(entry.created_at)}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                           {entry.category_label}
                           {entry.is_voided && <Tag severity="danger" className="ml-2">Voided</Tag>}
@@ -526,7 +570,16 @@ export default function EnvelopeLedgerPage() {
                         <td className={`px-4 py-2 font-medium ${entry.amount_sen < 0 ? "text-error-600 dark:text-error-400" : "text-success-600 dark:text-success-400"} ${entry.is_voided ? "line-through" : ""}`}>
                           {entry.amount_sen > 0 ? "+" : ""}{formatRm(entry.amount_sen)}
                         </td>
-                        <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{entry.description}</td>
+                        <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                          {entry.description}
+                          {(entry.paid_from_label || entry.reference_no) && (
+                            <span className="block text-theme-xs text-gray-400">
+                              {entry.paid_from_label}
+                              {entry.paid_from_label && entry.reference_no && " · "}
+                              {entry.reference_no && `Ref: ${entry.reference_no}`}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{entry.created_by ?? "—"}</td>
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-2">

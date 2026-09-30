@@ -38,13 +38,22 @@ class TransactionRegisterController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost (RM)', 'Net (RM)', 'Amount (foreign)', 'Status']);
+            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost (RM)', 'Net (RM)', 'Amount (foreign)', 'Status', 'Funding source']);
 
             foreach ($rows as $row) {
+                // 2026-09-30 audit fix: a voided row already carries a
+                // `Status` column, but a spreadsheet reader scanning by
+                // eye (not filtering columns) can still miss it — the
+                // admin UI itself already strikes voided rows through in
+                // red (see `admin/.../transactions/page.tsx`), CSV has no
+                // equivalent, so the reference itself gets the same
+                // signal a plain-text export can actually carry.
+                $reference = $row['status'] === 'voided' ? '[VOIDED] '.$row['reference'] : $row['reference'];
+
                 fputcsv($out, [
                     $row['date'],
                     $row['type'],
-                    $row['reference'],
+                    $reference,
                     $row['description'],
                     $row['supplier'] ?? '',
                     $row['currency'],
@@ -54,8 +63,21 @@ class TransactionRegisterController extends Controller
                     $row['net_sen'] !== null ? number_format($row['net_sen'] / 100, 2, '.', '') : '',
                     $row['amount_foreign'] ?? '',
                     $row['status'],
+                    $row['funding_source'] ?? '',
                 ]);
             }
+
+            // 2026-09-30 audit addendum (Bucket C, decision 4): a voided
+            // row keeps its real original Net figure (deliberate —
+            // "never rewrite history in place"), but its correction is
+            // FX-only, never carrying an MYR figure — so a naive sum of
+            // the Net column across a period spanning a void won't
+            // reconcile to a real bank statement. Rather than a prose
+            // note only the in-app UI would show (a CSV reader in Excel
+            // would never see it), this computed footer row gives the
+            // one number that actually does reconcile.
+            $totalExcludingVoided = collect($rows)->where('status', '!=', 'voided')->sum('net_sen');
+            fputcsv($out, ['', '', '', 'TOTAL Net (excluding voided rows)', '', '', '', '', '', number_format($totalExcludingVoided / 100, 2, '.', ''), '', '', '']);
 
             fclose($out);
         }, 'transaction-register.csv', ['Content-Type' => 'text/csv']);

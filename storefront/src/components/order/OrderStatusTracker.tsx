@@ -203,6 +203,23 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
 
   const stages = deriveStages(order);
   const hasFailure = order.payment_status === "failed" || order.delivery_status === "failed";
+  const isPaid = order.payment_status === "paid";
+  const isDelivered = order.delivery_status === "delivered";
+  const canGetUpdates = isPaid && !hasFailure;
+  // One filled button per state: the next useful move. Waiting means get
+  // notified, done means buy again, a failure or no payment means talk to support.
+  const primaryAction: "support" | "updates" | "buy-again" =
+    !canGetUpdates ? "support" : isDelivered ? "buy-again" : "updates";
+  const helpCopy = hasFailure
+    ? { heading: "Need Help With This Order?", body: "Contact our Customer Support team directly via WhatsApp for a manual check." }
+    : !isPaid
+      ? { heading: "Having an Issue with Your Order?", body: "Paid but this page hasn't updated? Contact our Customer Support team directly via WhatsApp." }
+      : isDelivered
+        ? { heading: "Need Anything Else?", body: "Get this order's receipt on WhatsApp, or contact our Customer Support team if something isn't right." }
+        : {
+            heading: "Having an Issue with Your Order?",
+            body: "Get notified on WhatsApp when it's delivered, or contact our Customer Support team if your order status is delayed beyond 10 minutes.",
+          };
   const showRateModal = order.delivery_status === "delivered" && !order.has_review && !rateModalDismissed;
 
   const rm = (sen: number) => `RM${(sen / 100).toFixed(2)}`;
@@ -345,39 +362,45 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
       </div>
 
       <div className="flex flex-col gap-3.5 rounded-lg border-2 border-ink bg-primary-fixed p-6 neo lg:sticky lg:top-24">
-        <h3 className="font-display text-[15px] font-bold">
-          {hasFailure ? "Need Help With This Order?" : "Having an Issue with Your Order?"}
-        </h3>
-        <p className="text-[13px] leading-relaxed text-on-surface-variant">
-          Contact our Customer Support team directly via WhatsApp for a manual check
-          {hasFailure ? "" : " if your order status is delayed beyond 10 minutes"}.
-        </p>
+        <h3 className="font-display text-[15px] font-bold">{helpCopy.heading}</h3>
+        <p className="text-[13px] leading-relaxed text-on-surface-variant">{helpCopy.body}</p>
         {whatsappHref && (() => {
           const withText = (text: string) =>
             `${whatsappHref}${whatsappHref.includes("?") ? "&" : "?"}text=${encodeURIComponent(text)}`;
           return (
             <>
-              {/* ADR-116 decision 5: the backend reads "update" + the order number as an opt-in and replies with the receipt. */}
-              {!hasFailure && (
-                <Button
-                  href={withText(`Salam, saya nak terima update order ${order.order_number} di WhatsApp.`)}
-                  variant="outline"
-                  className="justify-center"
-                >
-                  <WhatsappLogo size={16} weight="fill" /> Get Updates on WhatsApp
-                </Button>
-              )}
               <Button
                 href={withText(`Salam support ${storeName}, saya perlukan bantuan untuk order ${order.order_number} (${order.game?.name ?? "Top Up"}).`)}
+                variant={primaryAction === "support" ? "primary" : "outline"}
                 className="justify-center"
               >
                 <WhatsappLogo size={16} weight="fill" /> Contact {storeName} Support
               </Button>
+              {/* ADR-116 addendum: any message carrying the order number opts the
+                  number in and gets the order's status card back. Hidden until
+                  paid (nothing to update on) and on a failure (support is the path). */}
+              {canGetUpdates && (
+                <Button
+                  href={withText(
+                    isDelivered
+                      ? `Salam, saya nak resit order ${order.order_number} di WhatsApp.`
+                      : `Salam, saya nak terima update order ${order.order_number} di WhatsApp.`,
+                  )}
+                  variant={primaryAction === "updates" ? "primary" : "outline"}
+                  className="justify-center"
+                >
+                  <WhatsappLogo size={16} weight="fill" /> {isDelivered ? "Send Receipt to WhatsApp" : "Notify Me on WhatsApp"}
+                </Button>
+              )}
             </>
           );
         })()}
         {order.game && (
-          <Button href={`/order/${order.game.slug}`} variant="outline" className="justify-center">
+          <Button
+            href={`/order/${order.game.slug}`}
+            variant={primaryAction === "buy-again" ? "primary" : "outline"}
+            className="justify-center"
+          >
             Buy Again
           </Button>
         )}

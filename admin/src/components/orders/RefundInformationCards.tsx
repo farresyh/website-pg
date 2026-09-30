@@ -53,6 +53,7 @@ const NOTIFICATION_EVENT_LABEL: Record<string, string> = {
   voucher_issued: "Voucher code",
   voucher_restored: "Voucher restored",
   delivered_receipt: "Receipt",
+  status_card: "Status card",
   optin_reply: "Opt-in reply",
 };
 

@@ -1644,3 +1644,251 @@ golden path, and the real WhatsApp round trip is the founder's §16 item 54(c).
   §14 snapshot and a new §15 row are updated; §16 item 48 is closed and new
   item 54 lists the founder's post-deploy steps. `backend/AGENTS.md` gains the
   customer-messages convention.
+
+## 2026-09-30 — ADR-116 follow-up after the first live WhatsApp test: order number = opt-in, status card, skipped revival
+
+The founder tested on prod after the release. The CS webhook first returned
+401 because the dashboard secret didn't match `OPENWA_WEBHOOK_SECRET`. The model
+set it through OpenWA's `PUT /api/sessions/:id/webhooks/:id` from the backend
+`.env` without printing it, and the webhook test then returned 200.
+- The first receipt was `skipped` (the switch had been flipped but "Save
+  Platform Settings" was never pressed), and its `dedupe_key` blocked it
+  forever. That exposed the revival bug.
+- Two receipts then went out correctly, each branded by its **order** (FixFast
+  and PekanGame from the same number). STOP worked.
+
+**Fix branch `fix/2026-09-30-whatsapp-order-card`** (see the ADR-116 addendum
+of the same date):
+- The order number in any message is the opt-in, with no "update" keyword.
+- One English `OrderStatusCard` serves both the reply and the receipt. It is a
+  three-step timeline matching the order page's stepper. The founder's
+  reference screenshot was a competitor's, so the layout was made
+  deliberately different.
+- A mistyped order number gets a "not found" reply (at most every 10 minutes
+  per number) pointing to the order page or the CHIP receipt email.
+- The same card isn't repeated within 30 minutes unless the status changed.
+- `START`/`STOP`; an order-number message never undoes a STOP.
+- Skipped rows are revived through a conditional update.
+- The storefront card is reordered to Contact Support → Get Updates → Buy
+  Again, with one filled button per state (impeccable), Get Updates hidden
+  before payment and on a failure, and state-aware copy.
+
+Fast suite 2443/2443; notification tests 24/24. Storefront tsc and eslint are
+clean.
+
+**Not browser-verified.** Local storefront against the prod API is refused by
+design ("storefront address is not recognised": `localhost` isn't a
+registered brand host, ADR-060), so the founder's live check after release
+is the visual verification.
+
+## 2026-09-30 — Session close: state of play
+
+A long session. Everything below is verified against GitHub and prod at close.
+- **Released to `main` (#325, deploy verified on the server):** audit Wave 5.
+  - #322: M-10 and money Lows.
+  - #323/#324: WhatsApp customer notifications, ADR-116.
+  - All five waves of the 2026-09-28 audit are now built and released.
+- **On `staging` only:** #326, the ADR-116 post-live-test follow-up. Prod
+  still runs #325's first version until the next `staging`→`main` release.
+- **Prod WhatsApp state:**
+  - The switch is ON; the CS webhook is live (secret fixed); OpenWA
+    `SEND_PACING` is on.
+  - `customer_notifications`: 2 receipts sent (FixFast and PekanGame, correct
+    brand each), 1 skipped (before the switch was saved), 1 `stop_reply` sent.
+  - 1 `whatsapp_contacts` row: the founder's number, currently opted out after
+    the STOP test.
+  - The voucher path has not been live-tested yet.
+- **Owed next session:**
+  - PRD §16 item 54: release #326, retest on prod, voucher test.
+  - Item 51: real-order smoke test.
+  - Item 11: uptime monitor.
+  - Item 52: `doadmin` least-privilege and old-droplet decommission.
+  - Item 27: e2e `next build && next start`, now more pressing after two
+    consecutive flakes.
+- **Session gotchas worth remembering:**
+  - Forge's site "Environment" tab edits the **Laravel** `.env`, not
+    OpenWA's.
+  - OpenWA reads its own `.env` through dotenv, which `/proc/environ` can't
+    show.
+  - The backend's OpenWA key is session-scoped, so `GET /api/sessions` only
+    lists the sessions that key can see.
+  - An admin Settings switch needs "Save Platform Settings".
+  - `db:wipe --drop-views` is needed before re-running RefreshDatabase tests on
+    the Docker MySQL test DB.
+  - A MySQL unique index over three utf8mb4 `varchar(255)` columns exceeds
+    InnoDB's key limit.
+
+## 2026-09-30 — DO droplet monitoring, old-droplet decommission, and doadmin least-privilege (PRD §16 items 11, 52; ADR-114 addendum, ADR-117)
+
+**DigitalOcean droplet monitoring (PRD §16 item 11, partial):** `do-agent` installed on
+`pekangame-prod-lwf` (founder-run via DO's Launch Console, root/sudo required — confirmed free,
+no trial limit, per DO's own docs). Two resource alerts created (Memory and Disk Utilization,
+both >80% for 5 min, emailing the founder). Covers droplet-level resource exhaustion; the
+external-uptime-of-`api.pekangame.space`-itself gap (UptimeRobot/Better Stack style) is still
+open — this only watches the box's own CPU/memory/disk.
+
+**Old-droplet decommission (PRD §16 item 52, first half; ADR-114 addendum):** before destroying
+anything, a full pre-destroy audit (live SSH to both droplets + DO dashboard) found the old
+`pekangame-prod` (157.245.203.250, old shared DO team) was **not** actually paused as the
+2026-09-25 ADR-114 addendum assumed — a leftover Forge Quick-Deploy-style auto-pull was still
+redeploying every push to `main` onto the old site too (old droplet's backend HEAD matched the
+day's latest `main` merge, `supervisor.service` freshly restarted minutes after — independent of
+the CI-driven `FORGE_DEPLOY_HOOK`). Despite that, real risk was zero: Redis queues on the old box
+were empty, nginx saw only internet scanner noise (no real app traffic, all HTTP 444), and the old
+`topup-prod-mysql` cluster's last real order was 2026-09-24 — frozen since before the cutover.
+Destroyed via DO dashboard (founder's own final confirmation click — Claude Code's auto-mode
+classifier blocked the model from typing the destroy-confirmation name itself): the droplet, its
+`topup-prod-mysql` managed MySQL cluster, and its Reserved IP (`137.184.250.200` — a separate
+$5/mo line DO does not auto-delete with the droplet unless explicitly selected). All confirmed
+gone from the DO dashboard afterward; billing for this old infra has stopped.
+
+**Prod DB least-privilege (PRD §16 item 52, second half; ADR-117):** `doadmin` (the DO managed-
+MySQL superuser, `GRANT OPTION`/`CREATE USER`/`DROP` on `*.*`) replaced as the app's main DB
+connection by a new dedicated `pekangame_app`@`%` user, scoped to `defaultdb` only. Full pre-build
+audit (views' `SQL SECURITY DEFINER`, zero triggers/routines/events, migration history for raw
+SQL, backup dump options) plus 5 isolated tests against the new user (real-table SELECT, view
+SELECT, a full DDL cycle, denied system-schema access, denied `CREATE USER`) all passed before
+touching the live app — full detail in ADR-117. Cutover: `.env` backed up, credentials swapped,
+`config:cache` + `horizon:terminate`, verified via `tinker`'s `CURRENT_USER()`, `/api/health`, and
+a real `artisan backup:run --only-db` (dumped, zipped, verified, uploaded to R2 successfully) —
+the backup run under the new restricted user was the strongest proof this was safe, not just a
+grant list read on paper. `doadmin` itself was never modified or dropped throughout either piece
+of work — every step was additive until the final `.env` swap, which reverts in seconds from
+`.env.bak-2026-09-30-doadmin-least-privilege` if ever needed.
+
+**Claude Code's own auto-mode safety classifier blocked two steps this session** — typing the
+droplet destroy-confirmation name, and the `CREATE USER`/`GRANT` SQL itself (flagged
+"[Secret-Store Writes]" once, "[Permission Grant]" once) — both times the model prepared the exact
+command, the founder ran it themselves, and the model verified + continued everything else.
+
+## 2026-09-30 — Accounting external-review fixes (ADR-083 addendum, `fix/2026-09-30-accounting-audit-fixes`)
+
+A second LLM the founder specifically trained on accounting/finance audited the live
+`/admin/accounting` screens at his request (admin panel visibility only, no backend access).
+Every finding was checked against this codebase and real production data (read-only SSH) before
+anything shipped, not taken at face value — full write-up in `docs/adr.md`'s ADR-083 2026-09-30
+addendum.
+
+**Two of the reviewer's findings were wrong, not the system:** its manual reconciliation of
+September's Digiflazz top-ups (RM 742.97) vs. the Monthly Summary (RM 757.33) picked up a *voided*
+transfer's amount instead of its same-day corrected re-recording (both legitimately share
+Digiflazz's own reference number — not a paging bug, a consequence of void-by-reversal) and left
+out our own Wise/Airwallex transfer fee from all three transfers. Verified live: the system's
+RM 757.33 matches `SUM(amount_myr_sent + fee_myr)` over the real non-voided September transfers
+exactly.
+
+**Three real correctness bugs fixed in `TransactionRegisterService`:**
+1. `orderRows()`'s `cost_sen` showed the checkout-time catalog price regardless of delivery
+   outcome — `recordOrderDrawdown()` only runs on a successful delivery, so a failed/undelivered
+   order never actually drew down supplier cost. Now `null` unless `delivery_status = Delivered`,
+   the same gate `MonthlyAccountingSummaryService::cogs()` already uses. Verified against real
+   production order `PG-B7RB8MON6Q9I` (the reviewer's own example) and 16 real non-delivered
+   orders in the local dev DB.
+2. A wallet-refunded failed order had no refund row at all — looked exactly like a normal
+   completed sale. New `walletRefundRows()` (mirrors `supplierRefundRows()`'s shape) makes the
+   `wallet_refund` ledger event its own row; the original order row keeps its real figures
+   untouched (same "never rewrite history in place" discipline a voided supplier transfer already
+   follows).
+3. `membershipRows()` never carried a real CHIP fee, only the plan price — `fee_sen` on
+   `MembershipCheckoutAttempt` is confusingly named (it's the *plan* fee, not CHIP's), the real
+   fee is `total_charged_sen - fee_sen`. Now joined via `MembershipFeeRecord.idempotency_key` =
+   `MembershipCheckoutAttempt.subscription_number` (an already-existing link,
+   `MembershipSubscriptionService::completePaidAttempt()` writes it) — falls back to the old
+   fee-less shape when no matching attempt exists (an admin-issued/comped record).
+
+**Two presentation fixes:**
+4. New structured `funding_source: "chip" | "reseller_wallet" | null` field on every register row
+   (its own JSON/CSV/UI column, a "Wallet-funded" tag on the frontend table) — a wallet-paid
+   order's `gross_sen` is spend from an already-collected balance, not a fresh bank inflow, and
+   summing the whole Gross column previously double-counted that cash. Rejected a free-text label
+   (not reliably filterable in a CSV) for a real column, same precedent `status` already set.
+5. CSV export's `Reference` column now prefixes `[VOIDED] ` for a voided row — the admin UI
+   already strikes these through with a red tag, CSV had no equivalent and a plain-text `Status`
+   column is easy to miss scanning by eye (likely what caused the reviewer's RM 757.33 mix-up
+   above).
+
+**`MonthlyAccountingSummaryService` change:** `supplier_prepaid_topup_sen` used to bundle our own
+Wise/Airwallex transfer fee into the capital figure; now capital-only, with a new
+`bank_transfer_fees_sen` line carrying the fee as its own genuinely-additive amount — so copying
+both into the external accounting SaaS each month adds two real, distinct figures instead of
+double-counting the fee portion inside a bundled total.
+
+**Verification:** backend full suite 2448/2448 green (12 new/updated tests across
+`TransactionRegisterControllerTest`/`MonthlyAccountingSummaryServiceTest`); frontend
+`tsc --noEmit`/`eslint`/`next build` all clean; no migration needed (both new fields are
+computed at read-time). Ran the real service against the actual local dev DB via `php artisan
+tinker` (not just the isolated test DB) — 183/183 real local order rows got a correct non-null
+`funding_source`, all 16 real non-delivered local orders correctly show `cost_sen: null`.
+
+**Not touched:** the reviewer's remaining suggestions (Envelope Ledger date/paid-from/reference
+fields, a per-director loan category, opening-balance entries, a reseller-wallet-balance line on
+Monthly Summary, a "paid by" field on Supplier Funding) are real, confirmed-missing feature
+requests, not bugs — scoped as a separate follow-up, not bundled into this fix batch.
+
+## 2026-09-30 — Accounting external-review Bucket C (ADR-083 second addendum, `feature/2026-09-30-adr083-envelope-ledger-paidby-wallet-line`)
+
+The 5 remaining findings from the same external accounting review, grilled
+(`/mattpocock-skills:grilling`) before building — full decisions in
+`docs/adr.md`'s ADR-083 2026-09-30 second addendum. 1 item grilled then
+deliberately parked; 4 built.
+
+**Parked, not built:** a test/internal order flag. Real gap (founder's own
+self-purchases count as Sales revenue), but no urgent trigger — ~30 orders
+ever, still trackable by memory; same park-until-real-volume decision as
+ADR-115. **Founder correction during the grill:** not every current order
+is the founder's own testing — a real reseller's real customer order (e.g.
+Naeem Industries) sits in the same table, so any future build needs
+per-order judgment, never a blanket assumption. The memory this session
+started from (`project_pekangame_no_external_customers_yet_2026_09_25`,
+"zero external customers, all orders are testing") was corrected/marked
+stale as a result.
+
+**Built:**
+1. `TransactionRegisterController::export()` — a computed CSV footer row,
+   `TOTAL Net (excluding voided rows)`, the reconciling total a voided
+   transfer's FX-only correction can't otherwise produce. Rejected a full
+   reconciling column (only 2 voided transfers exist in this project's
+   whole history — premature for that frequency).
+2. `budget_envelope_entries` gains `transaction_date` (nullable date,
+   defaults to today), `paid_from` (nullable `PaidFrom` enum), `reference_no`
+   (nullable string) — all optional. New `BudgetEnvelopeEntryCategory::
+   DirectorRepayment` — deliberately no matching "Director Advance" (the
+   advance itself never moves envelope cash, doesn't fit this table's
+   model). Opening balance needs no new mechanism — a normal `CapitalInjection`
+   entry, dated via the new field.
+3. `supplier_transfers` gains `paid_by`, same shared `PaidFrom` enum,
+   correctable via the existing "Edit Details" flow too.
+4. `MonthlyAccountingSummaryService::forPeriod()` gains
+   `reseller_wallet_balance_sen` — always the CURRENT total (`SUM(amount)`
+   over every `ResellerWallet`-owned `ledger_entries` row), never
+   period-scoped (no historical snapshot mechanism exists). Frontend shows
+   a live "as of [timestamp]" next to this one line so it's never mistaken
+   for a real month-end figure.
+
+**New shared enum:** `App\Services\Accounting\PaidFrom` (`Farres`,
+`Luqman`, `Wheng`, `CompanyAccount`) — one list for both `paid_from` and
+`paid_by`, not two independently-maintained ones.
+
+**Real bug found and fixed:** `SupplierFundingService::recordCorrection()`'s
+diff-building loop did `(string) $oldValue` directly — fine for every prior
+correctable field (plain strings/ints), but `paid_by`'s `PaidFrom` cast
+returns a `BackedEnum` with no `__toString()`, throwing a fatal error.
+Fixed generically (normalize any `BackedEnum` to `->value` before diffing),
+not `paid_by`-specific.
+
+**Also fixed, found adjacent to this work:**
+`BudgetEnvelopeController::index()`'s `current_month_rough_pl_estimate_sen`
+never included `bank_transfer_fees_sen` (a real expense split out of
+`supplier_prepaid_topup_sen` by the *first* 2026-09-30 addendum, same day)
+— exactly the kind of invisible-cost gap that estimate exists to catch.
+
+**Verification:** backend 2455/2455 green (was 2448), 8 new/updated tests
+(2 real bugs caught by tests before shipping: the diff-building crash above,
+and 2 test assertions written against the wrong Carbon-serialization
+format, fixed as test bugs not code bugs). 2 new migrations, applied to
+local dev DB. Frontend `tsc --noEmit`/`eslint`/`next build` clean. Ran the
+real service against the real local dev DB via `php artisan tinker` (not
+just the isolated test DB): recorded and voided a real Envelope Ledger
+entry with all 3 new fields, confirmed `reseller_wallet_balance_sen`
+returns a real RM13.25 locally, confirmed the CSV footer total computes
+correctly against 190 real local register rows.

@@ -7,6 +7,7 @@ use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Membership;
+use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
 use App\Models\Order;
@@ -101,6 +102,108 @@ class TransactionRegisterControllerTest extends TestCase
         $this->assertSame(900, $row['cost_sen']);
         $this->assertSame(100, $row['net_sen']);
         $this->assertSame('Digiflazz', $row['supplier']);
+        $this->assertSame('chip', $row['funding_source']);
+    }
+
+    /**
+     * 2026-09-30 audit fix: a reseller wallet-paid order's `gross_sen` is
+     * spend from an already-collected wallet balance, not a fresh bank
+     * inflow — `funding_source` flags it so the Gross column can be
+     * filtered/grouped instead of double-counted against the top-up that
+     * originally funded the wallet.
+     */
+    public function test_index_flags_a_reseller_wallet_paid_order(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->supplier();
+        $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries']);
+        $game = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        Order::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'wallet_reseller_id' => $reseller->id,
+            'order_number' => 'KRS-REG-WALLET',
+            'customer_email' => 'buyer@example.com',
+            'player_id' => '1',
+            'game_id' => $game->id,
+            'package_id' => $package->id,
+            'supplier_id' => $supplier->id,
+            'supplier_product_ref' => 'A',
+            'cost_price' => 900,
+            'standard_selling_price' => 1000,
+            'selling_price' => 1000,
+            'transaction_fee' => 0,
+            'final_amount' => 1000,
+            'platform_profit' => 100,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+            'paid_at' => now(),
+        ]);
+
+        $row = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'))
+            ->firstWhere('reference', 'KRS-REG-WALLET');
+
+        $this->assertSame('reseller_wallet', $row['funding_source']);
+    }
+
+    /**
+     * 2026-09-30 audit fix: a failed order already refunded to a
+     * reseller's wallet used to look exactly like a normal completed
+     * sale here, with no trace of the money going back. The original
+     * order row keeps its real figures (never rewritten in place — same
+     * discipline as a voided supplier transfer); the refund gets its own
+     * row, mirroring supplierRefundRows()'s shape.
+     */
+    public function test_index_includes_a_wallet_refund_row_for_a_failed_wallet_order(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->supplier();
+        $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries']);
+        $game = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        $order = Order::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'wallet_reseller_id' => $reseller->id,
+            'order_number' => 'KRS-REG-FAILED-WALLET',
+            'customer_email' => 'buyer@example.com',
+            'player_id' => '1',
+            'game_id' => $game->id,
+            'package_id' => $package->id,
+            'supplier_id' => $supplier->id,
+            'supplier_product_ref' => 'A',
+            'cost_price' => 900,
+            'standard_selling_price' => 1000,
+            'selling_price' => 1000,
+            'transaction_fee' => 0,
+            'final_amount' => 1000,
+            'platform_profit' => 100,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'paid_at' => now(),
+        ]);
+        $refundEntry = LedgerEntry::query()->create([
+            'owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => $reseller->id,
+            'type' => 'wallet_refund', 'amount' => 1000, 'reference_type' => 'order', 'reference_id' => $order->id,
+        ]);
+
+        $rows = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'));
+
+        $orderRow = $rows->firstWhere('reference', 'KRS-REG-FAILED-WALLET');
+        $this->assertSame(1000, $orderRow['gross_sen'], 'the original sale attempt stays visible with its real figures');
+        $this->assertNull($orderRow['cost_sen'], 'never delivered — no real supplier cost was drawn down');
+
+        $refundRow = $rows->firstWhere('reference', "Ledger entry #{$refundEntry->id}");
+        $this->assertSame('reseller_wallet_refund', $refundRow['type']);
+        $this->assertSame(1000, $refundRow['net_sen']);
+        $this->assertStringContainsString('KRS-REG-FAILED-WALLET', $refundRow['description']);
     }
 
     /**
@@ -145,6 +248,8 @@ class TransactionRegisterControllerTest extends TestCase
 
         $row = collect($response->json('data'))->firstWhere('reference', 'KRS-REG-UNDELIVERED');
         $this->assertSame(0, $row['net_sen'], 'net_sen must come from ledger_entries, never the checkout-time Order.platform_profit column');
+        $this->assertNull($row['cost_sen'], 'cost_sen must be null until delivered — recordOrderDrawdown() only ever runs on a successful delivery, so an undelivered order never drew down real supplier cost');
+        $this->assertSame(1000, $row['gross_sen'], 'gross_sen still shows — the customer really did pay, regardless of delivery outcome');
     }
 
     public function test_index_excludes_a_test_order(): void
@@ -294,6 +399,38 @@ class TransactionRegisterControllerTest extends TestCase
         $this->assertStringContainsString('Status', $content);
     }
 
+    /**
+     * 2026-09-30 audit addendum (Bucket C decision 4): a voided
+     * transfer's row keeps its real original Net figure, but its
+     * VOID_REVERSAL correction is FX-only (never an MYR net_sen) — so a
+     * naive sum of the whole Net column won't reconcile to a real bank
+     * statement. This footer row gives the one number that actually
+     * does: the real, non-voided transfer stays in, the voided one is
+     * excluded.
+     */
+    public function test_export_footer_totals_net_excluding_voided_rows(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->supplier();
+        SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 10000, 'fee_myr' => 500,
+            'currency' => 'IDR', 'amount_foreign_received' => '370000.0000', 'reference_no' => 'WISE-KEEP',
+        ]);
+        $voided = SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 99999, 'fee_myr' => 0,
+            'currency' => 'IDR', 'amount_foreign_received' => '999990.0000', 'reference_no' => 'WISE-VOIDED',
+        ]);
+        $voided->update(['voided_at' => now(), 'void_reason' => 'test']);
+
+        $content = $this->get('/api/accounting/transactions/export')->streamedContent();
+        $rows = array_map('str_getcsv', array_filter(explode("\n", $content)));
+        $footer = collect($rows)->first(fn ($r) => ($r[3] ?? null) === 'TOTAL Net (excluding voided rows)');
+
+        $this->assertNotNull($footer, 'export must end with a computed reconciling total');
+        // Only the non-voided transfer's net_sen counts: -(10000 + 500) = -10500 sen = -105.00.
+        $this->assertSame('-105.00', $footer[9]);
+    }
+
     // ── ADR-083 2026-09-28 addendum: pagination ──────────────────────────
 
     public function test_index_is_paginated(): void
@@ -432,6 +569,46 @@ class TransactionRegisterControllerTest extends TestCase
         $this->assertSame(890, $row['gross_sen']);
         $this->assertSame(890, $row['net_sen']);
         $this->assertStringContainsString('member@example.com', $row['description']);
+        $this->assertNull($row['fee_sen'], 'no matching MembershipCheckoutAttempt — falls back to the fee-less shape rather than guessing');
+    }
+
+    /**
+     * 2026-09-30 audit fix: when the fee record's `idempotency_key`
+     * matches a real `MembershipCheckoutAttempt.subscription_number`
+     * (the join `MembershipSubscriptionService::completePaidAttempt()`
+     * establishes), the real CHIP fee is now shown — the same
+     * total_charged_sen - fee_sen computation
+     * `SettlementReconciliationService::resolveMatch()` already uses.
+     */
+    public function test_index_shows_the_real_chip_fee_for_a_membership_row_with_a_matching_checkout_attempt(): void
+    {
+        $this->actAsSuperAdmin();
+        $plan = MembershipPlan::query()->first() ?? MembershipPlan::query()->create([
+            'name' => 'Tier 1', 'fee_sen' => 1990, 'quota_sen' => 10000, 'discount_percent' => 70,
+        ]);
+        $membership = Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'member2@example.com', 'membership_plan_id' => $plan->id, 'status' => 'active',
+            'cycle_started_at' => now(), 'quota_remaining_sen' => $plan->quota_sen, 'expires_at' => now()->addMonth(),
+        ]);
+        MembershipCheckoutAttempt::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'member2@example.com', 'membership_plan_id' => $plan->id,
+            'fee_sen' => 1990, 'total_charged_sen' => 2090, 'channel_code' => 'fpx',
+            'subscription_number' => 'SUB-REG-1', 'idempotency_key' => 'idem-1',
+            'status' => \App\Services\Membership\MembershipCheckoutAttemptStatus::Paid->value,
+        ]);
+        $record = MembershipFeeRecord::query()->create([
+            'membership_id' => $membership->id, 'membership_plan_id' => $plan->id, 'amount_sen' => 1990,
+            'idempotency_key' => 'SUB-REG-1',
+        ]);
+
+        $response = $this->getJson('/api/accounting/transactions')->assertOk();
+
+        $row = collect($response->json('data'))->firstWhere('reference', "Membership Fee #{$record->id}");
+        $this->assertSame(2090, $row['gross_sen'], 'gross now reflects the real total charged, not just the plan fee');
+        $this->assertSame(100, $row['fee_sen'], 'the real CHIP fee — total_charged_sen minus the (confusingly-named) plan fee_sen');
+        $this->assertSame(1990, $row['net_sen'], 'net stays the plan revenue actually recognized');
     }
 
     public function test_index_includes_a_paid_wallet_topup_row_but_not_a_pending_one(): void

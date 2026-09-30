@@ -409,17 +409,32 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->assertSame(2000, $detail['top_sources'][0]['total_spent']);
     }
 
+    /**
+     * 2026-10-01 fix: was built on `CarbonImmutable::now()` (app default
+     * UTC, `config('app.timezone')`), but `monthlyTrend()` buckets a
+     * `paid_at` by converting it to `CustomerAnalyticsService::TIMEZONE`
+     * (Asia/Kuala_Lumpur) first. Near KL midnight (16:00 UTC), those two
+     * clocks disagree about which month "now" is in — an order the test
+     * wrote as UTC-"today" can land in KL-tomorrow's month once the
+     * service converts it, so `$trend[$thisMonthKey]` (computed the same
+     * UTC way) goes missing. Confirmed live: CI hit exactly this the
+     * night of 2026-09-30/10-01. Fixed by computing every "now" here in
+     * the same timezone the service under test actually buckets by —
+     * deterministic regardless of which side of KL midnight CI runs on.
+     */
     public function test_monthly_trend_buckets_by_paid_month(): void
     {
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => CarbonImmutable::now()->subMonths(1)->startOfMonth()->addDays(5)]);
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => CarbonImmutable::now()->subMonths(1)->startOfMonth()->addDays(10)]);
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-3', 'final_amount' => 2000, 'paid_at' => CarbonImmutable::now()]);
+        $now = CarbonImmutable::now(CustomerAnalyticsService::TIMEZONE);
+
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(5)]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(10)]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-3', 'final_amount' => 2000, 'paid_at' => $now]);
 
         $detail = $this->analytics->customerDetail('trend@example.com');
         $trend = collect($detail['monthly_trend'])->keyBy('month');
 
-        $lastMonthKey = CarbonImmutable::now()->subMonths(1)->format('Y-m');
-        $thisMonthKey = CarbonImmutable::now()->format('Y-m');
+        $lastMonthKey = $now->subMonths(1)->format('Y-m');
+        $thisMonthKey = $now->format('Y-m');
 
         $this->assertSame(1500, $trend[$lastMonthKey]['total_spent']);
         $this->assertSame(2000, $trend[$thisMonthKey]['total_spent']);

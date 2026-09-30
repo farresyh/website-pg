@@ -13,6 +13,7 @@ use App\Models\BudgetEnvelopeEntry;
 use App\Services\Accounting\BudgetEnvelopeEntryCategory;
 use App\Services\Accounting\BudgetEnvelopeService;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
+use App\Services\Accounting\PaidFrom;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -64,17 +65,26 @@ class BudgetEnvelopeController extends Controller
                     'typical_sign' => $c->typicalSign(),
                 ])
                 ->values(),
+            'paid_from_options' => collect(PaidFrom::cases())
+                ->map(fn (PaidFrom $p) => ['value' => $p->value, 'label' => $p->label()])
+                ->values(),
             'current_month_summary' => $monthSummary,
             // Deliberately labeled "rough"/"unaudited" — a soft warning
             // aid for Allocate Monthly Profit, never the authoritative
             // "net profit" figure the founder's own grilling session
             // decided against computing. Sums the P&L-shaped lines only
-            // (never supplier_prepaid_topup/fx_variance — those are
-            // capital movements, not P&L).
+            // (never supplier_prepaid_topup/fx_variance/reseller_wallet_
+            // balance — those are capital movements or a liability
+            // snapshot, not P&L). `bank_transfer_fees_sen` (2026-09-30
+            // addendum, split out of supplier_prepaid_topup_sen in the
+            // 2026-09-30 external-review fix) is a real expense —
+            // missing from this estimate would have been the exact
+            // "invisible cost" gap this rough figure exists to surface.
             'current_month_rough_pl_estimate_sen' => $monthSummary['sales_revenue_sen']
                 + $monthSummary['membership_revenue_sen']
                 - $monthSummary['cogs_sen']
                 + $monthSummary['payment_processing_gain_loss_sen']
+                - $monthSummary['bank_transfer_fees_sen']
                 - $monthSummary['affiliate_commission_expense_sen']
                 - $monthSummary['voucher_liability_issued_sen'],
             'current_month_label' => $now->format('F Y'),
@@ -136,6 +146,9 @@ class BudgetEnvelopeController extends Controller
             $data['description'],
             $request->file('receipt'),
             $request->user()->id,
+            isset($data['transaction_date']) ? Carbon::parse($data['transaction_date']) : null,
+            isset($data['paid_from']) ? PaidFrom::from($data['paid_from']) : null,
+            $data['reference_no'] ?? null,
         );
 
         Log::info('Budget envelope entry recorded', [
@@ -169,7 +182,11 @@ class BudgetEnvelopeController extends Controller
                 'category' => $entry->category->value,
                 'category_label' => $entry->category->label(),
                 'amount_sen' => $entry->amount_sen,
+                'transaction_date' => $entry->transaction_date?->toDateString(),
                 'description' => $entry->description,
+                'paid_from' => $entry->paid_from?->value,
+                'paid_from_label' => $entry->paid_from?->label(),
+                'reference_no' => $entry->reference_no,
                 'has_receipt' => $entry->receipt_path !== null,
                 'reverses_entry_id' => $entry->reverses_entry_id,
                 'is_voided' => BudgetEnvelopeEntry::query()->where('reverses_entry_id', $entry->id)->exists(),
@@ -245,7 +262,7 @@ class BudgetEnvelopeController extends Controller
 
         return response()->streamDownload(function () use ($entries, $reversedEntryIds) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Envelope', 'Category', 'Amount (RM)', 'Description', 'Recorded By', 'Has Receipt', 'Status']);
+            fputcsv($out, ['Recorded At', 'Transaction Date', 'Envelope', 'Category', 'Amount (RM)', 'Description', 'Paid From', 'Reference', 'Recorded By', 'Has Receipt', 'Status']);
 
             foreach ($entries as $entry) {
                 $status = $entry->reverses_entry_id !== null
@@ -254,10 +271,13 @@ class BudgetEnvelopeController extends Controller
 
                 fputcsv($out, [
                     $entry->created_at->toIso8601String(),
+                    $entry->transaction_date?->toDateString() ?? '',
                     $entry->budgetEnvelope->name,
                     $entry->category->label(),
                     number_format($entry->amount_sen / 100, 2, '.', ''),
                     $entry->description,
+                    $entry->paid_from?->label() ?? '',
+                    $entry->reference_no ?? '',
                     $entry->createdBy?->name ?? '',
                     $entry->receipt_path !== null ? 'Yes' : 'No',
                     $status,
