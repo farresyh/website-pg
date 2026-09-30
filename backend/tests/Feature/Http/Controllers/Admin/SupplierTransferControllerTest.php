@@ -568,6 +568,60 @@ class SupplierTransferControllerTest extends TestCase
         ]);
     }
 
+    /**
+     * 2026-10-01 fix: `effective_rate` is derived from `amount_myr_sent`
+     * but was never recomputed on a correction — found live after two
+     * real corrections left the Funding History page's own "Rate" column
+     * silently wrong (zero effect on any real total, since
+     * MonthlyAccountingSummaryService::weightedAverageRate() always
+     * recomputes fresh from amount_myr_sent directly).
+     */
+    public function test_correct_recomputes_effective_rate_when_amount_myr_sent_changes(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
+            'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+        $this->assertSame('0.00023886', $transfer->effective_rate);
+
+        $response = $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'amount_myr_sent' => 19950,
+            'reason' => 'Fat-fingered the RM sent amount at entry time',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('correction.changes.effective_rate', ['0.00023886', '0.00023959']);
+        $this->assertDatabaseHas('supplier_transfers', [
+            'id' => $transfer->id, 'effective_rate' => '0.00023959',
+        ]);
+    }
+
+    /** A correction that never touches amount_myr_sent must leave effective_rate untouched — no diff row for a field that didn't change. */
+    public function test_correct_leaves_effective_rate_untouched_when_amount_myr_sent_is_not_changed(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
+            'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $response = $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'reference_no' => 'WISE-REF-1',
+            'reason' => 'Adding the reference from the receipt',
+        ]);
+
+        $response->assertCreated();
+        $this->assertArrayNotHasKey('effective_rate', $response->json('correction.changes'));
+        $this->assertDatabaseHas('supplier_transfers', [
+            'id' => $transfer->id, 'effective_rate' => '0.00023886',
+        ]);
+    }
+
     /** Editing RM sent must never move the ledger balance — that's the whole point of the ledger-affecting/metadata split. */
     public function test_correct_never_touches_the_ledger_balance(): void
     {
