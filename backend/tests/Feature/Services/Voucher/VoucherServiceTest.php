@@ -113,6 +113,16 @@ class VoucherServiceTest extends TestCase
         $this->assertSame(1000, $preview->discountSen);
     }
 
+    /** ADR-116 decision 8: the same number typed two ways is still the owner. */
+    public function test_preview_matches_the_same_phone_typed_in_a_different_format(): void
+    {
+        $this->voucher(['code' => 'KRS-PREVIEW-5', 'customer_email' => 'owner@example.com', 'customer_phone' => '011-123 4567']);
+
+        $preview = app(VoucherService::class)->preview('KRS-PREVIEW-5', 'different@example.com', '+60111234567', 1000);
+
+        $this->assertSame(1000, $preview->discountSen);
+    }
+
     public function test_preview_rejects_when_neither_email_nor_phone_matches(): void
     {
         $this->voucher(['code' => 'KRS-PREVIEW-4', 'customer_email' => 'owner@example.com', 'customer_phone' => '0111234567']);
