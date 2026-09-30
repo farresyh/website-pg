@@ -79,6 +79,11 @@ class BrandingController extends Controller
                     'theme_mode' => $branding?->theme_mode ?? 'light',
                     'support_email' => $branding?->support_email,
                     'support_phone' => $branding?->support_phone,
+                    // ADR-116 decision 6: the order status page's WhatsApp
+                    // buttons go to the platform's customer-support number
+                    // (the one OpenWA reads), for every brand. `support_phone`
+                    // above stays the brand's own, for the footer.
+                    'order_support_phone' => config('services.openwa.cs_phone'),
                     'telegram_contact_link' => $branding?->telegram_contact_link,
                     'social_links' => $branding?->social_links ?: null,
                     'footer_text' => self::substitute($footer?->footer_text, $storeName),
