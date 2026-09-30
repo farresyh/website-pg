@@ -110,7 +110,7 @@ export interface OrderDeliveryLeg {
 
 export interface CustomerNotification {
   id: number;
-  event: "voucher_issued" | "voucher_restored" | string;
+  event: "voucher_issued" | "voucher_restored" | "delivered_receipt" | "optin_reply" | string;
   phone: string | null;
   status: "queued" | "sent" | "failed" | "skipped";
   attempts: number;

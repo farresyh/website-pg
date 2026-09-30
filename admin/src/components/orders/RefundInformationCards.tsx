@@ -52,6 +52,8 @@ function formatRm(sen: number): string {
 const NOTIFICATION_EVENT_LABEL: Record<string, string> = {
   voucher_issued: "Voucher code",
   voucher_restored: "Voucher restored",
+  delivered_receipt: "Receipt",
+  optin_reply: "Opt-in reply",
 };
 
 const NOTIFICATION_STATUS_SEVERITY = {

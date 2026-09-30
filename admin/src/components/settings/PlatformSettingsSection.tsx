@@ -166,7 +166,7 @@ export default function PlatformSettingsSection({
           <div>
             <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Customer WhatsApp notifications</h3>
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-              Sends voucher codes to customers from the customer-support WhatsApp number. Turn off to stop all sends at once.
+              Sends voucher codes, and receipts to customers who opted in, from the customer-support WhatsApp number. Turn off to stop all sends at once.
             </p>
           </div>
           <Switch checked={whatsappEnabled} onChange={setWhatsappEnabled} />
