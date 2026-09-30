@@ -48,6 +48,14 @@ Laravel-specific, loaded only when working inside `backend/`.
   (`SupplierAdapterFactory::resubmitReplaysOutcome()`, Digiflazz), else
   NeedsReview (ADR-102 + its 2026-09-29 addendum). Never mint a new
   reference for an order that may already have reached the supplier (M-1).
+- **Customer messages go only through `CustomerNotificationService`**
+  (ADR-116): WhatsApp from the OpenWA `customer-support` session, never
+  email, never a direct `OpenWaClient` call. It owns scope, the master
+  switch, opt-in, de-duplication (`customer_notifications.dedupe_key`),
+  per-brand wording and pacing (the one-worker `whatsapp` lane). A new
+  customer-facing event is a new method there. Compare or send a phone
+  number only through `App\Support\PhoneNumber`, since stored
+  `customer_phone` is raw customer input and is never rewritten.
 - **Public API responses never leak internal financial fields** —
   `cost_price`, `standard_selling_price`, `platform_profit`, `affiliate_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing

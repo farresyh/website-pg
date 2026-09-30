@@ -374,7 +374,7 @@ MUI-11 is the same screen as DEV-1/2 (§6.18 Admin — Developer Tools) — both
 8. Xendit webhook confirms payment (verified per PAY-1) → `payment_status = paid`. **Only now** may delivery proceed (ORD-11) — `delivery_status` moves to `processing`.
 9. System submits order to the appropriate supplier via the Adapter layer, using the same `reference_number` on any retry.
 10. Supplier delivers credits and returns success response (normalized via Adapter) → `delivery_status = delivered`. A reconciliation job independently confirms this via the supplier's status-check endpoint if no callback is received within a threshold (ORD-10).
-11. Customer receives notification (email/auto) and can leave a review.
+11. Customer receives a WhatsApp receipt with a review link, **if their phone number has opted in** (the "Get updates on WhatsApp" button or any support chat on the customer-support number; `STOP` opts out). No email. See [ADR-116](./adr.md).
 
 ## 7.2 Order Failure & Resolution (no cash refund, per ADR-004)
 
@@ -445,7 +445,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 4. **Restore-only, ADR-024's 2026-09-17 addendum:** if that computed amount is exactly `0` (a full-cover-by-voucher order, ADR-024 decision 5, that later fails delivery), no new Voucher is created — the button auto-labels "Restore Voucher" instead of "Issue Voucher," and only the order's own original voucher (the one it was paid with) gets its spent balance given back. Same one action either way, decided from the order's own state before the admin clicks anything.
 
 **From here, both paths converge:**
-4. Customer receives voucher code via email.
+4. Customer receives the voucher code on WhatsApp, at the order's phone number (Path B), or the phone the admin entered (Path A, optional). It is sent proactively, with no opt-in needed. It is never shown on the track-order page ([ADR-116](./adr.md)). If the send fails or is skipped, the admin sees why on the order or voucher page and sends the code by hand.
 5. Customer applies voucher on next purchase — remaining amount is decremented via an **atomic, row-locked** operation (VCH-5) so concurrent redemption attempts cannot double-spend the same voucher.
 6. Voucher becomes "Exhausted" when remaining reaches zero, or "Expired" past expiry date.
 
@@ -503,8 +503,8 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 | **Gamevion** | Supplier — game credit catalog, price feed, order creation/fulfillment | **Integrated but deliberately unfunded (2026-09-24, Digiflazz-only).** First real `SupplierAdapter`. Static Bearer + API-key, `referenceNumber` + `409 Duplicate` idempotency, per-purchase `callback_url`. Sandbox via `GAMEVION_SANDBOX=true`. ADR-006/040. |
 | **Digiflazz** | Second supplier — Indonesian H2H aggregator (486 game SKUs + data SKUs) | **The only live supplier.** Prod key wired 2026-09-02, **funded 2026-09-15**, delivering real orders. IDR→MYR FX conversion at the sync boundary (ADR-033). Inbound `POST /api/webhooks/digiflazz` (HMAC-SHA1 `X-Hub-Signature` + IP allowlist). Topup has no rate limit; the full price list is limited to 1 call per 5 min (`rc 83`), per Digiflazz CS on 2026-09-29. Same-`ref_id` re-submit replays the stored outcome, which ADR-102's 2026-09-29 addendum relies on. ADR-030/067/069. |
 | **Supplier API(s) — general** | The Adapter contract all suppliers implement | Confirmed to vary significantly per supplier (auth, response envelopes, validation availability per-game, idempotency). All access goes through the Adapter layer (§6.21), resolved per-order by `supplier_id` (`SupplierAdapterFactory`, ADR-031). Onboarding a new supplier = a new adapter, enforced from MVP (ADR-006). |
-| **OpenWA** | WhatsApp gateway for the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki` command set) | Self-hosted OpenWA session. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`). Provisioned + prod-verified end-to-end 2026-09-05/06. ADR-075/076. |
-| **Plunk** | Transactional email — membership OTP + receipts, partner-portal invites, domain-status mails, and ops alerts (backup failure, Horizon long-wait). **No customer order emails exist yet** (audit M-11, §16 item 48) | API-based (`PLUNK_API_KEY`). Replaced the generic "SMTP or API" placeholder. ADR-027/068. |
+| **OpenWA** | WhatsApp gateway, two sessions. `reseller-bot` runs the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki`). `customer-support` (+60 11-4301 3150) sends customer voucher codes and opted-in Delivered receipts, and receives opt-in/`STOP` (ADR-116) | Self-hosted on the prod box, v0.23.7, Baileys engine. `SEND_PACING` is on (warm-up and cold caps) and `SIMULATE_TYPING` is on. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`) routes by `sessionId`. ADR-075/076/116. |
+| **Plunk** | Transactional email — membership OTP + receipts, partner-portal invites, domain-status mails, and ops alerts (backup failure, Horizon long-wait, stale FX rate). Customer order notifications go by WhatsApp instead (ADR-116) | API-based (`PLUNK_API_KEY`). Replaced the generic "SMTP or API" placeholder. ADR-027/068. |
 | **Laravel Reverb** | Realtime broadcasting — order-status push, replaces application-level polling on the customer buy-flow | Self-hosted WebSocket server + Echo client. ADR-047, ADR-071 PR4. |
 | **Vercel** | Custom-domain provisioning for Affiliate whitelabel storefronts | `AffiliateDomainProvider` seam (Vercel / no-op). `affiliate_domains` table, self-serve onboarding, provider opacity in the portal. ADR-060 (reverses decision 3's Cloudflare-for-SaaS), ADR-078. |
 | **Google Analytics (GA4) / Facebook Pixel / TikTok Pixel** | Website analytics + ad conversion tracking | IDs from Settings (per-brand for Affiliates). |
@@ -582,7 +582,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-09-29).** The platform is feature-complete and live
+**Where things stand (2026-09-30).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -591,7 +591,16 @@ the CHIP + Digiflazz webhooks are proven end-to-end with real money.
 orders can be paid but not delivered. **There are no external customers yet**:
 every order so far is the founder's own testing.
 
-**Latest release, 2026-09-29 (`staging`→`main`, PR #320, #306–#319):**
+**Release 2026-09-30 (`staging`→`main`): audit Wave 5, which closes the 2026-09-28 audit.**
+- PR-A #322: M-10 (supplier-transfer void race) and six money-hygiene Lows,
+  including a DB-level `ledger_entries` duplicate backstop.
+- PR-B1 #323 and PR-B2: customer order notifications over WhatsApp
+  (ADR-116, M-11). Voucher codes are sent proactively; Delivered receipts go
+  to opted-in numbers only. Both go through the OpenWA `customer-support`
+  session on a paced one-worker lane, behind a master switch that is
+  **default OFF**. The founder's post-deploy steps are §16 item 54.
+
+**Previous release, 2026-09-29 (`staging`→`main`, PR #320, #306–#319):**
 - The 2026-09-28 full system audit's Waves 1–4 (money, races, security, burst
   prep).
 - The pre-release review fixes (PR-C #318, PR-D #319), including automatic
@@ -604,7 +613,7 @@ every order so far is the founder's own testing.
 - The unused local `mysqld` was disabled.
 
 Deploy and server state were verified by the model. The founder's real-order
-smoke test is still owed (§16 item 51). Wave 5 is the next build (§16 item 48).
+smoke test is still owed and now covers both releases (§16 item 51).
 
 **Infrastructure:**
 - Backend runs on the `pekangame-prod-lwf` DigitalOcean droplet (ADR-114);
@@ -642,6 +651,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
+| Customer notifications (WhatsApp) | 🟡 Built, released 2026-09-30, switch **OFF** until the founder's post-deploy steps (§16 item 54) are done. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers, where opt-in is per phone via the order page's WhatsApp buttons and `STOP` opts out. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
@@ -717,39 +727,33 @@ production before building on it.
 
 ## Next up
 
-51. **Founder real-order smoke test of the 2026-09-29 release (#320)** —
-    deferred by the founder at session close, owed before Wave 5. Place real
-    orders on the founder's own account and confirm each reaches **Delivered**:
+54. **Turn on customer WhatsApp notifications (founder, after the
+    2026-09-30 deploy).** Already done: the OpenWA `SEND_PACING` flags are
+    live, and `OPENWA_CS_SESSION_ID` / `OPENWA_CS_PHONE` / `OPENWA_CS_API_KEY`
+    are set and verified. Still to do, in this order:
+    - (a) **Only after the deploy is live:** in the OpenWA dashboard, add a
+      webhook on the `customer-support` session to
+      `https://api.pekangame.space/api/webhooks/openwa`, with events
+      `message.received` and `session.status` and the same secret as the
+      bot's webhook. It must not exist before the deploy: the pre-release code
+      has no `sessionId` filter, so CS group messages would reach the reseller
+      bot.
+    - (b) Admin → Settings → turn on **Customer WhatsApp notifications**.
+    - (c) Test with the founder's own number: Issue Voucher on a failed test
+      order (code arrives), then tap "Get Updates on WhatsApp" on a delivered
+      order (receipt arrives), then `STOP`.
+
+51. **Founder real-order smoke test of the 2026-09-29 and 2026-09-30
+    releases** — deferred by the founder. Place real orders on the founder's
+    own account and confirm each reaches **Delivered**:
     - (a) a storefront order (the `orders` lane);
     - (b) a Reseller portal or bot `.order` (the `orders-reseller` lane, bot
       reply via `default`, wallet debited);
     - (c) a **full-voucher-cover** order: Paid with no CHIP step, then
-      Delivered, voucher balance reduced (the M-6 flow).
+      Delivered, voucher balance reduced (the M-6 flow);
+    - (d) once item 54 is done, the WhatsApp paths in 54(c).
 
     The model can watch Horizon and logs live over SSH while these run.
-
-48. **Wave 5 — remaining money hygiene + customer notifications.**
-    **PR-A built 2026-09-29** (branch `fix/2026-09-29-wave5-money-hygiene`):
-    M-10 and all six Lows below. See the build-log entry of the same date.
-    The prod duplicate check on `ledger_entries` was run 2026-09-29 and is
-    clean for the final rule, so the migration is safe to deploy.
-    Still open: **M-11 (PR-B)**. Grilled 2026-09-30 as
-    [ADR-116](./adr.md): WhatsApp through OpenWA, not email. The build is
-    split into PR-B1 (backend + vouchers) and PR-B2 (opt-in + receipts).
-    - ~~**M-10 (Medium)**~~ — fixed in PR-A (the voided check moved under the lock).
-    - **M-11 (Medium)** — no order emails exist at all (no `app/Mail`, no
-      templates) — a customer whose order fails and gets a voucher never
-      learns the code unless an admin contacts them manually. Overlaps
-      PRD §12's already-tracked Plunk order-email gap (item 6 area).
-    - ~~Low~~ (all fixed in PR-A): admin manual wallet credit (`ResellerWalletController`) has no
-      idempotency key; `ledger_entries` has no DB-level unique-index
-      backstop against a duplicate entry (app-level dedupe only);
-      `Package.combo_override_price` has no cost-floor check (a 500, not
-      a loss, if it drops below cost); `CurrencyRateService`'s stale-FX
-      fallback has no age alert; a late non-Paid CHIP event can overwrite
-      an already-Paid order (small race window); a hidden
-      (`AffiliateGame.is_visible=false`) game is still buyable via direct
-      checkout on an affiliate storefront.
 
 ## Hardening (founder `.env` / infra)
 
@@ -909,6 +913,11 @@ production before building on it.
   - Built and released 2026-09-29 (#309–#317 via #320).
   - Impersonation scope is a founder won't-fix (ADR-058 addendum).
   - K-7 Redis config was applied live.
+- **48** Audit Wave 5, the audit's last wave, released 2026-09-30:
+  - PR-A #322: M-10 and six money Lows, including the `ledger_entries` DB
+    backstop. A prod pre-check caught a legitimate reasoned correction, so the
+    dedupe is scoped to `reason IS NULL`.
+  - PR-B1 #323 and PR-B2: M-11 as WhatsApp notifications (ADR-116).
 - **50** Pre-release review — PR-C #318 (checkout/voucher/webhook/API fixes, Horizon health) and PR-D #319 (automatic order recovery, ADR-102 addendum; checkout CGNAT throttle, ADR-014 addendum). Released 2026-09-29.
 
 ## Parked by founder decision — not scheduled
