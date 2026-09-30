@@ -1680,3 +1680,40 @@ clean.
 design ("storefront address is not recognised": `localhost` isn't a
 registered brand host, ADR-060), so the founder's live check after release
 is the visual verification.
+
+## 2026-09-30 — Session close: state of play
+
+A long session. Everything below is verified against GitHub and prod at close.
+- **Released to `main` (#325, deploy verified on the server):** audit Wave 5.
+  - #322: M-10 and money Lows.
+  - #323/#324: WhatsApp customer notifications, ADR-116.
+  - All five waves of the 2026-09-28 audit are now built and released.
+- **On `staging` only:** #326, the ADR-116 post-live-test follow-up. Prod
+  still runs #325's first version until the next `staging`→`main` release.
+- **Prod WhatsApp state:**
+  - The switch is ON; the CS webhook is live (secret fixed); OpenWA
+    `SEND_PACING` is on.
+  - `customer_notifications`: 2 receipts sent (FixFast and PekanGame, correct
+    brand each), 1 skipped (before the switch was saved), 1 `stop_reply` sent.
+  - 1 `whatsapp_contacts` row: the founder's number, currently opted out after
+    the STOP test.
+  - The voucher path has not been live-tested yet.
+- **Owed next session:**
+  - PRD §16 item 54: release #326, retest on prod, voucher test.
+  - Item 51: real-order smoke test.
+  - Item 11: uptime monitor.
+  - Item 52: `doadmin` least-privilege and old-droplet decommission.
+  - Item 27: e2e `next build && next start`, now more pressing after two
+    consecutive flakes.
+- **Session gotchas worth remembering:**
+  - Forge's site "Environment" tab edits the **Laravel** `.env`, not
+    OpenWA's.
+  - OpenWA reads its own `.env` through dotenv, which `/proc/environ` can't
+    show.
+  - The backend's OpenWA key is session-scoped, so `GET /api/sessions` only
+    lists the sessions that key can see.
+  - An admin Settings switch needs "Save Platform Settings".
+  - `db:wipe --drop-views` is needed before re-running RefreshDatabase tests on
+    the Docker MySQL test DB.
+  - A MySQL unique index over three utf8mb4 `varchar(255)` columns exceeds
+    InnoDB's key limit.

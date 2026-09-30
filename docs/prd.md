@@ -597,8 +597,23 @@ every order so far is the founder's own testing.
 - PR-B1 #323 and PR-B2: customer order notifications over WhatsApp
   (ADR-116, M-11). Voucher codes are sent proactively; Delivered receipts go
   to opted-in numbers only. Both go through the OpenWA `customer-support`
-  session on a paced one-worker lane, behind a master switch that is
-  **default OFF**. The founder's post-deploy steps are §16 item 54.
+  session on a paced one-worker lane, behind a master switch that was
+  **default OFF**. The founder turned it on the same day after the post-deploy
+  steps (§16 item 54).
+
+**On `staging`, not yet released to `main` (as of 2026-09-30 close):** #326,
+the ADR-116 follow-up from the first live test.
+- Any message carrying an order number opts the sender in and gets a
+  timeline status card back.
+- A mistyped number gets a "not found" reply.
+- `START`/`STOP`, the 30-minute card throttle, and a fix that revives a
+  `skipped` notification.
+- The order page help card is reordered (Contact Support → Get Updates → Buy
+  Again, one filled button per state).
+
+Until #326 is released, **prod still runs #325's first version**: the
+"update" keyword decides between an auto-reply and a silent opt-in, and
+receipts use the older plain layout.
 
 **Previous release, 2026-09-29 (`staging`→`main`, PR #320, #306–#319):**
 - The 2026-09-28 full system audit's Waves 1–4 (money, races, security, burst
@@ -651,7 +666,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
-| Customer notifications (WhatsApp) | 🟡 Built, released 2026-09-30, switch **OFF** until the founder's post-deploy steps (§16 item 54) are done. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers, where opt-in is per phone via the order page's WhatsApp buttons and `STOP` opts out. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used | ADR-116 |
+| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. **The voucher path is not yet live-tested** (it needs a failed purchase). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 is on `staging`, unreleased** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
@@ -727,21 +742,30 @@ production before building on it.
 
 ## Next up
 
-54. **Turn on customer WhatsApp notifications (founder, after the
-    2026-09-30 deploy).** Already done: the OpenWA `SEND_PACING` flags are
-    live, and `OPENWA_CS_SESSION_ID` / `OPENWA_CS_PHONE` / `OPENWA_CS_API_KEY`
-    are set and verified. Still to do, in this order:
-    - (a) **Only after the deploy is live:** in the OpenWA dashboard, add a
-      webhook on the `customer-support` session to
-      `https://api.pekangame.space/api/webhooks/openwa`, with events
-      `message.received` and `session.status` and the same secret as the
-      bot's webhook. It must not exist before the deploy: the pre-release code
-      has no `sessionId` filter, so CS group messages would reach the reseller
-      bot.
-    - (b) Admin → Settings → turn on **Customer WhatsApp notifications**.
-    - (c) Test with the founder's own number: Issue Voucher on a failed test
-      order (code arrives), then tap "Get Updates on WhatsApp" on a delivered
-      order (receipt arrives), then `STOP`.
+54. **Customer WhatsApp: release the follow-up and finish live testing.**
+    Done 2026-09-30:
+    - OpenWA `SEND_PACING` on;
+    - CS env set;
+    - CS-session webhook added (secret corrected to `OPENWA_WEBHOOK_SECRET`
+      through OpenWA's API);
+    - switch ON;
+    - receipt and `STOP` live-tested.
+
+    Still to do:
+    - (a) Release #326 (`staging` → `main`) when the founder asks.
+    - (b) After release, retest on prod with the founder's own number:
+      - message an order number from each order-page button (the timeline
+        card should come back);
+      - a mistyped number (not-found reply);
+      - `START`, since the founder's number is currently opted out after the
+        STOP test.
+    - (c) The **voucher path**: Issue Voucher on a failed purchase made with the
+      founder's number; the code should arrive on WhatsApp.
+    - (d) Optionally re-send the one `skipped` receipt (order
+      `PG-EGMBKUWJEVX2`, recorded before the switch was saved). After #326, it
+      is revived only when that exact event fires again, which for a receipt
+      won't happen. Messaging that order number now gets the status card
+      instead.
 
 51. **Founder real-order smoke test of the 2026-09-29 and 2026-09-30
     releases** — deferred by the founder. Place real orders on the founder's
@@ -751,7 +775,7 @@ production before building on it.
       reply via `default`, wallet debited);
     - (c) a **full-voucher-cover** order: Paid with no CHIP step, then
       Delivered, voucher balance reduced (the M-6 flow);
-    - (d) once item 54 is done, the WhatsApp paths in 54(c).
+    - (d) the WhatsApp paths still owed in item 54 (b)–(c).
 
     The model can watch Horizon and logs live over SSH while these run.
 
@@ -864,7 +888,13 @@ production before building on it.
     separate ADR before implementation.
 27. **`e2e`'s `playwright` CI job intermittently fails to boot `admin/`'s
     `next dev` webServer — a recurring CI-environment flake, not a code
-    bug.** **Attempted 2026-09-28, reverted same day — made things worse,
+    bug.** **Recurred 2026-09-30 on PR #324,** failing twice in a row. The
+    signature was the same Turbopack `next/font/google` crash on JetBrains
+    Mono in `admin/src/app/layout.tsx`, with no test ever running. The same
+    code booted admin cleanly locally, and attempt 3 passed. Two consecutive
+    failures now make "a rerun always clears it" less reliable, which is more
+    reason for the `next build && next start` fix below.
+    **Attempted 2026-09-28, reverted same day — made things worse,
     not better.** Pinning `--webpack` (matching this repo's existing
     `next build --webpack` workaround elsewhere) did stop the Turbopack
     font-loader crash, but introduced a *consistent* new failure instead:
