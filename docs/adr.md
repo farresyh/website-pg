@@ -6761,3 +6761,60 @@ The founder chose WhatsApp over email, because customers rarely read email. Ever
    created only after this code is live. The code before this release has no
    `sessionId` routing, so a CS group message would have reached the reseller
    bot.
+
+### Addendum (2026-09-30, after the first live test) — the order number is the opt-in; one status card for every reply
+
+**Context:** the founder's first live test surfaced two problems.
+- Opt-in detection rested on the word "update", which Malaysian customers
+  write in ordinary support chats all the time ("tolong update order PG-…").
+  The bot would have cut into a staff conversation.
+- A message `skipped` while the switch was still off could never be sent,
+  because the `dedupe_key` blocked it forever.
+
+The founder's point: the goal is only to learn which number wrote to us
+first, and the order number already proves that.
+
+**Decisions** (they supersede build-addendum items 1 and 2):
+1. **Any direct message on the CS session carrying a valid order number** opts
+   the sender in and gets that order's **status card** back. It doesn't
+   matter which button prefilled it or whether it was typed by hand. There is
+   no keyword and no "support vs updates" split.
+   - An order number we don't have (usually a typo) gets a brand-less "not
+     found" reply: check for typos; the number is on the order page right
+     after payment or in the CHIP payment receipt email. It goes out at most
+     once per number every 10 minutes.
+   - The founder's call: order numbers are random per purchase, so "not found"
+     gives away nothing guessable. This reverses the first draft, which stayed
+     silent.
+2. **One status card layout (`OrderStatusCard`), in English:** a three-step
+   timeline in the same language as the order page's own stepper
+   (`✅ Paid · RM… via FPX` / `✅ Processed` or `⏳ Processing` /
+   `✅ Delivered to Player ID …` or `○ Delivery…`). It carries the brand and
+   order number on top, the item line, and an honest closing line per state
+   (awaiting payment, processing, under review, delivered with review link,
+   failed with the voucher promise). The founder's reference screenshot came
+   from a competitor, so the layout was deliberately made different from its
+   "emoji label: value" list (option A of three, chosen by the founder).
+   - The Delivered receipt is the same card plus the STOP line.
+   - The card shows only what the public track-order page shows, so it goes
+     to **whoever sent the order number**. This drops the earlier
+     checkout-number-only rule.
+   - Future automatic receipts still go only to the order's own phone, and
+     only when that phone is opted in.
+3. **The same card isn't repeated to the same number within 30 minutes** unless
+   the order's payment or delivery status changed, so a support chat that
+   keeps quoting the order number isn't flooded.
+4. **An order-number message never undoes a STOP.** Otherwise a customer who
+   said STOP and then chats with support would silently get receipts again.
+   `START` is the explicit way back in.
+5. **A skipped row is revived once its reason no longer applies.** It goes
+   back to `queued` through a conditional update, so two callers can't both
+   revive it. `sent`, `queued` and `failed` rows stay final, so a message
+   still never goes out twice.
+6. **Order-status card UI:** the button order is Contact Support → Get Updates
+   → Buy Again (the founder's call). Exactly one button is filled per state
+   (decided with the impeccable skill): Get Updates while paid and waiting,
+   Buy Again once delivered, and Contact Support on a failure or before
+   payment. Get Updates is hidden until the order is paid, and on a failure.
+   Its label is "Notify Me on WhatsApp" while waiting and "Send Receipt to
+   WhatsApp" once delivered. The card heading and body follow the state.

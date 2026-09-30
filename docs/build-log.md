@@ -1644,3 +1644,39 @@ golden path, and the real WhatsApp round trip is the founder's §16 item 54(c).
   §14 snapshot and a new §15 row are updated; §16 item 48 is closed and new
   item 54 lists the founder's post-deploy steps. `backend/AGENTS.md` gains the
   customer-messages convention.
+
+## 2026-09-30 — ADR-116 follow-up after the first live WhatsApp test: order number = opt-in, status card, skipped revival
+
+The founder tested on prod after the release. The CS webhook first returned
+401 because the dashboard secret didn't match `OPENWA_WEBHOOK_SECRET`. The model
+set it through OpenWA's `PUT /api/sessions/:id/webhooks/:id` from the backend
+`.env` without printing it, and the webhook test then returned 200.
+- The first receipt was `skipped` (the switch had been flipped but "Save
+  Platform Settings" was never pressed), and its `dedupe_key` blocked it
+  forever. That exposed the revival bug.
+- Two receipts then went out correctly, each branded by its **order** (FixFast
+  and PekanGame from the same number). STOP worked.
+
+**Fix branch `fix/2026-09-30-whatsapp-order-card`** (see the ADR-116 addendum
+of the same date):
+- The order number in any message is the opt-in, with no "update" keyword.
+- One English `OrderStatusCard` serves both the reply and the receipt. It is a
+  three-step timeline matching the order page's stepper. The founder's
+  reference screenshot was a competitor's, so the layout was made
+  deliberately different.
+- A mistyped order number gets a "not found" reply (at most every 10 minutes
+  per number) pointing to the order page or the CHIP receipt email.
+- The same card isn't repeated within 30 minutes unless the status changed.
+- `START`/`STOP`; an order-number message never undoes a STOP.
+- Skipped rows are revived through a conditional update.
+- The storefront card is reordered to Contact Support → Get Updates → Buy
+  Again, with one filled button per state (impeccable), Get Updates hidden
+  before payment and on a failure, and state-aware copy.
+
+Fast suite 2443/2443; notification tests 24/24. Storefront tsc and eslint are
+clean.
+
+**Not browser-verified.** Local storefront against the prod API is refused by
+design ("storefront address is not recognised": `localhost` isn't a
+registered brand host, ADR-060), so the founder's live check after release
+is the visual verification.

@@ -374,7 +374,7 @@ MUI-11 is the same screen as DEV-1/2 (§6.18 Admin — Developer Tools) — both
 8. Xendit webhook confirms payment (verified per PAY-1) → `payment_status = paid`. **Only now** may delivery proceed (ORD-11) — `delivery_status` moves to `processing`.
 9. System submits order to the appropriate supplier via the Adapter layer, using the same `reference_number` on any retry.
 10. Supplier delivers credits and returns success response (normalized via Adapter) → `delivery_status = delivered`. A reconciliation job independently confirms this via the supplier's status-check endpoint if no callback is received within a threshold (ORD-10).
-11. Customer receives a WhatsApp receipt with a review link, **if their phone number has opted in** (the "Get updates on WhatsApp" button or any support chat on the customer-support number; `STOP` opts out). No email. See [ADR-116](./adr.md).
+11. Customer receives a WhatsApp receipt (the order status card plus a review link), **if their phone number has opted in**. Opting in means messaging the customer-support number with any order number, from either WhatsApp button on the order page or typed by hand, and that message is answered with the order's status card. `STOP` opts out and `START` opts back in. No email. See [ADR-116](./adr.md) and its 2026-09-30 addendum.
 
 ## 7.2 Order Failure & Resolution (no cash refund, per ADR-004)
 
