@@ -30,6 +30,8 @@ class UpdatePlatformSettingsRequest extends FormRequest
             'telegram_notifications_enabled' => ['required', 'boolean'],
             'telegram_bot_token' => ['nullable', 'string', 'max:255'],
             'telegram_chat_id' => ['nullable', 'string', 'max:255'],
+            // ADR-116 decision 10 — `sometimes`, so a client that predates the switch can't reset it.
+            'whatsapp_notifications_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

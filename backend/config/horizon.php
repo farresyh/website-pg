@@ -106,6 +106,10 @@ return [
         'redis:price-sync' => 300,
         'redis:backups' => 300,
         'redis:supplier-request-logs' => 300,
+        // ADR-116: pacing spreads sends out via delayed dispatch, and a
+        // delayed job doesn't count as waiting — so a real wait here means
+        // the lane itself is stuck.
+        'redis:whatsapp' => 600,
     ],
 
     /*
@@ -351,6 +355,24 @@ return [
             'timeout' => 30,
             'nice' => 0,
         ],
+        // ADR-116 decision 7: customer WhatsApp notifications. Exactly one
+        // worker, never scaled: one send at a time is part of the anti-ban
+        // posture, not a throughput choice. The per-recipient gap comes from
+        // delayed dispatch (CustomerNotificationService::nextSendSlot()).
+        // The job's own retryUntil()/maxExceptions override tries here, so a
+        // pacing 429 release never counts as a failure.
+        'supervisor-whatsapp' => [
+            'connection' => 'redis',
+            'queue' => ['whatsapp'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 30,
+            'nice' => 0,
+        ],
         // The catch-all. Every job/listener above names its own queue via
         // onQueue()/broadcastQueue()/$queue, but a class that forgets to
         // (SendMembershipReceiptJob did — its receipt emails silently had
@@ -382,6 +404,7 @@ return [
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
             'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
+            'supervisor-whatsapp' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],
 
@@ -393,6 +416,7 @@ return [
             'supervisor-backups' => ['maxProcesses' => 1],
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
             'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
+            'supervisor-whatsapp' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],
     ],

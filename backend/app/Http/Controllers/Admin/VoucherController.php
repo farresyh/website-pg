@@ -8,6 +8,7 @@ use App\Http\Requests\Voucher\MergeVouchersRequest;
 use App\Http\Requests\Voucher\StoreVoucherFromOrderRequest;
 use App\Models\Order;
 use App\Models\Voucher;
+use App\Services\Notification\CustomerNotificationService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
@@ -34,6 +35,7 @@ class VoucherController extends Controller
 {
     public function __construct(
         private readonly VoucherService $vouchers,
+        private readonly CustomerNotificationService $notifications,
     ) {}
 
     public function index(): JsonResponse
@@ -84,6 +86,8 @@ class VoucherController extends Controller
             // which merged code consumed this one (mergeAsSource).
             'mergesAsTarget.sourceVoucher:id,code',
             'mergeAsSource.targetVoucher:id,code',
+            // ADR-116 decision 9 — did the customer get the code on WhatsApp.
+            'customerNotifications' => fn ($query) => $query->select(['id', 'voucher_id', 'event', 'phone', 'status', 'attempts', 'error', 'sent_at', 'created_at'])->oldest(),
         ]);
 
         $totalUsed = (int) $voucher->redemptions->whereIn('status', ['reserved', 'committed'])->sum('amount');
@@ -148,12 +152,18 @@ class VoucherController extends Controller
                 // ADR-060 PR-4d: the brand this promo voucher is scoped to —
                 // a required picker on the form, defaulting to the primary.
                 affiliateId: $data['affiliate_id'],
+                customerPhone: $data['customer_phone'] ?? null,
                 idempotencyKey: $data['idempotency_key'],
             );
         } catch (UniqueConstraintViolationException) {
             // Lost a genuine race — a concurrent request with the same
             // key won the INSERT between our lookup above and now.
             $voucher = Voucher::query()->where('idempotency_key', $data['idempotency_key'])->firstOrFail();
+        }
+
+        // ADR-116: only with a phone; a standalone voucher without one stays admin-delivered.
+        if ($voucher->customer_phone !== null) {
+            $this->notifications->voucherIssued($voucher);
         }
 
         return response()->json($voucher, 201);
@@ -322,6 +332,13 @@ class VoucherController extends Controller
             throw ValidationException::withMessages([
                 'order' => ['A voucher has already been issued for this order.'],
             ]);
+        }
+
+        // ADR-116 decision 4 — after commit, so a rolled-back issue never messages anyone.
+        if ($voucher !== null) {
+            $this->notifications->voucherIssued($voucher);
+        } else {
+            $this->notifications->voucherRestored($order);
         }
 
         // One shape either way: `restored_only` tells the caller which

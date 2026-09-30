@@ -414,6 +414,12 @@ class Order extends Model
      * resend from delivering the goods on top of the refund already
      * given).
      */
+    /** ADR-116 decision 9 — WhatsApp messages sent (or skipped) to this order's customer. */
+    public function customerNotifications(): HasMany
+    {
+        return $this->hasMany(CustomerNotification::class);
+    }
+
     public function isAlreadyCompensated(): bool
     {
         return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet() || $this->isVoucherRestored();
