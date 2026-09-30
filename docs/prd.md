@@ -775,7 +775,22 @@ production before building on it.
       reply via `default`, wallet debited);
     - (c) a **full-voucher-cover** order: Paid with no CHIP step, then
       Delivered, voucher balance reduced (the M-6 flow);
-    - (d) the WhatsApp paths still owed in item 54 (b)–(c).
+    - (d) the WhatsApp paths still owed in item 54 (b)–(c);
+    - (e) **2026-09-30 accounting audit fixes (PR #329, merged `staging`,
+      not yet `main`)** — verify against real production data once live:
+      `TransactionRegisterService::rows()`'s `cost_sen` is `null` for a
+      real non-delivered order, a real wallet-refunded order shows its new
+      `reseller_wallet_refund` row, a real wallet-paid order's
+      `funding_source` is `reseller_wallet`, a real membership row with a
+      matching `MembershipCheckoutAttempt` shows the real CHIP fee, and
+      `MonthlyAccountingSummaryService::forPeriod()`'s
+      `bank_transfer_fees_sen` + `supplier_prepaid_topup_sen` split still
+      sums to the same total the old bundled figure did. Deliberately
+      skipped a pre-`main` scratch-checkout verification against the real
+      prod DB (would have needed copying live `.env` credentials into a
+      scratch directory on the prod box — founder can run it
+      himself if wanted, command was handed over) in favour of checking
+      live after the real deploy instead.
 
     The model can watch Horizon and logs live over SSH while these run.
 
