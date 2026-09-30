@@ -399,6 +399,38 @@ class TransactionRegisterControllerTest extends TestCase
         $this->assertStringContainsString('Status', $content);
     }
 
+    /**
+     * 2026-09-30 audit addendum (Bucket C decision 4): a voided
+     * transfer's row keeps its real original Net figure, but its
+     * VOID_REVERSAL correction is FX-only (never an MYR net_sen) — so a
+     * naive sum of the whole Net column won't reconcile to a real bank
+     * statement. This footer row gives the one number that actually
+     * does: the real, non-voided transfer stays in, the voided one is
+     * excluded.
+     */
+    public function test_export_footer_totals_net_excluding_voided_rows(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->supplier();
+        SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 10000, 'fee_myr' => 500,
+            'currency' => 'IDR', 'amount_foreign_received' => '370000.0000', 'reference_no' => 'WISE-KEEP',
+        ]);
+        $voided = SupplierTransfer::query()->create([
+            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 99999, 'fee_myr' => 0,
+            'currency' => 'IDR', 'amount_foreign_received' => '999990.0000', 'reference_no' => 'WISE-VOIDED',
+        ]);
+        $voided->update(['voided_at' => now(), 'void_reason' => 'test']);
+
+        $content = $this->get('/api/accounting/transactions/export')->streamedContent();
+        $rows = array_map('str_getcsv', array_filter(explode("\n", $content)));
+        $footer = collect($rows)->first(fn ($r) => ($r[3] ?? null) === 'TOTAL Net (excluding voided rows)');
+
+        $this->assertNotNull($footer, 'export must end with a computed reconciling total');
+        // Only the non-voided transfer's net_sen counts: -(10000 + 500) = -10500 sen = -105.00.
+        $this->assertSame('-105.00', $footer[9]);
+    }
+
     // ── ADR-083 2026-09-28 addendum: pagination ──────────────────────────
 
     public function test_index_is_paginated(): void

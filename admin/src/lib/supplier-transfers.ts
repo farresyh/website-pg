@@ -29,6 +29,8 @@ export interface SupplierTransfer {
   id: number;
   supplier_id: number;
   source_channel: "wise" | "airwallex" | "bank";
+  /** 2026-09-30 addendum — which real account funded this, shared PaidFrom enum with the Envelope Ledger's paid_from. */
+  paid_by: string | null;
   amount_myr_sent: number;
   fee_myr: number;
   currency: string;
@@ -72,10 +74,16 @@ export interface SupplierTransfersPage {
   total: number;
 }
 
+export interface PaidFromOption {
+  value: string;
+  label: string;
+}
+
 export interface SupplierFundingLedger {
   ledger_balance: string;
   currency: string;
   transfers: SupplierTransfersPage;
+  paid_from_options: PaidFromOption[];
 }
 
 /** 2026-09-28 addendum — `from`/`to` (`Y-m-d`) + `status` back the dedicated Funding History page's filters. */
@@ -101,6 +109,7 @@ export function getSupplierTransfers(token: string, supplierId: number, filters:
 
 export interface RecordSupplierTransferValues {
   source_channel: "wise" | "airwallex" | "bank";
+  paid_by?: string;
   amount_myr_sent: number;
   fee_myr?: number;
   currency: string;
@@ -114,6 +123,7 @@ export interface RecordSupplierTransferValues {
 export function recordSupplierTransfer(token: string, supplierId: number, values: RecordSupplierTransferValues) {
   const formData = new FormData();
   formData.append("source_channel", values.source_channel);
+  if (values.paid_by) formData.append("paid_by", values.paid_by);
   formData.append("amount_myr_sent", String(values.amount_myr_sent));
   formData.append("fee_myr", String(values.fee_myr ?? 0));
   formData.append("currency", values.currency);
@@ -159,6 +169,7 @@ export function voidSupplierTransfer(token: string, transferId: number, reason: 
 /** 2026-09-28 addendum — "Edit Details": a metadata-only correction (RM sent/fee/channel/reference/receipt), never the FX ledger amounts. Only send the fields actually changed — the backend diffs against the current row and rejects a true no-op. */
 export interface CorrectSupplierTransferValues {
   source_channel?: "wise" | "airwallex" | "bank";
+  paid_by?: string;
   amount_myr_sent?: number;
   fee_myr?: number;
   reference_no?: string;
@@ -169,6 +180,7 @@ export interface CorrectSupplierTransferValues {
 export function correctSupplierTransfer(token: string, transferId: number, values: CorrectSupplierTransferValues) {
   const formData = new FormData();
   if (values.source_channel) formData.append("source_channel", values.source_channel);
+  if (values.paid_by !== undefined) formData.append("paid_by", values.paid_by);
   if (values.amount_myr_sent !== undefined) formData.append("amount_myr_sent", String(values.amount_myr_sent));
   if (values.fee_myr !== undefined) formData.append("fee_myr", String(values.fee_myr));
   if (values.reference_no !== undefined) formData.append("reference_no", values.reference_no);

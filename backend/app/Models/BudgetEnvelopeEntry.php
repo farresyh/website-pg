@@ -20,7 +20,10 @@ class BudgetEnvelopeEntry extends Model
         'budget_envelope_id',
         'category',
         'amount_sen',
+        'transaction_date',
         'description',
+        'paid_from',
+        'reference_no',
         'receipt_path',
         'reverses_entry_id',
         'void_reason',
@@ -30,6 +33,8 @@ class BudgetEnvelopeEntry extends Model
     protected $casts = [
         'category' => BudgetEnvelopeEntryCategory::class,
         'amount_sen' => 'integer',
+        'transaction_date' => 'date',
+        'paid_from' => \App\Services\Accounting\PaidFrom::class,
     ];
 
     protected static function booted(): void

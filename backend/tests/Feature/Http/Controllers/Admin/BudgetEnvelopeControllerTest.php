@@ -152,6 +152,81 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertSame(3000000, $envelope->fresh()->balanceSen());
     }
 
+    /** 2026-09-30 addendum — Bucket C decision 3: date/paid-from/reference are all optional and stored as given. */
+    public function test_recording_an_entry_with_transaction_date_paid_from_and_reference(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+
+        $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value,
+            'amount_sen' => 3000000,
+            'transaction_date' => '2026-09-15',
+            'description' => 'Modal Lokman untuk rolling capital',
+            'paid_from' => 'luqman',
+            'reference_no' => 'BANK-REF-42',
+        ])->assertCreated();
+
+        // The raw model response serializes the `date` cast as a full
+        // ISO datetime (Carbon's default JSON serialization) — the
+        // entries() listing endpoint is what hand-formats this to a
+        // plain date for display, asserted separately below.
+        $this->assertStringStartsWith('2026-09-15', $response->json('entry.transaction_date'));
+        $response->assertJsonPath('entry.paid_from', 'luqman');
+        $response->assertJsonPath('entry.reference_no', 'BANK-REF-42');
+
+        // entries() hand-formats transaction_date as a plain date, unlike storeEntry()'s raw-model response above.
+        $listed = collect($this->getJson("/api/accounting/envelopes/{$envelope->id}/entries")->json('entries'))->firstWhere('reference_no', 'BANK-REF-42');
+        $this->assertSame('2026-09-15', $listed['transaction_date']);
+        $this->assertSame('Luqman (personal)', $listed['paid_from_label']);
+    }
+
+    /** Omitting transaction_date defaults it to today, never leaves it null — an entry always has a real date. */
+    public function test_recording_an_entry_without_a_transaction_date_defaults_to_today(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+
+        $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value,
+            'amount_sen' => 100000,
+            'description' => 'no date given',
+        ])->assertCreated();
+
+        $this->assertStringStartsWith(now()->toDateString(), $response->json('entry.transaction_date'));
+    }
+
+    /**
+     * 2026-09-30 addendum — Bucket C decision 6: only ONE new category
+     * (Director Repayment), deliberately no matching "Director Advance"
+     * — the advance itself never moves envelope cash (the director
+     * spent their own money, not the company's), so it doesn't fit
+     * this table's "amount_sen is real money moving through THIS
+     * envelope" model.
+     */
+    public function test_director_repayment_category_is_available_and_debits_the_envelope(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 500000, 'description' => 'seed',
+        ]);
+
+        $categories = collect($this->getJson('/api/accounting/envelopes')->json('categories'))->pluck('value');
+        $this->assertContains('director_repayment', $categories);
+        $this->assertNotContains('director_advance', $categories, 'an advance never moves envelope cash, so it has no category here');
+
+        $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::DirectorRepayment->value,
+            'amount_sen' => 300000,
+            'description' => 'Repaying Luqman for pre-capital spending',
+            'paid_from' => 'company_account',
+        ])->assertCreated();
+
+        $this->assertSame(-300000, $response->json('entry.amount_sen'));
+        $this->assertSame(200000, $envelope->fresh()->balanceSen());
+    }
+
     /** OpexAdvertising's typical sign is negative — a plain positive magnitude in the request still debits the envelope. */
     public function test_recording_an_opex_entry_debits_the_envelope(): void
     {
@@ -297,7 +372,7 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertStringContainsString('text/csv', $response->headers->get('Content-Type'));
         $content = $response->streamedContent();
         $this->assertStringContainsString('CSV-TEST-DESC', $content);
-        $this->assertStringContainsString('Date,Envelope,Category', $content);
+        $this->assertStringContainsString('"Recorded At","Transaction Date",Envelope,Category', $content);
     }
 
     /**
@@ -323,14 +398,14 @@ class BudgetEnvelopeControllerTest extends TestCase
             array_filter(explode("\n", $this->get('/api/accounting/envelopes/export')->streamedContent())),
         );
 
-        $original = collect($rows)->first(fn ($r) => ($r[4] ?? null) === 'EXPORT-VOID-TEST');
-        $reversal = collect($rows)->first(fn ($r) => str_contains($r[4] ?? '', "reversing entry #{$entryId}"));
+        $original = collect($rows)->first(fn ($r) => ($r[5] ?? null) === 'EXPORT-VOID-TEST');
+        $reversal = collect($rows)->first(fn ($r) => str_contains($r[5] ?? '', "reversing entry #{$entryId}"));
 
         $this->assertNotNull($original, 'the original entry must still appear in the export, never dropped');
-        $this->assertSame('1000.00', $original[3]);
-        $this->assertSame('Voided', $original[7]);
+        $this->assertSame('1000.00', $original[4]);
+        $this->assertSame('Voided', $original[10]);
         $this->assertNotNull($reversal);
-        $this->assertSame('-1000.00', $reversal[3]);
-        $this->assertSame('Void reversal', $reversal[7]);
+        $this->assertSame('-1000.00', $reversal[4]);
+        $this->assertSame('Void reversal', $reversal[10]);
     }
 }

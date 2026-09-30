@@ -919,32 +919,19 @@ production before building on it.
     reconcile tasks run inline and sequentially on the same 15-minute tick.
     Not slow today; revisit if a slow CHIP lookup visibly delays delivery
     reconcile.
-55. **Accounting external-review remainder** (2026-09-30 audit, ADR-083
-    addendum — see `docs/adr.md`/`docs/build-log.md` for the 5 items already
-    fixed). Real, confirmed-missing feature requests, not bugs — none
-    started, needs a grill first (real trade-offs, broad blast radius):
-    - **No test/internal order flag.** Every order/membership record in
-      production today is the founder's own testing (zero external
-      customers, [[project_pekangame_no_external_customers_yet_2026_09_25]]
-      in memory) and nothing distinguishes that from a genuine sale in any
-      report. Biggest item here — needs a mechanism decision (staff email
-      list? manual toggle?) and touches Reports/Dashboard/CustomerAnalytics/
-      Monthly Summary, not just the Register; also a retroactive-backfill
-      question for the ~30 orders that already exist.
-    - **Voided supplier-transfer Net-column reconciliation.** A voided
-      transfer's row keeps its real original MYR figures (deliberate,
-      append-only design), but its `VOID_REVERSAL` correction is FX-only —
-      summing the Register's Net column for a period spanning a voided
-      transfer won't reconcile to the real bank statement. Real trade-off:
-      history-preservation vs. a reconcilable total.
-    - **Envelope Ledger additions**: a date field (when money actually
-      moved, not just `created_at`), a "paid from" field, a reference-number
-      field, a per-director loan category (distinct from generic Capital
-      Injection/Repayment), and opening-balance entries (the 4 starter
-      envelopes were seeded with names only, no opening entries).
-    - **"Paid by" on Supplier Funding** (which account funded a top-up —
-      Faris's Wise vs. company vs. another director) and a **reseller
-      wallet balance at month-end** line on Monthly Summary (feasibility
+55. **Test/internal order flag — grilled 2026-09-30, deliberately parked**
+    (ADR-083 2026-09-30 second addendum, `docs/adr.md`). The founder's own
+    self-purchases on the live storefront count as real "Sales revenue" —
+    real gap, but no urgent trigger to build: at ~30 orders ever, manually
+    remembering which were self-testing still works, and the platform's own
+    operating model (founder hand-types one journal into the external SaaS
+    monthly, auditor only at year-end) already gives a natural correction
+    point. **Not** every current order is the founder's own testing — a real
+    reseller's real customer order (e.g. Naeem Industries) sits in the same
+    table, so any future build here needs per-order judgment, never a
+    blanket assumption or an email-based auto-detect. Same park-until-real-
+    volume trigger as item 28 (ADR-115) — revisit together if either comes
+    up.
       question: no historical wallet-balance snapshot exists today, only
       current balance).
 

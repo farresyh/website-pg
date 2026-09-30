@@ -9,6 +9,7 @@ use App\Models\PaymentSettlement;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Report\ReportService;
 use Illuminate\Support\Carbon;
@@ -48,7 +49,31 @@ final class MonthlyAccountingSummaryService
             'supplier_prepaid_fx_variance_sen' => $this->supplierPrepaidFxVarianceTrueUp($from, $toExclusive),
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
             'voucher_liability_issued_sen' => $this->voucherLiabilityIssued($from, $toExclusive),
+            'reseller_wallet_balance_sen' => $this->resellerWalletBalance(),
         ];
+    }
+
+    /**
+     * 2026-09-30 addendum (Bucket C, decision 9) — "money you hold for
+     * resellers, which isn't yours." Deliberately **not** a `$from`/
+     * `$toExclusive`-scoped period figure like every other line here —
+     * a wallet balance only ever has one real value, *now*; there is no
+     * historical point-in-time snapshot mechanism (`ResellerWalletService
+     * ::balance()` is a live `SUM(amount)` over `ledger_entries`, same
+     * for every reseller combined here). Even when viewing a past
+     * month's summary, this line shows today's real balance — the
+     * frontend labels it with a live "as of" timestamp so it's never
+     * mistaken for that period's own month-end figure. A true historical
+     * snapshot would need a new scheduled snapshot job; not built since
+     * this line's whole purpose (don't forget resellers' money isn't
+     * yours) is already served by a current figure for a solo-founder's
+     * once-a-month copy into the external SaaS.
+     */
+    private function resellerWalletBalance(): int
+    {
+        return (int) LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->sum('amount');
     }
 
     /**

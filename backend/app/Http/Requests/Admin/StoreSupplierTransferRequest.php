@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Services\Accounting\PaidFrom;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
@@ -30,6 +32,7 @@ class StoreSupplierTransferRequest extends FormRequest
     {
         return [
             'source_channel' => ['required', 'string', 'in:wise,airwallex,bank'],
+            'paid_by' => ['nullable', 'string', Rule::in(array_map(fn (PaidFrom $p) => $p->value, PaidFrom::cases()))],
             'amount_myr_sent' => ['required', 'integer', 'min:1', 'max:1000000000'],
             'fee_myr' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
             'currency' => ['required', 'string', 'size:3', 'uppercase'],

@@ -57,6 +57,7 @@ final class SupplierFundingService
         ?string $referenceNo,
         ?UploadedFile $receipt,
         int $adminUserId,
+        ?PaidFrom $paidBy = null,
     ): SupplierTransfer {
         return DB::transaction(function () use (
             $supplier,
@@ -69,6 +70,7 @@ final class SupplierFundingService
             $referenceNo,
             $receipt,
             $adminUserId,
+            $paidBy,
         ) {
             $receiptPath = null;
 
@@ -81,6 +83,7 @@ final class SupplierFundingService
             $transfer = SupplierTransfer::query()->create([
                 'supplier_id' => $supplier->id,
                 'source_channel' => $sourceChannel,
+                'paid_by' => $paidBy?->value,
                 'amount_myr_sent' => $amountMyrSent,
                 'fee_myr' => $feeMyr,
                 'currency' => $currency,
@@ -242,7 +245,7 @@ final class SupplierFundingService
         int $adminUserId,
         ?UploadedFile $receipt = null,
     ): SupplierTransferCorrection {
-        $allowed = ['source_channel', 'amount_myr_sent', 'fee_myr', 'reference_no'];
+        $allowed = ['source_channel', 'paid_by', 'amount_myr_sent', 'fee_myr', 'reference_no'];
         $changes = array_intersect_key($changes, array_flip($allowed));
 
         $newReceiptPath = null;
@@ -259,8 +262,14 @@ final class SupplierFundingService
                 $diff = [];
                 foreach ($changes as $field => $newValue) {
                     $oldValue = $locked->getAttribute($field);
-                    if ((string) $oldValue !== (string) $newValue) {
-                        $diff[$field] = [$oldValue, $newValue];
+                    // `paid_by` is cast to the PaidFrom enum — a BackedEnum
+                    // has no __toString(), so comparing/diffing it directly
+                    // against the request's raw string value throws. Every
+                    // other correctable field here is a plain string, so
+                    // this normalization is a no-op for them.
+                    $oldValueForDiff = $oldValue instanceof \BackedEnum ? $oldValue->value : $oldValue;
+                    if ((string) $oldValueForDiff !== (string) $newValue) {
+                        $diff[$field] = [$oldValueForDiff, $newValue];
                     }
                 }
 

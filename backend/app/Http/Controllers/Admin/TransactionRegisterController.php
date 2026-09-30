@@ -67,6 +67,18 @@ class TransactionRegisterController extends Controller
                 ]);
             }
 
+            // 2026-09-30 audit addendum (Bucket C, decision 4): a voided
+            // row keeps its real original Net figure (deliberate —
+            // "never rewrite history in place"), but its correction is
+            // FX-only, never carrying an MYR figure — so a naive sum of
+            // the Net column across a period spanning a void won't
+            // reconcile to a real bank statement. Rather than a prose
+            // note only the in-app UI would show (a CSV reader in Excel
+            // would never see it), this computed footer row gives the
+            // one number that actually does reconcile.
+            $totalExcludingVoided = collect($rows)->where('status', '!=', 'voided')->sum('net_sen');
+            fputcsv($out, ['', '', '', 'TOTAL Net (excluding voided rows)', '', '', '', '', '', number_format($totalExcludingVoided / 100, 2, '.', ''), '', '', '']);
+
             fclose($out);
         }, 'transaction-register.csv', ['Content-Type' => 'text/csv']);
     }

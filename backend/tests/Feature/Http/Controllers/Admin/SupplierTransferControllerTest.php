@@ -86,6 +86,26 @@ class SupplierTransferControllerTest extends TestCase
         ]);
     }
 
+    /** 2026-09-30 addendum — Bucket C decision 5: which real account funded this, shared PaidFrom enum with the Envelope Ledger. */
+    public function test_store_records_paid_by(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise',
+            'paid_by' => 'farres',
+            'amount_myr_sent' => 100000,
+            'currency' => 'IDR',
+            'amount_foreign_received' => 3700000,
+        ])->assertCreated()->assertJsonPath('transfer.paid_by', 'farres');
+
+        $this->assertDatabaseHas('supplier_transfers', [
+            'supplier_id' => $supplier->id,
+            'paid_by' => 'farres',
+        ]);
+    }
+
     public function test_effective_rate_is_derived_from_the_two_actual_amounts(): void
     {
         $this->actAsSuperAdmin();
@@ -492,6 +512,27 @@ class SupplierTransferControllerTest extends TestCase
 
         $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/adjust", ['amount' => '-1', 'reason' => 'x'])->assertForbidden();
         $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/void", ['reason' => 'x'])->assertForbidden();
+    }
+
+    /** 2026-09-30 addendum — paid_by is correctable via "Edit Details" too (recordCorrection()'s $allowed list). */
+    public function test_correct_edits_paid_by(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'paid_by' => 'farres', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
+            'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $response = $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'paid_by' => 'company_account',
+            'reason' => 'Actually funded from the company account, not personal',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('transfer.paid_by', 'company_account');
+        $response->assertJsonPath('correction.changes.paid_by', ['farres', 'company_account']);
     }
 
     // ── ADR-083 2026-09-28 addendum: "Edit Details" (metadata-only correction) ──

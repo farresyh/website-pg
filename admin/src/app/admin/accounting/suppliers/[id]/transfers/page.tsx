@@ -77,6 +77,7 @@ export default function SupplierFundingHistoryPage() {
   const [correctionAmount, setCorrectionAmount] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
   const [editSourceChannel, setEditSourceChannel] = useState<"wise" | "airwallex" | "bank">("wise");
+  const [editPaidBy, setEditPaidBy] = useState("");
   const [editReferenceNo, setEditReferenceNo] = useState("");
   const [editAmountMyr, setEditAmountMyr] = useState("");
   const [editFeeMyr, setEditFeeMyr] = useState("");
@@ -127,6 +128,7 @@ export default function SupplierFundingHistoryPage() {
     setCorrectionReason("");
     setCorrectionError(null);
     setEditSourceChannel(transfer.source_channel);
+    setEditPaidBy(transfer.paid_by ?? "");
     setEditReferenceNo(transfer.reference_no ?? "");
     setEditAmountMyr((transfer.amount_myr_sent / 100).toFixed(2));
     setEditFeeMyr((transfer.fee_myr / 100).toFixed(2));
@@ -160,6 +162,10 @@ export default function SupplierFundingHistoryPage() {
 
         if (editSourceChannel !== transfer.source_channel) {
           values.source_channel = editSourceChannel;
+          hasChange = true;
+        }
+        if (editPaidBy !== (transfer.paid_by ?? "")) {
+          values.paid_by = editPaidBy;
           hasChange = true;
         }
         if (editReferenceNo !== (transfer.reference_no ?? "")) {
@@ -285,7 +291,14 @@ export default function SupplierFundingHistoryPage() {
                   <React.Fragment key={transfer.id}>
                     <tr className={isVoided ? "opacity-60" : undefined}>
                       <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatDate(transfer.created_at)}</td>
-                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{sourceChannelLabel[transfer.source_channel] ?? transfer.source_channel}</td>
+                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
+                        {sourceChannelLabel[transfer.source_channel] ?? transfer.source_channel}
+                        {transfer.paid_by && (
+                          <span className="block text-theme-xs text-gray-400">
+                            {ledger.paid_from_options.find((p) => p.value === transfer.paid_by)?.label ?? transfer.paid_by}
+                          </span>
+                        )}
+                      </td>
                       <td className={`px-4 py-2 text-gray-700 dark:text-gray-300 ${isVoided ? "line-through" : ""}`}>{formatRm(transfer.amount_myr_sent)}</td>
                       <td className="px-4 py-2">
                         <span className={`font-medium ${isVoided ? "text-gray-400 line-through" : "text-success-600"}`}>
@@ -415,6 +428,20 @@ export default function SupplierFundingHistoryPage() {
                                     <option value="wise">Wise</option>
                                     <option value="airwallex">Airwallex</option>
                                     <option value="bank">Bank transfer</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <Label htmlFor={`edit_paid_by_${transfer.id}`}>Paid by</Label>
+                                  <select
+                                    id={`edit_paid_by_${transfer.id}`}
+                                    value={editPaidBy}
+                                    onChange={(e) => setEditPaidBy(e.target.value)}
+                                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-theme-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
+                                  >
+                                    <option value="">Not specified</option>
+                                    {ledger.paid_from_options.map((p) => (
+                                      <option key={p.value} value={p.value}>{p.label}</option>
+                                    ))}
                                   </select>
                                 </div>
                                 <div>

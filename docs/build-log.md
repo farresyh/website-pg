@@ -1824,3 +1824,71 @@ tinker` (not just the isolated test DB) — 183/183 real local order rows got a 
 fields, a per-director loan category, opening-balance entries, a reseller-wallet-balance line on
 Monthly Summary, a "paid by" field on Supplier Funding) are real, confirmed-missing feature
 requests, not bugs — scoped as a separate follow-up, not bundled into this fix batch.
+
+## 2026-09-30 — Accounting external-review Bucket C (ADR-083 second addendum, `feature/2026-09-30-adr083-envelope-ledger-paidby-wallet-line`)
+
+The 5 remaining findings from the same external accounting review, grilled
+(`/mattpocock-skills:grilling`) before building — full decisions in
+`docs/adr.md`'s ADR-083 2026-09-30 second addendum. 1 item grilled then
+deliberately parked; 4 built.
+
+**Parked, not built:** a test/internal order flag. Real gap (founder's own
+self-purchases count as Sales revenue), but no urgent trigger — ~30 orders
+ever, still trackable by memory; same park-until-real-volume decision as
+ADR-115. **Founder correction during the grill:** not every current order
+is the founder's own testing — a real reseller's real customer order (e.g.
+Naeem Industries) sits in the same table, so any future build needs
+per-order judgment, never a blanket assumption. The memory this session
+started from (`project_pekangame_no_external_customers_yet_2026_09_25`,
+"zero external customers, all orders are testing") was corrected/marked
+stale as a result.
+
+**Built:**
+1. `TransactionRegisterController::export()` — a computed CSV footer row,
+   `TOTAL Net (excluding voided rows)`, the reconciling total a voided
+   transfer's FX-only correction can't otherwise produce. Rejected a full
+   reconciling column (only 2 voided transfers exist in this project's
+   whole history — premature for that frequency).
+2. `budget_envelope_entries` gains `transaction_date` (nullable date,
+   defaults to today), `paid_from` (nullable `PaidFrom` enum), `reference_no`
+   (nullable string) — all optional. New `BudgetEnvelopeEntryCategory::
+   DirectorRepayment` — deliberately no matching "Director Advance" (the
+   advance itself never moves envelope cash, doesn't fit this table's
+   model). Opening balance needs no new mechanism — a normal `CapitalInjection`
+   entry, dated via the new field.
+3. `supplier_transfers` gains `paid_by`, same shared `PaidFrom` enum,
+   correctable via the existing "Edit Details" flow too.
+4. `MonthlyAccountingSummaryService::forPeriod()` gains
+   `reseller_wallet_balance_sen` — always the CURRENT total (`SUM(amount)`
+   over every `ResellerWallet`-owned `ledger_entries` row), never
+   period-scoped (no historical snapshot mechanism exists). Frontend shows
+   a live "as of [timestamp]" next to this one line so it's never mistaken
+   for a real month-end figure.
+
+**New shared enum:** `App\Services\Accounting\PaidFrom` (`Farres`,
+`Luqman`, `Wheng`, `CompanyAccount`) — one list for both `paid_from` and
+`paid_by`, not two independently-maintained ones.
+
+**Real bug found and fixed:** `SupplierFundingService::recordCorrection()`'s
+diff-building loop did `(string) $oldValue` directly — fine for every prior
+correctable field (plain strings/ints), but `paid_by`'s `PaidFrom` cast
+returns a `BackedEnum` with no `__toString()`, throwing a fatal error.
+Fixed generically (normalize any `BackedEnum` to `->value` before diffing),
+not `paid_by`-specific.
+
+**Also fixed, found adjacent to this work:**
+`BudgetEnvelopeController::index()`'s `current_month_rough_pl_estimate_sen`
+never included `bank_transfer_fees_sen` (a real expense split out of
+`supplier_prepaid_topup_sen` by the *first* 2026-09-30 addendum, same day)
+— exactly the kind of invisible-cost gap that estimate exists to catch.
+
+**Verification:** backend 2455/2455 green (was 2448), 8 new/updated tests
+(2 real bugs caught by tests before shipping: the diff-building crash above,
+and 2 test assertions written against the wrong Carbon-serialization
+format, fixed as test bugs not code bugs). 2 new migrations, applied to
+local dev DB. Frontend `tsc --noEmit`/`eslint`/`next build` clean. Ran the
+real service against the real local dev DB via `php artisan tinker` (not
+just the isolated test DB): recorded and voided a real Envelope Ledger
+entry with all 3 new fields, confirmed `reseller_wallet_balance_sen`
+returns a real RM13.25 locally, confirmed the CSV footer total computes
+correctly against 190 real local register rows.
