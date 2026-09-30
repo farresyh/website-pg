@@ -813,6 +813,20 @@ production before building on it.
     external-uptime-of-the-API-endpoint gap (UptimeRobot/Better Stack style)
     is still open; this only covers the box's own CPU/memory/disk, not
     whether `api.pekangame.space` itself is reachable from outside.
+56. **`accounting_disk` (`config/filesystems.php`) is the `local` driver —
+    not durable across an infra move.** Found 2026-10-01: the 2026-09-25
+    droplet migration (ADR-114) only `mysqldump`'d the database, never
+    rsynced `storage/app/private` — 5 Supplier Funding receipts uploaded
+    before the cutover silently stopped resolving (500 on download) once
+    the old droplet was destroyed 2026-09-30; 3 were recoverable (founder
+    re-uploaded from his own kept Wise receipts), 2 were on already-voided
+    transfers and permanently lost (no real-figure impact — voided rows are
+    excluded from every total anyway). `Gallery` already solved this exact
+    problem for public images via Cloudflare R2 (ADR-095) — moving
+    `accounting_disk` to R2 (or a private-ACL bucket/prefix) the same way
+    is the durable fix. Low urgency (low receipt volume, founder now knows
+    to re-check after any future droplet move), but a real, named gap.
+    Full writeup: ADR-114's 2026-10-01 addendum, `docs/adr.md`.
 
 
 ## Polish (not blocking)

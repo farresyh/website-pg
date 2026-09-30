@@ -1927,6 +1927,43 @@ the external reviewer's own from-the-receipts figure to the cent. Both
 corrections are visible in Funding History with their full "Edited:
 field old→new" audit trail and reason text, never a silent edit.
 
-Nothing left owed from the external accounting review — every finding
-either shipped as a code fix, was corrected as data, or was grilled and
-deliberately parked (`docs/prd.md` §16 item 55).
+Every finding from the external accounting review has now either shipped
+as a code fix, been corrected as data, or been grilled and deliberately
+parked (`docs/prd.md` §16 item 55) — see the receipt-storage incident
+below, surfaced by this same correction work, for the one loose end it
+led to.
+
+**Same-session incident, found while correcting the 19/21 Sep receipts
+above: Supplier Funding receipt downloads were 500ing — a real droplet-
+migration gap, not a new bug.** The founder's own receipt-download attempt
+threw `League\Flysystem\UnableToRetrieveMetadata`. Traced to `config/
+filesystems.php`'s `accounting_disk` being the `local` driver — a real
+directory on whichever droplet is currently serving traffic — and ADR-114's
+2026-09-25 droplet migration (decision 2) only `mysqldump`'d the database,
+never rsynced `storage/app/private`. Every `supplier_transfers.receipt_path`
+created before that cutover (5 rows, all 14–21 Sep) pointed at a file that
+only ever existed on the old droplet — destroyed the same day as this
+session, 2026-09-30, closing off any recovery path.
+
+Scoped precisely before doing anything: exactly 5 affected, zero
+`BudgetEnvelopeEntry` receipts (none existed yet at migration time). 2
+belong to already-voided transfers (`id` 1, 2) — `recordCorrection()`'s
+own `lockNotVoided()` guard means a voided transfer's receipt can't be
+replaced even if wanted (confirmed live: the UI doesn't render "Correct…"
+for one at all), and since a voided row is excluded from every real total
+already, its lost receipt has zero effect on any figure. The other 3 (`id`
+3/4/5 — the same active transfers the RM 742.97 correction above depends
+on) were re-uploaded by the founder from his own kept Wise receipts via
+the now-live "Edit Details" → Replace receipt flow — verified live not
+just by a 200 on the download route but by `Storage::exists()`/`size()`
+against the real file on the real persistent path
+(`/home/forge/api.pekangame.space/storage/app/private`, confirmed
+correctly symlinked outside the release folder so this specific class of
+loss can't recur from a plain deploy — only from a future full-droplet
+move without an explicit storage-rsync step).
+
+**Underlying durability gap tracked, not fixed this session:**
+`accounting_disk` staying on `local` will reproduce this exact incident on
+any future droplet move. `Gallery` already solved the identical problem
+for public images via R2 (ADR-095) — `docs/prd.md` §16 item 56, full
+writeup `docs/adr.md`'s ADR-114 2026-10-01 addendum.
