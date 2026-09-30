@@ -61,9 +61,31 @@ class OpenWaWebhookController extends Controller
 
         $event = (string) $request->input('event', '');
 
+        // ADR-116 decision 11: the customer-support session never reaches the
+        // reseller bot. Only its status is recorded for now; its inbound
+        // messages (opt-in) arrive with PR-B2. An envelope with no sessionId
+        // (older OpenWA) is treated as the bot, as before.
+        $csSessionId = config('services.openwa.cs_session_id');
+        if ($csSessionId !== null && $request->input('sessionId') === $csSessionId) {
+            if ($event === 'session.status') {
+                $this->recordStatus($request, OpenWaSessionStatus::CUSTOMER_SUPPORT);
+            }
+
+            return response()->json(['message' => 'ok']);
+        }
+
+        // Any other session that isn't the bot's own is dropped, never guessed at.
+        $botSessionId = config('services.openwa.session_id');
+        $sessionId = $request->input('sessionId');
+        if ($sessionId !== null && $botSessionId !== null && $sessionId !== $botSessionId) {
+            Log::info('OpenWA webhook: ignored event from an unknown session', ['session_id' => $sessionId]);
+
+            return response()->json(['message' => 'ok']);
+        }
+
         match ($event) {
             'message.received' => $this->handleMessageReceived($request),
-            'session.status' => $this->handleSessionStatus($request),
+            'session.status' => $this->recordStatus($request, OpenWaSessionStatus::RESELLER_BOT),
             default => Log::info('OpenWA webhook: ignored event', ['event' => $event ?: '(none)']),
         };
 
@@ -123,12 +145,12 @@ class OpenWaWebhookController extends Controller
         return (bool) ($data['isGroup'] ?? false);
     }
 
-    private function handleSessionStatus(Request $request): void
+    private function recordStatus(Request $request, string $session): void
     {
         $status = $request->input('data.status') ?? $request->input('status');
 
         if (is_string($status)) {
-            $this->sessionStatus->record($status);
+            $this->sessionStatus->record($status, $session);
         }
     }
 }

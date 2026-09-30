@@ -212,6 +212,8 @@ final class DashboardService
             // carries a 1h TTL since ADR-077), distinct from a known
             // 'disconnected' state.
             'openwa_session' => $openWaSession,
+            // ADR-116 decision 11 — the customer-support session, same shape.
+            'openwa_cs_session' => $this->openWaSessionStatus->current(OpenWaSessionStatus::CUSTOMER_SUPPORT),
             'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping), 1h TTL. Null means no event in the last hour, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,

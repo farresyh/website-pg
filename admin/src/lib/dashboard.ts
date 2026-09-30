@@ -77,6 +77,7 @@ export interface DashboardHealth {
   suppliers_definition: string;
   /** PR-F build addendum decision 5 — last-known OpenWA session.status event, push- not poll-driven. Null = no event has ever arrived (not provisioned/linked), never assumed healthy. */
   openwa_session: { status: string; at: string } | null;
+  openwa_cs_session: { status: string; at: string } | null;
   openwa_session_definition: string;
   stuck_orders: { value: number; definition: string };
   pending_payments: { value: number; definition: string };

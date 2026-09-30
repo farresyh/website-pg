@@ -91,6 +91,45 @@ class OpenWaWebhookControllerTest extends TestCase
         $this->assertSame('connected', $status['status']);
     }
 
+    /** ADR-116 decision 11: the customer-support session's traffic never reaches the reseller bot. */
+    public function test_a_customer_support_session_group_message_never_reaches_the_bot(): void
+    {
+        config(['services.openwa.session_id' => 'bot-session', 'services.openwa.cs_session_id' => 'cs-session']);
+
+        $this->signedPost([
+            'event' => 'message.received',
+            'sessionId' => 'cs-session',
+            'data' => ['isGroup' => true, 'chatId' => 'cs-group@g.us', 'body' => '.baki', 'id' => 'msg1'],
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'cs-group@g.us']);
+    }
+
+    public function test_each_session_status_is_tracked_separately(): void
+    {
+        config(['services.openwa.session_id' => 'bot-session', 'services.openwa.cs_session_id' => 'cs-session']);
+
+        $this->signedPost(['event' => 'session.status', 'sessionId' => 'bot-session', 'data' => ['status' => 'connected']])->assertOk();
+        $this->signedPost(['event' => 'session.status', 'sessionId' => 'cs-session', 'data' => ['status' => 'disconnected']])->assertOk();
+
+        $status = app(OpenWaSessionStatus::class);
+        $this->assertSame('connected', $status->current()['status']);
+        $this->assertSame('disconnected', $status->current(OpenWaSessionStatus::CUSTOMER_SUPPORT)['status']);
+    }
+
+    public function test_an_unknown_session_is_ignored(): void
+    {
+        config(['services.openwa.session_id' => 'bot-session', 'services.openwa.cs_session_id' => 'cs-session']);
+
+        $this->signedPost([
+            'event' => 'message.received',
+            'sessionId' => 'someone-else',
+            'data' => ['isGroup' => true, 'chatId' => 'x@g.us', 'body' => 'hi', 'id' => 'msg1'],
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'x@g.us']);
+    }
+
     public function test_a_non_group_message_received_event_is_ignored(): void
     {
         $response = $this->signedPost([
