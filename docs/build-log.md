@@ -1717,3 +1717,46 @@ A long session. Everything below is verified against GitHub and prod at close.
     the Docker MySQL test DB.
   - A MySQL unique index over three utf8mb4 `varchar(255)` columns exceeds
     InnoDB's key limit.
+
+## 2026-09-30 — DO droplet monitoring, old-droplet decommission, and doadmin least-privilege (PRD §16 items 11, 52; ADR-114 addendum, ADR-117)
+
+**DigitalOcean droplet monitoring (PRD §16 item 11, partial):** `do-agent` installed on
+`pekangame-prod-lwf` (founder-run via DO's Launch Console, root/sudo required — confirmed free,
+no trial limit, per DO's own docs). Two resource alerts created (Memory and Disk Utilization,
+both >80% for 5 min, emailing the founder). Covers droplet-level resource exhaustion; the
+external-uptime-of-`api.pekangame.space`-itself gap (UptimeRobot/Better Stack style) is still
+open — this only watches the box's own CPU/memory/disk.
+
+**Old-droplet decommission (PRD §16 item 52, first half; ADR-114 addendum):** before destroying
+anything, a full pre-destroy audit (live SSH to both droplets + DO dashboard) found the old
+`pekangame-prod` (157.245.203.250, old shared DO team) was **not** actually paused as the
+2026-09-25 ADR-114 addendum assumed — a leftover Forge Quick-Deploy-style auto-pull was still
+redeploying every push to `main` onto the old site too (old droplet's backend HEAD matched the
+day's latest `main` merge, `supervisor.service` freshly restarted minutes after — independent of
+the CI-driven `FORGE_DEPLOY_HOOK`). Despite that, real risk was zero: Redis queues on the old box
+were empty, nginx saw only internet scanner noise (no real app traffic, all HTTP 444), and the old
+`topup-prod-mysql` cluster's last real order was 2026-09-24 — frozen since before the cutover.
+Destroyed via DO dashboard (founder's own final confirmation click — Claude Code's auto-mode
+classifier blocked the model from typing the destroy-confirmation name itself): the droplet, its
+`topup-prod-mysql` managed MySQL cluster, and its Reserved IP (`137.184.250.200` — a separate
+$5/mo line DO does not auto-delete with the droplet unless explicitly selected). All confirmed
+gone from the DO dashboard afterward; billing for this old infra has stopped.
+
+**Prod DB least-privilege (PRD §16 item 52, second half; ADR-117):** `doadmin` (the DO managed-
+MySQL superuser, `GRANT OPTION`/`CREATE USER`/`DROP` on `*.*`) replaced as the app's main DB
+connection by a new dedicated `pekangame_app`@`%` user, scoped to `defaultdb` only. Full pre-build
+audit (views' `SQL SECURITY DEFINER`, zero triggers/routines/events, migration history for raw
+SQL, backup dump options) plus 5 isolated tests against the new user (real-table SELECT, view
+SELECT, a full DDL cycle, denied system-schema access, denied `CREATE USER`) all passed before
+touching the live app — full detail in ADR-117. Cutover: `.env` backed up, credentials swapped,
+`config:cache` + `horizon:terminate`, verified via `tinker`'s `CURRENT_USER()`, `/api/health`, and
+a real `artisan backup:run --only-db` (dumped, zipped, verified, uploaded to R2 successfully) —
+the backup run under the new restricted user was the strongest proof this was safe, not just a
+grant list read on paper. `doadmin` itself was never modified or dropped throughout either piece
+of work — every step was additive until the final `.env` swap, which reverts in seconds from
+`.env.bak-2026-09-30-doadmin-least-privilege` if ever needed.
+
+**Claude Code's own auto-mode safety classifier blocked two steps this session** — typing the
+droplet destroy-confirmation name, and the `CREATE USER`/`GRANT` SQL itself (flagged
+"[Secret-Store Writes]" once, "[Permission Grant]" once) — both times the model prepared the exact
+command, the founder ran it themselves, and the model verified + continued everything else.

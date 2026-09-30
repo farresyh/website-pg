@@ -793,21 +793,15 @@ production before building on it.
     any is down), but nothing external polls it yet; Horizon's own LongWait
     alert (Plunk) can't fire if Horizon itself is dead. Point an uptime
     monitor (UptimeRobot/Better Stack) at `https://api.pekangame.space/api/health`.
+    **Partial progress 2026-09-30:** DigitalOcean's own free Droplet
+    monitoring (`do-agent`) installed on `pekangame-prod-lwf` (founder-run via
+    DO's Launch Console, root/sudo required), plus two resource alerts
+    (Memory and Disk Utilization, both >80% for 5 min, emailing the founder)
+    — covers resource-exhaustion visibility on the droplet itself. The
+    external-uptime-of-the-API-endpoint gap (UptimeRobot/Better Stack style)
+    is still open; this only covers the box's own CPU/memory/disk, not
+    whether `api.pekangame.space` itself is reachable from outside.
 
-52. **Prod DB least-privilege + old-droplet decommission (one maintenance
-    window, founder-deferred 2026-09-29).**
-    Found 2026-09-29 while provisioning `report_assistant`: the
-      app's main connection in prod runs as **`doadmin`**, the DO managed
-      MySQL superuser (`CREATE USER`, `DROP`, `GRANT OPTION` on `*.*`).
-      Any future SQL-injection-class bug would get full DB-admin power.
-      Fix: a dedicated app user with DML + DDL on `defaultdb` only (DDL
-      is still needed for `migrate --force` on deploy). Needs a careful
-      cutover (deploy migrations, view `DEFINER`s are `doadmin@%`).
-      **Deferred by the founder (2026-09-29):** to be done in the same
-      session as decommissioning the old `pekangame-prod` droplet and its
-      old managed DB (ADR-114 rollback leftovers). Both are prod DB
-      credential/infra work, and doing them together means one
-      carefully-monitored maintenance window instead of two.
 
 ## Polish (not blocking)
 
@@ -949,6 +943,7 @@ production before building on it.
     dedupe is scoped to `reason IS NULL`.
   - PR-B1 #323 and PR-B2: M-11 as WhatsApp notifications (ADR-116).
 - **50** Pre-release review — PR-C #318 (checkout/voucher/webhook/API fixes, Horizon health) and PR-D #319 (automatic order recovery, ADR-102 addendum; checkout CGNAT throttle, ADR-014 addendum). Released 2026-09-29.
+- **52** Prod DB least-privilege + old-droplet decommission — both done 2026-09-30. `doadmin` replaced by scoped `pekangame_app` user (ADR-117), verified via a real backup run; old `pekangame-prod` droplet + its managed MySQL + Reserved IP destroyed after a pre-destroy audit found zero live risk (ADR-114's 2026-09-30 addendum).
 
 ## Parked by founder decision — not scheduled
 

@@ -126,9 +126,10 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-111** | Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site (delivery, not just Price Sync), replacing every fulfillment path's `platform_profit` calculation with one basis-agnostic residual formula fed by the supplier's own real per-transaction price instead of a possibly-stale `Package.cost_price` catalog snapshot. Sparked by a real production order (`PG-B2BL0G1YDMVS`) where a combo leg retried at a different Digiflazz-internal seller for a genuinely higher real price, but `platform_profit` still reflected the OLD (failed) seller's stale catalog cost — traced to raw request-log payloads, not assumed. Cross-references ADR-033 (conversion boundary), ADR-105 (the residual-profit identity this reuses), ADR-107 (combo's own cost-source, now replaced). **Decided + grilled 2026-09-21/22, BUILT 2026-09-22, 🟢 LIVE PROD (flag enabled, verified against a real order same day).** |
 | **ADR-112** | Affiliate/Reseller portal mobile-first redesign — shared role-aware shell, useful dashboards and readable mobile Orders; frontend-only, no backend/payment/ledger changes — live in prod (#278, 2026-09-24) |
 | **ADR-113** | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md` written, Digital Architect retired from the affiliate picker (PekanGame's own primary-brand identity only, no dark mode), + a real WCAG contrast bug in Cyber Bumblebee found and fixed along the way. **Merged to `staging` (PR #288), not yet on `main`** |
-| **ADR-114** | Production infra — rebuild (not transfer) `pekangame-prod`'s droplet + managed MySQL into a new DigitalOcean team (`LWF Group Sdn Bhd`), separating PekanGame's billing/infra from the Nakhoda-sharing DO account as a real entity-separation step. Core cutover + OpenWA WhatsApp bot migration both live and verified 2026-09-25 (same day, two sessions) — old droplet's daemons/scheduler paused pending full decommission |
+| **ADR-114** | Production infra — rebuild (not transfer) `pekangame-prod`'s droplet + managed MySQL into a new DigitalOcean team (`LWF Group Sdn Bhd`), separating PekanGame's billing/infra from the Nakhoda-sharing DO account as a real entity-separation step. Core cutover + OpenWA WhatsApp bot migration both live and verified 2026-09-25 (same day, two sessions). Old droplet + its managed MySQL + Reserved IP fully destroyed 2026-09-30, closing the ADR |
 | **ADR-115** | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (Digiflazz only). Fully designed and grilled 2026-09-28; build deliberately **parked** — no automatic trigger, founder will say when. Companion to the `/admin/balance` page (PR #307) |
 | **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323) and PR-B2 (#324) released 2026-09-30 via #325; the switch is ON and live-tested. The post-live-test addendum (the order number is the opt-in, a timeline status card, a not-found reply, `START`, skipped revival) is **#326, on `staging`, not yet on `main`** |
+| **ADR-117** | Prod DB least-privilege — `doadmin` superuser replaced by dedicated scoped user `pekangame_app`@`%` (`defaultdb` only, no `CREATE USER`/`GRANT OPTION`/replication). `doadmin` itself never modified — pure break-glass fallback. Live 2026-09-30, verified via health check + a real backup run |
 
 ---
 
@@ -6629,6 +6630,19 @@ PekanGame and Nakhoda (a separate, older business with real external customers) 
 - Old droplet's daemons/scheduler are paused, not removed — full decommission (per the original ADR's decision 6) still has no date set. A future session doing that decommission should also formally retire the old droplet's now-idle `Supplier.api_config` credentials from being live-callable at all (currently just dormant because nothing schedules a call, not because access was revoked).
 - If OpenWA is ever re-provisioned again (another droplet move, a disaster-recovery rebuild, a second bot instance), **the three credentials above must be treated as a checklist, not assumed to travel with a `.env` copy**: (1) webhook registration secret, set manually per registration; (2) an issued API key, generated fresh, no old key is valid; (3) the session ID, read from the `sessions` table after QR link, never reused from the old instance. `AGENTS.md` or this project's OpenWA-specific runbook (none exists yet) would be a better home for this than only living in this ADR addendum — worth writing up as a standalone runbook if OpenWA is ever re-provisioned a third time.
 
+### Addendum (2026-09-30) — old droplet/DB decommissioned, closing the original ADR's decision 6
+
+**Status:** Old-droplet decommission (no date previously set, both prior addenda above) is now done. `docs/prd.md` §16 item 52 split this off from the `doadmin` least-privilege fix it was originally bundled with — that fix remains open, unrelated to this teardown.
+
+**Pre-destroy audit (model-driven, live SSH + DO dashboard, before any teardown action):** found the old droplet's Horizon/Reverb/Pulse were **not actually paused** as the 2026-09-25 addendum assumed — a leftover Forge Quick-Deploy-style auto-pull on the *old* site was still triggering on every push to `main` (confirmed: the old droplet's backend HEAD matched the day's latest `main` merge commit, and `supervisor.service`'s own uptime showed a fresh restart minutes after that merge), independent of the CI-driven `FORGE_DEPLOY_HOOK` this project's `deploy` job actually calls. This explains the recurring daemon-alive state neither prior addendum caught. Despite that, real risk was zero: the old box's own local Redis queues were empty (`LLEN` 0 on every queue), nginx's access log showed only internet background port-scanning (HTTP 444-dropped, no real application traffic), and the old `topup-prod-mysql` cluster's last real order (`orders.created_at`) was 2026-09-24 11:01 — frozen since *before* the 2026-09-25 cutover, confirming zero data divergence risk from destroying it.
+
+**Destroyed via DO dashboard (founder's own final confirmation click, per this session's safety classifier — the model filled every field but was blocked from typing the destroy-confirmation name itself):** the `pekangame-prod` droplet, the `topup-prod-mysql` managed MySQL cluster, and the droplet's Reserved IP (`137.184.250.200` — a separate $5/mo line DO does not auto-delete with the droplet unless explicitly selected in the destroy dialog). All three confirmed gone from the DO dashboard afterward. The stray duplicate `schedule:run` entry and the dormant `Supplier.api_config` credentials (both flagged in the first addendum's consequence list) are moot now that the droplet itself no longer exists.
+
+**Consequence to track:**
+
+- The old droplet's Forge server entry (Forge's own dashboard, not DO's) is now orphaned — pointing at a destroyed droplet. Not a cost or security issue (Forge itself doesn't bill per-server the way DO does), but worth removing from Forge's server list next time someone is in there, for hygiene.
+- This closes the original ADR's decision 6 and every "decommission timing" consequence bullet across both prior addenda. Nothing about this ADR remains open except the unrelated `doadmin` least-privilege item tracked separately in `docs/prd.md` §16 item 52.
+
 ---
 
 ## ADR-115: Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (design only, build parked)
@@ -6820,3 +6834,99 @@ first, and the order number already proves that.
    payment. Get Updates is hidden until the order is paid, and on a failure.
    Its label is "Notify Me on WhatsApp" while waiting and "Send Receipt to
    WhatsApp" once delivered. The card heading and body follow the state.
+
+---
+
+## ADR-117: Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user
+
+**Status:** Accepted & built — live in production 2026-09-30, verified end-to-end (health check, Horizon, a real backup run).
+
+**Context:**
+
+Found 2026-09-29 while provisioning the `report_assistant` connection (ADR-087): the app's main
+database connection ran as **`doadmin`**, the DigitalOcean managed-MySQL cluster's own superuser.
+`SHOW GRANTS` confirmed `SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, CREATE USER,
+CREATE VIEW, CREATE ROUTINE, EVENT, TRIGGER ... ON *.* ... WITH GRANT OPTION` — full admin power
+over every database on the cluster, plus the ability to create new users and grant them arbitrary
+privileges. A SQL-injection-class bug anywhere in the app would hand an attacker that same power,
+not just access to this app's own tables. Originally bundled with the old-`pekangame-prod`-droplet
+decommission (ADR-114) into one founder-deferred maintenance window (`docs/prd.md` §16 item 52,
+2026-09-29); split apart 2026-09-30 once the decommission's own pre-destroy audit gave enough
+confidence to treat these as two independent, separately-schedulable changes.
+
+**Pre-build audit (money-critical DB, founder explicitly asked for a solid, no-data-loss-risk
+check before touching anything):**
+- **Views:** the 3 `llm_report_*` views (ADR-087) are all `SQL SECURITY DEFINER = doadmin@%` —
+  they keep running under doadmin's own privileges regardless of which user queries them, as long
+  as the `doadmin` account itself still exists. Confirmed via `information_schema.views`.
+- **Triggers / stored routines / events:** all zero in `defaultdb`. None of doadmin's
+  `EVENT`/`TRIGGER`/`CREATE ROUTINE`/`ALTER ROUTINE` grants are actually exercised by anything.
+- **Migration history:** grepped every migration for raw SQL beyond standard DDL. Found a
+  recurring `CREATE VIEW`/`DROP VIEW` pattern (the LLM report views were created, redefined, and
+  redefined again across three separate migrations) — a future migration doing the same needs
+  `CREATE VIEW`/`SHOW VIEW`, so the new user needs those even though no *currently pending*
+  migration uses them.
+- **Backups (ADR-039/095):** `spatie/laravel-backup` resolves its dump credentials from the same
+  `mysql` connection the app uses — a credential switch here also changes what the nightly backup
+  runs as. `config/database.php`'s `dump` options confirmed `useSingleTransaction => true` (no
+  `LOCK TABLES` needed) and `mysql_gtid_purged => 'OFF'` (no replication privilege needed) — the
+  dump only actually needs `SELECT` + `SHOW VIEW`.
+- **Precedent already in this codebase:** `report_assistant`@`%` (ADR-087, provisioned
+  2026-09-29) is the exact same pattern — a narrowly-scoped MySQL user for a specific purpose,
+  with its own documented `CREATE USER`/rollback recipe. Reused that same shape here.
+
+**Decision:**
+
+1. **Create a new user, never touch `doadmin`.** `pekangame_app`@`%`, `GRANT SELECT, INSERT,
+   UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES, CREATE VIEW, SHOW VIEW, CREATE TEMPORARY
+   TABLES ON defaultdb.* TO 'pekangame_app'@'%'` — no `CREATE USER`, no `GRANT OPTION`, no
+   `RELOAD`/`PROCESS`/replication grants, no access outside `defaultdb`. `doadmin` keeps existing,
+   unmodified, as a break-glass account — every step of this change is additive (`CREATE USER` +
+   `GRANT`) until the final `.env` swap, which is a config change, not a data change, and is
+   instantly revertible from a `.env` backup.
+2. **Test the new user in isolation before touching the live app.** Five checks run directly
+   against the new user, none touching real data: `SELECT` on `orders` (real table), `SELECT` on
+   all 3 `llm_report_*` views, a full `CREATE TABLE`+`ALTER`+`CREATE INDEX`+`INSERT`+`DROP` cycle
+   on a throwaway table, a denied `SELECT` on `mysql.user` (proves the `defaultdb`-only scope), and
+   a denied `CREATE USER` (proves no privilege escalation). All five passed exactly as expected —
+   the DDL test's first attempt failed on DO's own `sql_require_primary_key` server setting
+   (unrelated to grants; the retry used a table with a primary key and passed clean).
+3. **Cutover:** backed up `.env` (`.env.bak-2026-09-30-doadmin-least-privilege`), swapped
+   `DB_USERNAME`/`DB_PASSWORD`, `config:cache` + `horizon:terminate`. Verified via `artisan
+   tinker`'s `SELECT CURRENT_USER()` (`pekangame_app@%`), `/api/health` (all green), and — the
+   real proof — a manual `artisan backup:run --only-db`, which dumped, zipped, verified, and
+   uploaded to R2 successfully under the new restricted credentials. php-fpm's own
+   `opcache.validate_timestamps=On` (2s revalidate) meant no manual fpm reload was needed either.
+4. **Two production-sensitive steps (`CREATE USER`/`GRANT`, and the droplet-destroy confirmation
+   in the paired ADR-114 decommission work the same session) were executed by the founder
+   directly, not the model** — Claude Code's own auto-mode safety classifier blocked both as
+   sensitive infra actions requiring a human's own hand on the final step, consistent with this
+   project's existing practice of the founder doing root/sudo-gated actions themselves ([[reference_forge_box_ssh]]'s sudo-password note). The model prepared the exact commands, the founder ran them, the model then verified and continued the rest (`.env` swap, `config:cache`, `horizon:terminate`, testing) itself once the underlying MySQL user existed.
+
+**Rationale:**
+
+- Never modifying or dropping `doadmin` means the entire change is reversible at every step short
+  of the final `.env` swap, and that step itself reverts in seconds from a plain file backup — no
+  scenario in this plan risks losing or corrupting existing data.
+- Testing the new user against real tables/views *before* pointing the live app at it turns "will
+  this work" into a verified fact rather than a theoretical grant list — the primary-key DDL
+  hiccup is exactly the kind of surprise that audit was designed to catch before it could hit a
+  real deploy.
+- Reusing the `report_assistant` precedent (ADR-087) rather than inventing a new pattern keeps
+  this project's credential-provisioning practice consistent and gives future sessions one place
+  to look, not two different conventions.
+
+**Consequence to track:**
+
+- `.env.bak-2026-09-30-doadmin-least-privilege` is the rollback path if anything about the new
+  user's grants turns out to be insufficient later (e.g. a future migration needs a privilege not
+  in this grant list) — revert `.env`, `config:cache`, `horizon:terminate`, fix the grant, re-swap.
+  `doadmin`'s own credentials are unchanged throughout, so this is always available.
+- If a future migration needs a privilege outside this grant list (e.g. `CREATE ROUTINE` if this
+  project ever adds a stored procedure), it will fail loudly on `migrate --force` during deploy —
+  the fix is `GRANT <privilege> ON defaultdb.* TO 'pekangame_app'@'%'` via `doadmin`, not reverting
+  to `doadmin` for the app connection.
+- `docs/prd.md` §16 item 52 (which originally bundled this with the old-droplet decommission) is
+  now fully closed on both halves.
+
+---
