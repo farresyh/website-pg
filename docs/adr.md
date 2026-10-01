@@ -88,7 +88,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-072** | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename… |
 | **ADR-073** | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit b… |
 | **ADR-074** | Reseller API channel — per-tenant API keys, order-placement/status endpoints. **2026-09-26 addendum:** cross-reseller idempotency-key isolation gap found (a 4-branch production audit), grilled, decided, **BUILT** — `idempotency_scope` generated column + composite unique index |
-| **ADR-075** | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology |
+| **ADR-075** | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology. 2026-10-02 addendum: OpenWA chat-list rehydration on process restart (fork + DB-backed chat-summary fallback), design-only, not built |
 | **ADR-076** | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, re… |
 | **ADR-077** | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagati… |
 | **ADR-078** | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibi… |
@@ -4237,6 +4237,33 @@ Both ADR-074 decision 3 and ADR-075 decision 5 deliberately deferred "exact payl
 - `EditGameModal.tsx` and `EditPackageModal.tsx` are both touched to add decision 1/2's fields — if either still uses a hand-rolled TailAdmin primitive at that point, ADR-038's opportunistic-migration rule applies (swap to PrimeReact-Tailwind as part of this same change, not a follow-up pass).
 - PRD §13 Glossary gains `reseller_code` and `catalog_code` as pinned terms once this ships.
 - This ships as its own PR (**PR-E0**, inserted between PR-D and PR-E/PR-F in the phasing table below) — PR-E and PR-F both gain PR-E0 as a dependency, in addition to PR-D.
+
+---
+
+**Addendum — 2026-10-02 (grilled, two rounds via `/mattpocock-skills:grilling`): OpenWA chat-list rehydration on process restart.**
+
+**Status:** Accepted (design) — build not started.
+
+**Context:**
+- Live-production investigation (SSH, 2026-10-01/02) against `pekangame-prod-lwf`'s real OpenWA instance found that OpenWA's dashboard "Chats" list (and the per-chat message view it gates — a chat missing from this list cannot be opened even via the dashboard's own full-text message search, confirmed by reading `Chats.tsx`'s search-hit handler) is built **entirely in-memory** (`BaileysSessionStore`), fed only by live Baileys events. It has no persistence and no rehydration-from-DB step at boot.
+- A routine Baileys socket reconnect (statusCode 428/503 — confirmed ~70 occurrences across both sessions in a 2-day log sample) does **not** touch this: the OpenWA Node process stays alive, so the in-memory store is untouched and auto-reconnect is already transparent. Only a full OpenWA **process restart** (crash, manual restart, future redeploy) wipes it — confirmed 2 such restarts in the same 2-day window, from Forge daemon log rotation. Zero `loggedOut`/401 events and zero new QR generations have occurred since the one-time pairing on 2026-09-25 (decision not re-litigated by this addendum — session auth itself is stable).
+- WhatsApp does not resend chat/message history to an already-paired device on reconnect (`messaging-history.set` only fires on first pairing, per this codebase's own `baileys-history.ts` comments) — so the in-memory list has no way to repopulate itself except from new live traffic, one chat at a time.
+- The underlying messages are durably stored in OpenWA's own `data/openwa.sqlite` (`messages` table, indexed on `chatId` and `(sessionId, createdAt)`) — **no data is actually lost**, but it becomes unreachable from the dashboard UI for any chat that goes quiet across a restart. This is a real operational risk specifically for the `customer-support` session (ADR-116) during an active order-support conversation; founder has explicitly deprioritized `reseller-bot` group-chat visibility (does not care if lost) but does want `reseller-bot` DMs covered.
+- Confirmed facts that shaped the decision: `rmyndharis/OpenWA` is a genuine unrelated third-party maintainer (Yudhi Armyndharis), not a founder-controlled account — any patch here is a real fork-and-maintain commitment, not a formality. `.env`'s `ENGINE_TYPE=baileys` is a single global setting, so both sessions run Baileys in production today, **contradicting this ADR's own decision 6** (which specified `whatsapp-web.js` for the reseller-bot channel specifically, for lower ban risk on a live paid-ordering path) — flagged here as a found discrepancy, not resolved by this addendum. Real message volume is tiny (286 messages / 4 chats on `customer-support`, 57 messages / 6 chats on `reseller-bot`, as of 2026-10-01) and there is no staging OpenWA instance — only the single production one.
+
+**Decision:**
+1. **Patch at the engine-agnostic `session.service.ts` layer** (`listChats()` unions the live in-memory result with a DB-derived fallback for any `chatId` the DB has that the in-memory store doesn't), not inside the Baileys-specific `baileys-lifecycle.ts` adapter — so the fix keeps working if the engine is ever switched back to `whatsapp-web.js` per this ADR's original decision 6.
+2. **Fork `github.com/rmyndharis/OpenWA` and deploy from the fork**, rather than patching the server's checked-out code directly. A direct-server patch is silently lost on the next upstream `git pull`/update with no CI, test, or review gate catching it; a fork survives that and keeps the patch under version control. The fork does **not** track upstream automatically — upstream changes are merged in manually, at the founder's discretion, whenever a release looks worth taking (e.g. security/stability fixes); this patch's own diff is kept small and isolated specifically so a future merge-conflict is cheap to resolve.
+3. **Rehydrate chat SUMMARIES only** (one row per `chatId`, derived from a `GROUP BY chatId` / `MAX(createdAt)` read of `openwa.sqlite`'s `messages` table — id, last-message preview, timestamp), not full message bodies. Opening a chat already queries the DB directly (`getChatMessages`) regardless of what's in memory, so backfilling full history into the in-memory store would be pure duplication for zero benefit.
+4. **Applies uniformly to every chat on both sessions, including groups** — no special-casing to exclude `reseller-bot` groups. The cost of including them is effectively zero at this volume, and a uniform code path is simpler than a per-session filter for a dimension the founder is merely indifferent to (not asking to actively suppress).
+5. **Validated directly against the single production instance** (no staging OpenWA exists) — scheduled for a moment the founder is actively standing by, not an unattended/overnight change. The pre-patch commit is kept on hand as an immediate rollback: if the patched OpenWA fails to boot cleanly after a test restart, Forge redeploys the prior commit directly, accepting a few minutes of WhatsApp-bot downtime over a longer unattended failure.
+
+**Rationale:** The chat-summary gap is not a foreign architecture bolt-on — this same OpenWA codebase already applies the identical "evicted/restarted in-memory cache falls back to a DB-backed read" pattern to two other maps (`lidToPn` lid-mapping, chat mute/pin/archive state), confirmed by reading `.env.example`'s own documentation of those caps. This addendum extends that already-proven, already-idiomatic pattern to the one in-memory map that never received it, rather than inventing new persistence machinery.
+
+**Consequence to track:**
+- The `ENGINE_TYPE=baileys`-for-both-sessions discrepancy against this ADR's original decision 6 is a separate, unresolved finding — worth its own revisit (re-litigate the ban-risk trade-off, or correct the ADR to match reality) but explicitly out of scope for this addendum.
+- The separate `openwa.sqlite` → Cloudflare R2 backup gap (PRD §16 item 56, extending ADR-095) is being tracked and built independently of this addendum — the two are related (both stem from OpenWA's own storage being outside this project's normal durability guarantees) but are not the same fix.
+- Once built, `foundation-security.md`'s existing OpenWA fraud-surface note should gain a line noting the fork now carries platform-authored patches, so a future "redeploy clean from upstream" instinct doesn't silently drop this fix.
 
 ---
 
