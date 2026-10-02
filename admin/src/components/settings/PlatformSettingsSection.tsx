@@ -77,7 +77,7 @@ export default function PlatformSettingsSection({
       setError("Enter a valid markup percentage.");
       return;
     }
-    if (!confirm(`Apply ${percent}% markup to every active package? This recomputes standard_selling_price for all of them and cannot be undone in bulk.`)) {
+    if (!confirm(`Apply ${percent}% markup to every package, active or inactive? This recomputes standard_selling_price for all of them (combos with a Custom Markup % or Custom Price override are left untouched) and cannot be undone in bulk.`)) {
       return;
     }
 
@@ -123,8 +123,9 @@ export default function PlatformSettingsSection({
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <h3 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white/90">Bulk markup update</h3>
         <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-          Applies a markup % to every currently-active package&apos;s <code>markup_percent</code>, recomputing{" "}
-          <code>standard_selling_price</code> for each — logged the same as a manual per-package markup edit.
+          Applies a markup % to every package&apos;s (active or inactive) <code>markup_percent</code>, recomputing{" "}
+          <code>standard_selling_price</code> for each. Combo packages follow along via their Sum of Components price —
+          a combo with a Custom Markup % or Custom Price override keeps that override untouched.
         </p>
         <div className="flex items-end gap-3">
           <div className="w-32">
