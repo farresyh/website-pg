@@ -4,6 +4,5 @@
       "Read(./.env)",
       "Read(./.env.*)"
     ]
-  },
-  "model": "claude-sonnet-5"
+  }
 }
