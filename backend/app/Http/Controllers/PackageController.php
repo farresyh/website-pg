@@ -10,6 +10,7 @@ use App\Http\Requests\Games\UpdatePackageMarkupRequest;
 use App\Http\Requests\Games\UpdatePackageRequest;
 use App\Http\Requests\Games\UpdatePackageStatusRequest;
 use App\Models\Game;
+use App\Models\Order;
 use App\Models\Package;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
@@ -204,8 +205,36 @@ class PackageController extends Controller
         return response()->json($package);
     }
 
+    /**
+     * 2026-10-02 addendum: delete is a hard delete (Package has no
+     * SoftDeletes) with no DB-level guard that fails gracefully — an
+     * order's `package_id` FK is `nullOnDelete()` (silently orphans
+     * order history, no warning) and a combo component's FK is
+     * `restrictOnDelete()` (a raw, unhandled DB exception). Both are
+     * now pre-checked here and rejected with a clear message instead.
+     * Delete stays reserved for a package that was never actually
+     * used — removing one from the storefront while keeping its
+     * history is `updateStatus()`'s job (deactivate), not this one's.
+     */
     public function destroy(Package $package): JsonResponse
     {
+        if (Order::query()->where('package_id', $package->id)->exists()) {
+            throw ValidationException::withMessages([
+                'package' => ['This package has order history and cannot be deleted — deactivate it instead.'],
+            ]);
+        }
+
+        $dependents = $package->partOfCombos()->get(['packages.id', 'packages.name']);
+
+        if ($dependents->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'package' => [
+                    $dependents->count().' combo(s) use this package as a component — cannot delete: '
+                    .$dependents->pluck('name')->implode(', '),
+                ],
+            ]);
+        }
+
         $gameId = $package->game_id;
         $package->delete();
         GameController::forgetIndexCache();

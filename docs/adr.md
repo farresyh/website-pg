@@ -131,6 +131,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323) and PR-B2 (#324) released 2026-09-30 via #325; the switch is ON and live-tested. The post-live-test addendum (the order number is the opt-in, a timeline status card, a not-found reply, `START`, skipped revival) is **#326, on `staging`, not yet on `main`** |
 | **ADR-117** | Prod DB least-privilege — `doadmin` superuser replaced by dedicated scoped user `pekangame_app`@`%` (`defaultdb` only, no `CREATE USER`/`GRANT OPTION`/replication). `doadmin` itself never modified — pure break-glass fallback. Live 2026-09-30, verified via health check + a real backup run |
 | **ADR-118** | Marketing Campaigns — multi-use KOL discount codes (`Campaign`→`PromoCode`), separate from single-customer `Voucher`. 5% flat off Standard price, no per-order/min-spend caps (benchmarked + margin-verified), stacks with `Voucher` but never Member pricing, per-code budget with reserved/restored lifecycle, snapshot-at-creation attribution, optional platform/affiliate funding split. Fully grilled + stress-tested 2026-10-02, design-only, build not started |
+| **ADR-119** | Package delete guards — `PackageController::destroy()` blocks a hard-delete when the package has order history (any status, ever) or is a live combo component (any status), mirroring `updateStatus()`'s existing combo-cascade guard pattern instead of a raw DB FK crash or a silent `orders.package_id` orphan. No `SoftDeletes` conversion. Built 2026-10-02 |
 
 ---
 
@@ -7091,5 +7092,26 @@ The single thread running through almost every decision here is **reuse over inv
 - Decision 12's funding split, once built, should surface in the affected third-party affiliate's own portal ledger/earnings view (a correctly-typed `order_profit`-reducing ledger entry ought to render there automatically via whatever generic ledger-entry display the portal already has) — confirm this renders sensibly at build time rather than silently reducing an affiliate's balance with no visible explanation.
 - This ADR's `ENGINE_TYPE`-is-global discrepancy is unrelated and already tracked separately under ADR-075's 2026-10-02 addendum — not duplicated here.
 - No automatic build trigger — per `AGENTS.md`'s task lifecycle, this is "Accepted (design)", not yet scheduled; build begins only when the founder says so, same convention as ADR-115.
+
+---
+
+## ADR-119: Package delete guards — block a hard-delete that already has order history or is a live combo component
+
+**Status:** Accepted & built, 2026-10-02 (grilled with the founder, three short rounds via `/mattpocock-skills:grilling`)
+
+**Context:** A founder question about `middleware/product-manager`'s "Add to Catalog" flow led to tracing what happens to a promoted item once its `Package` is later deleted via `admin/games`. The Product Manager side turned out fine — "already in catalog" is computed live by matching `supplier_package_ref` against `packages`, not a cached flag, so a deleted Package's item correctly becomes re-promotable with no orphaned state. But tracing `PackageController::destroy()` (`app/Http/Controllers/PackageController.php`) surfaced a real, unguarded gap: `Package` has no `SoftDeletes`, `destroy()` calls a plain hard `->delete()`, and it checks nothing first. Two DB-level foreign keys back this with very different, both-bad failure modes: `orders.package_id` is `nullOnDelete()` (a package with real order history silently orphans every one of those orders' `package_id` the moment it's deleted — no warning, no trace left of what was actually ordered) and `package_components.component_package_id` is `restrictOnDelete()` (deleting a package that's a live combo component throws a raw, unhandled `QueryException` — a 500 with no admin-readable message, unlike `updateStatus()`'s own combo-aware guard for deactivation, which already handles the equivalent case cleanly).
+
+**Decision:**
+
+1. **`destroy()` blocks entirely — no force-delete escape hatch — if the package has ever had any order, regardless of that order's status.** Delete is reserved for "this package was never actually used"; removing a used package from the storefront while preserving its order history is already `updateStatus()`'s job (deactivate). A package with real order history must never be deletable, full stop — not just its *active* orders, since even a long-settled historical order's audit trail matters on a money-critical platform.
+2. **`destroy()` blocks if the package is a component of any combo, active or inactive**, mirroring `updateStatus()`'s own deactivate-cascade guard exactly (`ValidationException::withMessages()`, naming the dependent combo(s) by name) rather than inventing a new error shape. Scoped to "any combo" rather than "any active combo" because the underlying FK itself doesn't distinguish — a combo being inactive doesn't make its stored composition any less real.
+3. **No conversion to `SoftDeletes`.** Converting `Package` to soft-delete would ripple into every existing query/relationship across the codebase for a problem these two targeted guards already solve — out of scope for what was actually asked, and not something either guard needs.
+
+**Rationale:** Both guards fix a root cause already proven correct elsewhere in this exact codebase — `updateStatus()`'s combo-cascade guard is the working precedent decision 2 copies, and the no-cash-refund/voucher-instead philosophy (`ADR-004`) is the same "never destroy the paper trail of something real" reasoning decision 1 applies to delete. Neither guard was invented from scratch; both close a gap between `destroy()` and patterns this project had already built and tested.
+
+**Consequence to track:**
+- 2 new tests in `PackageControllerTest` (`test_destroy_rejects_a_package_with_order_history`, `test_destroy_rejects_a_package_used_as_a_combo_component`). Full backend suite 2463/2463 green.
+- Verified via local manual smoke test (real HTTP request against the local dev server) that the `422` response's JSON shape carries the specific guard message both at the top-level `message` and under `errors.package[0]` — Laravel 13's `ValidationException::summarize()` already promotes the first field error to the top-level message, so no separate frontend change was needed to surface it (an initial assumption that `admin/`'s generic-catch error display would need a fix for this was checked against a real request and found false before any frontend code was touched).
+- No existing admin-games delete flow was found to depend on the old silent/crashing behavior — nothing else to migrate.
 
 ---
