@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Controllers;
 
 use App\Models\AdminUser;
 use App\Models\Game;
+use App\Models\Order;
 use App\Models\Package;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -289,5 +290,41 @@ class PackageControllerTest extends TestCase
 
         $response->assertNoContent();
         $this->assertSame(0, Package::query()->count());
+    }
+
+    public function test_destroy_rejects_a_package_with_order_history(): void
+    {
+        $package = $this->package();
+        Order::factory()->create(['package_id' => $package->id]);
+        $this->actingAsAdmin();
+
+        $response = $this->deleteJson("/api/packages/{$package->id}");
+
+        $response->assertStatus(422)->assertJsonValidationErrors('package');
+        $this->assertSame(1, Package::query()->count());
+    }
+
+    public function test_destroy_rejects_a_package_used_as_a_combo_component(): void
+    {
+        $component = $this->package();
+        $combo = Package::query()->create([
+            'game_id' => $component->game_id,
+            'name' => 'Combo Pack',
+            'denomination' => 0,
+            'cost_price' => 0,
+            'standard_selling_price' => 0,
+            'markup_percent' => 0,
+            'is_active' => true,
+            'is_combo' => true,
+            'supplier_id' => null,
+            'supplier_package_ref' => null,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
+        $this->actingAsAdmin();
+
+        $response = $this->deleteJson("/api/packages/{$component->id}");
+
+        $response->assertStatus(422)->assertJsonValidationErrors('package');
+        $this->assertSame(2, Package::query()->count());
     }
 }

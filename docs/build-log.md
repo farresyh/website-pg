@@ -2017,3 +2017,35 @@ changes, so they'd have stayed wrong indefinitely otherwise. Each fix logged its
 own `PriceChangeLog` row (`price_sync_run_id = null`, same convention as a manual
 `bulkMarkup()` row). Verified idempotent — a second `recompute()` pass over the
 same 49 combos changed 0.
+
+## 2026-10-02 — Package delete guards (ADR-119)
+
+A founder question about Product Manager's "Add to Catalog" flow (does deleting
+a Package in `admin/games` leave Product Manager stuck thinking it's still
+promoted?) led to tracing `PackageController::destroy()`. The Product Manager
+side is fine — "already in catalog" is computed live by matching
+`supplier_package_ref` against `packages`, not a cached flag, so a deleted
+Package correctly becomes re-promotable. But `destroy()` itself had no guards at
+all: a package with real order history could be hard-deleted, silently setting
+`orders.package_id` to `NULL` (the FK is `nullOnDelete()`) with zero warning;
+a package used as a combo component would instead throw a raw, unhandled DB
+`QueryException` (`restrictOnDelete()`), a 500 with no admin-readable message.
+
+**Fix** (`backend/app/Http/Controllers/PackageController.php`): `destroy()` now
+blocks entirely (no force-delete) if the package has ever had any order
+(any status, not just active ones), and blocks if it's a component of any combo
+(active or inactive) — both via `ValidationException::withMessages()`, the
+combo case mirroring `updateStatus()`'s existing cascade-guard message style
+exactly. `Package` stays a hard delete (no `SoftDeletes` conversion — out of
+scope for what was asked). 2 new tests in `PackageControllerTest`. Full backend
+suite 2463/2463 green, Pint clean.
+
+Checked, not assumed: an initial plan to also fix `admin/`'s generic error
+display (on the theory that Laravel's 422 response buries the useful message
+under `errors.field` while the top-level `message` is a generic "The given
+data was invalid.") turned out to target a bug that doesn't exist in this
+Laravel version — a real local HTTP request against the new guard showed
+`ValidationException::summarize()` already promotes the first field error to
+the top-level `message` (`vendor/laravel/framework`'s own behavior, not
+something this app customized). The speculative frontend change was reverted
+before committing; `admin/` has no code changes in this entry.
