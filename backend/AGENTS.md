@@ -90,6 +90,49 @@ php artisan app:chip-smoke-test                             # hits the real CHIP
 php artisan app:gamevion-smoke-test                         # hits the real Gamevion sandbox
 ```
 
+## Local dev gotchas (moved from the root `AGENTS.md`, 2026-10-02)
+
+Read these when a local symptom looks like a code bug — each one has fooled
+a session before.
+
+1. **Queued work does nothing.** Price Sync / fulfillment / resend need a
+   worker. `composer run dev` runs one (`php artisan horizon`); bare
+   `php artisan serve` or Herd alone does not. A stuck "Syncing…" is almost
+   always this. Two quieter causes of the same symptom:
+   - `backend/node_modules` was never installed (`npm install` inside
+     `backend/`). The `vite` step fails, and `concurrently --kill-others`
+     tears down `horizon` with it, visible only in the backend terminal
+     (`docs/build-log-archive.md`, 2026-07-28).
+   - Redis isn't up (`docker compose up -d redis`). Horizon has no
+     `database` fallback since ADR-048, so its pane shows connection-refused.
+     That's easy to miss in interleaved output.
+2. **A new migration runs only on the test DBs** (sqlite `:memory:`, the
+   concurrency MySQL), never on the local dev DB. So a green
+   `php artisan test` proves nothing about the dev DB. A "no such table" or
+   "unknown column" error in the browser means: run `php artisan
+   migrate:status`, then plain `php artisan migrate`. **Never
+   `migrate:fresh`.** It drops every table, and the gitignored dev sqlite has
+   no backup (`docs/build-log-archive.md`: the 2026-07-29 Blacklist entry and
+   the 2026-08-31 ADR-061 PR-B data-loss incident).
+3. **`php artisan serve` drops your exported env vars.** It re-reads
+   `.env` and passes through only `ServeCommand::$passthroughVariables`
+   (`APP_ENV`, `PATH`, a few Herd/Xdebug vars). An exported `DB_DATABASE`
+   is silently ignored, so you serve against the real dev DB with no error.
+   Any script booting `serve` with env set outside `.env` needs
+   `--no-reload` (`e2e/scripts/boot-backend.sh`, ADR-023).
+4. **Capturing artisan output with `$(...)` needs `--no-ansi`.** Symfony
+   Console force-adds ANSI codes whenever `GITHUB_ACTIONS` is set, even
+   when piped. The captured value is corrupt on CI but clean locally. A
+   corrupted `APP_KEY` surfaced only at the first encrypted write, as
+   Playwright's generic "webServer was not able to start"
+   (`docs/build-log-archive.md`, 2026-08-27).
+5. **Local `CACHE_STORE` may be `database`, not `redis`.** `Cache::tags()`
+   throws against it. For a local smoke test that touches tag-flushing
+   (`GameController::forgetIndexCache()`), run
+   `CACHE_STORE=redis php artisan serve --no-reload`.
+
+## Migrations
+
 Migrations: verify new foreign-key columns actually get a standalone index on
 real MySQL via `SHOW INDEX FROM <table>` — `foreignId()->constrained()` has
 already been found, once, to not reliably leave one on its own (see the

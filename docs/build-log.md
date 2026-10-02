@@ -2049,3 +2049,49 @@ Laravel version — a real local HTTP request against the new guard showed
 the top-level `message` (`vendor/laravel/framework`'s own behavior, not
 something this app customized). The speculative frontend change was reverted
 before committing; `admin/` has no code changes in this entry.
+
+## 2026-10-02 — ADR-118 code-trace review addendum + `AGENTS.md` restructure (docs only)
+
+**ADR-118 (Marketing Campaigns) re-reviewed against real code before any build.**
+- The original design passed four grill rounds and a stress test, but its claims
+  about existing code were made by analogy.
+- Three parallel forks traced the design against code: checkout/pricing,
+  ledger/fulfillment/compensation, and downstream readers. The model re-verified
+  the top findings itself.
+- Four silent-wrong-money gaps surfaced:
+  1. Discount storage was unspecified, and four profit recomputes would have
+     added the discount back.
+  2. Resend recomputes `affiliateProfit` from scratch, erasing a 60/40 split.
+  3. The "5% is always margin-safe" proof held only for the Standard basis.
+     On an affiliate store, a low wholesale tier can make the platform lose
+     money.
+  4. `VoucherService::redeem()` actually runs after the CHIP purchase and
+     logs-and-proceeds on a race. That is safe for a single-owner voucher, but
+     unbounded for a public code.
+- Four more grill rounds with the founder settled R1–R16 in ADR-118's review
+  addendum (`docs/adr.md`). PRD §16 item 57 now points builders at it.
+- Founder decisions:
+  - Failed-but-uncompensated orders keep their budget reservation.
+  - Once per player ID or email.
+  - Contra-revenue for the discount, plus an optional KOL fee on `Campaign`
+    for true ROI.
+  - Negative affiliate profit allowed (withdrawal already blocked by the
+    balance check).
+  - Admin UI under Customers, with two sub-pages.
+
+**`AGENTS.md` restructured.**
+- Added a "which steps apply to which request" table, plus new **Release &
+  Production State** and **Production Access** sections.
+- Added the money-critical code-trace pass to lifecycle step 2. Step 7 now
+  covers PRD §14 and design-only §16 lines; those two gaps caused this
+  morning's docs-audit drift.
+- Promoted several workflow rules that had lived only in one assistant's
+  private memory, so other agents (e.g. Codex) now see them too.
+- Removed duplicated rules.
+- The five local-dev gotchas moved verbatim-in-substance to `backend/AGENTS.md`
+  → "Local dev gotchas", with a pointer left in the root. Added a fifth: local
+  `CACHE_STORE=database` breaks `Cache::tags()`.
+- Removed the dead `Co-Authored-By` rule. It required an `attribution.commit`
+  setting that never existed, while 74 of the last 100 commits carried the
+  trailer anyway.
+- Removed the `.claude/settings.json` model pin (founder's call).

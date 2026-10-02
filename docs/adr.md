@@ -130,7 +130,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-115** | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (Digiflazz only). Fully designed and grilled 2026-09-28; build deliberately **parked** — no automatic trigger, founder will say when. Companion to the `/admin/balance` page (PR #307) |
 | **ADR-116** | Customer order notifications over WhatsApp (OpenWA `customer-support` session), not email — closes audit M-11. Vouchers are sent proactively; Delivered receipts go only to phone numbers that opted in; OpenWA's own send pacing is the anti-ban layer. Grilled 2026-09-30. PR-B1 (#323) and PR-B2 (#324) released 2026-09-30 via #325; the switch is ON and live-tested. The post-live-test addendum (the order number is the opt-in, a timeline status card, a not-found reply, `START`, skipped revival) is **#326, on `staging`, not yet on `main`** |
 | **ADR-117** | Prod DB least-privilege — `doadmin` superuser replaced by dedicated scoped user `pekangame_app`@`%` (`defaultdb` only, no `CREATE USER`/`GRANT OPTION`/replication). `doadmin` itself never modified — pure break-glass fallback. Live 2026-09-30, verified via health check + a real backup run |
-| **ADR-118** | Marketing Campaigns — multi-use KOL discount codes (`Campaign`→`PromoCode`), separate from single-customer `Voucher`. 5% flat off Standard price, no per-order/min-spend caps (benchmarked + margin-verified), stacks with `Voucher` but never Member pricing, per-code budget with reserved/restored lifecycle, snapshot-at-creation attribution, optional platform/affiliate funding split. Fully grilled + stress-tested 2026-10-02, design-only, build not started |
+| **ADR-118** | Marketing Campaigns — multi-use KOL discount codes (`Campaign`→`PromoCode`), separate from single-customer `Voucher`. 5% flat off Standard price, no per-order/min-spend caps (benchmarked + margin-verified), stacks with `Voucher` but never Member pricing, per-code budget with reserved/restored lifecycle, snapshot-at-creation attribution, optional platform/affiliate funding split. Fully grilled + stress-tested 2026-10-02, design-only, build not started. **2026-10-02 review addendum (R1–R16, supersedes on conflict):** a code-trace pass found 4 silent-wrong-money gaps. Discount now folded into `selling_price` with frozen split snapshots, resend honours the split, per-order platform loss guard (Standard + Affiliate tier only), fail-closed budget reserve, separate redemptions table, once per player-ID/email, brand-scoped, contra-revenue + optional KOL fee for ROI, UI under Customers |
 | **ADR-119** | Package delete guards — `PackageController::destroy()` blocks a hard-delete when the package has order history (any status, ever) or is a live combo component (any status), mirroring `updateStatus()`'s existing combo-cascade guard pattern instead of a raw DB FK crash or a silent `orders.package_id` orphan. No `SoftDeletes` conversion. Built 2026-10-02 |
 
 ---
@@ -7092,6 +7092,121 @@ The single thread running through almost every decision here is **reuse over inv
 - Decision 12's funding split, once built, should surface in the affected third-party affiliate's own portal ledger/earnings view (a correctly-typed `order_profit`-reducing ledger entry ought to render there automatically via whatever generic ledger-entry display the portal already has) — confirm this renders sensibly at build time rather than silently reducing an affiliate's balance with no visible explanation.
 - This ADR's `ENGINE_TYPE`-is-global discrepancy is unrelated and already tracked separately under ADR-075's 2026-10-02 addendum — not duplicated here.
 - No automatic build trigger — per `AGENTS.md`'s task lifecycle, this is "Accepted (design)", not yet scheduled; build begins only when the founder says so, same convention as ADR-115.
+
+### Review addendum — 2026-10-02 (code-trace pass + four grill rounds)
+
+**Status:** Accepted (design). Build not started. **This addendum supersedes the original decisions wherever they conflict**; build from the two together.
+
+**Context:**
+
+- The original ADR passed four grill rounds and a stress test, but its claims about existing code were made by analogy. A later code-trace pass ran three parallel forks (checkout and pricing; ledger, fulfillment and compensation; downstream readers), each reading real code. The model then re-verified the highest-impact findings itself.
+- That pass found four gaps that would have produced silently wrong money if built as written, plus a set of smaller ones:
+  1. **The ADR never said where the discount is stored.** Four paths recompute profit as `selling_price − cost − affiliate_profit`:
+     - real-cost reconcile `OrderFulfillmentService::reconcileRealCostProfit` (ADR-111)
+     - the combo residual (ADR-107)
+     - `OrderResendService` (ADR-105)
+     - `Order`'s cost-basis detection
+
+     If `selling_price` kept the pre-promo price, each of these would add the discount back into platform profit.
+  2. **Resend erases the affiliate's share of the discount.** `OrderResendService.php:173-191` recomputes `affiliateProfit` from scratch at full markup and gives the whole remainder to platform. A 60/40 split becomes 100/0 after one resend.
+  3. **The margin claim was too broad.** The "5% can never make an order lose money" proof (Context, decision 3) only holds for the Standard basis. On an affiliate store with a wholesale tier, platform profit is only the tier markup (`PricingService.php:64-72`). The best-tier floor is about 3% over cost (ADR-027 decision 14), and it is admin-editable. Worked example: cost RM100, tier 3%, affiliate markup 10% gives a customer price of RM113.30 and platform profit of RM3.00. A 5% discount is RM5.67, so a 60% platform share is RM3.40 and the platform loses RM0.40. Combos whose `combo_override_price` equals cost have zero margin.
+  4. **Decision 9's timing claim was wrong.** `VoucherService::redeem()` does not run at payment success. It runs after the CHIP purchase is created (`CheckoutService.php:279-281`), and a failed redeem is logged and the order proceeds anyway (`logAcceptedVoucherRedemptionRace`, `:389`). That is safe for a `Voucher` only because a single customer owns it. A public `PromoCode` raced by many customers would overrun its cap with no bound.
+- **Smaller findings:**
+  - No redemption-count limit was stated.
+  - No brand scoping was stated.
+  - There are three separate price calculations (`previewTotal`, `VoucherPreviewController`, `initiate()`).
+  - Consequence #2's assumption was wrong: the "Become a Member" card *does* show for a Tier-1 member who applies a promo (`OrderForm.tsx:270`).
+  - The admin sidebar has no top-level "Accounting" section to mirror; Accounting is a dropdown inside Commerce.
+- The method lesson is now codified in `AGENTS.md` Task Lifecycle step 2 (the money-critical code-trace pass).
+
+**Decision (numbered R1–R16 so they don't collide with the original 1–17):**
+
+- **R1. Storage.**
+  - `orders.selling_price` holds the price **after** the promo.
+  - New snapshot columns, frozen at checkout and never rewritten: `promo_discount_sen`, `promo_platform_share_sen`, `promo_affiliate_share_sen`.
+  - The pre-promo price is `selling_price + promo_discount_sen`.
+  - `normal_selling_price` is **not** reused. It stays Member-only, and the Member "margin forgone" readers depend on it (`MembershipController.php:152`, `ReportService.php:422`).
+  - This keeps `selling_price`'s existing meaning ("the price this customer was sold at, before voucher") and leaves every existing profit formula correct, along with `final_amount`, the compensation voucher amount (`final_amount − transaction_fee`, `VoucherController.php:248`) and CHIP settlement matching.
+  - **`final_amount`'s formula is unchanged:** `selling_price − voucher_discount + transaction_fee`. The promo is already inside `selling_price`, so subtracting it again would count it twice.
+- **R2. Order of operations and rounding.**
+  - Order: promo, then voucher (capped at the post-promo `selling_price`), then transaction fee (on `selling_price − voucher_discount`).
+  - The discount is computed once in sen.
+  - The rounding remainder of the split goes to platform, so `promo_platform_share_sen + promo_affiliate_share_sen = promo_discount_sen` always holds.
+- **R3. Discount base (clarifies decision 3).** The percentage is taken off the **pre-promo price the customer would pay** (`selling_price` before promo, including any affiliate markup), not off `standard_selling_price`. The customer sees exactly the advertised percentage off the displayed price.
+- **R4. Every profit writer must honour the frozen split.**
+  - `OrderResendService` subtracts `promo_affiliate_share_sen` from its recomputed `affiliateProfit` on both branches.
+  - Each of the four `selling_price`-based writers gets a test proving the split survives it.
+- **R5. Eligible bases and loss guard.**
+  - Eligible: **Standard** and **Affiliate** (wholesale tier).
+  - Rejected: **Member** (decision 4 stands) and **ResellerWallet**. The Reseller API, Bot and portal reject any code explicitly; today they have no code field at all.
+  - **Server-side guard on every order:** if `platform_profit` after the platform's share would be `< 0`, the promo is rejected for that item with a clear message. Combos go through the same guard.
+  - The campaign-creation screen lists the packages the guard would reject under the chosen split.
+- **R6. Affiliate negative profit (decision 12 stands).**
+  - The affiliate's share may push that order's affiliate profit below zero.
+  - The partner portal labels such ledger rows with the campaign (not a bare "Order margin", `reseller/src/lib/format.ts:25`).
+  - `LedgerService::withdraw()`'s existing balance check blocks withdrawal while the balance is negative; no new mechanism is needed.
+  - Campaign creation warns when the split would make some of that affiliate's orders negative.
+  - An affiliate negative caused by a promo is excluded from ADR-111's profit-drift flag (`isProfitDriftFlagged`), so real cost anomalies stay visible.
+- **R7. Budget reservation is fail-closed (corrects decision 9's timing).**
+  - The budget is checked and reserved under `lockForUpdate()` **before** the CHIP payment link reaches the customer, and inside `settleWithVoucher()` on the full-voucher-cover path.
+  - If the reserve fails, the order is marked Failed and checkout throws, following the M-6 pattern (`CheckoutService.php:200-223`). It is never log-and-proceed.
+  - Unpaid checkouts are bounded by the existing `CheckoutVelocityGuard` (per IP, 10-minute window) and CHIP's 30-minute `due_strict` expiry, which restores the budget. A separate "one open promo checkout per email" cap was considered and dropped: email is freely typed and it adds nothing over those two.
+- **R8. Budget lifecycle across delivery outcomes (completes decision 9).**
+  - **Restore** at the existing payment-level sites: CHIP webhook Failed (`ChipWebhookController.php:133-136`) and `PaymentReconciliationService::markFailed`. Also restore at Issue Voucher / Restore Voucher (`VoucherController.php:311`).
+  - **Commit** at the existing four delivery-success sites (wherever `VoucherService::commit()` runs today).
+  - **A delivery that ends Failed but is not yet compensated keeps its reservation.** Founder's call: restoring immediately would let a later successful resend overrun an exhausted cap. Holding it keeps the counter exact. These orders already surface in the ADR-108 Need Action KPI, so they are not silently stuck. Neither option creates new monetary loss; the discount was given at payment time. The difference is only the budget counter's accuracy.
+  - A CHIP-null-`payment_ref` failure (gateway call failed) restores inside the `CheckoutFailedException` path, because `ReconcilePendingPaymentsCommand` never scans those rows.
+- **R9. Redemptions live in their own table (refines decision 11).**
+  - New `promo_code_redemptions` (reserved, committed, restored, plus the amount), mirroring the voucher redemption lifecycle. The budget cap, the per-customer limit and the discount cost key on this table only.
+  - `orders.attributed_promo_code_id` stays a reporting-only snapshot. It is also stamped on later "most-recent-touch" orders that applied no code, so it must never drive budget.
+  - Reports distinguish "redeemed" orders from "attributed only" ones.
+- **R10. Redemption limit (fills decision 2's gap).**
+  - **Once per `PromoCode` per player ID *or* per email**: a match on either blocks.
+  - The count is taken over non-restored redemptions while the `PromoCode` row is locked; a plain unique index can't exclude restored rows.
+  - A restored redemption frees the slot, so a customer whose payment failed can retry.
+  - Repeat-purchase attribution is already handled by decision 11, so the limit doesn't hurt ROI measurement.
+- **R11. Brand scoping.**
+  - A `PromoCode` is valid only on its `Campaign`'s target brand, mirroring `Voucher`'s brand lock (`VoucherService.php:372`).
+  - `customer_campaign_attribution` is keyed on `(affiliate_id, customer_email)`, not `customer_email` alone.
+- **R12. One pricing path.** The promo goes through the shared `computeTotal()` that `previewTotal`, `VoucherPreviewController` and `initiate()` all call, so the ReviewModal total always equals what CHIP charges. The client sends only the code string (ORD-9 holds).
+- **R13. Member who applies a promo.**
+  - Pricing falls to Standard (decision 4), but the order still takes the member's verified email (`resolveMemberEmail()`) so attribution and Customer Analytics don't split across two emails.
+  - The preview returns a `standard_reason` (`quota` | `promo`). The "Become a Member" upsell and the "quota ran out" copy then key on it.
+  - The existing `showPromo` / `showMembershipPromo` props (the membership upsell) are renamed first, to avoid a collision with `PromoCode`.
+- **R14. Accounting treatment** (founder decision; confirm with the external accounting reviewer before build):
+  - The customer discount is **contra-revenue**. Sales are reported net (post-promo), matching CHIP's settled `final_amount`. Monthly Accounting Summary gains a "Promo discounts" line from `promo_discount_sen`.
+  - A **direct fee paid to a KOL** (the founder sometimes pays one) is a **marketing expense**, recorded through the Envelope Ledger, not through orders.
+  - `Campaign` gains an optional `kol_fee_sen` so Campaign Analytics can show true ROI: attributed profit − discount cost − KOL fee.
+- **R15. Reporting hygiene.**
+  - The Membership tab's Member-vs-Standard comparison excludes promo orders (`attributed_promo_code_id IS NOT NULL` with a redemption), so promo-driven Standard orders don't skew it.
+  - Every reader of `voucher_discount` also shows `promo_discount_sen`:
+    - admin Order Detail and CSV export
+    - `TrackOrderController`
+    - the affiliate order API
+    - storefront track-order and checkout
+    - the reseller portal order view
+    - the LLM assistant's `llm_report_orders` view and its schema prompt
+- **R16. Admin UI (replaces decision 16).**
+  - A "Campaigns" dropdown inside the existing **Customers** section, next to Customer Analytics (which gains the `campaignId` filter). No new top-level section.
+  - Two sub-pages:
+    - **Campaigns:** list, create and edit. The detail page holds the campaign's codes (%, budget used vs cap, redemptions), each with an auto-generated `?promo=CODE` tracker link and a copy button, plus that campaign's own funnel and ROI.
+    - **Campaign Analytics:** side-by-side comparison of campaigns and codes, date filter, click-vs-redemption funnel, export.
+  - The original standalone "Promo Codes" page is dropped. Codes are always managed through their campaign, and cross-code comparison lives in Campaign Analytics.
+  - The public click-log endpoint gets `throttle:60,1` (precedent: `/seo/redirects/record-hit`). The storefront reads `?promo=` in the browser so cached pages don't hide it. Clicks are a soft signal only.
+
+**Rationale:** R1 is the root decision. Folding the discount into `selling_price` uses the column's existing meaning, so four existing profit writers, compensation and settlement matching stay correct without being touched. The alternative needs every current and future reader to remember a subtraction. Most remaining decisions follow from "a public, budget-capped code is not a private single-owner voucher":
+- fail-closed reserve (R7)
+- brand lock (R11)
+- explicit per-customer limit (R10)
+- redemption table separate from attribution (R9)
+
+The loss guard (R5) replaces a snapshot-based safety proof with a per-order check, because margins and tier markups are admin-editable at any time.
+
+**Consequence to track:**
+
+- Build must include a test per profit writer (R4), a concurrency test for the fail-closed reserve (R7, next to `VoucherRedeemConcurrencyTest.php`), and a test that a restored redemption frees the per-customer slot (R10).
+- R14's accounting treatment is the founder's working decision, pending the external reviewer.
+- Original consequence #2 (upsell card) is resolved by R13; consequence #3 (affiliate portal display) is resolved by R6.
 
 ---
 
