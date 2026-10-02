@@ -597,12 +597,14 @@ any analysis that needs the distinction must judge each order (corrected
 2026-09-30, see `docs/build-log.md`). The older "no external customers" line
 was wrong from at least then on.
 
-**On `staging`, not yet released to `main` (as of 2026-10-02):** #335 (supplier
-transfer `effective_rate` recompute), #338 (bulk markup widened, and the bulk
-markup combo-pricing corruption fixed), and #339 (package delete guards,
-ADR-119). **Until #338 is released, running Platform Settings' bulk markup on
-production re-corrupts combo prices.** The 2026-10-02 hand remediation fixed
-the data, not the code path.
+**Release 2026-10-02 (`staging`→`main`, PR #342), live-verified.** The server
+runs `fe1674b`, `/api/health` is ok, and the guard code is present on the box.
+- #338: Platform Settings' bulk markup now recomputes default-mode combos
+  instead of overwriting them. This closes the live combo-corruption path.
+- #339: package delete guards (ADR-119).
+- #335: supplier-transfer `effective_rate` recompute.
+- #341: affiliate domain setup guide and theme preview tokens.
+- Docs: #340 (`AGENTS.md` restructure, ADR-118 review addendum).
 
 **Release 2026-09-30 (`staging`→`main`): audit Wave 5, which closes the 2026-09-28 audit.**
 - PR-A #322: M-10 (supplier-transfer void race) and six money-hygiene Lows,
