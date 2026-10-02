@@ -1967,3 +1967,53 @@ move without an explicit storage-rsync step).
 any future droplet move. `Gallery` already solved the identical problem
 for public images via R2 (ADR-095) — `docs/prd.md` §16 item 56, full
 writeup `docs/adr.md`'s ADR-114 2026-10-01 addendum.
+
+## 2026-10-02 — Bulk markup widened to every package + combo pricing-corruption bug fixed (ADR-028 addendum, cross-ref ADR-094)
+
+Founder question ("does bulk markup skip inactive packages?") led to confirming
+`SettingsController::bulkMarkup()` (ADR-028 decision 4) was scoped to
+`is_active = true` with no recorded rationale, and — more seriously — had no
+`is_combo` exclusion at all: every active combo Package was being flat-overwritten
+with `cost × (1+markup%)`, bypassing ADR-094's `ComboPricingService::recompute()`
+entirely. Checkout charges a combo's stored `standard_selling_price` verbatim, so
+this was a real customer-facing pricing bug, not a cosmetic one. Full ADR-028
+addendum has the complete decision record; this entry is the "what shipped" note.
+
+**Production incident data (found via `PriceChangeLog`/`Order` queries before
+fixing anything):** the last `bulkMarkup()` run was 2026-09-30 12:20:25 and
+corrupted 47 combo packages. Zero real orders were placed against any of them in
+the two days since — caught before a customer was actually overcharged/undercharged.
+
+**Code fix** (`backend/app/Http/Controllers/Admin/SettingsController.php`):
+`bulkMarkup()` now runs in two sequential passes inside the same transaction —
+non-combo packages first (unchanged flat formula, now with no `is_active` filter
+at all), then combos (`is_combo = true`) second, so a combo's default "Sum of
+Components" price sees its components' already-updated prices before recomputing.
+A combo with an active Custom Markup % or Custom Price override
+(`combo_override_markup_percent`/`combo_override_price` not null) is left
+untouched — only a combo still in the default Sum of Components mode is routed
+through `ComboPricingService::recompute()`. Nesting a combo inside another combo
+is already rejected at creation, so this two-pass ordering is always sufficient —
+no topological-sort concern. 5 new tests in `SettingsControllerTest` (inactive
+package now included, sum-of-components combo recomputed from updated
+components, custom-markup combo skipped, custom-price combo skipped, inactive
+combo also recomputed) + the existing active-package test flipped to assert the
+new behavior. `PackageController::updateMarkup()` doc-comment drift (ADR-028's
+own text claimed it writes a `PriceChangeLog`; it doesn't) corrected in the same
+pass. `admin/src/components/settings/PlatformSettingsSection.tsx`'s confirm
+dialog + help text updated to stop claiming "active package" scope. Full backend
+suite 2461/2461 green, `tsc --noEmit` clean on `admin/`.
+
+**Production remediation (one-time, run directly, no code deploy needed for
+this part):** `ComboPricingService::recompute()` run against all 49 default-mode
+combos on production. Only 4 were still actually wrong — most of the original 47
+had already self-corrected via an unrelated component price-sync in the two days
+since the incident: `id=1271` (2066 Diamonds) RM137.89→RM143.08, `id=1277` (2662
+Diamonds) RM177.43→RM183.96, `id=1280` (5394 Diamonds, **inactive**)
+RM352.63→RM351.08, `id=1284` (7800 Diamonds, **inactive**) RM532.36→RM530.03. The
+two inactive ones are exactly the failure mode this whole session started from —
+nothing touches an inactive combo's price until it's reactivated or a component
+changes, so they'd have stayed wrong indefinitely otherwise. Each fix logged its
+own `PriceChangeLog` row (`price_sync_run_id = null`, same convention as a manual
+`bulkMarkup()` row). Verified idempotent — a second `recompute()` pass over the
+same 49 combos changed 0.

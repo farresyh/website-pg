@@ -18,6 +18,7 @@ use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\PriceChangeLog;
 use App\Services\Media\ImageIngestService;
+use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +39,7 @@ class SettingsController extends Controller
 
     public function __construct(
         private readonly PackageMarkupService $markup,
+        private readonly ComboPricingService $comboPricing,
         private readonly ImageIngestService $images,
     ) {}
 
@@ -156,11 +158,23 @@ class SettingsController extends Controller
 
     /**
      * SET-2's bulk markup action (decision 4's mechanics, settled at
-     * build time): a one-time bulk-update over every currently-active
-     * Package, not a stored default for new packages — that's a
-     * separate, unbuilt concern. Mirrors PackageController::
-     * updateMarkup()'s own PriceChangeLog write exactly, one row per
-     * package actually changed.
+     * build time; widened 2026-10-02 — ADR-028's addendum, cross-ref
+     * ADR-094): a one-time bulk-update over every Package, active or
+     * not, so an inactive package's markup never goes stale until it's
+     * reactivated — not a stored default for new packages, that's a
+     * separate, unbuilt concern. One `PriceChangeLog` row per package
+     * actually changed (this is the only markup-editing endpoint that
+     * does — `PackageController::updateMarkup()` does not).
+     *
+     * Non-combo packages are updated first, combos second: a combo's
+     * default "Sum of Components" pricing must see its components'
+     * already-updated selling prices before it recomputes, never the
+     * reverse (nesting a combo inside a combo is rejected at creation,
+     * so this two-pass order is always sufficient). A combo with a
+     * deliberate "Custom Markup %" or "Custom Price" override is left
+     * untouched by this action — both are a per-combo pricing decision,
+     * not something a platform-wide markup action should silently
+     * overwrite.
      */
     public function bulkMarkup(BulkMarkupRequest $request): JsonResponse
     {
@@ -169,7 +183,7 @@ class SettingsController extends Controller
         $gameIds = [];
 
         DB::transaction(function () use ($markupPercent, &$changed, &$gameIds) {
-            Package::query()->where('is_active', true)->chunkById(100, function ($packages) use ($markupPercent, &$changed, &$gameIds) {
+            Package::query()->where('is_combo', false)->chunkById(100, function ($packages) use ($markupPercent, &$changed, &$gameIds) {
                 foreach ($packages as $package) {
                     $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice($package->cost_price, $markupPercent);
 
@@ -195,6 +209,32 @@ class SettingsController extends Controller
                     $gameIds[$package->game_id] = true;
                 }
             });
+
+            Package::query()->where('is_combo', true)
+                ->whereNull('combo_override_price')
+                ->whereNull('combo_override_markup_percent')
+                ->chunkById(100, function ($combos) use (&$changed, &$gameIds) {
+                    foreach ($combos as $combo) {
+                        $oldCostPrice = $combo->cost_price;
+                        $oldSellingPrice = $combo->standard_selling_price;
+
+                        if (! $this->comboPricing->recompute($combo)) {
+                            continue;
+                        }
+
+                        PriceChangeLog::query()->create([
+                            'price_sync_run_id' => null,
+                            'package_id' => $combo->id,
+                            'old_cost_price' => $oldCostPrice,
+                            'new_cost_price' => $combo->cost_price,
+                            'old_standard_selling_price' => $oldSellingPrice,
+                            'new_standard_selling_price' => $combo->standard_selling_price,
+                        ]);
+
+                        $changed++;
+                        $gameIds[$combo->game_id] = true;
+                    }
+                });
         });
 
         GameController::forgetIndexCache();
