@@ -804,9 +804,9 @@ production before building on it.
 ## Hardening (founder `.env` / infra)
 
 9. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
-   are later phases; DNSSEC (founder's call). `.env.example` still owes
-   `STOREFRONT_PRIMARY_HOSTS` / `VERCEL_*` / `GALLERY_DISK` / `CACHE_STORE=redis` /
-   `PULSE_*`.
+   are later phases; DNSSEC (founder's call). ~~`.env.example` gaps~~ — closed 2026-10-02:
+   `STOREFRONT_PRIMARY_HOSTS` / `GALLERY_DISK` / `CACHE_STORE=redis` / `PULSE_*`
+   were already present, and the 9 `VERCEL_*` vars (ADR-060) were added.
 10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
     the partner portal's withdrawal balances get meaningful.
 11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
@@ -855,7 +855,7 @@ production before building on it.
    ~~ADR-090's dark-palette backfill (`bumblebee`/`redgiants`/`emerald`/`cobalt`)~~
    — **built 2026-09-24, ADR-113**, the **reseller-family audit's item A3**
    (per-tier rate limit on the Reseller API/Bot) — deliberately deferred design
-   call from the 2026-09-10 audit, not forgotten — and the reseller portal's
+   call from the 2026-09-10 audit, not forgotten. ~~The reseller portal's
    `ThemeTab.tsx` live-preview panel still hardcoding a few cosmetic details
    (the payment-strip background/badge colours) outside the injected tokens,
    first flagged in ADR-090's Consequence-to-track and confirmed still
@@ -863,9 +863,31 @@ production before building on it.
    like a preset's secondary/tertiary accents were missing when the real
    storefront actually renders them fine; low priority since the real
    storefront is unaffected, but worth fixing so the preview can be trusted
-   without a live-storefront cross-check every time.
-49. **Affiliate custom-domain onboarding copy (ADR-060) — parked
-    2026-09-29, not security, raised mid-Wave 3.** Found via
+   without a live-storefront cross-check every time.~~ **Fixed 2026-10-02**:
+   every preview colour now comes from the selected preset *and* mode
+   (shadows, borders, muted text, payment strip, and the primary/fixed tokens
+   that were still read from the light palette in dark mode). FPX/DuitNow
+   badges keep their own brand colours on purpose.
+49. **Affiliate custom-domain onboarding copy (ADR-060) — BUILT 2026-10-02**
+    (`reseller/src/components/domains/DomainSetupGuide.tsx`): 5 numbered EN/BM
+    steps, including "find where your DNS is managed" and the TXT ownership
+    record, plus a "which record to add" table. **The main domain is the
+    primary path** (ADR-060 2026-10-02 addendum, founder's call: affiliates buy
+    `pasarripo.com` to use `pasarripo.com`). `www` is an optional second
+    domain, since auto-registering `www` was found unbuilt. Collapsible tips
+    for Cloudflare, GoDaddy and other providers. **Founder
+    reversed the "no screenshots" call:** Cloudflare has real annotated
+    screenshots (wrong orange cloud vs right grey cloud), taken from
+    `fixfastapp.com` with the form never saved. GoDaddy has two screenshots: the default records list (`A @ Parked` and
+    `CNAME www`, from `domistore.co`, which the founder moved back to GoDaddy
+    nameservers for this) and its "DNS managed elsewhere" screen. The GoDaddy
+    *edit form* screenshot was not taken: auto mode blocks the model from
+    typing into a live DNS form, and that is correct. The founder can add one
+    by hand if wanted. The text must stay complete without
+    the images; re-capture them if a provider redesigns. `fixfastapp.com`'s
+    record was confirmed already DNS-only. **Still open:** the "detect a
+    proxied domain on Check now" follow-up below. Original parked note,
+    2026-09-29, not security, raised mid-Wave 3: Found via
     `fixfastapp.com` showing Vercel's "Proxy Detected" warning (its
     Cloudflare record is Proxied/orange-cloud — risks SSL renewal failure,
     a redirect loop under Cloudflare "Flexible" SSL, and blinds Vercel's
@@ -883,9 +905,9 @@ production before building on it.
     affiliate's own DNS provider is fine). No per-provider screenshots
     (provider UIs change, screenshots rot). **Follow-up, only once a real
     affiliate hits it:** detect a proxied domain on "Check now" and show a
-    specific warning instead of a misleading `active`. Separately
+    specific warning instead of a misleading `active`. ~~Separately
     founder-owed now: flip `fixfastapp.com`'s record to DNS-only in
-    Cloudflare.
+    Cloudflare.~~ Done (seen DNS-only on 2026-10-02).
 
 ## Buildable when triggered (design done or needs its own ADR)
 

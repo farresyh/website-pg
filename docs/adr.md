@@ -73,7 +73,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-057** | Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted… |
 | **ADR-058** | Reseller authentication + admin Reseller Management (RES-1..6) — BUILT + LIVE (guard later r… |
 | **ADR-059** | Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront con… **2026-09-26 addendum:** affiliate withdrawal payout-redirect gap grilled — drop per-request bank-detail override, admin warning vs last-approved-withdrawal baseline. Not yet built |
-| **ADR-060** | Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-… |
+| **ADR-060** | Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-… **2026-10-02 addendum:** portal guide recommends the main domain first (A-record IP only where the DNS host has no ALIAS); section E's `www` auto-registration found unbuilt, affiliates add `www` as a second domain |
 | **ADR-061** | Every storefront is a Reseller — abolish the platform-owner special-case |
 | **ADR-062** | Rebrand the primary storefront to "PekanGame" |
 | **ADR-063** | Storefront visual system replacement — light neo-brutalist "Digital Architect" world |
@@ -3233,6 +3233,25 @@ Fix: both routes get `storefront.brand`; both controllers scope through the new 
 **Deliberately still open:** the realtime `order.{order_number}` broadcast channel (`OrderStatusUpdated`) stays a public, unscoped channel — its payload is already the masked `customerSafePayload`, the order number is the proof-of-ownership token, and brand-scoping it needs a private channel + auth callback. Tracked as a follow-up, not a blocker. Also unchanged: the storefront support card's contact details are the *brand's* (`useSiteConfig().whatsappHref`) — a separate cosmetic fix (`fix/storefront-brand-polish`) de-hardcodes the "PekanGame" strings in the message body.
 
 ---
+
+### Addendum — portal guide recommends the main domain first (2026-10-02, PRD §16 item 49)
+
+**Context:**
+- The 2026-09-06 build addendum (section D) kept "portal still recommends `www.` / `shop.` first". Its only reason was provider opacity: an apex on a DNS host without ALIAS/flattening must use the raw A record (`76.76.21.21`), which is a recognisable signal of our hosting provider.
+- Building the domain setup guide, the founder pointed out the user reality: an affiliate who buys `pasarripo.com` wants the shop on `pasarripo.com`, not on `shop.pasarripo.com`.
+- A guide that steers them to a subdomain mostly produces confused affiliates. The opacity cost it was protecting is small; this ADR itself already accepted it as "minor".
+
+**Decision:**
+1. The portal guide (`DomainSetupGuide.tsx`) presents the **main domain as the primary path**, with records per provider:
+   - Cloudflare: `CNAME @` to the alias, DNS only. Flattening keeps the IP hidden.
+   - GoDaddy and providers without ALIAS: edit the existing `A @` ("Parked") to the A-record IP.
+   - Providers with ALIAS/ANAME: point `@` at the alias.
+2. `www` and other prefixes stay supported as optional extra rows.
+3. **`www` is not auto-registered.** Section E's "the system registers both on Vercel with the redirect configured there" is not built: `AffiliateDomainService` has no `www`/redirect logic. So the guide tells the affiliate to add `www.yourbrand.com` as a second domain, which then serves the same storefront with a canonical tag to the primary. Building the automatic `www` pairing plus redirect is a separate, unscheduled item.
+4. The provider-opaque rule otherwise stands. The guide never names our host; it shows the A-record IP only where the affiliate's DNS host gives no alternative.
+
+**Consequence to track:**
+- Section E's `www` ↔ apex auto-registration is documented here as unbuilt, not silently assumed. Revisit if affiliates repeatedly add only the apex and then report `www` not working.
 
 ### Phasing note (ADR-056..060)
 
