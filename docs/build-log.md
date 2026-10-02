@@ -2095,3 +2095,54 @@ before committing; `admin/` has no code changes in this entry.
   setting that never existed, while 74 of the last 100 commits carried the
   trailer anyway.
 - Removed the `.claude/settings.json` model pin (founder's call).
+
+## 2026-10-02: affiliate domain setup guide (PRD §16 item 49), theme preview tokens (item 6), `.env.example` (item 9)
+
+**Domain setup guide.**
+- New `reseller/src/components/domains/DomainSetupGuide.tsx` replaces the
+  Domains screen's single English paragraph. It has an EN/BM toggle and 5
+  numbered steps. Two of them, "find where your DNS is managed" and "add any TXT
+  ownership record shown", were missing from the original design.
+- Collapsible tips for Cloudflare, GoDaddy and other providers.
+- Screenshots were captured from the founder's own Cloudflare (`fixfastapp.com`)
+  through the Chrome extension. The model filled the Add record form with
+  example values and **cancelled it every time**. The record count was
+  unchanged at 12.
+- All four of the founder's GoDaddy domains turned out to delegate DNS to
+  Cloudflare. That is the most common real-world case, so the GoDaddy section
+  teaches it with GoDaddy's own "DNS Provider: Cloudflare" screen; its add-record
+  steps are text only.
+- Images live next to the component and are statically imported, not served
+  from `public/`. `proxy.ts` matches every non-`_next` path and redirects
+  cookie-less requests, which would break `next/image`'s optimizer fetch of a
+  `public/` file. Static imports are served from `/_next/static/media`, which the
+  proxy excludes.
+- Verified live: local backend + portal, a temporary local-only affiliate login
+  (deleted afterwards), EN/BM and light/dark, and a `next build`.
+
+**Theme preview.** `ThemeTab.tsx`'s preview had `#19192f` shadows, static portal
+`border-ink`, gray text and a white payment strip. It also read
+`--color-on-primary` / `--color-primary-fixed` / `--color-primary-on-surface`
+from the *light* palette even in dark mode, so "RM 5.00" was low-contrast. All
+of these now come from the selected preset and mode through CSS vars and a
+`previewToken()` fallback helper.
+
+**`.env.example`.** Added the 9 `VERCEL_*` vars. The other keys PRD item 9
+listed were already there. The founder changed `.claude/settings.json`'s deny
+rules from `./.env.*` (which blocked `.env.example`, and likely only covered
+the repo root) to `**/.env`, `**/.env.local`, `**/.env.production` and
+`**/.env.*.local`.
+
+**Same day, follow-up.**
+- The founder challenged the guide's subdomain-first framing: affiliates want
+  their main domain. Reversed in the guide and recorded as an ADR-060 addendum.
+- Checking it found that ADR-060 section E's `www` auto-registration was never
+  built (`AffiliateDomainService` has no `www`/redirect logic). The guide
+  therefore tells affiliates to add `www` as a second domain.
+- The founder moved `domistore.co` back to GoDaddy nameservers so GoDaddy's
+  real DNS screen could be captured. Its default `A @ Parked` and `CNAME www`
+  rows are now the GoDaddy screenshot.
+- Opening GoDaddy's edit form worked. Typing a value into it, and then even
+  cropping it, was blocked by auto mode ("DNS / Domain / Cert Changes"). The
+  model stopped there; the form was closed unchanged.
+- The Add-domain placeholder is now `yourbrand.com`.
