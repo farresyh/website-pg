@@ -1,9 +1,10 @@
 {
   "permissions": {
     "deny": [
-      "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.production)",
+      "Read(**/.env.*.local)"
     ]
-  },
-  "model": "claude-sonnet-5"
+  }
 }

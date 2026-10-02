@@ -577,19 +577,32 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - **`Reseller` (wallet) :** Distinct from `Affiliate` (whitelabel storefront partner, above) — a `Reseller` only ever *spends* from a prepaid deposit balance, never earns; buffers the platform's own working capital against Digiflazz/Gamevion running dry. Split out of the original single `Reseller` table and renamed from it 2026-09-04 ([ADR-072](./adr.md)/[ADR-073](./adr.md)). Assigned a `reseller_tiers` markup tier (admin-managed, zero self-serve pricing); orders it places carry `orders.wallet_reseller_id` and `pricing_basis = 'reseller-wallet'`, with `reseller_profit` always `0` by construction (`PricingService::calculateForAffiliate(affiliateMarkupPct: 0.0)`, [ADR-073](./adr.md) decision 1) — the markup is realized as ordinary `platform_profit` instead. Two ordering interfaces share one order-placement contract (`ResellerOrderPlacementService::placeOrder()`, [ADR-073](./adr.md) decision 4): the **Reseller API** (per-tenant `reseller_api_keys`, [ADR-074](./adr.md)) and the **Reseller Bot** (WhatsApp via OpenWA, group-identity mapping, [ADR-075](./adr.md)).
 - **Wallet Top-up / Wallet Debit / Wallet Refund :** The three `ledger_entries.type` values a `Reseller` (wallet) account's own ledger ever carries (owner type `reseller_wallet`), pinned here per [ADR-073](./adr.md)'s own consequence-to-track (owed since PR-C, closed at PR-G). **Wallet Top-up** — a credit, written by either of two equal-standing paths: an admin's manual credit (`ResellerWalletService::manualCredit()`, PR-C, with an optional receipt/proof file) or the reseller's own self-serve CHIP checkout (`ResellerWalletService::completeTopup()`, PR-G, ADR-073 decision 3(a) — a `wallet_topup_attempts` row, `pending → paid/failed/expired`, capped at one `pending` attempt at a time). **Wallet Debit** — the synchronous spend at order-placement time (`ResellerOrderPlacementService::placeOrder()`, PR-D), the tier-priced cost of one order, debited from the same `LedgerService::debit()` primitive every other debit in this codebase uses. **Wallet Refund** — a credit reversing a specific debit, written only by the admin's "Refund to Wallet" terminal action on a failed-and-not-retried wallet-owned order (PR-D decision 7) — an internal-credit reversal, not a reopening of [ADR-004](./adr.md)'s "no cash refund" policy, since no cash ever leaves the platform.
 - **`reseller_code` / `catalog_code` :** The stable, human-readable product-code scheme both Reseller channels order against, since a raw `Package.id` is unstable across a supplier swap (ADR-031/SYNC-5/6). `games.reseller_code` (`[A-Z]{2,10}`, globally unique) identifies the game; a package resolves via `{reseller_code}-{denomination}` for a numeric-value package (e.g. `MLMY-14`) or `{reseller_code}-{catalog_code}` for a bundle/pass with no inherent numeric value (e.g. `MLMY-P1`, `packages.catalog_code` — must contain a letter, mutually exclusive with `denomination`). Two independent equivalence-key spaces by construction, so a bundle can never falsely dedup against an unrelated real-value package. Resolved by the shared `Package::cheapestActiveFor()` / `ResellerCatalogService::resolveByCode()` seam ([ADR-074](./adr.md)/[ADR-075](./adr.md) catalog-code addendum, built PR-E0).
+- **Campaign :** A KOL/influencer marketing push — the grouping parent for one-or-more `PromoCode`s and tracking links, and the unit `CustomerAnalyticsService`/`ReportService` roll up a KOL's attributed sales/profit against. Distinct from `Affiliate` (a branded storefront the KOL would have to actively run) — a `Campaign` lets the platform pay a KOL without them operating any storefront at all ([ADR-118](./adr.md)).
+- **PromoCode :** A multi-use discount code under one `Campaign`, redeemable by many different customers (contrast `Voucher`, below, which is locked to one named customer). A flat percentage off the Standard price only (never Member pricing), with its own redemption-count/game-ID/customer lock and its own budget cap — never shares a budget with a sibling `PromoCode` under the same `Campaign`, so multiple codes (e.g. one per KOL or platform) can be compared fairly ([ADR-118](./adr.md)).
 
 ---
 
 # 14. Build Status
 
-**Where things stand (2026-09-30).** The platform is feature-complete and live
+**Where things stand (2026-10-02).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
 **Digiflazz is the only live supplier** (funded 2026-09-15). **Gamevion**
 (MYR-billed) stays integrated but deliberately unfunded, so Gamevion-routed
-orders can be paid but not delivered. **There are no external customers yet**:
-every order so far is the founder's own testing.
+orders can be paid but not delivered. **Real customers exist on the reseller
+channel:** reseller wallet orders (e.g. Naeem Industries) are real customer
+orders. Storefront-direct orders are still mostly the founder's own testing, so
+any analysis that needs the distinction must judge each order (corrected
+2026-09-30, see `docs/build-log.md`). The older "no external customers" line
+was wrong from at least then on.
+
+**On `staging`, not yet released to `main` (as of 2026-10-02):** #335 (supplier
+transfer `effective_rate` recompute), #338 (bulk markup widened, and the bulk
+markup combo-pricing corruption fixed), and #339 (package delete guards,
+ADR-119). **Until #338 is released, running Platform Settings' bulk markup on
+production re-corrupts combo prices.** The 2026-10-02 hand remediation fixed
+the data, not the code path.
 
 **Release 2026-09-30 (`staging`→`main`): audit Wave 5, which closes the 2026-09-28 audit.**
 - PR-A #322: M-10 (supplier-transfer void race) and six money-hygiene Lows,
@@ -601,19 +614,16 @@ every order so far is the founder's own testing.
   **default OFF**. The founder turned it on the same day after the post-deploy
   steps (§16 item 54).
 
-**On `staging`, not yet released to `main` (as of 2026-09-30 close):** #326,
-the ADR-116 follow-up from the first live test.
-- Any message carrying an order number opts the sender in and gets a
-  timeline status card back.
-- A mistyped number gets a "not found" reply.
-- `START`/`STOP`, the 30-minute card throttle, and a fix that revives a
-  `skipped` notification.
-- The order page help card is reordered (Contact Support → Get Updates → Buy
-  Again, one filled button per state).
-
-Until #326 is released, **prod still runs #325's first version**: the
-"update" keyword decides between an auto-reply and a silent opt-in, and
-receipts use the older plain layout.
+**Release 2026-10-01 (`staging`→`main`, PR #332):**
+- #326, the ADR-116 follow-up from the first live test:
+  - any message carrying an order number opts the sender in and gets a timeline
+    status card back;
+  - a mistyped number gets a "not found" reply;
+  - `START`/`STOP`, the 30-minute card throttle, and skipped-notification
+    revival;
+  - the reordered order-page help card.
+- The 2026-09-30 accounting audit fixes (#329, #331), live-verified.
+- The CI timezone-flake fix (#333).
 
 **Previous release, 2026-09-29 (`staging`→`main`, PR #320, #306–#319):**
 - The 2026-09-28 full system audit's Waves 1–4 (money, races, security, burst
@@ -656,8 +666,8 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live in prod — prepaid wallet + admin manual credit + self-serve CHIP top-up, `ResellerOrderPlacementService` contract, `reseller_code`/`catalog_code` scheme, REST API keys + IP allowlist + delivery webhook, WhatsApp bot (OpenWA), shared portal. Dev docs site live at `docs.pekangame.space`. Public `/price-list` acquisition page (ADR-091), admin-selected tiers. `.order` fat-finger safety net — auto player-ID/region validation + player ID echo (ADR-093, 2026-09-13). PR #273's ledger-backed refund fields and API/docs patch, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24). **2026-09-29:** wallet orders now run on their own `orders-reseller` queue lane (ADR-048 addendum), and the M-2 wallet double-credit race is fixed | ADR-072–076, 084, 091, 093, 112, 048 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Digiflazz live (the only funded supplier). Gamevion is integrated but deliberately unfunded (2026-09-24). Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. Both PRs live. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve (later refined by ADR-102). **2026-09-29:** the breaker also counts `createOrder`/`checkStatus` timeouts (`listProducts` excluded). For a replay-safe supplier (Digiflazz), an ambiguous outcome now goes to Pending with a same-ref poll instead of NeedsReview (ADR-102 addendum). Live | ADR-006, 030–032, 067, 069, 097, 098, 102 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
-| Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16) | ADR-029 |
-| Combo Package | 🟢 Live in prod as of `staging` (functionally complete) — several existing catalog Packages assembled into one opaque, sellable SKU above a game's native max denomination, so a reseller/guest pays one CHIP FPX fee instead of two. Data model + creation endpoint, pricing (sum-of-components, override optional) on the same Price Sync cadence, fulfillment leg-engine (both suppliers, partial-delivery → `needs_review`), admin UI (`/admin/games` composition CRUD, Order-detail leg breakdown, custom-amount Voucher for partial delivery, component-churn guards). Verified genuinely buyable through storefront, Affiliate, and Reseller API/Bot (Reseller Portal has no order-placement surface). **2026-09-16:** max legs raised 3→5 (real usage, decision 20's own revisit bar), component SKU (`supplier_package_ref`) now shown in the composition picker and the Order-detail leg breakdown — previously only the component name/denomination, ambiguous when two components share a denomination across suppliers. **2026-09-17:** `platform_profit` now reconciles as a money-conservation residual on final delivery instead of staying frozen through a leg retry (ADR-107, §16 item 18). **2026-09-21:** pre-scale reliability audit closed 3 real gaps — Mark Delivered hard-blocked on a combo order with an outstanding leg, `isPartialComboDelivery()` widened to catch a NeedsReview-caused over-compensation path (not just Digiflazz-Gagal), and a TOCTOU race in `confirmDeliveryFailed()` fixed by re-checking the partial-delivery guard inside the row lock. Same day: a live-data check found 9 real PUBG Mobile Global combo SKUs silently undercutting their native equivalent (RM1.96–163.70/unit, same 10% markup both sides — a genuine Digiflazz tier-pricing cost gap, not a margin bug) — founder's deliberate call to leave pricing as-is and use the existing `combo_override_price` lever manually later. **Same day, per-leg audit trail built (ADR-106 addendum, §16 item 16)** — every leg attempt (initial + retry) now writes a durable row, closing decision 1's own deferral; same fix closed the identical gap on plain orders too. Open, deliberately deferred: no edit-composition UI (delete-and-recreate only), no admin-facing leg-attempt-history UI (data is durable and queryable, view itself deferred). **2026-09-24:** the last known gap in this row closed — a cascade-deactivated combo now reactivates automatically once every one of its components is active again (ADR-094 addendum, reverses decision 22's original one-directional call; founder chose auto-cascade over a manual-but-visible queue), wired into every component-reactivation path including the Supplier Management bulk toggle (ADR-046 addendum, which also fixed that toggle never cascading combo *deactivation* either). Released `main` via PR #286, 2026-09-24 | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107 |
+| Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16). **2026-10-02:** package delete now blocks a package with order history or live combo-component usage instead of silently orphaning order history or crashing with a raw DB error (ADR-119) | ADR-029, ADR-119 |
+| Combo Package | 🟢 Live in prod as of `staging` (functionally complete) — several existing catalog Packages assembled into one opaque, sellable SKU above a game's native max denomination, so a reseller/guest pays one CHIP FPX fee instead of two. Data model + creation endpoint, pricing (sum-of-components, override optional) on the same Price Sync cadence, fulfillment leg-engine (both suppliers, partial-delivery → `needs_review`), admin UI (`/admin/games` composition CRUD, Order-detail leg breakdown, custom-amount Voucher for partial delivery, component-churn guards). Verified genuinely buyable through storefront, Affiliate, and Reseller API/Bot (Reseller Portal has no order-placement surface). **2026-09-16:** max legs raised 3→5 (real usage, decision 20's own revisit bar), component SKU (`supplier_package_ref`) now shown in the composition picker and the Order-detail leg breakdown — previously only the component name/denomination, ambiguous when two components share a denomination across suppliers. **2026-09-17:** `platform_profit` now reconciles as a money-conservation residual on final delivery instead of staying frozen through a leg retry (ADR-107, §16 item 18). **2026-09-21:** pre-scale reliability audit closed 3 real gaps — Mark Delivered hard-blocked on a combo order with an outstanding leg, `isPartialComboDelivery()` widened to catch a NeedsReview-caused over-compensation path (not just Digiflazz-Gagal), and a TOCTOU race in `confirmDeliveryFailed()` fixed by re-checking the partial-delivery guard inside the row lock. Same day: a live-data check found 9 real PUBG Mobile Global combo SKUs silently undercutting their native equivalent (RM1.96–163.70/unit, same 10% markup both sides — a genuine Digiflazz tier-pricing cost gap, not a margin bug) — founder's deliberate call to leave pricing as-is and use the existing `combo_override_price` lever manually later. **Same day, per-leg audit trail built (ADR-106 addendum, §16 item 16)** — every leg attempt (initial + retry) now writes a durable row, closing decision 1's own deferral; same fix closed the identical gap on plain orders too. Open, deliberately deferred: no edit-composition UI (delete-and-recreate only), no admin-facing leg-attempt-history UI (data is durable and queryable, view itself deferred). **2026-09-24:** the last known gap in this row closed — a cascade-deactivated combo now reactivates automatically once every one of its components is active again (ADR-094 addendum, reverses decision 22's original one-directional call; founder chose auto-cascade over a manual-but-visible queue), wired into every component-reactivation path including the Supplier Management bulk toggle (ADR-046 addendum, which also fixed that toggle never cascading combo *deactivation* either). Released `main` via PR #286, 2026-09-24. **2026-10-02:** Platform Settings' bulk markup action was bypassing combo pricing entirely (flat-overwriting `standard_selling_price` instead of routing through `ComboPricingService::recompute()`) — fixed, 4 combos (2 inactive) found still wrong on production and recomputed, see ADR-028's 2026-10-02 addendum | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save. **2026-09-24:** the bulk "Deactivate All"/"Deactivate by Game"/"Reactivate" toggle now cascades onto dependent combos (found while auditing the Pending Reactivation combo gap above — the bulk toggle had never called `ComboPricingService`'s cascade at all, deactivate or reactivate). Released `main` via PR #286, 2026-09-24 | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). **"Check from Supplier"/"Check from Gateway" manual-poll buttons built (ADR-096, 2026-09-15)** — synchronous on-demand status check for a Pending order, shares logic with the scheduled reconcile jobs, cache-based cooldown. **ADR-102 Phase 1 built 2026-09-16** — `Order::isAlreadyCompensated()` unifies every Resend/Retry/Mark-Delivered/Confirm-Failed guard against a voucher OR a wallet refund already given (was voucher-only), checked inside `fulfill()`/`fulfillCombo()`'s own row lock as the real final defense, not just a controller pre-check. Also fixed mid-build: `refundToWallet()` had no DB-level backstop against a double wallet-refund (unlike Voucher's real unique index) — now locks the same way, proven via a new concurrency test. **ADR-102 Phase 2 built 2026-09-16 (decisions 3-9)** — a Digiflazz confirmed-Gagal `rc` (even one unsafe to resubmit) now routes straight to `Failed` instead of `needs_review` (Issue Voucher immediately available, superseding ADR-098 decision 6); a non-combo resend from `Failed` regenerates its `reference_number` (safe — confirmed non-delivery), reuse preserved from `needs_review`; Resend/Retry button disables with a mandatory logged override reason when genuinely futile (non-combo: `needs_review` only; combo: regardless of status); `ReconcilePendingDeliveriesCommand` permanently self-corrects any stuck `needs_review` row. **ADR-102 Phase 3 built 2026-09-16 (decisions 10-13, closes out ADR-102's own decision list)** — an optional Player ID/Server ID correction on Resend (re-validated before resubmitting); Order Detail's 3 independent Refund Information cards (Voucher Used to Pay / Compensation Voucher Issued / Wallet Refund) replace the old single-line mentions; `/admin/orders` gains 🎫/🎟️/💰 compensation badges; `NeedsReviewBanner` explains in plain language why Resend/Retry is disabled. **ADR-103 built 2026-09-17** — a combo leg now gets its own independently-regenerable `reference_number` (was derived/regex-parsed off the order's), closing the combo scope ADR-102 decision 9 explicitly deferred: a `Failed` leg mints a fresh (ULID-suffixed) reference on retry, a `NeedsReview` leg keeps reusing its stored one; the Digiflazz webhook resolves `ref_id` via two direct lookups (Order, then OrderDeliveryLeg) instead of a regex parse; the combo-wide Retry button's futility warning is now an OR-rollup across legs' own unsafe flag, retiring ADR-102 decision 3's old (always-quiet) combo branch. This family is now fully built. **ADR-024 restore-only addendum built 2026-09-17** — a full-cover-by-voucher order that later fails delivery no longer mints a pointless RM0.00 compensation voucher (button auto-labels "Restore Voucher," restores the original voucher only); found and fixed the same session: `isAlreadyCompensated()`'s guard had a real gap for this exact order shape. The 🎫/🎟️/💰 badges above are now plain-text `<Tag>` pills (founder feedback — emoji read as noisy next to the status tags), plus a 4th "Restored" pill/card. **ADR-104 PR-2 + PR-2b + a founder-driven live-browser audit, all 2026-09-17** — header action-bar + compact 5-column summary strip (incl. Channel), card-merge (Game & fulfillment / Payment & supplier), card-heading icons, `RefundInformationCards` emoji→icon + responsive 2-col grid, sidebar regrouped into 6 titled sections (app shell newly brought into ADR-104 scope), plus 2 real dark-mode token bugs found+fixed (D1: unstyled `<dd>` rendering `rgb(0,0,0)` on dark cards; D2: `info-surface`/`info-ink` missing a `.dark` override entirely) — see the ADR-038/104 note below the table. **ADR-108 built 2026-09-18** — `need_action` (KPI + tab) now excludes an already-compensated order (found live on prod: real actionable count was 0, KPI showed 4); Delivery column caps compensation badges to 1 (was up to 4 stacked, ADR-102 decision 12 reversed); new toolbar — Source/Game/date-range filters, a Columns toggle, and **ORD-5 export finally built** (CSV streams the current filtered view, plus a money-audit breakdown — Pricing Basis/Cost/Markup%/Profit — beyond the visible table). Founder live-verified. | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 108 |
@@ -666,7 +676,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
-| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. **The voucher path is not yet live-tested** (it needs a failed purchase). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 is on `staging`, unreleased** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
+| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. **The voucher path is not yet live-tested** (it needs a failed purchase). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
@@ -752,7 +762,7 @@ production before building on it.
     - receipt and `STOP` live-tested.
 
     Still to do:
-    - (a) Release #326 (`staging` → `main`) when the founder asks.
+    - (a) ~~Release #326~~ — **released 2026-10-01 via #332.**
     - (b) After release, retest on prod with the founder's own number:
       - message an order number from each order-page button (the timeline
         card should come back);
@@ -776,30 +786,27 @@ production before building on it.
     - (c) a **full-voucher-cover** order: Paid with no CHIP step, then
       Delivered, voucher balance reduced (the M-6 flow);
     - (d) the WhatsApp paths still owed in item 54 (b)–(c);
-    - (e) **2026-09-30 accounting audit fixes (PR #329, merged `staging`,
-      not yet `main`)** — verify against real production data once live:
-      `TransactionRegisterService::rows()`'s `cost_sen` is `null` for a
-      real non-delivered order, a real wallet-refunded order shows its new
-      `reseller_wallet_refund` row, a real wallet-paid order's
-      `funding_source` is `reseller_wallet`, a real membership row with a
-      matching `MembershipCheckoutAttempt` shows the real CHIP fee, and
-      `MonthlyAccountingSummaryService::forPeriod()`'s
-      `bank_transfer_fees_sen` + `supplier_prepaid_topup_sen` split still
-      sums to the same total the old bundled figure did. Deliberately
-      skipped a pre-`main` scratch-checkout verification against the real
-      prod DB (would have needed copying live `.env` credentials into a
-      scratch directory on the prod box — founder can run it
-      himself if wanted, command was handed over) in favour of checking
-      live after the real deploy instead.
+    - (e) ~~2026-09-30 accounting audit fixes~~ — **done 2026-10-01.**
+      Released to `main` via PR #332 (bundled with #326/#327/#328; #333
+      fixed an unrelated pre-existing CI timezone flake found along the
+      way). Live-verified against real production data post-deploy:
+      `cost_sen` null for the real order, its `reseller_wallet_refund` row
+      present, CSV footer total, `bank_transfer_fees_sen` split correct,
+      `reseller_wallet_balance_sen` matched the founder's own previously-
+      verified Balance page figure exactly. The underlying RM14.36
+      data-entry mistake the external reviewer found was also corrected
+      live (Edit Details, both transfers) — Monthly Summary now reads
+      RM 742.97, matching the reviewer's own receipts-based figure exactly.
+      Full detail: `docs/build-log.md`'s 2026-10-01 entry.
 
     The model can watch Horizon and logs live over SSH while these run.
 
 ## Hardening (founder `.env` / infra)
 
 9. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
-   are later phases; DNSSEC (founder's call). `.env.example` still owes
-   `STOREFRONT_PRIMARY_HOSTS` / `VERCEL_*` / `GALLERY_DISK` / `CACHE_STORE=redis` /
-   `PULSE_*`.
+   are later phases; DNSSEC (founder's call). ~~`.env.example` gaps~~ — closed 2026-10-02:
+   `STOREFRONT_PRIMARY_HOSTS` / `GALLERY_DISK` / `CACHE_STORE=redis` / `PULSE_*`
+   were already present, and the 9 `VERCEL_*` vars (ADR-060) were added.
 10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
     the partner portal's withdrawal balances get meaningful.
 11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
@@ -816,6 +823,20 @@ production before building on it.
     external-uptime-of-the-API-endpoint gap (UptimeRobot/Better Stack style)
     is still open; this only covers the box's own CPU/memory/disk, not
     whether `api.pekangame.space` itself is reachable from outside.
+56. **`accounting_disk` (`config/filesystems.php`) is the `local` driver —
+    not durable across an infra move.** Found 2026-10-01: the 2026-09-25
+    droplet migration (ADR-114) only `mysqldump`'d the database, never
+    rsynced `storage/app/private` — 5 Supplier Funding receipts uploaded
+    before the cutover silently stopped resolving (500 on download) once
+    the old droplet was destroyed 2026-09-30; 3 were recoverable (founder
+    re-uploaded from his own kept Wise receipts), 2 were on already-voided
+    transfers and permanently lost (no real-figure impact — voided rows are
+    excluded from every total anyway). `Gallery` already solved this exact
+    problem for public images via Cloudflare R2 (ADR-095) — moving
+    `accounting_disk` to R2 (or a private-ACL bucket/prefix) the same way
+    is the durable fix. Low urgency (low receipt volume, founder now knows
+    to re-check after any future droplet move), but a real, named gap.
+    Full writeup: ADR-114's 2026-10-01 addendum, `docs/adr.md`.
 
 
 ## Polish (not blocking)
@@ -834,7 +855,7 @@ production before building on it.
    ~~ADR-090's dark-palette backfill (`bumblebee`/`redgiants`/`emerald`/`cobalt`)~~
    — **built 2026-09-24, ADR-113**, the **reseller-family audit's item A3**
    (per-tier rate limit on the Reseller API/Bot) — deliberately deferred design
-   call from the 2026-09-10 audit, not forgotten — and the reseller portal's
+   call from the 2026-09-10 audit, not forgotten. ~~The reseller portal's
    `ThemeTab.tsx` live-preview panel still hardcoding a few cosmetic details
    (the payment-strip background/badge colours) outside the injected tokens,
    first flagged in ADR-090's Consequence-to-track and confirmed still
@@ -842,9 +863,31 @@ production before building on it.
    like a preset's secondary/tertiary accents were missing when the real
    storefront actually renders them fine; low priority since the real
    storefront is unaffected, but worth fixing so the preview can be trusted
-   without a live-storefront cross-check every time.
-49. **Affiliate custom-domain onboarding copy (ADR-060) — parked
-    2026-09-29, not security, raised mid-Wave 3.** Found via
+   without a live-storefront cross-check every time.~~ **Fixed 2026-10-02**:
+   every preview colour now comes from the selected preset *and* mode
+   (shadows, borders, muted text, payment strip, and the primary/fixed tokens
+   that were still read from the light palette in dark mode). FPX/DuitNow
+   badges keep their own brand colours on purpose.
+49. **Affiliate custom-domain onboarding copy (ADR-060) — BUILT 2026-10-02**
+    (`reseller/src/components/domains/DomainSetupGuide.tsx`): 5 numbered EN/BM
+    steps, including "find where your DNS is managed" and the TXT ownership
+    record, plus a "which record to add" table. **The main domain is the
+    primary path** (ADR-060 2026-10-02 addendum, founder's call: affiliates buy
+    `pasarripo.com` to use `pasarripo.com`). `www` is an optional second
+    domain, since auto-registering `www` was found unbuilt. Collapsible tips
+    for Cloudflare, GoDaddy and other providers. **Founder
+    reversed the "no screenshots" call:** Cloudflare has real annotated
+    screenshots (wrong orange cloud vs right grey cloud), taken from
+    `fixfastapp.com` with the form never saved. GoDaddy has two screenshots: the default records list (`A @ Parked` and
+    `CNAME www`, from `domistore.co`, which the founder moved back to GoDaddy
+    nameservers for this) and its "DNS managed elsewhere" screen. The GoDaddy
+    *edit form* screenshot was not taken: auto mode blocks the model from
+    typing into a live DNS form, and that is correct. The founder can add one
+    by hand if wanted. The text must stay complete without
+    the images; re-capture them if a provider redesigns. `fixfastapp.com`'s
+    record was confirmed already DNS-only. **Still open:** the "detect a
+    proxied domain on Check now" follow-up below. Original parked note,
+    2026-09-29, not security, raised mid-Wave 3: Found via
     `fixfastapp.com` showing Vercel's "Proxy Detected" warning (its
     Cloudflare record is Proxied/orange-cloud — risks SSL renewal failure,
     a redirect loop under Cloudflare "Flexible" SSL, and blinds Vercel's
@@ -862,9 +905,9 @@ production before building on it.
     affiliate's own DNS provider is fine). No per-provider screenshots
     (provider UIs change, screenshots rot). **Follow-up, only once a real
     affiliate hits it:** detect a proxied domain on "Check now" and show a
-    specific warning instead of a misleading `active`. Separately
+    specific warning instead of a misleading `active`. ~~Separately
     founder-owed now: flip `fixfastapp.com`'s record to DNS-only in
-    Cloudflare.
+    Cloudflare.~~ Done (seen DNS-only on 2026-10-02).
 
 ## Buildable when triggered (design done or needs its own ADR)
 
@@ -949,6 +992,37 @@ production before building on it.
     up.
       question: no historical wallet-balance snapshot exists today, only
       current balance).
+57. **Marketing Campaigns — [ADR-118](./adr.md), fully designed + grilled + stress-tested,
+    build deliberately parked.** New `Campaign`→`PromoCode` family for paying KOLs/influencers
+    without requiring them to run their own Affiliate storefront: multi-use discount codes
+    (5% flat off Standard price, benchmarked against a real competitor and this platform's own
+    margin data), locked per redemption to game ID + customer email/phone, never stacks with
+    Member pricing but does stack with `Voucher`, per-code budget cap with a reserved/restored
+    lifecycle (mirrors `Voucher`'s own), snapshot-at-creation attribution (never a live-rewriting
+    tag), and an optional platform/affiliate funding split for third-party affiliate-brand
+    campaigns. No automatic trigger to start building — founder will say when, once a real KOL
+    partnership is ready to go. **Build from ADR-118 *plus* its 2026-10-02 review addendum
+    (R1–R16)**, which supersedes the original wherever they conflict. That addendum covers
+    discount storage, the resend split, the per-order loss guard, the fail-closed budget, the
+    once-per-customer limit, brand scope, accounting treatment, and the UI under Customers.
+    Before building, confirm R14's contra-revenue treatment with the external accounting
+    reviewer.
+58. **OpenWA chat-list rehydration on process restart — [ADR-075](./adr.md)'s 2026-10-02
+    addendum. Designed and grilled; build not started.** OpenWA's dashboard Chats list is
+    in-memory only. After a full OpenWA process restart, a chat that has gone quiet can't be
+    opened from the dashboard, though its messages are still safe in `openwa.sqlite`. This
+    matters most for an active `customer-support` conversation. The fix:
+    - fork `rmyndharis/OpenWA` and deploy from the fork;
+    - in `session.service.ts`, union `listChats()` with a chat-summary list built from the DB;
+    - validate on the single prod instance while the founder is standing by, with the
+      pre-patch commit ready as a rollback.
+    Build when the founder says so.
+59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — needs a founder decision.** ADR-075
+    decision 6 specified `whatsapp-web.js` for `reseller-bot` (lower ban risk on a live paid
+    ordering path). `ENGINE_TYPE` is a single global setting, so both sessions actually run
+    Baileys. Found during ADR-075's 2026-10-02 addendum and left unresolved there. Two options:
+    - re-argue the ban-risk trade-off and switch engines (per session, if OpenWA supports it);
+    - accept Baileys and record an ADR-075 addendum that corrects decision 6 to match reality.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 

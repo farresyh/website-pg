@@ -63,6 +63,8 @@ export default function ThemeTab() {
   const previewOnSurface = previewTokens["--color-on-surface"] ?? "#19192f";
   const previewInk = previewTokens["--color-ink"] ?? "#19192f";
   const previewCardBg = previewTokens["--color-surface-container-lowest"] ?? "#ffffff";
+  const previewMuted = previewTokens["--color-on-surface-variant"] ?? previewOnSurface;
+  const previewToken = (key: string) => previewTokens[key] ?? activePresetConfig.tokens[key];
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -228,17 +230,26 @@ export default function ThemeTab() {
                 </p>
                 {/* Mockup Frame — inline-styled from the preset's live tokens (light or dark), not the portal's own static `bg-surface`/`border-ink`, so the preview actually shows the background swap the preset now makes. */}
                 <div
-                  className="overflow-hidden rounded-xl border-2 p-4 shadow-[4px_4px_0_#19192f]"
-                  style={{ backgroundColor: previewSurface, borderColor: previewInk }}
+                  className="overflow-hidden rounded-xl border-2 p-4 shadow-[4px_4px_0_var(--pv-ink)]"
+                  style={
+                    {
+                      backgroundColor: previewSurface,
+                      borderColor: previewInk,
+                      "--pv-ink": previewInk,
+                      "--pv-on": previewOnSurface,
+                      "--pv-muted": previewMuted,
+                      "--pv-card": previewCardBg,
+                    } as React.CSSProperties
+                  }
                 >
                 {/* Mockup Header */}
                 <div className="flex items-center justify-between border-b-2 pb-3 mb-4" style={{ borderColor: previewInk }}>
                   <div className="flex items-center gap-2">
                     <div
-                      className="h-7 w-7 rounded-md border-2 flex items-center justify-center font-bold text-xs shadow-[1.5px_1.5px_0_#19192f]"
+                      className="h-7 w-7 rounded-md border-2 flex items-center justify-center font-bold text-xs shadow-[1.5px_1.5px_0_var(--pv-ink)]"
                       style={{
                         backgroundColor: activePresetConfig.primaryHex,
-                        color: activePresetConfig.tokens["--color-on-primary"],
+                        color: previewToken("--color-on-primary"),
                         borderColor: previewInk,
                       }}
                     >
@@ -249,10 +260,10 @@ export default function ThemeTab() {
                     </span>
                   </div>
                   <span
-                    className="rounded-md border-2 px-2.5 py-1 text-[11px] font-bold shadow-[1.5px_1.5px_0_#19192f]"
+                    className="rounded-md border-2 px-2.5 py-1 text-[11px] font-bold shadow-[1.5px_1.5px_0_var(--pv-ink)]"
                     style={{
                       backgroundColor: activePresetConfig.primaryHex,
-                      color: activePresetConfig.tokens["--color-on-primary"],
+                      color: previewToken("--color-on-primary"),
                       borderColor: previewInk,
                     }}
                   >
@@ -261,44 +272,44 @@ export default function ThemeTab() {
                 </div>
 
                 {/* Mockup Product Card */}
-                <div className="rounded-lg border-2 p-3.5 shadow-[3px_3px_0_#19192f]" style={{ backgroundColor: previewCardBg, borderColor: previewInk }}>
+                <div className="rounded-lg border-2 p-3.5 shadow-[3px_3px_0_var(--pv-ink)]" style={{ backgroundColor: previewCardBg, borderColor: previewInk }}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <span className="inline-block rounded border border-ink/20 bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gray-700">
+                      <span className="inline-block rounded border border-(--pv-ink)/20 bg-(--pv-ink)/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-(--pv-muted)">
                         Popular Pick
                       </span>
                       <h5 className="mt-1 font-bold text-sm" style={{ color: previewOnSurface }}>
                         Mobile Legends: Bang Bang
                       </h5>
-                      <p className="text-xs text-gray-600">Moonton • Instant Delivery</p>
+                      <p className="text-xs text-(--pv-muted)">Moonton • Instant Delivery</p>
                     </div>
                     <span
-                      className="rounded border-2 border-ink px-1.5 py-0.5 text-[10px] font-bold shadow-[1px_1px_0_#19192f]"
+                      className="rounded border-2 border-(--pv-ink) px-1.5 py-0.5 text-[10px] font-bold shadow-[1px_1px_0_var(--pv-ink)]"
                       style={{
-                        backgroundColor: activePresetConfig.tokens["--color-primary-fixed"],
-                        color: activePresetConfig.tokens["--color-on-primary-fixed"],
+                        backgroundColor: previewToken("--color-primary-fixed"),
+                        color: previewToken("--color-on-primary-fixed"),
                       }}
                     >
                       Active
                     </span>
                   </div>
 
-                  <div className="mt-3.5 flex items-center justify-between border-t-2 border-ink/10 pt-2.5">
+                  <div className="mt-3.5 flex items-center justify-between border-t-2 border-(--pv-ink)/10 pt-2.5">
                     <div>
-                      <span className="text-[10px] uppercase font-bold text-gray-500">From</span>
+                      <span className="text-[10px] uppercase font-bold text-(--pv-muted)">From</span>
                       <p
                         className="font-bold text-base"
-                        style={{ color: activePresetConfig.tokens["--color-primary-on-surface"] }}
+                        style={{ color: previewToken("--color-primary-on-surface") }}
                       >
                         RM 5.00
                       </p>
                     </div>
                     <button
                       type="button"
-                      className="rounded-md border-2 border-ink px-3 py-1.5 text-xs font-bold shadow-[2px_2px_0_#19192f] transition-transform active:translate-x-0.5 active:translate-y-0.5"
+                      className="rounded-md border-2 border-(--pv-ink) px-3 py-1.5 text-xs font-bold shadow-[2px_2px_0_var(--pv-ink)] transition-transform active:translate-x-0.5 active:translate-y-0.5"
                       style={{
                         backgroundColor: activePresetConfig.primaryHex,
-                        color: activePresetConfig.tokens["--color-on-primary"],
+                        color: previewToken("--color-on-primary"),
                       }}
                     >
                       Top Up Now
@@ -307,8 +318,8 @@ export default function ThemeTab() {
                 </div>
 
                 {/* Mockup Payment Strip */}
-                <div className="mt-3 flex items-center justify-between rounded-md border-2 border-ink/15 bg-white/70 p-2 text-[10.5px]">
-                  <span className="font-semibold text-gray-700">Official Partners:</span>
+                <div className="mt-3 flex items-center justify-between rounded-md border-2 border-(--pv-ink)/15 bg-(--pv-card) p-2 text-[10.5px]">
+                  <span className="font-semibold text-(--pv-muted)">Official Partners:</span>
                   <div className="flex items-center gap-1.5">
                     <span className="rounded bg-[#003B70] px-1.5 py-0.5 font-bold text-white text-[9.5px]">
                       FPX
@@ -317,10 +328,10 @@ export default function ThemeTab() {
                       DuitNow
                     </span>
                     <span
-                      className="rounded px-1.5 py-0.5 font-bold text-[9.5px] border border-ink/20"
+                      className="rounded px-1.5 py-0.5 font-bold text-[9.5px] border border-(--pv-ink)/20"
                       style={{
-                        backgroundColor: activePresetConfig.tokens["--color-primary-fixed"],
-                        color: activePresetConfig.tokens["--color-on-primary-fixed"],
+                        backgroundColor: previewToken("--color-primary-fixed"),
+                        color: previewToken("--color-on-primary-fixed"),
                       }}
                     >
                       CHIP Secured

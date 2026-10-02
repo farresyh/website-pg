@@ -225,7 +225,7 @@ class SettingsControllerTest extends TestCase
         $this->assertSame(750000, PlatformSettings::current()->vip_spend_threshold_sen);
     }
 
-    public function test_bulk_markup_updates_every_active_package_and_logs_a_price_change(): void
+    public function test_bulk_markup_updates_every_package_active_or_not_and_logs_a_price_change(): void
     {
         $this->actingAsSuperAdmin();
         $game = $this->game();
@@ -235,17 +235,114 @@ class SettingsControllerTest extends TestCase
         $response = $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20]);
 
         $response->assertOk();
-        $this->assertSame(1, $response->json('packages_updated'));
+        $this->assertSame(2, $response->json('packages_updated'));
         $active->refresh();
         $this->assertEquals(20, $active->markup_percent);
         $this->assertSame(1200, $active->standard_selling_price);
         $inactive->refresh();
-        $this->assertEquals(10, $inactive->markup_percent);
+        $this->assertEquals(20, $inactive->markup_percent);
+        $this->assertSame(1200, $inactive->standard_selling_price);
         $this->assertDatabaseHas('price_change_logs', [
             'package_id' => $active->id,
             'old_standard_selling_price' => 1100,
             'new_standard_selling_price' => 1200,
         ]);
+        $this->assertDatabaseHas('price_change_logs', [
+            'package_id' => $inactive->id,
+            'old_standard_selling_price' => 1100,
+            'new_standard_selling_price' => 1200,
+        ]);
+    }
+
+    private function combo(Game $game, array $components, array $overrides = []): Package
+    {
+        $this->actingAsSuperAdmin();
+
+        $response = $this->postJson("/api/games/{$game->id}/packages/combo", [
+            'name' => 'Combo Pack',
+            'components' => $components,
+        ])->assertCreated();
+
+        $combo = Package::query()->findOrFail($response->json('id'));
+
+        if ($overrides !== []) {
+            $this->patchJson("/api/packages/{$combo->id}/combo-override", $overrides)->assertOk();
+            $combo->refresh();
+        }
+
+        return $combo;
+    }
+
+    public function test_bulk_markup_recomputes_a_sum_of_components_combo_from_its_updated_components(): void
+    {
+        $game = $this->game();
+        $a = $this->package($game, ['name' => 'Part A', 'denomination' => 100, 'cost_price' => 1000, 'standard_selling_price' => 1100, 'markup_percent' => 10]);
+        $b = $this->package($game, ['name' => 'Part B', 'denomination' => 100, 'cost_price' => 1000, 'standard_selling_price' => 1100, 'markup_percent' => 10]);
+        $combo = $this->combo($game, [
+            ['package_id' => $a->id, 'quantity' => 1],
+            ['package_id' => $b->id, 'quantity' => 1],
+        ]);
+        $this->assertSame(2200, $combo->standard_selling_price);
+
+        $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20])->assertOk();
+
+        $combo->refresh();
+        // Components become 1200 each (cost 1000 x 1.20) -> combo sum = 2400.
+        $this->assertSame(2400, $combo->standard_selling_price);
+        $this->assertNull($combo->combo_override_markup_percent);
+        $this->assertNull($combo->combo_override_price);
+        $this->assertDatabaseHas('price_change_logs', [
+            'package_id' => $combo->id,
+            'old_standard_selling_price' => 2200,
+            'new_standard_selling_price' => 2400,
+        ]);
+    }
+
+    public function test_bulk_markup_skips_a_combo_with_a_custom_markup_override(): void
+    {
+        $game = $this->game();
+        $a = $this->package($game, ['name' => 'Part A', 'denomination' => 100, 'cost_price' => 1000, 'standard_selling_price' => 1100, 'markup_percent' => 10]);
+        $combo = $this->combo($game, [
+            ['package_id' => $a->id, 'quantity' => 1],
+        ], ['combo_override_markup_percent' => 15]);
+        $priceBefore = $combo->standard_selling_price;
+
+        $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20])->assertOk();
+
+        $combo->refresh();
+        $this->assertEquals(15, $combo->combo_override_markup_percent);
+        $this->assertSame($priceBefore, $combo->standard_selling_price);
+        $this->assertDatabaseMissing('price_change_logs', ['package_id' => $combo->id]);
+    }
+
+    public function test_bulk_markup_skips_a_combo_with_a_custom_fixed_price(): void
+    {
+        $game = $this->game();
+        $a = $this->package($game, ['name' => 'Part A', 'denomination' => 100, 'cost_price' => 1000, 'standard_selling_price' => 1100, 'markup_percent' => 10]);
+        $combo = $this->combo($game, [
+            ['package_id' => $a->id, 'quantity' => 1],
+        ], ['combo_override_price' => 1050]);
+
+        $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20])->assertOk();
+
+        $combo->refresh();
+        $this->assertSame(1050, $combo->standard_selling_price);
+        $this->assertDatabaseMissing('price_change_logs', ['package_id' => $combo->id]);
+    }
+
+    public function test_bulk_markup_recomputes_an_inactive_sum_of_components_combo_too(): void
+    {
+        $game = $this->game();
+        $a = $this->package($game, ['name' => 'Part A', 'denomination' => 100, 'cost_price' => 1000, 'standard_selling_price' => 1100, 'markup_percent' => 10]);
+        $combo = $this->combo($game, [
+            ['package_id' => $a->id, 'quantity' => 1],
+        ]);
+        $combo->update(['is_active' => false]);
+
+        $this->postJson('/api/settings/platform/bulk-markup', ['markup_percent' => 20])->assertOk();
+
+        $combo->refresh();
+        $this->assertSame(1200, $combo->standard_selling_price);
     }
 
     public function test_bulk_markup_is_a_no_op_for_a_package_already_at_the_target_markup(): void

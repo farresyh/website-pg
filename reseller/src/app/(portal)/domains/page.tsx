@@ -24,6 +24,7 @@ import {
 } from "@/lib/portal";
 import { formatDateTime } from "@/lib/format";
 import { PageHeader, Panel, ErrorNote, EmptyRow, StatusTag } from "@/components/ui";
+import { DomainSetupGuide } from "@/components/domains/DomainSetupGuide";
 
 const STATUS_SEVERITY: Record<AffiliateDomainRow["status"], string> = {
   pending: "warn",
@@ -45,7 +46,6 @@ export default function DomainsPage() {
   const [hostname, setHostname] = useState("");
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [copied, setCopied] = useState(false);
 
   function refresh() {
     const session = getClientSession();
@@ -111,35 +111,7 @@ export default function DomainsPage() {
 
       {data && (
         <Panel title="How to point your domain">
-          <div className="space-y-3 p-5 text-theme-sm text-gray-600 dark:text-gray-300">
-            <p>
-              For <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">shop.yourbrand.com</code> or{" "}
-              <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">www.yourbrand.com</code>, add a{" "}
-              <strong>CNAME</strong> record at your DNS provider pointing to:
-            </p>
-            <div className="flex items-center gap-3">
-              <code className="rounded-md bg-white px-3 py-2 text-gray-800 dark:bg-gray-900 dark:text-white/90">
-                {data.dns.cname_target}
-              </code>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(data.dns.cname_target);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-              Using a root domain (<code>yourbrand.com</code> with no prefix)? If your DNS provider supports
-              CNAME flattening or ALIAS records, point that at the same target. Otherwise use an A record to{" "}
-              <code>{data.dns.apex_a_record}</code>. A <code>www</code> or <code>shop</code> subdomain is the
-              simplest path.
-            </p>
-          </div>
+          <DomainSetupGuide cnameTarget={data.dns.cname_target} apexARecord={data.dns.apex_a_record} />
         </Panel>
       )}
 
@@ -151,7 +123,7 @@ export default function DomainsPage() {
               <input
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
-                placeholder="shop.yourbrand.com"
+                placeholder="yourbrand.com"
                 required
                 disabled={!canWrite || atCap}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"

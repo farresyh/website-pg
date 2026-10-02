@@ -1892,3 +1892,257 @@ just the isolated test DB): recorded and voided a real Envelope Ledger
 entry with all 3 new fields, confirmed `reseller_wallet_balance_sen`
 returns a real RM13.25 locally, confirmed the CSV footer total computes
 correctly against 190 real local register rows.
+
+## 2026-10-01 — Accounting audit fixes released to `main`, live-verified, and the underlying data-entry mistake corrected
+
+PR #329 + #331 released to `main` via PR #332 (bundled with the pending
+WhatsApp order-card fix, #326, and docs #327/#328 — all already on
+`staging`). CI on #332 caught one real failure first: `backend-tests` on
+`CustomerAnalyticsServiceTest::test_monthly_trend_buckets_by_paid_month` —
+unrelated pre-existing flake (built `paid_at` with UTC `now()`, but
+`CustomerAnalyticsService::monthlyTrend()` buckets by Asia/Kuala_Lumpur;
+near KL midnight the two disagree about which month "now" is). Fixed via
+PR #333, merged to `staging`, #332 re-ran green, merged to `main`.
+
+**Live-verified against real production data post-deploy** (read-only SSH
++ a real browser session, per `docs/prd.md` §16 item 51(e)):
+`cost_sen` null for `PG-B7RB8MON6Q9I`, its `reseller_wallet_refund` row
+present, CSV footer total computes without error, `bank_transfer_fees_sen`
+correctly split from `supplier_prepaid_topup_sen` (still summing to the
+same RM757.33 pre-correction total), `reseller_wallet_balance_sen` =
+RM347.96 — matching the founder's own previously-verified Balance page
+figure exactly, a strong real-world confirmation the new line is correct.
+
+**The underlying data-entry mistake the external reviewer found (RM14.36
+gap, see the first 2026-09-30 addendum above) was also corrected live**,
+using the now-live "Edit Details" flow (driven via a real browser session
+against the real admin panel, founder's own logged-in session): the 19 Sep
+and 21 Sep Digiflazz transfers both had the gross Wise receipt total
+entered into "Amount sent" with the Wise fee then added a second time —
+corrected to the net figures (RM193.59 and RM336.13), and the 19 Sep
+transfer's missing Wise reference (`#2380779917`) was added too. Verified
+immediately after: `MonthlyAccountingSummaryService::forPeriod(2026, 9)`
+now returns exactly RM 742.97 (RM 721.91 topup + RM 21.06 fee) — matching
+the external reviewer's own from-the-receipts figure to the cent. Both
+corrections are visible in Funding History with their full "Edited:
+field old→new" audit trail and reason text, never a silent edit.
+
+Every finding from the external accounting review has now either shipped
+as a code fix, been corrected as data, or been grilled and deliberately
+parked (`docs/prd.md` §16 item 55) — see the receipt-storage incident
+below, surfaced by this same correction work, for the one loose end it
+led to.
+
+**Same-session incident, found while correcting the 19/21 Sep receipts
+above: Supplier Funding receipt downloads were 500ing — a real droplet-
+migration gap, not a new bug.** The founder's own receipt-download attempt
+threw `League\Flysystem\UnableToRetrieveMetadata`. Traced to `config/
+filesystems.php`'s `accounting_disk` being the `local` driver — a real
+directory on whichever droplet is currently serving traffic — and ADR-114's
+2026-09-25 droplet migration (decision 2) only `mysqldump`'d the database,
+never rsynced `storage/app/private`. Every `supplier_transfers.receipt_path`
+created before that cutover (5 rows, all 14–21 Sep) pointed at a file that
+only ever existed on the old droplet — destroyed the same day as this
+session, 2026-09-30, closing off any recovery path.
+
+Scoped precisely before doing anything: exactly 5 affected, zero
+`BudgetEnvelopeEntry` receipts (none existed yet at migration time). 2
+belong to already-voided transfers (`id` 1, 2) — `recordCorrection()`'s
+own `lockNotVoided()` guard means a voided transfer's receipt can't be
+replaced even if wanted (confirmed live: the UI doesn't render "Correct…"
+for one at all), and since a voided row is excluded from every real total
+already, its lost receipt has zero effect on any figure. The other 3 (`id`
+3/4/5 — the same active transfers the RM 742.97 correction above depends
+on) were re-uploaded by the founder from his own kept Wise receipts via
+the now-live "Edit Details" → Replace receipt flow — verified live not
+just by a 200 on the download route but by `Storage::exists()`/`size()`
+against the real file on the real persistent path
+(`/home/forge/api.pekangame.space/storage/app/private`, confirmed
+correctly symlinked outside the release folder so this specific class of
+loss can't recur from a plain deploy — only from a future full-droplet
+move without an explicit storage-rsync step).
+
+**Underlying durability gap tracked, not fixed this session:**
+`accounting_disk` staying on `local` will reproduce this exact incident on
+any future droplet move. `Gallery` already solved the identical problem
+for public images via R2 (ADR-095) — `docs/prd.md` §16 item 56, full
+writeup `docs/adr.md`'s ADR-114 2026-10-01 addendum.
+
+## 2026-10-02 — Bulk markup widened to every package + combo pricing-corruption bug fixed (ADR-028 addendum, cross-ref ADR-094)
+
+Founder question ("does bulk markup skip inactive packages?") led to confirming
+`SettingsController::bulkMarkup()` (ADR-028 decision 4) was scoped to
+`is_active = true` with no recorded rationale, and — more seriously — had no
+`is_combo` exclusion at all: every active combo Package was being flat-overwritten
+with `cost × (1+markup%)`, bypassing ADR-094's `ComboPricingService::recompute()`
+entirely. Checkout charges a combo's stored `standard_selling_price` verbatim, so
+this was a real customer-facing pricing bug, not a cosmetic one. Full ADR-028
+addendum has the complete decision record; this entry is the "what shipped" note.
+
+**Production incident data (found via `PriceChangeLog`/`Order` queries before
+fixing anything):** the last `bulkMarkup()` run was 2026-09-30 12:20:25 and
+corrupted 47 combo packages. Zero real orders were placed against any of them in
+the two days since — caught before a customer was actually overcharged/undercharged.
+
+**Code fix** (`backend/app/Http/Controllers/Admin/SettingsController.php`):
+`bulkMarkup()` now runs in two sequential passes inside the same transaction —
+non-combo packages first (unchanged flat formula, now with no `is_active` filter
+at all), then combos (`is_combo = true`) second, so a combo's default "Sum of
+Components" price sees its components' already-updated prices before recomputing.
+A combo with an active Custom Markup % or Custom Price override
+(`combo_override_markup_percent`/`combo_override_price` not null) is left
+untouched — only a combo still in the default Sum of Components mode is routed
+through `ComboPricingService::recompute()`. Nesting a combo inside another combo
+is already rejected at creation, so this two-pass ordering is always sufficient —
+no topological-sort concern. 5 new tests in `SettingsControllerTest` (inactive
+package now included, sum-of-components combo recomputed from updated
+components, custom-markup combo skipped, custom-price combo skipped, inactive
+combo also recomputed) + the existing active-package test flipped to assert the
+new behavior. `PackageController::updateMarkup()` doc-comment drift (ADR-028's
+own text claimed it writes a `PriceChangeLog`; it doesn't) corrected in the same
+pass. `admin/src/components/settings/PlatformSettingsSection.tsx`'s confirm
+dialog + help text updated to stop claiming "active package" scope. Full backend
+suite 2461/2461 green, `tsc --noEmit` clean on `admin/`.
+
+**Production remediation (one-time, run directly, no code deploy needed for
+this part):** `ComboPricingService::recompute()` run against all 49 default-mode
+combos on production. Only 4 were still actually wrong — most of the original 47
+had already self-corrected via an unrelated component price-sync in the two days
+since the incident: `id=1271` (2066 Diamonds) RM137.89→RM143.08, `id=1277` (2662
+Diamonds) RM177.43→RM183.96, `id=1280` (5394 Diamonds, **inactive**)
+RM352.63→RM351.08, `id=1284` (7800 Diamonds, **inactive**) RM532.36→RM530.03. The
+two inactive ones are exactly the failure mode this whole session started from —
+nothing touches an inactive combo's price until it's reactivated or a component
+changes, so they'd have stayed wrong indefinitely otherwise. Each fix logged its
+own `PriceChangeLog` row (`price_sync_run_id = null`, same convention as a manual
+`bulkMarkup()` row). Verified idempotent — a second `recompute()` pass over the
+same 49 combos changed 0.
+
+## 2026-10-02 — Package delete guards (ADR-119)
+
+A founder question about Product Manager's "Add to Catalog" flow (does deleting
+a Package in `admin/games` leave Product Manager stuck thinking it's still
+promoted?) led to tracing `PackageController::destroy()`. The Product Manager
+side is fine — "already in catalog" is computed live by matching
+`supplier_package_ref` against `packages`, not a cached flag, so a deleted
+Package correctly becomes re-promotable. But `destroy()` itself had no guards at
+all: a package with real order history could be hard-deleted, silently setting
+`orders.package_id` to `NULL` (the FK is `nullOnDelete()`) with zero warning;
+a package used as a combo component would instead throw a raw, unhandled DB
+`QueryException` (`restrictOnDelete()`), a 500 with no admin-readable message.
+
+**Fix** (`backend/app/Http/Controllers/PackageController.php`): `destroy()` now
+blocks entirely (no force-delete) if the package has ever had any order
+(any status, not just active ones), and blocks if it's a component of any combo
+(active or inactive) — both via `ValidationException::withMessages()`, the
+combo case mirroring `updateStatus()`'s existing cascade-guard message style
+exactly. `Package` stays a hard delete (no `SoftDeletes` conversion — out of
+scope for what was asked). 2 new tests in `PackageControllerTest`. Full backend
+suite 2463/2463 green, Pint clean.
+
+Checked, not assumed: an initial plan to also fix `admin/`'s generic error
+display (on the theory that Laravel's 422 response buries the useful message
+under `errors.field` while the top-level `message` is a generic "The given
+data was invalid.") turned out to target a bug that doesn't exist in this
+Laravel version — a real local HTTP request against the new guard showed
+`ValidationException::summarize()` already promotes the first field error to
+the top-level `message` (`vendor/laravel/framework`'s own behavior, not
+something this app customized). The speculative frontend change was reverted
+before committing; `admin/` has no code changes in this entry.
+
+## 2026-10-02 — ADR-118 code-trace review addendum + `AGENTS.md` restructure (docs only)
+
+**ADR-118 (Marketing Campaigns) re-reviewed against real code before any build.**
+- The original design passed four grill rounds and a stress test, but its claims
+  about existing code were made by analogy.
+- Three parallel forks traced the design against code: checkout/pricing,
+  ledger/fulfillment/compensation, and downstream readers. The model re-verified
+  the top findings itself.
+- Four silent-wrong-money gaps surfaced:
+  1. Discount storage was unspecified, and four profit recomputes would have
+     added the discount back.
+  2. Resend recomputes `affiliateProfit` from scratch, erasing a 60/40 split.
+  3. The "5% is always margin-safe" proof held only for the Standard basis.
+     On an affiliate store, a low wholesale tier can make the platform lose
+     money.
+  4. `VoucherService::redeem()` actually runs after the CHIP purchase and
+     logs-and-proceeds on a race. That is safe for a single-owner voucher, but
+     unbounded for a public code.
+- Four more grill rounds with the founder settled R1–R16 in ADR-118's review
+  addendum (`docs/adr.md`). PRD §16 item 57 now points builders at it.
+- Founder decisions:
+  - Failed-but-uncompensated orders keep their budget reservation.
+  - Once per player ID or email.
+  - Contra-revenue for the discount, plus an optional KOL fee on `Campaign`
+    for true ROI.
+  - Negative affiliate profit allowed (withdrawal already blocked by the
+    balance check).
+  - Admin UI under Customers, with two sub-pages.
+
+**`AGENTS.md` restructured.**
+- Added a "which steps apply to which request" table, plus new **Release &
+  Production State** and **Production Access** sections.
+- Added the money-critical code-trace pass to lifecycle step 2. Step 7 now
+  covers PRD §14 and design-only §16 lines; those two gaps caused this
+  morning's docs-audit drift.
+- Promoted several workflow rules that had lived only in one assistant's
+  private memory, so other agents (e.g. Codex) now see them too.
+- Removed duplicated rules.
+- The five local-dev gotchas moved verbatim-in-substance to `backend/AGENTS.md`
+  → "Local dev gotchas", with a pointer left in the root. Added a fifth: local
+  `CACHE_STORE=database` breaks `Cache::tags()`.
+- Removed the dead `Co-Authored-By` rule. It required an `attribution.commit`
+  setting that never existed, while 74 of the last 100 commits carried the
+  trailer anyway.
+- Removed the `.claude/settings.json` model pin (founder's call).
+
+## 2026-10-02: affiliate domain setup guide (PRD §16 item 49), theme preview tokens (item 6), `.env.example` (item 9)
+
+**Domain setup guide.**
+- New `reseller/src/components/domains/DomainSetupGuide.tsx` replaces the
+  Domains screen's single English paragraph. It has an EN/BM toggle and 5
+  numbered steps. Two of them, "find where your DNS is managed" and "add any TXT
+  ownership record shown", were missing from the original design.
+- Collapsible tips for Cloudflare, GoDaddy and other providers.
+- Screenshots were captured from the founder's own Cloudflare (`fixfastapp.com`)
+  through the Chrome extension. The model filled the Add record form with
+  example values and **cancelled it every time**. The record count was
+  unchanged at 12.
+- All four of the founder's GoDaddy domains turned out to delegate DNS to
+  Cloudflare. That is the most common real-world case, so the GoDaddy section
+  teaches it with GoDaddy's own "DNS Provider: Cloudflare" screen; its add-record
+  steps are text only.
+- Images live next to the component and are statically imported, not served
+  from `public/`. `proxy.ts` matches every non-`_next` path and redirects
+  cookie-less requests, which would break `next/image`'s optimizer fetch of a
+  `public/` file. Static imports are served from `/_next/static/media`, which the
+  proxy excludes.
+- Verified live: local backend + portal, a temporary local-only affiliate login
+  (deleted afterwards), EN/BM and light/dark, and a `next build`.
+
+**Theme preview.** `ThemeTab.tsx`'s preview had `#19192f` shadows, static portal
+`border-ink`, gray text and a white payment strip. It also read
+`--color-on-primary` / `--color-primary-fixed` / `--color-primary-on-surface`
+from the *light* palette even in dark mode, so "RM 5.00" was low-contrast. All
+of these now come from the selected preset and mode through CSS vars and a
+`previewToken()` fallback helper.
+
+**`.env.example`.** Added the 9 `VERCEL_*` vars. The other keys PRD item 9
+listed were already there. The founder changed `.claude/settings.json`'s deny
+rules from `./.env.*` (which blocked `.env.example`, and likely only covered
+the repo root) to `**/.env`, `**/.env.local`, `**/.env.production` and
+`**/.env.*.local`.
+
+**Same day, follow-up.**
+- The founder challenged the guide's subdomain-first framing: affiliates want
+  their main domain. Reversed in the guide and recorded as an ADR-060 addendum.
+- Checking it found that ADR-060 section E's `www` auto-registration was never
+  built (`AffiliateDomainService` has no `www`/redirect logic). The guide
+  therefore tells affiliates to add `www` as a second domain.
+- The founder moved `domistore.co` back to GoDaddy nameservers so GoDaddy's
+  real DNS screen could be captured. Its default `A @ Parked` and `CNAME www`
+  rows are now the GoDaddy screenshot.
+- Opening GoDaddy's edit form worked. Typing a value into it, and then even
+  cropping it, was blocked by auto mode ("DNS / Domain / Cert Changes"). The
+  model stopped there; the form was closed unchanged.
+- The Add-domain placeholder is now `yourbrand.com`.
