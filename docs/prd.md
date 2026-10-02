@@ -584,14 +584,25 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-09-30).** The platform is feature-complete and live
+**Where things stand (2026-10-02).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
 **Digiflazz is the only live supplier** (funded 2026-09-15). **Gamevion**
 (MYR-billed) stays integrated but deliberately unfunded, so Gamevion-routed
-orders can be paid but not delivered. **There are no external customers yet**:
-every order so far is the founder's own testing.
+orders can be paid but not delivered. **Real customers exist on the reseller
+channel:** reseller wallet orders (e.g. Naeem Industries) are real customer
+orders. Storefront-direct orders are still mostly the founder's own testing, so
+any analysis that needs the distinction must judge each order (corrected
+2026-09-30, see `docs/build-log.md`). The older "no external customers" line
+was wrong from at least then on.
+
+**On `staging`, not yet released to `main` (as of 2026-10-02):** #335 (supplier
+transfer `effective_rate` recompute), #338 (bulk markup widened, and the bulk
+markup combo-pricing corruption fixed), and #339 (package delete guards,
+ADR-119). **Until #338 is released, running Platform Settings' bulk markup on
+production re-corrupts combo prices.** The 2026-10-02 hand remediation fixed
+the data, not the code path.
 
 **Release 2026-09-30 (`staging`→`main`): audit Wave 5, which closes the 2026-09-28 audit.**
 - PR-A #322: M-10 (supplier-transfer void race) and six money-hygiene Lows,
@@ -603,19 +614,16 @@ every order so far is the founder's own testing.
   **default OFF**. The founder turned it on the same day after the post-deploy
   steps (§16 item 54).
 
-**On `staging`, not yet released to `main` (as of 2026-09-30 close):** #326,
-the ADR-116 follow-up from the first live test.
-- Any message carrying an order number opts the sender in and gets a
-  timeline status card back.
-- A mistyped number gets a "not found" reply.
-- `START`/`STOP`, the 30-minute card throttle, and a fix that revives a
-  `skipped` notification.
-- The order page help card is reordered (Contact Support → Get Updates → Buy
-  Again, one filled button per state).
-
-Until #326 is released, **prod still runs #325's first version**: the
-"update" keyword decides between an auto-reply and a silent opt-in, and
-receipts use the older plain layout.
+**Release 2026-10-01 (`staging`→`main`, PR #332):**
+- #326, the ADR-116 follow-up from the first live test:
+  - any message carrying an order number opts the sender in and gets a timeline
+    status card back;
+  - a mistyped number gets a "not found" reply;
+  - `START`/`STOP`, the 30-minute card throttle, and skipped-notification
+    revival;
+  - the reordered order-page help card.
+- The 2026-09-30 accounting audit fixes (#329, #331), live-verified.
+- The CI timezone-flake fix (#333).
 
 **Previous release, 2026-09-29 (`staging`→`main`, PR #320, #306–#319):**
 - The 2026-09-28 full system audit's Waves 1–4 (money, races, security, burst
@@ -668,7 +676,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500 | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal-reminder half deferred (vendor unpicked) | ADR-027, 055, 068, 080 |
-| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. **The voucher path is not yet live-tested** (it needs a failed purchase). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 is on `staging`, unreleased** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
+| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. **The voucher path is not yet live-tested** (it needs a failed purchase). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
@@ -754,7 +762,7 @@ production before building on it.
     - receipt and `STOP` live-tested.
 
     Still to do:
-    - (a) Release #326 (`staging` → `main`) when the founder asks.
+    - (a) ~~Release #326~~ — **released 2026-10-01 via #332.**
     - (b) After release, retest on prod with the founder's own number:
       - message an order number from each order-page button (the timeline
         card should come back);
@@ -977,6 +985,22 @@ production before building on it.
     once-per-customer limit, brand scope, accounting treatment, and the UI under Customers.
     Before building, confirm R14's contra-revenue treatment with the external accounting
     reviewer.
+58. **OpenWA chat-list rehydration on process restart — [ADR-075](./adr.md)'s 2026-10-02
+    addendum. Designed and grilled; build not started.** OpenWA's dashboard Chats list is
+    in-memory only. After a full OpenWA process restart, a chat that has gone quiet can't be
+    opened from the dashboard, though its messages are still safe in `openwa.sqlite`. This
+    matters most for an active `customer-support` conversation. The fix:
+    - fork `rmyndharis/OpenWA` and deploy from the fork;
+    - in `session.service.ts`, union `listChats()` with a chat-summary list built from the DB;
+    - validate on the single prod instance while the founder is standing by, with the
+      pre-patch commit ready as a rollback.
+    Build when the founder says so.
+59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — needs a founder decision.** ADR-075
+    decision 6 specified `whatsapp-web.js` for `reseller-bot` (lower ban risk on a live paid
+    ordering path). `ENGINE_TYPE` is a single global setting, so both sessions actually run
+    Baileys. Found during ADR-075's 2026-10-02 addendum and left unresolved there. Two options:
+    - re-argue the ban-risk trade-off and switch engines (per session, if OpenWA supports it);
+    - accept Baileys and record an ADR-075 addendum that corrects decision 6 to match reality.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
