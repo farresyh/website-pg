@@ -971,7 +971,12 @@ production before building on it.
     lifecycle (mirrors `Voucher`'s own), snapshot-at-creation attribution (never a live-rewriting
     tag), and an optional platform/affiliate funding split for third-party affiliate-brand
     campaigns. No automatic trigger to start building — founder will say when, once a real KOL
-    partnership is ready to go.
+    partnership is ready to go. **Build from ADR-118 *plus* its 2026-10-02 review addendum
+    (R1–R16)**, which supersedes the original wherever they conflict. That addendum covers
+    discount storage, the resend split, the per-order loss guard, the fail-closed budget, the
+    once-per-customer limit, brand scope, accounting treatment, and the UI under Customers.
+    Before building, confirm R14's contra-revenue treatment with the external accounting
+    reviewer.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
