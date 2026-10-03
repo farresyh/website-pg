@@ -30,6 +30,7 @@ use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
@@ -199,7 +200,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
         Queue::fake();
         [$order, $service] = $this->digiflazzCombo([
             SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
-            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+            new ConnectionException('Connection timed out'),
         ]);
 
         $this->assertSame(DeliveryStatus::Pending, $service->fulfill($order)->delivery_status);
@@ -384,7 +385,8 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->assertSame($capturedReferenceNumber, $leg->reference_number);
     }
 
-    public function test_one_leg_failing_lands_the_order_in_needs_review_when_the_other_succeeded(): void
+    /** ADR-094 decision 28 — a known mixed outcome is its own terminal status, not NeedsReview. */
+    public function test_one_leg_failing_lands_the_order_in_partially_delivered_when_the_other_succeeded(): void
     {
         $supplier = $this->supplier();
         $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
@@ -403,14 +405,14 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
         $result = $this->service($adapter)->fulfill($order);
 
-        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $result->delivery_status);
         $this->assertNull($result->delivered_at);
 
         $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
         $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
         $this->assertSame(DeliveryStatus::Failed, $legs[1]->status);
 
-        // No profit credited yet — a needs_review order is not a clean delivery.
+        // No profit credited yet — decision 35: credited at settlement, like Failed.
         $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
         // The succeeded leg's own drawdown is still recorded — it's real.
         $this->assertSame(1, SupplierLedgerEntry::query()->count());
@@ -491,8 +493,8 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $result = $this->service($adapter)->fulfill($order);
 
         // Mixed Delivered + Failed, no Pending/NeedsReview leg present —
-        // decision 9's existing partial-delivery bucket, unchanged.
-        $this->assertSame(DeliveryStatus::NeedsReview, $result->delivery_status);
+        // decision 28's PartiallyDelivered.
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $result->delivery_status);
         $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
         $this->assertSame(DeliveryStatus::Failed, $legs[1]->status);
     }
@@ -703,10 +705,10 @@ class OrderFulfillmentServiceComboTest extends TestCase
             SupplierResponse::failure('timeout', 'Supplier timed out'),
         ]);
         $this->service($firstPass)->fulfill($order);
-        // One leg Delivered + one Failed rolls the order up to NeedsReview
-        // (decision 9's own precedence) — the leg itself is still plainly
+        // One leg Delivered + one Failed rolls the order up to
+        // PartiallyDelivered (decision 28) — the leg itself is still plainly
         // Failed, which is what matters for this test.
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $order->fresh()->delivery_status);
         $this->assertSame(DeliveryStatus::Failed, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->sole()->status);
 
         $retryPass = $this->queuedAdapter([
@@ -843,7 +845,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
             SupplierResponse::failure('insufficient_balance', 'No balance'),
         ]);
         $firstResult = $this->service($firstAttemptAdapter)->fulfill($order);
-        $this->assertSame(DeliveryStatus::NeedsReview, $firstResult->delivery_status);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $firstResult->delivery_status);
 
         // Retry: only leg B (still Failed) should get a new supplier call.
         $retryAdapter = $this->queuedAdapter([
@@ -1066,7 +1068,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
      * Delivered is decision 9's partial-delivery case, same as the
      * synchronous path — just reached via webhook/poll instead.
      */
-    public function test_finalizing_a_pending_leg_as_failed_lands_the_order_in_needs_review(): void
+    public function test_finalizing_a_pending_leg_as_failed_lands_the_order_in_partially_delivered(): void
     {
         $supplier = $this->supplier();
         $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
@@ -1093,7 +1095,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
             ['error_message' => 'Gagal'],
         );
 
-        $this->assertSame(DeliveryStatus::NeedsReview, $finalResult->delivery_status);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $finalResult->delivery_status);
         $this->assertSame(DeliveryStatus::Failed, $pendingLeg->fresh()->status);
         $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
     }
@@ -1235,7 +1237,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
             SupplierResponse::failure('insufficient_balance', 'No balance'),
         ]);
         $firstResult = $this->service($firstAttemptAdapter)->fulfill($order);
-        $this->assertSame(DeliveryStatus::NeedsReview, $firstResult->delivery_status);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $firstResult->delivery_status);
 
         // A price sync lands between the first attempt and the retry —
         // package B's real cost has genuinely risen.
@@ -1331,106 +1333,72 @@ class OrderFulfillmentServiceComboTest extends TestCase
     }
 
     /**
-     * ADR-094's 2026-09-21 addendum decision 25 — isPartialComboDelivery()
-     * now also recognizes a Delivered+NeedsReview mix (not just
-     * Delivered+Failed) as a genuine partial delivery, since a leg can
-     * land on NeedsReview for reasons decision 4 (ADR-102) never closed
-     * (Gamevion duplicate_reference, an unexpected exception). Proven
-     * here directly against the model, independent of the HTTP guard.
+     * @param  list<DeliveryStatus>  $legStatuses
      */
-    public function test_is_partial_combo_delivery_is_true_for_a_delivered_and_needs_review_leg_mix(): void
+    private function needsReviewComboWithLegs(array $legStatuses): Order
     {
         $supplier = $this->supplier();
         $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
-        $a = $this->componentPackage($supplier, $gameId);
-        $b = $this->componentPackage($supplier, $gameId);
-        $combo = $this->comboPackage($gameId, [
-            ['package' => $a, 'quantity' => 1],
-            ['package' => $b, 'quantity' => 1],
-        ]);
+        $packages = array_map(fn () => $this->componentPackage($supplier, $gameId), $legStatuses);
+        $combo = $this->comboPackage($gameId, array_map(fn (Package $p) => ['package' => $p, 'quantity' => 1], $packages));
         $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
-            'selling_price_sen' => $a->standard_selling_price,
-        ]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
-            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
-        ]);
 
-        $this->assertTrue($order->fresh()->isPartialComboDelivery());
+        foreach ($legStatuses as $i => $status) {
+            OrderDeliveryLeg::query()->create([
+                'order_id' => $order->id, 'component_package_id' => $packages[$i]->id, 'supplier_id' => $supplier->id,
+                'leg_number' => $i + 1, 'status' => $status->value, 'selling_price_sen' => $packages[$i]->standard_selling_price,
+            ]);
+        }
+
+        return $order->fresh();
     }
 
     /**
-     * Guards decision 25's own scoping: a Failed+NeedsReview mix with NO
-     * Delivered leg is NOT "partial" — nothing was delivered yet, so a
-     * full-order Failed + full voucher is correct there, not
-     * over-compensation. Only a Delivered leg alongside an
-     * unresolved/Failed one triggers the carve-out.
+     * ADR-094 decision 31 — Confirm Failed on a combo flips the ambiguous
+     * legs to Failed and rolls up: a Delivered leg makes it PartiallyDelivered.
      */
-    public function test_is_partial_combo_delivery_is_false_with_no_delivered_leg_at_all(): void
+    public function test_confirm_delivery_failed_on_a_combo_with_a_delivered_leg_lands_in_partially_delivered(): void
     {
-        $supplier = $this->supplier();
-        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
-        $a = $this->componentPackage($supplier, $gameId);
-        $b = $this->componentPackage($supplier, $gameId);
-        $combo = $this->comboPackage($gameId, [
-            ['package' => $a, 'quantity' => 1],
-            ['package' => $b, 'quantity' => 1],
-        ]);
-        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 1, 'status' => DeliveryStatus::Failed->value,
-            'failure_reason' => 'Insufficient balance', 'selling_price_sen' => $a->standard_selling_price,
-        ]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
-            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
-        ]);
+        $order = $this->needsReviewComboWithLegs([DeliveryStatus::Delivered, DeliveryStatus::NeedsReview]);
 
-        $this->assertFalse($order->fresh()->isPartialComboDelivery());
+        $result = $this->service($this->queuedAdapter([]))->confirmDeliveryFailed($order, 'checked supplier dashboard', 'Jane Admin');
+
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $result->delivery_status);
+        $legs = OrderDeliveryLeg::query()->where('order_id', $order->id)->orderBy('leg_number')->get();
+        $this->assertSame(DeliveryStatus::Delivered, $legs[0]->status);
+        $this->assertSame(DeliveryStatus::Failed, $legs[1]->status);
+        $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
     }
 
-    /**
-     * ADR-094's 2026-09-21 addendum decision 26 — the real fix for the
-     * TOCTOU race: OrderController::confirmFailed()'s own
-     * isPartialComboDelivery() guard runs on the unlocked $order before
-     * this service method's lock is even acquired, so a state change in
-     * that gap (a concurrent retry/webhook delivering a leg) would
-     * otherwise go unnoticed. Calling the service directly here (the
-     * controller's own pre-check is bypassed entirely) proves the
-     * service's own in-lock re-check is the real, final guard — not
-     * just relying on the controller.
-     */
-    public function test_confirm_delivery_failed_rejects_a_partial_combo_delivery_order_even_when_called_directly(): void
+    public function test_confirm_delivery_failed_on_a_combo_with_no_delivered_leg_lands_in_failed(): void
     {
-        $supplier = $this->supplier();
-        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
-        $a = $this->componentPackage($supplier, $gameId);
-        $b = $this->componentPackage($supplier, $gameId);
-        $combo = $this->comboPackage($gameId, [
-            ['package' => $a, 'quantity' => 1],
-            ['package' => $b, 'quantity' => 1],
-        ]);
-        $order = $this->paidComboOrder($combo, ['delivery_status' => DeliveryStatus::NeedsReview->value]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $a->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'SREF-1',
-            'selling_price_sen' => $a->standard_selling_price,
-        ]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $b->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value,
-            'failure_reason' => 'Duplicate reference', 'selling_price_sen' => $b->standard_selling_price,
-        ]);
+        $order = $this->needsReviewComboWithLegs([DeliveryStatus::Failed, DeliveryStatus::NeedsReview]);
+
+        $result = $this->service($this->queuedAdapter([]))->confirmDeliveryFailed($order, 'note', 'Jane Admin');
+
+        $this->assertSame(DeliveryStatus::Failed, $result->delivery_status);
+        $this->assertSame(0, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('status', '!=', DeliveryStatus::Failed->value)->count());
+    }
+
+    public function test_confirm_delivery_failed_refuses_a_combo_with_a_leg_still_pending(): void
+    {
+        $order = $this->needsReviewComboWithLegs([DeliveryStatus::Pending, DeliveryStatus::NeedsReview]);
 
         $this->expectException(OrderFulfillmentException::class);
 
         $this->service($this->queuedAdapter([]))->confirmDeliveryFailed($order, 'note', 'Jane Admin');
+    }
+
+    /** ADR-094 decision 29 — Retry from PartiallyDelivered re-attempts the failed leg only. */
+    public function test_a_partially_delivered_order_can_be_retried_to_full_delivery(): void
+    {
+        $order = $this->needsReviewComboWithLegs([DeliveryStatus::Delivered, DeliveryStatus::Failed]);
+        $order->update(['delivery_status' => DeliveryStatus::PartiallyDelivered->value, 'reference_number' => 'PGREF-1']);
+
+        $result = $this->service($this->queuedAdapter([SupplierResponse::success(['supplier_ref' => 'SREF-B'])]))->fulfill($order->fresh());
+
+        $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
+        $this->assertSame(2, LedgerEntry::query()->where('type', 'order_profit')->count());
     }
 
     /**
