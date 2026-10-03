@@ -98,6 +98,7 @@ export interface ReportOrderStatusFunnel {
     failed: number;
     needs_review: number;
     pending: number;
+    partially_delivered: number;
   };
   success_rate_pct: number;
 }

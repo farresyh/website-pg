@@ -31,6 +31,7 @@ const DELIVERY_OPTIONS = [
   "pending",
   "needs_review",
   "delivered",
+  "partially_delivered",
   "failed",
 ];
 

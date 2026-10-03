@@ -77,6 +77,7 @@ function getOutcomeSeverity(outcome: string): "success" | "danger" | "warn" | "i
     case "needs_review":
       return "review";
     case "pending":
+    case "partially_delivered":
       return "warn";
     // 2026-09-15 bugfix — the Initial Delivery row's own honest fallback
     // once its real response is no longer recoverable (see the comment

@@ -51,6 +51,7 @@ const deliveryStatusSeverity: Record<string, "secondary" | "warn" | "success" | 
   delivered: "success",
   failed: "danger",
   needs_review: "warn",
+  partially_delivered: "warn",
 };
 
 function formatRm(sen: number): string {

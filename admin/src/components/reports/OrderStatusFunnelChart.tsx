@@ -26,6 +26,7 @@ const STATUS_META: Array<{
   { key: "pending", label: "Pending (supplier)", color: STATUS_COLOR.warning },
   { key: "not_started", label: "Not Started", color: STATUS_COLOR.warning },
   { key: "needs_review", label: "Needs Review", color: STATUS_COLOR.serious },
+  { key: "partially_delivered", label: "Partially Delivered", color: STATUS_COLOR.serious },
   { key: "failed", label: "Failed", color: STATUS_COLOR.critical },
 ];
 
