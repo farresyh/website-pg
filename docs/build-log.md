@@ -2146,3 +2146,37 @@ the repo root) to `**/.env`, `**/.env.local`, `**/.env.production` and
   cropping it, was blocked by auto mode ("DNS / Domain / Cert Changes"). The
   model stopped there; the form was closed unchanged.
 - The Add-domain placeholder is now `yourbrand.com`.
+
+## 2026-10-04 — Monthly accounting summary dropped whole KL days (pre-launch money audit #2)
+
+Found by the 2026-10-03 pre-launch money audit (fork D, read side).
+`MonthlyAccountingSummaryService::forPeriod()` built the month start in KL time,
+converted it to UTC, and only then added a month. The UTC start is the last day
+of the previous month, so `addMonthNoOverflow()` overflowed against that shorter
+month and the period ended one KL day early. That happened for every month whose
+previous month is shorter: 29–31 Mar, 31 May, 31 Jul, **31 Oct** and 31 Dec
+belonged to no month at all, on all 10 journal lines. September (the only month
+the tests covered) happened to come out right.
+
+Two more boundary bugs in the same file:
+- **Upper bound counted twice.** `whereBetween` includes its upper bound, so an
+  order paid at exactly 00:00:00 KL on the 1st counted in two months.
+- **Settlement dates compared against UTC.** The CHIP settlement windows are KL
+  calendar dates, but they were compared against the UTC instants' dates, so a
+  batch ending on the last day of the month counted in no month.
+
+Fix:
+- The month is now added in KL time, before converting to UTC.
+- Every period filter is `>= from AND < toExclusive`.
+- Settlement windows are compared against KL dates.
+- Two new tests: a last-day order lands in October and an exact-midnight order
+  only in November; a 25–31 Oct settlement batch counts in October. Both fail
+  on the old code.
+- Full backend suite 2465/2465 green.
+
+No production data to correct: the summary is computed fresh on every request,
+nothing is stored. Not fixed here (same UTC-day root cause, logged by the same
+audit, still open):
+- `TransactionRegisterController` / `SupplierTransferController` date filters.
+- Admin Orders "today".
+- `SettlementReconciliationService::paidButNotSettled()`.
