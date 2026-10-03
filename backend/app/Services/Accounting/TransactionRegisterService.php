@@ -148,7 +148,12 @@ final class TransactionRegisterService
                 // a COGS figure that was never actually spent — the same
                 // `delivery_status = Delivered` gate
                 // `MonthlyAccountingSummaryService::cogs()` already uses.
-                'cost_sen' => $order->delivery_status === DeliveryStatus::Delivered ? $order->cost_price : null,
+                // ADR-094 decision 41: a partial delivery drew down only its delivered legs.
+                'cost_sen' => match ($order->delivery_status) {
+                    DeliveryStatus::Delivered => $order->cost_price,
+                    DeliveryStatus::PartiallyDelivered => $order->effectiveCostPriceSen(),
+                    default => null,
+                },
                 'net_sen' => (int) ($realizedProfitByOrderId[$order->id] ?? 0),
                 'amount_foreign' => null,
                 'status' => 'active',

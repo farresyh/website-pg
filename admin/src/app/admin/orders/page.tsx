@@ -158,6 +158,8 @@ const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondar
   // at a glance this is waiting on an async supplier, not a normal
   // in-flight delivery attempt.
   pending: "info",
+  // ADR-094 decision 28 — final, but needs compensating for its undelivered part.
+  partially_delivered: "warn",
 };
 
 /**
@@ -372,8 +374,13 @@ function OrdersPageInner() {
         : `Voucher ${voucher?.code} issued.`,
     );
     setSelected((current) =>
-      current ? { ...current, voucher, has_voucher_restored: restored_only || current.has_voucher_restored } : current,
+      current
+        ? { ...current, voucher, has_voucher_restored: restored_only || current.has_voucher_restored, compensable: false }
+        : current,
     );
+    // Settlement also moves profit and the paid-with voucher's balance —
+    // reload the server's view rather than patching each field here.
+    void refreshSelected();
   }
 
   function handleMarkedDelivered(updated: OrderDetail) {
@@ -382,7 +389,11 @@ function OrdersPageInner() {
   }
 
   function handleConfirmedFailed(updated: OrderDetail) {
-    setConfirmFailedMessage("Delivery confirmed genuinely failed — Issue Voucher is now available.");
+    setConfirmFailedMessage(
+      updated.delivery_status === "partially_delivered"
+        ? "Confirmed — part of this order was delivered. Compensate the undelivered part below."
+        : "Delivery confirmed genuinely failed — compensation is now available.",
+    );
     setSelected(updated);
   }
 
@@ -392,7 +403,7 @@ function OrdersPageInner() {
     setRefundingToWallet(true);
     try {
       const updated = await refundOrderToWallet(session.token, selected.id);
-      setRefundMessage(`Refunded ${formatRm(updated.final_amount)} to ${updated.wallet_reseller?.business_name}'s wallet.`);
+      setRefundMessage(`Refunded ${formatRm(updated.wallet_refund?.amount ?? 0)} to ${updated.wallet_reseller?.business_name}'s wallet.`);
       setSelected(updated);
     } catch (err) {
       setRefundMessage(err instanceof ApiError ? err.message : "Refund failed.");
@@ -539,7 +550,9 @@ function OrdersPageInner() {
                 ? "Delivery succeeded — status updated."
                 : fresh.delivery_status === "failed"
                   ? "Delivery attempt finished (failed) — see latest Delivery Logs entry below."
-                  : "Delivery status updated.";
+                  : fresh.delivery_status === "partially_delivered"
+                    ? "Delivery finished partially — retry the failed part, or compensate it."
+                    : "Delivery status updated.";
             if (watch.action === "resend") setResendMessage(outcome);
             else setRetryMessage(outcome);
             return null;
@@ -663,10 +676,10 @@ function OrdersPageInner() {
             <div className="flex flex-wrap items-center gap-3">
               {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. A failed or needs_review delivery can be resent (ADR-026 decision 4b) — mirrors the backend guard exactly.
                   ADR-094 decision 10 (found live, 2026-09-15): a combo order (`delivery_legs.length > 0`) can never swap package — resendOrderDelivery() always 422s for one — so it gets the plain retry action instead, never this modal. */}
-              {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review") && (
+              {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review" || selected.delivery_status === "partially_delivered") && (
                 <>
                   {/* ADR-102 decision 1: hidden once this order is already compensated (voucher issued or wallet refunded) — mirrors the backend's own hard block, so an admin never sees a button that would just 400. */}
-                  {!selected.voucher && !selected.wallet_refunded && (
+                  {!selected.voucher && !selected.wallet_refunded && !selected.has_voucher_restored && (
                     selected.delivery_legs.length > 0 ? (
                       <div className="flex flex-wrap items-center gap-2">
                         {/* ADR-102 decision 3: a combo order still checks the futile flag regardless of failed/needs_review — the plain Retry button requires the same mandatory override reason the Resend Delivery modal collects for a non-combo order. */}
@@ -697,14 +710,14 @@ function OrdersPageInner() {
                       </Button>
                     )
                   )}
-                  {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both, Voucher's email-keyed mechanism has no meaning for a B2B wallet account. */}
-                  {selected.delivery_status === "failed" && selected.wallet_reseller && !selected.wallet_refunded && (
-                    <Button size="small" variant="outlined" disabled={refundingToWallet} onClick={handleRefundToWallet}>
-                      {refundingToWallet ? "Refunding…" : "Refund to Wallet…"}
+                  {/* ADR-073 decision 7: a wallet-owned order gets "Refund to Wallet" INSTEAD of "Issue Voucher" — never both. ADR-094 decision 30: shown for a failed or partially delivered order not yet compensated; the label carries the server-computed amount since the click is final. */}
+                  {selected.compensable && selected.wallet_reseller && (
+                    <Button size="small" variant="outlined" disabled={refundingToWallet || !selected.compensation_preview} onClick={handleRefundToWallet}>
+                      {refundingToWallet ? "Refunding…" : `Refund ${formatRm(selected.compensation_preview?.total_sen ?? 0)} to Wallet`}
                     </Button>
                   )}
-                  {/* ADR-004/ORD-7: the other resolution path — hidden once a voucher has already been issued for this order (at most one, enforced by a real unique index on the backend, not just this check), and never shown for the ordinary ambiguous needs_review case at all (ADR-026 decision 4c). ADR-094 decision 9's carve-out: a genuine partial-delivery combo order (`partial_combo_delivery`) is the one needs_review case this button does appear for. ADR-024 addendum (2026-09-17, restore-only): also hidden once `has_voucher_restored` — a full-cover order never gets a `voucher` row, so that check alone would leave this button visible forever; label swaps to "Restore Voucher…" for the same case, decided before the admin clicks anything. */}
-                  {(selected.delivery_status === "failed" || selected.partial_combo_delivery) && !selected.wallet_reseller && !selected.voucher && !selected.has_voucher_restored && (
+                  {/* ADR-004/ORD-7: the other resolution path. ADR-094 decision 30: `compensable` (failed or partially delivered, not yet compensated) is the one gate, computed server-side. Restore-only (ADR-024 addendum) when the cash share is RM0.00. */}
+                  {selected.compensable && !selected.wallet_reseller && (
                     <Button size="small" variant="outlined" onClick={() => setVoucherModalOpen(true)}>
                       {isRestoreOnly(selected) ? "Restore Voucher…" : "Issue Voucher…"}
                     </Button>
@@ -715,8 +728,8 @@ function OrdersPageInner() {
                       Mark as Delivered…
                     </Button>
                   )}
-                  {/* ADR-026 addendum (2026-09-16) — the other exit decision 4c's own text always assumed existed. Excluded for a genuine partial-combo-delivery needs_review order — that case has its own custom-amount Issue Voucher path instead (some legs really did deliver). ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. */}
-                  {selected.delivery_status === "needs_review" && !selected.partial_combo_delivery && !selected.voucher && !selected.wallet_refunded && (
+                  {/* ADR-026 addendum (2026-09-16) — the other needs_review exit. On a combo it flips the unresolved legs to failed and lands on partially_delivered when a leg did deliver (ADR-094 decision 31). Hidden once already compensated. */}
+                  {selected.delivery_status === "needs_review" && !selected.voucher && !selected.wallet_refunded && (
                     <Button size="small" variant="outlined" severity="danger" onClick={() => setConfirmFailedModalOpen(true)}>
                       Confirm Failed…
                     </Button>
@@ -1108,7 +1121,7 @@ function OrdersPageInner() {
                               treatment. No new button, no relabel. */}
                           <Button
                             size="small"
-                            variant={order.delivery_status === "failed" ? undefined : "outlined"}
+                            variant={order.delivery_status === "failed" || order.delivery_status === "partially_delivered" ? undefined : "outlined"}
                             onClick={() => session && openOrder(session.token, order.id)}
                           >
                             View

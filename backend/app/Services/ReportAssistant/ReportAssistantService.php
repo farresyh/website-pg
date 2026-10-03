@@ -54,7 +54,7 @@ final class ReportAssistantService
           - game_id, game_name, package_id, package_name
           - payment_method (e.g. fpx)
           - pricing_basis ('member' or 'standard')
-          - delivery_status ('delivered', 'failed', 'processing', 'not_started', ...)
+          - delivery_status ('delivered', 'partially_delivered', 'failed', 'processing', 'not_started', ...)
           - affiliate_id, affiliate_name (the whitelabel storefront brand; null = primary brand)
           - wallet_reseller_id, reseller_name (a prepaid-wallet Reseller order; null = not one)
           - supplier_id, supplier_name (which supplier fulfilled this order)

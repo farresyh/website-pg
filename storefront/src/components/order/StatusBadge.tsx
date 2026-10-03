@@ -13,6 +13,10 @@ const DELIVERY_LABELS: Record<string, { label: string; tone: "success" | "warnin
   pending: { label: "Processing", tone: "warning" },
   not_started: { label: "Waiting for Payment", tone: "warning" },
   failed: { label: "Delivery Failed", tone: "error" },
+  // Shown as raw "needs_review" before 2026-10-04 — to a customer it is still being processed.
+  needs_review: { label: "Processing", tone: "warning" },
+  // ADR-094 decision 39 — never says why (a combo stays opaque).
+  partially_delivered: { label: "Partly Delivered", tone: "warning" },
 };
 
 const TONE_CLASSES: Record<"success" | "warning" | "error", string> = {

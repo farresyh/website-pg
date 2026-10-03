@@ -263,7 +263,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
     }
 
-    public function test_a_combo_orders_pending_leg_failing_lands_the_order_in_needs_review(): void
+    public function test_a_combo_orders_pending_leg_failing_lands_the_order_in_partially_delivered(): void
     {
         [$order, $legs] = $this->comboOrderWithLegs([DeliveryStatus::Delivered->value, DeliveryStatus::Pending->value]);
         $fulfillment = $this->fulfillmentService($this->checkStatusAdapter(
@@ -275,7 +275,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
         (new CheckSupplierDeliveryJob($order))->handle($this->app->make(SupplierAdapterFactory::class), $fulfillment);
 
         $this->assertSame(DeliveryStatus::Failed, $legs[1]->fresh()->status);
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $order->fresh()->delivery_status);
     }
 
     public function test_a_combo_order_with_two_pending_legs_only_checks_the_ones_still_pending(): void
@@ -291,6 +291,6 @@ class CheckSupplierDeliveryJobTest extends TestCase
 
         $this->assertSame(DeliveryStatus::Delivered, $legs[0]->fresh()->status);
         $this->assertSame(DeliveryStatus::Failed, $legs[1]->fresh()->status); // untouched
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $order->fresh()->delivery_status);
     }
 }

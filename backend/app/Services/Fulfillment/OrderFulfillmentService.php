@@ -9,7 +9,6 @@ use App\Models\OrderResendAttempt;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
-use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Notification\CustomerNotificationService;
 use App\Services\Order\DeliveryStatus;
@@ -801,10 +800,10 @@ final class OrderFulfillmentService
      *  - every leg Failed → order Failed (clean, ordinary failure —
      *    nothing was delivered, "Resend Delivery" retries normally).
      *  - otherwise (a genuine mix of Delivered + Failed, no Pending/
-     *    NeedsReview) → order NeedsReview — decision 9's actual partial-
-     *    delivery case: the player already has some of the goods, a
-     *    human must decide (Issue Voucher for the failed leg's value,
-     *    never an automated partial compensation).
+     *    NeedsReview) → order PartiallyDelivered (2026-10-04 addendum,
+     *    decision 28; was NeedsReview under decision 9). An admin still
+     *    triggers compensation (OrderSettlementService), but the amount
+     *    is a formula, not a typed figure.
      *
      * Callable from two entry states — Processing (fulfillCombo()'s own
      * synchronous pass) or Pending (Phase 3b's finalizePendingDeliveryLeg(),
@@ -864,13 +863,7 @@ final class OrderFulfillmentService
                 // switch). Never a frozen snapshot either way — there
                 // isn't one for cost, only `selling_price_sen` (decision 1).
                 $useRealCost = config('services.real_cost_reconciliation.enabled', false);
-                $costTotal = (int) $legs->sum(function (OrderDeliveryLeg $leg) use ($useRealCost) {
-                    if ($useRealCost && $leg->real_cost_price_sen !== null) {
-                        return $leg->real_cost_price_sen;
-                    }
-
-                    return $leg->componentPackage?->cost_price ?? 0;
-                });
+                $costTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->costSen());
                 $reconciledPlatformProfit = $locked->selling_price - $costTotal - $locked->affiliate_profit;
 
                 // Decision 3: never block delivery over this — a combo
@@ -921,10 +914,10 @@ final class OrderFulfillmentService
             }
 
             // Mixed Delivered + Failed, no Pending/NeedsReview present —
-            // decision 9's partial-delivery case. markNeedsReview()
-            // already accepts Processing, Failed, *and* Pending as a
-            // source, so no dispatch is needed here.
-            $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
+            // decision 28: a known outcome, its own terminal status. No
+            // profit credit here: it's credited at settlement (decision
+            // 35), the same as a Failed order.
+            $locked->update(['delivery_status' => $this->orderStatus->markPartiallyDelivered($locked->delivery_status)->value]);
 
             return $locked->fresh();
         });
@@ -1402,22 +1395,14 @@ final class OrderFulfillmentService
         return DB::transaction(function () use ($order, $note, $confirmedBy) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-            // ADR-094's 2026-09-21 addendum decision 26 — OrderController's
-            // own isPartialComboDelivery() guard runs on the unlocked
-            // $order, before this transaction even starts; a leg delivering
-            // in that gap (a concurrent retry/webhook) would otherwise go
-            // unnoticed and this method would blindly confirm the whole
-            // order Failed on stale data, over-compensating a customer who
-            // already received that leg's goods once Issue Voucher runs.
-            // Re-checked here, inside the lock, on $locked (not $order) —
-            // same defense-in-depth pattern as isAlreadyCompensated() above.
-            if ($locked->isPartialComboDelivery()) {
-                throw new OrderFulfillmentException(
-                    "Order #{$locked->id} has a partial delivery — refusing to confirm the whole order failed",
-                );
-            }
-
-            $failedStatus = $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
+            // ADR-094 decision 31 — on a combo, the admin is confirming the
+            // ambiguous legs failed: flip them, then roll up on the locked
+            // legs. A Delivered leg makes it PartiallyDelivered, never a
+            // whole-order Failed (which would over-compensate the goods
+            // already received). A leg still Pending is still in flight.
+            $failedStatus = $locked->deliveryLegs()->exists()
+                ? $this->confirmComboLegsFailed($locked)
+                : $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
 
             Log::withContext(['reference_number' => $locked->reference_number]);
 
@@ -1435,10 +1420,33 @@ final class OrderFulfillmentService
 
             Log::warning('Delivery confirmed genuinely failed after needs_review', [
                 'confirmed_by' => $confirmedBy,
+                'resulting_status' => $failedStatus->value,
             ]);
 
             return $locked->fresh();
         });
+    }
+
+    /** Caller holds the order lock. Returns the order's new status. */
+    private function confirmComboLegsFailed(Order $locked): DeliveryStatus
+    {
+        $legs = OrderDeliveryLeg::query()->where('order_id', $locked->id)->lockForUpdate()->get();
+
+        if ($legs->contains('status', DeliveryStatus::Pending)) {
+            throw new OrderFulfillmentException(
+                "Order #{$locked->id} still has a leg awaiting the supplier — refusing to confirm it failed",
+            );
+        }
+
+        foreach ($legs as $leg) {
+            if (in_array($leg->status, [DeliveryStatus::NeedsReview, DeliveryStatus::NotStarted], true)) {
+                $leg->update(['status' => DeliveryStatus::Failed->value]);
+            }
+        }
+
+        return $legs->contains('status', DeliveryStatus::Delivered)
+            ? $this->orderStatus->markPartiallyDelivered($locked->delivery_status)
+            : $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
     }
 
     /**
@@ -1576,8 +1584,7 @@ final class OrderFulfillmentService
             return;
         }
 
-        $this->ledger->credit(LedgerOwnerType::Platform, null, $order->platform_profit, 'order_profit', 'order', $order->id);
-        $this->ledger->credit(LedgerOwnerType::Affiliate, $order->affiliate_id, $order->affiliate_profit, 'order_profit', 'order', $order->id);
+        $this->ledger->creditOrderProfit($order);
 
         // ADR-116 decision 4: every path into Delivered runs through here,
         // so this is the one receipt trigger. After commit (never message

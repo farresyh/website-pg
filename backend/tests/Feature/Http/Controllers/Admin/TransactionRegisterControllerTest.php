@@ -21,12 +21,14 @@ use App\Models\WalletTopupAttempt;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use Tests\Support\PartialComboOrders;
 use Tests\TestCase;
 
 /**
@@ -35,6 +37,7 @@ use Tests\TestCase;
  */
 class TransactionRegisterControllerTest extends TestCase
 {
+    use PartialComboOrders;
     use RefreshDatabase;
 
     private function actAsSuperAdmin(): AdminUser
@@ -213,6 +216,19 @@ class TransactionRegisterControllerTest extends TestCase
      * for it), never the stale checkout-time column value, mirroring
      * ReportService::profitTotals()/DashboardService's own rule.
      */
+    /** ADR-094 decision 41 — a partial delivery drew down its delivered legs' cost. */
+    public function test_index_shows_the_delivered_legs_cost_for_a_settled_partial_delivery(): void
+    {
+        $order = $this->settledPartialComboOrder();
+        $this->actAsSuperAdmin();
+
+        $row = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'))
+            ->firstWhere('reference', $order->order_number);
+
+        $this->assertSame(2400, $row['cost_sen']);
+        $this->assertSame(600, $row['net_sen']);
+    }
+
     public function test_index_shows_zero_net_for_a_paid_but_undelivered_order(): void
     {
         $this->actAsSuperAdmin();
@@ -596,7 +612,7 @@ class TransactionRegisterControllerTest extends TestCase
             'email' => 'member2@example.com', 'membership_plan_id' => $plan->id,
             'fee_sen' => 1990, 'total_charged_sen' => 2090, 'channel_code' => 'fpx',
             'subscription_number' => 'SUB-REG-1', 'idempotency_key' => 'idem-1',
-            'status' => \App\Services\Membership\MembershipCheckoutAttemptStatus::Paid->value,
+            'status' => MembershipCheckoutAttemptStatus::Paid->value,
         ]);
         $record = MembershipFeeRecord::query()->create([
             'membership_id' => $membership->id, 'membership_plan_id' => $plan->id, 'amount_sen' => 1990,

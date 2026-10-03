@@ -35,7 +35,9 @@ export const TrackedOrderSchema = z.object({
   // this ADR-047 build found while reusing this schema for the broadcast
   // payload: any order reaching that state would have failed to parse on
   // both the poll and (without this fix) the new push path alike.
-  delivery_status: z.enum(["not_started", "processing", "delivered", "failed", "pending", "needs_review"]),
+  // ADR-094 decision 28: "partially_delivered" — final; an unknown value
+  // here would drop the realtime push and leave the page polling forever.
+  delivery_status: z.enum(["not_started", "processing", "delivered", "failed", "pending", "needs_review", "partially_delivered"]),
   created_at: z.string(),
   // ADR-053 decisions 3/4 — drives the review popup: shown once
   // delivered and this is still false, never re-shown once a review

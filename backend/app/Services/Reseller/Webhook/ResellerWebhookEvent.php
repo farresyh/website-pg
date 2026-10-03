@@ -15,6 +15,9 @@ enum ResellerWebhookEvent: string
     case OrderFailed = 'order.failed';
     case OrderRefunded = 'order.refunded';
 
+    /** ADR-094 decision 38 — some of the order delivered, the rest failed; final. */
+    case OrderPartiallyDelivered = 'order.partially_delivered';
+
     /**
      * The event a terminal `delivery_status` maps to, or null for a
      * non-terminal state the webhook does not emit for (`needs_review`,
@@ -27,6 +30,7 @@ enum ResellerWebhookEvent: string
         return match ($status) {
             DeliveryStatus::Delivered => self::OrderDelivered,
             DeliveryStatus::Failed => self::OrderFailed,
+            DeliveryStatus::PartiallyDelivered => self::OrderPartiallyDelivered,
             default => null,
         };
     }

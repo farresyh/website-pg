@@ -2180,3 +2180,161 @@ audit, still open):
 - `TransactionRegisterController` / `SupplierTransferController` date filters.
 - Admin Orders "today".
 - `SettlementReconciliationService::paidButNotSettled()`.
+
+## 2026-10-04 — Partial combo delivery: `partially_delivered` + one settlement path (pre-launch money audit #1, ADR-094 addendum)
+
+**Why.** The 2026-10-03 pre-launch money audit (4 forks, one per layer) found
+that a Reseller-wallet combo with one leg delivered and one failed had **no
+compensation path at all**:
+- Issue Voucher rejected every wallet order.
+- Refund to Wallet accepted only `failed`.
+- Confirm Failed and Mark Delivered both refused a partial combo.
+
+Root-causing it showed three gaps shared by every channel:
+- **No terminal state.** A partial outcome was parked in `needs_review`
+  ("unknown"), and every action gated on `failed`.
+- **Duplicated rule.** The compensability/amount rule was hand-rolled in two
+  controllers; the partial carve-out reached only the voucher one.
+- **Ledger never closed.** A partial order never credited the delivered legs'
+  profit.
+
+The same trace confirmed a live retail over-compensation bug: a partial order
+got its whole paid-with voucher back on top of the cash-share voucher.
+
+**Design and grill.** Production at the time had 2 combo orders (both fully
+delivered), 0 partial deliveries, and 0 registered reseller webhooks.
+- The founder rejected "keep `needs_review`" and "flip to Delivered on
+  settlement". The rule they set: a combo must behave like an ordinary
+  package — status is supplier truth, compensation a separate fact.
+- A 3-fork code-trace pass (write side / read side / frontends+docs+tests) then
+  corrected the draft in three places:
+  - one profit formula for both instruments, not two;
+  - profit credited at settlement, not on reaching `partially_delivered`,
+    because the `order_profit` dedupe key would collide with a later full
+    delivery;
+  - partial restore needs a `restored_amount` column.
+- Decisions 28-41 (ADR-094 addendum, cross-refs on ADR-024 / ADR-073).
+
+**What shipped** (branch `fix/2026-10-03-combo-partial-delivery-settlement`,
+granular commits):
+- **Status and transitions:**
+  - `DeliveryStatus::PartiallyDelivered` + `isCompensable()`.
+  - `resolveComboOutcome()` rolls a Delivered+Failed mix to it.
+  - Retry re-enters from it.
+  - Confirm Failed on a combo flips the ambiguous legs to Failed and rolls up,
+    refusing while a leg is Pending.
+- **`OrderSettlementService`:** one compensation path for Failed and
+  PartiallyDelivered, instrument picked from the order.
+  - Formula-locked amount: retail undelivered share of `final_amount − fee`,
+    plus the same share of the paid-with voucher; wallet undelivered share of
+    `final_amount`.
+  - Member quota restored proportionally — also closes "Failed + voucher never
+    restored quota".
+  - Delivered legs' profit credited in the same transaction
+    (`LedgerService::creditOrderProfit`, `OrderDeliveryLeg::costSen` extracted
+    and shared with full delivery).
+- **Endpoints:** `storeFromOrder` and `refundToWallet` are thin callers, and a
+  typed `amount` is refused. Order detail exposes `compensable` +
+  `compensation_preview` (replacing `partial_combo_delivery` /
+  `suggested_voucher_amount`).
+- **Migration** `2026_10_04_000000`: `voucher_redemptions.restored_amount`
+  (backfilled for full restores) and `membership_quota_debits.restored_amount_sen`.
+- **Messages:**
+  - WhatsApp status card and voucher copy say "part of your order" and never
+    "combo".
+  - New reseller webhook event `order.partially_delivered`.
+  - The Bot's final update says "Sebahagian Berjaya", and its refund notice
+    states the amount actually credited (it used `selling_price`).
+- **Readers:**
+  - The monthly summary's sales/COGS (and so its FX variance), the transaction
+    register's cost, and customer analytics count a settled partial order:
+    kept revenue, delivered legs' cost.
+  - `Order::comboCostReconciliation()` counts delivered legs only.
+  - The LLM prompt lists the status.
+- **Frontends:**
+  - Admin: buttons gate on `compensable`, the voucher modal shows the server
+    amount with no input, the Refund button carries the amount, plus status
+    maps and the funnel key.
+  - Storefront: track-order Zod enum, terminal state, stepper, copy, and
+    `StatusBadge` — which also fixes the existing raw `NEEDS_REVIEW` label leak.
+  - Reseller portal: types, severity and filter.
+- **Docs-site:** status table, webhooks and versioning v1.2.0 (the policy now
+  names new status values and events as additive), regenerated `openapi.json`.
+
+**Verified:**
+- **Suites and builds:**
+  - Backend 2478/2478.
+  - Concurrency suite 24/24 on real MySQL, including
+    `RefundToWalletConcurrencyTest`, now through `settle()`.
+  - `tsc` / `lint` / `build` clean on admin, storefront and reseller;
+    docs-site build clean.
+- **Real HTTP:** against a scratch copy of the dev DB (the dev DB itself was
+  untouched):
+  - A wallet partial combo previews and refunds RM20.00 of RM50.00, with
+    platform profit 600.
+  - A repeat refund returns 422.
+  - A typed amount returns 422.
+  - A retail partial order issues a RM20.00 voucher.
+- **Browser:** the storefront track page renders "Partly Delivered", the
+  stepper and the new copy (Chrome, localhost:3001).
+
+**Gotchas:**
+- `voucher_discount` is nullable on older rows, hence the `(int)` cast.
+- The order detail must not 500 for a leg with no frozen price, so the preview
+  returns null and settle refuses with a 422.
+- A wallet order's fee is always 0 today, but its refund is based on
+  `final_amount`, so a future fee could never be kept back from a wallet.
+- Testing the storefront on a non-standard port fails CORS; use :3001.
+
+**Added before merge (founder asked for proof first):**
+- `OrderSettlementConcurrencyTest`: two processes settle the same partial
+  retail order on real MySQL. Exactly one succeeds, giving one 1600 voucher,
+  the paid-with voucher restored 400 once, and one `order_profit` pair.
+- A whole-lifecycle test: real fulfilment lands on `partially_delivered`, it
+  settles, and a later retry is refused without calling the supplier.
+- The wallet endpoint test now also asserts Retry Delivery returns 422 after
+  the refund.
+- Backend suite 2479/2479; concurrency suite 25/25.
+
+**Founder-requested admin UI check** (local admin against a scratch copy of the
+dev DB; the founder logged in, the model drove the browser). Confirmed:
+- the list shows `partially_delivered`;
+- the wallet order shows "Refund RM 20.00 to Wallet", and refunding it shows
+  RM 20.00, hides the buttons and keeps the status;
+- the voucher modal shows RM 16.00 new + RM 4.00 returned, with no amount input;
+- Confirm Failed on a needs-review combo lands on `partially_delivered` and
+  offers Retry and Issue Voucher.
+
+It found three admin display bugs, all fixed:
+- **Restored card amount.** The "Amount Restored" card showed the full
+  `voucher_discount` (RM 10.00), not the share actually restored (RM 4.00). It
+  now reads `voucher_redemption.restored_amount`.
+- **Stale values after Issue Voucher.** After Issue Voucher the page kept the
+  pre-settlement profit and voucher balance until a reload. It now refetches
+  the order.
+- **Reseller Markup %.** A partial wallet order compared the full selling price
+  with the delivered legs' cost (+108%). It now uses the price kept after the
+  refund (+25%), and is hidden until the refund exists.
+
+**CI e2e flake, fixed at the cause rather than re-run (ADR-023):**
+- **Symptom.** The storefront checkout spec failed once in CI: the order
+  landed on `needs_review`.
+- **Cause, from the trace's own `supplier_response`.** `SQLSTATE[HY000]: 5
+  database is locked` on the fulfilment's `update orders`. The e2e web server,
+  queue worker (`QUEUE_CONNECTION=database`) and cache
+  (`CACHE_STORE=database`) all write one sqlite file, and sqlite's
+  `busy_timeout` was null, so a write that met another's lock failed
+  immediately. The fulfilment catch correctly parked the order at
+  `needs_review` with its reference kept (M-1).
+- **Not caused by this PR.** The same backend code passed CI before, and the
+  local e2e run passed 5/5.
+- **Fix.**
+  - `config/database.php` sqlite `busy_timeout` / `journal_mode` read
+    `DB_BUSY_TIMEOUT` / `DB_JOURNAL_MODE`, still null by default, so dev and
+    production (MySQL) are unchanged.
+  - `e2e/scripts/boot-backend.sh` sets 5000 ms and WAL.
+  - Verified the pragma applies (`PRAGMA busy_timeout` = 5000), e2e 5/5, and
+    backend suite 2479/2479.
+
+**Not live:** `main` is unchanged. Audit #3 (voucher/quota checkout race) is
+PRD §16 item 60; the remaining audit P2s are item 63.

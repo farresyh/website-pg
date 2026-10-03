@@ -34,6 +34,12 @@ export APP_KEY="${APP_KEY:-$(php artisan key:generate --show --no-ansi)}"
 export DB_CONNECTION=sqlite
 export DB_DATABASE="$ROOT_DIR/backend/database/e2e.sqlite"
 export QUEUE_CONNECTION=database
+# The web server, queue worker and database cache share one sqlite file.
+# Without a busy timeout a write that meets another's lock fails at once
+# ("database is locked"), which turned a CI fulfilment into needs_review
+# (2026-10-04, PR #345). WAL lets readers proceed during a write.
+export DB_BUSY_TIMEOUT=5000
+export DB_JOURNAL_MODE=wal
 export CACHE_STORE=database
 # ADR-027's 2026-08-29 addendum, decision 18: CatalogController's
 # packages cache is scoped to its own store (config('cache.

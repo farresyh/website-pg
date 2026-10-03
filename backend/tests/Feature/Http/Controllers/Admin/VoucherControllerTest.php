@@ -74,7 +74,9 @@ class VoucherControllerTest extends TestCase
 
         $order = $this->makeOrder([
             'package_id' => $combo->id,
-            'delivery_status' => DeliveryStatus::NeedsReview->value,
+            'delivery_status' => DeliveryStatus::PartiallyDelivered->value,
+            'cost_price' => 65000,
+            'selling_price' => 71500,
             'final_amount' => 71500 + 90,
             'transaction_fee' => 90,
         ]);
@@ -82,10 +84,12 @@ class VoucherControllerTest extends TestCase
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
             'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
+            'selling_price_sen' => 44000,
         ]);
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
             'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
+            'selling_price_sen' => 27500,
         ]);
 
         return $order;
@@ -447,40 +451,27 @@ class VoucherControllerTest extends TestCase
         $this->assertDatabaseCount('vouchers', 0);
     }
 
-    /** Decision 9's actual carve-out: a genuine partial-delivery combo order requires and accepts a custom amount. */
-    public function test_partial_combo_delivery_order_can_issue_a_voucher_with_a_custom_amount(): void
-    {
-        $order = $this->makePartialComboOrder();
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $response = $this->postJson("/api/orders/{$order->id}/voucher", ['amount' => 27500]);
-
-        $response->assertCreated();
-        $response->assertJsonPath('restored_only', false);
-        $response->assertJsonPath('voucher.amount', 27500);
-        $this->assertDatabaseHas('vouchers', ['order_id' => $order->id, 'amount' => 27500]);
-    }
-
-    /** Without an amount, a partial-delivery order has no auto-computed default — it's required. */
-    public function test_partial_combo_delivery_order_requires_an_amount(): void
+    /** ADR-094 decision 33: a partial delivery's voucher is the formula's undelivered share, not a typed amount. */
+    public function test_partially_delivered_order_issues_the_formula_amount_and_credits_the_delivered_profit(): void
     {
         $order = $this->makePartialComboOrder();
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
 
         $response = $this->postJson("/api/orders/{$order->id}/voucher");
 
-        $response->assertUnprocessable();
-        $response->assertJsonValidationErrors(['amount']);
-        $this->assertDatabaseCount('vouchers', 0);
+        $response->assertCreated();
+        $response->assertJsonPath('voucher.amount', 27500); // 71500 × 27500/71500
+        // (71500 − 27500) − 40000 delivered-leg cost − 0 affiliate
+        $this->assertSame(4000, $order->fresh()->platform_profit);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $order->fresh()->delivery_status);
     }
 
-    /** Decision 9's amount is admin-adjustable, but never past what the customer actually paid. */
-    public function test_partial_combo_delivery_amount_cannot_exceed_final_amount(): void
+    public function test_an_admin_typed_amount_is_refused(): void
     {
         $order = $this->makePartialComboOrder();
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
 
-        $response = $this->postJson("/api/orders/{$order->id}/voucher", ['amount' => $order->final_amount + 1]);
+        $response = $this->postJson("/api/orders/{$order->id}/voucher", ['amount' => 100]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['amount']);
