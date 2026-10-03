@@ -48,6 +48,42 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(900, $summary['cogs_sen']);
     }
 
+    /**
+     * 2026-10-03 audit: the month was built in KL time, converted to UTC,
+     * and only then had a month added — so it ended one KL day early on
+     * every month whose preceding month is shorter (Mar, May, Jul, Oct,
+     * Dec): 31 Oct KL belonged to no month at all.
+     */
+    public function test_period_is_the_whole_kuala_lumpur_month_including_its_last_day(): void
+    {
+        // 31 Oct 23:00 KL — October.
+        Order::factory()->delivered()->create(['paid_at' => '2026-10-31 15:00:00', 'selling_price' => 1000, 'cost_price' => 900]);
+        // 1 Nov 00:00 KL exactly — November, and only November.
+        Order::factory()->delivered()->create(['paid_at' => '2026-10-31 16:00:00', 'selling_price' => 7000, 'cost_price' => 6000]);
+        // 1 Oct 00:00 KL exactly — October.
+        Order::factory()->delivered()->create(['paid_at' => '2026-09-30 16:00:00', 'selling_price' => 300, 'cost_price' => 200]);
+
+        $october = $this->service()->forPeriod(2026, 10);
+        $november = $this->service()->forPeriod(2026, 11);
+
+        $this->assertSame(1300, $october['sales_revenue_sen']);
+        $this->assertSame(1100, $october['cogs_sen']);
+        $this->assertSame(7000, $november['sales_revenue_sen']);
+    }
+
+    public function test_settlement_batch_ending_on_the_last_day_of_the_month_counts_in_that_month(): void
+    {
+        PaymentSettlement::query()->create([
+            'date_from' => '2026-10-25', 'date_to' => '2026-10-31',
+            'matched_gross_sen' => 0, 'matched_fee_sen' => 100, 'matched_net_sen' => 0,
+            'file_gross_sen' => 0, 'file_fee_sen' => 80, 'file_net_sen' => 0,
+            'status' => 'pending', 'original_filename' => 'oct.xlsx',
+        ]);
+
+        $this->assertSame(20, $this->service()->forPeriod(2026, 10)['payment_processing_gain_loss_sen']);
+        $this->assertSame(0, $this->service()->forPeriod(2026, 11)['payment_processing_gain_loss_sen']);
+    }
+
     public function test_membership_revenue_sums_fee_records_in_period(): void
     {
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
