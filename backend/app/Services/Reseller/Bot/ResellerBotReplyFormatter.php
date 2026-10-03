@@ -148,10 +148,15 @@ final class ResellerBotReplyFormatter
     public static function orderUpdate(Order $order): string
     {
         $isDelivered = $order->delivery_status === DeliveryStatus::Delivered;
+        $status = match ($order->delivery_status) {
+            DeliveryStatus::Delivered => 'Berjaya ✅',
+            DeliveryStatus::PartiallyDelivered => 'Sebahagian Berjaya ⚠️',
+            default => 'Gagal ❌',
+        };
 
         $body = "「 UPDATE PESANAN 」\n\n"
             ."No. Order : {$order->order_number}\n"
-            .'Status    : '.($isDelivered ? 'Berjaya ✅' : 'Gagal ❌')."\n"
+            .'Status    : '.$status."\n"
             .'Produk    : '.$order->package?->name;
 
         if (! $isDelivered) {
@@ -166,7 +171,8 @@ final class ResellerBotReplyFormatter
         return self::wrap(
             "「 REFUND WALLET 」\n\n"
             ."No. Order : {$order->order_number}\n"
-            .'Jumlah    : RM'.self::formatSen($order->selling_price).' dikembalikan ke baki wallet anda.'
+            // What was actually credited — a partial delivery refunds only its undelivered share.
+            .'Jumlah    : RM'.self::formatSen($order->walletRefundLedgerEntry()->amount ?? $order->selling_price).' dikembalikan ke baki wallet anda.'
         );
     }
 
@@ -354,6 +360,7 @@ final class ResellerBotReplyFormatter
             'delivered' => 'Berjaya',
             'failed' => 'Gagal',
             'needs_review' => 'Disemak Admin',
+            'partially_delivered' => 'Sebahagian Berjaya',
             default => ucfirst($status),
         };
     }

@@ -63,6 +63,21 @@ class SendResellerBotOrderNotificationTest extends TestCase
         $this->assertSame('delivered', $notification->fresh()->last_notified_delivery_status);
     }
 
+    public function test_sends_a_message_when_delivery_status_reaches_partially_delivered(): void
+    {
+        $this->configureOpenWa();
+        Http::fake();
+        $order = $this->order(['delivery_status' => DeliveryStatus::PartiallyDelivered->value]);
+        $notification = ResellerBotOrderNotification::query()->create([
+            'order_id' => $order->id, 'whatsapp_group_id' => 'g1@g.us',
+        ]);
+
+        app(SendResellerBotOrderNotification::class)->handle(new OrderStatusUpdated($order));
+
+        Http::assertSent(fn ($request) => str_contains((string) $request['text'], 'Sebahagian Berjaya'));
+        $this->assertSame('partially_delivered', $notification->fresh()->last_notified_delivery_status);
+    }
+
     public function test_skips_an_intermediate_delivery_status(): void
     {
         $this->configureOpenWa();

@@ -41,7 +41,7 @@ final class SendResellerBotOrderNotification implements ShouldQueue
     {
         $order = $event->order;
 
-        if (! in_array($order->delivery_status, [DeliveryStatus::Delivered, DeliveryStatus::Failed], true)) {
+        if (! in_array($order->delivery_status, [DeliveryStatus::Delivered, DeliveryStatus::Failed, DeliveryStatus::PartiallyDelivered], true)) {
             return;
         }
 

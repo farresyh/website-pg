@@ -12,6 +12,7 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\WhatsappContact;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Order\DeliveryStatus;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -199,7 +200,9 @@ final class CustomerNotificationService
             event: self::EVENT_VOUCHER_RESTORED,
             dedupeKey: self::EVENT_VOUCHER_RESTORED.':order:'.$order->id,
             rawPhone: $order->customer_phone,
-            message: "*{$brand['name']}*: Hi {$this->firstName($order->customer_name)}, your order {$order->order_number} couldn't be completed, "
+            message: "*{$brand['name']}*: Hi {$this->firstName($order->customer_name)}, "
+                .($order->delivery_status === DeliveryStatus::PartiallyDelivered ? 'part of your order' : 'your order')
+                ." {$order->order_number} couldn't be completed, "
                 ."so RM{$this->rm($redemption->restored_amount)} has been returned to your voucher *{$voucher->code}*.\n\n"
                 ."You can use it again at checkout on {$brand['host']}.",
             orderId: $order->id,
@@ -211,9 +214,12 @@ final class CustomerNotificationService
     {
         $brand = $this->brand($voucher->affiliate_id);
 
-        $opening = $order !== null
-            ? "Hi {$this->firstName($order->customer_name)}, sorry, we couldn't complete your order {$order->order_number}. We've issued you store credit instead."
-            : 'Hi there, you have received store credit.';
+        $opening = match (true) {
+            $order === null => 'Hi there, you have received store credit.',
+            // ADR-094 decision 39 — never says why (combo stays opaque).
+            $order->delivery_status === DeliveryStatus::PartiallyDelivered => "Hi {$this->firstName($order->customer_name)}, sorry, part of your order {$order->order_number} couldn't be completed. We've issued you store credit for that part.",
+            default => "Hi {$this->firstName($order->customer_name)}, sorry, we couldn't complete your order {$order->order_number}. We've issued you store credit instead.",
+        };
 
         $lines = [
             "*{$brand['name']}*: {$opening}",
