@@ -3,6 +3,7 @@
 namespace Tests\Feature\Services\Fulfillment;
 
 use App\Jobs\CheckSupplierDeliveryJob;
+use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
@@ -15,6 +16,7 @@ use App\Services\Accounting\SupplierFundingService;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\InvalidOrderTransitionException;
@@ -1387,6 +1389,52 @@ class OrderFulfillmentServiceComboTest extends TestCase
         $this->expectException(OrderFulfillmentException::class);
 
         $this->service($this->queuedAdapter([]))->confirmDeliveryFailed($order, 'note', 'Jane Admin');
+    }
+
+    /**
+     * ADR-094 decisions 28-35, the whole lifecycle in one pass: a real
+     * fulfilment lands on PartiallyDelivered, settlement compensates the
+     * undelivered share and credits the delivered leg's profit once, and
+     * after that no retry can deliver on top of the compensation.
+     */
+    public function test_a_partial_delivery_settles_once_and_then_refuses_any_further_delivery(): void
+    {
+        $supplier = $this->supplier();
+        $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
+        $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 2400, 'standard_selling_price' => 3000]);
+        $b = $this->componentPackage($supplier, $gameId, ['cost_price' => 1700, 'standard_selling_price' => 2000]);
+        $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1], ['package' => $b, 'quantity' => 1]]);
+        $order = $this->paidComboOrder($combo, [
+            'customer_phone' => '60123456789',
+            'selling_price' => 5000, 'transaction_fee' => 100, 'final_amount' => 5100, 'affiliate_profit' => 0,
+        ]);
+
+        $result = $this->service($this->queuedAdapter([
+            SupplierResponse::success(['supplier_ref' => 'SREF-A']),
+            SupplierResponse::failure('insufficient_balance', 'No balance'),
+        ]))->fulfill($order);
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $result->delivery_status);
+        $this->assertTrue($result->delivery_status->isCompensable());
+        $this->assertSame(0, LedgerEntry::query()->where('type', 'order_profit')->count());
+
+        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        $settled = app(OrderSettlementService::class)->settle($result, $admin->id);
+
+        // u = 2000/5000: voucher = 5000 cash × 0.4; profit = (5000 − 2000) − 2400.
+        $this->assertSame(2000, $settled->voucher?->amount);
+        $this->assertSame(600, (int) LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->sum('amount'));
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $order->fresh()->delivery_status);
+
+        // A retry after compensation never reaches the supplier.
+        $neverCalled = $this->queuedAdapter([]);
+        try {
+            $this->service($neverCalled)->fulfill($order->fresh());
+            $this->fail('A compensated partial order must refuse further delivery.');
+        } catch (OrderFulfillmentException) {
+        }
+        $this->assertSame(DeliveryStatus::Failed, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->value('status'));
+        $this->assertSame(2, LedgerEntry::query()->where('type', 'order_profit')->count());
+        $this->assertSame(1, LedgerEntry::query()->where('type', 'voucher_issued')->count());
     }
 
     /** ADR-094 decision 29 — Retry from PartiallyDelivered re-attempts the failed leg only. */

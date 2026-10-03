@@ -2286,5 +2286,15 @@ granular commits):
   `final_amount`, so a future fee could never be kept back from a wallet.
 - Testing the storefront on a non-standard port fails CORS; use :3001.
 
+**Added before merge (founder asked for proof first):**
+- `OrderSettlementConcurrencyTest`: two processes settle the same partial
+  retail order on real MySQL. Exactly one succeeds, giving one 1600 voucher,
+  the paid-with voucher restored 400 once, and one `order_profit` pair.
+- A whole-lifecycle test: real fulfilment lands on `partially_delivered`, it
+  settles, and a later retry is refused without calling the supplier.
+- The wallet endpoint test now also asserts Retry Delivery returns 422 after
+  the refund.
+- Backend suite 2479/2479; concurrency suite 25/25.
+
 **Not live:** `main` is unchanged. Audit #3 (voucher/quota checkout race) is
 PRD §16 item 60; the remaining audit P2s are item 63.

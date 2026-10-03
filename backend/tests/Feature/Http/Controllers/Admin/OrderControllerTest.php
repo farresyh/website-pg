@@ -1812,6 +1812,8 @@ class OrderControllerTest extends TestCase
         $this->assertSame(2000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
         $this->assertSame(600, $order->fresh()->platform_profit); // (5000 − 2000) − 2400
         $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertUnprocessable();
+        // Compensated — Retry Delivery must never deliver on top of the refund.
+        $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertUnprocessable();
     }
 
     /** ADR-102 decision 11 (b) — the "Wallet Refund" card needs the underlying LedgerEntry's amount/created_at, not just the wallet_refunded boolean. */
