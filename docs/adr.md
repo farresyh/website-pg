@@ -5740,7 +5740,7 @@ This addendum's fix is single-order-scoped; `attemptLeg()`'s own per-leg version
 
 ### Addendum (2026-10-04) — partial delivery gets its own terminal status and one settlement path for every channel (revises decisions 9, 25, 26)
 
-**Status:** Accepted — grilled 2026-10-03/04 (2 rounds, 8 decisions) + money code-trace pass (3 parallel forks: write side, read side, frontends/docs/tests). Building on `fix/2026-10-03-combo-partial-delivery-settlement`.
+**Status:** Accepted — grilled 2026-10-03/04 (2 rounds, 8 decisions) + money code-trace pass (3 parallel forks: write side, read side, frontends/docs/tests). **Built 2026-10-04** on `fix/2026-10-03-combo-partial-delivery-settlement` (see `docs/build-log.md`). Build-time refinements: a wallet refund is based on `final_amount` (decision 33's text, updated); a partial restore keeps the redemption's `status = 'restored'` with `restored_amount` < `amount`, so every existing "was it restored" reader stays correct; quota debits restored before this column exist with `restored_amount_sen` null.
 
 **Context.** A 2026-10-03 pre-launch money audit (4 forks, one per layer) found a Reseller-wallet combo with a genuine partial delivery has **no compensation path at all**: `VoucherController::storeFromOrder()` rejects every wallet order (2026-09-29 guard), `refundToWallet()` accepts only `Failed`, `confirmFailed()` and `markDelivered()` both refuse a partial combo. Combos are sold through the API and Bot (decision 14), so a failed leg strands the reseller's money; the only workaround (admin manual wallet credit) is invisible to `isAlreadyCompensated()`, so a later Retry could deliver on top of it. Root-causing it showed this is a symptom of three gaps shared by **every** channel, not a wallet bug:
 
