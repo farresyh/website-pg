@@ -4,6 +4,7 @@ namespace App\Services\Ledger;
 
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
+use App\Models\Order;
 use Illuminate\Support\Facades\DB;
 
 final class LedgerService
@@ -88,6 +89,23 @@ final class LedgerService
             'reason' => $reason,
             'idempotency_key' => $idempotencyKey,
         ]);
+    }
+
+    /**
+     * The two `order_profit` rows (PRD §8): platform and the order's
+     * affiliate, from the profit columns on the order. Once per order —
+     * `dedupe_key` rejects a second pair. A sandbox order never reaches
+     * the ledger (ADR-018 decision 6). Called on delivery and on a
+     * partial delivery's settlement (ADR-094 decision 35).
+     */
+    public function creditOrderProfit(Order $order): void
+    {
+        if ($order->is_test) {
+            return;
+        }
+
+        $this->credit(LedgerOwnerType::Platform, null, $order->platform_profit, 'order_profit', 'order', $order->id);
+        $this->credit(LedgerOwnerType::Affiliate, $order->affiliate_id, $order->affiliate_profit, 'order_profit', 'order', $order->id);
     }
 
     /**

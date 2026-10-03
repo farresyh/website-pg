@@ -586,7 +586,7 @@ class OrderControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
             'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500,
         ]);
-        $order = $this->order(['package_id' => $combo->id, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $order = $this->order(['package_id' => $combo->id, 'delivery_status' => DeliveryStatus::PartiallyDelivered->value]);
         OrderDeliveryLeg::query()->create([
             'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
             'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
@@ -602,12 +602,12 @@ class OrderControllerTest extends TestCase
         $response = $this->getJson("/api/orders/{$order->id}");
 
         $response->assertOk();
-        $response->assertJsonPath('partial_combo_delivery', true);
-        // ADR-107 decision 4: order()'s defaults give compensableAmount
-        // 1000 (final_amount 1100 - transaction_fee 100); apportioned by
-        // frozen selling_price_sen weight (27500 of 71500 total) ->
+        $response->assertJsonPath('compensable', true);
+        // ADR-094 decision 33: order()'s defaults give cash 1000
+        // (final_amount 1100 - transaction_fee 100); the undelivered share
+        // by frozen selling_price_sen weight (27500 of 71500) ->
         // 1000 * 27500/71500 ≈ 384.6, rounds to 385.
-        $response->assertJsonPath('suggested_voucher_amount', 385);
+        $response->assertJsonPath('compensation_preview', ['instrument' => 'voucher', 'cash_sen' => 385, 'voucher_restore_sen' => 0, 'total_sen' => 385]);
         $response->assertJsonCount(2, 'delivery_legs');
         $response->assertJsonPath('delivery_legs.0.leg_number', 1);
         $response->assertJsonPath('delivery_legs.0.status', 'delivered');
@@ -619,23 +619,15 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('delivery_legs.0.component_package.supplier_package_ref', 'GV-4810');
         $response->assertJsonPath('delivery_legs.1.status', 'failed');
         $response->assertJsonPath('delivery_legs.1.failure_reason', 'Insufficient balance');
-        // ADR-107 decision 3, generalized by ADR-111 decision 7 — a
-        // NeedsReview (partial-delivery) order never has this flag set
+        // ADR-107 decision 3, generalized by ADR-111 decision 7 — an
+        // unsettled partial-delivery order never has this flag set
         // (only OrderFulfillmentService's own Delivered-branch
         // reconciliation writes it, see Order::hasReconciledProfitFlag()).
         $response->assertJsonPath('profit_reconciled_flagged', false);
     }
 
-    /**
-     * ADR-094's 2026-09-21 addendum decision 25 — before this fix,
-     * suggestedPartialVoucherAmount() summed only Failed legs, so a
-     * NeedsReview-caused partial delivery would suggest RM0 instead of
-     * the leg's correct proportional share. Same fixture math as
-     * test_show_includes_delivery_legs_and_partial_delivery_computed_fields
-     * above, with the second leg NeedsReview instead of Failed — the
-     * suggested amount must be identical (385), not 0/null.
-     */
-    public function test_show_suggests_a_correct_partial_voucher_amount_for_a_needs_review_leg(): void
+    /** ADR-094 decision 28: a leg still ambiguous keeps the order NeedsReview — nothing to compensate yet. */
+    public function test_show_offers_no_compensation_while_a_leg_is_still_ambiguous(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-voucher-amount-needs-review-test', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-voucher-amount-needs-review-test']);
@@ -669,8 +661,8 @@ class OrderControllerTest extends TestCase
         $response = $this->getJson("/api/orders/{$order->id}");
 
         $response->assertOk();
-        $response->assertJsonPath('partial_combo_delivery', true);
-        $response->assertJsonPath('suggested_voucher_amount', 385);
+        $response->assertJsonPath('compensable', false);
+        $response->assertJsonPath('compensation_preview', null);
     }
 
     /**
@@ -711,8 +703,8 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('profit_reconciled_flagged', true);
     }
 
-    /** An ordinary single-supplier order has no legs and never trips the partial-delivery carve-out. */
-    public function test_show_partial_combo_delivery_is_false_for_an_ordinary_order(): void
+    /** An ordinary Failed order is compensated in full — u = 1. */
+    public function test_show_previews_full_compensation_for_an_ordinary_failed_order(): void
     {
         $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
         $this->actingAsAdmin();
@@ -720,8 +712,8 @@ class OrderControllerTest extends TestCase
         $response = $this->getJson("/api/orders/{$order->id}");
 
         $response->assertOk();
-        $response->assertJsonPath('partial_combo_delivery', false);
-        $response->assertJsonPath('suggested_voucher_amount', null);
+        $response->assertJsonPath('compensable', true);
+        $response->assertJsonPath('compensation_preview.total_sen', 1000);
         $response->assertJsonCount(0, 'delivery_legs');
     }
 
@@ -1660,64 +1652,12 @@ class OrderControllerTest extends TestCase
     }
 
     /**
-     * ADR-094 decision 9's own carve-out (already established for Issue
-     * Voucher's custom-amount path) applies here too: a genuine
-     * partial-delivery combo order must never have "confirm failed"
-     * applied to the WHOLE order — some legs really did deliver.
+     * ADR-094 decision 31 — confirming a combo failed flips its ambiguous
+     * leg to Failed; with a Delivered leg it lands on PartiallyDelivered,
+     * never a whole-order Failed (which would over-compensate the goods
+     * already received). No compensation is issued by this step itself.
      */
-    public function test_confirm_failed_rejects_a_partial_combo_delivery_order(): void
-    {
-        $this->actingAsAdmin();
-        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-confirm-failed-test', 'api_config' => [], 'currency' => 'MYR']);
-        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-confirm-failed-test']);
-        $delivered = Package::query()->create([
-            'game_id' => $game->id, 'name' => '4810 Diamonds', 'denomination' => 4810,
-            'cost_price' => 40000, 'standard_selling_price' => 44000, 'markup_percent' => 10,
-            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-4810',
-        ]);
-        $failed = Package::query()->create([
-            'game_id' => $game->id, 'name' => '2976 Diamonds', 'denomination' => 2976,
-            'cost_price' => 25000, 'standard_selling_price' => 27500, 'markup_percent' => 10,
-            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV-2976',
-        ]);
-        $combo = Package::query()->create([
-            'game_id' => $game->id, 'name' => '7786 Diamonds (Combo)', 'is_combo' => true,
-            'denomination' => 7786, 'cost_price' => 65000, 'standard_selling_price' => 71500, 'markup_percent' => 10,
-        ]);
-        $order = $this->order([
-            'package_id' => $combo->id,
-            'payment_status' => PaymentStatus::Paid->value,
-            'delivery_status' => DeliveryStatus::NeedsReview->value,
-            'final_amount' => 71500 + 90,
-            'transaction_fee' => 90,
-        ]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $delivered->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'supplier_reference' => 'GV-REF-1',
-        ]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $failed->id, 'supplier_id' => $supplier->id,
-            'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'failure_reason' => 'Insufficient balance',
-        ]);
-
-        $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note']);
-
-        $response->assertUnprocessable();
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
-    }
-
-    /**
-     * ADR-094's 2026-09-21 addendum decision 25 — the actual over-
-     * compensation gap this addendum closes. ADR-102 decision 4 only
-     * closed the Digiflazz-confirmed-Gagal cause of a leg landing on
-     * NeedsReview; a Gamevion duplicate_reference (this test) or any
-     * unexpected exception mid-attempt was NOT recognized as "partial"
-     * before this fix, so confirmFailed() would let an admin confirm
-     * the whole order Failed and Issue Voucher compute off the FULL
-     * final_amount — over-compensating a customer who already received
-     * the delivered leg's goods.
-     */
-    public function test_confirm_failed_rejects_when_a_delivered_leg_is_mixed_with_a_needs_review_leg(): void
+    public function test_confirm_failed_on_a_combo_with_a_delivered_leg_lands_in_partially_delivered(): void
     {
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion-confirm-failed-needs-review-test', 'api_config' => [], 'currency' => 'MYR']);
@@ -1754,8 +1694,10 @@ class OrderControllerTest extends TestCase
 
         $response = $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note']);
 
-        $response->assertUnprocessable();
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $response->assertOk();
+        $response->assertJsonPath('delivery_status', 'partially_delivered');
+        $response->assertJsonPath('compensable', true);
+        $this->assertSame(DeliveryStatus::Failed, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->value('status'));
         $this->assertSame(0, Voucher::query()->where('order_id', $order->id)->count());
     }
 
@@ -1835,6 +1777,43 @@ class OrderControllerTest extends TestCase
             'owner_type' => 'reseller_wallet', 'owner_id' => $reseller->id,
             'type' => 'wallet_refund', 'amount' => 945, 'reference_type' => 'order', 'reference_id' => $order->id,
         ]);
+    }
+
+    /**
+     * The 2026-10-03 audit's P1: a wallet combo with one leg delivered and
+     * one failed had no compensation path at all. It now refunds the
+     * undelivered share (ADR-094 decisions 30-33) and credits the
+     * delivered leg's profit; a repeat is refused.
+     */
+    public function test_refund_to_wallet_refunds_the_undelivered_share_of_a_partially_delivered_combo(): void
+    {
+        $this->actingAsAdmin();
+        $reseller = $this->walletReseller();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB Malaysia', 'slug' => 'mlbb-malaysia-partial-wallet']);
+        $legA = Package::query()->create(['game_id' => $game->id, 'name' => 'A', 'denomination' => 1, 'cost_price' => 2400, 'standard_selling_price' => 3000, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        $legB = Package::query()->create(['game_id' => $game->id, 'name' => 'B', 'denomination' => 2, 'cost_price' => 1700, 'standard_selling_price' => 2000, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
+        $combo = Package::query()->create(['game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true, 'denomination' => 3, 'cost_price' => 4100, 'standard_selling_price' => 5000]);
+        $order = $this->order([
+            'package_id' => $combo->id, 'wallet_reseller_id' => $reseller->id,
+            'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::PartiallyDelivered->value,
+            'selling_price' => 5000, 'transaction_fee' => 0, 'final_amount' => 5000, 'affiliate_profit' => 0,
+        ]);
+        OrderDeliveryLeg::query()->create(['order_id' => $order->id, 'component_package_id' => $legA->id, 'supplier_id' => $supplier->id, 'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value, 'selling_price_sen' => 3000]);
+        OrderDeliveryLeg::query()->create(['order_id' => $order->id, 'component_package_id' => $legB->id, 'supplier_id' => $supplier->id, 'leg_number' => 2, 'status' => DeliveryStatus::Failed->value, 'selling_price_sen' => 2000]);
+
+        $this->getJson("/api/orders/{$order->id}")->assertJsonPath('compensation_preview.total_sen', 2000);
+        $response = $this->postJson("/api/orders/{$order->id}/refund-to-wallet");
+
+        $response->assertOk()
+            ->assertJsonPath('wallet_refund.amount', 2000)
+            ->assertJsonPath('delivery_status', 'partially_delivered')
+            ->assertJsonPath('compensable', false);
+        $this->assertSame(2000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+        $this->assertSame(600, $order->fresh()->platform_profit); // (5000 − 2000) − 2400
+        $this->postJson("/api/orders/{$order->id}/refund-to-wallet")->assertUnprocessable();
+        // Compensated — Retry Delivery must never deliver on top of the refund.
+        $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertUnprocessable();
     }
 
     /** ADR-102 decision 11 (b) — the "Wallet Refund" card needs the underlying LedgerEntry's amount/created_at, not just the wallet_refunded boolean. */

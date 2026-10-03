@@ -54,6 +54,7 @@ final class OrderStatusCard
             DeliveryStatus::Delivered => ["✅ Paid · {$paid}", '✅ Processed', "✅ Delivered to Player ID {$player}"],
             DeliveryStatus::Failed => ["✅ Paid · {$paid}", "❌ Delivery failed · Player ID {$player}"],
             DeliveryStatus::NeedsReview => ["✅ Paid · {$paid}", '🔎 Under review', "○ Delivery to Player ID {$player}"],
+            DeliveryStatus::PartiallyDelivered => ["✅ Paid · {$paid}", "⚠️ Partly delivered · Player ID {$player}"],
             default => ["✅ Paid · {$paid}", '⏳ Processing', "○ Delivery to Player ID {$player}"],
         };
     }
@@ -73,6 +74,8 @@ final class OrderStatusCard
             DeliveryStatus::Delivered => "Your top-up is in your game account. Enjoyed it? Leave a quick review:\nhttps://{$brand['host']}/order/status/{$order->order_number}",
             DeliveryStatus::Failed => "We couldn't complete this order. Our team is on it, and if it can't be delivered you'll receive a voucher for the full amount here.",
             DeliveryStatus::NeedsReview => "Our team is checking this order manually. We'll message you here as soon as it's resolved.",
+            // ADR-094 decision 39 — never says why (combo stays opaque).
+            DeliveryStatus::PartiallyDelivered => "Part of this order couldn't be completed. The part that didn't go through will be returned to you as a voucher here.",
             default => "We'll message you here once it's delivered. Thanks for your patience!",
         };
     }

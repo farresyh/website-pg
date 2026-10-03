@@ -71,6 +71,16 @@ function deriveStages(order: TrackedOrder): Stage[] {
     ];
   }
 
+  // ADR-094 decision 39 — part of the order went through. Says nothing
+  // about why (a combo stays opaque to the customer).
+  if (order.delivery_status === "partially_delivered") {
+    return [
+      { label: "Payment Received", sub: "Paid", state: "done" },
+      { label: "Processing", sub: "Partly delivered", state: "failed" },
+      { label: "Order Complete", sub: "Remainder credited back", state: "done" },
+    ];
+  }
+
   // ADR-032: Pending (an async supplier accepted the order but hasn't
   // confirmed the final outcome) reads identically to Processing here
   // — to a customer both mean "topup sedang diproses", the mechanism
@@ -94,7 +104,12 @@ function deriveStages(order: TrackedOrder): Stage[] {
 }
 
 function isTerminal(order: TrackedOrder): boolean {
-  return order.payment_status === "failed" || order.delivery_status === "delivered" || order.delivery_status === "failed";
+  return (
+    order.payment_status === "failed" ||
+    order.delivery_status === "delivered" ||
+    order.delivery_status === "failed" ||
+    order.delivery_status === "partially_delivered"
+  );
 }
 
 export default function OrderStatusTracker({ orderNumber }: { orderNumber: string }) {
@@ -202,7 +217,8 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   if (!order) return null;
 
   const stages = deriveStages(order);
-  const hasFailure = order.payment_status === "failed" || order.delivery_status === "failed";
+  const isPartial = order.delivery_status === "partially_delivered";
+  const hasFailure = order.payment_status === "failed" || order.delivery_status === "failed" || isPartial;
   const isPaid = order.payment_status === "paid";
   const isDelivered = order.delivery_status === "delivered";
   const canGetUpdates = isPaid && !hasFailure;
@@ -210,7 +226,12 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   // notified, done means buy again, a failure or no payment means talk to support.
   const primaryAction: "support" | "updates" | "buy-again" =
     !canGetUpdates ? "support" : isDelivered ? "buy-again" : "updates";
-  const helpCopy = hasFailure
+  const helpCopy = isPartial
+    ? {
+        heading: "Part of Your Order Couldn't Be Completed",
+        body: "The part that didn't go through is credited back to you as a voucher. Contact our Customer Support team on WhatsApp if you have any questions.",
+      }
+    : hasFailure
     ? { heading: "Need Help With This Order?", body: "Contact our Customer Support team directly via WhatsApp for a manual check." }
     : !isPaid
       ? { heading: "Having an Issue with Your Order?", body: "Paid but this page hasn't updated? Contact our Customer Support team directly via WhatsApp." }

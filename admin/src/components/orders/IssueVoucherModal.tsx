@@ -33,53 +33,34 @@ function formatRm(sen: number): string {
 }
 
 /**
- * ADR-024 addendum (2026-09-17, restore-only) — true only for the
- * ordinary (non-partial-combo) branch, where the amount is entirely
- * server-computed (`final_amount - transaction_fee`) and can genuinely
- * land on 0 for a full-cover-by-voucher order. The partial-combo
- * amount is always admin-typed and floored at RM0.01 server-side
- * (`StoreVoucherFromOrderRequest`'s `min:1`), so it can never be this.
+ * ADR-024 addendum (2026-09-17, restore-only) — nothing left to mint:
+ * the cash share is RM0.00 (a full-cover-by-voucher order), so the
+ * action only gives the paid-with voucher its balance back.
  */
 export function isRestoreOnly(order: OrderDetail): boolean {
-  return !order.partial_combo_delivery && order.final_amount - order.transaction_fee === 0;
+  return (order.compensation_preview?.cash_sen ?? 0) === 0;
 }
 
 /**
  * ORD-7's other resolution path (ADR-004: retry-delivery or voucher,
- * never a cash refund) — the counterpart to ResendDeliveryModal. For
- * an ordinary failed order, amount is never entered: it's computed
- * server-side from what the customer actually paid (final_amount -
- * transaction_fee), same ORD-9 "never trust a client-submitted money
- * value" principle as everywhere else in checkout/resend. ADR-094
- * decision 9's carve-out is the one exception — a genuine partial-
- * delivery combo order (`order.partial_combo_delivery`) has no single
- * correct auto-computed figure (the player already has some of the
- * goods), so a custom amount is entered here, prefilled from the
- * failed leg(s)' own price and admin-adjustable; the backend still
- * caps whatever's sent at `final_amount` independently. Rendered only
- * while the dialog is open — fresh state every open, same convention
- * as ResendDeliveryModal/CreateValidatorModal.
+ * never a cash refund) — the counterpart to ResendDeliveryModal. The
+ * amount is never entered: the backend computes it (ADR-094 decision
+ * 33) and `order.compensation_preview` shows exactly what it will be —
+ * all of it for a failed order, the undelivered share for a partially
+ * delivered one. Rendered only while the dialog is open — fresh state
+ * every open, same convention as ResendDeliveryModal.
  *
- * ADR-024 addendum (2026-09-17, restore-only) — a full-cover-by-voucher
- * order's cash portion is genuinely 0: this one slot auto-routes to a
- * "Restore Voucher" mode instead of minting a pointless RM0.00 voucher
- * — same button, label/copy/action decided from `order` before the
- * admin ever sees it, not a separate manual choice. The Reason field
- * is dropped in that mode: nothing gets created for it to attach to
- * (restore() writes no ledger entry of its own), so keeping the field
- * would just silently discard whatever the admin typed.
+ * Restore-only mode drops the Reason field: nothing gets created for
+ * it to attach to.
  */
 function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVoucherModalProps, "isOpen">) {
   const [reason, setReason] = useState("");
-  const [customAmount, setCustomAmount] = useState(
-    order.suggested_voucher_amount !== null ? (order.suggested_voucher_amount / 100).toFixed(2) : "",
-  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isPartial = order.partial_combo_delivery;
+  const preview = order.compensation_preview;
+  const isPartial = order.delivery_status === "partially_delivered";
   const restoreOnly = isRestoreOnly(order);
-  const amount = isPartial ? Math.round(parseFloat(customAmount || "0") * 100) : order.final_amount - order.transaction_fee;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -88,7 +69,6 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
     try {
       const result = await issueVoucherFromOrder(token, order.id, {
         reason: restoreOnly ? undefined : reason.trim() || undefined,
-        amount: isPartial ? amount : undefined,
       });
       onIssued(result);
       onClose();
@@ -101,25 +81,33 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
 
   return (
     <>
-      {isPartial ? (
+      {preview === null ? (
         <p className="mb-5 text-sm text-ink-muted">
-          This combo order partially delivered — the customer already received some of the goods. Set the
-          store-credit amount for the part that failed, for{" "}
-          <span className="font-medium">{order.customer_email}</span>. This platform never issues cash refunds
-          (ADR-004). One voucher per order; this cannot be undone once issued.
-        </p>
-      ) : restoreOnly ? (
-        <p className="mb-5 text-sm text-ink-muted">
-          This order was fully covered by a voucher — its cash portion is RM0.00. Restoring gives that voucher&apos;s
-          spent balance back to <span className="font-medium">{order.customer_email}</span>; no new voucher is
-          issued, since there is nothing left over to compensate.
+          No amount can be worked out for this order (a delivery leg has no recorded price). Contact the developer
+          before compensating it.
         </p>
       ) : (
-        <p className="mb-5 text-sm text-ink-muted">
-          Issues a <span className="font-medium">{formatRm(amount)}</span> store-credit voucher to{" "}
-          <span className="font-medium">{order.customer_email}</span> — this platform never issues cash refunds
-          (ADR-004). One voucher per order; this cannot be undone once issued.
-        </p>
+        <div className="mb-5 space-y-2 text-sm text-ink-muted">
+          {isPartial && (
+            <p>
+              Part of this order was delivered. Only the undelivered part is compensated, in proportion to what the
+              customer paid.
+            </p>
+          )}
+          {preview.cash_sen > 0 && (
+            <p>
+              Issues a <span className="font-medium">{formatRm(preview.cash_sen)}</span> store-credit voucher to{" "}
+              <span className="font-medium">{order.customer_email}</span>.
+            </p>
+          )}
+          {preview.voucher_restore_sen > 0 && (
+            <p>
+              Returns <span className="font-medium">{formatRm(preview.voucher_restore_sen)}</span> to the voucher this
+              order was paid with.
+            </p>
+          )}
+          <p>This platform never issues cash refunds (ADR-004). One compensation per order; it cannot be undone.</p>
+        </div>
       )}
 
       {error && (
@@ -129,28 +117,6 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {isPartial && (
-          <div>
-            <Label htmlFor="voucher_amount">Amount (RM)</Label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">RM</span>
-              <Input
-                id="voucher_amount"
-                type="text"
-                value={customAmount}
-                onChange={(e) => setCustomAmount(e.target.value)}
-                placeholder="e.g. 275.00"
-                required
-                className="pl-9"
-              />
-            </div>
-            <p className="mt-1 text-theme-xs text-gray-400">
-              Prefilled from the failed leg&apos;s own price — adjust if needed. Cannot exceed{" "}
-              {formatRm(order.final_amount)} (what the customer paid).
-            </p>
-          </div>
-        )}
-
         {!restoreOnly && (
           <div>
             <Label htmlFor="voucher_reason">Reason (Optional)</Label>
@@ -167,7 +133,7 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
           <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting || (isPartial && (!Number.isFinite(amount) || amount <= 0))}>
+          <Button type="submit" disabled={submitting || preview === null}>
             {submitting ? (restoreOnly ? "Restoring…" : "Issuing…") : restoreOnly ? "Restore Voucher" : "Issue Voucher"}
           </Button>
         </div>

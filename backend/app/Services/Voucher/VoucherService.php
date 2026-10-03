@@ -306,9 +306,9 @@ final class VoucherService
      * `redeem()`'s own status guard keeps it un-spendable, respecting
      * whatever the admin/expiry already decided.
      */
-    public function restore(int $orderId): void
+    public function restore(int $orderId, ?int $amount = null): void
     {
-        DB::transaction(function () use ($orderId) {
+        DB::transaction(function () use ($orderId, $amount) {
             $redemption = VoucherRedemption::query()
                 ->where('order_id', $orderId)
                 ->where('status', 'reserved')
@@ -319,9 +319,20 @@ final class VoucherService
                 return;
             }
 
+            // ADR-094 decision 34: a partial combo delivery gives back
+            // only the undelivered share; null is the whole redemption.
+            // Nothing to give back means the redemption was fully spent.
+            $restoredAmount = min($amount ?? $redemption->amount, $redemption->amount);
+
+            if ($restoredAmount <= 0) {
+                $redemption->update(['status' => 'committed']);
+
+                return;
+            }
+
             $voucher = Voucher::query()->lockForUpdate()->findOrFail($redemption->voucher_id);
 
-            $voucher->remaining += $redemption->amount;
+            $voucher->remaining += $restoredAmount;
 
             if ($voucher->status === 'exhausted') {
                 $voucher->status = 'active';
@@ -329,7 +340,7 @@ final class VoucherService
 
             $voucher->save();
 
-            $redemption->update(['status' => 'restored']);
+            $redemption->update(['status' => 'restored', 'restored_amount' => $restoredAmount]);
         });
     }
 

@@ -61,6 +61,18 @@ class DispatchResellerOrderWebhookTest extends TestCase
         app(DispatchResellerOrderWebhook::class)->handle(new OrderStatusUpdated($order));
     }
 
+    /** ADR-094 decision 38 — the partial outcome is final, so the reseller is told right away. */
+    public function test_partially_delivered_wallet_order_queues_its_own_event(): void
+    {
+        Queue::fake();
+        $reseller = $this->resellerWithWebhook();
+        $order = $this->order(['wallet_reseller_id' => $reseller->id, 'delivery_status' => DeliveryStatus::PartiallyDelivered->value]);
+
+        $this->fire($order);
+
+        $this->assertSame('order.partially_delivered', ResellerWebhookDelivery::query()->where('order_id', $order->id)->sole()->event);
+    }
+
     public function test_delivered_wallet_order_creates_a_delivery_row_and_queues_the_job(): void
     {
         Queue::fake();

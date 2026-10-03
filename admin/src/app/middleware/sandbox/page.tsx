@@ -71,6 +71,7 @@ const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondar
   // only ever simulates success/failure, never an async Pending), TS
   // just needs the key to satisfy the shared OrderListItem type.
   pending: "info",
+  partially_delivered: "warn",
 };
 
 export default function SandboxOrdersPage() {

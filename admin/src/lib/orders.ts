@@ -21,7 +21,7 @@ export interface OrderListItem {
   final_amount: number;
   platform_profit: number;
   payment_status: "pending" | "paid" | "failed";
-  delivery_status: "not_started" | "processing" | "delivered" | "failed" | "needs_review" | "pending";
+  delivery_status: "not_started" | "processing" | "delivered" | "failed" | "needs_review" | "pending" | "partially_delivered";
   payment_method: string | null;
   created_at: string;
   paid_at?: string | null;
@@ -166,20 +166,20 @@ export interface OrderDetail extends OrderListItem {
   // (orders.voucher_id, set at checkout) — a real, distinct fact from
   // `voucher` above, never exposed anywhere before this ADR.
   paid_with_voucher: Voucher | null;
+  // This order's redemption of paid_with_voucher. `restored_amount` is what
+  // was given back — all of it for a failed order, the undelivered share
+  // for a partially delivered one (ADR-094 decision 34).
+  voucher_redemption: { amount: number; restored_amount: number | null; status: string } | null;
   // ADR-094 decision 12: empty for every ordinary order.
   delivery_legs: OrderDeliveryLeg[];
   // ADR-116 decision 9 — WhatsApp messages sent (or skipped) to the customer.
   customer_notifications: CustomerNotification[];
-  // ADR-094 decision 9: true only for a combo order whose legs
-  // genuinely split Delivered/Failed (not the ordinary leg-level-
-  // ambiguity needs_review, which stays blocked exactly as ADR-026
-  // decision 4c always intended) — the one carve-out that lets Issue
-  // Voucher appear from a needs_review order.
-  partial_combo_delivery: boolean;
-  // Decision 9's prefill for that carve-out — the sum of every Failed
-  // leg's own component price, admin-adjustable, never trusted as-is
-  // (the backend re-derives and caps its own copy independently).
-  suggested_voucher_amount: number | null;
+  // ADR-094 decision 30 — failed or partially_delivered, and not yet
+  // compensated: gates Issue Voucher / Refund to Wallet.
+  compensable: boolean;
+  // The exact amounts compensating would use (a formula, never typed —
+  // decision 33). Null when not compensable, or no amount is derivable.
+  compensation_preview: CompensationPreview | null;
   // ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 —
   // computed server-side from the persisted error_code (Digiflazz's
   // own rc table / Gamevion's duplicate_reference), never a second
@@ -375,17 +375,10 @@ export function retryOrderDelivery(token: string, id: number, values: { override
 
 /**
  * ORD-7's other resolution path (ADR-004: retry-delivery or voucher,
- * never a cash refund). For an ordinary failed order, the backend
- * computes and bounds the amount itself (`final_amount -
- * transaction_fee`) — `amount` here is ignored server-side. ADR-094
- * decision 9's carve-out is the one exception: a genuine partial-
- * delivery combo order (`OrderDetail.partial_combo_delivery`) has no
- * single correct auto-computed figure, so `amount` is required there
- * and admin-adjustable (still capped server-side at `final_amount`).
- * Backend also rejects (422) unless delivery_status is already
- * "failed" (or the partial-delivery carve-out applies) and no voucher
- * has been issued for this order yet (enforced by a real unique
- * index, not just this check).
+ * never a cash refund). The backend computes the amount itself
+ * (ADR-094 decision 33 — `OrderDetail.compensation_preview`); a typed
+ * amount is refused. Rejects (422) unless the order is `failed` or
+ * `partially_delivered` and not yet compensated.
  *
  * ADR-024 addendum (2026-09-17, restore-only): a full-cover-by-voucher
  * order has a genuinely zero cash portion — the backend restores the
@@ -396,21 +389,33 @@ export function retryOrderDelivery(token: string, id: number, values: { override
  * request even fires; this return shape is what the success handler
  * branches on afterwards.
  */
+/**
+ * ADR-094 decision 33 — the undelivered share of what the customer
+ * paid: `cash_sen` comes back as a new voucher (or a wallet credit),
+ * `voucher_restore_sen` goes back onto the voucher the order paid with.
+ */
+export interface CompensationPreview {
+  instrument: "voucher" | "wallet";
+  cash_sen: number;
+  voucher_restore_sen: number;
+  total_sen: number;
+}
+
 export interface IssueVoucherResult {
   restored_only: boolean;
   voucher: Voucher | null;
 }
 
-export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string; amount?: number } = {}) {
+export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string } = {}) {
   return apiFetch<IssueVoucherResult>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
 }
 
 /**
  * ADR-073 decision 7: the wallet-order counterpart to
  * issueVoucherFromOrder() above — replaces it entirely (never offered
- * alongside) whenever `wallet_reseller` is set. Credits the order's
- * `final_amount` back into that Reseller's wallet balance, no cash
- * ever leaves the platform.
+ * alongside) whenever `wallet_reseller` is set. Credits the undelivered
+ * share of `final_amount` (all of it for a failed order) back into that
+ * Reseller's wallet balance; no cash ever leaves the platform.
  */
 export function refundOrderToWallet(token: string, id: number) {
   return apiFetch<OrderDetail>(`/api/orders/${id}/refund-to-wallet`, { method: "POST", token });
@@ -436,8 +441,8 @@ export function markOrderDelivered(token: string, id: number, values: { supplier
  * `note` is required — an admin's own "I've confirmed this genuinely
  * failed" claim, same discipline as markOrderDelivered() but for the
  * opposite outcome. Backend rejects (422) unless delivery_status is
- * already "needs_review", or for a genuine partial-combo-delivery
- * order (that case has its own custom-amount voucher path instead).
+ * already "needs_review". On a combo with a delivered leg it lands on
+ * `partially_delivered` instead (ADR-094 decision 31).
  */
 export function confirmOrderDeliveryFailed(token: string, id: number, values: { note: string }) {
   return apiFetch<OrderDetail>(`/api/orders/${id}/confirm-failed`, { method: "POST", token, body: values });

@@ -8,11 +8,16 @@ use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateDomain;
 use App\Models\CustomerNotification;
+use App\Models\Game;
 use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
+use App\Models\Package;
 use App\Models\PlatformSettings;
+use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Notification\OrderStatusCard;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -84,6 +89,37 @@ class CustomerWhatsAppNotificationTest extends TestCase
         $this->assertStringContainsString('Hi Aina', $notification->message);
         $this->assertStringContainsString('*PekanGame*', $notification->message);
         Queue::assertPushedOn('whatsapp', SendCustomerWhatsAppJob::class);
+    }
+
+    /** ADR-094 decision 39 — a partial delivery's voucher says part of the order went through, never "combo". */
+    public function test_a_partial_delivery_voucher_message_says_part_of_the_order_was_completed(): void
+    {
+        Queue::fake();
+        $order = $this->failedOrder(['delivery_status' => DeliveryStatus::PartiallyDelivered->value]);
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-partial-msg']);
+        $component = Package::query()->create(['game_id' => $game->id, 'name' => 'C', 'denomination' => 1, 'cost_price' => 300, 'standard_selling_price' => 400, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'C']);
+        foreach ([[1, DeliveryStatus::Delivered, 600], [2, DeliveryStatus::Failed, 400]] as [$n, $status, $price]) {
+            OrderDeliveryLeg::query()->create(['order_id' => $order->id, 'component_package_id' => $component->id, 'supplier_id' => $supplier->id, 'leg_number' => $n, 'status' => $status->value, 'selling_price_sen' => $price]);
+        }
+
+        $this->postJson("/api/orders/{$order->id}/voucher")->assertCreated();
+
+        $message = CustomerNotification::query()->sole()->message;
+        $this->assertStringContainsString('part of your order', $message);
+        $this->assertStringContainsString('RM4.00', $message); // 1000 cash × 400/1000
+        $this->assertStringNotContainsStringIgnoringCase('combo', $message);
+    }
+
+    public function test_the_status_card_for_a_partial_delivery_is_a_final_answer(): void
+    {
+        $order = $this->failedOrder(['delivery_status' => DeliveryStatus::PartiallyDelivered->value]);
+
+        $card = OrderStatusCard::render($order, ['name' => 'PekanGame', 'host' => 'pekangame.space']);
+
+        $this->assertStringContainsString('Partly delivered', $card);
+        $this->assertStringNotContainsString('Processing', $card);
+        $this->assertStringNotContainsStringIgnoringCase('combo', $card);
     }
 
     public function test_the_message_speaks_as_the_order_brand_and_links_its_own_domain(): void

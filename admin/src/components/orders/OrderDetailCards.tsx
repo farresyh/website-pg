@@ -31,8 +31,13 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
   // card itself shows below, not the raw catalog `cost_price`, so this
   // derived % stays consistent with whichever basis actually produced
   // the stored platform_profit.
-  const resellerMarkupPct = isWalletOrder && order.effective_cost_price > 0
-    ? (((order.selling_price - order.effective_cost_price) / order.effective_cost_price) * 100).toFixed(2)
+  // ADR-094 decision 35: a partial delivery's cost covers only its
+  // delivered legs, so it is compared with what the order kept after its
+  // refund — and shown only once that refund exists.
+  const isPartial = order.delivery_status === "partially_delivered";
+  const keptSellingPrice = order.selling_price - (order.wallet_refund?.amount ?? 0);
+  const resellerMarkupPct = isWalletOrder && order.effective_cost_price > 0 && (!isPartial || order.wallet_refund !== null)
+    ? (((keptSellingPrice - order.effective_cost_price) / order.effective_cost_price) * 100).toFixed(2)
     : null;
   const costBasisTags = {
     real: { label: "Real", severity: "success" as const },

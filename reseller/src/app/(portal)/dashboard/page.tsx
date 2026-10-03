@@ -11,6 +11,7 @@ import {
   formatRm,
   formatDate,
   subscriptionSeverity,
+  deliverySeverity,
 } from "@/lib/format";
 import { PageHeader, StatCard, Panel, StatusTag, ErrorNote } from "@/components/ui";
 
@@ -222,7 +223,7 @@ function RecentOrdersPanel({
 function OrderStatusTags({ order }: { order: OrderListItem }) {
   return (
     <div className="mt-1 flex flex-wrap justify-end gap-1">
-      <StatusTag severity={order.delivery_status === "delivered" ? "success" : order.delivery_status === "failed" ? "danger" : "muted"}>
+      <StatusTag severity={deliverySeverity(order.delivery_status)}>
         {order.delivery_status.replaceAll("_", " ")}
       </StatusTag>
       {order.wallet_refunded && <StatusTag severity="info">Wallet Refunded</StatusTag>}

@@ -36,4 +36,18 @@ enum DeliveryStatus: string
      * back through the normal retry path.
      */
     case Pending = 'pending';
+
+    /**
+     * ADR-094 decision 28 — a combo order whose legs are all final, with
+     * at least one Delivered and at least one Failed. Terminal, like
+     * Failed: compensation is a separate fact and never changes it.
+     * Order-level only; a leg never takes this value.
+     */
+    case PartiallyDelivered = 'partially_delivered';
+
+    /** ADR-094 decision 30 — the one rule for "can be compensated". */
+    public function isCompensable(): bool
+    {
+        return $this === self::Failed || $this === self::PartiallyDelivered;
+    }
 }

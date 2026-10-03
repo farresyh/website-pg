@@ -200,7 +200,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
           tone="refund"
           fields={[
             { label: "Voucher Code", value: order.paid_with_voucher?.code ?? "—" },
-            { label: "Amount Restored", value: order.voucher_discount !== null ? formatRm(order.voucher_discount) : "—" },
+            { label: "Amount Restored", value: order.voucher_redemption?.restored_amount != null ? formatRm(order.voucher_redemption.restored_amount) : "—" },
             { label: "Status", value: order.paid_with_voucher?.status ?? "—" },
           ]}
         />

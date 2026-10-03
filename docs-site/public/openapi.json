@@ -1136,7 +1136,8 @@
                     "delivered",
                     "failed",
                     "needs_review",
-                    "pending"
+                    "pending",
+                    "partially_delivered"
                 ],
                 "title": "DeliveryStatus"
             },
