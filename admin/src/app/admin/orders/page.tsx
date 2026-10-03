@@ -378,6 +378,9 @@ function OrdersPageInner() {
         ? { ...current, voucher, has_voucher_restored: restored_only || current.has_voucher_restored, compensable: false }
         : current,
     );
+    // Settlement also moves profit and the paid-with voucher's balance —
+    // reload the server's view rather than patching each field here.
+    void refreshSelected();
   }
 
   function handleMarkedDelivered(updated: OrderDetail) {

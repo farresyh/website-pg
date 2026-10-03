@@ -166,6 +166,10 @@ export interface OrderDetail extends OrderListItem {
   // (orders.voucher_id, set at checkout) — a real, distinct fact from
   // `voucher` above, never exposed anywhere before this ADR.
   paid_with_voucher: Voucher | null;
+  // This order's redemption of paid_with_voucher. `restored_amount` is what
+  // was given back — all of it for a failed order, the undelivered share
+  // for a partially delivered one (ADR-094 decision 34).
+  voucher_redemption: { amount: number; restored_amount: number | null; status: string } | null;
   // ADR-094 decision 12: empty for every ordinary order.
   delivery_legs: OrderDeliveryLeg[];
   // ADR-116 decision 9 — WhatsApp messages sent (or skipped) to the customer.

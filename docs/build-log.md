@@ -2296,5 +2296,25 @@ granular commits):
   the refund.
 - Backend suite 2479/2479; concurrency suite 25/25.
 
+**Founder-requested admin UI check** (local admin against a scratch copy of the
+dev DB; the founder logged in, the model drove the browser). Confirmed:
+- the list shows `partially_delivered`;
+- the wallet order shows "Refund RM 20.00 to Wallet", and refunding it shows
+  RM 20.00, hides the buttons and keeps the status;
+- the voucher modal shows RM 16.00 new + RM 4.00 returned, with no amount input;
+- Confirm Failed on a needs-review combo lands on `partially_delivered` and
+  offers Retry and Issue Voucher.
+
+It found three admin display bugs, all fixed:
+- **Restored card amount.** The "Amount Restored" card showed the full
+  `voucher_discount` (RM 10.00), not the share actually restored (RM 4.00). It
+  now reads `voucher_redemption.restored_amount`.
+- **Stale values after Issue Voucher.** After Issue Voucher the page kept the
+  pre-settlement profit and voucher balance until a reload. It now refetches
+  the order.
+- **Reseller Markup %.** A partial wallet order compared the full selling price
+  with the delivered legs' cost (+108%). It now uses the price kept after the
+  refund (+25%), and is hidden until the refund exists.
+
 **Not live:** `main` is unchanged. Audit #3 (voucher/quota checkout race) is
 PRD §16 item 60; the remaining audit P2s are item 63.
