@@ -241,9 +241,23 @@ class Order extends Model
      */
     public function compensationAmountSen(): int
     {
-        return (int) ($this->voucher?->amount ?? 0)
-            + (int) ($this->voucherRedemption?->restored_amount ?? 0)
-            + (int) $this->walletRefundQuery()->sum('amount');
+        return $this->cashCompensationSen() + (int) ($this->voucherRedemption?->restored_amount ?? 0);
+    }
+
+    /** The part of compensationAmountSen() given back for cash paid (not for a voucher it paid with). */
+    public function cashCompensationSen(): int
+    {
+        return (int) ($this->voucher?->amount ?? 0) + (int) $this->walletRefundQuery()->sum('amount');
+    }
+
+    /**
+     * ADR-094 decision 35 — an order whose economics are final: delivered,
+     * or partially delivered and settled (its delivered profit credited).
+     */
+    public function isRealised(): bool
+    {
+        return $this->delivery_status === DeliveryStatus::Delivered
+            || ($this->delivery_status === DeliveryStatus::PartiallyDelivered && $this->isAlreadyCompensated());
     }
 
     /**

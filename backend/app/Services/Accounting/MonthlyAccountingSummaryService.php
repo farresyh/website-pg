@@ -13,6 +13,7 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Report\ReportService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * ADR-083 decision 8, fills ADR-110 PR-B — the read-only journal lines
@@ -94,7 +95,8 @@ final class MonthlyAccountingSummaryService
             ->where('delivery_status', DeliveryStatus::Delivered->value)
             ->where('paid_at', '>=', $from)
             ->where('paid_at', '<', $toExclusive)
-            ->sum('selling_price');
+            ->sum('selling_price')
+            + (int) $this->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $o->selling_price - $o->compensationAmountSen());
     }
 
     private function cogs(Carbon $from, Carbon $toExclusive): int
@@ -104,7 +106,29 @@ final class MonthlyAccountingSummaryService
             ->where('delivery_status', DeliveryStatus::Delivered->value)
             ->where('paid_at', '>=', $from)
             ->where('paid_at', '<', $toExclusive)
-            ->sum('cost_price');
+            ->sum('cost_price')
+            + (int) $this->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $o->effectiveCostPriceSen());
+    }
+
+    /**
+     * ADR-094 decision 41 — a partially delivered order is recognised
+     * once settled (like a Failed one, it has no final economics before):
+     * revenue is what it kept after compensation, COGS its delivered legs
+     * only (the same figures its credited profit used). Few rows, so
+     * loaded rather than expressed in SQL.
+     *
+     * @return Collection<int, Order>
+     */
+    private function settledPartialOrders(Carbon $from, Carbon $toExclusive): Collection
+    {
+        return Order::query()
+            ->where('is_test', false)
+            ->where('delivery_status', DeliveryStatus::PartiallyDelivered->value)
+            ->where('paid_at', '>=', $from)
+            ->where('paid_at', '<', $toExclusive)
+            ->with(['voucher', 'voucherRedemption', 'deliveryLegs.componentPackage:id,cost_price'])
+            ->get()
+            ->filter(fn (Order $o) => $o->isAlreadyCompensated());
     }
 
     private function membershipRevenue(Carbon $from, Carbon $toExclusive): int

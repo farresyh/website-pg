@@ -18,6 +18,7 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\PartialComboOrders;
 use Tests\TestCase;
 
 /**
@@ -25,6 +26,7 @@ use Tests\TestCase;
  */
 class MonthlyAccountingSummaryServiceTest extends TestCase
 {
+    use PartialComboOrders;
     use RefreshDatabase;
 
     private function service(): MonthlyAccountingSummaryService
@@ -82,6 +84,18 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
 
         $this->assertSame(20, $this->service()->forPeriod(2026, 10)['payment_processing_gain_loss_sen']);
         $this->assertSame(0, $this->service()->forPeriod(2026, 11)['payment_processing_gain_loss_sen']);
+    }
+
+    /** ADR-094 decision 41 — a settled partial delivery counts what it kept and only its delivered legs' cost. */
+    public function test_a_settled_partial_delivery_counts_its_kept_revenue_and_delivered_cost(): void
+    {
+        $this->settledPartialComboOrder();
+        $this->partialComboOrder(); // unsettled — like a Failed order, not yet revenue
+
+        $october = $this->service()->forPeriod(2026, 10);
+
+        $this->assertSame(5000 - 2000, $october['sales_revenue_sen']);
+        $this->assertSame(2400, $october['cogs_sen']);
     }
 
     public function test_membership_revenue_sums_fee_records_in_period(): void

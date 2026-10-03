@@ -225,7 +225,8 @@ final class CustomerAnalyticsService
             'last_order_at' => $lastOrderAt,
         ], $vipThresholdSen);
 
-        $delivered = $orders->where('delivery_status', DeliveryStatus::Delivered->value);
+        // ADR-094 decision 41: a settled partial delivery is realised too.
+        $delivered = $orders->filter(fn (Order $o) => $o->isRealised());
 
         $profitByOrder = LedgerEntry::query()
             ->where('type', 'order_profit')
@@ -257,8 +258,8 @@ final class CustomerAnalyticsService
                 'customer_since' => $firstOrderAt->setTimezone(self::TIMEZONE)->toDateString(),
             ],
             'profit_analysis' => [
-                'total_revenue' => (int) $delivered->sum('final_amount'),
-                'supplier_cost' => (int) $delivered->sum('cost_price'),
+                'total_revenue' => (int) $delivered->sum(fn (Order $o) => $o->final_amount - $o->cashCompensationSen()),
+                'supplier_cost' => (int) $delivered->sum(fn (Order $o) => $o->delivery_status === DeliveryStatus::Delivered ? $o->cost_price : $o->effectiveCostPriceSen()),
                 'affiliate_commission' => $affiliateCommission,
                 'transaction_fees' => (int) $delivered->sum('transaction_fee'),
                 'system_profit' => $systemProfit,
@@ -291,7 +292,7 @@ final class CustomerAnalyticsService
                 // ->value string with === always fails silently (an enum
                 // instance is never === its own backing scalar); compare
                 // enum-to-enum instead.
-                $isDelivered = $order->delivery_status === DeliveryStatus::Delivered;
+                $isDelivered = $order->isRealised();
                 $entries = $profitByOrder->get($order->id);
 
                 // ADR-050 addendum — same Source logic as top_sources
