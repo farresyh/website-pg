@@ -9,7 +9,6 @@ use App\Models\OrderResendAttempt;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
-use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Notification\CustomerNotificationService;
 use App\Services\Order\DeliveryStatus;
@@ -864,13 +863,7 @@ final class OrderFulfillmentService
                 // switch). Never a frozen snapshot either way — there
                 // isn't one for cost, only `selling_price_sen` (decision 1).
                 $useRealCost = config('services.real_cost_reconciliation.enabled', false);
-                $costTotal = (int) $legs->sum(function (OrderDeliveryLeg $leg) use ($useRealCost) {
-                    if ($useRealCost && $leg->real_cost_price_sen !== null) {
-                        return $leg->real_cost_price_sen;
-                    }
-
-                    return $leg->componentPackage?->cost_price ?? 0;
-                });
+                $costTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->costSen());
                 $reconciledPlatformProfit = $locked->selling_price - $costTotal - $locked->affiliate_profit;
 
                 // Decision 3: never block delivery over this — a combo
@@ -1591,8 +1584,7 @@ final class OrderFulfillmentService
             return;
         }
 
-        $this->ledger->credit(LedgerOwnerType::Platform, null, $order->platform_profit, 'order_profit', 'order', $order->id);
-        $this->ledger->credit(LedgerOwnerType::Affiliate, $order->affiliate_id, $order->affiliate_profit, 'order_profit', 'order', $order->id);
+        $this->ledger->creditOrderProfit($order);
 
         // ADR-116 decision 4: every path into Delivered runs through here,
         // so this is the one receipt trigger. After commit (never message

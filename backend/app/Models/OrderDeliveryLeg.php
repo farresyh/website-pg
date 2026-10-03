@@ -75,6 +75,21 @@ class OrderDeliveryLeg extends Model
         return $this->belongsTo(Supplier::class);
     }
 
+    /**
+     * ADR-107 decision 2 / ADR-111 decision 3: the cost this leg counts
+     * at — its real per-transaction cost when real-cost reconciliation
+     * is on and it was captured, else its component's live catalog cost.
+     * The one place both full delivery and partial settlement read it.
+     */
+    public function costSen(): int
+    {
+        if (config('services.real_cost_reconciliation.enabled', false) && $this->real_cost_price_sen !== null) {
+            return $this->real_cost_price_sen;
+        }
+
+        return $this->componentPackage?->cost_price ?? 0;
+    }
+
     /** ADR-106 addendum (2026-09-21) — this leg's own durable per-attempt history. */
     public function attempts(): HasMany
     {
