@@ -90,8 +90,9 @@ class VoucherController extends Controller
             'customerNotifications' => fn ($query) => $query->select(['id', 'voucher_id', 'event', 'phone', 'status', 'attempts', 'error', 'sent_at', 'created_at'])->oldest(),
         ]);
 
-        $totalUsed = (int) $voucher->redemptions->whereIn('status', ['reserved', 'committed'])->sum('amount');
-        $restored = (int) $voucher->redemptions->where('status', 'restored')->sum('amount');
+        // A partly restored redemption (ADR-094 decision 34) still spent its unreturned share.
+        $totalUsed = (int) $voucher->redemptions->sum(fn ($r) => $r->amount - ($r->restored_amount ?? 0));
+        $restored = (int) $voucher->redemptions->where('status', 'restored')->sum('restored_amount');
         $pending = $voucher->redemptions->where('status', 'reserved')->count();
         $resolved = $voucher->redemptions->whereIn('status', ['committed', 'restored'])->count();
         $committed = $voucher->redemptions->where('status', 'committed')->count();
@@ -282,7 +283,7 @@ class VoucherController extends Controller
         // unaffected — its amount is admin-typed and already floored at
         // `min:1` by StoreVoucherFromOrderRequest.
         try {
-            $voucher = DB::transaction(function () use ($order, $amount, $isPartialComboDelivery, $request) {
+            $voucher = DB::transaction(function () use ($order, $amount, $request) {
                 $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
                 // M-5, 2026-09-29 audit: the delivery_status check above

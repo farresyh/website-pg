@@ -200,7 +200,7 @@ final class CustomerNotificationService
             dedupeKey: self::EVENT_VOUCHER_RESTORED.':order:'.$order->id,
             rawPhone: $order->customer_phone,
             message: "*{$brand['name']}*: Hi {$this->firstName($order->customer_name)}, your order {$order->order_number} couldn't be completed, "
-                ."so RM{$this->rm($redemption->amount)} has been returned to your voucher *{$voucher->code}*.\n\n"
+                ."so RM{$this->rm($redemption->restored_amount)} has been returned to your voucher *{$voucher->code}*.\n\n"
                 ."You can use it again at checkout on {$brand['host']}.",
             orderId: $order->id,
             voucherId: $voucher->id,
@@ -235,7 +235,7 @@ final class CustomerNotificationService
         $restored = $order !== null ? $this->restoredRedemption($order) : null;
         if ($restored !== null) {
             $lines[] = '';
-            $lines[] = "The RM{$this->rm($restored->amount)} you paid with voucher {$restored->voucher->code} has also been returned to that voucher.";
+            $lines[] = "The RM{$this->rm($restored->restored_amount)} you paid with voucher {$restored->voucher->code} has also been returned to that voucher.";
         }
 
         return implode("\n", $lines);

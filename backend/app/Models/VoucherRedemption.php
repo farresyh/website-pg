@@ -11,11 +11,13 @@ class VoucherRedemption extends Model
         'voucher_id',
         'order_id',
         'amount',
+        'restored_amount',
         'status',
     ];
 
     protected $casts = [
         'amount' => 'integer',
+        'restored_amount' => 'integer',
     ];
 
     public function voucher(): BelongsTo
