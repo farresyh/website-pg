@@ -2316,5 +2316,25 @@ It found three admin display bugs, all fixed:
   with the delivered legs' cost (+108%). It now uses the price kept after the
   refund (+25%), and is hidden until the refund exists.
 
+**CI e2e flake, fixed at the cause rather than re-run (ADR-023):**
+- **Symptom.** The storefront checkout spec failed once in CI: the order
+  landed on `needs_review`.
+- **Cause, from the trace's own `supplier_response`.** `SQLSTATE[HY000]: 5
+  database is locked` on the fulfilment's `update orders`. The e2e web server,
+  queue worker (`QUEUE_CONNECTION=database`) and cache
+  (`CACHE_STORE=database`) all write one sqlite file, and sqlite's
+  `busy_timeout` was null, so a write that met another's lock failed
+  immediately. The fulfilment catch correctly parked the order at
+  `needs_review` with its reference kept (M-1).
+- **Not caused by this PR.** The same backend code passed CI before, and the
+  local e2e run passed 5/5.
+- **Fix.**
+  - `config/database.php` sqlite `busy_timeout` / `journal_mode` read
+    `DB_BUSY_TIMEOUT` / `DB_JOURNAL_MODE`, still null by default, so dev and
+    production (MySQL) are unchanged.
+  - `e2e/scripts/boot-backend.sh` sets 5000 ms and WAL.
+  - Verified the pragma applies (`PRAGMA busy_timeout` = 5000), e2e 5/5, and
+    backend suite 2479/2479.
+
 **Not live:** `main` is unchanged. Audit #3 (voucher/quota checkout race) is
 PRD §16 item 60; the remaining audit P2s are item 63.
