@@ -13,10 +13,12 @@ includes:
 - new endpoints,
 - new optional request fields,
 - new fields in a response object,
-- new `error` codes.
+- new `error` codes,
+- new `delivery_status` values and new webhook event types.
 
 Write your integration to tolerate these — ignore response fields you do not
-recognise, and treat an unknown `error` code by its HTTP status.
+recognise, treat an unknown `error` code by its HTTP status, and treat an
+unknown `delivery_status` or webhook event as "fetch the order and check".
 
 **A breaking change means a new version, `/v2`.** When that happens:
 
@@ -29,6 +31,16 @@ The version number on this documentation (shown in the API Reference) is the
 **docs revision**, not the API version.
 
 ## Changelog
+
+### 2026-10 — v1.2.0
+
+- New final `delivery_status`: `partially_delivered` — part of an order was
+  delivered and the rest failed. The undelivered share is refunded to the
+  wallet as a separate action; `wallet_refund.amount_sen` shows how much.
+- New webhook event `order.partially_delivered`. `order.refunded` now also
+  covers a partially delivered order, for the undelivered share only.
+- The additive-change list above now names new status values and new webhook
+  events.
 
 ### 2026-09 — v1.1.0
 
