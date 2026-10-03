@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Log;
  *
  * Amounts are a formula, never admin-typed (decision 33):
  *   u       = Σ failed legs' frozen selling_price_sen ÷ Σ all legs' (1 without legs)
- *   U_cash  = round((final_amount − transaction_fee) × u)
+ *   U_cash  = round((final_amount − transaction_fee) × u); a wallet
+ *             order refunds round(final_amount × u) — what left the wallet
  *   U_vouch = round(voucher_discount × u)
  * Voucher: give U_vouch back to the paid-with voucher, issue U_cash as a
  * new one. Wallet: refund U_cash + U_vouch (U_vouch is 0 there).
@@ -133,11 +134,17 @@ final class OrderSettlementService
         [$num, $den] = $this->undeliveredShare($order);
         $share = fn (int $sen): int => (int) round($sen * $num / $den);
 
+        // A wallet refund gives back what left the wallet (final_amount);
+        // a retail voucher never refunds the payment-gateway fee.
+        $cashPaid = $order->wallet_reseller_id !== null
+            ? $order->final_amount
+            : $order->final_amount - $order->transaction_fee;
+
         return [
             'num' => $num,
             'den' => $den,
-            'cash' => $share($order->final_amount - $order->transaction_fee),
-            'voucher' => $share($order->voucher_discount),
+            'cash' => $share($cashPaid),
+            'voucher' => $share((int) $order->voucher_discount),
         ];
     }
 

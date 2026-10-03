@@ -218,16 +218,32 @@ class Order extends Model
      */
     private function comboCostReconciliation(): array
     {
-        $legs = $this->deliveryLegs;
+        // ADR-094 decision 35: a partial delivery's profit covers only the
+        // delivered legs, out of what was kept after compensation.
+        $partial = $this->delivery_status === DeliveryStatus::PartiallyDelivered;
+        $legs = $partial ? $this->deliveryLegs->where('status', DeliveryStatus::Delivered) : $this->deliveryLegs;
+        $revenue = $partial ? $this->selling_price - $this->compensationAmountSen() : $this->selling_price;
         $catalogTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
         $realTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen ?? $leg->componentPackage?->cost_price ?? 0);
         $allLegsReal = $legs->every(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null);
 
-        if ($this->platform_profit === $this->selling_price - $realTotal - $this->affiliate_profit) {
+        if ($this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
             return ['cost' => $realTotal, 'basis' => $allLegsReal ? 'real' : 'mixed'];
         }
 
         return ['cost' => $catalogTotal, 'basis' => 'estimated'];
+    }
+
+    /**
+     * ADR-094 2026-10-04 addendum — what this order gave back, read from
+     * the compensation facts themselves: the voucher issued for it, the
+     * share of its paid-with voucher restored, and any wallet refund.
+     */
+    public function compensationAmountSen(): int
+    {
+        return (int) ($this->voucher?->amount ?? 0)
+            + (int) ($this->voucherRedemption?->restored_amount ?? 0)
+            + (int) $this->walletRefundQuery()->sum('amount');
     }
 
     /**
@@ -240,29 +256,6 @@ class Order extends Model
     public function orderLane(): string
     {
         return $this->wallet_reseller_id !== null ? 'orders-reseller' : 'orders';
-    }
-
-    public function isPartialComboDelivery(): bool
-    {
-        if ($this->delivery_status !== DeliveryStatus::NeedsReview) {
-            return false;
-        }
-
-        $statuses = $this->deliveryLegs->pluck('status');
-
-        if ($statuses->isEmpty()) {
-            return false;
-        }
-
-        if ($statuses->contains(DeliveryStatus::Pending)) {
-            return false;
-        }
-
-        if (! $statuses->contains(DeliveryStatus::Delivered)) {
-            return false;
-        }
-
-        return $statuses->contains(DeliveryStatus::Failed) || $statuses->contains(DeliveryStatus::NeedsReview);
     }
 
     /**
@@ -332,55 +325,6 @@ class Order extends Model
         }
 
         return $this->delivery_status === DeliveryStatus::NeedsReview;
-    }
-
-    /**
-     * Decision 9's prefill: an admin-adjustable starting point for Issue
-     * Voucher's custom amount, not the final word.
-     *
-     * ADR-107 decision 4 (build-time revision — see the ADR's own build
-     * addendum): apportions what the customer actually paid for the
-     * failed portion — `(final_amount − transaction_fee)` × each Failed
-     * leg's frozen `selling_price_sen` weight — rather than summing each
-     * Failed leg's CURRENT `componentPackage->standard_selling_price`
-     * (a live catalog read, the original bug this ADR found: no longer
-     * reflects what was actually collected if that price moved since
-     * checkout). Proportional so the suggestion correctly scales down
-     * when the order was voucher-discounted or affiliate-marked-up
-     * relative to guest retail. Still just a prefill —
-     * `StoreVoucherFromOrderRequest`'s `final_amount` hard cap and the
-     * admin-typed `amount` field are unchanged, this only fixes the
-     * suggestion's accuracy.
-     */
-    public function suggestedPartialVoucherAmount(): ?int
-    {
-        if (! $this->isPartialComboDelivery()) {
-            return null;
-        }
-
-        $legs = $this->deliveryLegs;
-        $totalSellingPriceSen = (int) $legs->sum('selling_price_sen');
-
-        // Guards a leg seeded before this column existed (backfilled
-        // approximately by the owning migration, so should never
-        // actually be 0/null post-migration) — no correct proportion is
-        // derivable from an all-zero denominator, so fall back to no
-        // suggestion rather than a divide-by-zero or a silently-wrong one.
-        if ($totalSellingPriceSen <= 0) {
-            return null;
-        }
-
-        // ADR-094's 2026-09-21 addendum decision 25: isPartialComboDelivery()
-        // now also recognizes a NeedsReview leg (not just Failed) as
-        // part of a genuine partial delivery — this numerator has to
-        // widen the same way, or a NeedsReview-caused partial would
-        // suggest RM0 instead of a correct proportional share.
-        $uncompensatedSellingPriceSen = (int) $legs
-            ->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::NeedsReview])
-            ->sum('selling_price_sen');
-        $compensableAmount = $this->final_amount - $this->transaction_fee;
-
-        return (int) round($compensableAmount * $uncompensatedSellingPriceSen / $totalSellingPriceSen);
     }
 
     /**
@@ -466,7 +410,8 @@ class Order extends Model
     {
         return $query
             ->where('payment_status', PaymentStatus::Paid->value)
-            ->where('delivery_status', DeliveryStatus::Failed->value)
+            // ADR-094 decision 30 — the compensable statuses.
+            ->whereIn('delivery_status', [DeliveryStatus::Failed->value, DeliveryStatus::PartiallyDelivered->value])
             ->whereDoesntHave('voucher')
             ->whereDoesntHave('voucherRedemption', fn (Builder $q) => $q->where('status', 'restored'))
             ->whereNotExists(function ($q) {
