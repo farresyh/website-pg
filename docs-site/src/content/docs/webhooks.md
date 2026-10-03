@@ -27,7 +27,8 @@ PekanGame support can also set this for you.
 | --- | --- |
 | `order.delivered` | The order was fulfilled successfully. |
 | `order.failed` | Delivery failed; PekanGame may retry it, so a wallet refund is not guaranteed. |
-| `order.refunded` | A failed order was refunded to your wallet. |
+| `order.partially_delivered` | Part of the order was delivered and the rest failed. The undelivered share is refunded separately (`order.refunded`). |
+| `order.refunded` | A failed or partially delivered order was refunded to your wallet — all of it, or only the undelivered share. |
 
 Each **event type** fires **at most once per order** — so one order can send
 you both an `order.failed` and a later `order.refunded`, but never two
@@ -61,10 +62,10 @@ current state when you need to reconcile.
 
 `event_id` is unique per event — use it for your own idempotency if the same
 event is delivered more than once.
-For `order.refunded`, `delivery_status` remains `failed`, while
-`wallet_refunded` is `true` and `wallet_refund` contains `amount_sen` and
-`refunded_at` (ISO 8601). The refund fields come from the wallet ledger, not
-from a new delivery state.
+For `order.refunded`, `delivery_status` stays what it was (`failed` or
+`partially_delivered`), while `wallet_refunded` is `true` and `wallet_refund`
+contains `amount_sen` and `refunded_at` (ISO 8601). The refund fields come
+from the wallet ledger, not from a new delivery state.
 
 ## Headers
 
@@ -109,10 +110,10 @@ if (! hash_equals($expected, $request->header('X-Hub-Signature-256', ''))) {
 - Retries are per-event; a later event for the same order is independent.
 - If your endpoint is down for longer than that, **reconcile with
   `GET /v1/orders`** — `?created_after=<ISO 8601>` to bound the window, and
-  `?status=failed` / `?status=delivered` to filter (any
-  [`delivery_status` value](/first-order/#order-status-values)). Check each
-  order's `wallet_refunded` field; `?status=failed` includes both refunded and
-  not-yet-refunded failed orders.
+  `?status=failed` / `?status=partially_delivered` / `?status=delivered` to
+  filter (any [`delivery_status` value](/first-order/#order-status-values)).
+  Check each order's `wallet_refunded` field; `?status=failed` includes both
+  refunded and not-yet-refunded failed orders.
 
 ## If your signing secret leaks
 

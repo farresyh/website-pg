@@ -16,6 +16,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\PartialComboOrders;
 use Tests\TestCase;
 
 /**
@@ -25,6 +26,7 @@ use Tests\TestCase;
  */
 class CustomerAnalyticsServiceTest extends TestCase
 {
+    use PartialComboOrders;
     use RefreshDatabase;
 
     private CustomerAnalyticsService $analytics;
@@ -54,6 +56,19 @@ class CustomerAnalyticsServiceTest extends TestCase
             'delivery_status' => DeliveryStatus::Delivered->value,
             'is_test' => false,
         ], $overrides));
+    }
+
+    /** ADR-094 decision 41 — a settled partial order shows its credited profit, kept revenue and delivered cost. */
+    public function test_customer_detail_counts_a_settled_partial_delivery(): void
+    {
+        $order = $this->settledPartialComboOrder();
+
+        $detail = $this->analytics->customerDetail('buyer@example.com');
+
+        $this->assertSame(5100 - 2000, $detail['profit_analysis']['total_revenue']);
+        $this->assertSame(2400, $detail['profit_analysis']['supplier_cost']);
+        $this->assertSame(600, $detail['profit_analysis']['system_profit']);
+        $this->assertSame(600, collect($detail['order_history'])->firstWhere('id', $order->id)['system_profit']);
     }
 
     public function test_customers_only_counts_paid_non_test_orders(): void

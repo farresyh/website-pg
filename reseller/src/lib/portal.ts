@@ -14,7 +14,8 @@ export type DeliveryStatus =
   | "pending"
   | "needs_review"
   | "delivered"
-  | "failed";
+  | "failed"
+  | "partially_delivered";
 export type SubscriptionStatus = "active" | "grace" | "lapsed";
 
 export interface SubscriptionSnapshot {

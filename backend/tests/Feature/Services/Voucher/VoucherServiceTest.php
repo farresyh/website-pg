@@ -289,6 +289,45 @@ class VoucherServiceTest extends TestCase
         $this->assertSame('restored', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
     }
 
+    /** ADR-094 decision 34 — a partial delivery gives back only the undelivered share. */
+    public function test_restore_with_an_amount_gives_back_only_that_portion(): void
+    {
+        $voucher = $this->voucher(['code' => 'KRS-RESTORE-P', 'remaining' => 1000]);
+        $order = $this->order();
+        app(VoucherService::class)->redeem($voucher->id, $order->id, 1000, 'a@example.com', null);
+
+        app(VoucherService::class)->restore($order->id, 400);
+
+        $this->assertSame(400, $voucher->fresh()->remaining);
+        $this->assertSame('active', $voucher->fresh()->status);
+        $redemption = VoucherRedemption::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame('restored', $redemption->status);
+        $this->assertSame(400, $redemption->restored_amount);
+    }
+
+    public function test_full_restore_records_the_whole_amount_as_restored(): void
+    {
+        $voucher = $this->voucher(['code' => 'KRS-RESTORE-F', 'remaining' => 400]);
+        $order = $this->order();
+        app(VoucherService::class)->redeem($voucher->id, $order->id, 400, 'a@example.com', null);
+
+        app(VoucherService::class)->restore($order->id);
+
+        $this->assertSame(400, VoucherRedemption::query()->where('order_id', $order->id)->value('restored_amount'));
+    }
+
+    public function test_restore_of_a_zero_portion_commits_the_redemption_instead(): void
+    {
+        $voucher = $this->voucher(['code' => 'KRS-RESTORE-Z', 'remaining' => 400]);
+        $order = $this->order();
+        app(VoucherService::class)->redeem($voucher->id, $order->id, 400, 'a@example.com', null);
+
+        app(VoucherService::class)->restore($order->id, 0);
+
+        $this->assertSame(0, $voucher->fresh()->remaining);
+        $this->assertSame('committed', VoucherRedemption::query()->where('order_id', $order->id)->value('status'));
+    }
+
     public function test_restore_is_a_noop_when_the_order_never_redeemed_a_voucher(): void
     {
         $order = $this->order();

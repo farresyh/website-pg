@@ -8,8 +8,9 @@ use App\Http\Requests\Voucher\MergeVouchersRequest;
 use App\Http\Requests\Voucher\StoreVoucherFromOrderRequest;
 use App\Models\Order;
 use App\Models\Voucher;
+use App\Services\Fulfillment\OrderFulfillmentException;
+use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Notification\CustomerNotificationService;
-use App\Services\Order\DeliveryStatus;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -90,8 +91,9 @@ class VoucherController extends Controller
             'customerNotifications' => fn ($query) => $query->select(['id', 'voucher_id', 'event', 'phone', 'status', 'attempts', 'error', 'sent_at', 'created_at'])->oldest(),
         ]);
 
-        $totalUsed = (int) $voucher->redemptions->whereIn('status', ['reserved', 'committed'])->sum('amount');
-        $restored = (int) $voucher->redemptions->where('status', 'restored')->sum('amount');
+        // A partly restored redemption (ADR-094 decision 34) still spent its unreturned share.
+        $totalUsed = (int) $voucher->redemptions->sum(fn ($r) => $r->amount - ($r->restored_amount ?? 0));
+        $restored = (int) $voucher->redemptions->where('status', 'restored')->sum('restored_amount');
         $pending = $voucher->redemptions->where('status', 'reserved')->count();
         $resolved = $voucher->redemptions->whereIn('status', ['committed', 'restored'])->count();
         $committed = $voucher->redemptions->where('status', 'committed')->count();
@@ -198,157 +200,47 @@ class VoucherController extends Controller
     }
 
     /**
-     * ADR-094 decision 9 (2026-09-15 Phase 4): `isPartialComboDelivery()`
-     * is the one carve-out from the Failed-only gate below — a combo
-     * order whose legs genuinely split Delivered/Failed (not the
-     * ordinary leg-level-ambiguity needs_review, which stays blocked
-     * exactly as ADR-026 decision 4c always intended). That case has
-     * no single correct auto-computed amount (the player already has
-     * some of the goods), so `amount` is required and admin-supplied
-     * instead of derived from `final_amount - transaction_fee`.
+     * Issue Voucher for a Failed or PartiallyDelivered retail order — a
+     * thin caller of OrderSettlementService (ADR-094 2026-10-04 addendum),
+     * which owns the gate, the formula amount, restoring the voucher the
+     * order paid with (ADR-024 decision 7, proportionally for a partial
+     * delivery), the lock and the customer message. A wallet order is
+     * compensated by Refund to Wallet instead (ADR-073 decision 7).
      */
-    public function storeFromOrder(StoreVoucherFromOrderRequest $request, Order $order): JsonResponse
+    public function storeFromOrder(StoreVoucherFromOrderRequest $request, Order $order, OrderSettlementService $settlement): JsonResponse
     {
-        $isPartialComboDelivery = $order->isPartialComboDelivery();
-
-        if ($order->delivery_status !== DeliveryStatus::Failed && ! $isPartialComboDelivery) {
-            throw ValidationException::withMessages([
-                'order' => ['A voucher can only be issued for an order with a failed delivery.'],
-            ]);
-        }
-
-        // ADR-073 decision 7: refundToWallet() REPLACES Issue Voucher
-        // entirely for a wallet-owned order — a Voucher's email-keyed
-        // mechanism has no meaning for a B2B wallet account. That's
-        // enforced by the admin UI never showing both buttons together,
-        // but until now nothing stopped this endpoint itself from being
-        // called directly for a wallet order. Backend-level guard added
-        // 2026-09-29, following M-5's own compensation-race fix above.
         if ($order->wallet_reseller_id !== null) {
             throw ValidationException::withMessages([
                 'order' => ['This order belongs to a Reseller wallet — use Refund to Wallet instead of Issue Voucher.'],
             ]);
         }
 
-        if (Voucher::query()->where('order_id', $order->id)->exists()) {
+        if (! $order->delivery_status->isCompensable()) {
             throw ValidationException::withMessages([
-                'order' => ['A voucher has already been issued for this order.'],
+                'order' => ['A voucher can only be issued for an order with a failed or partial delivery.'],
             ]);
         }
 
-        if ($isPartialComboDelivery) {
-            $amount = $request->validated('amount');
-
-            if ($amount === null) {
-                throw ValidationException::withMessages([
-                    'amount' => ['A custom amount is required to issue a voucher for a partial-delivery order.'],
-                ]);
-            }
-        } else {
-            $amount = $order->final_amount - $order->transaction_fee;
-        }
-
-        // The existence check above is a friendly-error fast path, not
-        // the real guarantee — two concurrent requests for the same
-        // order could both pass it before either commits. The unique
-        // index on vouchers.order_id (migration 2026_07_25_140000) is
-        // the actual serialization point; a second request that loses
-        // the race hits it here instead of double-issuing a voucher.
-        //
-        // ADR-102 decision 1: the row lock below is a second, wider
-        // serialization point on top of the unique index above — it
-        // makes this transaction contend on the exact same
-        // `Order::lockForUpdate()` that `OrderFulfillmentService::
-        // fulfill()`/`fulfillCombo()`/`markDeliveredManually()`/
-        // `confirmDeliveryFailed()` already all acquire, so an
-        // in-flight resend and a concurrent Issue Voucher on the same
-        // order can never both commit — one blocks until the other's
-        // transaction (and its own `isAlreadyCompensated()` check)
-        // finishes, rather than racing on two independent locks.
-        //
-        // ADR-024 decision #7: if this order itself spent a different
-        // voucher (X) to pay part of its own price, giving up on
-        // delivery must restore X's balance in the same transaction as
-        // issuing this new voucher (Y) for the order's cash portion —
-        // two independent, un-merged vouchers, never one combined
-        // amount. restore() is a no-op if this order never redeemed
-        // one, so it's always safe to call unconditionally here.
-        //
-        // ADR-024 addendum (2026-09-17, restore-only): a full-cover-by-
-        // voucher order (decision 5: transaction_fee=0, final_amount=0)
-        // has a genuinely zero cash portion — issue() must never fire
-        // for it. Restoring X still happens unconditionally; minting a
-        // new, pointless RM0.00 Y does not. The partial-combo branch is
-        // unaffected — its amount is admin-typed and already floored at
-        // `min:1` by StoreVoucherFromOrderRequest.
-        try {
-            $voucher = DB::transaction(function () use ($order, $amount, $isPartialComboDelivery, $request) {
-                $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
-
-                // M-5, 2026-09-29 audit: the delivery_status check above
-                // ran on the unlocked $order — re-derive from $locked, the
-                // same defense-in-depth OrderFulfillmentService::fulfill()
-                // uses, so a concurrent resend that delivered this order
-                // while this request waited for the lock is caught here.
-                // No isAlreadyRefundedToWallet()/isAlreadyCompensated()
-                // check needed here: the wallet_reseller_id guard above
-                // already rejects every wallet order before this
-                // transaction is ever reached, and that field is set once
-                // at order creation, never after — a plain
-                // isVoucherRestored() would also be wrong here, since
-                // that's this action's OWN expected idempotency marker on
-                // a repeat restore-only click (ADR-024 addendum), not a
-                // race to block.
-                // Re-derived on the locked row (2026-09-29 pre-release
-                // review) — the pre-lock $isPartialComboDelivery can be
-                // stale if the last leg delivered while we waited.
-                if ($locked->delivery_status !== DeliveryStatus::Failed && ! $locked->isPartialComboDelivery()) {
-                    throw ValidationException::withMessages([
-                        'order' => ['A voucher can only be issued for an order with a failed delivery.'],
-                    ]);
-                }
-
-                $this->vouchers->restore($order->id);
-
-                if ($amount === 0) {
-                    return null;
-                }
-
-                return $this->vouchers->issue(
-                    customerEmail: $order->customer_email,
-                    customerPhone: $order->customer_phone,
-                    amount: $amount,
-                    reason: $request->validated('reason') ?? "Delivery failed - refund voucher for order {$order->order_number}",
-                    expiresAt: null,
-                    createdBy: $request->user()->id,
-                    approvedBy: null,
-                    // ADR-060 PR-4d: a compensation voucher inherits the
-                    // brand of the order it refunds (decision 5).
-                    affiliateId: $order->affiliate_id,
-                    orderId: $order->id,
-                );
-            });
-        } catch (UniqueConstraintViolationException) {
-            throw ValidationException::withMessages([
-                'order' => ['A voucher has already been issued for this order.'],
-            ]);
-        }
-
-        // ADR-116 decision 4 — after commit, so a rolled-back issue never messages anyone.
-        if ($voucher !== null) {
-            $this->notifications->voucherIssued($voucher);
-        } else {
+        // ADR-024 addendum (2026-09-17): a restore-only order (nothing to
+        // mint) is safe to click again — repeat the same answer, and the
+        // (de-duplicated) message, which revives one skipped earlier.
+        if ($order->voucher === null && $order->isVoucherRestored()) {
             $this->notifications->voucherRestored($order);
+
+            return response()->json(['restored_only' => true, 'voucher' => null], 201);
         }
 
-        // One shape either way: `restored_only` tells the caller which
-        // of the two things this endpoint always does actually happened
-        // (restore always runs; issue only when the cash portion is
-        // non-zero) — its own admin-frontend consumer branches on this
-        // rather than infer it from `voucher` being null.
+        try {
+            $result = $settlement->settle($order, $request->user()->id, $request->validated('reason'));
+        } catch (OrderFulfillmentException|UniqueConstraintViolationException) {
+            throw ValidationException::withMessages([
+                'order' => ['A voucher has already been issued for this order.'],
+            ]);
+        }
+
         return response()->json([
-            'restored_only' => $voucher === null,
-            'voucher' => $voucher,
+            'restored_only' => $result->voucher === null,
+            'voucher' => $result->voucher,
         ], 201);
     }
 

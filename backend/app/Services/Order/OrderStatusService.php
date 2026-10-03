@@ -20,7 +20,9 @@ final class OrderStatusService
         // ADR-026 decision 4b: NeedsReview allows re-entry so "Resend
         // Delivery" works from that state too, same as the existing
         // Failed retry path.
-        if (! in_array($currentDeliveryStatus, [DeliveryStatus::NotStarted, DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
+        // ADR-094 decision 29: PartiallyDelivered re-enters too, so a
+        // combo's failed legs can be retried before it is compensated.
+        if (! in_array($currentDeliveryStatus, [DeliveryStatus::NotStarted, DeliveryStatus::Failed, DeliveryStatus::NeedsReview, DeliveryStatus::PartiallyDelivered], true)) {
             throw new InvalidOrderTransitionException(
                 "Cannot start delivery: delivery_status is already {$currentDeliveryStatus->value}",
             );
@@ -130,6 +132,22 @@ final class OrderStatusService
      * reachable from Processing, same entry point fulfill() already
      * uses for a synchronous success/failure.
      */
+    /**
+     * ADR-094 decision 29 — a combo's legs all final with a Delivered and
+     * a Failed mix: from Processing (synchronous pass), Pending (the last
+     * leg resolved by webhook/poll) or NeedsReview (admin Confirm Failed).
+     */
+    public function markPartiallyDelivered(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
+    {
+        if (! in_array($currentDeliveryStatus, [DeliveryStatus::Processing, DeliveryStatus::Pending, DeliveryStatus::NeedsReview], true)) {
+            throw new InvalidOrderTransitionException(
+                "Cannot mark partially delivered: delivery_status is {$currentDeliveryStatus->value}, must be processing, pending, or needs_review",
+            );
+        }
+
+        return DeliveryStatus::PartiallyDelivered;
+    }
+
     public function markPending(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
     {
         if ($currentDeliveryStatus !== DeliveryStatus::Processing) {

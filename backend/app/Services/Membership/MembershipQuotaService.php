@@ -82,9 +82,9 @@ final class MembershipQuotaService
      * can't practically straddle a 30-day boundary), but the guard costs
      * nothing to keep.
      */
-    public function restore(int $orderId): void
+    public function restore(int $orderId, ?int $amountSen = null): void
     {
-        DB::transaction(function () use ($orderId) {
+        DB::transaction(function () use ($orderId, $amountSen) {
             $debit = MembershipQuotaDebit::query()
                 ->where('order_id', $orderId)
                 ->whereNull('restored_at')
@@ -98,13 +98,17 @@ final class MembershipQuotaService
             $membership = Membership::query()->lockForUpdate()->findOrFail($debit->membership_id);
 
             if ($debit->created_at->lt($membership->cycle_started_at)) {
-                $debit->update(['restored_at' => now()]);
+                $debit->update(['restored_at' => now(), 'restored_amount_sen' => 0]);
 
                 return;
             }
 
-            $membership->increment('quota_remaining_sen', $debit->amount_sen);
-            $debit->update(['restored_at' => now()]);
+            // ADR-094 decision 37: a partial delivery gives back only the
+            // undelivered share; null is the whole debit.
+            $restored = min($amountSen ?? $debit->amount_sen, $debit->amount_sen);
+
+            $membership->increment('quota_remaining_sen', $restored);
+            $debit->update(['restored_at' => now(), 'restored_amount_sen' => $restored]);
         });
     }
 }

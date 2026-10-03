@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\Voucher;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
@@ -150,149 +151,34 @@ class OrderTest extends TestCase
         ]);
     }
 
-    /**
-     * ADR-094 decision 9 (Phase 4): the actual partial-delivery case —
-     * a real Delivered+Failed split, nothing Pending/NeedsReview left.
-     *
-     * ADR-107 decision 4 (build-time revision): the suggested amount is
-     * now `(final_amount − transaction_fee)` apportioned by each leg's
-     * frozen `selling_price_sen` weight, not a live sum of the Failed
-     * leg's own component price. makeOrder()'s defaults give
-     * compensableAmount=1000; delivered leg carries selling_price_sen
-     * 44000, failed leg 27500 (total 71500) — 1000 × 27500/71500 ≈
-     * 384.6, rounds to 385.
-     */
-    public function test_is_partial_combo_delivery_true_for_a_genuine_delivered_and_failed_split(): void
+    /** ADR-094 decision 30 — Need Action covers an uncompensated partial delivery, like a Failed one. */
+    public function test_needs_action_includes_an_uncompensated_partially_delivered_order(): void
     {
+        $order = $this->makeOrder(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::PartiallyDelivered->value]);
+
+        $this->assertTrue(Order::query()->needsAction()->whereKey($order->id)->exists());
+    }
+
+    /** ADR-094 decision 35 — a settled partial order's cost covers only its delivered legs, out of what it kept. */
+    public function test_cost_basis_of_a_settled_partial_combo_counts_only_the_delivered_legs(): void
+    {
+        config(['services.real_cost_reconciliation.enabled' => true]);
         $delivered = $this->componentPackage();
-        $failed = $this->componentPackage([
-            'name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976',
-            'cost_price' => 25000, 'standard_selling_price' => 27500,
+        $failed = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976', 'cost_price' => 25000, 'standard_selling_price' => 27500]);
+        $order = $this->makeOrder([
+            'delivery_status' => DeliveryStatus::PartiallyDelivered->value,
+            'selling_price' => 71500, 'affiliate_profit' => 0,
+            // (71500 − 27500 compensated) − 40000 delivered cost
+            'platform_profit' => 4000,
         ]);
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
         $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
         $this->leg($order, $failed, DeliveryStatus::Failed, 2);
+        Voucher::query()->create(['order_id' => $order->id, 'affiliate_id' => $order->affiliate_id, 'code' => 'VC-PARTIAL', 'customer_email' => 'a@example.com', 'amount' => 27500, 'remaining' => 27500, 'status' => 'active', 'reason' => 'partial']);
 
-        $this->assertTrue($order->isPartialComboDelivery());
-        $this->assertSame(385, $order->suggestedPartialVoucherAmount());
-    }
-
-    /**
-     * ADR-107 decision 4 — proportional, not a flat sum: two Failed legs
-     * of different weight get apportioned differently, and the total
-     * never exceeds compensableAmount regardless of the legs' own
-     * (unrelated-scale) selling prices.
-     */
-    public function test_suggested_partial_voucher_amount_apportions_proportionally_across_multiple_failed_legs(): void
-    {
-        $delivered = $this->componentPackage(['standard_selling_price' => 20000]);
-        $failedSmall = $this->componentPackage(['name' => 'Small', 'supplier_package_ref' => 'GV-SMALL', 'standard_selling_price' => 10000]);
-        $failedLarge = $this->componentPackage(['name' => 'Large', 'supplier_package_ref' => 'GV-LARGE', 'standard_selling_price' => 30000]);
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value, 'final_amount' => 2090]);
-        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
-        $this->leg($order, $failedSmall, DeliveryStatus::Failed, 2);
-        $this->leg($order, $failedLarge, DeliveryStatus::Failed, 3);
-
-        // compensableAmount = 2090 - 90 = 2000; failed weight = 10000+30000=40000
-        // of total 60000 -> 2000 * 40000/60000 = 1333.33 -> rounds to 1333.
-        $this->assertSame(1333, $order->suggestedPartialVoucherAmount());
-    }
-
-    /** A leg missing its frozen snapshot (pre-ADR-107 legacy row) never yields a divide-by-zero or a silently-wrong figure — no suggestion instead. */
-    public function test_suggested_partial_voucher_amount_null_when_no_leg_has_a_frozen_selling_price(): void
-    {
-        $delivered = $this->componentPackage();
-        $failed = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $delivered->id,
-            'supplier_id' => $delivered->supplier_id, 'leg_number' => 1, 'status' => DeliveryStatus::Delivered->value,
-        ]);
-        OrderDeliveryLeg::query()->create([
-            'order_id' => $order->id, 'component_package_id' => $failed->id,
-            'supplier_id' => $failed->supplier_id, 'leg_number' => 2, 'status' => DeliveryStatus::Failed->value,
-        ]);
-
-        $this->assertNull($order->suggestedPartialVoucherAmount());
-    }
-
-    /**
-     * ADR-094's 2026-09-21 addendum decision 25 — a leg-level NeedsReview
-     * (e.g. a Gamevion duplicate_reference) alongside a Delivered leg IS
-     * now recognized as a genuine partial delivery, same carve-out as a
-     * Delivered+Failed split: ADR-102 decision 4 only ever closed the
-     * Digiflazz-confirmed-Gagal cause of a leg landing on NeedsReview,
-     * this one (and an unexpected exception mid-attempt) were never
-     * covered — without this, confirmFailed() would let an admin
-     * confirm the whole order Failed and over-compensate with a
-     * full-amount voucher despite the delivered leg's goods already
-     * being received. Same math as the Delivered+Failed test above (385)
-     * — the numerator now includes NeedsReview legs too.
-     */
-    public function test_is_partial_combo_delivery_true_when_a_delivered_leg_is_mixed_with_an_ambiguous_one(): void
-    {
-        $delivered = $this->componentPackage();
-        $ambiguous = $this->componentPackage([
-            'name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976',
-            'cost_price' => 25000, 'standard_selling_price' => 27500,
-        ]);
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
-        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
-        $this->leg($order, $ambiguous, DeliveryStatus::NeedsReview, 2);
-
-        $this->assertTrue($order->isPartialComboDelivery());
-        $this->assertSame(385, $order->suggestedPartialVoucherAmount());
-    }
-
-    /**
-     * Guards decision 25's own scoping so it doesn't over-block: a
-     * Failed+NeedsReview mix with NO Delivered leg is NOT "partial" —
-     * nothing was delivered yet, so confirming the whole order Failed
-     * (and a later full-amount voucher) stays correct there.
-     */
-    public function test_is_partial_combo_delivery_false_when_no_leg_is_delivered_yet(): void
-    {
-        $failed = $this->componentPackage();
-        $ambiguous = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
-        $this->leg($order, $failed, DeliveryStatus::Failed, 1);
-        $this->leg($order, $ambiguous, DeliveryStatus::NeedsReview, 2);
-
-        $this->assertFalse($order->isPartialComboDelivery());
-        $this->assertNull($order->suggestedPartialVoucherAmount());
-    }
-
-    /** A leg still Pending is still in flight — not a resolved partial delivery yet. */
-    public function test_is_partial_combo_delivery_false_while_a_leg_is_still_pending(): void
-    {
-        $delivered = $this->componentPackage();
-        $pending = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
-        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
-        $this->leg($order, $pending, DeliveryStatus::Pending, 2);
-
-        $this->assertFalse($order->isPartialComboDelivery());
-    }
-
-    /** A non-combo order (no legs at all) is never a partial-combo-delivery case. */
-    public function test_is_partial_combo_delivery_false_for_an_ordinary_order_with_no_legs(): void
-    {
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
-
-        $this->assertFalse($order->isPartialComboDelivery());
-        $this->assertNull($order->suggestedPartialVoucherAmount());
-    }
-
-    /** Every leg Delivered means the order itself wouldn't be NeedsReview in practice, but the method's own guard is the delivery_status check, not the leg shape. */
-    public function test_is_partial_combo_delivery_false_when_delivery_status_is_not_needs_review(): void
-    {
-        $delivered = $this->componentPackage();
-        $failed = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976']);
-        $order = $this->makeOrder(['delivery_status' => DeliveryStatus::Failed->value]);
-        $this->leg($order, $delivered, DeliveryStatus::Delivered, 1);
-        $this->leg($order, $failed, DeliveryStatus::Failed, 2);
-
-        $this->assertFalse($order->isPartialComboDelivery());
+        $fresh = $order->fresh();
+        $this->assertSame(27500, $fresh->compensationAmountSen());
+        $this->assertSame(40000, $fresh->effectiveCostPriceSen());
+        $this->assertSame('mixed', $fresh->costBasis());
     }
 
     /** ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — the same generic signal ADR-098 wired into fulfillment, reconstructed from the persisted error_code alone. */

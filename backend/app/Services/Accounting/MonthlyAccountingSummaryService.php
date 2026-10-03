@@ -13,6 +13,7 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Report\ReportService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * ADR-083 decision 8, fills ADR-110 PR-B — the read-only journal lines
@@ -36,8 +37,12 @@ final class MonthlyAccountingSummaryService
      */
     public function forPeriod(int $year, int $month): array
     {
-        $from = Carbon::create($year, $month, 1, 0, 0, 0, ReportService::TIMEZONE)->setTimezone('UTC');
-        $toExclusive = $from->copy()->addMonthNoOverflow();
+        // Add the month in KL time, then convert: adding it after the UTC
+        // shift ended the period one KL day early whenever the previous
+        // month is shorter (31 Oct KL fell into no month at all).
+        $monthStart = Carbon::create($year, $month, 1, 0, 0, 0, ReportService::TIMEZONE);
+        $from = $monthStart->copy()->setTimezone('UTC');
+        $toExclusive = $monthStart->copy()->addMonthNoOverflow()->setTimezone('UTC');
 
         return [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
@@ -88,8 +93,10 @@ final class MonthlyAccountingSummaryService
         return (int) Order::query()
             ->where('is_test', false)
             ->where('delivery_status', DeliveryStatus::Delivered->value)
-            ->whereBetween('paid_at', [$from, $toExclusive])
-            ->sum('selling_price');
+            ->where('paid_at', '>=', $from)
+            ->where('paid_at', '<', $toExclusive)
+            ->sum('selling_price')
+            + (int) $this->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $o->selling_price - $o->compensationAmountSen());
     }
 
     private function cogs(Carbon $from, Carbon $toExclusive): int
@@ -97,14 +104,38 @@ final class MonthlyAccountingSummaryService
         return (int) Order::query()
             ->where('is_test', false)
             ->where('delivery_status', DeliveryStatus::Delivered->value)
-            ->whereBetween('paid_at', [$from, $toExclusive])
-            ->sum('cost_price');
+            ->where('paid_at', '>=', $from)
+            ->where('paid_at', '<', $toExclusive)
+            ->sum('cost_price')
+            + (int) $this->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $o->effectiveCostPriceSen());
+    }
+
+    /**
+     * ADR-094 decision 41 — a partially delivered order is recognised
+     * once settled (like a Failed one, it has no final economics before):
+     * revenue is what it kept after compensation, COGS its delivered legs
+     * only (the same figures its credited profit used). Few rows, so
+     * loaded rather than expressed in SQL.
+     *
+     * @return Collection<int, Order>
+     */
+    private function settledPartialOrders(Carbon $from, Carbon $toExclusive): Collection
+    {
+        return Order::query()
+            ->where('is_test', false)
+            ->where('delivery_status', DeliveryStatus::PartiallyDelivered->value)
+            ->where('paid_at', '>=', $from)
+            ->where('paid_at', '<', $toExclusive)
+            ->with(['voucher', 'voucherRedemption', 'deliveryLegs.componentPackage:id,cost_price'])
+            ->get()
+            ->filter(fn (Order $o) => $o->isAlreadyCompensated());
     }
 
     private function membershipRevenue(Carbon $from, Carbon $toExclusive): int
     {
         return (int) MembershipFeeRecord::query()
-            ->whereBetween('created_at', [$from, $toExclusive])
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
             ->sum('amount_sen');
     }
 
@@ -121,8 +152,10 @@ final class MonthlyAccountingSummaryService
     private function paymentProcessingGainLoss(Carbon $from, Carbon $toExclusive): int
     {
         $totals = PaymentSettlement::query()
-            ->where('date_from', '>=', $from->toDateString())
-            ->where('date_to', '<', $toExclusive->toDateString())
+            // Settlement windows are KL calendar dates, so compare against
+            // the KL dates, not the UTC instants' dates.
+            ->where('date_from', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('date_to', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->selectRaw('COALESCE(SUM(matched_fee_sen), 0) as matched_fee, COALESCE(SUM(file_fee_sen), 0) as file_fee')
             ->first();
 
@@ -143,7 +176,8 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->whereBetween('created_at', [$from, $toExclusive])
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
             ->sum('amount_myr_sent');
     }
 
@@ -156,7 +190,8 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->whereBetween('created_at', [$from, $toExclusive])
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
             ->sum('fee_myr');
     }
 
@@ -174,7 +209,8 @@ final class MonthlyAccountingSummaryService
 
         $drawdownsBySupplier = SupplierLedgerEntry::query()
             ->where('type', SupplierLedgerEntryType::OrderDrawdown->value)
-            ->whereBetween('created_at', [$from, $toExclusive])
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
             ->selectRaw('supplier_id, SUM(ABS(amount)) as foreign_drawn')
             ->groupBy('supplier_id')
             ->get();
@@ -230,14 +266,16 @@ final class MonthlyAccountingSummaryService
             ->where('ledger_entries.type', 'order_profit')
             ->where('ledger_entries.owner_type', 'affiliate')
             ->where('orders.is_test', false)
-            ->whereBetween('orders.paid_at', [$from, $toExclusive])
+            ->where('orders.paid_at', '>=', $from)
+            ->where('orders.paid_at', '<', $toExclusive)
             ->sum('ledger_entries.amount');
     }
 
     private function voucherLiabilityIssued(Carbon $from, Carbon $toExclusive): int
     {
         return (int) Voucher::query()
-            ->whereBetween('created_at', [$from, $toExclusive])
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
             ->sum('amount');
     }
 }

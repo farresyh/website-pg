@@ -17,11 +17,13 @@ class MembershipQuotaDebit extends Model
         'order_id',
         'membership_id',
         'amount_sen',
+        'restored_amount_sen',
         'restored_at',
     ];
 
     protected $casts = [
         'amount_sen' => 'integer',
+        'restored_amount_sen' => 'integer',
         'restored_at' => 'datetime',
     ];
 }

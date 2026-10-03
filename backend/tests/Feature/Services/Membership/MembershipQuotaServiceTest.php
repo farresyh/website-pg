@@ -108,6 +108,21 @@ class MembershipQuotaServiceTest extends TestCase
         $this->assertNotNull(MembershipQuotaDebit::query()->where('order_id', $order->id)->firstOrFail()->restored_at);
     }
 
+    /** ADR-094 decision 37 — a partial delivery gives back only the undelivered share. */
+    public function test_restore_with_an_amount_credits_only_that_portion(): void
+    {
+        $membership = $this->membership();
+        $order = $this->order();
+        $service = app(MembershipQuotaService::class);
+        $service->decrement($membership->id, $order->id, 1040);
+
+        $service->restore($order->id, 416);
+        $service->restore($order->id, 416); // a repeat never credits twice
+
+        $this->assertSame(960 + 416, $membership->fresh()->quota_remaining_sen);
+        $this->assertSame(416, MembershipQuotaDebit::query()->where('order_id', $order->id)->value('restored_amount_sen'));
+    }
+
     public function test_restore_is_a_noop_when_the_order_never_debited_quota(): void
     {
         $membership = $this->membership();

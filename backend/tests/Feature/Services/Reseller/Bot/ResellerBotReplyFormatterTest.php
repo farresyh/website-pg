@@ -5,7 +5,10 @@ namespace Tests\Feature\Services\Reseller\Bot;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\Reseller;
 use App\Models\Supplier;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
@@ -50,6 +53,16 @@ class ResellerBotReplyFormatterTest extends TestCase
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::NotStarted->value,
         ], $overrides));
+    }
+
+    /** ADR-094 decision 38 — the notice states what was actually credited back, not the order price. */
+    public function test_refund_notice_states_the_wallet_refund_actually_credited(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
+        $order = $this->makeOrder(['wallet_reseller_id' => $reseller->id, 'selling_price' => 5000, 'delivery_status' => DeliveryStatus::PartiallyDelivered->value]);
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 2000, 'wallet_refund', 'order', $order->id);
+
+        $this->assertStringContainsString('RM20.00', ResellerBotReplyFormatter::refundNotice($order));
     }
 
     public function test_order_placed_echoes_the_player_id_and_server_id(): void

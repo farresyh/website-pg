@@ -37,17 +37,18 @@ If an order would take the balance below zero, `POST /v1/orders` returns
 ## Refunds
 
 PekanGame does not do cash refunds. A failed delivery is first reviewed for
-retry. If PekanGame decides not to retry, an admin refunds the charged amount
-**to your wallet**. A `failed` delivery by itself is not proof of a refund.
+retry. If PekanGame decides not to retry, an admin refunds it **to your
+wallet**: the whole charged amount for a `failed` order, or only the
+undelivered share for a `partially_delivered` one (part of the order was
+delivered and the rest failed). Neither status by itself is proof of a refund.
 
 When it happens you receive an `order.refunded` webhook (if you have one
-registered), and the amount reappears in `balance_sen`. The credit is based
-on the amount charged for that order; use the ledger-backed `amount_sen` below
-as the actual credited amount. `GET /v1/orders/{order_number}` and
-`GET /v1/orders` also show `wallet_refunded: true` and a `wallet_refund`
-object containing the ledger's `amount_sen` and `refunded_at`. Without a
-webhook, check those fields to reconcile a failed order; the delivery status
-remains `failed` after the refund.
+registered), and the amount reappears in `balance_sen`. Order responses from
+`GET /v1/orders/{order_number}` and `GET /v1/orders` also show
+`wallet_refunded: true` and a `wallet_refund` object containing the ledger's
+`amount_sen` (what was actually credited) and `refunded_at`. Without a
+webhook, check those fields to reconcile; the delivery status stays `failed`
+or `partially_delivered` after the refund.
 
 ## Pricing
 

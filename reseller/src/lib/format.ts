@@ -47,6 +47,7 @@ export function deliverySeverity(status: string): string {
       processing: "info",
       pending: "info",
       needs_review: "warn",
+      partially_delivered: "warn",
       not_started: "muted",
       failed: "danger",
     }[status] ?? "muted"

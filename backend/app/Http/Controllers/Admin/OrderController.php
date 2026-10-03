@@ -11,23 +11,18 @@ use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Package;
-use App\Models\ResellerBotOrderNotification;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Fulfillment\SupplierDeliveryCheckService;
-use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Ledger\LedgerService;
-use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
 use App\Services\Pricing\PricingBasis;
-use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
-use App\Services\Reseller\Webhook\ResellerWebhookDispatcher;
-use App\Services\Reseller\Webhook\ResellerWebhookEvent;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Support\ManualCheckCooldown;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -354,9 +349,10 @@ class OrderController extends Controller
             abort(404);
         }
 
-        if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
+        // ADR-094 decision 29: a PartiallyDelivered combo retries its failed legs.
+        if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview, DeliveryStatus::PartiallyDelivered], true)) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a failed or needs-review delivery can be retried.'],
+                'delivery_status' => ['Only an order with a failed, partial or needs-review delivery can be retried.'],
             ]);
         }
 
@@ -636,12 +632,11 @@ class OrderController extends Controller
         // become genuinely fully-delivered through its own per-leg tracking
         // (resolveComboOutcome() already reaches Delivered on its own once
         // every leg does). A leg still outstanding here needs Retry Delivery
-        // (resolves it automatically) or, once resolved to a genuine
-        // Delivered+Failed/NeedsReview mix, the partial-delivery Issue
-        // Voucher path (isPartialComboDelivery()) — never this button.
+        // (resolves it automatically) or Confirm Failed (rolls up to
+        // PartiallyDelivered, ADR-094 decision 31) — never this button.
         if ($order->deliveryLegs->isNotEmpty()) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order is a combo — use Retry Delivery to resolve outstanding legs, or Issue Voucher for a partial delivery.'],
+                'delivery_status' => ['This order is a combo — use Retry Delivery to resolve outstanding legs, or Confirm Failed.'],
             ]);
         }
 
@@ -695,12 +690,6 @@ class OrderController extends Controller
             ]);
         }
 
-        if ($order->isPartialComboDelivery()) {
-            throw ValidationException::withMessages([
-                'delivery_status' => ['This order has a partial delivery — issue a custom-amount voucher for the failed leg(s) instead of confirming the whole order failed.'],
-            ]);
-        }
-
         // ADR-024 decision #8 / ADR-102 decision 1 — see retryDelivery()'s
         // identical guard for the full reasoning. Structurally shouldn't
         // be reachable, kept as the same defensive check its siblings carry.
@@ -710,14 +699,9 @@ class OrderController extends Controller
             ]);
         }
 
-        // ADR-094's 2026-09-21 addendum decision 26: the guard above ran on
-        // the unlocked $order — confirmDeliveryFailed() re-checks the same
-        // isPartialComboDelivery() condition itself, inside its own row
-        // lock, and throws this if the order genuinely drifted into partial
-        // delivery in the gap between this check and that one (a concurrent
-        // retry/webhook). Caught here so that rare race still surfaces as
-        // the same friendly 422 every other guard on this action gives,
-        // not a raw 500.
+        // ADR-094 decision 31: on a combo the service flips the ambiguous
+        // legs to Failed and rolls up to Failed or PartiallyDelivered; it
+        // refuses while a leg is still awaiting the supplier.
         try {
             $result = $fulfillment->confirmDeliveryFailed(
                 $order,
@@ -726,7 +710,7 @@ class OrderController extends Controller
             );
         } catch (OrderFulfillmentException) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['This order has a partial delivery — issue a custom-amount voucher for the failed leg(s) instead of confirming the whole order failed.'],
+                'delivery_status' => ['A part of this order is still awaiting the supplier — check the supplier first, then confirm.'],
             ]);
         }
 
@@ -734,17 +718,14 @@ class OrderController extends Controller
     }
 
     /**
-     * ADR-073 decision 7: the wallet-order counterpart to
-     * VoucherController::storeFromOrder() — for a `wallet_reseller_id`-
-     * owned order, this REPLACES Issue Voucher entirely in that order's
-     * detail screen (never shown alongside it), since Voucher's
-     * email-keyed mechanism has no meaning for a B2B wallet account and
-     * a dual option only invites the wrong one being clicked. Not a
-     * reopening of ADR-004's "no cash refund" policy — no cash ever
-     * leaves the platform, this is an internal-credit reversal back
-     * into a balance we fully control.
+     * ADR-073 decision 7: Refund to Wallet replaces Issue Voucher for a
+     * Reseller-wallet order — a thin caller of OrderSettlementService
+     * (ADR-094 2026-10-04 addendum), which owns the gate (Failed or
+     * PartiallyDelivered), the formula amount, the lock, and the Bot and
+     * webhook notices. Not a reopening of ADR-004: no cash leaves the
+     * platform, this is an internal credit back into a balance we hold.
      */
-    public function refundToWallet(Request $request, Order $order, LedgerService $ledger, OpenWaClient $openWa, ResellerWebhookDispatcher $webhooks): JsonResponse
+    public function refundToWallet(Request $request, Order $order, OrderSettlementService $settlement): JsonResponse
     {
         if ($order->is_test) {
             abort(404);
@@ -756,87 +737,31 @@ class OrderController extends Controller
             ]);
         }
 
-        if ($order->delivery_status !== DeliveryStatus::Failed) {
+        if (! $order->delivery_status->isCompensable()) {
             throw ValidationException::withMessages([
-                'order' => ['A wallet refund can only be issued for an order with a failed delivery.'],
+                'order' => ['A wallet refund can only be issued for an order with a failed or partial delivery.'],
             ]);
         }
 
-        // ADR-102 finding (mid-build, not in the original grill):
-        // `ledger_entries` has no unique index on the
-        // (type, reference_type, reference_id) tuple — unlike Voucher's
-        // real `vouchers.order_id` unique index, there was never an
-        // actual structural backstop here, only this pre-check. Two
-        // concurrent refundToWallet() requests for the same order could
-        // both pass it and both credit. Fixed the same way as
-        // VoucherController::storeFromOrder() — an `Order::lockForUpdate()`
-        // inside the transaction, contending on the exact same lock
-        // `fulfill()`/`storeFromOrder()`/`markDeliveredManually()`/
-        // `confirmDeliveryFailed()` already all acquire, so this
-        // check-then-credit can no longer race against itself or
-        // against a resend/voucher-issue on the same order.
-        DB::transaction(function () use ($order, $ledger) {
-            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
-
-            if ($locked->delivery_status !== DeliveryStatus::Failed) {
-                throw ValidationException::withMessages([
-                    'order' => ['A wallet refund can only be issued for an order with a failed delivery.'],
-                ]);
-            }
-
-            // M-5, 2026-09-29 audit: isAlreadyRefundedToWallet() alone let a
-            // concurrent voucher-issue (storeFromOrder()) or resend land in
-            // the gap between the pre-check above and this lock — re-check
-            // every compensation kind, not just this action's own.
-            if ($locked->isAlreadyCompensated()) {
-                throw ValidationException::withMessages([
-                    'order' => ['This order has already been compensated (voucher issued/restored or wallet refunded).'],
-                ]);
-            }
-
-            $ledger->credit(
-                LedgerOwnerType::ResellerWallet,
-                $locked->wallet_reseller_id,
-                $locked->final_amount,
-                'wallet_refund',
-                referenceType: 'order',
-                referenceId: $locked->id,
-            );
-        });
-
-        Log::info('Order refunded to reseller wallet', [
-            'order_id' => $order->id,
-            'wallet_reseller_id' => $order->wallet_reseller_id,
-            'amount_sen' => $order->final_amount,
-            'admin_user_id' => $request->user()?->id,
-        ]);
-
-        // ADR-076 decision 6: this action deliberately never touches
-        // payment_status/delivery_status, so it's invisible to
-        // SendResellerBotOrderNotification's OrderStatusUpdated listener
-        // — the only explicit, non-event-driven notify call in that
-        // design. Guarded by refund_notified_at so a repeat request
-        // (already rejected above by alreadyRefundedToWallet(), but
-        // defensive here too) can never double-send.
-        $notification = ResellerBotOrderNotification::query()
-            ->where('order_id', $order->id)
-            ->whereNull('refund_notified_at')
-            ->first();
-
-        if ($notification !== null) {
-            $openWa->sendText($notification->whatsapp_group_id, ResellerBotReplyFormatter::refundNotice($order));
-            $notification->update(['refund_notified_at' => now()]);
+        try {
+            $settlement->settle($order, $request->user()->id);
+        } catch (OrderFulfillmentException|UniqueConstraintViolationException) {
+            throw ValidationException::withMessages([
+                'order' => ['This order has already been compensated (voucher issued/restored or wallet refunded).'],
+            ]);
         }
 
-        // ADR-084 PR-3 decision 4: the API channel's counterpart to the
-        // Bot refund notice above — dispatched here, not via
-        // OrderStatusUpdated, because this action deliberately never
-        // touches delivery_status. No-op unless the reseller has an
-        // active webhook; the (order, 'order.refunded') uniqueness keeps a
-        // repeat request (already rejected above) from double-sending.
-        $webhooks->dispatch($order->fresh(), ResellerWebhookEvent::OrderRefunded);
-
         return $this->orderDetailResponse($order->fresh());
+    }
+
+    /** Null when no amount is derivable (a leg without a frozen price) — settle() refuses those too. */
+    private function compensationPreview(Order $order): ?array
+    {
+        try {
+            return app(OrderSettlementService::class)->preview($order);
+        } catch (OrderFulfillmentException) {
+            return null;
+        }
     }
 
     /**
@@ -875,9 +800,6 @@ class OrderController extends Controller
             // ordinary single-supplier order — populated only for a
             // combo order, one row per real outbound supplier call,
             // for the detail screen's leg-breakdown table.
-            // standard_selling_price is needed here, not just for
-            // display — Order::suggestedPartialVoucherAmount() sums it
-            // straight off this already-eager-loaded relation.
             // supplier_package_ref (2026-09-16 addendum): the leg
             // breakdown's own "Supplier Ref" column is the leg's
             // supplier_reference (the supplier's transaction/response
@@ -923,13 +845,10 @@ class OrderController extends Controller
             // (a full-cover-by-voucher order restores but mints no new
             // voucher, so that one alone would stay false forever).
             'has_voucher_restored' => $order->voucherRedemption?->status === 'restored',
-            // ADR-094 decision 9: gates the admin panel's Issue Voucher
-            // button for the one needs_review case that's actually a
-            // genuine partial delivery, with a starting-point amount
-            // (admin-adjustable, never trusted as-is server-side —
-            // VoucherController::storeFromOrder() re-derives its own
-            // cap independently).
-            'partial_combo_delivery' => $order->isPartialComboDelivery(),
+            // ADR-094 decision 30 — gates Issue Voucher / Refund to Wallet;
+            // the preview is the exact amount settle() would use.
+            'compensable' => $compensable = $order->delivery_status->isCompensable() && ! $order->isAlreadyCompensated(),
+            'compensation_preview' => $compensable ? $this->compensationPreview($order) : null,
             // ADR-026 addendum (2026-09-16), renamed by ADR-102 decision
             // 3/5 — drives the "Resending is unlikely to change this
             // outcome" warning next to the Resend Delivery button,
@@ -941,7 +860,6 @@ class OrderController extends Controller
             // actually disables the Resend/Retry button and requires a
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
-            'suggested_voucher_amount' => $order->suggestedPartialVoucherAmount(),
             // ADR-107 decision 3, generalized by ADR-111 decision 7 — true
             // once ANY order (not just combo) delivered with a reconciled
             // negative platform_profit, or a material drift from the
