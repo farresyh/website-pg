@@ -71,6 +71,15 @@ function ConfirmFailedFields({ onClose, onConfirmed, order, token, sandbox }: Om
       <p className="mb-5 text-sm text-ink-muted">
         {sandbox ? (
           <>Sandbox mode — no real supplier order exists to look up. Enter any note to exercise this flow.</>
+        ) : order.supplier_askable ? (
+          // ADR-102 2026-10-05 addendum, decisions 4-5: the supplier is asked first and its answer is applied.
+          <>
+            The supplier is asked about this order first, and its answer decides the outcome. If it confirms the
+            order failed, the order moves to <span className="font-medium">Failed</span> and Issue Voucher unlocks as a
+            separate next step. If it says the order was delivered, the order becomes{" "}
+            <span className="font-medium">Delivered</span> instead. If it is still processing or can&apos;t be
+            reached, nothing changes. If the supplier never received this order, asking it now will process the order.
+          </>
         ) : (
           <>
             Only use this once you&apos;ve confirmed the supplier genuinely never delivered this order — resending

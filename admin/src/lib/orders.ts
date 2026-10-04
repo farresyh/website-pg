@@ -199,6 +199,10 @@ export interface OrderDetail extends OrderListItem {
   // needs_review; combo via an OR-rollup across legs (unsafe if any
   // leg is currently needs_review with its own unsafe flag set).
   resend_unsafe_to_override: boolean;
+  // ADR-102 2026-10-05 addendum — a needs_review order the supplier can
+  // safely be asked about: Check from Supplier shows, and Confirm Failed
+  // asks the supplier first (no override).
+  supplier_askable: boolean;
   // ADR-107 decision 3, generalized by ADR-111 decision 7 — true once ANY
   // order (not just combo) delivered with a reconciled negative
   // platform_profit, or a material drift from the pre-reconciliation
