@@ -8,6 +8,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -341,6 +342,22 @@ class Order extends Model
         }
 
         return $this->delivery_status === DeliveryStatus::NeedsReview;
+    }
+
+    public const PACKAGE_SWAP_BLOCKED_MESSAGE = 'This order is still awaiting the supplier\'s final answer for its original package. Retry the same package, or settle it first (Check Supplier / Confirm Failed), then resend a different package from Failed.';
+
+    /**
+     * ADR-102 2026-10-05 addendum, decision 8: a NeedsReview resend reuses
+     * the ref_id (ORD-8), and a replay-safe supplier answers a known ref_id
+     * with the original transaction — so a different package would record
+     * one package's profit while the supplier replays another's. A swap
+     * from Failed takes a fresh reference and stays allowed.
+     */
+    public function blocksPackageSwapTo(Package $target): bool
+    {
+        return $this->delivery_status === DeliveryStatus::NeedsReview
+            && $target->id !== $this->package_id
+            && SupplierAdapterFactory::resubmitReplaysOutcome((string) $this->supplier?->slug);
     }
 
     /**

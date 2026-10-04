@@ -58,6 +58,12 @@ final class OrderResendService
         $this->assertResendable($order);
         $this->assertSameGamePackage($order, $targetPackage);
 
+        // ADR-102 2026-10-05 addendum, decision 8 — the controller's
+        // pre-check can go stale before this queued job runs.
+        if ($order->blocksPackageSwapTo($targetPackage)) {
+            throw ValidationException::withMessages(['package_id' => [Order::PACKAGE_SWAP_BLOCKED_MESSAGE]]);
+        }
+
         // ADR-102 decision 10: applied in-memory (not yet persisted)
         // BEFORE the player-ID validation check below, so a corrected
         // ID is what actually gets validated and, further down, what
