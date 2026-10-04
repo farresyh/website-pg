@@ -2,10 +2,17 @@
 
 namespace Tests\Feature\Services\Checkout;
 
+use App\Jobs\FulfillOrderJob;
 use App\Models\Game;
+use App\Models\Membership;
+use App\Models\MembershipPlan;
+use App\Models\MembershipQuotaDebit;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
+use App\Services\Checkout\CheckoutAttemptClosedException;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
@@ -29,6 +36,7 @@ use App\Services\Voucher\VoucherService;
 use App\Support\StorefrontBrand;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -71,26 +79,40 @@ class CheckoutServiceTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * $onCreate runs inside createPayment() — the window between the
+     * unlocked preview and the locked reservation — so a test can
+     * simulate a concurrent order spending the same balance there.
+     */
     private function fakePaymentGateway(
         bool $success,
         ?array $data = null,
         ?string $errorCode = null,
         ?string $errorMessage = null,
+        ?\Closure $onCreate = null,
     ): PaymentGateway {
-        return new class($success, $data, $errorCode, $errorMessage) implements PaymentGateway
+        return new class($success, $data, $errorCode, $errorMessage, $onCreate) implements PaymentGateway
         {
             public ?PaymentRequest $receivedRequest = null;
+
+            public int $calls = 0;
 
             public function __construct(
                 private readonly bool $success,
                 private readonly ?array $data,
                 private readonly ?string $errorCode,
                 private readonly ?string $errorMessage,
+                private readonly ?\Closure $onCreate,
             ) {}
 
             public function createPayment(PaymentRequest $request): PaymentResponse
             {
                 $this->receivedRequest = $request;
+                $this->calls++;
+
+                if ($this->onCreate !== null) {
+                    ($this->onCreate)();
+                }
 
                 return $this->success
                     ? PaymentResponse::success($this->data)
@@ -280,5 +302,179 @@ class CheckoutServiceTest extends TestCase
 
         $this->assertSame($expectedUrl, $gateway->receivedRequest->channelProperties['success_return_url']);
         $this->assertSame($expectedUrl, $gateway->receivedRequest->channelProperties['failure_return_url']);
+    }
+
+    private function voucher(int $remaining, string $code = 'KRS-RACE'): Voucher
+    {
+        return Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => $code,
+            'customer_email' => 'buyer@example.com',
+            'amount' => $remaining,
+            'remaining' => $remaining,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
+    }
+
+    private function membership(int $quotaSen): Membership
+    {
+        return Membership::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'email' => 'buyer@example.com',
+            'membership_plan_id' => MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail()->id,
+            'status' => 'active',
+            'cycle_started_at' => now(),
+            'quota_remaining_sen' => $quotaSen,
+            'expires_at' => now()->addDays(20),
+        ]);
+    }
+
+    /** A member-priced request: cost 1000, standard 1200 (20% markup). */
+    private function memberRequest(int $membershipId, array $overrides = []): CheckoutRequest
+    {
+        return $this->request(array_merge([
+            'costPriceSen' => 1000,
+            'standardSellingPriceSen' => 1200,
+            'packageMarkupPercent' => 20.0,
+            'membershipId' => $membershipId,
+        ], $overrides));
+    }
+
+    /**
+     * ADR-024 2026-10-04 addendum, decision 1: a concurrent order drains
+     * the voucher between the unlocked preview and the locked reserve.
+     * The link must never be handed out, the order must be Failed.
+     */
+    public function test_a_partial_cover_checkout_that_loses_the_voucher_race_fails_closed(): void
+    {
+        $voucher = $this->voucher(500);
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-race'], onCreate: fn () => $voucher->update(['remaining' => 0, 'status' => 'exhausted']));
+
+        try {
+            $this->service()->initiate($this->request(['voucherCode' => 'KRS-RACE']), $gateway);
+            $this->fail('Expected CheckoutAttemptClosedException was not thrown.');
+        } catch (CheckoutAttemptClosedException) {
+            // expected
+        }
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame(PaymentStatus::Failed, $order->payment_status);
+        $this->assertSame(500, $order->voucher_discount, 'the snapshot stays as priced (ORD-9)');
+        $this->assertSame(0, VoucherRedemption::query()->count());
+        $this->assertSame(0, $voucher->fresh()->remaining, 'nothing of the other order\'s spend is touched');
+    }
+
+    /** Decision 3: the voucher won, the quota lost — the voucher goes back. */
+    public function test_a_member_checkout_that_loses_the_quota_race_restores_its_voucher_and_fails_closed(): void
+    {
+        $voucher = $this->voucher(200);
+        $membership = $this->membership(5000);
+        VoucherRedemption::created(fn () => $membership->update(['quota_remaining_sen' => 0]));
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-race']);
+
+        try {
+            $this->service()->initiate($this->memberRequest($membership->id, ['voucherCode' => 'KRS-RACE']), $gateway);
+            $this->fail('Expected CheckoutAttemptClosedException was not thrown.');
+        } catch (CheckoutAttemptClosedException) {
+            // expected
+        }
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame(PaymentStatus::Failed, $order->payment_status);
+        $this->assertSame($membership->id, $order->membership_id);
+        $this->assertSame(200, $voucher->fresh()->remaining);
+        $this->assertSame('restored', VoucherRedemption::query()->firstOrFail()->status);
+        $this->assertSame(0, MembershipQuotaDebit::query()->count());
+    }
+
+    /** Decision 4: full-cover decrements quota before Paid, and fails closed the same way. */
+    public function test_a_full_cover_member_checkout_that_loses_the_quota_race_restores_the_voucher_and_fails_closed(): void
+    {
+        Queue::fake();
+        $voucher = $this->voucher(5000);
+        $membership = $this->membership(5000);
+        VoucherRedemption::created(fn () => $membership->update(['quota_remaining_sen' => 0]));
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-unused']);
+
+        try {
+            $this->service()->initiate($this->memberRequest($membership->id, ['voucherCode' => 'KRS-RACE']), $gateway);
+            $this->fail('Expected CheckoutAttemptClosedException was not thrown.');
+        } catch (CheckoutAttemptClosedException) {
+            // expected
+        }
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame(PaymentStatus::Failed, $order->payment_status);
+        $this->assertNull($order->paid_at);
+        $this->assertSame(5000, $voucher->fresh()->remaining);
+        $this->assertSame(0, $gateway->calls);
+        Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
+    /** Decision 6: a replay of a Failed order never gets a link. */
+    public function test_resume_refuses_an_order_that_already_failed(): void
+    {
+        $order = $this->service()->initiate($this->request(), $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-1']));
+        $order->update(['payment_status' => PaymentStatus::Failed->value]);
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-2']);
+
+        $this->expectException(CheckoutAttemptClosedException::class);
+
+        try {
+            $this->service()->resume($order, $gateway, 'DUITNOW_PAY');
+        } finally {
+            $this->assertSame(0, $gateway->calls);
+        }
+    }
+
+    /**
+     * Decision 6: a Pending order whose link exists but whose
+     * reservation never ran (process died in between) reserves on replay
+     * before the link is returned.
+     */
+    public function test_resume_reserves_a_pending_order_that_has_a_link_but_no_reservation(): void
+    {
+        $voucher = $this->voucher(500);
+        $order = $this->service()->initiate($this->request(['voucherCode' => 'KRS-RACE']), $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-1']));
+        VoucherRedemption::query()->delete();
+        Voucher::query()->whereKey($voucher->id)->update(['remaining' => 500, 'status' => 'active']);
+
+        $resumed = $this->service()->resume($order, $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-2']), 'DUITNOW_PAY');
+
+        $this->assertSame(PaymentStatus::Pending, $resumed->payment_status);
+        $this->assertSame('pr-1', $resumed->payment_ref, 'no second link is minted');
+        $this->assertSame(0, $voucher->fresh()->remaining);
+        $this->assertSame(1, VoucherRedemption::query()->count());
+    }
+
+    public function test_resume_fails_closed_when_the_late_reservation_loses(): void
+    {
+        $voucher = $this->voucher(500);
+        $order = $this->service()->initiate($this->request(['voucherCode' => 'KRS-RACE']), $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-1']));
+        VoucherRedemption::query()->delete();
+        Voucher::query()->whereKey($voucher->id)->update(['remaining' => 0, 'status' => 'exhausted']);
+
+        try {
+            $this->service()->resume($order, $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-2']), 'DUITNOW_PAY');
+            $this->fail('Expected CheckoutAttemptClosedException was not thrown.');
+        } catch (CheckoutAttemptClosedException) {
+            // expected
+        }
+
+        $this->assertSame(PaymentStatus::Failed, $order->fresh()->payment_status);
+    }
+
+    /** A Paid replay (the customer already paid) is unchanged. */
+    public function test_resume_returns_a_paid_order_untouched(): void
+    {
+        $order = $this->service()->initiate($this->request(), $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-1']));
+        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
+        $gateway = $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-2']);
+
+        $resumed = $this->service()->resume($order, $gateway, 'DUITNOW_PAY');
+
+        $this->assertSame(PaymentStatus::Paid, $resumed->payment_status);
+        $this->assertSame(0, $gateway->calls);
     }
 }

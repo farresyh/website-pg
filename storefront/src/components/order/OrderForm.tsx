@@ -215,6 +215,13 @@ export default function OrderForm({
   // collapsed into an earlier one.
   const idempotencyKeyRef = useRef<string | null>(null);
 
+  // ADR-024 2026-10-04 addendum: bumped when the backend answers
+  // `checkout_closed` (the voucher/quota reservation lost a race, or the
+  // attempt already failed). It remounts the Review Modal (clearing its
+  // applied voucher) and forces a totals re-fetch: a quota-only loss
+  // changes the price without changing any other key input.
+  const [checkoutAttempt, setCheckoutAttempt] = useState(0);
+
   // ADR-024 — set by ReviewModal's own Apply button, read back here so
   // the final POST /api/checkout can include it. Reset on every fresh
   // Review Modal open, same reasoning as the idempotency key: an
@@ -282,7 +289,7 @@ export default function OrderForm({
   // changes back.
   const totalPreviewKey =
     selectedPackage && channelCode
-      ? JSON.stringify([selectedPackage.id, channelCode, voucherCode, membershipToken, contactEmail, customerPhone])
+      ? JSON.stringify([selectedPackage.id, channelCode, voucherCode, membershipToken, contactEmail, customerPhone, checkoutAttempt])
       : null;
   const [totalPreview, setTotalPreview] = useState<{ key: string; result: CheckoutTotalPreview } | null>(null);
   const preview = totalPreview && totalPreview.key === totalPreviewKey ? totalPreview.result : null;
@@ -423,6 +430,14 @@ export default function OrderForm({
         router.push(`/order/status/${encodeURIComponent(result.order_number)}`);
       }
     } catch (err) {
+      if (err instanceof ApiError && err.code === "checkout_closed") {
+        // A fresh attempt: new key (the old one is bound to the closed
+        // order), no voucher, re-priced. Ordinary errors keep the key so
+        // a double-click or timeout retry still can't charge twice.
+        idempotencyKeyRef.current = crypto.randomUUID();
+        setVoucherCode(null);
+        setCheckoutAttempt((n) => n + 1);
+      }
       setSubmitError(
         err instanceof ApiError
           ? err.message
@@ -568,6 +583,7 @@ export default function OrderForm({
 
       {selectedPackage && selectedChannel && (
         <ReviewModal
+          key={checkoutAttempt}
           open={reviewOpen}
           onClose={closeReview}
           game={game}

@@ -4,6 +4,4 @@ namespace App\Services\Checkout;
 
 use RuntimeException;
 
-final class CheckoutFailedException extends RuntimeException
-{
-}
+class CheckoutFailedException extends RuntimeException {}

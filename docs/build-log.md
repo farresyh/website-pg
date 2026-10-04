@@ -2422,3 +2422,46 @@ checks) found status claims that had drifted.
   Reports), 66 (combo admin gaps), 67 (ADR-109 live verify), which were only
   mentioned inside §15.
 - `AGENTS.md`: PHP 8.4 (composer, CI and prod all run 8.4).
+
+## 2026-10-04 — Voucher / member-quota checkout race fails closed (pre-launch money audit #3, ADR-024 addendum)
+
+**Why.** `CheckoutService` reserved the voucher and member quota after the
+CHIP link existed and only logged a lost race, then handed the link out. One
+customer racing N tabs got N discounted orders on one voucher or one quota.
+ADR-024 had accepted this on two wrong premises (an accident only, and
+"money already moved"). Grilled Q1–Q15 with a stress-test round and the
+money-ADR code-trace pass; full design in the ADR-024 2026-10-04 addendum.
+
+**Shipped.**
+- `CheckoutService::reserveOrClose()` / `reserveAll()`: reserve under the
+  Order row lock; on a loss restore the instrument that won, mark the order
+  Failed, throw `CheckoutAttemptClosedException`. Full-cover reserves quota
+  before Paid. `resume()` refuses a Failed order and reserves before any
+  replayed link goes out.
+- `CheckoutController`: coded 422 `{code: checkout_closed}`.
+- Storefront: on `checkout_closed`, new idempotency key, voucher cleared,
+  Review Modal remounted, totals re-fetched (a quota-only loss changes the
+  price without changing any preview key input).
+- Admin: `has_used_voucher` and the "Voucher Used to Pay" card read
+  `voucher_redemptions`, not `orders.voucher_id`.
+
+**Verified.**
+- Backend 2498/2498. New service tests (voucher race, quota race restoring
+  the voucher, full-cover quota race, replay Failed / Pending-without-
+  reservation / late loss / Paid) and controller tests (coded 422 on race and
+  on replay).
+- New `CheckoutReservationRaceConcurrencyTest` (two real processes, MySQL),
+  3/3 runs green with the other checkout/voucher/quota concurrency tests.
+  Run once against the old `CheckoutService`: both tests failed exactly as
+  the exploit describes (two links on one voucher; a member order linked with
+  no quota debit).
+- `tsc`/`eslint`/`build` clean on storefront and admin; e2e 5/5. A temporary
+  Playwright check (never committed) mocked a `checkout_closed` response:
+  the message shows, totals re-fetch, the next click carries a new key.
+
+**Gotchas.**
+- `Model::update()` on a stale instance writes nothing when the in-memory
+  values already match; test fixtures that rewind DB state use a query
+  update instead.
+- Remounting the Review Modal unticks T&C, so the customer re-confirms the
+  fresh attempt. Intended.
