@@ -498,6 +498,51 @@ class Order extends Model
         return $entries;
     }
 
+    /**
+     * ADR-108 2026-10-04 addendum — the profit this order actually earned:
+     * its `order_profit` ledger entries, a reasoned correction included.
+     * Null when nothing was credited (not delivered, failed, refunded,
+     * unpaid, sandbox). The `platform_profit`/`affiliate_profit` columns
+     * are the expected profit — the plan the credit is made from — and
+     * are not this.
+     *
+     * @return array{platform: int, affiliate: int}|null
+     */
+    public function earnedProfit(): ?array
+    {
+        return self::earnedProfitsFor(new Collection([$this]))[$this->id];
+    }
+
+    /**
+     * earnedProfit() for a page or chunk of orders in one query, the same
+     * shape as walletRefundEntriesFor(): every order id is a key.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @return array<int, array{platform: int, affiliate: int}|null>
+     */
+    public static function earnedProfitsFor(Collection $orders): array
+    {
+        $earned = array_fill_keys($orders->pluck('id')->all(), null);
+        if ($earned === []) {
+            return [];
+        }
+
+        LedgerEntry::query()
+            ->where('type', 'order_profit')
+            ->where('reference_type', 'order')
+            ->whereIn('reference_id', array_keys($earned))
+            ->selectRaw('reference_id, owner_type, SUM(amount) as total')
+            ->groupBy('reference_id', 'owner_type')
+            ->get()
+            ->each(function (LedgerEntry $row) use (&$earned): void {
+                $key = $row->owner_type === LedgerOwnerType::Platform->value ? 'platform' : 'affiliate';
+                $earned[(int) $row->reference_id] ??= ['platform' => 0, 'affiliate' => 0];
+                $earned[(int) $row->reference_id][$key] = (int) $row->total;
+            });
+
+        return $earned;
+    }
+
     private function walletRefundQuery(): Builder
     {
         if ($this->wallet_reseller_id === null) {

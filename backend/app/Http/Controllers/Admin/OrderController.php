@@ -19,8 +19,10 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
 use App\Services\Pricing\PricingBasis;
+use App\Services\Report\ReportService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Support\ManualCheckCooldown;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -139,7 +141,7 @@ class OrderController extends Controller
             'awaiting_payment' => $query
                 ->where('payment_status', PaymentStatus::Pending->value)
                 ->where('created_at', '<=', now()->subMinutes(30)),
-            'today' => $query->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()]),
+            'today' => $query->where('created_at', '>=', $this->todayKl()[0])->where('created_at', '<', $this->todayKl()[1]),
             default => null,
         };
 
@@ -170,13 +172,32 @@ class OrderController extends Controller
             $query->where('game_id', (int) $gameId);
         }
 
-        if ($dateFrom = $request->query('date_from')) {
-            $query->where('created_at', '>=', $dateFrom.' 00:00:00');
-        }
+        // ADR-108 2026-10-04 addendum: KL calendar days, the same day
+        // bounds Reports uses — a plain string compare against the UTC
+        // column used to cut days at UTC midnight (08:00 KL).
+        [$from, $toExclusive] = app(ReportService::class)->dateRangeFromDates(
+            $this->validDate($request->query('date_from')),
+            $this->validDate($request->query('date_to')),
+        );
+        $query->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive));
+    }
 
-        if ($dateTo = $request->query('date_to')) {
-            $query->where('created_at', '<=', $dateTo.' 23:59:59');
-        }
+    private function validDate(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : null;
+    }
+
+    /**
+     * Today in Kuala Lumpur, as UTC bounds.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
+     */
+    private function todayKl(): array
+    {
+        $today = now(ReportService::TIMEZONE)->toDateString();
+
+        return app(ReportService::class)->dateRangeFromDates($today, $today);
     }
 
     /**
@@ -285,13 +306,13 @@ class OrderController extends Controller
                 'SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as needs_review,
                  SUM(CASE WHEN delivery_status IN (?, ?) THEN 1 ELSE 0 END) as processing,
                  SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as completed,
-                 SUM(CASE WHEN created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) as today,
+                 SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as today,
                  COUNT(*) as all_orders',
                 [
                     DeliveryStatus::NeedsReview->value,
                     DeliveryStatus::Processing->value, DeliveryStatus::Pending->value,
                     DeliveryStatus::Delivered->value,
-                    now()->startOfDay(), now()->endOfDay(),
+                    ...$this->todayKl(),
                 ],
             )
             ->first();
@@ -867,6 +888,10 @@ class OrderController extends Controller
             // the after-the-fact visibility signal instead). Drives the
             // Order Detail "Profit Adjusted" info card.
             'profit_reconciled_flagged' => $order->hasReconciledProfitFlag(),
+            // ADR-108 2026-10-04 addendum — what the ledger holds for this
+            // order (null: earned nothing). platform_profit/affiliate_profit
+            // above stay the expected figures.
+            'earned_profit' => $order->earnedProfit(),
             // ADR-111 addendum — one "Cost Price" figure, not two
             // competing columns (raw `cost_price` catalog snapshot vs
             // `real_cost_price_sen`): whichever cost actually went into

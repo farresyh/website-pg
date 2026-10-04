@@ -19,7 +19,9 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  *
  * The response shape is deliberately narrow (mirrors TrackOrderController
  * / `backend/AGENTS.md`'s public-response rule): the affiliate sees their
- * own margin (`affiliate_profit`, `affiliate_markup_pct`) but never
+ * own margin (`affiliate_profit` — what they were actually credited, null
+ * when nothing was, ADR-108 2026-10-04 addendum — and
+ * `affiliate_markup_pct`) but never
  * `cost_price` / `standard_selling_price` / `platform_profit` or any
  * supplier / payment-gateway internal field.
  */
@@ -48,10 +50,11 @@ class OrderController extends Controller
                     ->orWhere('customer_email', 'like', "%{$v}%");
             }))
             ->orderByDesc('created_at')
-            ->paginate($validated['per_page'] ?? 20)
-            ->through(fn (Order $order): array => $this->shape($order));
+            ->paginate($validated['per_page'] ?? 20);
 
-        return response()->json($orders);
+        $earned = Order::earnedProfitsFor($orders->getCollection());
+
+        return response()->json($orders->through(fn (Order $order): array => $this->shape($order, $earned[$order->id])));
     }
 
     public function show(Request $request, string $orderNumber): JsonResponse
@@ -69,13 +72,14 @@ class OrderController extends Controller
             throw new NotFoundHttpException('No order found with that order number.');
         }
 
-        return response()->json($this->shape($order, detail: true));
+        return response()->json($this->shape($order, $order->earnedProfit(), detail: true));
     }
 
     /**
+     * @param  array{platform: int, affiliate: int}|null  $earned
      * @return array<string, mixed>
      */
-    private function shape(Order $order, bool $detail = false): array
+    private function shape(Order $order, ?array $earned, bool $detail = false): array
     {
         $base = [
             'order_number' => $order->order_number,
@@ -83,7 +87,7 @@ class OrderController extends Controller
             'game' => $order->game !== null ? ['name' => $order->game->name, 'slug' => $order->game->slug] : null,
             'package_name' => $order->package?->name,
             'final_amount' => $order->final_amount,
-            'affiliate_profit' => $order->affiliate_profit,
+            'affiliate_profit' => $earned['affiliate'] ?? null,
             'payment_status' => $order->payment_status->value,
             'delivery_status' => $order->delivery_status->value,
             'has_compensation_voucher' => (bool) $order->has_compensation_voucher,

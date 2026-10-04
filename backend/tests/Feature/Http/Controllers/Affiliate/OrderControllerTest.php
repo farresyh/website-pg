@@ -7,6 +7,7 @@ use App\Models\AffiliateUser;
 use App\Models\Order;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -63,5 +64,32 @@ class OrderControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('delivery_status', 'failed')
             ->assertJsonPath('has_voucher_restored', true);
+    }
+
+    /**
+     * ADR-108 2026-10-04 addendum — "Your margin" is what the affiliate was
+     * actually credited, never the expected column: a failed order earned
+     * nothing, a delivered one its ledger credit.
+     */
+    public function test_your_margin_is_the_earned_affiliate_profit(): void
+    {
+        $affiliate = $this->primaryAffiliate();
+        $user = AffiliateUser::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id,
+            'name' => 'Owner', 'email' => 'owner@affiliate.test',
+            'password' => 'password', 'is_active' => true,
+        ]);
+        $token = $user->createToken('affiliate')->plainTextToken;
+        $failed = Order::factory()->forAffiliate($affiliate)->create(['delivery_status' => DeliveryStatus::Failed, 'affiliate_profit' => 500]);
+        $delivered = Order::factory()->forAffiliate($affiliate)->delivered()->create(['affiliate_profit' => 300]);
+        app(LedgerService::class)->creditOrderProfit($delivered);
+
+        $byNumber = collect($this->withToken($token)->getJson('/api/affiliate/orders')->assertOk()->json('data'))->keyBy('order_number');
+        $this->assertNull($byNumber[$failed->order_number]['affiliate_profit']);
+        $this->assertSame(300, $byNumber[$delivered->order_number]['affiliate_profit']);
+
+        $this->withToken($token)->getJson("/api/affiliate/orders/{$failed->order_number}")
+            ->assertOk()
+            ->assertJsonPath('affiliate_profit', null);
     }
 }
