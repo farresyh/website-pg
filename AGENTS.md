@@ -14,7 +14,7 @@ change to those paths with the same care the existing code already does.
 
 | Path | What | Notes |
 | --- | --- | --- |
-| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, Redis queue (Horizon, ADR-048) + Redis cache (ADR-077). Own `AGENTS.md`: Laravel conventions + local-dev gotchas |
+| `backend/` | Laravel 13 API (PHP 8.4) | Sanctum bearer-token auth, MySQL, Redis queue (Horizon, ADR-048) + Redis cache (ADR-077). Own `AGENTS.md`: Laravel conventions + local-dev gotchas |
 | `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery, Affiliates, Resellers |
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
