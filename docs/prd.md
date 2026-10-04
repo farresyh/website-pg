@@ -597,9 +597,16 @@ any analysis that needs the distinction must judge each order (corrected
 2026-09-30, see `docs/build-log.md`). The older "no external customers" line
 was wrong from at least then on.
 
-**On `staging`, not yet on `main`:** #347, earned profit from the ledger in
-Order Detail / export / affiliate portal, a 2-sheet Excel export, and KL-day
-Orders filters (ADR-108 2026-10-04 addendum).
+**On `staging`, not yet on `main`** (release when the founder asks):
+- #347: earned profit from the ledger in Order Detail / export / affiliate
+  portal, a 2-sheet Excel export, and KL-day Orders filters (ADR-108
+  2026-10-04 addendum).
+- #349: a lost voucher or member-quota reservation fails the checkout closed
+  (pre-launch audit #3, ADR-024 2026-10-04 addendum).
+- #350: item 63's no-grill batch — one locked payment-outcome seam, storefront
+  replay payload hash (column renamed `idempotency_payload_hash`, a
+  migration), KL days in every accounting filter, export/combo labels
+  (ADR-110 2026-10-04 addendum).
 
 **Release 2026-10-03 (`staging`→`main`, PR #346), deploy verified.** The
 server runs `908f16b`, `/api/health` is ok.
