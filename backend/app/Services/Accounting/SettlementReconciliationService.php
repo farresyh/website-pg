@@ -9,6 +9,7 @@ use App\Models\PaymentSettlement;
 use App\Models\WalletTopupAttempt;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Report\ReportService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -213,29 +214,31 @@ final class SettlementReconciliationService
      */
     public function paidButNotSettled(Carbon $dateFrom, Carbon $dateTo): array
     {
-        $from = $dateFrom->copy()->startOfDay();
-        $to = $dateTo->copy()->endOfDay();
+        // The window's dates are KL calendar dates (CHIP's own settlement
+        // day); item 63 — they used to be read as UTC days, cutting at
+        // 08:00 KL. Exclusive upper bound, same as Reports.
+        [$from, $toExclusive] = app(ReportService::class)->dateRangeFromDates($dateFrom->toDateString(), $dateTo->toDateString());
         $settledRefs = ChipSettledTransaction::query()->pluck('transaction_id')->all();
 
         $orders = Order::query()
             ->where('payment_gateway', 'chip')
             ->where('payment_status', PaymentStatus::Paid->value)
             ->where('is_test', false)
-            ->whereBetween('paid_at', [$from, $to])
+            ->where('paid_at', '>=', $from)->where('paid_at', '<', $toExclusive)
             ->whereNotIn('payment_ref', $settledRefs)
             ->get(['order_number', 'final_amount'])
             ->map(fn (Order $o) => ['reference' => $o->order_number, 'amount_sen' => $o->final_amount]);
 
         $memberships = MembershipCheckoutAttempt::query()
             ->where('status', MembershipCheckoutAttemptStatus::Paid->value)
-            ->whereBetween('updated_at', [$from, $to])
+            ->where('updated_at', '>=', $from)->where('updated_at', '<', $toExclusive)
             ->whereNotIn('payment_ref', $settledRefs)
             ->get(['subscription_number', 'total_charged_sen'])
             ->map(fn (MembershipCheckoutAttempt $m) => ['reference' => $m->subscription_number, 'amount_sen' => $m->total_charged_sen]);
 
         $walletTopups = WalletTopupAttempt::query()
             ->where('status', WalletTopupAttemptStatus::Paid->value)
-            ->whereBetween('updated_at', [$from, $to])
+            ->where('updated_at', '>=', $from)->where('updated_at', '<', $toExclusive)
             ->whereNotIn('chip_payment_ref', $settledRefs)
             ->get(['reference', 'total_charged_sen'])
             ->map(fn (WalletTopupAttempt $w) => ['reference' => $w->reference, 'amount_sen' => $w->total_charged_sen]);

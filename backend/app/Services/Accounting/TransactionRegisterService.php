@@ -50,18 +50,18 @@ final class TransactionRegisterService
     /**
      * @return list<array{date: string, type: string, reference: string, description: string, supplier: ?string, currency: string, gross_sen: ?int, fee_sen: ?int, cost_sen: ?int, net_sen: ?int, amount_foreign: ?string, status: string, funding_source: ?string}>
      */
-    public function rows(?CarbonInterface $from, ?CarbonInterface $to, ?string $type = null): array
+    public function rows(?CarbonInterface $from, ?CarbonInterface $toExclusive, ?string $type = null): array
     {
         $rows = [
-            ...$this->orderRows($from, $to),
-            ...$this->supplierTransferRows($from, $to),
-            ...$this->supplierAdjustmentRows($from, $to),
-            ...$this->supplierRefundRows($from, $to),
-            ...$this->voucherRows($from, $to),
-            ...$this->membershipRows($from, $to),
-            ...$this->walletTopupRows($from, $to),
-            ...$this->walletRefundRows($from, $to),
-            ...$this->withdrawalRows($from, $to),
+            ...$this->orderRows($from, $toExclusive),
+            ...$this->supplierTransferRows($from, $toExclusive),
+            ...$this->supplierAdjustmentRows($from, $toExclusive),
+            ...$this->supplierRefundRows($from, $toExclusive),
+            ...$this->voucherRows($from, $toExclusive),
+            ...$this->membershipRows($from, $toExclusive),
+            ...$this->walletTopupRows($from, $toExclusive),
+            ...$this->walletRefundRows($from, $toExclusive),
+            ...$this->withdrawalRows($from, $toExclusive),
         ];
 
         usort($rows, fn (array $a, array $b) => $b['date'] <=> $a['date']);
@@ -90,9 +90,9 @@ final class TransactionRegisterService
      *
      * @return LengthAwarePaginator<int, array<string, mixed>>
      */
-    public function paginate(?CarbonInterface $from, ?CarbonInterface $to, ?string $type, int $page, int $perPage = 20): LengthAwarePaginator
+    public function paginate(?CarbonInterface $from, ?CarbonInterface $toExclusive, ?string $type, int $page, int $perPage = 20): LengthAwarePaginator
     {
-        $all = $this->rows($from, $to, $type);
+        $all = $this->rows($from, $toExclusive, $type);
 
         return new LengthAwarePaginator(
             array_slice($all, ($page - 1) * $perPage, $perPage),
@@ -103,14 +103,14 @@ final class TransactionRegisterService
     }
 
     /** @return list<array<string, mixed>> */
-    private function orderRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function orderRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         $orders = Order::query()
             ->with('supplier')
             ->where('is_test', false)
             ->where('payment_status', PaymentStatus::Paid->value)
             ->when($from, fn ($q) => $q->where('paid_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('paid_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('paid_at', '<', $toExclusive))
             ->get();
 
         // `Order.platform_profit` is stamped at checkout time, before the
@@ -183,12 +183,12 @@ final class TransactionRegisterService
      *
      * @return list<array<string, mixed>>
      */
-    private function supplierTransferRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function supplierTransferRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         return SupplierTransfer::query()
             ->with('supplier')
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()
             ->map(fn (SupplierTransfer $transfer) => [
                 'date' => $transfer->created_at->toIso8601String(),
@@ -224,14 +224,14 @@ final class TransactionRegisterService
      *
      * @return list<array<string, mixed>>
      */
-    private function supplierAdjustmentRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function supplierAdjustmentRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         return SupplierLedgerEntry::query()
             ->with('supplier')
             ->whereIn('type', [SupplierLedgerEntryType::ManualAdjustment->value, SupplierLedgerEntryType::VoidReversal->value])
             ->where('reference_type', 'supplier_transfer')
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()
             ->map(fn (SupplierLedgerEntry $entry) => [
                 'date' => $entry->created_at->toIso8601String(),
@@ -252,13 +252,13 @@ final class TransactionRegisterService
     }
 
     /** @return list<array<string, mixed>> */
-    private function supplierRefundRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function supplierRefundRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         return SupplierLedgerEntry::query()
             ->with('supplier')
             ->where('type', SupplierLedgerEntryType::Refund->value)
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()
             ->map(fn (SupplierLedgerEntry $entry) => [
                 'date' => $entry->created_at->toIso8601String(),
@@ -279,7 +279,7 @@ final class TransactionRegisterService
     }
 
     /** @return list<array<string, mixed>> */
-    private function voucherRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function voucherRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         return Voucher::query()
             // ADR-004 Path B only — a compensation voucher IS a
@@ -291,7 +291,7 @@ final class TransactionRegisterService
             ->whereNotNull('order_id')
             ->whereHas('sourceOrder', fn ($q) => $q->where('is_test', false))
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()
             ->map(fn (Voucher $voucher) => [
                 'date' => $voucher->created_at->toIso8601String(),
@@ -335,12 +335,12 @@ final class TransactionRegisterService
      *
      * @return list<array<string, mixed>>
      */
-    private function membershipRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function membershipRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         $records = MembershipFeeRecord::query()
             ->with(['membership', 'membershipPlan'])
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get();
 
         $attemptsBySubscriptionNumber = MembershipCheckoutAttempt::query()
@@ -385,13 +385,13 @@ final class TransactionRegisterService
      *
      * @return list<array<string, mixed>>
      */
-    private function walletTopupRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function walletTopupRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         return WalletTopupAttempt::query()
             ->with('reseller')
             ->where('status', WalletTopupAttemptStatus::Paid->value)
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()
             ->map(fn (WalletTopupAttempt $topup) => [
                 'date' => $topup->created_at->toIso8601String(),
@@ -431,14 +431,14 @@ final class TransactionRegisterService
      *
      * @return list<array<string, mixed>>
      */
-    private function walletRefundRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function walletRefundRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         $entries = LedgerEntry::query()
             ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
             ->where('type', 'wallet_refund')
             ->where('reference_type', 'order')
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get();
 
         $orderNumbersById = Order::query()
@@ -477,13 +477,13 @@ final class TransactionRegisterService
      *
      * @return list<array<string, mixed>>
      */
-    private function withdrawalRows(?CarbonInterface $from, ?CarbonInterface $to): array
+    private function withdrawalRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         $withdrawals = Withdrawal::query()
             ->where('status', WithdrawalStatus::Completed->value)
             ->whereNotNull('processed_at')
             ->when($from, fn ($q) => $q->where('processed_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('processed_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('processed_at', '<', $toExclusive))
             ->get();
 
         $affiliateNamesById = Affiliate::query()

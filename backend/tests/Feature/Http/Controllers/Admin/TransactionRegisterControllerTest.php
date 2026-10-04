@@ -26,6 +26,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\PartialComboOrders;
@@ -468,6 +469,36 @@ class TransactionRegisterControllerTest extends TestCase
 
         $page2 = $this->getJson('/api/accounting/transactions?per_page=2&page=2')->assertOk();
         $this->assertCount(1, $page2->json('data'));
+    }
+
+    /**
+     * Item 63 (2026-10-04): from/to are KL days. An order paid at 07:30 KL
+     * (23:30 UTC the day before) belongs to the KL day, not the UTC one.
+     */
+    public function test_the_date_filter_uses_kl_days(): void
+    {
+        $this->actAsSuperAdmin();
+        $order = Order::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-REG-KL',
+            'customer_email' => 'buyer@example.com',
+            'player_id' => '1',
+            'cost_price' => 900,
+            'standard_selling_price' => 1000,
+            'selling_price' => 1000,
+            'transaction_fee' => 100,
+            'final_amount' => 1100,
+            'platform_profit' => 100,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+            'paid_at' => CarbonImmutable::parse('2026-10-03 23:30:00', 'UTC'),
+        ]);
+
+        $refs = fn (string $day) => collect($this->getJson("/api/accounting/transactions?from={$day}&to={$day}")->assertOk()->json('data'))->pluck('reference');
+
+        $this->assertTrue($refs('2026-10-04')->contains($order->order_number));
+        $this->assertFalse($refs('2026-10-03')->contains($order->order_number));
     }
 
     public function test_index_filters_by_type(): void

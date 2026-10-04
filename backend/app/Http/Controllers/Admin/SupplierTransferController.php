@@ -11,7 +11,7 @@ use App\Models\Supplier;
 use App\Models\SupplierTransfer;
 use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierFundingService;
-use Carbon\CarbonImmutable;
+use App\Services\Report\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -36,8 +36,7 @@ class SupplierTransferController extends Controller
      */
     public function index(Request $request, Supplier $supplier): JsonResponse
     {
-        $from = $request->filled('from') ? CarbonImmutable::parse($request->query('from'))->startOfDay() : null;
-        $to = $request->filled('to') ? CarbonImmutable::parse($request->query('to'))->endOfDay() : null;
+        [$from, $toExclusive] = app(ReportService::class)->dateRangeFromDates(self::klDate($request->query('from')), self::klDate($request->query('to')));
         $voided = match ($request->query('status')) {
             'voided' => true,
             'active' => false,
@@ -48,7 +47,7 @@ class SupplierTransferController extends Controller
         return response()->json([
             'ledger_balance' => $supplier->supplierLedgerBalance(),
             'currency' => $supplier->currency,
-            'transfers' => $this->funding->transfers($supplier, $perPage, $from, $to, $voided),
+            'transfers' => $this->funding->transfers($supplier, $perPage, $from, $toExclusive, $voided),
             'paid_from_options' => collect(PaidFrom::cases())
                 ->map(fn (PaidFrom $p) => ['value' => $p->value, 'label' => $p->label()])
                 ->values(),
@@ -178,5 +177,16 @@ class SupplierTransferController extends Controller
             'transfer' => $supplierTransfer->fresh(),
             'correction' => $correction,
         ], 201);
+    }
+
+    /**
+     * Item 63 (2026-10-04): `from`/`to` are KL calendar dates — the same
+     * day bounds Reports and Orders use (`ReportService::dateRangeFromDates()`,
+     * exclusive upper bound). They used to be parsed as UTC days, cutting
+     * at 08:00 KL. A malformed value means "no bound".
+     */
+    private static function klDate(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : null;
     }
 }
