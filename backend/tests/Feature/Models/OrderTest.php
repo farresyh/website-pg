@@ -8,6 +8,8 @@ use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\Voucher;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
@@ -149,6 +151,34 @@ class OrderTest extends TestCase
             // freezes at checkout, so this fixture matches real behavior.
             'selling_price_sen' => $component->standard_selling_price,
         ]);
+    }
+
+    /**
+     * ADR-108 2026-10-04 addendum — earned profit is what the ledger holds
+     * for the order (corrections included), never the expected columns.
+     */
+    public function test_earned_profit_is_null_when_the_order_earned_nothing(): void
+    {
+        $order = $this->makeOrder(['platform_profit' => 1001, 'affiliate_profit' => 5]);
+
+        $this->assertNull($order->earnedProfit());
+        $this->assertSame([$order->id => null], Order::earnedProfitsFor(collect([$order])));
+    }
+
+    public function test_earned_profit_sums_the_ledger_including_a_reasoned_correction(): void
+    {
+        $order = $this->makeOrder(['platform_profit' => 37, 'affiliate_profit' => 0]);
+        $ledger = app(LedgerService::class);
+        $ledger->creditOrderProfit($order);
+        $ledger->credit(LedgerOwnerType::Platform, null, -10, 'order_profit', 'order', $order->id, reason: 'ADR-105 correction');
+        $other = $this->makeOrder(['order_number' => 'KRS-TEST-2', 'reference_number' => null, 'platform_profit' => 9, 'affiliate_profit' => 5]);
+        $ledger->creditOrderProfit($other);
+
+        $this->assertSame(['platform' => 27, 'affiliate' => 0], $order->earnedProfit());
+        $this->assertSame(
+            [$order->id => ['platform' => 27, 'affiliate' => 0], $other->id => ['platform' => 9, 'affiliate' => 5]],
+            Order::earnedProfitsFor(collect([$order, $other])),
+        );
     }
 
     /** ADR-094 decision 30 — Need Action covers an uncompensated partial delivery, like a Failed one. */

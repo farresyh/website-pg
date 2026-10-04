@@ -24,6 +24,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\Webhook\ResellerWebhookService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -495,7 +496,8 @@ class OrderControllerTest extends TestCase
         $this->getJson('/api/orders/export')->assertUnauthorized();
     }
 
-    public function test_export_streams_a_csv_of_matching_orders(): void
+    /** ADR-108 2026-10-04 addendum — the export is a 2-sheet workbook of the filtered orders. */
+    public function test_export_downloads_a_workbook_of_matching_orders(): void
     {
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $this->order(['order_number' => 'KRS-EXPORT-ME', 'game_id' => $game->id, 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Delivered->value]);
@@ -505,10 +507,21 @@ class OrderControllerTest extends TestCase
         $response = $this->get('/api/orders/export?status=completed');
 
         $response->assertOk();
-        $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
-        $csv = $response->streamedContent();
-        $this->assertStringContainsString('KRS-EXPORT-ME', $csv);
-        $this->assertStringNotContainsString('KRS-EXCLUDED', $csv);
+        $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringEndsWith('.xlsx', (string) $response->headers->get('content-disposition'));
+
+        $path = tempnam(sys_get_temp_dir(), 'export-test-');
+        file_put_contents($path, file_get_contents($response->getFile()->getPathname()));
+        $zip = new \ZipArchive;
+        $zip->open($path);
+        $orders = (string) $zip->getFromName('xl/worksheets/sheet2.xml');
+        $summary = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+        unlink($path);
+
+        $this->assertStringContainsString('KRS-EXPORT-ME', $orders);
+        $this->assertStringNotContainsString('KRS-EXCLUDED', $orders);
+        $this->assertStringContainsString('tab: completed', $summary);
     }
 
     public function test_show_returns_full_order_detail(): void
@@ -701,6 +714,52 @@ class OrderControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('profit_reconciled_flagged', true);
+    }
+
+    /**
+     * ADR-108 2026-10-04 addendum — Order Detail shows earned profit from the
+     * ledger beside the expected columns: nothing for a failed order, the
+     * corrected figure for a delivered one.
+     */
+    public function test_show_exposes_earned_profit_from_the_ledger(): void
+    {
+        $this->actingAsAdmin();
+        $failed = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'platform_profit' => 1001]);
+        $delivered = $this->order(['order_number' => 'KRS-EARNED-2', 'delivery_status' => DeliveryStatus::Delivered->value, 'platform_profit' => 37]);
+        app(LedgerService::class)->creditOrderProfit($delivered);
+        app(LedgerService::class)->credit(LedgerOwnerType::Platform, null, -10, 'order_profit', 'order', $delivered->id, reason: 'correction');
+
+        $this->getJson("/api/orders/{$failed->id}")->assertOk()
+            ->assertJsonPath('earned_profit', null)
+            ->assertJsonPath('platform_profit', 1001);
+        $this->getJson("/api/orders/{$delivered->id}")->assertOk()
+            ->assertJsonPath('earned_profit.platform', 27);
+    }
+
+    /** ADR-108 2026-10-04 addendum — the date filter selects KL calendar days by created time. */
+    public function test_date_filter_uses_kuala_lumpur_days(): void
+    {
+        $this->actingAsAdmin();
+        $earlyKl = $this->order(['order_number' => 'KRS-KL-EARLY']);   // 4 Oct 01:00 KL
+        $earlyKl->forceFill(['created_at' => '2026-10-03 17:00:00'])->save();
+        $lateUtc = $this->order(['order_number' => 'KRS-KL-NEXT']);    // 5 Oct 01:00 KL
+        $lateUtc->forceFill(['created_at' => '2026-10-04 17:00:00'])->save();
+
+        $numbers = collect($this->getJson('/api/orders?date_from=2026-10-04&date_to=2026-10-04')->assertOk()->json('data'))->pluck('order_number');
+
+        $this->assertSame(['KRS-KL-EARLY'], $numbers->all());
+    }
+
+    public function test_today_tab_and_kpi_use_the_kuala_lumpur_day(): void
+    {
+        $this->actingAsAdmin();
+        $this->travelTo(Carbon::parse('2026-10-04 03:00:00', 'UTC')); // 11:00 KL, 4 Oct
+        $this->order(['order_number' => 'KRS-TODAY-KL'])->forceFill(['created_at' => '2026-10-03 16:30:00'])->save();  // 00:30 KL 4 Oct
+        $this->order(['order_number' => 'KRS-YESTERDAY-KL'])->forceFill(['created_at' => '2026-10-03 15:30:00'])->save(); // 23:30 KL 3 Oct
+
+        $numbers = collect($this->getJson('/api/orders?status=today')->assertOk()->json('data'))->pluck('order_number');
+        $this->assertSame(['KRS-TODAY-KL'], $numbers->all());
+        $this->getJson('/api/orders/summary')->assertOk()->assertJsonPath('today', 1);
     }
 
     /** An ordinary Failed order is compensated in full — u = 1. */

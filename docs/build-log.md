@@ -2338,3 +2338,68 @@ It found three admin display bugs, all fixed:
 
 **Not live:** `main` is unchanged. Audit #3 (voucher/quota checkout race) is
 PRD §16 item 60; the remaining audit P2s are item 63.
+
+## 2026-10-04 — Earned profit everywhere, a 2-sheet Excel export, KL-day filters (ADR-108 addendum)
+
+**Why.** After the #346 release the founder saw "Reseller Markup" around
+100% on PG-B7RB8MON6Q9I and asked for a full check, not another patch. A
+read-only check of all 31 production orders against the ledger found:
+- **Profit shown where none was earned.** Order Detail, the CSV export and
+  the affiliate portal read the order's *expected* profit columns, not the
+  ledger.
+  - 10 failed/unpaid orders showed a profit.
+  - Order 15's ADR-105 ledger correction never reached the column (0.37 shown,
+    0.27 earned).
+  - The CSV profit column summed to RM 19.37 against a ledger of RM 7.05.
+- **Reseller Markup re-derived from prices.** −100% on that refunded order,
+  4.35% and 3.09% on two delivered 3.00% orders.
+- **UTC day bounds** on the Orders date filter and "today".
+
+The first fix attempt (subtracting the refund for every wallet order) was
+discarded uncommitted once the full check showed it was a patch.
+
+**What shipped** (`feature/2026-10-04-orders-export-xlsx-earned-profit`):
+- **Earned profit.** `Order::earnedProfit()` / `earnedProfitsFor()` — the
+  order's `order_profit` ledger entries, corrections included, null when
+  nothing was credited. Mirrors the `walletRefund*` pair.
+  - Order Detail shows earned with the expected figure as a note
+    ("Expected RM 10.01 (not earned)"); sandbox shows expected only.
+  - The affiliate portal's "Your margin" is earned ("—" when nothing).
+  - The resend modal says "vs expected".
+- **Reseller Markup** reads `wholesale_markup_pct`.
+- **Export → Excel** (`OrdersWorkbook`, OpenSpout already installed).
+  - **Summary sheet:** every figure is an Excel formula over the Orders sheet
+    (Gross Sales, − wallet refunds, Net Sales, earned profit, margin, CHIP vs
+    wallet, vouchers, expected-but-not-earned on paid orders), plus balance
+    checks and a column dictionary.
+  - **Orders sheet:** one row per order with earned/expected, compensation
+    columns and a per-row Price Check formula.
+  - Columns are defined once; formulas find columns by header and Summary
+    cells by the row they were written to.
+  - Customer text is always a StringCell — `Cell::fromValue()` turns a
+    leading "=" into a live formula (formula injection; covered by a test).
+- **Dates.** The Orders date filter, "today" and the KPI use KL days via
+  `ReportService::dateRangeFromDates()`.
+
+**Verified:**
+- **Suites and builds:** backend 2489/2489 (new tests: earned helper,
+  affiliate margin, admin payload, KL filters, workbook incl. injection);
+  admin and reseller `tsc` / `lint` / `build` clean.
+- **Formulas recalculated in Numbers, not just text-checked.** On a scratch
+  copy of the dev DB (195 orders), Summary matched `ReportService::summary()`
+  exactly: Net Sales RM 5,484.18, Platform Profit RM 573.05, Affiliate RM 16.58,
+  Margin 10.45%. Both balance checks read OK.
+- **Browser:** a replica of PG-B7RB8MON6Q9I shows Reseller Markup +3.00% and
+  Platform Profit "—" / "Expected RM 10.01 (not earned)". The export endpoint
+  returns a valid `.xlsx` through the browser session; the button reads
+  "Export Excel".
+- **Production expectation** (read-only, earlier): earned totals for the 31
+  orders are RM 7.05 platform / RM 0.15 affiliate.
+
+**Gotchas:**
+- XLSX is a zip, so it is written to a temp file, then
+  `download()->deleteFileAfterSend()`.
+- Sanctum tokens in the scratch DB had expired; verification used a fresh
+  test token.
+- A partially applied tool command earlier left an uncommitted build-log
+  entry; it was discarded with the superseded fix.
