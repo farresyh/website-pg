@@ -2508,3 +2508,54 @@ tests fail on the old code.
   finding, and the reconcile copy's "mirrors exactly" comment hid the drift.
   Nothing in prod was harmed (no Paid order with a restored voucher/quota
   other than a legitimate Issue Voucher).
+
+## 2026-10-05 — Late Digiflazz result after NeedsReview; Confirm Failed asks the supplier first (item 63 bullet 1, ADR-102 addendum)
+
+**Why.** Pre-launch audit P2 (PRD §16 item 63). Reproduced with a real test
+through the real paths: a Digiflazz order Pending for 2 hours ages out to
+NeedsReview; a later `Sukses` (webhook or poll) hit `finalizePendingSuccess()`
+(Pending-only), answered `200 already finalized`, and was dropped — no SN, no
+`order_profit`, only the supplier balance updated. Confirm Failed then accepted
+the order without asking the supplier, unlocking Issue Voucher / Refund to
+Wallet for goods the customer received. Digiflazz has no cancel endpoint, so
+the fix is to never compensate before Digiflazz's own final answer. Prod
+2026-10-05: 0 NeedsReview, the 2 orders ever Confirm-Failed were real Gagal
+(rc 55, 02), slowest normal delivery ~19 min — never happened.
+
+**Shipped** (`fix/2026-10-05-late-digiflazz-sukses`). Grilled Q1–Q15 +
+money-ADR code-trace (profit per basis, voucher, quota, wallet, reseller
+webhook, receipt, drawdown — all reuse the existing Success branch).
+- `OrderStatusService::finalizePendingSuccess()/Failure()` accept NeedsReview
+  — one seam for the webhook, the poll, Check supplier and combo legs. A
+  confirmed `Gagal` on NeedsReview therefore also moves it to Failed.
+- A result contradicting a terminal status (`Sukses` on Failed/Partially,
+  `Gagal` on Delivered) is merged into `supplier_response.late_supplier_result`
+  and logged at error level; status never changes (combo leg: log only).
+- Combo: `finalizePendingDeliveryLeg()` locks the order then the leg and runs
+  the roll-up in the same transaction; `resolveComboOutcome()` exits
+  NeedsReview (all Delivered → Delivered, a leg still NeedsReview → no-op,
+  mix → PartiallyDelivered). `checkComboLegs()` also asks NeedsReview legs
+  that have a reference.
+- `SupplierDeliveryCheckService::confirmFailed()`: Digiflazz is asked first
+  (Sukses → Delivered, confirmed Gagal → Failed, else 422 and nothing
+  changes; no override), under the Check-supplier cooldown. Exceptions: no
+  `reference_number`, or past `max_reconcile_age_days` (a re-submit would be a
+  new transaction) — confirmed without a check, reason recorded. Gamevion and
+  sandbox unchanged.
+- Check from Supplier also works on NeedsReview (`supplier_askable` on Order
+  Detail); Confirm Failed modal copy explains the supplier decides.
+- `Order::blocksPackageSwapTo()`: no package swap from NeedsReview on a
+  replay-safe supplier (the ref_id is reused, so Digiflazz would replay the
+  original SKU); checked in the controller and again in `OrderResendService`.
+
+**Verified.** Backend 2542/2542; concurrency 29/29 on MySQL (new: two legs of
+one NeedsReview combo finalized at once → both succeed, order Delivered,
+profit credited once); admin tsc, eslint, build. Not browser-checked: no local
+stack was running, and clicking Confirm/Check locally would call the real
+Digiflazz.
+
+**Gotchas.**
+- A PHP arrow function captures by value, so a test's `&$array` capture lost
+  every recorded call; an `ArrayObject` fixed the test, not the code.
+- Pint realigned an unrelated docblock in `OrderResendService`; reverted to
+  keep the diff on-topic.
