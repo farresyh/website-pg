@@ -16,6 +16,7 @@ use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Fulfillment\SupplierDeliveryCheckService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\OrdersWorkbook;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
 use App\Services\Pricing\PricingBasis;
@@ -30,7 +31,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * ORD-1..7 — read-only list + detail, plus retryDelivery (ORD-7's
@@ -201,81 +202,40 @@ class OrderController extends Controller
     }
 
     /**
-     * ADR-108 decision 9 (ORD-5, finally built) — streams every order
-     * matching the current filter set (not just the current page),
-     * reusing the StreamedResponse+fputcsv convention already
-     * established (CustomerAnalyticsController/ReportController/etc).
-     * Columns match the on-screen table plus the full money breakdown
-     * the founder asked for (Q6-Q9 of ADR-108's own grill) — CSV-only,
-     * deliberately not added to the on-screen Columns toggle (decision
-     * 8), since Order Detail already shows every one of these fields in
-     * full.
-     *
-     * ADR-111 addendum (2026-09-22, founder concern): this export is the
-     * documented source of truth for order-level P&L (`docs/prd.md`),
-     * so "Cost Price" is deliberately ONE column, not two competing ones
-     * (raw catalog `cost_price` vs `real_cost_price_sen`) — an auditor
-     * reading this file must never have to guess which figure to sum.
-     * `Order::effectiveCostPriceSen()`/`costBasis()` (shared with Order
-     * Detail) resolve to whichever cost actually produced the row's own
-     * `Platform Profit`, plus a "Cost Basis" column (Real/Mixed/
-     * Estimated) so the provenance is explicit rather than assumed.
-     * `Selling Price − Cost Price − Affiliate Profit` always equals
-     * `Platform Profit` for every row.
+     * ADR-108 decision 9 (ORD-5) — every order matching the current
+     * filter set, not just the current page. Since the 2026-10-04 addendum
+     * it is a 2-sheet Excel workbook (OrdersWorkbook): a formula-driven
+     * Summary over an Orders sheet with earned (ledger) and expected
+     * profit side by side. ADR-111's single "Cost Price" + "Cost Basis"
+     * columns are kept.
      */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request, OrdersWorkbook $workbook): BinaryFileResponse
     {
-        $query = Order::query()->where('is_test', false)->with([
-            'game:id,name', 'package:id,name',
-            'affiliate:id,business_name,is_primary', 'walletReseller:id,business_name',
-            'deliveryLegs.componentPackage:id,cost_price',
-        ]);
+        $query = Order::query()->where('is_test', false)->orderBy('created_at', 'desc');
         $this->applyFilters($query, $request);
 
-        $filename = 'orders-'.now()->format('Y-m-d-His').'.csv';
+        // XLSX is a zip — it is built in a temp file, then sent and deleted.
+        $path = tempnam(sys_get_temp_dir(), 'orders-export-');
+        $workbook->write($query, $path, $this->exportScope($request));
 
-        return response()->streamDownload(function () use ($query) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, [
-                'Order #', 'Customer Email', 'Game', 'Package', 'Source', 'Final Amount (RM)',
-                'Payment Status', 'Delivery Status', 'Pricing Basis', 'Cost Price (RM)', 'Cost Basis',
-                'Standard/Normal Selling Price (RM)', 'Member Markup %', 'Affiliate Markup %',
-                'Wholesale Markup %', 'Transaction Fee (RM)', 'Platform Profit (RM)',
-                'Affiliate Profit (RM)', 'Date',
-            ]);
+        return response()->download($path, 'orders-'.now(ReportService::TIMEZONE)->format('Y-m-d-His').'.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend();
+    }
 
-            $query->orderBy('created_at', 'desc')->chunk(500, function ($orders) use ($out) {
-                foreach ($orders as $order) {
-                    $source = $order->wallet_reseller
-                        ? 'Reseller: '.$order->wallet_reseller->business_name
-                        : ($order->affiliate && ! $order->affiliate->is_primary ? $order->affiliate->business_name : 'Direct');
+    /** A plain-language line for the Summary sheet: which orders this export holds. */
+    private function exportScope(Request $request): string
+    {
+        $parts = array_filter([
+            $request->query('status') ? 'tab: '.$request->query('status') : null,
+            $request->query('source') ? 'source: '.$request->query('source') : null,
+            $request->query('game_id') ? 'game #'.$request->query('game_id') : null,
+            $request->query('search') ? 'search: "'.$request->query('search').'"' : null,
+            $this->validDate($request->query('date_from')) ? 'created from '.$request->query('date_from') : null,
+            $this->validDate($request->query('date_to')) ? 'created to '.$request->query('date_to') : null,
+        ]);
 
-                    fputcsv($out, [
-                        $order->order_number,
-                        $order->customer_email,
-                        $order->game?->name ?? '',
-                        $order->package?->name ?? '',
-                        $source,
-                        number_format($order->final_amount / 100, 2, '.', ''),
-                        $order->payment_status->value,
-                        $order->delivery_status->value,
-                        $order->pricing_basis?->value ?? '',
-                        number_format($order->effectiveCostPriceSen() / 100, 2, '.', ''),
-                        ucfirst($order->costBasis()),
-                        number_format(($order->standard_selling_price ?? $order->normal_selling_price ?? 0) / 100, 2, '.', ''),
-                        $order->markup_percent !== null ? $order->markup_percent.'%' : '',
-                        $order->affiliate_markup_pct !== null ? $order->affiliate_markup_pct.'%' : '',
-                        $order->wholesale_markup_pct !== null ? $order->wholesale_markup_pct.'%' : '',
-                        number_format($order->transaction_fee / 100, 2, '.', ''),
-                        number_format($order->platform_profit / 100, 2, '.', ''),
-                        number_format($order->affiliate_profit / 100, 2, '.', ''),
-                        $order->created_at->toDateTimeString(),
-                    ]);
-                }
-            });
-
-            fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv']);
+        return $parts === [] ? 'All orders (no filter)' : implode(', ', $parts).' — dates in Kuala Lumpur time';
     }
 
     /**

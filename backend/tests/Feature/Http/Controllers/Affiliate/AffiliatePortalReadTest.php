@@ -119,7 +119,9 @@ class AffiliatePortalReadTest extends TestCase
         }
 
         // the affiliate's own margin IS shown
-        $response->assertJsonPath('affiliate_profit', $order->affiliate_profit);
+        // ADR-108 2026-10-04 addendum: the earned margin — nothing was
+        // credited for this order, so null, not the expected column.
+        $response->assertJsonPath('affiliate_profit', null);
     }
 
     public function test_earnings_returns_balance_and_only_this_tenants_entries(): void

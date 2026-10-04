@@ -496,7 +496,8 @@ class OrderControllerTest extends TestCase
         $this->getJson('/api/orders/export')->assertUnauthorized();
     }
 
-    public function test_export_streams_a_csv_of_matching_orders(): void
+    /** ADR-108 2026-10-04 addendum — the export is a 2-sheet workbook of the filtered orders. */
+    public function test_export_downloads_a_workbook_of_matching_orders(): void
     {
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
         $this->order(['order_number' => 'KRS-EXPORT-ME', 'game_id' => $game->id, 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Delivered->value]);
@@ -506,10 +507,21 @@ class OrderControllerTest extends TestCase
         $response = $this->get('/api/orders/export?status=completed');
 
         $response->assertOk();
-        $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
-        $csv = $response->streamedContent();
-        $this->assertStringContainsString('KRS-EXPORT-ME', $csv);
-        $this->assertStringNotContainsString('KRS-EXCLUDED', $csv);
+        $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringEndsWith('.xlsx', (string) $response->headers->get('content-disposition'));
+
+        $path = tempnam(sys_get_temp_dir(), 'export-test-');
+        file_put_contents($path, file_get_contents($response->getFile()->getPathname()));
+        $zip = new \ZipArchive;
+        $zip->open($path);
+        $orders = (string) $zip->getFromName('xl/worksheets/sheet2.xml');
+        $summary = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+        unlink($path);
+
+        $this->assertStringContainsString('KRS-EXPORT-ME', $orders);
+        $this->assertStringNotContainsString('KRS-EXCLUDED', $orders);
+        $this->assertStringContainsString('tab: completed', $summary);
     }
 
     public function test_show_returns_full_order_detail(): void
