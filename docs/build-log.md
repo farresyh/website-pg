@@ -2403,3 +2403,22 @@ discarded uncommitted once the full check showed it was a patch.
   test token.
 - A partially applied tool command earlier left an uncommitted build-log
   entry; it was discarded with the superseded fix.
+
+## 2026-10-04 — Docs status sync (docs only)
+
+**Why.** A docs-vs-system audit (git `main..staging`, code, read-only prod
+checks) found status claims that had drifted.
+
+**Fixed.**
+- PRD §14: added the 2026-10-03 release (#346, server on `908f16b`) and #347
+  as staging-only; the smoke-test line now covers every release since 09-29.
+- Release markers: items 61/62 and the Combo row now say live via #346; the
+  Orders row, item 63 and the ADR-108 index say #347 is still on `staging`;
+  stale "on `staging`" claims fixed for ADR-081/082/084/086/113/116.
+- §15: Gemini key is set on prod; real logo uploaded (placeholder is only the
+  fallback); membership renewal reminder's "vendor unpicked" reason replaced.
+- §16: removed an orphaned fragment under item 55 (left from the closed
+  Envelope Ledger item); added items 64 (renewal reminder), 65 (ADR-104 PR-3
+  Reports), 66 (combo admin gaps), 67 (ADR-109 live verify), which were only
+  mentioned inside §15.
+- `AGENTS.md`: PHP 8.4 (composer, CI and prod all run 8.4).
