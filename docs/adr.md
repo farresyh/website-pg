@@ -37,7 +37,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-021** | Next-session priority re-sequencing — payment reconciliation before deployment infra |
 | **ADR-022** | Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international… |
 | **ADR-023** | Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules |
-| **ADR-024** | Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14; 2026-09-17 addendum: restore-only, no RM0.00 voucher minted for a full-cover order) |
+| **ADR-024** | Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14; 2026-09-17 addendum: restore-only, no RM0.00 voucher minted for a full-cover order; 2026-09-29 M-6 addendum: full-cover fails closed; 2026-10-04 addendum: a lost voucher or quota reservation fails the checkout closed on every path, replay reserves before returning a link) |
 | **ADR-025** | Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price (built… |
 | **ADR-026** | Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-cre… |
 | **ADR-027** | VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, memb… |
@@ -1069,6 +1069,37 @@ Decisions, grilled one at a time:
 ### Cross-reference (2026-10-04) — decision 7's restore is now proportional for a partial combo delivery
 
 `ADR-094`'s 2026-10-04 addendum (decisions 33-34) keeps decision 7's two-un-merged-vouchers rule but makes the restore of the paid-with voucher proportional to the undelivered share, via a new `voucher_redemptions.restored_amount`. A full restore (u = 1) is unchanged in effect. The old full `restore()` on a partial combo over-credited the delivered share of `voucher_discount`.
+
+### Addendum, 2026-10-04 — a lost voucher or quota reservation fails the checkout closed (pre-launch money audit #3, PRD §16 item 60)
+
+**Status:** Accepted. Grilled with the founder via `/mattpocock-skills:grilling` (Q1–Q15, including a stress-test round), plus the money-ADR code-trace pass. Supersedes the 2026-08-13 addendum's "accepted residual race" and M-6 decision 2 ("partial-cover keeps log-and-proceed").
+
+**Context.** The partial-cover path reserved the voucher (`redeem()`) and the member quota (`MembershipQuotaService::decrement()`) only after the CHIP link existed. A lost race was logged and the checkout went ahead. Pricing reads both balances unlocked (`VoucherService::preview()`, `OrderPricingResolver.php:165`), so one customer opening N tabs got N orders discounted by one voucher balance, or N member-priced orders against one quota. Example: a RM10 voucher, two RM20 orders: both pay RM10 + fee, the voucher drains once, RM10 of goods given away per extra tab. The 2026-08-13 addendum accepted this on two premises, both wrong:
+1. *"Only the same customer can race, so it is a narrow accident."* The owner of the voucher is exactly the person with a reason to race it, and can do so on purpose, repeatedly.
+2. *"Money has already moved, ADR-004 forbids clawing it back."* At reservation time only a payment *link* exists. The customer has paid nothing and has not even received the link, so refusing is free.
+
+The full-cover path (M-6) already failed closed on the voucher, but still decremented quota after marking the order Paid, with log-and-proceed. Production scale at decision time: 27 paid orders, 4 vouchers, 2 memberships, no race log line ever fired.
+
+**Code-trace pass.** Writers of `vouchers.remaining`: `issue`, `merge`, `redeem`, `restore`. Writers of `memberships.quota_remaining_sen`: `decrement`, `restore`, `MembershipFeeService` (subscribe/renew, absolute), `ResetMembershipCyclesCommand` (locked, absolute). `CheckoutService` is the only production caller of `redeem()` and `decrement()`. Pricing bases: Standard, Member and every Affiliate brand go through `CheckoutService`; Reseller wallet orders use neither instrument. Reports, Customer Analytics and the export read only Paid orders, so a failed-closed order never reaches a money total. Lock order (Order → Voucher → Membership) matches `OrderSettlementService` and the CHIP webhook.
+
+**Decisions.**
+1. **Keep decision 1's timing; fail closed on a lost race.** Reservation still runs after the CHIP link exists (no new seam, no new restore trigger for a gateway failure). If either reservation loses, whichever one succeeded is restored, the order is marked `Failed`, and checkout throws. The link never reaches the customer because `initiate()` only returns after reserving. Rejected: reserving before the gateway call, which needs a restore on gateway failure and a reconcile path for orders with `payment_ref = null` (`ReconcilePendingPaymentsCommand` only selects orders with one).
+2. **Both instruments, one rule.** Voucher and member quota, including a voucher that expired or was merged between preview and reserve.
+3. **Partial win restores the winner.** Voucher reserved but quota lost (or the reverse): restore the reserved one with the existing `restore()`, then fail.
+4. **Full-cover decrements quota before marking Paid** (extends M-6). Quota loss restores the voucher and fails the order the same way.
+5. **Reservation and the Failed write run in one transaction holding the Order row lock**, separate from the `payment_ref` transaction (the 2026-09-29 note stays true). `redeem()`/`decrement()` treat an existing row for the order as success even if it was restored, so the Order lock is what makes a concurrent replay see the final state.
+6. **The idempotent replay path reserves before handing out a link.** A replay of a `Failed` order is refused. A replay of a `Pending` order with a `payment_ref` reserves first (idempotent) and fails closed on loss. A `Paid` replay is unchanged. This also closes an older gap: a process dying after `payment_ref` committed but before reservation used to let the replay return a link with nothing reserved.
+7. **Distinct error.** `CheckoutAttemptClosedException` (a `CheckoutFailedException`) becomes a 422 with `code: checkout_closed`: the race message for a lost reservation, a generic "this checkout attempt has closed" for a replayed `Failed` order. Named for the attempt rather than the voucher (the grill's working name was `voucher_race`) because the replay case is not always a race.
+8. **Storefront on `checkout_closed`:** new idempotency key, applied voucher cleared, totals preview re-fetched, so the next click is a fresh, correctly priced checkout. A quota-only loss changes the price without changing any input the preview was keyed on, so the re-fetch must be forced. Other errors keep the same key, so the double-click/timeout protection is unchanged.
+9. **The orphaned CHIP purchase expires on its own** (`due_strict`, 30 minutes). Its expired webhook lands on an already-Failed order and `restore()` no-ops. No `cancelPayment()` on the gateway seam.
+10. **If that orphaned purchase is somehow paid** (the customer never saw its link; CHIP emailing it is the only conceivable route), the existing Paid-after-Failed branch puts it in NeedsReview. The customer paid a discounted price for which no voucher or quota was spent. The admin must **Issue Voucher** for the cash paid and must **not** Resend or Mark Delivered. Guidance only; add a code guard if it ever happens once.
+11. **Admin voucher pill and card read `voucher_redemptions`, not `orders.voucher_id`.** A failed-closed order keeps its `voucher_id` and `voucher_discount` (ORD-9 snapshot, audit trail of which voucher was tried) but shows no "Voucher Paid" pill or "Voucher Used to Pay" card, since nothing was spent. Rejected: clearing the columns, which would break `final_amount`'s arithmetic and the snapshot.
+
+**Out of scope.** `decrement()` does not check that the membership is still active; a membership lapsing in the seconds between pricing and reserve still gets debited. Pre-existing, no loss beyond one member price.
+
+**Consequence to track.**
+- A failed-closed order is a visible `Failed` row with `voucher_id` or `membership_id` set and no matching reservation. A burst of these from one customer is an abuse signal (logged at warning: "Checkout reservation lost — order failed closed").
+- Item 63's unconditional CHIP Paid write is a separate fix; this addendum does not depend on it, because Paid-after-Failed already routes to NeedsReview.
 
 ---
 
