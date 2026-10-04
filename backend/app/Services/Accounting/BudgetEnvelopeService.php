@@ -4,6 +4,8 @@ namespace App\Services\Accounting;
 
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
+use App\Services\Report\ReportService;
+use Carbon\CarbonInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -43,7 +45,7 @@ final class BudgetEnvelopeService
         string $description,
         ?UploadedFile $receipt,
         int $adminUserId,
-        ?\Carbon\CarbonInterface $transactionDate = null,
+        ?CarbonInterface $transactionDate = null,
         ?PaidFrom $paidFrom = null,
         ?string $referenceNo = null,
     ): BudgetEnvelopeEntry {
@@ -56,7 +58,9 @@ final class BudgetEnvelopeService
                 'budget_envelope_id' => $envelope->id,
                 'category' => $category->value,
                 'amount_sen' => $amountSen,
-                'transaction_date' => ($transactionDate ?? now())->toDateString(),
+                // A KL calendar date — `now()` alone is UTC and dated an
+                // entry typed before 08:00 KL to the previous day.
+                'transaction_date' => ($transactionDate ?? now(ReportService::TIMEZONE))->toDateString(),
                 'description' => $description,
                 'paid_from' => $paidFrom?->value,
                 'reference_no' => $referenceNo,
@@ -91,6 +95,9 @@ final class BudgetEnvelopeService
                 'budget_envelope_id' => $locked->budget_envelope_id,
                 'category' => BudgetEnvelopeEntryCategory::Adjustment->value,
                 'amount_sen' => -$locked->amount_sen,
+                // Dated with the entry it cancels, so any date filter nets
+                // the pair to zero — never a reversal outside the period.
+                'transaction_date' => ($locked->transaction_date ?? $locked->created_at->setTimezone(ReportService::TIMEZONE))->toDateString(),
                 'description' => "Void: {$reason} (reversing entry #{$locked->id})",
                 'reverses_entry_id' => $locked->id,
                 'void_reason' => $reason,

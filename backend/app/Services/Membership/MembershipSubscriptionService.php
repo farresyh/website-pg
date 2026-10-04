@@ -179,7 +179,7 @@ final class MembershipSubscriptionService
         if (! $payment->success) {
             // S3 — no attempt is ever left `pending` with no CHIP
             // purchase behind it.
-            $attempt->update(['status' => MembershipCheckoutAttemptStatus::Failed->value]);
+            $attempt->leavePending(MembershipCheckoutAttemptStatus::Failed);
 
             Log::warning('Membership subscription gateway call failed', [
                 'subscription_number' => $attempt->subscription_number,

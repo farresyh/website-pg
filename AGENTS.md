@@ -69,6 +69,14 @@ banner). This file covers the whole repo.
      Affiliate tier, ResellerWallet), not just Standard.
    ADR-118 passed four grill rounds plus a stress test and still had four
    silent-wrong-money gaps that only this pass found (see its review addendum).
+   **The same trace applies to a money bug fix with no ADR.** An audit
+   finding names one line; before proposing the fix, grep every writer and
+   reader of the field or state it touches, and fix where they all route
+   through (one shared seam plus an invariant test), not just the named
+   line. On 2026-10-04, four of six item-63 fixes were one-site patches
+   until this was done: the CHIP Paid logic had a drifted copy in
+   reconciliation, and the UTC-day bug sat in six places, not the three
+   named (build-log, 2026-10-04).
    Before "fix now or grill first?", pull real production scale (row counts,
    usage) rather than answering from code alone. After the grill, give the
    founder a plain-language recap of the whole plan before writing any code.

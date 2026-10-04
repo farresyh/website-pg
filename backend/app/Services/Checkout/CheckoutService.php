@@ -111,6 +111,7 @@ final class CheckoutService
             $order = $this->orderFactory->create(new OrderDraft(
                 pricing: $pricing,
                 idempotencyKey: $request->idempotencyKey,
+                idempotencyPayloadHash: $request->idempotencyPayloadHash,
                 customerEmail: $customerEmail,
                 customerName: $request->customerName,
                 customerPhone: $request->customerPhone,

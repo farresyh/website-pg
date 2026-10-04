@@ -2465,3 +2465,46 @@ money-ADR code-trace pass; full design in the ADR-024 2026-10-04 addendum.
   update instead.
 - Remounting the Review Modal unticks T&C, so the customer re-confirms the
   fresh attempt. Intended.
+
+## 2026-10-04 — Item 63 no-grill batch: payment-outcome seam, replay hash, KL days, labels
+
+**Why.** Pre-launch audit P2s (PRD §16 item 63). Before building, each
+proposed fix was re-checked for root cause; four of six first proposals
+were one-site patches and were widened.
+
+**Shipped.**
+- **Payment outcomes (bullet 1).** `OrderPaymentOutcomeService` is the one
+  locked seam the CHIP webhook and `PaymentReconciliationService` share; the
+  reconcile copy had drifted since 2026-09-29 (no M-4 / Paid-after-Failed).
+  Non-terminal CHIP statuses are no longer written (they could move a Failed
+  order back to Pending). `Order::setPaymentStatusUnlessPaid()` removed.
+  Attempts: all 8 Failed/Expired writers use `LeavesPendingOnce`. ADR-110
+  2026-10-04 addendum.
+- **Replay hash (bullet 4).** Storefront replays must match a payload hash of
+  game, package, channel, voucher, player and server (the Reseller API rule).
+  Column renamed `reseller_api_idempotency_payload_hash` →
+  `idempotency_payload_hash`. The storefront mints a new key on voucher change.
+- **KL days (bullet 7).** Six accounting filters used UTC days; the PRD named
+  three. All use `ReportService::dateRangeFromDates()` (exclusive upper bound).
+  `settled_on` (a DATE) untouched. Budget Envelope filters on
+  `transaction_date` (founder). Found on the way: a void's reversal had no
+  `transaction_date` (a date filter dropped it; it now carries the cancelled
+  entry's date), and the default date, `before_or_equal:today` and the form
+  max were UTC "today".
+- **Labels.** `PricingBasis::label()` for the Reports export (wallet/affiliate
+  were "Standard"); combo cost basis counts real legs (none → `estimated`).
+
+**Verified.** Backend 2516/2516; concurrency 28/28 on MySQL (incl. the new
+Paid-vs-Failed race, both arrival orders seen, and the column rename);
+storefront and admin build; e2e 5/5. The KL register test and the reservation
+tests fail on the old code.
+
+**Gotchas.**
+- `date`-cast columns hold `Y-m-d 00:00:00` in sqlite, so a string `<=` on a
+  bare date fails there; `whereDate()` is portable.
+- An existing combo test asserted `mixed` for a combo with no real leg cost —
+  it encoded the bug.
+- Why bullet 1 was missed before: each 2026-09-29 fix was scoped to its
+  finding, and the reconcile copy's "mirrors exactly" comment hid the drift.
+  Nothing in prod was harmed (no Paid order with a restored voucher/quota
+  other than a legitimate Issue Voucher).

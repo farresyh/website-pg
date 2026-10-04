@@ -28,7 +28,7 @@ class Order extends Model
     protected $fillable = [
         'order_number',
         'checkout_idempotency_key',
-        'reseller_api_idempotency_payload_hash',
+        'idempotency_payload_hash',
         'reference_number',
         'is_test',
         'customer_email',
@@ -225,10 +225,12 @@ class Order extends Model
         $revenue = $partial ? $this->selling_price - $this->compensationAmountSen() : $this->selling_price;
         $catalogTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
         $realTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen ?? $leg->componentPackage?->cost_price ?? 0);
-        $allLegsReal = $legs->every(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null);
+        $realLegs = $legs->filter(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null)->count();
 
-        if ($this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
-            return ['cost' => $realTotal, 'basis' => $allLegsReal ? 'real' : 'mixed'];
+        // Item 63: classified by how many legs carry a real cost. With
+        // none, the "real" total IS the catalog total — 'estimated'.
+        if ($realLegs > 0 && $this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
+            return ['cost' => $realTotal, 'basis' => $realLegs === $legs->count() ? 'real' : 'mixed'];
         }
 
         return ['cost' => $catalogTotal, 'basis' => 'estimated'];
@@ -381,32 +383,6 @@ class Order extends Model
     public function isAlreadyCompensated(): bool
     {
         return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet() || $this->isVoucherRestored();
-    }
-
-    /**
-     * 2026-09-29 audit (Wave 5 Low): writes a non-Paid payment_status
-     * (Pending/Failed) only if the row isn't already Paid, in one atomic
-     * UPDATE. The CHIP webhook's non-Paid branch and reconcile's
-     * markFailed() both read the order, then wrote — a Paid webhook
-     * committing in between got overwritten back to Failed, and the
-     * voucher/quota give-back ran on a paid order. Returns false when the
-     * row was already Paid, so the caller skips its give-back.
-     */
-    public function setPaymentStatusUnlessPaid(PaymentStatus $status): bool
-    {
-        $updated = static::query()
-            ->whereKey($this->id)
-            ->where('payment_status', '!=', PaymentStatus::Paid->value)
-            ->update(['payment_status' => $status->value]);
-
-        if ($updated === 0) {
-            return false;
-        }
-
-        $this->payment_status = $status;
-        $this->syncOriginalAttribute('payment_status');
-
-        return true;
     }
 
     /**

@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { todayInKL } from "@/lib/date-range";
 import type { Game } from "@/lib/games";
 import type { Voucher } from "@/lib/vouchers";
 
@@ -288,7 +289,7 @@ export async function exportOrders(token: string, params: OrderListFilters = {})
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `orders-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  link.download = `orders-${todayInKL()}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();

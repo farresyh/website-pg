@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\Accounting\TransactionRegisterService;
+use App\Services\Report\ReportService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,19 +23,19 @@ class TransactionRegisterController extends Controller
     /** `type` filters to one row kind; `page`/`per_page` back real backend pagination (2026-09-28 addendum — was unpaginated before). */
     public function index(Request $request): JsonResponse
     {
-        [$from, $to] = $this->rangeFromRequest($request);
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
         $type = $request->filled('type') ? $request->query('type') : null;
         $page = (int) $request->query('page', 1);
         $perPage = (int) $request->query('per_page', 20);
 
-        return response()->json($this->register->paginate($from, $to, $type, $page, $perPage));
+        return response()->json($this->register->paginate($from, $toExclusive, $type, $page, $perPage));
     }
 
     public function export(Request $request): StreamedResponse
     {
-        [$from, $to] = $this->rangeFromRequest($request);
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
         $type = $request->filled('type') ? $request->query('type') : null;
-        $rows = $this->register->rows($from, $to, $type);
+        $rows = $this->register->rows($from, $toExclusive, $type);
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
@@ -91,9 +92,17 @@ class TransactionRegisterController extends Controller
      */
     private function rangeFromRequest(Request $request): array
     {
-        $from = $request->filled('from') ? CarbonImmutable::parse($request->query('from'))->startOfDay() : null;
-        $to = $request->filled('to') ? CarbonImmutable::parse($request->query('to'))->endOfDay() : null;
+        return app(ReportService::class)->dateRangeFromDates(self::klDate($request->query('from')), self::klDate($request->query('to')));
+    }
 
-        return [$from, $to];
+    /**
+     * Item 63 (2026-10-04): `from`/`to` are KL calendar dates — the same
+     * day bounds Reports and Orders use (`ReportService::dateRangeFromDates()`,
+     * exclusive upper bound). They used to be parsed as UTC days, cutting
+     * at 08:00 KL. A malformed value means "no bound".
+     */
+    private static function klDate(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : null;
     }
 }
