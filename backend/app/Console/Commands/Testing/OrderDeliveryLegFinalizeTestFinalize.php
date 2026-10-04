@@ -25,9 +25,12 @@ use Illuminate\Console\Command;
  * race for real, proving the leg's own lockForUpdate() serializes the
  * NEW `resend_unsafe_with_same_reference` write exactly like it already
  * serializes the leg's `status` write.
+ *
+ * `success` (ADR-102 2026-10-05 addendum, decision 7): two different legs
+ * of one order finalized at once, proving leg + roll-up commit together.
  */
-#[Signature('app:order-delivery-leg-finalize-test-finalize {legId} {resultFile}')]
-#[Description('Test-only: attempt to finalize a single combo OrderDeliveryLeg as needs_review and write the outcome to a result file.')]
+#[Signature('app:order-delivery-leg-finalize-test-finalize {legId} {resultFile} {outcome=needs_review}')]
+#[Description('Test-only: attempt to finalize a single combo OrderDeliveryLeg (needs_review or success) and write the outcome to a result file.')]
 class OrderDeliveryLegFinalizeTestFinalize extends Command
 {
     public function handle(): int
@@ -46,14 +49,16 @@ class OrderDeliveryLegFinalizeTestFinalize extends Command
         );
 
         try {
-            $service->finalizePendingDeliveryLeg(
-                $leg,
-                SupplierOutcome::Failure,
-                null,
-                ['error_message' => 'duplicate_reference'],
-                resendUnsafeWithSameReference: true,
-                outcomeConfirmedFailed: false,
-            );
+            $this->argument('outcome') === 'success'
+                ? $service->finalizePendingDeliveryLeg($leg, SupplierOutcome::Success, 'SN-RACE-'.$leg->leg_number)
+                : $service->finalizePendingDeliveryLeg(
+                    $leg,
+                    SupplierOutcome::Failure,
+                    null,
+                    ['error_message' => 'duplicate_reference'],
+                    resendUnsafeWithSameReference: true,
+                    outcomeConfirmedFailed: false,
+                );
             file_put_contents($resultFile, 'success');
         } catch (InvalidOrderTransitionException $e) {
             file_put_contents($resultFile, 'failed:'.$e->getMessage());

@@ -12,6 +12,7 @@ use App\Services\Currency\CurrencyRateUnavailableException;
 use App\Services\Ledger\LedgerService;
 use App\Services\Notification\CustomerNotificationService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -826,15 +827,17 @@ final class OrderFulfillmentService
             // DeliveryStatus below, not a bare string).
             $legs = OrderDeliveryLeg::query()->where('order_id', $locked->id)->with('componentPackage:id,cost_price')->get();
             $statuses = $legs->pluck('status');
-            $enteringFromPending = $locked->delivery_status === DeliveryStatus::Pending;
+            // ADR-102 2026-10-05 addendum, decision 7: NeedsReview is the
+            // other "awaiting the supplier" state a late leg result can
+            // arrive in, so it exits the same way Pending does.
+            $enteringFromSupplierWait = in_array($locked->delivery_status, [DeliveryStatus::Pending, DeliveryStatus::NeedsReview], true);
 
             if ($statuses->contains(DeliveryStatus::Pending)) {
                 // Still incomplete. Only Processing→Pending is a real
-                // transition; Pending re-evaluated as still-Pending
-                // (another leg resolved but at least one remains) is a
-                // deliberate no-op — markPending() only accepts
-                // Processing as its source.
-                if (! $enteringFromPending) {
+                // transition; Pending (or NeedsReview) re-evaluated with
+                // a leg still outstanding is a deliberate no-op —
+                // markPending() only accepts Processing as its source.
+                if (! $enteringFromSupplierWait) {
                     $locked->update(['delivery_status' => $this->orderStatus->markPending($locked->delivery_status)->value]);
                 }
 
@@ -842,13 +845,17 @@ final class OrderFulfillmentService
             }
 
             if ($statuses->contains(DeliveryStatus::NeedsReview)) {
+                if ($locked->delivery_status === DeliveryStatus::NeedsReview) {
+                    return $locked->fresh();
+                }
+
                 $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
 
                 return $locked->fresh();
             }
 
             if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Delivered)) {
-                $newStatus = $enteringFromPending
+                $newStatus = $enteringFromSupplierWait
                     ? $this->orderStatus->finalizePendingSuccess($locked->delivery_status)
                     : $this->orderStatus->markDelivered($locked->delivery_status);
 
@@ -904,7 +911,7 @@ final class OrderFulfillmentService
             }
 
             if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Failed)) {
-                $newStatus = $enteringFromPending
+                $newStatus = $enteringFromSupplierWait
                     ? $this->orderStatus->finalizePendingFailure($locked->delivery_status)
                     : $this->orderStatus->markDeliveryFailed($locked->delivery_status);
 
@@ -951,10 +958,24 @@ final class OrderFulfillmentService
         $order = $leg->order;
         $drawdownPrice = null;
 
-        DB::transaction(function () use ($leg, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice) {
+        // ADR-102 2026-10-05 addendum, decision 7: the leg and the order
+        // roll-up commit together, so a leg is never saved Delivered with
+        // its order left behind. The order is locked first — the same
+        // order-then-legs sequence confirmComboLegsFailed() uses.
+        $resolved = DB::transaction(function () use ($order, $leg, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice) {
+            Order::query()->lockForUpdate()->findOrFail($order->id);
             $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
             Log::withContext(['order_delivery_leg_id' => $lockedLeg->id, 'leg_number' => $lockedLeg->leg_number]);
+
+            // Decision 3, leg form: no evidence column on a leg, so log only.
+            if (self::contradictsFinalStatus($lockedLeg->status, $outcome)) {
+                Log::error('Supplier result contradicts the combo leg\'s final status — status unchanged', [
+                    'leg_status' => $lockedLeg->status->value,
+                    'outcome' => $outcome->value,
+                    'supplier_response' => $supplierResponse,
+                ]);
+            }
 
             if ($outcome === SupplierOutcome::Success) {
                 $deliveredStatus = $this->orderStatus->finalizePendingSuccess($lockedLeg->status);
@@ -982,7 +1003,7 @@ final class OrderFulfillmentService
                     $drawdownPrice = (float) $supplierResponse['price'];
                 }
 
-                return;
+                return $this->resolveComboOutcome($order->fresh());
             }
 
             // ADR-098 / ADR-102 decision 4 — same split-flag routing as
@@ -1007,13 +1028,15 @@ final class OrderFulfillmentService
             $this->resolvePendingLegAttempt($lockedLeg->id, 'failed', $supplierResponse);
 
             Log::warning($requiresManualReview ? 'Combo leg finalized as needs-review' : 'Combo leg finalized as failed', ['supplier_response' => $supplierResponse]);
+
+            return $this->resolveComboOutcome($order->fresh());
         });
 
         if ($drawdownPrice !== null) {
             $this->supplierFunding->recordOrderDrawdown($order, $drawdownPrice, $leg->fresh());
         }
 
-        return $this->resolveComboOutcome($order->fresh());
+        return $resolved;
     }
 
     /**
@@ -1040,11 +1063,30 @@ final class OrderFulfillmentService
         }
 
         $drawdownPrice = null;
+        $contradicted = false;
 
-        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice) {
+        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice, &$contradicted) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             Log::withContext(['reference_number' => $locked->reference_number]);
+
+            // ADR-102 2026-10-05 addendum, decision 3: a supplier answer
+            // that contradicts a terminal status is kept as evidence and
+            // logged, never applied. Committed before the caller sees the
+            // usual "already finalized" exception below.
+            if (self::contradictsFinalStatus($locked->delivery_status, $outcome)) {
+                $locked->update(['supplier_response' => array_merge(
+                    is_array($locked->supplier_response) ? $locked->supplier_response : [],
+                    ['late_supplier_result' => is_array($supplierResponse) ? $supplierResponse : ['outcome' => $outcome->value]],
+                )]);
+                Log::error('Supplier result contradicts the order\'s final delivery status — kept as evidence, status unchanged', [
+                    'delivery_status' => $locked->delivery_status->value,
+                    'outcome' => $outcome->value,
+                ]);
+                $contradicted = true;
+
+                return $locked;
+            }
 
             if ($outcome === SupplierOutcome::Success) {
                 $deliveredStatus = $this->orderStatus->finalizePendingSuccess($locked->delivery_status);
@@ -1138,11 +1180,23 @@ final class OrderFulfillmentService
             return $locked->fresh();
         });
 
+        if ($contradicted) {
+            throw new InvalidOrderTransitionException("Order #{$order->id} is already final ({$finalized->delivery_status->value}); a contradicting supplier result was recorded");
+        }
+
         if ($drawdownPrice !== null) {
             $this->supplierFunding->recordOrderDrawdown($finalized, $drawdownPrice);
         }
 
         return $finalized;
+    }
+
+    /** ADR-102 2026-10-05 addendum, decision 3 — Sukses after a Gagal-backed status, or Gagal after Delivered. */
+    private static function contradictsFinalStatus(DeliveryStatus $status, SupplierOutcome $outcome): bool
+    {
+        return $outcome === SupplierOutcome::Success
+            ? in_array($status, [DeliveryStatus::Failed, DeliveryStatus::PartiallyDelivered], true)
+            : $status === DeliveryStatus::Delivered;
     }
 
     /**
@@ -1390,9 +1444,9 @@ final class OrderFulfillmentService
      * error_message (the actual evidence this failed) stays, with the
      * admin's own confirmation appended alongside it, not replacing it.
      */
-    public function confirmDeliveryFailed(Order $order, string $note, string $confirmedBy): Order
+    public function confirmDeliveryFailed(Order $order, string $note, string $confirmedBy, array $evidence = []): Order
     {
-        return DB::transaction(function () use ($order, $note, $confirmedBy) {
+        return DB::transaction(function () use ($order, $note, $confirmedBy, $evidence) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             // ADR-094 decision 31 — on a combo, the admin is confirming the
@@ -1409,11 +1463,7 @@ final class OrderFulfillmentService
             $locked->update([
                 'supplier_response' => array_merge(
                     is_array($locked->supplier_response) ? $locked->supplier_response : [],
-                    [
-                        'confirmed_failed_by' => $confirmedBy,
-                        'note' => $note,
-                        'confirmed_at' => now()->toISOString(),
-                    ],
+                    self::adminConfirmation($note, $confirmedBy) + $evidence,
                 ),
                 'delivery_status' => $failedStatus->value,
             ]);
@@ -1425,6 +1475,32 @@ final class OrderFulfillmentService
 
             return $locked->fresh();
         });
+    }
+
+    /**
+     * ADR-102 2026-10-05 addendum, decision 4: Confirm Failed asked the
+     * supplier and its answer already settled the order (Delivered,
+     * Failed or PartiallyDelivered). Keeps the admin's note beside that
+     * answer; changes no status.
+     */
+    public function recordAdminConfirmation(Order $order, string $note, string $confirmedBy): Order
+    {
+        return DB::transaction(function () use ($order, $note, $confirmedBy) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            $locked->update(['supplier_response' => array_merge(
+                is_array($locked->supplier_response) ? $locked->supplier_response : [],
+                self::adminConfirmation($note, $confirmedBy),
+            )]);
+
+            return $locked->fresh();
+        });
+    }
+
+    /** @return array{confirmed_failed_by: string, note: string, confirmed_at: string} */
+    private static function adminConfirmation(string $note, string $confirmedBy): array
+    {
+        return ['confirmed_failed_by' => $confirmedBy, 'note' => $note, 'confirmed_at' => now()->toISOString()];
     }
 
     /** Caller holds the order lock. Returns the order's new status. */
