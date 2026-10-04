@@ -46,7 +46,9 @@ export interface OrderListItem {
   game: { name: string; slug: string } | null;
   package_name: string | null;
   final_amount: number;
-  affiliate_profit?: number;
+  // What the affiliate was actually credited (ADR-108 2026-10-04
+  // addendum) — null when the order earned nothing (failed, unpaid…).
+  affiliate_profit?: number | null;
   payment_status: PaymentStatus;
   delivery_status: DeliveryStatus;
   /** Wallet-order compensation is separate from delivery status. */

@@ -135,7 +135,7 @@ export default function OrderDetailPage() {
                     />
                     <Row
                       label="Your margin"
-                      value={formatRm(order.affiliate_profit ?? 0)}
+                      value={order.affiliate_profit == null ? "—" : formatRm(order.affiliate_profit)}
                     />
                   </>
                 )}

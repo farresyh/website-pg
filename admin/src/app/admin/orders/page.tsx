@@ -883,7 +883,7 @@ function OrdersPageInner() {
             Refresh
           </Button>
           <Button size="small" variant="outlined" onClick={handleExport} disabled={exporting}>
-            {exporting ? "Exporting…" : "Export CSV"}
+            {exporting ? "Exporting…" : "Export Excel"}
           </Button>
         </div>
       </div>

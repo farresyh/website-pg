@@ -342,7 +342,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
             <div
               className={`flex justify-between font-medium ${impact.newPlatformProfit < order.platform_profit ? "text-error-600 dark:text-error-400" : impact.newPlatformProfit > order.platform_profit ? "text-success-600 dark:text-success-400" : "text-ink-muted"}`}
             >
-              <span>Change vs current ({formatRm(order.platform_profit)})</span>
+              <span>Change vs expected ({formatRm(order.platform_profit)})</span>
               <span>
                 {impact.newPlatformProfit - order.platform_profit >= 0 ? "+" : ""}
                 {formatRm(impact.newPlatformProfit - order.platform_profit)}

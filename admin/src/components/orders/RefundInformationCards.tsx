@@ -229,7 +229,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
       {order.profit_reconciled_flagged && (
         <WarningCard icon={ExclamationTriangle} title="Profit Adjusted">
           This order delivered, but its reported platform profit reconciled to{" "}
-          <span className="font-mono font-medium">{formatRm(order.platform_profit)}</span> — the real supplier cost at
+          <span className="font-mono font-medium">{formatRm(order.earned_profit?.platform ?? order.platform_profit)}</span> — the real supplier cost at
           delivery differed materially from the estimate (or went negative). The platform absorbed the difference;
           delivery was never blocked over it.
         </WarningCard>
