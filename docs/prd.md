@@ -820,31 +820,29 @@ production before building on it.
 ## Hardening (founder `.env` / infra)
 
 63. **2026-10-03 pre-launch money audit — remaining P2s** (none moved money in
-    production; 27 paid orders at the time). Each is small and independent:
-    - CHIP webhook Paid branch writes unconditionally
-      (`ChipWebhookController.php:183`) — use a `where payment_status = pending`
-      update; same for a wallet top-up's Failed write (`:262`), which could let a
-      later redelivered Paid credit twice.
-    - Member order resent to a dearer package records profit from a recomputed
-      member price and skips the loss prompt (`OrderResendService.php:146,207`).
+    production; 27 paid orders at the time). The no-grill batch is built
+    (2026-10-04, on `staging`, see `docs/build-log.md`): bullet 1 (one locked
+    payment-outcome seam for the webhook and reconciliation; attempts leave
+    pending once), 4 (storefront replay payload hash), 7 (KL days in every
+    accounting filter), the Reports export label, and the combo cost label.
+    Bullet 1's wallet risk was overstated: the ledger dedupe index already
+    blocked a double credit; the real bug was a Paid top-up shown as Failed.
+    **Still open — each needs a short grill and an ADR addendum:**
     - Digiflazz "Sukses" after an order aged Pending→NeedsReview is dropped
-      (`DigiflazzWebhookController`); Confirm Failed + voucher then over-compensates.
-    - Checkout idempotency replay with a different `channel_code` keeps the first
-      channel's fee (no payload hash, unlike the Reseller API).
-    - Bot: several `.order` lines in one message place only the first, silently.
-    - Reseller API catalogue cached 60s, no `max_price_sen` ceiling on an order.
-    - UTC day boundaries: Transaction Register / Supplier Transfer date filters,
-      `SettlementReconciliationService::paidButNotSettled()`. (Admin Orders
-      filters and "today" fixed 2026-10-04, ADR-108 addendum, #347 on
-      `staging`.)
-    - Reports export labels wallet/affiliate orders "Standard"; LLM views sum
-      gross `final_amount` (no wallet-refund netting) and the prompt's margin
-      formula is wrong for affiliate/voucher/real-cost orders.
-    - Monthly summary has no affiliate tier-fee line. (Affiliate portal margin
-      and the admin export's profit columns fixed 2026-10-04 — earned profit from
-      the ledger, ADR-108 addendum, #347 on `staging`.)
-    - `Order::comboCostReconciliation()` labels a combo with no real leg cost
-      `mixed` instead of `estimated` (cosmetic).
+      (`DigiflazzWebhookController`); Confirm Failed + voucher then
+      over-compensates (goods and a voucher). ADR-102.
+    - Member order resent to a dearer package records profit from a recomputed
+      member price and skips the loss prompt (`OrderResendService`). Reverses
+      ADR-105 decision 3.
+    - Reseller API catalogue cached 60s with no `max_price_sen` ceiling on an
+      order (charged at the live price). API contract change, ADR-074.
+    - Bot: several `.order` lines in one message place only the first,
+      silently. ADR-075.
+    - LLM report views sum gross `final_amount` (no wallet-refund netting) and
+      the prompt's margin formula is wrong for affiliate/voucher/real-cost
+      orders. ADR-087, reuse ADR-108's earned-profit definition.
+    - Monthly summary has no affiliate tier-fee line (accounting treatment;
+      check with the external reviewer). ADR-083.
 
 9. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
    are later phases; DNSSEC (founder's call). ~~`.env.example` gaps~~ — closed 2026-10-02:

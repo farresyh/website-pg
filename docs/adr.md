@@ -6713,6 +6713,17 @@ Grilled inline (not a separate `/mattpocock-skills:grilling` session — one dir
 - `resolveMatch()`'s `Order` lookup now excludes `is_test = true` — a sandbox order's `payment_ref` must never match a real CHIP settlement transaction (sandbox never calls the real gateway, so this is a defensive-only guard, not a fix for an observed bug).
 - 6 new/revised backend tests in `SettlementReconciliationServiceTest` (matched-only totals excluding an out-of-file order, sandbox-order exclusion, gross-mismatch → variance, fee-only-difference stays matched, pending-when-nothing-recorded, unmatched → variance) plus updated `MonthlyAccountingSummaryServiceTest`/`PaymentSettlementControllerTest` coverage for the renamed columns and the now-read-only `status`.
 
+### Addendum, 2026-10-04 — one locked seam for every CHIP answer about an order (pre-launch audit item 63)
+
+No design decision changes; this records a consolidation and one behaviour change.
+- `OrderPaymentOutcomeService` (`applyPaid` / `applyFailed`) is the only place a gateway's terminal answer about an order is applied. The CHIP webhook and `PaymentReconciliationService` (scheduled sweep and "Check from Gateway") both call it. Before, each carried a copy, read the status unlocked, then wrote; the M-4 and Paid-after-Failed → NeedsReview branches (2026-09-29) were only ever added to the webhook copy.
+- Every decision runs under the Order row lock and re-reads the status there. Lock order Order → voucher → membership.
+- **Behaviour change:** a non-terminal status (`created`, `viewed` and other unmapped CHIP states → `Pending`) is acknowledged and never written. It used to be able to move a Failed order, whose voucher and quota were already given back, back to Pending, so a later Paid skipped NeedsReview and fulfilled at the discount.
+- Wallet top-up and membership attempts: every Failed/Expired write (webhook, both reconcile commands, gateway-call failure) goes through `LeavesPendingOnce::leavePending()`, a conditional update, so a stale answer cannot overwrite Paid.
+- Proved by `OrderPaymentOutcomeServiceTest` (the state × answer matrix) and `OrderPaymentOutcomeConcurrencyTest` (Paid vs Failed in two processes).
+
+---
+
 ## ADR-111: Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`, 2 rounds, 8 questions) 2026-09-21/22, sparked by a real production incident investigated live via SSH. **Built 2026-09-22, decisions 1-9 exactly as decided below, no design changes made mid-build. 🟢 LIVE PROD, flag enabled, verified against a real delivered order same day.** Feature-flagged (`config('services.real_cost_reconciliation.enabled')`) — capture (decision 2) runs unconditionally on every delivery; only whether it's USED to recompute `platform_profit` (decision 3) is gated. Founder set `REAL_COST_RECONCILIATION_ENABLED=true` in Forge before the `staging`→`main` release (PR #266); confirmed live via SSH against real order `PG-4VPQQFOLJQQ1` (Digiflazz, delivered 2026-09-22 06:45:53 UTC) — `real_cost_price_sen=360`, `cost_basis=real`, `platform_profit=36` exactly matches `selling_price(396) − real_cost(360) − affiliate_profit(0)`.
