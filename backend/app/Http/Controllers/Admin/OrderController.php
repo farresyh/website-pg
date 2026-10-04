@@ -85,7 +85,11 @@ class OrderController extends Controller
             // relation exists for it — see the batched query there).
             ->withExists([
                 'voucher as has_compensation_voucher',
-                'paidWithVoucher as has_used_voucher',
+                // ADR-024 2026-10-04 addendum decision 11: "paid with a
+                // voucher" means a redemption exists, not just voucher_id —
+                // a checkout that failed closed keeps its voucher_id
+                // snapshot but spent nothing.
+                'voucherRedemption as has_used_voucher',
                 // ADR-024 addendum (2026-09-17, restore-only) — the 4th
                 // badge, mirroring show()'s own has_voucher_restored.
                 'voucherRedemption as has_voucher_restored' => fn ($query) => $query->where('status', 'restored'),
@@ -817,7 +821,7 @@ class OrderController extends Controller
             // extra query) so OrderDetail (which extends the list's
             // shape) never has to special-case a field only present on
             // one of the two endpoints.
-            'has_used_voucher' => $order->paidWithVoucher !== null,
+            'has_used_voucher' => $order->voucherRedemption !== null,
             'has_compensation_voucher' => $order->voucher !== null,
             'has_wallet_refund' => $entry !== null,
             // ADR-024 addendum (2026-09-17, restore-only) — the 4th

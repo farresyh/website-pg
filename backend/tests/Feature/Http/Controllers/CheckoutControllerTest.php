@@ -27,10 +27,10 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -907,9 +907,51 @@ class CheckoutControllerTest extends TestCase
 
         $replay = $this->postJson('/api/checkout', $payload);
 
-        $replay->assertOk();
-        $replay->assertJsonPath('payment_actions', []);
+        // ADR-024 2026-10-04 addendum decision 6: a Failed order is closed.
+        $replay->assertUnprocessable();
+        $replay->assertJsonPath('code', 'checkout_closed');
         $this->assertNull($order->fresh()->payment_ref);
+    }
+
+    /**
+     * ADR-024 2026-10-04 addendum: a concurrent order drains the voucher
+     * after the unlocked preview. The customer gets a coded 422 and never
+     * the payment link; the order stays visible as Failed.
+     */
+    public function test_a_checkout_that_loses_the_voucher_race_returns_checkout_closed(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage(); // selling_price = 500
+        $voucher = $this->voucher(['remaining' => 200]);
+        Order::created(fn () => Voucher::query()->whereKey($voucher->id)->update(['remaining' => 0, 'status' => 'exhausted']));
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['voucher_code' => $voucher->code]));
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('code', 'checkout_closed');
+        $response->assertJsonMissingPath('payment_actions');
+        $this->assertSame('failed', Order::query()->firstOrFail()->payment_status->value);
+        $this->assertSame(0, VoucherRedemption::query()->count());
+    }
+
+    /**
+     * Decision 6: replaying the same idempotency key after the race was
+     * lost must not hand out the existing link either.
+     */
+    public function test_a_replayed_failed_checkout_with_a_link_returns_checkout_closed(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package);
+
+        $this->postJson('/api/checkout', $payload)->assertCreated();
+        Order::query()->firstOrFail()->update(['payment_status' => 'failed']);
+
+        $replay = $this->postJson('/api/checkout', $payload);
+
+        $replay->assertUnprocessable();
+        $replay->assertJsonPath('code', 'checkout_closed');
+        $replay->assertJsonMissingPath('payment_actions');
     }
 
     /**

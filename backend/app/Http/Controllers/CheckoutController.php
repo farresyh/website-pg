@@ -12,6 +12,7 @@ use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
+use App\Services\Checkout\CheckoutAttemptClosedException;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Checkout\CheckoutRequest;
@@ -182,6 +183,8 @@ class CheckoutController extends Controller
             $winner = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->firstOrFail();
 
             return $this->respondForExistingOrder($winner, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+        } catch (CheckoutAttemptClosedException $e) {
+            return $this->checkoutClosedResponse($e);
         } catch (CheckoutFailedException $e) {
             // ADR-019: previously silent — no record anywhere of *why*
             // a checkout failed. game_id/package_id/channel_code are
@@ -281,9 +284,9 @@ class CheckoutController extends Controller
     /**
      * Idempotent-replay path for an Order already tagged with the
      * incoming request's idempotency_key (ADR-019). If it already has a
-     * payment_ref, this is a pure replay of an attempt that already
-     * succeeded — no new work, just the same response shape a fresh
-     * checkout would have returned. If it doesn't, the previous attempt
+     * payment_ref, this is a replay of an attempt that already got its
+     * link — the same response shape a fresh checkout returned, after
+     * resume() confirms the reservation. If it doesn't, the previous attempt
      * created the Order but never reached a successful payment (gateway
      * error, or the process died in between) — retry just the payment
      * leg via CheckoutService::resume() against this same Order, never
@@ -301,22 +304,39 @@ class CheckoutController extends Controller
             return $this->buildCheckoutResponse($order, $gateway, 200);
         }
 
-        if ($order->payment_ref === null) {
-            try {
-                $order = $this->checkout->resume($order, $gateway, $channelCode, $channelProperties);
-            } catch (CheckoutFailedException $e) {
-                Log::warning('Checkout resume failed', [
-                    'order_id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
+        // ADR-024 2026-10-04 addendum decision 6: every other replay goes
+        // through resume(), which reserves before a link goes back out and
+        // refuses a Failed order — including one that already has a link.
+        try {
+            $order = $this->checkout->resume($order, $gateway, $channelCode, $channelProperties);
+        } catch (CheckoutAttemptClosedException $e) {
+            return $this->checkoutClosedResponse($e);
+        } catch (CheckoutFailedException $e) {
+            Log::warning('Checkout resume failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
 
-                throw ValidationException::withMessages([
-                    'payment' => [$e->getMessage()],
-                ]);
-            }
+            throw ValidationException::withMessages([
+                'payment' => [$e->getMessage()],
+            ]);
         }
 
         return $this->buildCheckoutResponse($order, $gateway, 200);
+    }
+
+    /**
+     * A coded 422 (same `code` + `message` shape as
+     * ResolveStorefrontBrand's) so the storefront can tell "this attempt
+     * is closed — start a fresh, re-priced one" apart from an ordinary
+     * payment error it should retry with the same idempotency key.
+     */
+    private function checkoutClosedResponse(CheckoutAttemptClosedException $e): JsonResponse
+    {
+        return response()->json([
+            'code' => 'checkout_closed',
+            'message' => $e->getMessage(),
+        ], 422);
     }
 
     /**

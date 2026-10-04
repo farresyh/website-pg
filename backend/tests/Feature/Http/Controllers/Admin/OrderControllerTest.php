@@ -1946,6 +1946,7 @@ class OrderControllerTest extends TestCase
             'reason' => 'test',
         ]);
         $order = $this->order(['voucher_id' => $paidWith->id]);
+        VoucherRedemption::query()->create(['voucher_id' => $paidWith->id, 'order_id' => $order->id, 'amount' => 500, 'status' => 'reserved']);
 
         $response = $this->getJson("/api/orders/{$order->id}");
 
@@ -1973,6 +1974,9 @@ class OrderControllerTest extends TestCase
             'reason' => 'test',
         ]);
         $usedVoucherOrder = $this->order(['voucher_id' => $paidWith->id, 'delivery_status' => DeliveryStatus::Delivered->value]);
+        VoucherRedemption::query()->create(['voucher_id' => $paidWith->id, 'order_id' => $usedVoucherOrder->id, 'amount' => 500, 'status' => 'committed']);
+        // ADR-024 2026-10-04 addendum decision 11: failed closed — voucher_id kept, nothing spent.
+        $failedClosedOrder = $this->order(['voucher_id' => $paidWith->id, 'payment_status' => PaymentStatus::Failed->value]);
 
         $failedOrder = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
         Voucher::query()->create([
@@ -2002,6 +2006,7 @@ class OrderControllerTest extends TestCase
         $this->assertFalse((bool) $byId[$plainOrder->id]['has_compensation_voucher']);
         $this->assertFalse((bool) $byId[$plainOrder->id]['has_wallet_refund']);
         $this->assertTrue((bool) $byId[$usedVoucherOrder->id]['has_used_voucher']);
+        $this->assertFalse((bool) $byId[$failedClosedOrder->id]['has_used_voucher']);
         $this->assertTrue((bool) $byId[$failedOrder->id]['has_compensation_voucher']);
         $this->assertTrue((bool) $byId[$walletRefundedOrder->id]['has_wallet_refund']);
     }
