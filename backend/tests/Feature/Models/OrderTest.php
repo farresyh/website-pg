@@ -189,7 +189,9 @@ class OrderTest extends TestCase
         $fresh = $order->fresh();
         $this->assertSame(27500, $fresh->compensationAmountSen());
         $this->assertSame(40000, $fresh->effectiveCostPriceSen());
-        $this->assertSame('mixed', $fresh->costBasis());
+        // No leg carries a real cost, so the catalog total is the cost:
+        // 'estimated' (item 63 — this asserted 'mixed', the bug).
+        $this->assertSame('estimated', $fresh->costBasis());
     }
 
     /** ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — the same generic signal ADR-098 wired into fulfillment, reconstructed from the persisted error_code alone. */
@@ -424,6 +426,27 @@ class OrderTest extends TestCase
         $this->assertSame('mixed', $order->fresh()->costBasis());
         // 700 (real) + 500 (catalog fallback) = 1200.
         $this->assertSame(1200, $order->fresh()->effectiveCostPriceSen());
+    }
+
+    /**
+     * Item 63: no leg has a real cost, so profit matches the catalog total
+     * on both formulas — that is 'estimated', not 'mixed'.
+     */
+    public function test_cost_basis_is_estimated_for_a_combo_order_when_no_leg_has_real_cost(): void
+    {
+        $a = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'NOREAL-A']);
+        $b = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'NOREAL-B']);
+        $order = $this->makeOrder(['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 500]);
+        foreach ([[$a, 1], [$b, 2]] as [$package, $n]) {
+            OrderDeliveryLeg::query()->create([
+                'order_id' => $order->id, 'component_package_id' => $package->id, 'supplier_id' => $package->supplier_id,
+                'leg_number' => $n, 'status' => DeliveryStatus::Delivered->value,
+                'selling_price_sen' => $package->standard_selling_price, 'real_cost_price_sen' => null,
+            ]);
+        }
+
+        $this->assertSame('estimated', $order->fresh()->costBasis());
+        $this->assertSame(1000, $order->fresh()->effectiveCostPriceSen());
     }
 
     /** Combo, real-cost-reconciliation flag was off at delivery — stored profit used the catalog total, basis 'estimated'. */

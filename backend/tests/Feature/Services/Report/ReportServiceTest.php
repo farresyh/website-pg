@@ -202,6 +202,21 @@ class ReportServiceTest extends TestCase
         $this->assertSame(0, $rows[0]['platform_profit']); // paid but not delivered — no ledger credit, matches the pinned rule
     }
 
+    /** Item 63: a wallet or wholesale-tier order was exported as "Standard". */
+    public function test_export_rows_label_every_pricing_basis(): void
+    {
+        foreach (['standard', 'member', 'reseller-wallet', 'affiliate'] as $basis) {
+            $this->order(['pricing_basis' => $basis, 'order_number' => 'PG-BASIS-'.$basis]);
+        }
+
+        $labels = $this->reports->exportRows(null, null, null)->pluck('pricing_basis', 'order_number');
+
+        $this->assertSame('Standard', $labels['PG-BASIS-standard']);
+        $this->assertSame('Member', $labels['PG-BASIS-member']);
+        $this->assertSame('Reseller wallet', $labels['PG-BASIS-reseller-wallet']);
+        $this->assertSame('Affiliate', $labels['PG-BASIS-affiliate']);
+    }
+
     /** Still used by CustomerAnalyticsController — see ReportService::dateRangeForYearMonth()'s own doc comment. */
     public function test_date_range_for_year_month_resolves_kl_month_boundaries(): void
     {

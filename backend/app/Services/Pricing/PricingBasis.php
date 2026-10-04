@@ -25,4 +25,15 @@ enum PricingBasis: string
     case Member = 'member';
     case ResellerWallet = 'reseller-wallet';
     case Affiliate = 'affiliate';
+
+    /** The one human label per basis (item 63: exports hand-mapped two of four). */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Standard => 'Standard',
+            self::Member => 'Member',
+            self::ResellerWallet => 'Reseller wallet',
+            self::Affiliate => 'Affiliate',
+        };
+    }
 }

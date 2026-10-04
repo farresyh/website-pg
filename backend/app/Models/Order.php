@@ -225,10 +225,12 @@ class Order extends Model
         $revenue = $partial ? $this->selling_price - $this->compensationAmountSen() : $this->selling_price;
         $catalogTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
         $realTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen ?? $leg->componentPackage?->cost_price ?? 0);
-        $allLegsReal = $legs->every(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null);
+        $realLegs = $legs->filter(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null)->count();
 
-        if ($this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
-            return ['cost' => $realTotal, 'basis' => $allLegsReal ? 'real' : 'mixed'];
+        // Item 63: classified by how many legs carry a real cost. With
+        // none, the "real" total IS the catalog total — 'estimated'.
+        if ($realLegs > 0 && $this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
+            return ['cost' => $realTotal, 'basis' => $realLegs === $legs->count() ? 'real' : 'mixed'];
         }
 
         return ['cost' => $catalogTotal, 'basis' => 'estimated'];

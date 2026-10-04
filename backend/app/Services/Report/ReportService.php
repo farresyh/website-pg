@@ -545,7 +545,7 @@ final class ReportService
                 'game_name' => $order->game?->name,
                 'package_name' => $order->package?->name,
                 'payment_method' => $order->payment_method,
-                'pricing_basis' => $order->pricing_basis === PricingBasis::Member ? 'Member' : 'Standard',
+                'pricing_basis' => $order->pricing_basis->label(),
                 'reseller_name' => $order->walletReseller?->business_name,
                 'delivery_status' => $order->delivery_status->value,
                 'final_amount' => $order->final_amount,
