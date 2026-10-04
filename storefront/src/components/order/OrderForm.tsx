@@ -229,6 +229,14 @@ export default function OrderForm({
   // applied voucher.
   const [voucherCode, setVoucherCode] = useState<string | null>(null);
 
+  // Item 63: the backend rejects a replayed key whose payload differs
+  // (`idempotency_mismatch`). Applying or removing a voucher makes it a
+  // different request, so it gets its own key.
+  const changeVoucher = useCallback((code: string | null) => {
+    idempotencyKeyRef.current = crypto.randomUUID();
+    setVoucherCode(code);
+  }, []);
+
   // useCallback so the memoized OrderSummarySidebar isn't re-rendered
   // just because OrderForm re-rendered (ADR-071 PR2).
   const openReview = useCallback(() => {
@@ -602,7 +610,7 @@ export default function OrderForm({
           submitting={submitting}
           submitError={submitError}
           onConfirm={handleConfirmPayment}
-          onVoucherChange={setVoucherCode}
+          onVoucherChange={changeVoucher}
           showMembershipPromo={showPromo}
           topTierMemberPriceRm={selectedTier2MemberPriceRm}
           // Bug found live-testing: `activeSession` is set for anyone with

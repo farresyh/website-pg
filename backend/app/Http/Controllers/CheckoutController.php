@@ -126,9 +126,11 @@ class CheckoutController extends Controller
         // worst. This is a retry (double-click, client timeout retry)
         // of an attempt already in flight or already finished, not a
         // new checkout to re-vet.
+        $payloadHash = self::payloadHash($data);
+
         $existing = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->first();
         if ($existing !== null) {
-            return $this->respondForExistingOrder($existing, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+            return $this->respondForExistingOrder($existing, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
         }
 
         if ($game->player_validator_enabled && $game->player_validator_profile_id !== null) {
@@ -167,6 +169,7 @@ class CheckoutController extends Controller
                 paymentGateway: $paymentMethod->gateway,
                 channelCode: $data['channel_code'],
                 idempotencyKey: $data['idempotency_key'],
+                idempotencyPayloadHash: $payloadHash,
                 channelProperties: $data['channel_properties'] ?? [],
                 voucherCode: $data['voucher_code'] ?? null,
                 supplierProductRef: $package->supplier_package_ref,
@@ -182,7 +185,7 @@ class CheckoutController extends Controller
             // Treat it exactly like the lookup had found it.
             $winner = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->firstOrFail();
 
-            return $this->respondForExistingOrder($winner, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+            return $this->respondForExistingOrder($winner, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
         } catch (CheckoutAttemptClosedException $e) {
             return $this->checkoutClosedResponse($e);
         } catch (CheckoutFailedException $e) {
@@ -292,8 +295,18 @@ class CheckoutController extends Controller
      * leg via CheckoutService::resume() against this same Order, never
      * a new one.
      */
-    private function respondForExistingOrder(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): JsonResponse
+    private function respondForExistingOrder(Order $order, string $payloadHash, PaymentGateway $gateway, string $channelCode, array $channelProperties): JsonResponse
     {
+        // Item 63: a replay must be the same request — the Reseller API's
+        // payload-hash rule (ADR-084 PR-1 decision 5). An order from before
+        // hashing has no hash and is not checked.
+        if ($order->idempotency_payload_hash !== null && ! hash_equals($order->idempotency_payload_hash, $payloadHash)) {
+            return response()->json([
+                'code' => 'idempotency_mismatch',
+                'message' => 'This checkout was already submitted with different details. Please review your order and try again.',
+            ], 422);
+        }
+
         // ADR-024 decision #5: an order already settled entirely by a
         // voucher has payment_ref permanently null and payment_status
         // already Paid — resume() (which calls the gateway) is neither
@@ -323,6 +336,25 @@ class CheckoutController extends Controller
         }
 
         return $this->buildCheckoutResponse($order, $gateway, 200);
+    }
+
+    /**
+     * What is bought, charged and delivered — not contact details (a
+     * name edited between a timed-out submit and its retry is still the
+     * same order) and not the key itself. Stable field order.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private static function payloadHash(array $data): string
+    {
+        return hash('sha256', json_encode([
+            'game_id' => (int) $data['game_id'],
+            'package_id' => (int) $data['package_id'],
+            'channel_code' => $data['channel_code'],
+            'voucher_code' => $data['voucher_code'] ?? null,
+            'player_id' => $data['player_id'],
+            'server_id' => $data['server_id'] ?? null,
+        ], JSON_THROW_ON_ERROR));
     }
 
     /**

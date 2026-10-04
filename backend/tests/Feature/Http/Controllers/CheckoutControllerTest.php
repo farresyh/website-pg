@@ -795,6 +795,43 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame('pr-checkout-test', Order::query()->firstOrFail()->payment_ref);
     }
 
+    /**
+     * Item 63 (2026-10-04): a replay must be the same request. Reusing a key
+     * with a different channel (or package, voucher, player) used to return
+     * the first order — priced with the first channel's fee — as if it were
+     * this one. Same payload-hash rule the Reseller API already applies.
+     */
+    public function test_a_replayed_key_with_a_different_channel_is_rejected(): void
+    {
+        $this->bindGateway();
+        $this->activeChannel('FPX_OTHER', ['flat_fee_sen' => 50]);
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $key = (string) Str::uuid();
+
+        $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key]))->assertCreated();
+
+        $replay = $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key, 'channel_code' => 'FPX_OTHER']));
+
+        $replay->assertUnprocessable();
+        $replay->assertJsonPath('code', 'idempotency_mismatch');
+        $this->assertSame(1, Order::query()->count());
+    }
+
+    public function test_an_identical_replay_still_returns_the_same_order(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package);
+
+        $first = $this->postJson('/api/checkout', $payload)->assertCreated();
+        // Contact details are not part of what is bought: editing a name
+        // between a timed-out submit and its retry is still the same order.
+        $replay = $this->postJson('/api/checkout', array_merge($payload, ['customer_name' => 'Edited Name']));
+
+        $replay->assertOk()->assertJsonPath('order_number', $first->json('order_number'));
+        $this->assertNotNull(Order::query()->firstOrFail()->idempotency_payload_hash);
+    }
+
     public function test_a_different_idempotency_key_creates_a_genuinely_separate_order(): void
     {
         $this->bindGateway();
