@@ -57,25 +57,6 @@ class OrderTest extends TestCase
      * its idempotency guarantee, rather than being a service with no
      * caller.
      */
-    /** 2026-09-29 audit: a Failed/Pending event read the order before a Paid webhook committed. */
-    public function test_set_payment_status_unless_paid_never_overwrites_a_paid_row(): void
-    {
-        $stale = $this->makeOrder();
-        Order::query()->whereKey($stale->id)->update(['payment_status' => PaymentStatus::Paid->value]);
-
-        $this->assertFalse($stale->setPaymentStatusUnlessPaid(PaymentStatus::Failed));
-        $this->assertSame(PaymentStatus::Paid, $stale->fresh()->payment_status);
-    }
-
-    public function test_set_payment_status_unless_paid_writes_when_not_paid(): void
-    {
-        $order = $this->makeOrder();
-
-        $this->assertTrue($order->setPaymentStatusUnlessPaid(PaymentStatus::Failed));
-        $this->assertSame(PaymentStatus::Failed, $order->payment_status);
-        $this->assertSame(PaymentStatus::Failed, $order->fresh()->payment_status);
-    }
-
     public function test_reference_number_is_generated_once_and_reused_on_retry(): void
     {
         $order = $this->makeOrder(['reference_number' => null]);

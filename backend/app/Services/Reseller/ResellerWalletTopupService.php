@@ -140,7 +140,7 @@ final class ResellerWalletTopupService
         if (! $payment->success) {
             // S3-style — no attempt is ever left `pending` with no CHIP
             // purchase behind it.
-            $attempt->update(['status' => WalletTopupAttemptStatus::Failed->value]);
+            $attempt->leavePending(WalletTopupAttemptStatus::Failed);
 
             Log::warning('Wallet top-up gateway call failed', [
                 'reference' => $attempt->reference,

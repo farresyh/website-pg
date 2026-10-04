@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\LeavesPendingOnce;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class WalletTopupAttempt extends Model
 {
+    use LeavesPendingOnce;
+
     protected $fillable = [
         'reseller_id',
         'reference',

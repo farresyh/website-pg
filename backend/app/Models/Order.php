@@ -384,32 +384,6 @@ class Order extends Model
     }
 
     /**
-     * 2026-09-29 audit (Wave 5 Low): writes a non-Paid payment_status
-     * (Pending/Failed) only if the row isn't already Paid, in one atomic
-     * UPDATE. The CHIP webhook's non-Paid branch and reconcile's
-     * markFailed() both read the order, then wrote — a Paid webhook
-     * committing in between got overwritten back to Failed, and the
-     * voucher/quota give-back ran on a paid order. Returns false when the
-     * row was already Paid, so the caller skips its give-back.
-     */
-    public function setPaymentStatusUnlessPaid(PaymentStatus $status): bool
-    {
-        $updated = static::query()
-            ->whereKey($this->id)
-            ->where('payment_status', '!=', PaymentStatus::Paid->value)
-            ->update(['payment_status' => $status->value]);
-
-        if ($updated === 0) {
-            return false;
-        }
-
-        $this->payment_status = $status;
-        $this->syncOriginalAttribute('payment_status');
-
-        return true;
-    }
-
-    /**
      * ADR-108 decision 1 — the query-level mirror of isAlreadyCompensated()
      * above: every order genuinely still needing admin action (paid,
      * delivery failed, and not already settled). `OrderController::index()`'s

@@ -3,22 +3,19 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\FulfillOrderJob;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\Order;
 use App\Models\WalletTopupAttempt;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
-use App\Services\Membership\MembershipQuotaService;
 use App\Services\Membership\MembershipSubscriptionService;
-use App\Services\Order\InvalidOrderTransitionException;
-use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\OrderPaymentOutcome;
+use App\Services\Payment\OrderPaymentOutcomeService;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
-use App\Services\Voucher\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -46,11 +43,9 @@ class ChipWebhookController extends Controller
 
     public function __construct(
         PaymentGatewayFactory $gatewayFactory,
-        private readonly VoucherService $vouchers,
-        private readonly MembershipQuotaService $membershipQuota,
+        private readonly OrderPaymentOutcomeService $paymentOutcomes,
         private readonly MembershipSubscriptionService $subscriptions,
         private readonly ResellerWalletService $wallets,
-        private readonly OrderStatusService $orderStatus,
     ) {
         $this->paymentGateway = $gatewayFactory->make('chip');
     }
@@ -109,92 +104,25 @@ class ChipWebhookController extends Controller
             'event_type' => $event->eventType,
         ]);
 
-        // PAY-2: CHIP can and does deliver the same event more than
-        // once — if payment_status is already Paid, this is a repeat
-        // delivery. Acknowledge without reprocessing.
-        if ($order->payment_status === PaymentStatus::Paid) {
-            return response()->json(['message' => 'already processed']);
-        }
+        // Item 63 (2026-10-04): every decision about the order — the PAY-2
+        // repeat-delivery check, the amount cross-check, M-4 and
+        // Paid-after-Failed → NeedsReview, the ADR-024 6a / M-9 give-back
+        // — lives in OrderPaymentOutcomeService under the Order lock,
+        // shared with reconciliation. A non-terminal status is
+        // acknowledged and never written.
+        $outcome = match ($event->status) {
+            PaymentStatus::Paid => $this->paymentOutcomes->applyPaid($order, $event->amountSen),
+            PaymentStatus::Failed => $this->paymentOutcomes->applyFailed($order),
+            default => null,
+        };
 
-        if ($event->status !== PaymentStatus::Paid) {
-            // A Paid webhook may have committed since the read above —
-            // never overwrite it, and never give back what it paid for.
-            if (! $order->setPaymentStatusUnlessPaid($event->status)) {
-                return response()->json(['message' => 'already processed']);
-            }
-
-            // ADR-024 decision #6a: a terminal Failed status (never a
-            // merely intermediate Pending update) gives back any
-            // reserved voucher redemption this order made — a no-op if
-            // this order never used a voucher. Mirrored by
-            // ReconcilePendingPaymentsCommand's own failure branch.
-            // M-9, 2026-09-29 audit: membership quota gets the same
-            // give-back — spent at payment-link creation, not at payment.
-            if ($event->status === PaymentStatus::Failed) {
-                $this->vouchers->restore($order->id);
-                $this->membershipQuota->restore($order->id);
-            }
-
-            return response()->json(['message' => 'acknowledged']);
-        }
-
-        // Defense-in-depth: payment_ref already binds this webhook to
-        // one specific, fixed-amount purchase created by requestPayment()
-        // (amountSen: $order->final_amount), and a signature-verified
-        // paid status from CHIP already implies the full requested amount
-        // was received — this is a second, independent check.
-        if ($event->amountSen !== $order->final_amount) {
-            Log::error('Rejected CHIP webhook: amount mismatch', [
-                'expected_sen' => $order->final_amount,
-                'received_sen' => $event->amountSen,
-            ]);
-
-            return response()->json(['message' => 'amount mismatch'], 409);
-        }
-
-        // 2026-09-28 audit finding M-4: a late Paid event for an order
-        // that's already compensated (a voucher was issued or
-        // restored, or a wallet refund already paid out — most often
-        // reconcile marking it Failed and restoring a voucher just
-        // before this webhook finally arrives) must never be blindly
-        // dispatched to FulfillOrderJob — fulfill()'s own
-        // isAlreadyCompensated() guard would throw on every one of the
-        // job's 3 tries, silently stranding the order at
-        // payment_status=Paid forever with no admin visibility even
-        // though the customer genuinely paid. Flag NeedsReview instead
-        // (a valid transition from Failed, the only delivery_status an
-        // already-compensated order can realistically be in) so an
-        // admin sees it on the existing Needs Review queue.
-        // ADR-102 addendum (2026-09-29, review #1/#9): ANY Paid arriving
-        // after the payment was already marked Failed takes this path too —
-        // the Failed branch above has already given back the voucher AND
-        // the membership quota, so auto-fulfilling would deliver at a
-        // discount nothing was spent for. isAlreadyCompensated() alone
-        // missed the quota and the no-voucher case.
-        if ($order->payment_status === PaymentStatus::Failed || $order->isAlreadyCompensated()) {
-            Log::error('CHIP webhook: paid event after a failed payment or compensation — flagging for manual review, not auto-fulfilling', [
-                'delivery_status' => $order->delivery_status->value,
-            ]);
-
-            try {
-                $needsReview = $this->orderStatus->markNeedsReview($order->delivery_status);
-                $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now(), 'delivery_status' => $needsReview->value]);
-            } catch (InvalidOrderTransitionException) {
-                // delivery_status isn't one markNeedsReview() accepts
-                // (e.g. already NeedsReview, or Delivered from an
-                // unrelated concurrent resolution) — leave it as-is,
-                // still record the payment.
-                $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
-            }
-
-            return response()->json(['message' => 'ok, flagged for manual review']);
-        }
-
-        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
-
-        FulfillOrderJob::dispatch($order->fresh());
-
-        return response()->json(['message' => 'ok']);
+        return match ($outcome) {
+            null, OrderPaymentOutcome::Failed => response()->json(['message' => 'acknowledged']),
+            OrderPaymentOutcome::AlreadyProcessed => response()->json(['message' => 'already processed']),
+            OrderPaymentOutcome::AmountMismatch => response()->json(['message' => 'amount mismatch'], 409),
+            OrderPaymentOutcome::FlaggedForReview => response()->json(['message' => 'ok, flagged for manual review']),
+            OrderPaymentOutcome::Fulfilling => response()->json(['message' => 'ok']),
+        };
     }
 
     /**
@@ -218,7 +146,7 @@ class ChipWebhookController extends Controller
 
         if ($event->status !== PaymentStatus::Paid) {
             if ($event->status === PaymentStatus::Failed) {
-                $attempt->update(['status' => MembershipCheckoutAttemptStatus::Failed->value]);
+                $attempt->leavePending(MembershipCheckoutAttemptStatus::Failed);
             }
 
             return response()->json(['message' => 'acknowledged']);
@@ -261,7 +189,7 @@ class ChipWebhookController extends Controller
 
         if ($event->status !== PaymentStatus::Paid) {
             if ($event->status === PaymentStatus::Failed) {
-                $attempt->update(['status' => WalletTopupAttemptStatus::Failed->value]);
+                $attempt->leavePending(WalletTopupAttemptStatus::Failed);
             }
 
             return response()->json(['message' => 'acknowledged']);
