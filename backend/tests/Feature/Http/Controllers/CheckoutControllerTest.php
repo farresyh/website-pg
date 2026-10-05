@@ -1483,4 +1483,39 @@ class CheckoutControllerTest extends TestCase
             'channel_code' => 'FPX_ABMB',
         ])->assertStatus(422);
     }
+
+    /** ADR-097 2026-10-05 addendum, decision 27 — a User-ID-only game never takes a server_id. */
+    public function test_rejects_a_server_id_for_a_game_that_takes_none(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['server_id' => '2001']));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('server_id');
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_rejects_a_non_numeric_player_id_on_a_numeric_game(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['player_id' => '12345678(2001)']));
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('player_id');
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_accepts_a_riot_id_on_a_text_format_game(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage([
+            'validation_rules' => ['player_id_format' => 'text'],
+        ]);
+
+        $this->postJson('/api/checkout', $this->payload($game, $package, ['player_id' => 'JettMain#1234']))->assertCreated();
+    }
 }

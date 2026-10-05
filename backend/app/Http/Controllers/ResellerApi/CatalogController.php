@@ -109,6 +109,7 @@ class CatalogController extends Controller
                     'checkout_input' => [
                         'field' => $game->validation_rules['extra_field'] ?? null,
                         'options' => $game->zoneOptions(),
+                        'player_id_format' => $game->playerIdFormat(),
                     ],
                     'packages' => $this->packagesFor($rowsByGameId->get($game->id, collect()), $markupPercent),
                 ])->values()->all();

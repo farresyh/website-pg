@@ -261,6 +261,8 @@ class CatalogController extends Controller
             // a separately-designed public contract, decision 22).
             // null/empty preserves today's free-text <input> exactly.
             'zone_options' => $game->zoneOptions(),
+            // ADR-097 2026-10-05 addendum, decision 34.
+            'player_id_format' => $game->playerIdFormat(),
             'player_validator_enabled' => $game->player_validator_enabled,
             // ADR-109 decisions 11/12 — flat siblings, same shape as
             // extra_field/zone_options above. important_notes/

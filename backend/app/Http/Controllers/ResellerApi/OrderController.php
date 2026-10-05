@@ -128,7 +128,7 @@ class OrderController extends Controller
         // an already-resolved gameId, mirroring exactly where the Bot
         // already does this same check today).
         $game = Game::query()->find($package->game_id);
-        if ($game !== null && $error = $this->checkoutInputValidator->validate($game, $data['server_id'] ?? null)) {
+        if ($game !== null && $error = $this->checkoutInputValidator->validate($game, $data['player_id'], $data['server_id'] ?? null)) {
             throw ResellerApiException::validationFailed([$error['field'] => [$error['message']]]);
         }
 

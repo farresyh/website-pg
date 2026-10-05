@@ -85,6 +85,7 @@ class LinkSupplierProductCategoryRequest extends FormRequest
             'validation_rules' => ['nullable', 'array'],
             'validation_rules.extra_field' => ['nullable', Rule::in(['server_id', 'zone_id'])],
             'validation_rules.customer_no_separator' => ['nullable', Rule::in(['concat', 'space', 'pipe'])],
+            'validation_rules.player_id_format' => ['nullable', Rule::in(['numeric', 'text'])],
             'validation_rules.zone_options' => ['nullable', 'array'],
             'validation_rules.zone_options.*' => ['string', 'max:255'],
         ];

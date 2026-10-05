@@ -630,4 +630,58 @@ class SupplierProductControllerTest extends TestCase
         $second->assertJsonValidationErrors('supplier_product');
         $this->assertSame(1, Package::query()->where('supplier_package_ref', 'GV733')->count());
     }
+
+    /** ADR-097 2026-10-05 addendum, decision 30 — a re-link that sends only extra_field keeps the game's other keys. */
+    public function test_link_category_merges_validation_rules_instead_of_wiping_the_other_keys(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Genshin']);
+        $game = Game::query()->create(['name' => 'Genshin', 'slug' => 'genshin', 'validation_rules' => [
+            'extra_field' => 'zone_id', 'zone_options' => ['Asia', 'Europe'], 'customer_no_separator' => 'pipe', 'player_id_format' => 'numeric',
+        ]]);
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'supplier_id' => $supplier->id, 'group_label' => 'Genshin', 'game_id' => $game->id,
+            'validation_rules' => ['extra_field' => 'zone_id'],
+        ])->assertOk();
+
+        $this->assertSame(
+            ['extra_field' => 'zone_id', 'zone_options' => ['Asia', 'Europe'], 'customer_no_separator' => 'pipe', 'player_id_format' => 'numeric'],
+            $game->refresh()->validation_rules,
+        );
+    }
+
+    public function test_link_category_drops_zone_options_once_the_game_is_no_longer_a_zone_game(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Genshin']);
+        $game = Game::query()->create(['name' => 'Genshin', 'slug' => 'genshin', 'validation_rules' => [
+            'extra_field' => 'zone_id', 'zone_options' => ['Asia'],
+        ]]);
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'supplier_id' => $supplier->id, 'group_label' => 'Genshin', 'game_id' => $game->id,
+            'validation_rules' => ['extra_field' => 'server_id'],
+        ])->assertOk();
+
+        $this->assertSame(['extra_field' => 'server_id'], $game->refresh()->validation_rules);
+    }
+
+    public function test_link_category_sets_and_validates_player_id_format(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Valorant']);
+        $game = Game::query()->create(['name' => 'Valorant', 'slug' => 'valorant']);
+        $this->actingAsAdmin();
+        $link = fn (array $rules) => $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'supplier_id' => $supplier->id, 'group_label' => 'Valorant', 'game_id' => $game->id, 'validation_rules' => $rules,
+        ]);
+
+        $link(['extra_field' => null, 'player_id_format' => 'text'])->assertOk();
+        $this->assertSame('text', $game->refresh()->validation_rules['player_id_format']);
+
+        $link(['player_id_format' => 'alphanumeric'])->assertUnprocessable();
+    }
 }
