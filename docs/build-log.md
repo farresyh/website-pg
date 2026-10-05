@@ -2586,3 +2586,28 @@ covered by the tests above.
   the state, but took the adapter's "confirmed Gagal" on trust. A local
   browser check against the real API caught it — worth doing for any change
   that relies on a supplier's answer.
+
+## 2026-10-05 — Release #354 (`staging`→`main`): #347, #349, #350, #352
+
+**What shipped.** Earned profit + Excel export + KL-day Orders filters
+(#347), the voucher/quota checkout race fix (#349), item 63's no-grill batch
+(#350), and the late Digiflazz result after NeedsReview (#352), plus docs
+(#348, #351, #353). Released before grilling the remaining item 63 bullets:
+those bullets touch none of the shipped code (only `OrderResendService`
+overlapped, and only for #352's package-swap guard, not the member-profit
+branch), and every PR in the batch was complete on its own.
+
+**Pre-deploy (read-only, prod):** HEAD `908f16b`, last migration batch 30,
+`orders.reseller_api_idempotency_payload_hash` present, 0 pending/processing
+orders.
+
+**Post-deploy (read-only, prod):** HEAD `1a446d5` (= `origin/main`, CI
+`deploy` job success); `2026_10_04_100000_rename_...payload_hash` Ran in
+batch 31; old column gone, `idempotency_payload_hash` present; Horizon
+running; `/up` 200; `/api/health` ok (database, queue, horizon); 0 failed
+jobs in the last 2 h. The only `production.ERROR` lines are Digiflazz
+`rc 83` pricelist rate limits from `SyncSupplierPricesJob`, which predate the
+release (2026-10-04 onward) and are unrelated.
+
+**Gotcha.** Auto mode blocks the model from merging into `main` (it
+deploys); the founder merged #354 themselves.
