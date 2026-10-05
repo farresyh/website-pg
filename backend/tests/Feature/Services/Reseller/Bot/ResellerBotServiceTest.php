@@ -685,7 +685,7 @@ class ResellerBotServiceTest extends TestCase
 
         // `.checkid MLID` on a Malaysian player — must land as wrong_region,
         // not a plain "valid".
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLID 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLID 51049607', 'msg-1');
 
         $this->assertDatabaseHas('player_validations', [
             'game_id' => $mlid->id, 'player_id' => '51049607', 'status' => 'wrong_region',
@@ -907,9 +907,94 @@ class ResellerBotServiceTest extends TestCase
         // blocked before ever reaching the validator, so only 10
         // `player_validations` rows should ever get written.
         for ($i = 0; $i < 11; $i++) {
-            app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607', "msg-{$i}");
+            app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', "msg-{$i}");
         }
 
         $this->assertSame(10, PlayerValidation::query()->count());
+    }
+
+    // --- ADR-097 2026-10-05 addendum (decisions 27-32): per-game input contract ---
+
+    /** @return list<string> every reply text the bot queued */
+    private function replies(): array
+    {
+        $texts = [];
+        Queue::assertPushed(SendResellerBotReplyJob::class, function (SendResellerBotReplyJob $job) use (&$texts) {
+            $texts[] = $job->text;
+
+            return true;
+        });
+
+        return $texts;
+    }
+
+    private function captureReplies(): void
+    {
+        config(['services.openwa.session_id' => 'session-1', 'services.openwa.api_key' => 'key-1']);
+        Queue::fake();
+    }
+
+    public function test_two_order_lines_in_one_message_place_nothing(): void
+    {
+        $this->captureReplies();
+        $this->makePackage(requiresServerId: true);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, ".order MLMY-14 51049607 2005\n.order MLMY-14 11111111 2001", 'msg-1');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', ['reseller_id' => $reseller->id, 'failure_reason' => 'extra_arguments']);
+        $this->assertStringContainsString('satu arahan sahaja', $this->replies()[0]);
+    }
+
+    /** The trace's own example: `customer_no` would have been `123456tq`. */
+    public function test_a_trailing_word_on_a_user_id_only_game_is_rejected_not_sent_as_a_server_id(): void
+    {
+        $this->captureReplies();
+        $this->makePackage(requiresServerId: false);
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 123456 tq', 'msg-1');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', ['reseller_id' => $reseller->id, 'failure_reason' => 'server_id_not_taken']);
+        $this->assertSame("Game ini tidak memerlukan Server ID.\nFormat: .order MLMY-14 {userId}", $this->replies()[0]);
+    }
+
+    public function test_a_non_numeric_user_id_is_rejected_with_the_games_format(): void
+    {
+        $this->captureReplies();
+        $this->makePackage(requiresServerId: false);
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 12345abc', 'msg-1');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame("User ID mesti nombor sahaja.\nFormat: .order MLMY-14 {userId}", $this->replies()[0]);
+    }
+
+    public function test_a_text_format_game_places_a_riot_id_order(): void
+    {
+        $package = $this->makePackage(requiresServerId: false);
+        $package->game->update(['validation_rules' => ['player_id_format' => 'text']]);
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 JettMain#1234', 'msg-1');
+
+        $this->assertSame('JettMain#1234', Order::query()->firstOrFail()->player_id);
+    }
+
+    public function test_checkid_rejects_a_malformed_id_before_the_paid_validator(): void
+    {
+        $game = $this->makePackage(requiresServerId: false)->game;
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'ML Validator', 'key' => 'mlbb']);
+        $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $this->app->bind('player-validator.mlbb', fn () => throw new \LogicException('the paid validator must not be called'));
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 1234(5678)', 'msg-1');
+
+        $this->assertSame(0, PlayerValidation::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', ['failure_reason' => 'player_id_digits_only']);
     }
 }

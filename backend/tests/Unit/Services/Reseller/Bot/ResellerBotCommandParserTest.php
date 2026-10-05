@@ -107,4 +107,19 @@ class ResellerBotCommandParserTest extends TestCase
 
         $this->assertSame(ResellerBotCommandType::Unrecognized, $command->type);
     }
+
+    /** ADR-097 2026-10-05 addendum, decision 32 — never dropped silently. */
+    public function test_a_second_order_line_is_flagged_as_extra_arguments(): void
+    {
+        $command = $this->parser->parse(".order MLMY-14 51049607 2005\n.order MLMY-14 11111111 2001");
+
+        $this->assertSame(ResellerBotCommandType::Order, $command->type);
+        $this->assertTrue($command->extraArguments);
+    }
+
+    public function test_up_to_a_server_id_is_not_extra(): void
+    {
+        $this->assertFalse($this->parser->parse('.order MLMY-14 51049607 2005')->extraArguments);
+        $this->assertTrue($this->parser->parse('.checkid MLMY 51049607 2005 x')->extraArguments);
+    }
 }
