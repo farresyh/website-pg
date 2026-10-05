@@ -2522,7 +2522,8 @@ the fix is to never compensate before Digiflazz's own final answer. Prod
 2026-10-05: 0 NeedsReview, the 2 orders ever Confirm-Failed were real Gagal
 (rc 55, 02), slowest normal delivery ~19 min — never happened.
 
-**Shipped** (`fix/2026-10-05-late-digiflazz-sukses`). Grilled Q1–Q15 +
+**Shipped** (`fix/2026-10-05-late-digiflazz-sukses`, PR #352, merged to
+`staging` 2026-10-05 as `11bba23`, all PR checks green; not yet on `main`). Grilled Q1–Q15 +
 money-ADR code-trace (profit per basis, voucher, quota, wallet, reseller
 webhook, receipt, drawdown — all reuse the existing Success branch).
 - `OrderStatusService::finalizePendingSuccess()/Failure()` accept NeedsReview
