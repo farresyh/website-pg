@@ -465,6 +465,12 @@ class OrderController extends Controller
             ]);
         }
 
+        if ($order->blocksPackageSwapTo($targetPackage)) {
+            throw ValidationException::withMessages([
+                'package_id' => [Order::PACKAGE_SWAP_BLOCKED_MESSAGE],
+            ]);
+        }
+
         // ADR-105 decision 4: resolved above, not before, since this
         // guard now also needs $targetPackage for its sell-below-cost
         // check.
@@ -499,9 +505,15 @@ class OrderController extends Controller
             abort(404);
         }
 
-        if ($order->delivery_status !== DeliveryStatus::Pending) {
+        // ADR-102 2026-10-05 addendum, decision 6: NeedsReview too, when
+        // the supplier can safely be asked (replays the stored result,
+        // the order reached it, inside the age limit).
+        $askable = $order->delivery_status === DeliveryStatus::Pending
+            || ($order->delivery_status === DeliveryStatus::NeedsReview && SupplierDeliveryCheckService::canAskAboutNeedsReview($order));
+
+        if (! $askable) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a Pending delivery can be checked from the supplier.'],
+                'delivery_status' => ['Only a Pending delivery, or a needs-review one this supplier can safely be asked about, can be checked from the supplier.'],
             ]);
         }
 
@@ -662,7 +674,7 @@ class OrderController extends Controller
      * voucher path there — some legs DID deliver, so confirming the
      * WHOLE order "failed" would be wrong).
      */
-    public function confirmFailed(ConfirmOrderDeliveryFailedRequest $request, Order $order, OrderFulfillmentService $fulfillment): JsonResponse
+    public function confirmFailed(ConfirmOrderDeliveryFailedRequest $request, Order $order, OrderFulfillmentService $fulfillment, SupplierAdapterFactory $supplierAdapters, ManualCheckCooldown $cooldown): JsonResponse
     {
         // ADR-018 decision #2: same reasoning as retryDelivery()/resend() above.
         if ($order->is_test) {
@@ -684,19 +696,36 @@ class OrderController extends Controller
             ]);
         }
 
-        // ADR-094 decision 31: on a combo the service flips the ambiguous
-        // legs to Failed and rolls up to Failed or PartiallyDelivered; it
-        // refuses while a leg is still awaiting the supplier.
+        // ADR-102 2026-10-05 addendum, decision 4: a replay-safe supplier
+        // is asked first, under checkSupplier()'s cooldown (Digiflazz's
+        // "don't re-check within 1 minute"). ADR-094 decision 31: on a
+        // combo the service flips the ambiguous legs to Failed and rolls
+        // up to Failed or PartiallyDelivered.
+        $asksSupplier = SupplierDeliveryCheckService::canAskAboutNeedsReview($order);
+        $cooldownKey = "manual-check:supplier:{$order->id}";
+
+        if ($asksSupplier && ($remaining = $cooldown->remainingSeconds($cooldownKey)) > 0) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ["The supplier was checked too recently — try again in {$remaining} seconds."],
+            ]);
+        }
+
         try {
-            $result = $fulfillment->confirmDeliveryFailed(
+            $result = (new SupplierDeliveryCheckService($supplierAdapters, $fulfillment))->confirmFailed(
                 $order,
                 $request->validated('note'),
                 $request->user()->name,
             );
-        } catch (OrderFulfillmentException) {
+        } catch (OrderFulfillmentException $e) {
+            Log::warning('Confirm Failed refused: supplier has no final answer', ['order_number' => $order->order_number, 'reason' => $e->getMessage()]);
+
             throw ValidationException::withMessages([
-                'delivery_status' => ['A part of this order is still awaiting the supplier — check the supplier first, then confirm.'],
+                'delivery_status' => ['The supplier has not confirmed this order failed — it is still processing it, or could not be reached. Nothing was changed; check again later.'],
             ]);
+        } finally {
+            if ($asksSupplier) {
+                $cooldown->start($cooldownKey, $order->supplier?->api_config['manual_check_cooldown_seconds'] ?? config('services.manual_check.cooldown_seconds'));
+            }
         }
 
         return $this->orderDetailResponse($result);
@@ -845,6 +874,11 @@ class OrderController extends Controller
             // actually disables the Resend/Retry button and requires a
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
+            // ADR-102 2026-10-05 addendum, decisions 4/6 — a needs_review
+            // order the supplier can safely be asked about: shows Check
+            // from Supplier, and Confirm Failed asks the supplier first.
+            'supplier_askable' => $order->delivery_status === DeliveryStatus::NeedsReview
+                && SupplierDeliveryCheckService::canAskAboutNeedsReview($order),
             // ADR-107 decision 3, generalized by ADR-111 decision 7 — true
             // once ANY order (not just combo) delivered with a reconciled
             // negative platform_profit, or a material drift from the

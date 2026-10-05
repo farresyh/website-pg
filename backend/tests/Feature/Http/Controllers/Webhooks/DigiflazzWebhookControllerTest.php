@@ -558,4 +558,146 @@ class DigiflazzWebhookControllerTest extends TestCase
 
         $this->assertSame(1, LedgerEntry::query()->where('reference_id', $order->id)->where('type', 'order_profit')->where('owner_type', 'platform')->count());
     }
+
+    /**
+     * ADR-102 2026-10-05 addendum, decision 1: a Pending order aged out
+     * to NeedsReview (decision 4 of the 2026-09-29 addendum) still gets
+     * Digiflazz's late Sukses — it is finalized Delivered, not dropped.
+     */
+    public function test_a_late_sukses_on_a_needs_review_order_finalizes_it_as_delivered(): void
+    {
+        $order = $this->pendingOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $this->sendWebhook($this->suksesData($order))->assertOk()->assertJson(['message' => 'ok']);
+
+        $order->refresh();
+        $this->assertSame(DeliveryStatus::Delivered, $order->delivery_status);
+        $this->assertSame('SN-999888', $order->supplier_ref);
+        $this->assertSame(1, LedgerEntry::query()->where('reference_id', $order->id)->where('type', 'order_profit')->where('owner_type', 'platform')->count());
+    }
+
+    /** Decision 6, same seam: a Digiflazz Gagal is final, so a NeedsReview order moves to Failed. */
+    public function test_a_late_gagal_on_a_needs_review_order_finalizes_it_as_failed(): void
+    {
+        $order = $this->pendingOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $this->sendWebhook($this->suksesData($order, ['status' => 'Gagal', 'rc' => '02', 'sn' => '']))
+            ->assertOk()->assertJson(['message' => 'ok']);
+
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+    }
+
+    /**
+     * Decision 2/3: Failed means Digiflazz itself said Gagal. A
+     * contradicting Sukses never moves it — kept as evidence and logged.
+     */
+    public function test_a_sukses_for_a_failed_order_keeps_it_failed_and_records_the_evidence(): void
+    {
+        $order = $this->pendingOrder([
+            'delivery_status' => DeliveryStatus::Failed->value,
+            'supplier_response' => ['error_code' => '02', 'error_message' => 'Transaksi Gagal'],
+        ]);
+
+        $this->sendWebhook($this->suksesData($order))->assertOk()->assertJson(['message' => 'already finalized']);
+
+        $order->refresh();
+        $this->assertSame(DeliveryStatus::Failed, $order->delivery_status);
+        $this->assertSame('02', $order->supplier_response['error_code']);
+        $this->assertSame('Sukses', $order->supplier_response['late_supplier_result']['status']);
+        $this->assertSame(0, LedgerEntry::query()->where('reference_id', $order->id)->where('type', 'order_profit')->count());
+    }
+
+    public function test_a_gagal_for_a_delivered_order_keeps_it_delivered_and_records_the_evidence(): void
+    {
+        $order = $this->pendingOrder(['delivery_status' => DeliveryStatus::Delivered->value, 'supplier_ref' => 'SN-1']);
+
+        $this->sendWebhook($this->suksesData($order, ['status' => 'Gagal', 'rc' => '02', 'sn' => '']))
+            ->assertOk()->assertJson(['message' => 'already finalized']);
+
+        $order->refresh();
+        $this->assertSame(DeliveryStatus::Delivered, $order->delivery_status);
+        $this->assertSame('Gagal', $order->supplier_response['late_supplier_result']['status']);
+    }
+
+    /** A plain duplicate (Sukses on Delivered) is not a contradiction — no evidence written. */
+    public function test_a_duplicate_sukses_on_a_delivered_order_writes_no_evidence(): void
+    {
+        $order = $this->pendingOrder(['delivery_status' => DeliveryStatus::Delivered->value, 'supplier_response' => ['status' => 'Sukses']]);
+
+        $this->sendWebhook($this->suksesData($order))->assertOk()->assertJson(['message' => 'already finalized']);
+
+        $this->assertArrayNotHasKey('late_supplier_result', $order->fresh()->supplier_response);
+    }
+
+    /**
+     * Decision 7: a late Sukses on a NeedsReview leg finalizes the leg,
+     * and the roll-up leaves NeedsReview once every leg is final.
+     */
+    public function test_a_late_sukses_on_the_last_needs_review_combo_leg_delivers_the_order(): void
+    {
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $leg->update(['status' => DeliveryStatus::NeedsReview->value]);
+
+        $this->sendWebhook([
+            'ref_id' => $leg->reference_number,
+            'buyer_sku_code' => $component->supplier_package_ref,
+            'status' => 'Sukses',
+            'sn' => 'SN-LATE-LEG',
+            'price' => 480,
+        ])->assertOk()->assertJson(['message' => 'ok']);
+
+        $this->assertSame(DeliveryStatus::Delivered, $leg->fresh()->status);
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+        $this->assertSame(1, LedgerEntry::query()->where('reference_id', $order->id)->where('type', 'order_profit')->where('owner_type', 'platform')->count());
+    }
+
+    public function test_a_late_sukses_on_one_combo_leg_keeps_the_order_in_needs_review_while_another_leg_is_unresolved(): void
+    {
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $leg->update(['status' => DeliveryStatus::NeedsReview->value]);
+        $otherLeg = OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id,
+            'component_package_id' => $component->id,
+            'supplier_id' => $component->supplier_id,
+            'leg_number' => 2,
+            'reference_number' => $order->reference_number.'-L2',
+            'status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $this->sendWebhook([
+            'ref_id' => $leg->reference_number,
+            'buyer_sku_code' => $component->supplier_package_ref,
+            'status' => 'Sukses',
+            'sn' => 'SN-LATE-LEG-1',
+        ])->assertOk()->assertJson(['message' => 'ok']);
+
+        $this->assertSame(DeliveryStatus::Delivered, $leg->fresh()->status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $otherLeg->fresh()->status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(0, LedgerEntry::query()->where('reference_id', $order->id)->where('type', 'order_profit')->count());
+    }
+
+    /** Decision 7: a NeedsReview leg finalized while the other already failed lands on PartiallyDelivered. */
+    public function test_a_late_sukses_on_a_needs_review_combo_leg_beside_a_failed_leg_is_partially_delivered(): void
+    {
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $leg->update(['status' => DeliveryStatus::NeedsReview->value]);
+        OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id,
+            'component_package_id' => $component->id,
+            'supplier_id' => $component->supplier_id,
+            'leg_number' => 2,
+            'reference_number' => $order->reference_number.'-L2',
+            'status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $this->sendWebhook([
+            'ref_id' => $leg->reference_number,
+            'buyer_sku_code' => $component->supplier_package_ref,
+            'status' => 'Sukses',
+            'sn' => 'SN-LATE-LEG-1',
+        ])->assertOk();
+
+        $this->assertSame(DeliveryStatus::PartiallyDelivered, $order->fresh()->delivery_status);
+    }
 }

@@ -536,6 +536,80 @@ class DigiflazzAdapterTest extends TestCase
     }
 
     /**
+     * ADR-102 2026-10-05 addendum (rc correction): a status check re-submits
+     * a ref_id that may already exist. A Gagal whose rc is "Terbentuk
+     * Transaksi = Tidak" (here 45, IP not recognised — found in the local
+     * browser check) means Digiflazz rejected THIS request before looking
+     * at the ref_id: it says nothing about the original transaction.
+     */
+    public function test_check_status_treats_a_request_rejection_gagal_as_unknown(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '45', 'message' => 'IP Anda tidak kami kenali'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->checkStatus(new SupplierStatusCheckRequest(
+            supplierRef: 'REF-1', productRef: 'xld10', playerId: '087800001232',
+        ));
+
+        $this->assertSame(SupplierOutcome::Failure, $result->outcome);
+        $this->assertFalse($result->outcomeConfirmedFailed);
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+    }
+
+    /** rc 85/86 are rate limits Digiflazz marks "Ya" — still not an answer about the original. */
+    public function test_check_status_treats_a_rate_limit_gagal_as_unknown(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '85', 'message' => 'Anda telah mencapai limitasi transaksi'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->checkStatus(new SupplierStatusCheckRequest(
+            supplierRef: 'REF-1', productRef: 'xld10', playerId: '087800001232',
+        ));
+
+        $this->assertFalse($result->outcomeConfirmedFailed);
+    }
+
+    /** A createOrder that re-submits a stored reference (a NeedsReview retry) is a check too. */
+    public function test_a_resubmitted_create_order_treats_a_request_rejection_gagal_as_unknown(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '45', 'message' => 'IP Anda tidak kami kenali'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232', resubmit: true,
+        ));
+
+        $this->assertFalse($result->outcomeConfirmedFailed);
+        $this->assertTrue($result->resendUnsafeWithSameReference);
+    }
+
+    /** A first submit is unchanged: a "Tidak" Gagal means no transaction formed, so Failed is right. */
+    public function test_a_first_create_order_still_treats_a_request_rejection_gagal_as_confirmed(): void
+    {
+        Http::fake([
+            'api.digiflazz.com/*' => Http::response([
+                'data' => ['status' => 'Gagal', 'rc' => '45', 'message' => 'IP Anda tidak kami kenali'],
+            ], 200),
+        ]);
+
+        $result = $this->adapter()->createOrder(new SupplierOrderRequest(
+            productRef: 'xld10', referenceNumber: 'REF-1', playerId: '087800001232',
+        ));
+
+        $this->assertTrue($result->outcomeConfirmedFailed);
+        $this->assertFalse($result->resendUnsafeWithSameReference);
+    }
+
+    /**
      * Official test cases 3/4: customer_no=087800001233/087800001234
      * both start Pending, rc 03 — ADR-032's Pending outcome, the exact
      * path the whole async-delivery mechanism exists for.

@@ -70,13 +70,16 @@ export default function ManualCheckButtons({ order, token, onChecked }: ManualCh
     }
   }
 
-  if (order.delivery_status !== "pending" && order.payment_status !== "pending") {
+  // ADR-102 2026-10-05 addendum: also a needs_review order the supplier can safely be asked about.
+  const supplierCheckable = order.delivery_status === "pending" || order.supplier_askable;
+
+  if (!supplierCheckable && order.payment_status !== "pending") {
     return null;
   }
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-3">
-      {order.delivery_status === "pending" && (
+      {supplierCheckable && (
         <Button
           size="small"
           variant="outlined"

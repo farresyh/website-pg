@@ -83,6 +83,29 @@ final class DigiflazzAdapter implements SupplierAdapter
         return in_array($rc, self::TRANSACTION_ALREADY_FORMED_RC_CODES, true);
     }
 
+    /**
+     * ADR-102 2026-10-05 addendum (rc correction): rate limits Digiflazz's
+     * table marks "Terbentuk Transaksi = Ya" (85 transaction limit, 86 PLN
+     * check limit). On a re-submit they say nothing about the original.
+     */
+    private const RATE_LIMIT_FORMED_RC_CODES = ['85', '86'];
+
+    /**
+     * ADR-102 2026-10-05 addendum (rc correction): whether a Gagal answers
+     * for the transaction. A first submit's Gagal always does — nothing else
+     * exists for that ref_id. A re-submit (checkStatus, or a NeedsReview
+     * retry) asks about a ref_id that may already exist, so only a code from
+     * the "Terbentuk Transaksi = Ya" table does; a "Tidak" code (45 IP, 41
+     * signature, 44 saldo, 83 ...) rejected this request without looking.
+     * Found in the 2026-10-05 local browser check: rc 45 failed a
+     * NeedsReview order through Check supplier and Confirm Failed.
+     */
+    private static function gagalConfirmsOutcome(string $rc, bool $resubmit): bool
+    {
+        return ! $resubmit
+            || (self::resendUnsafeWithSameReference($rc) && ! in_array($rc, self::RATE_LIMIT_FORMED_RC_CODES, true));
+    }
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $username,
@@ -144,6 +167,7 @@ final class DigiflazzAdapter implements SupplierAdapter
             customerNo: $this->normalizeCustomerNo($request->playerId, $request->serverId, $request->customerNoSeparator),
             callType: 'createOrder',
             orderId: $request->orderId,
+            resubmit: $request->resubmit,
         );
     }
 
@@ -160,6 +184,7 @@ final class DigiflazzAdapter implements SupplierAdapter
             customerNo: $this->normalizeCustomerNo((string) $request->playerId, $request->serverId, $request->customerNoSeparator),
             callType: 'checkStatus',
             orderId: $request->orderId,
+            resubmit: true,
         );
     }
 
@@ -204,7 +229,7 @@ final class DigiflazzAdapter implements SupplierAdapter
      * and checkStatus() share this since Digiflazz's own docs describe
      * checkStatus as a literal re-submit of the same request shape.
      */
-    private function submitTransaction(string $refId, string $buyerSkuCode, string $customerNo, string $callType, ?int $orderId): SupplierResponse
+    private function submitTransaction(string $refId, string $buyerSkuCode, string $customerNo, string $callType, ?int $orderId, bool $resubmit = false): SupplierResponse
     {
         $response = $this->client(callType: $callType, orderId: $orderId)->post('/v1/transaction', array_filter([
             'username' => $this->username,
@@ -257,19 +282,18 @@ final class DigiflazzAdapter implements SupplierAdapter
                     'rc' => $data['rc'] ?? null,
                     'message' => $data['message'] ?? null,
                 ]),
-                // ADR-102 decision 4/5: reaching this arm means
-                // Digiflazz's own `status` field definitively said
-                // Gagal — a known, final outcome, whether or not this
-                // particular rc is in the 20-code resend-unsafe table.
-                // outcomeConfirmedFailed is therefore always true here;
+                // ADR-102 decision 4/5: Digiflazz's `status` said Gagal.
                 // resendUnsafeWithSameReference stays scoped to the
-                // table, since that's the orthogonal "is a resubmit
-                // safe" fact, not "is the outcome known".
+                // table (the orthogonal "is a resubmit safe" fact).
+                // 2026-10-05 addendum: on a re-submit, only a formed-
+                // transaction code confirms the outcome; otherwise it is
+                // unknown, and unsafe to treat as a fresh attempt.
                 default => SupplierResponse::failure(
                     (string) ($data['rc'] ?? 'unknown'),
                     $data['message'] ?? 'Unknown Digiflazz error',
-                    resendUnsafeWithSameReference: self::resendUnsafeWithSameReference((string) ($data['rc'] ?? '')),
-                    outcomeConfirmedFailed: true,
+                    resendUnsafeWithSameReference: self::resendUnsafeWithSameReference((string) ($data['rc'] ?? ''))
+                        || ! self::gagalConfirmsOutcome((string) ($data['rc'] ?? ''), $resubmit),
+                    outcomeConfirmedFailed: self::gagalConfirmsOutcome((string) ($data['rc'] ?? ''), $resubmit),
                 ),
             };
         }
