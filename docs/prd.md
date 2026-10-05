@@ -917,6 +917,12 @@ production before building on it.
 
 ## Polish (not blocking)
 
+68. **Product Manager's "Checkout field" select shows blank for a User-ID-only
+    game** (seen 2026-10-05). PrimeReact's Select treats the `""` option value
+    ("UID only (Player ID)") as no selection. Cosmetic: the saved
+    `extra_field: null` is correct. Fix: a non-empty sentinel value mapped to
+    null on save.
+
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114). The old `allow 127.0.0.1` nginx block on the bot webhook was
