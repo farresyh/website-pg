@@ -156,8 +156,8 @@ function CheckoutInputEditor({
           <SimpleSelect value={playerIdFormat} onChange={setPlayerIdFormat} options={PLAYER_ID_FORMAT_OPTIONS} className="w-56" />
         </div>
         <p className="ml-[10.75rem] text-theme-xs text-gray-500 dark:text-gray-400">
-          Checked on every channel (storefront, Reseller API, WhatsApp bot). Use Text for an ID like a Riot ID
-          (JettMain#1234). Server ID is always digits only.
+          Checked on every channel (storefront, Reseller API, WhatsApp bot). Text allows letters, digits and # . _ -
+          (e.g. a Riot ID, JettMain#1234). Server ID is always digits only.
         </p>
       </div>
       {isDigiflazz && (
