@@ -44,7 +44,7 @@ export const EXTRA_FIELD_OPTIONS = [
 /** ADR-097 2026-10-05 addendum, decision 29 — CheckoutInputEditor's User ID format control. */
 export const PLAYER_ID_FORMAT_OPTIONS = [
   { value: "numeric", label: "Digits only" },
-  { value: "text", label: "Text (letters, digits, # . _ -)" },
+  { value: "text", label: "Text (e.g. Riot ID)" },
 ];
 
 /** ADR-097 decision 2 — CheckoutInputEditor's separator control, Digiflazz-linked games only. */
