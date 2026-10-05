@@ -673,8 +673,9 @@ runs `fe1674b`, `/api/health` is ok, and the guard code is present on the box.
 - The unused local `mysqld` was disabled.
 
 Deploy and server state were verified by the model. The founder's real-order
-smoke test is still owed and now covers every release since 2026-09-29
-(§16 item 51).
+smoke test of everything live through release #354 passed on 2026-10-06
+(storefront, reseller bot, full-voucher cover, WhatsApp status card, not-found
+and voucher message; §16 items 51 and 54 closed, `docs/build-log.md`).
 
 **Infrastructure:**
 - Backend runs on the `pekangame-prod-lwf` DigitalOcean droplet (ADR-114);
@@ -712,7 +713,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal reminder still deferred (§16 item 64; the vendor question is settled by ADR-116's OpenWA `customer-support` session) | ADR-027, 055, 068, 080 |
-| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. **The voucher path is not yet live-tested** (it needs a failed purchase). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
+| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply; their throttles are silent and leave no trace (§16 item 69). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
@@ -788,54 +789,25 @@ production before building on it.
 
 ## Next up
 
-54. **Customer WhatsApp: release the follow-up and finish live testing.**
-    Done 2026-09-30:
-    - OpenWA `SEND_PACING` on;
-    - CS env set;
-    - CS-session webhook added (secret corrected to `OPENWA_WEBHOOK_SECRET`
-      through OpenWA's API);
-    - switch ON;
-    - receipt and `STOP` live-tested.
-
-    Still to do:
-    - (a) ~~Release #326~~ — **released 2026-10-01 via #332.**
-    - (b) After release, retest on prod with the founder's own number:
-      - message an order number from each order-page button (the timeline
-        card should come back);
-      - a mistyped number (not-found reply);
-      - `START`, since the founder's number is currently opted out after the
-        STOP test.
-    - (c) The **voucher path**: Issue Voucher on a failed purchase made with the
-      founder's number; the code should arrive on WhatsApp.
-    - (d) Optionally re-send the one `skipped` receipt (order
-      `PG-EGMBKUWJEVX2`, recorded before the switch was saved). After #326, it
-      is revived only when that exact event fires again, which for a receipt
-      won't happen. Messaging that order number now gets the status card
-      instead.
-
-51. **Founder real-order smoke test of the 2026-09-29 and 2026-09-30
-    releases** — deferred by the founder. Place real orders on the founder's
-    own account and confirm each reaches **Delivered**:
-    - (a) a storefront order (the `orders` lane);
-    - (b) a Reseller portal or bot `.order` (the `orders-reseller` lane, bot
-      reply via `default`, wallet debited);
-    - (c) a **full-voucher-cover** order: Paid with no CHIP step, then
-      Delivered, voucher balance reduced (the M-6 flow);
-    - (d) the WhatsApp paths still owed in item 54 (b)–(c);
-    - (e) ~~2026-09-30 accounting audit fixes~~ — **done 2026-10-01.**
-      Released to `main` via PR #332 (bundled with #326/#327/#328; #333
-      fixed an unrelated pre-existing CI timezone flake found along the
-      way). Live-verified against real production data post-deploy:
-      `cost_sen` null for the real order, its `reseller_wallet_refund` row
-      present, CSV footer total, `bank_transfer_fees_sen` split correct,
-      `reseller_wallet_balance_sen` matched the founder's own previously-
-      verified Balance page figure exactly. The underlying RM14.36
-      data-entry mistake the external reviewer found was also corrected
-      live (Edit Details, both transfers) — Monthly Summary now reads
-      RM 742.97, matching the reviewer's own receipts-based figure exactly.
-      Full detail: `docs/build-log.md`'s 2026-10-01 entry.
-
-    The model can watch Horizon and logs live over SSH while these run.
+69. **WhatsApp status-card and not-found throttles are silent — founder is
+    reconsidering whether to reply every time** (found in the 2026-10-06
+    smoke test). A second message with the same order number within 30
+    minutes (same order + status, ADR-116 addendum decision 3), or a second
+    unknown order number within 10 minutes, gets no reply, and the throttle
+    returns before a `customer_notifications` row is written, so admin can't
+    see why. A customer who taps "Send Receipt to WhatsApp" right after
+    "Contact Support" gets silence. Options:
+    - (a) reply every time, keeping only a per-phone abuse cap (e.g. N cards
+      per 10 min) whose overflow writes a `skipped` row with the reason;
+    - (b) keep the throttles, record a `skipped` "throttled" row, shorten the
+      same-card window;
+    - (c) as is.
+    Weigh: replies to a customer who wrote first are not capped by OpenWA's
+    `SEND_PACING` and carry little ban risk, but every card goes through the
+    one paced `whatsapp` worker (10–30 s gap), so an unbounded sender could
+    delay other customers' voucher messages — hence a cap stays in (a).
+    A "support vs updates" split was already rejected (addendum decision 1).
+    Needs an ADR-116 addendum before building.
 
 ## Hardening (founder `.env` / infra)
 
@@ -916,6 +888,14 @@ production before building on it.
 
 
 ## Polish (not blocking)
+
+70. **A full-voucher-cover order shows "Payment Method: fpx"** (seen
+    2026-10-06 on `PG-SJDWBIKMYC1Z`). `payment_method` keeps the method picked
+    at checkout although no gateway ran (`payment_ref` null, ADR-024
+    decision 5), so Order Detail says "fpx" and the Reports Payment Methods
+    tab counts an RM 0 FPX order. No money effect. Fix: show "Voucher" when
+    `final_amount = 0` with a voucher (display), or store it at checkout
+    (check every `payment_method` reader first).
 
 68. **Product Manager's "Checkout field" select shows blank for a User-ID-only
     game** (seen 2026-10-05). PrimeReact's Select treats the `""` option value
@@ -1121,6 +1101,8 @@ production before building on it.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **51** Founder real-order smoke test — passed 2026-10-06 on prod: storefront, reseller bot, full-voucher cover (`PG-SJDWBIKMYC1Z`), each Delivered (see `docs/build-log.md`).
+- **54** Customer WhatsApp live testing — passed 2026-10-06: status card, not-found reply, voucher code on WhatsApp after Issue Voucher (`PG-12A9VRY5KLCE`). The silent throttles it surfaced are item 69; (d) skipped by choice.
 - **60** Pre-launch money audit #3 — one voucher or member quota could discount several racing checkouts (log-and-proceed on a lost reservation). Now fails closed on every path, replay included; two-process concurrency proofs (ADR-024 2026-10-04 addendum). Live via #354 (2026-10-05).
 - **61** Pre-launch money audit #1 — a partly delivered combo had no terminal state, no wallet compensation path, and over-restored the paid-with voucher on retail. New `partially_delivered` status + one `OrderSettlementService` for both instruments (ADR-094 2026-10-04 addendum). PR #345, released to `main` 2026-10-03 via #346.
 - **62** Pre-launch money audit #2 — monthly accounting summary dropped whole KL days (31 Oct and others). PR #344, released to `main` 2026-10-03 via #346.
