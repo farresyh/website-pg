@@ -2548,14 +2548,40 @@ webhook, receipt, drawdown — all reuse the existing Success branch).
   replay-safe supplier (the ref_id is reused, so Digiflazz would replay the
   original SKU); checked in the controller and again in `OrderResendService`.
 
-**Verified.** Backend 2542/2542; concurrency 29/29 on MySQL (new: two legs of
-one NeedsReview combo finalized at once → both succeed, order Delivered,
-profit credited once); admin tsc, eslint, build. Not browser-checked: no local
-stack was running, and clicking Confirm/Check locally would call the real
-Digiflazz.
+**Local browser check found a real bug (fixed in the same PR).** Seeded four
+NeedsReview orders on Digiflazz's official test cases (`xld10`,
+`0878000012xx`, `testing=true`) in the local dev DB; the founder clicked
+through. The local IP is not whitelisted at Digiflazz, so every call answered
+`status: Gagal, rc 45` ("IP Anda tidak kami kenali"), and Check supplier (A)
+and Confirm Failed (C) **failed** the orders instead of leaving them — the
+exact leak this PR closes. Cause: any `status: Gagal` counted as confirmed
+(ADR-102 decision 5). Digiflazz's rc table marks 45 "Terbentuk Transaksi =
+Tidak": the request was rejected, the original transaction never looked at.
+Fix (ADR-102 2026-10-05 addendum, decision 9): on a re-submit (`checkStatus()`,
+or `createOrder()` reusing a stored reference — new
+`SupplierOrderRequest::$resubmit`), Gagal confirms only for a code in the
+existing 20-code "Ya" table minus rate limits 85/86; otherwise the outcome is
+unknown. A first submit is unchanged. The existing table was re-checked
+against the live docs: identical, no sync needed. This also closes a
+pre-existing path: the Pending poll getting `rc 45` (e.g. during an IP
+change; prod logged one `rc 45` resend attempt) used to fail the order.
+Test data deleted from the local DB afterwards (orders, voucher, ledger,
+notifications, attempts, request logs, test game/packages).
+
+**Verified.** Backend 2549/2549 (incl. end-to-end tests through the real
+adapter with `Http::fake`: rc 45 → Confirm Failed refused, a NeedsReview
+retry parked Pending; rc 02 → still Failed); concurrency 29/29 on MySQL (new:
+two legs of one NeedsReview combo finalized at once → both succeed, order
+Delivered, profit credited once); admin tsc, eslint, build. The Sukses/Gagal
+browser paths could not be exercised locally (IP not whitelisted); they are
+covered by the tests above.
 
 **Gotchas.**
 - A PHP arrow function captures by value, so a test's `&$array` capture lost
   every recorded call; an `ArrayObject` fixed the test, not the code.
 - Pint realigned an unrelated docblock in `OrderResendService`; reverted to
   keep the diff on-topic.
+- The money-ADR code-trace pass missed decision 9: it checked every writer of
+  the state, but took the adapter's "confirmed Gagal" on trust. A local
+  browser check against the real API caught it — worth doing for any change
+  that relies on a supplier's answer.
