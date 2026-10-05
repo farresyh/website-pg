@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
 use App\Services\Accounting\BudgetEnvelopeEntryCategory;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -193,7 +194,44 @@ class BudgetEnvelopeControllerTest extends TestCase
             'description' => 'no date given',
         ])->assertCreated();
 
-        $this->assertStringStartsWith(now()->toDateString(), $response->json('entry.transaction_date'));
+        $this->assertStringStartsWith(now('Asia/Kuala_Lumpur')->toDateString(), $response->json('entry.transaction_date'));
+    }
+
+    /** Item 63: "today" is the KL day — at 07:30 KL it is still yesterday in UTC. */
+    public function test_the_default_transaction_date_is_the_kl_day_not_the_utc_day(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-03 23:30:00', 'UTC')); // 2026-10-04 07:30 KL
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+
+        $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 100000, 'description' => 'early morning',
+        ])->assertCreated();
+
+        $this->assertStringStartsWith('2026-10-04', $response->json('entry.transaction_date'));
+    }
+
+    /**
+     * Item 63: the date filter is the money date (transaction_date), and a
+     * void's reversal carries the date of the entry it cancels — so the
+     * filtered period still nets the pair to zero.
+     */
+    public function test_the_date_filter_uses_transaction_date_and_keeps_a_void_with_its_entry(): void
+    {
+        $this->actAsSuperAdmin();
+        $envelope = BudgetEnvelope::query()->where('name', 'Capital Rolling')->firstOrFail();
+        $created = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
+            'category' => BudgetEnvelopeEntryCategory::CapitalInjection->value, 'amount_sen' => 100000,
+            'description' => 'back-dated', 'transaction_date' => '2026-09-15',
+        ])->assertCreated();
+        $this->postJson('/api/accounting/envelope-entries/'.$created->json('entry.id').'/void', ['reason' => 'wrong'])->assertCreated();
+
+        $september = $this->getJson("/api/accounting/envelopes/{$envelope->id}/entries?from=2026-09-15&to=2026-09-15")->assertOk()->json('entries');
+        $this->assertCount(2, $september, 'the entry and its reversal, both dated 2026-09-15');
+        $this->assertSame(0, collect($september)->sum('amount_sen'));
+
+        $today = now('Asia/Kuala_Lumpur')->toDateString();
+        $this->assertCount(0, $this->getJson("/api/accounting/envelopes/{$envelope->id}/entries?from={$today}&to={$today}")->json('entries'));
     }
 
     /**

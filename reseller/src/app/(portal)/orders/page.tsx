@@ -218,7 +218,7 @@ export default function OrdersPage() {
                     {formatRm(order.final_amount)}
                   </td>
                   {ownerType === "affiliate" && (
-                    <td className="px-5 py-4">{formatRm(order.affiliate_profit ?? 0)}</td>
+                    <td className="px-5 py-4">{order.affiliate_profit == null ? "—" : formatRm(order.affiliate_profit)}</td>
                   )}
                   <td className="px-5 py-4">
                     <StatusTag severity={paymentSeverity(order.payment_status)}>
@@ -312,7 +312,7 @@ function MobileOrderCard({
       <div className="mt-4 grid grid-cols-2 gap-3 text-theme-xs">
         <OrderFact label="Payment"><StatusTag severity={paymentSeverity(order.payment_status)}>{order.payment_status}</StatusTag></OrderFact>
         <OrderFact label="Delivery"><StatusTag severity={deliverySeverity(order.delivery_status)}>{humanize(order.delivery_status)}</StatusTag></OrderFact>
-        {ownerType === "affiliate" && <OrderFact label="Your margin">{formatRm(order.affiliate_profit ?? 0)}</OrderFact>}
+        {ownerType === "affiliate" && <OrderFact label="Your margin">{order.affiliate_profit == null ? "—" : formatRm(order.affiliate_profit)}</OrderFact>}
         <OrderFact label="Date">{formatDateTime(order.paid_at ?? order.created_at)}</OrderFact>
       </div>
       {(order.wallet_refunded || order.has_compensation_voucher || order.has_voucher_restored) && (

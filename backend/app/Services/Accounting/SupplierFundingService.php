@@ -418,13 +418,13 @@ final class SupplierFundingService
         Supplier $supplier,
         int $perPage = 20,
         ?CarbonInterface $from = null,
-        ?CarbonInterface $to = null,
+        ?CarbonInterface $toExclusive = null,
         ?bool $voided = null,
     ): LengthAwarePaginator {
         return $supplier->transfers()
             ->with(['adjustments', 'corrections'])
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->when($voided === true, fn ($q) => $q->whereNotNull('voided_at'))
             ->when($voided === false, fn ($q) => $q->whereNull('voided_at'))
             ->orderByDesc('created_at')

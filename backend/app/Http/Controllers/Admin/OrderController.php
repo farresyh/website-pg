@@ -16,11 +16,14 @@ use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Fulfillment\SupplierDeliveryCheckService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\OrdersWorkbook;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
 use App\Services\Pricing\PricingBasis;
+use App\Services\Report\ReportService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Support\ManualCheckCooldown;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -28,7 +31,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * ORD-1..7 — read-only list + detail, plus retryDelivery (ORD-7's
@@ -82,7 +85,11 @@ class OrderController extends Controller
             // relation exists for it — see the batched query there).
             ->withExists([
                 'voucher as has_compensation_voucher',
-                'paidWithVoucher as has_used_voucher',
+                // ADR-024 2026-10-04 addendum decision 11: "paid with a
+                // voucher" means a redemption exists, not just voucher_id —
+                // a checkout that failed closed keeps its voucher_id
+                // snapshot but spent nothing.
+                'voucherRedemption as has_used_voucher',
                 // ADR-024 addendum (2026-09-17, restore-only) — the 4th
                 // badge, mirroring show()'s own has_voucher_restored.
                 'voucherRedemption as has_voucher_restored' => fn ($query) => $query->where('status', 'restored'),
@@ -139,7 +146,7 @@ class OrderController extends Controller
             'awaiting_payment' => $query
                 ->where('payment_status', PaymentStatus::Pending->value)
                 ->where('created_at', '<=', now()->subMinutes(30)),
-            'today' => $query->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()]),
+            'today' => $query->where('created_at', '>=', $this->todayKl()[0])->where('created_at', '<', $this->todayKl()[1]),
             default => null,
         };
 
@@ -170,91 +177,69 @@ class OrderController extends Controller
             $query->where('game_id', (int) $gameId);
         }
 
-        if ($dateFrom = $request->query('date_from')) {
-            $query->where('created_at', '>=', $dateFrom.' 00:00:00');
-        }
+        // ADR-108 2026-10-04 addendum: KL calendar days, the same day
+        // bounds Reports uses — a plain string compare against the UTC
+        // column used to cut days at UTC midnight (08:00 KL).
+        [$from, $toExclusive] = app(ReportService::class)->dateRangeFromDates(
+            $this->validDate($request->query('date_from')),
+            $this->validDate($request->query('date_to')),
+        );
+        $query->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive));
+    }
 
-        if ($dateTo = $request->query('date_to')) {
-            $query->where('created_at', '<=', $dateTo.' 23:59:59');
-        }
+    private function validDate(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : null;
     }
 
     /**
-     * ADR-108 decision 9 (ORD-5, finally built) — streams every order
-     * matching the current filter set (not just the current page),
-     * reusing the StreamedResponse+fputcsv convention already
-     * established (CustomerAnalyticsController/ReportController/etc).
-     * Columns match the on-screen table plus the full money breakdown
-     * the founder asked for (Q6-Q9 of ADR-108's own grill) — CSV-only,
-     * deliberately not added to the on-screen Columns toggle (decision
-     * 8), since Order Detail already shows every one of these fields in
-     * full.
+     * Today in Kuala Lumpur, as UTC bounds.
      *
-     * ADR-111 addendum (2026-09-22, founder concern): this export is the
-     * documented source of truth for order-level P&L (`docs/prd.md`),
-     * so "Cost Price" is deliberately ONE column, not two competing ones
-     * (raw catalog `cost_price` vs `real_cost_price_sen`) — an auditor
-     * reading this file must never have to guess which figure to sum.
-     * `Order::effectiveCostPriceSen()`/`costBasis()` (shared with Order
-     * Detail) resolve to whichever cost actually produced the row's own
-     * `Platform Profit`, plus a "Cost Basis" column (Real/Mixed/
-     * Estimated) so the provenance is explicit rather than assumed.
-     * `Selling Price − Cost Price − Affiliate Profit` always equals
-     * `Platform Profit` for every row.
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
      */
-    public function export(Request $request): StreamedResponse
+    private function todayKl(): array
     {
-        $query = Order::query()->where('is_test', false)->with([
-            'game:id,name', 'package:id,name',
-            'affiliate:id,business_name,is_primary', 'walletReseller:id,business_name',
-            'deliveryLegs.componentPackage:id,cost_price',
-        ]);
+        $today = now(ReportService::TIMEZONE)->toDateString();
+
+        return app(ReportService::class)->dateRangeFromDates($today, $today);
+    }
+
+    /**
+     * ADR-108 decision 9 (ORD-5) — every order matching the current
+     * filter set, not just the current page. Since the 2026-10-04 addendum
+     * it is a 2-sheet Excel workbook (OrdersWorkbook): a formula-driven
+     * Summary over an Orders sheet with earned (ledger) and expected
+     * profit side by side. ADR-111's single "Cost Price" + "Cost Basis"
+     * columns are kept.
+     */
+    public function export(Request $request, OrdersWorkbook $workbook): BinaryFileResponse
+    {
+        $query = Order::query()->where('is_test', false)->orderBy('created_at', 'desc');
         $this->applyFilters($query, $request);
 
-        $filename = 'orders-'.now()->format('Y-m-d-His').'.csv';
+        // XLSX is a zip — it is built in a temp file, then sent and deleted.
+        $path = tempnam(sys_get_temp_dir(), 'orders-export-');
+        $workbook->write($query, $path, $this->exportScope($request));
 
-        return response()->streamDownload(function () use ($query) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, [
-                'Order #', 'Customer Email', 'Game', 'Package', 'Source', 'Final Amount (RM)',
-                'Payment Status', 'Delivery Status', 'Pricing Basis', 'Cost Price (RM)', 'Cost Basis',
-                'Standard/Normal Selling Price (RM)', 'Member Markup %', 'Affiliate Markup %',
-                'Wholesale Markup %', 'Transaction Fee (RM)', 'Platform Profit (RM)',
-                'Affiliate Profit (RM)', 'Date',
-            ]);
+        return response()->download($path, 'orders-'.now(ReportService::TIMEZONE)->format('Y-m-d-His').'.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend();
+    }
 
-            $query->orderBy('created_at', 'desc')->chunk(500, function ($orders) use ($out) {
-                foreach ($orders as $order) {
-                    $source = $order->wallet_reseller
-                        ? 'Reseller: '.$order->wallet_reseller->business_name
-                        : ($order->affiliate && ! $order->affiliate->is_primary ? $order->affiliate->business_name : 'Direct');
+    /** A plain-language line for the Summary sheet: which orders this export holds. */
+    private function exportScope(Request $request): string
+    {
+        $parts = array_filter([
+            $request->query('status') ? 'tab: '.$request->query('status') : null,
+            $request->query('source') ? 'source: '.$request->query('source') : null,
+            $request->query('game_id') ? 'game #'.$request->query('game_id') : null,
+            $request->query('search') ? 'search: "'.$request->query('search').'"' : null,
+            $this->validDate($request->query('date_from')) ? 'created from '.$request->query('date_from') : null,
+            $this->validDate($request->query('date_to')) ? 'created to '.$request->query('date_to') : null,
+        ]);
 
-                    fputcsv($out, [
-                        $order->order_number,
-                        $order->customer_email,
-                        $order->game?->name ?? '',
-                        $order->package?->name ?? '',
-                        $source,
-                        number_format($order->final_amount / 100, 2, '.', ''),
-                        $order->payment_status->value,
-                        $order->delivery_status->value,
-                        $order->pricing_basis?->value ?? '',
-                        number_format($order->effectiveCostPriceSen() / 100, 2, '.', ''),
-                        ucfirst($order->costBasis()),
-                        number_format(($order->standard_selling_price ?? $order->normal_selling_price ?? 0) / 100, 2, '.', ''),
-                        $order->markup_percent !== null ? $order->markup_percent.'%' : '',
-                        $order->affiliate_markup_pct !== null ? $order->affiliate_markup_pct.'%' : '',
-                        $order->wholesale_markup_pct !== null ? $order->wholesale_markup_pct.'%' : '',
-                        number_format($order->transaction_fee / 100, 2, '.', ''),
-                        number_format($order->platform_profit / 100, 2, '.', ''),
-                        number_format($order->affiliate_profit / 100, 2, '.', ''),
-                        $order->created_at->toDateTimeString(),
-                    ]);
-                }
-            });
-
-            fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv']);
+        return $parts === [] ? 'All orders (no filter)' : implode(', ', $parts).' — dates in Kuala Lumpur time';
     }
 
     /**
@@ -285,13 +270,13 @@ class OrderController extends Controller
                 'SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as needs_review,
                  SUM(CASE WHEN delivery_status IN (?, ?) THEN 1 ELSE 0 END) as processing,
                  SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as completed,
-                 SUM(CASE WHEN created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) as today,
+                 SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as today,
                  COUNT(*) as all_orders',
                 [
                     DeliveryStatus::NeedsReview->value,
                     DeliveryStatus::Processing->value, DeliveryStatus::Pending->value,
                     DeliveryStatus::Delivered->value,
-                    now()->startOfDay(), now()->endOfDay(),
+                    ...$this->todayKl(),
                 ],
             )
             ->first();
@@ -480,6 +465,12 @@ class OrderController extends Controller
             ]);
         }
 
+        if ($order->blocksPackageSwapTo($targetPackage)) {
+            throw ValidationException::withMessages([
+                'package_id' => [Order::PACKAGE_SWAP_BLOCKED_MESSAGE],
+            ]);
+        }
+
         // ADR-105 decision 4: resolved above, not before, since this
         // guard now also needs $targetPackage for its sell-below-cost
         // check.
@@ -514,9 +505,15 @@ class OrderController extends Controller
             abort(404);
         }
 
-        if ($order->delivery_status !== DeliveryStatus::Pending) {
+        // ADR-102 2026-10-05 addendum, decision 6: NeedsReview too, when
+        // the supplier can safely be asked (replays the stored result,
+        // the order reached it, inside the age limit).
+        $askable = $order->delivery_status === DeliveryStatus::Pending
+            || ($order->delivery_status === DeliveryStatus::NeedsReview && SupplierDeliveryCheckService::canAskAboutNeedsReview($order));
+
+        if (! $askable) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a Pending delivery can be checked from the supplier.'],
+                'delivery_status' => ['Only a Pending delivery, or a needs-review one this supplier can safely be asked about, can be checked from the supplier.'],
             ]);
         }
 
@@ -677,7 +674,7 @@ class OrderController extends Controller
      * voucher path there — some legs DID deliver, so confirming the
      * WHOLE order "failed" would be wrong).
      */
-    public function confirmFailed(ConfirmOrderDeliveryFailedRequest $request, Order $order, OrderFulfillmentService $fulfillment): JsonResponse
+    public function confirmFailed(ConfirmOrderDeliveryFailedRequest $request, Order $order, OrderFulfillmentService $fulfillment, SupplierAdapterFactory $supplierAdapters, ManualCheckCooldown $cooldown): JsonResponse
     {
         // ADR-018 decision #2: same reasoning as retryDelivery()/resend() above.
         if ($order->is_test) {
@@ -699,19 +696,36 @@ class OrderController extends Controller
             ]);
         }
 
-        // ADR-094 decision 31: on a combo the service flips the ambiguous
-        // legs to Failed and rolls up to Failed or PartiallyDelivered; it
-        // refuses while a leg is still awaiting the supplier.
+        // ADR-102 2026-10-05 addendum, decision 4: a replay-safe supplier
+        // is asked first, under checkSupplier()'s cooldown (Digiflazz's
+        // "don't re-check within 1 minute"). ADR-094 decision 31: on a
+        // combo the service flips the ambiguous legs to Failed and rolls
+        // up to Failed or PartiallyDelivered.
+        $asksSupplier = SupplierDeliveryCheckService::canAskAboutNeedsReview($order);
+        $cooldownKey = "manual-check:supplier:{$order->id}";
+
+        if ($asksSupplier && ($remaining = $cooldown->remainingSeconds($cooldownKey)) > 0) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ["The supplier was checked too recently — try again in {$remaining} seconds."],
+            ]);
+        }
+
         try {
-            $result = $fulfillment->confirmDeliveryFailed(
+            $result = (new SupplierDeliveryCheckService($supplierAdapters, $fulfillment))->confirmFailed(
                 $order,
                 $request->validated('note'),
                 $request->user()->name,
             );
-        } catch (OrderFulfillmentException) {
+        } catch (OrderFulfillmentException $e) {
+            Log::warning('Confirm Failed refused: supplier has no final answer', ['order_number' => $order->order_number, 'reason' => $e->getMessage()]);
+
             throw ValidationException::withMessages([
-                'delivery_status' => ['A part of this order is still awaiting the supplier — check the supplier first, then confirm.'],
+                'delivery_status' => ['The supplier has not confirmed this order failed — it is still processing it, or could not be reached. Nothing was changed; check again later.'],
             ]);
+        } finally {
+            if ($asksSupplier) {
+                $cooldown->start($cooldownKey, $order->supplier?->api_config['manual_check_cooldown_seconds'] ?? config('services.manual_check.cooldown_seconds'));
+            }
         }
 
         return $this->orderDetailResponse($result);
@@ -836,7 +850,7 @@ class OrderController extends Controller
             // extra query) so OrderDetail (which extends the list's
             // shape) never has to special-case a field only present on
             // one of the two endpoints.
-            'has_used_voucher' => $order->paidWithVoucher !== null,
+            'has_used_voucher' => $order->voucherRedemption !== null,
             'has_compensation_voucher' => $order->voucher !== null,
             'has_wallet_refund' => $entry !== null,
             // ADR-024 addendum (2026-09-17, restore-only) — the 4th
@@ -860,6 +874,11 @@ class OrderController extends Controller
             // actually disables the Resend/Retry button and requires a
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
+            // ADR-102 2026-10-05 addendum, decisions 4/6 — a needs_review
+            // order the supplier can safely be asked about: shows Check
+            // from Supplier, and Confirm Failed asks the supplier first.
+            'supplier_askable' => $order->delivery_status === DeliveryStatus::NeedsReview
+                && SupplierDeliveryCheckService::canAskAboutNeedsReview($order),
             // ADR-107 decision 3, generalized by ADR-111 decision 7 — true
             // once ANY order (not just combo) delivered with a reconciled
             // negative platform_profit, or a material drift from the
@@ -867,6 +886,10 @@ class OrderController extends Controller
             // the after-the-fact visibility signal instead). Drives the
             // Order Detail "Profit Adjusted" info card.
             'profit_reconciled_flagged' => $order->hasReconciledProfitFlag(),
+            // ADR-108 2026-10-04 addendum — what the ledger holds for this
+            // order (null: earned nothing). platform_profit/affiliate_profit
+            // above stay the expected figures.
+            'earned_profit' => $order->earnedProfit(),
             // ADR-111 addendum — one "Cost Price" figure, not two
             // competing columns (raw `cost_price` catalog snapshot vs
             // `real_cost_price_sen`): whichever cost actually went into

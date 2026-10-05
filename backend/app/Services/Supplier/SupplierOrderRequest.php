@@ -29,5 +29,10 @@ final class SupplierOrderRequest
         // to the order it belongs to; purely a logging convenience,
         // no adapter branches on it.
         public readonly ?int $orderId = null,
+        // ADR-102 2026-10-05 addendum (rc correction): true when this call
+        // re-submits a reference the supplier may already hold (a
+        // NeedsReview retry). Digiflazz then reads it as a status check;
+        // every other adapter ignores it.
+        public readonly bool $resubmit = false,
     ) {}
 }

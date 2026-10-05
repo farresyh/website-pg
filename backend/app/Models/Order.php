@@ -8,6 +8,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
+use App\Services\Supplier\SupplierAdapterFactory;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -28,7 +29,7 @@ class Order extends Model
     protected $fillable = [
         'order_number',
         'checkout_idempotency_key',
-        'reseller_api_idempotency_payload_hash',
+        'idempotency_payload_hash',
         'reference_number',
         'is_test',
         'customer_email',
@@ -225,10 +226,12 @@ class Order extends Model
         $revenue = $partial ? $this->selling_price - $this->compensationAmountSen() : $this->selling_price;
         $catalogTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->componentPackage?->cost_price ?? 0);
         $realTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen ?? $leg->componentPackage?->cost_price ?? 0);
-        $allLegsReal = $legs->every(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null);
+        $realLegs = $legs->filter(fn (OrderDeliveryLeg $leg) => $leg->real_cost_price_sen !== null)->count();
 
-        if ($this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
-            return ['cost' => $realTotal, 'basis' => $allLegsReal ? 'real' : 'mixed'];
+        // Item 63: classified by how many legs carry a real cost. With
+        // none, the "real" total IS the catalog total — 'estimated'.
+        if ($realLegs > 0 && $this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
+            return ['cost' => $realTotal, 'basis' => $realLegs === $legs->count() ? 'real' : 'mixed'];
         }
 
         return ['cost' => $catalogTotal, 'basis' => 'estimated'];
@@ -341,6 +344,22 @@ class Order extends Model
         return $this->delivery_status === DeliveryStatus::NeedsReview;
     }
 
+    public const PACKAGE_SWAP_BLOCKED_MESSAGE = 'This order is still awaiting the supplier\'s final answer for its original package. Retry the same package, or settle it first (Check Supplier / Confirm Failed), then resend a different package from Failed.';
+
+    /**
+     * ADR-102 2026-10-05 addendum, decision 8: a NeedsReview resend reuses
+     * the ref_id (ORD-8), and a replay-safe supplier answers a known ref_id
+     * with the original transaction — so a different package would record
+     * one package's profit while the supplier replays another's. A swap
+     * from Failed takes a fresh reference and stays allowed.
+     */
+    public function blocksPackageSwapTo(Package $target): bool
+    {
+        return $this->delivery_status === DeliveryStatus::NeedsReview
+            && $target->id !== $this->package_id
+            && SupplierAdapterFactory::resubmitReplaysOutcome((string) $this->supplier?->slug);
+    }
+
     /**
      * ADR-024 addendum (2026-09-17, restore-only) — true once this
      * order's own voucher redemption has been given back (Path B's
@@ -381,32 +400,6 @@ class Order extends Model
     public function isAlreadyCompensated(): bool
     {
         return $this->voucher()->exists() || $this->isAlreadyRefundedToWallet() || $this->isVoucherRestored();
-    }
-
-    /**
-     * 2026-09-29 audit (Wave 5 Low): writes a non-Paid payment_status
-     * (Pending/Failed) only if the row isn't already Paid, in one atomic
-     * UPDATE. The CHIP webhook's non-Paid branch and reconcile's
-     * markFailed() both read the order, then wrote — a Paid webhook
-     * committing in between got overwritten back to Failed, and the
-     * voucher/quota give-back ran on a paid order. Returns false when the
-     * row was already Paid, so the caller skips its give-back.
-     */
-    public function setPaymentStatusUnlessPaid(PaymentStatus $status): bool
-    {
-        $updated = static::query()
-            ->whereKey($this->id)
-            ->where('payment_status', '!=', PaymentStatus::Paid->value)
-            ->update(['payment_status' => $status->value]);
-
-        if ($updated === 0) {
-            return false;
-        }
-
-        $this->payment_status = $status;
-        $this->syncOriginalAttribute('payment_status');
-
-        return true;
     }
 
     /**
@@ -496,6 +489,51 @@ class Order extends Model
             });
 
         return $entries;
+    }
+
+    /**
+     * ADR-108 2026-10-04 addendum — the profit this order actually earned:
+     * its `order_profit` ledger entries, a reasoned correction included.
+     * Null when nothing was credited (not delivered, failed, refunded,
+     * unpaid, sandbox). The `platform_profit`/`affiliate_profit` columns
+     * are the expected profit — the plan the credit is made from — and
+     * are not this.
+     *
+     * @return array{platform: int, affiliate: int}|null
+     */
+    public function earnedProfit(): ?array
+    {
+        return self::earnedProfitsFor(new Collection([$this]))[$this->id];
+    }
+
+    /**
+     * earnedProfit() for a page or chunk of orders in one query, the same
+     * shape as walletRefundEntriesFor(): every order id is a key.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @return array<int, array{platform: int, affiliate: int}|null>
+     */
+    public static function earnedProfitsFor(Collection $orders): array
+    {
+        $earned = array_fill_keys($orders->pluck('id')->all(), null);
+        if ($earned === []) {
+            return [];
+        }
+
+        LedgerEntry::query()
+            ->where('type', 'order_profit')
+            ->where('reference_type', 'order')
+            ->whereIn('reference_id', array_keys($earned))
+            ->selectRaw('reference_id, owner_type, SUM(amount) as total')
+            ->groupBy('reference_id', 'owner_type')
+            ->get()
+            ->each(function (LedgerEntry $row) use (&$earned): void {
+                $key = $row->owner_type === LedgerOwnerType::Platform->value ? 'platform' : 'affiliate';
+                $earned[(int) $row->reference_id] ??= ['platform' => 0, 'affiliate' => 0];
+                $earned[(int) $row->reference_id][$key] = (int) $row->total;
+            });
+
+        return $earned;
     }
 
     private function walletRefundQuery(): Builder

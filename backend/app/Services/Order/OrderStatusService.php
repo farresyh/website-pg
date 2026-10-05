@@ -165,14 +165,16 @@ final class OrderStatusService
      * via a supplier webhook or the reconcile poll's own check. A
      * second call once already Delivered throws here (idempotency is
      * enforced by this guard, not by the caller re-checking first).
+     *
+     * ADR-102 2026-10-05 addendum, decision 1: also from NeedsReview —
+     * a Pending order aged out there (or one whose outcome was never
+     * known) is still awaiting the supplier's final answer, and a late
+     * `Sukses` is the same proof a Pending one gets. Never from Failed
+     * (decision 2).
      */
     public function finalizePendingSuccess(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
     {
-        if ($currentDeliveryStatus !== DeliveryStatus::Pending) {
-            throw new InvalidOrderTransitionException(
-                "Cannot finalize pending delivery as delivered: delivery_status is {$currentDeliveryStatus->value}, must be pending",
-            );
-        }
+        $this->assertAwaitingSupplier($currentDeliveryStatus, 'delivered');
 
         return DeliveryStatus::Delivered;
     }
@@ -183,15 +185,25 @@ final class OrderStatusService
      * so the existing Failed-only voucher-issuance gate
      * (VoucherController::storeFromOrder()) applies unchanged — no
      * separate double-compensation guard needed.
+     *
+     * ADR-102 2026-10-05 addendum, decision 6: also from NeedsReview, for
+     * a supplier-confirmed Gagal only (callers route an ambiguous failure
+     * elsewhere) — the same move reclassifyConfirmedFailedNeedsReview()
+     * already makes.
      */
     public function finalizePendingFailure(DeliveryStatus $currentDeliveryStatus): DeliveryStatus
     {
-        if ($currentDeliveryStatus !== DeliveryStatus::Pending) {
-            throw new InvalidOrderTransitionException(
-                "Cannot finalize pending delivery as failed: delivery_status is {$currentDeliveryStatus->value}, must be pending",
-            );
-        }
+        $this->assertAwaitingSupplier($currentDeliveryStatus, 'failed');
 
         return DeliveryStatus::Failed;
+    }
+
+    private function assertAwaitingSupplier(DeliveryStatus $currentDeliveryStatus, string $target): void
+    {
+        if (! in_array($currentDeliveryStatus, [DeliveryStatus::Pending, DeliveryStatus::NeedsReview], true)) {
+            throw new InvalidOrderTransitionException(
+                "Cannot finalize pending delivery as {$target}: delivery_status is {$currentDeliveryStatus->value}, must be pending or needs_review",
+            );
+        }
     }
 }

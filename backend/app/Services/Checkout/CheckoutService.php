@@ -111,6 +111,7 @@ final class CheckoutService
             $order = $this->orderFactory->create(new OrderDraft(
                 pricing: $pricing,
                 idempotencyKey: $request->idempotencyKey,
+                idempotencyPayloadHash: $request->idempotencyPayloadHash,
                 customerEmail: $customerEmail,
                 customerName: $request->customerName,
                 customerPhone: $request->customerPhone,
@@ -147,7 +148,7 @@ final class CheckoutService
         }
 
         if ($fullyCoveredByVoucher) {
-            return $this->settleWithVoucher($order, $voucherPreview);
+            return $this->settleWithVoucher($order);
         }
 
         return $this->requestPayment(
@@ -159,19 +160,30 @@ final class CheckoutService
     }
 
     /**
-     * Retries the payment leg for an Order that already exists (found by
-     * CheckoutController via checkout_idempotency_key) but never got a
-     * payment_ref — the previous attempt's gateway call failed or the
-     * process died before recording it. Reuses the Order's own already-
-     * snapshotted pricing (ORD-9 — never recomputed here) and its own
-     * order_number as the gateway `reference`, same as a fresh
-     * initiate() would, so the gateway's own reference dedupe still
-     * applies if that earlier attempt actually reached the gateway
-     * despite failing to persist locally.
+     * The idempotent-replay path for an Order that already exists (found
+     * by CheckoutController via checkout_idempotency_key). Without a
+     * payment_ref, the previous attempt's gateway call failed or the
+     * process died before recording it: retry the payment leg, reusing
+     * the Order's snapshotted pricing (ORD-9) and its order_number as the
+     * gateway `reference`, so the gateway's own reference dedupe still
+     * applies. With one, the link already exists.
+     *
+     * Either way, ADR-024 2026-10-04 addendum decision 6: the order is
+     * reserved before any link goes back out (a no-op if it already is),
+     * and a Failed order is refused — a replay must never hand out the
+     * link of an attempt that lost its voucher/quota reservation.
      */
     public function resume(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties = []): Order
     {
-        return $this->requestPayment($order, $gateway, $channelCode, $channelProperties);
+        if ($order->payment_status === PaymentStatus::Failed) {
+            throw CheckoutAttemptClosedException::alreadyFailed();
+        }
+
+        if ($order->payment_ref === null) {
+            return $this->requestPayment($order, $gateway, $channelCode, $channelProperties);
+        }
+
+        return $this->reserveOrClose($order);
     }
 
     /**
@@ -196,35 +208,31 @@ final class CheckoutService
      * concurrent requests citing the same exactly-covering voucher
      * would each pass `preview()` and each get fulfilled, repeatably,
      * bounded only by how many an attacker sends.
+     *
+     * ADR-024 2026-10-04 addendum decision 4: member quota is reserved
+     * here too, before Paid, under the same rule.
      */
-    private function settleWithVoucher(Order $order, VoucherPreview $voucherPreview): Order
+    private function settleWithVoucher(Order $order): Order
     {
-        try {
-            $this->vouchers->redeem(
-                $voucherPreview->voucherId,
-                $order->id,
-                $order->voucher_discount,
-                $order->customer_email,
-                $order->customer_phone,
-                $order->affiliate_id,
-            );
-        } catch (InvalidVoucherException $e) {
-            $order->update(['payment_status' => PaymentStatus::Failed->value]);
+        $lost = DB::transaction(function () use ($order) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-            Log::error('Full-cover checkout lost the voucher-redemption race', [
-                'order_number' => $order->order_number,
-                'voucher_id' => $voucherPreview->voucherId,
-                'error' => $e->getMessage(),
-            ]);
+            if (! $this->reserveAll($locked)) {
+                $locked->update(['payment_status' => PaymentStatus::Failed->value]);
 
-            throw new CheckoutFailedException(
-                "This voucher is no longer available for order {$order->order_number} — its balance was just used by another order.",
-            );
+                return true;
+            }
+
+            $locked->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
+
+            return false;
+        });
+
+        if ($lost) {
+            $this->logReservationLost($order);
+
+            throw CheckoutAttemptClosedException::reservationLost();
         }
-
-        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
-
-        $this->decrementMembershipQuotaIfApplicable($order);
 
         FulfillOrderJob::dispatch($order->fresh());
 
@@ -273,14 +281,11 @@ final class CheckoutService
         // commits, never in its transaction — an unexpected failure in the
         // voucher/quota lock (lock-wait timeout, deadlock) used to roll back
         // payment_ref too, orphaning a live CHIP purchase the webhook's
-        // strict payment_ref match could never find. `$created` is only
-        // true for the one request that won the lock above, so this still
-        // runs at most once per order.
-        if ($created) {
-            $this->reserveVoucherAndQuota($order);
-        }
-
-        return $order->fresh();
+        // strict payment_ref match could never find. Every caller reserves,
+        // not just the one that created the link: reserveOrClose() is
+        // idempotent under the Order lock, and no caller may return a link
+        // the order hasn't reserved for (ADR-024 2026-10-04 addendum).
+        return $this->reserveOrClose($order);
     }
 
     private function createPaymentFor(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): Order
@@ -343,17 +348,65 @@ final class CheckoutService
         return $order;
     }
 
-    private function reserveVoucherAndQuota(Order $order): void
+    /**
+     * ADR-024 2026-10-04 addendum, decisions 1 and 5: reserve the
+     * voucher and member quota for an order whose payment link exists,
+     * or close the attempt. Reservation still runs after the gateway
+     * confirmed the link (decision 1 of the base ADR — a gateway failure
+     * never touches either balance), but a lost race is no longer
+     * logged-and-accepted: at this point the customer has paid nothing
+     * and has not even received the link, so refusing costs nothing.
+     *
+     * The whole check-reserve-or-fail runs in one transaction holding
+     * the Order row lock, separate from the payment_ref transaction.
+     * redeem()/decrement() treat an existing row for the order as
+     * success even once it was restored, so the Order lock is what lets
+     * a concurrent replay see the final state rather than a half-undone
+     * reservation. Lock order Order → Voucher → Membership, matching
+     * OrderSettlementService and the CHIP webhook.
+     */
+    private function reserveOrClose(Order $order): Order
     {
-        // ADR-024 decision #1: the voucher lock happens here, after the
-        // gateway has confirmed a real, redirectable payment request
-        // exists — never before creating the Order or before this
-        // point. A gateway failure above (the `! $payment->success`
-        // branch) never reaches this line, so a failed createPayment()
-        // call never touches the voucher's remaining balance at all —
-        // nothing to restore for that failure mode. Reachable from both
-        // initiate() and resume(), so voucher_id is read off the Order
-        // itself rather than threaded through as a separate parameter.
+        [$order, $lost] = DB::transaction(function () use ($order) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            // Paid (a successful replay) or no link yet (full-cover, or a
+            // gateway call that failed): nothing to reserve here.
+            if ($locked->payment_status !== PaymentStatus::Pending || $locked->payment_ref === null) {
+                return [$locked, false];
+            }
+
+            if ($this->reserveAll($locked)) {
+                return [$locked, false];
+            }
+
+            $locked->update(['payment_status' => PaymentStatus::Failed->value]);
+
+            return [$locked, true];
+        });
+
+        if ($order->payment_status === PaymentStatus::Failed && ! $lost) {
+            throw CheckoutAttemptClosedException::alreadyFailed();
+        }
+
+        if ($lost) {
+            $this->logReservationLost($order);
+
+            throw CheckoutAttemptClosedException::reservationLost();
+        }
+
+        return $order->fresh();
+    }
+
+    /**
+     * Reserves every instrument the order was priced with — voucher
+     * first, then member quota — or reserves nothing (decision 3: a
+     * voucher that won is given back when the quota loses). Callers
+     * hold the Order row lock. Idempotent per order: both services
+     * no-op on an order that already has its row.
+     */
+    private function reserveAll(Order $order): bool
+    {
         if ($order->voucher_id !== null) {
             try {
                 $this->vouchers->redeem(
@@ -364,34 +417,32 @@ final class CheckoutService
                     $order->customer_phone,
                     $order->affiliate_id,
                 );
-            } catch (InvalidVoucherException $e) {
-                $this->logAcceptedVoucherRedemptionRace($order, $e);
+            } catch (InvalidVoucherException) {
+                return false;
             }
         }
 
-        $this->decrementMembershipQuotaIfApplicable($order);
+        if ($order->membership_id !== null
+            && ! $this->membershipQuota->decrement($order->membership_id, $order->id, $order->selling_price)) {
+            $this->vouchers->restore($order->id);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * ADR-024's accepted residual race: preview() (unlocked) validated
-     * this voucher moments ago, but redeem()'s locked re-check failed —
-     * only reachable if a second, near-simultaneous order from the
-     * same customer (the voucher's ownership lock rules out anyone
-     * else) drained the same voucher first. By this point the customer
-     * has already been charged (or the order already marked Paid) at
-     * the discounted amount; ADR-004 forbids clawing that back, so
-     * fulfillment always proceeds regardless. Logged at error level so
-     * it surfaces for admin/ledger reconciliation rather than passing
-     * silently, matching this codebase's existing "escalate the
-     * genuinely ambiguous case to a human" convention
-     * (ReconcilePendingPaymentsCommand::flagIfStale()).
+     * Not an error: the order failed closed and nothing was given away.
+     * Kept at warning with the order and both instruments, since a burst
+     * from one customer is the abuse signal (addendum, consequence 1).
      */
-    private function logAcceptedVoucherRedemptionRace(Order $order, InvalidVoucherException $e): void
+    private function logReservationLost(Order $order): void
     {
-        Log::error('Voucher redemption failed after the order was already committed to its discounted price', [
+        Log::warning('Checkout reservation lost — order failed closed', [
             'order_number' => $order->order_number,
             'voucher_id' => $order->voucher_id,
-            'error' => $e->getMessage(),
+            'membership_id' => $order->membership_id,
         ]);
     }
 
@@ -506,31 +557,5 @@ final class CheckoutService
             transactionFeeSen: $fullyCoveredByVoucher ? 0 : $total->transactionFee,
             finalAmountSen: $fullyCoveredByVoucher ? 0 : $total->finalAmount,
         );
-    }
-
-    /**
-     * The locked commit — same trust point VoucherService::redeem()
-     * already uses (after the gateway confirms success, or immediately
-     * for a full-cover order), reached from both settleWithVoucher()
-     * and requestPayment(). A `false` result (lost the race against a
-     * concurrent order from the same member, quota already spent
-     * elsewhere) is logged, never clawed back — the charge already
-     * happened (ADR-004).
-     */
-    private function decrementMembershipQuotaIfApplicable(Order $order): void
-    {
-        if ($order->membership_id === null) {
-            return;
-        }
-
-        $succeeded = $this->membershipQuota->decrement($order->membership_id, $order->id, $order->selling_price);
-
-        if (! $succeeded) {
-            Log::error('Membership quota decrement failed after the order was already committed at the member price', [
-                'order_number' => $order->order_number,
-                'membership_id' => $order->membership_id,
-                'amount_sen' => $order->selling_price,
-            ]);
-        }
     }
 }

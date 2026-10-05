@@ -8,6 +8,8 @@ use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\Voucher;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
@@ -55,25 +57,6 @@ class OrderTest extends TestCase
      * its idempotency guarantee, rather than being a service with no
      * caller.
      */
-    /** 2026-09-29 audit: a Failed/Pending event read the order before a Paid webhook committed. */
-    public function test_set_payment_status_unless_paid_never_overwrites_a_paid_row(): void
-    {
-        $stale = $this->makeOrder();
-        Order::query()->whereKey($stale->id)->update(['payment_status' => PaymentStatus::Paid->value]);
-
-        $this->assertFalse($stale->setPaymentStatusUnlessPaid(PaymentStatus::Failed));
-        $this->assertSame(PaymentStatus::Paid, $stale->fresh()->payment_status);
-    }
-
-    public function test_set_payment_status_unless_paid_writes_when_not_paid(): void
-    {
-        $order = $this->makeOrder();
-
-        $this->assertTrue($order->setPaymentStatusUnlessPaid(PaymentStatus::Failed));
-        $this->assertSame(PaymentStatus::Failed, $order->payment_status);
-        $this->assertSame(PaymentStatus::Failed, $order->fresh()->payment_status);
-    }
-
     public function test_reference_number_is_generated_once_and_reused_on_retry(): void
     {
         $order = $this->makeOrder(['reference_number' => null]);
@@ -151,6 +134,34 @@ class OrderTest extends TestCase
         ]);
     }
 
+    /**
+     * ADR-108 2026-10-04 addendum — earned profit is what the ledger holds
+     * for the order (corrections included), never the expected columns.
+     */
+    public function test_earned_profit_is_null_when_the_order_earned_nothing(): void
+    {
+        $order = $this->makeOrder(['platform_profit' => 1001, 'affiliate_profit' => 5]);
+
+        $this->assertNull($order->earnedProfit());
+        $this->assertSame([$order->id => null], Order::earnedProfitsFor(collect([$order])));
+    }
+
+    public function test_earned_profit_sums_the_ledger_including_a_reasoned_correction(): void
+    {
+        $order = $this->makeOrder(['platform_profit' => 37, 'affiliate_profit' => 0]);
+        $ledger = app(LedgerService::class);
+        $ledger->creditOrderProfit($order);
+        $ledger->credit(LedgerOwnerType::Platform, null, -10, 'order_profit', 'order', $order->id, reason: 'ADR-105 correction');
+        $other = $this->makeOrder(['order_number' => 'KRS-TEST-2', 'reference_number' => null, 'platform_profit' => 9, 'affiliate_profit' => 5]);
+        $ledger->creditOrderProfit($other);
+
+        $this->assertSame(['platform' => 27, 'affiliate' => 0], $order->earnedProfit());
+        $this->assertSame(
+            [$order->id => ['platform' => 27, 'affiliate' => 0], $other->id => ['platform' => 9, 'affiliate' => 5]],
+            Order::earnedProfitsFor(collect([$order, $other])),
+        );
+    }
+
     /** ADR-094 decision 30 — Need Action covers an uncompensated partial delivery, like a Failed one. */
     public function test_needs_action_includes_an_uncompensated_partially_delivered_order(): void
     {
@@ -178,7 +189,9 @@ class OrderTest extends TestCase
         $fresh = $order->fresh();
         $this->assertSame(27500, $fresh->compensationAmountSen());
         $this->assertSame(40000, $fresh->effectiveCostPriceSen());
-        $this->assertSame('mixed', $fresh->costBasis());
+        // No leg carries a real cost, so the catalog total is the cost:
+        // 'estimated' (item 63 — this asserted 'mixed', the bug).
+        $this->assertSame('estimated', $fresh->costBasis());
     }
 
     /** ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — the same generic signal ADR-098 wired into fulfillment, reconstructed from the persisted error_code alone. */
@@ -413,6 +426,27 @@ class OrderTest extends TestCase
         $this->assertSame('mixed', $order->fresh()->costBasis());
         // 700 (real) + 500 (catalog fallback) = 1200.
         $this->assertSame(1200, $order->fresh()->effectiveCostPriceSen());
+    }
+
+    /**
+     * Item 63: no leg has a real cost, so profit matches the catalog total
+     * on both formulas — that is 'estimated', not 'mixed'.
+     */
+    public function test_cost_basis_is_estimated_for_a_combo_order_when_no_leg_has_real_cost(): void
+    {
+        $a = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'NOREAL-A']);
+        $b = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'NOREAL-B']);
+        $order = $this->makeOrder(['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 500]);
+        foreach ([[$a, 1], [$b, 2]] as [$package, $n]) {
+            OrderDeliveryLeg::query()->create([
+                'order_id' => $order->id, 'component_package_id' => $package->id, 'supplier_id' => $package->supplier_id,
+                'leg_number' => $n, 'status' => DeliveryStatus::Delivered->value,
+                'selling_price_sen' => $package->standard_selling_price, 'real_cost_price_sen' => null,
+            ]);
+        }
+
+        $this->assertSame('estimated', $order->fresh()->costBasis());
+        $this->assertSame(1000, $order->fresh()->effectiveCostPriceSen());
     }
 
     /** Combo, real-cost-reconciliation flag was off at delivery — stored profit used the catalog total, basis 'estimated'. */

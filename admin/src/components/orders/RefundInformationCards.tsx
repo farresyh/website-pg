@@ -139,8 +139,12 @@ function WarningCard({ icon: Icon, title, children }: { icon: ComponentType<{ cl
 }
 
 export default function RefundInformationCards({ order }: { order: OrderDetail }) {
+  // ADR-024 2026-10-04 addendum decision 11: "used to pay" means a
+  // redemption exists. A checkout that failed closed keeps voucher_id
+  // (so paid_with_voucher is set) but spent nothing.
+  const paidWithVoucher = order.has_used_voucher ? order.paid_with_voucher : null;
   const cardCount =
-    Number(!!order.paid_with_voucher) +
+    Number(!!paidWithVoucher) +
     Number(!!order.voucher) +
     Number(!!order.wallet_refund) +
     Number(order.has_voucher_restored) +
@@ -151,16 +155,16 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
 
   return (
     <div className={`mt-3 grid grid-cols-1 gap-2 ${cardCount >= 2 ? "lg:grid-cols-2" : ""}`}>
-      {order.paid_with_voucher && (
+      {paidWithVoucher && (
         <CompensationCard
           icon={Receipt}
           title="Voucher Used"
           tone="used"
           fields={[
-            { label: "Voucher Code", value: order.paid_with_voucher.code },
+            { label: "Voucher Code", value: paidWithVoucher.code },
             { label: "Discount Applied", value: order.voucher_discount !== null ? formatRm(order.voucher_discount) : "—" },
             { label: "Payment Method", value: order.final_amount === 0 ? "Voucher (Full)" : "Voucher (Partial)" },
-            { label: "Voucher Remaining", value: formatRm(order.paid_with_voucher.remaining) },
+            { label: "Voucher Remaining", value: formatRm(paidWithVoucher.remaining) },
           ]}
         />
       )}
@@ -229,7 +233,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
       {order.profit_reconciled_flagged && (
         <WarningCard icon={ExclamationTriangle} title="Profit Adjusted">
           This order delivered, but its reported platform profit reconciled to{" "}
-          <span className="font-mono font-medium">{formatRm(order.platform_profit)}</span> — the real supplier cost at
+          <span className="font-mono font-medium">{formatRm(order.earned_profit?.platform ?? order.platform_profit)}</span> — the real supplier cost at
           delivery differed materially from the estimate (or went negative). The platform absorbed the difference;
           delivery was never blocked over it.
         </WarningCard>

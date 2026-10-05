@@ -41,5 +41,7 @@ final class CheckoutRequest
         // Null (the default) means the primary brand / no tier / a lapsed
         // tier — priced exactly as the plain guest chain.
         public readonly ?float $tierMarkupPct = null,
+        // Item 63: what a replay of idempotencyKey must match.
+        public readonly ?string $idempotencyPayloadHash = null,
     ) {}
 }

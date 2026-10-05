@@ -8,9 +8,12 @@ use App\Models\Membership;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
+use App\Models\MembershipQuotaDebit;
 use App\Models\Order;
 use App\Models\Reseller;
 use App\Models\Supplier;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -228,11 +231,11 @@ class ChipWebhookControllerTest extends TestCase
             'payment_status' => PaymentStatus::Failed->value,
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);
-        $paidWith = \App\Models\Voucher::query()->create([
+        $paidWith = Voucher::query()->create([
             'affiliate_id' => $order->affiliate_id, 'code' => 'KRS-ORIGINAL-'.uniqid(), 'customer_email' => 'buyer@example.com',
             'amount' => 1000, 'remaining' => 1000, 'status' => 'active', 'reason' => 'test',
         ]);
-        \App\Models\VoucherRedemption::query()->create([
+        VoucherRedemption::query()->create([
             'voucher_id' => $paidWith->id, 'order_id' => $order->id, 'amount' => 1000, 'status' => 'restored',
         ]);
 
@@ -279,6 +282,39 @@ class ChipWebhookControllerTest extends TestCase
         $fresh = $order->fresh();
         $this->assertSame(PaymentStatus::Paid, $fresh->payment_status);
         $this->assertSame(DeliveryStatus::NeedsReview, $fresh->delivery_status);
+        Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
+    /**
+     * Item 63 (2026-10-04): a non-terminal event used to be written, moving
+     * a Failed order (voucher and quota already given back) back to
+     * Pending — so a later Paid skipped the NeedsReview branch and
+     * fulfilled at the discount. It is now acknowledged and never written.
+     */
+    public function test_a_non_terminal_event_never_moves_a_failed_order_back_to_pending(): void
+    {
+        Queue::fake();
+        $privateKey = $this->fakeChipPublicKey();
+        $order = $this->fakePaidOrder(['payment_status' => PaymentStatus::Failed->value]);
+
+        $this->postSignedWebhook([
+            'event_type' => 'purchase.created',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'created',
+            'purchase' => ['total' => 1100],
+        ], $privateKey)->assertOk();
+        $this->assertSame(PaymentStatus::Failed, $order->fresh()->payment_status);
+
+        $this->postSignedWebhook([
+            'event_type' => 'purchase.paid',
+            'id' => 'chip-purchase-1',
+            'reference' => $order->order_number,
+            'status' => 'paid',
+            'purchase' => ['total' => 1100],
+        ], $privateKey)->assertOk();
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
         Queue::assertNotPushed(FulfillOrderJob::class);
     }
 
@@ -366,7 +402,7 @@ class ChipWebhookControllerTest extends TestCase
             'expires_at' => now()->addDays(20),
         ]);
         $order = $this->fakePaidOrder(['membership_id' => $membership->id, 'selling_price' => 1000]);
-        \App\Models\MembershipQuotaDebit::query()->create([
+        MembershipQuotaDebit::query()->create([
             'order_id' => $order->id, 'membership_id' => $membership->id, 'amount_sen' => 1000,
         ]);
 

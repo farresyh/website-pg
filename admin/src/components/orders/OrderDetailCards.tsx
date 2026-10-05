@@ -16,29 +16,46 @@ function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
+/**
+ * ADR-108 2026-10-04 addendum — earned profit (null: the order earned
+ * nothing — not delivered, failed, refunded or unpaid) with the expected
+ * figure beside it when the two differ. A loss reads in the error tone
+ * (ADR-105: a manual resend can record one).
+ */
+function ProfitRow({ label, sen, expected }: { label: string; sen: number | null; expected?: number }) {
+  const showExpected = expected !== undefined && expected !== sen;
+
+  return (
+    <div className="flex justify-between items-start">
+      <dt className="text-ink-muted text-xs">{label}</dt>
+      <dd className="text-right">
+        <span className={`font-semibold font-mono ${sen !== null && sen < 0 ? "text-error-600 dark:text-error-400" : sen === null ? "text-ink-muted" : "text-ink"}`}>
+          {sen === null ? "—" : sen < 0 ? formatRm(sen) : `+${formatRm(sen)}`}
+        </span>
+        {showExpected && (
+          <span className="block text-theme-xs text-ink-muted">
+            {sen === null ? `Expected ${formatRm(expected)} (not earned)` : `Expected ${formatRm(expected)}`}
+          </span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 export default function OrderDetailCards({ order }: { order: OrderDetail }) {
   const isMemberOrder = order.pricing_basis === "member";
   // ADR-074/075: a wallet order (Reseller API/Bot) never has a real
   // transaction fee (no CHIP round-trip) or voucher (refund-to-wallet
   // replaces it entirely, ADR-073 decision 7), and affiliate_profit is
   // always 0 by construction — showing those rows as blank/RM0.00 reads
-  // as "something's missing," not "not applicable here." The reseller's
-  // own tier markup isn't snapshotted as its own column, but it's
-  // exactly derivable from the two prices that already are.
+  // as "something's missing," not "not applicable here."
   const isWalletOrder = order.pricing_basis === "reseller-wallet";
   const isAffiliateWholesale = order.pricing_basis === "affiliate";
-  // ADR-111 addendum — reads the same reconciled figure the Cost Price
-  // card itself shows below, not the raw catalog `cost_price`, so this
-  // derived % stays consistent with whichever basis actually produced
-  // the stored platform_profit.
-  // ADR-094 decision 35: a partial delivery's cost covers only its
-  // delivered legs, so it is compared with what the order kept after its
-  // refund — and shown only once that refund exists.
-  const isPartial = order.delivery_status === "partially_delivered";
-  const keptSellingPrice = order.selling_price - (order.wallet_refund?.amount ?? 0);
-  const resellerMarkupPct = isWalletOrder && order.effective_cost_price > 0 && (!isPartial || order.wallet_refund !== null)
-    ? (((keptSellingPrice - order.effective_cost_price) / order.effective_cost_price) * 100).toFixed(2)
-    : null;
+  // ADR-108 2026-10-04 addendum: profit shown is what the ledger earned;
+  // the order's own columns are the expected plan. A sandbox order never
+  // reaches the ledger (ADR-018), so it shows the expected figures.
+  const showExpectedOnly = order.is_test;
+  const earned = order.earned_profit;
   const costBasisTags = {
     real: { label: "Real", severity: "success" as const },
     mixed: { label: "Mixed", severity: "warn" as const },
@@ -149,10 +166,13 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
               The artifact's own OrderDetailFailed mockup shows "Owner
               profit" in plain neutral text, not purple. Reverted from an
               earlier, incorrect purple-everywhere reading of decision 3. */}
-          {isWalletOrder && resellerMarkupPct !== null && (
+          {/* ADR-108 2026-10-04 addendum: the reseller's tier markup frozen on
+              the order — never re-derived from prices and costs, which drifts
+              (refunds, real cost, combos). */}
+          {isWalletOrder && order.wholesale_markup_pct && (
             <div className="flex justify-between items-center">
               <dt className="text-ink-muted">Reseller Markup</dt>
-              <dd className="font-semibold text-ink">+{resellerMarkupPct}%</dd>
+              <dd className="font-semibold text-ink">+{order.wholesale_markup_pct}%</dd>
             </div>
           )}
           {isAffiliateWholesale && order.wholesale_markup_pct && (
@@ -227,21 +247,18 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
               first time that happened. A loss reads in the same error
               tone the resend guard itself uses, not the neutral tone a
               normal profit gets. */}
-          <div className="flex justify-between items-center">
-            <dt className="text-ink-muted text-xs">Platform Profit</dt>
-            <dd className={`font-semibold font-mono ${order.platform_profit < 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}>
-              {order.platform_profit < 0 ? formatRm(order.platform_profit) : `+${formatRm(order.platform_profit)}`}
-            </dd>
-          </div>
-          {/* Always 0 by construction for a wallet order (no affiliate markup layered on top, ADR-073 decision 1) — Platform Profit above already carries the whole margin, so this row would only ever read as a dead zero here. */}
-          {!isWalletOrder && (
-            <div className="flex justify-between items-center">
-              <dt className="text-ink-muted text-xs">Affiliate Profit</dt>
-              <dd className={order.affiliate_profit > 0 ? "font-semibold font-mono text-ink" : "font-mono text-ink-muted"}>
-                {order.affiliate_profit > 0 ? `+${formatRm(order.affiliate_profit)}` : formatRm(0)}
-              </dd>
-            </div>
+          {showExpectedOnly ? (
+            <ProfitRow label="Platform Profit (expected)" sen={order.platform_profit} />
+          ) : (
+            <ProfitRow label="Platform Profit" sen={earned?.platform ?? null} expected={order.platform_profit} />
           )}
+          {/* Always 0 by construction for a wallet order (no affiliate markup layered on top, ADR-073 decision 1) — Platform Profit above already carries the whole margin, so this row would only ever read as a dead zero here. */}
+          {!isWalletOrder &&
+            (showExpectedOnly ? (
+              <ProfitRow label="Affiliate Profit (expected)" sen={order.affiliate_profit} />
+            ) : (
+              <ProfitRow label="Affiliate Profit" sen={earned?.affiliate ?? null} expected={order.affiliate_profit} />
+            ))}
         </dl>
       </div>
 

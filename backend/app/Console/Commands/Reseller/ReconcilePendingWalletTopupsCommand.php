@@ -134,7 +134,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
 
         match ($payment->status) {
             PaymentStatus::Paid => $this->recover($attempt, $wallets, $amountSen),
-            PaymentStatus::Failed => $attempt->update(['status' => WalletTopupAttemptStatus::Failed->value]),
+            PaymentStatus::Failed => $attempt->leavePending(WalletTopupAttemptStatus::Failed),
             default => $this->expireIfPastWindow($attempt),
         };
     }
@@ -161,7 +161,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
     private function expireIfPastWindow(WalletTopupAttempt $attempt): void
     {
         if ($attempt->expires_at->isPast()) {
-            $attempt->update(['status' => WalletTopupAttemptStatus::Expired->value]);
+            $attempt->leavePending(WalletTopupAttemptStatus::Expired);
 
             Log::info('Wallet top-up reconciliation: expired an abandoned attempt', [
                 'expires_at' => $attempt->expires_at->toIso8601String(),

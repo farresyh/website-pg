@@ -40,8 +40,9 @@ final readonly class OrderDraft
         public ?int $supplierId = null,
         public ?string $supplierProductRef = null,
         public ?int $walletResellerId = null,
-        // ADR-084 PR-1 decision 5 — Reseller API channel only, else null.
-        public ?string $resellerApiIdempotencyPayloadHash = null,
+        // ADR-084 PR-1 decision 5, extended to the storefront (item 63):
+        // null only for the Bot channel and pre-hash orders.
+        public ?string $idempotencyPayloadHash = null,
         public ?int $voucherId = null,
         public int $voucherDiscountSen = 0,
         public int $transactionFeeSen = 0,

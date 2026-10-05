@@ -12,6 +12,7 @@
  * decides whether it credits or debits (see `typical_sign`).
  */
 
+import { todayInKL } from "@/lib/date-range";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -496,7 +497,7 @@ export default function EnvelopeLedgerPage() {
                 )}
                 <div>
                   <Label htmlFor="entry_transaction_date">Transaction date</Label>
-                  <Input id="entry_transaction_date" type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                  <Input id="entry_transaction_date" type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} max={todayInKL()} />
                   <span className="mt-1 block text-theme-xs text-gray-400">The day money actually moved — defaults to today if left blank.</span>
                 </div>
                 <div>

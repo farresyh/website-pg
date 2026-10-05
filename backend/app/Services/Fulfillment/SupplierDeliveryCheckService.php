@@ -4,6 +4,7 @@ namespace App\Services\Fulfillment;
 
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
+use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -30,6 +31,95 @@ final class SupplierDeliveryCheckService
         private readonly SupplierAdapterFactory $supplierAdapters,
         private readonly OrderFulfillmentService $fulfillment,
     ) {}
+
+    /**
+     * ADR-102 2026-10-05 addendum, decisions 4 and 6: whether a NeedsReview
+     * order can be asked about at all. Only a supplier whose same-ref
+     * re-submit replays the stored result (Digiflazz), only an order that
+     * reached it (a reference — a combo's legs are filtered per leg in
+     * checkComboLegs()), and only inside `max_reconcile_age_days`, past
+     * which Digiflazz treats the ref_id as a new transaction.
+     */
+    public static function canAskAboutNeedsReview(Order $order): bool
+    {
+        $supplier = self::supplierOf($order);
+
+        if ($supplier === null || ! SupplierAdapterFactory::resubmitReplaysOutcome($supplier->slug)) {
+            return false;
+        }
+
+        if (! $order->package?->is_combo && $order->reference_number === null) {
+            return false;
+        }
+
+        $maxAgeDays = (int) ($supplier->api_config['max_reconcile_age_days'] ?? config('services.delivery_reconciliation.max_reconcile_age_days'));
+
+        return $order->created_at->gt(now()->subDays($maxAgeDays));
+    }
+
+    /**
+     * ADR-102 2026-10-05 addendum, decision 4: Confirm Failed on a
+     * replay-safe supplier asks it first and applies its answer — Sukses
+     * delivers, a confirmed Gagal fails — with no override. An order the
+     * supplier cannot be asked about (never sent, past the age limit)
+     * confirms as before, recording why. Any other supplier, or a sandbox
+     * order, is unchanged.
+     *
+     * @throws OrderFulfillmentException the supplier gave no final answer, or could not be reached
+     */
+    public function confirmFailed(Order $order, string $note, string $confirmedBy): Order
+    {
+        $supplier = self::supplierOf($order);
+
+        if ($order->is_test || $supplier === null || ! SupplierAdapterFactory::resubmitReplaysOutcome($supplier->slug)) {
+            return $this->fulfillment->confirmDeliveryFailed($order, $note, $confirmedBy);
+        }
+
+        if (! self::canAskAboutNeedsReview($order)) {
+            return $this->fulfillment->confirmDeliveryFailed($order, $note, $confirmedBy, [
+                'confirmed_without_supplier_check' => $order->reference_number === null
+                    ? 'never reached the supplier (no reference)'
+                    : 'past max_reconcile_age_days — a re-submit would be a new transaction',
+            ]);
+        }
+
+        try {
+            $this->check($order);
+        } catch (\Throwable $e) {
+            throw new OrderFulfillmentException("Order #{$order->id}: could not reach the supplier — {$e->getMessage()}", previous: $e);
+        }
+
+        $fresh = $order->fresh();
+
+        if ($fresh->delivery_status !== DeliveryStatus::NeedsReview) {
+            return $this->fulfillment->recordAdminConfirmation($fresh, $note, $confirmedBy);
+        }
+
+        $unanswered = $order->package?->is_combo
+            ? OrderDeliveryLeg::query()->where('order_id', $order->id)
+                ->where('status', DeliveryStatus::NeedsReview->value)
+                ->whereNotNull('reference_number')
+                ->exists()
+            : true;
+
+        if ($unanswered) {
+            throw new OrderFulfillmentException(
+                "Order #{$order->id}: the supplier has not given a final answer yet",
+            );
+        }
+
+        // A combo whose asked legs are final, leaving only legs that never
+        // reached the supplier.
+        return $this->fulfillment->confirmDeliveryFailed($fresh, $note, $confirmedBy);
+    }
+
+    /** A combo has no supplier of its own (ADR-094 decision 3); its components share one (decision 4). */
+    private static function supplierOf(Order $order): ?Supplier
+    {
+        return $order->package?->is_combo
+            ? $order->package->components->first()?->supplier
+            : $order->supplier;
+    }
 
     /**
      * @return array{type: string, outcome?: ?string, applied?: bool, data?: mixed, error_code?: ?string, error_message?: ?string, legs?: array}
@@ -158,9 +248,14 @@ final class SupplierDeliveryCheckService
      */
     private function checkComboLegs(Order $order): array
     {
+        // ADR-102 2026-10-05 addendum, decision 7: a NeedsReview leg that
+        // reached the supplier (has a reference) is still awaiting its
+        // final answer too. One never sent is not asked — a same-ref
+        // re-submit would be its first purchase.
         $pendingLegs = OrderDeliveryLeg::query()
             ->where('order_id', $order->id)
-            ->where('status', DeliveryStatus::Pending->value)
+            ->where(fn ($q) => $q->where('status', DeliveryStatus::Pending->value)
+                ->orWhere(fn ($q) => $q->where('status', DeliveryStatus::NeedsReview->value)->whereNotNull('reference_number')))
             ->with('componentPackage.supplier')
             ->get();
 

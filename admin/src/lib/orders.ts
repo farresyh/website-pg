@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { todayInKL } from "@/lib/date-range";
 import type { Game } from "@/lib/games";
 import type { Voucher } from "@/lib/vouchers";
 
@@ -177,6 +178,12 @@ export interface OrderDetail extends OrderListItem {
   // ADR-094 decision 30 — failed or partially_delivered, and not yet
   // compensated: gates Issue Voucher / Refund to Wallet.
   compensable: boolean;
+  // ADR-108 2026-10-04 addendum — profit actually credited to the ledger
+  // for this order (corrections included); null when it earned nothing.
+  // platform_profit / affiliate_profit are the expected (planned) figures.
+  earned_profit: { platform: number; affiliate: number } | null;
+  // ADR-018: a sandbox order — never reaches the ledger.
+  is_test: boolean;
   // The exact amounts compensating would use (a formula, never typed —
   // decision 33). Null when not compensable, or no amount is derivable.
   compensation_preview: CompensationPreview | null;
@@ -192,6 +199,10 @@ export interface OrderDetail extends OrderListItem {
   // needs_review; combo via an OR-rollup across legs (unsafe if any
   // leg is currently needs_review with its own unsafe flag set).
   resend_unsafe_to_override: boolean;
+  // ADR-102 2026-10-05 addendum — a needs_review order the supplier can
+  // safely be asked about: Check from Supplier shows, and Confirm Failed
+  // asks the supplier first (no override).
+  supplier_askable: boolean;
   // ADR-107 decision 3, generalized by ADR-111 decision 7 — true once ANY
   // order (not just combo) delivered with a reconciled negative
   // platform_profit, or a material drift from the pre-reconciliation
@@ -264,8 +275,9 @@ export function listOrders(token: string, params: OrderListFilters = {}) {
 /**
  * ADR-108 decision 9 (ORD-5) — mirrors exportReport()'s own raw-fetch +
  * blob-download shape (admin/src/lib/reports.ts): apiFetch() assumes a
- * JSON body, so a CSV stream needs its own fetch call. Respects every
- * filter listOrders() does, via the same buildOrderFilterQuery().
+ * JSON body, so a file download needs its own fetch call. Respects every
+ * filter listOrders() does, via the same buildOrderFilterQuery(). Since
+ * the 2026-10-04 addendum the file is an Excel workbook (Summary + Orders).
  */
 export async function exportOrders(token: string, params: OrderListFilters = {}): Promise<void> {
   const qs = buildOrderFilterQuery(params).toString();
@@ -281,7 +293,7 @@ export async function exportOrders(token: string, params: OrderListFilters = {})
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `orders-${todayInKL()}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();

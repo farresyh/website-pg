@@ -27,10 +27,10 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -795,6 +795,43 @@ class CheckoutControllerTest extends TestCase
         $this->assertSame('pr-checkout-test', Order::query()->firstOrFail()->payment_ref);
     }
 
+    /**
+     * Item 63 (2026-10-04): a replay must be the same request. Reusing a key
+     * with a different channel (or package, voucher, player) used to return
+     * the first order — priced with the first channel's fee — as if it were
+     * this one. Same payload-hash rule the Reseller API already applies.
+     */
+    public function test_a_replayed_key_with_a_different_channel_is_rejected(): void
+    {
+        $this->bindGateway();
+        $this->activeChannel('FPX_OTHER', ['flat_fee_sen' => 50]);
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $key = (string) Str::uuid();
+
+        $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key]))->assertCreated();
+
+        $replay = $this->postJson('/api/checkout', $this->payload($game, $package, ['idempotency_key' => $key, 'channel_code' => 'FPX_OTHER']));
+
+        $replay->assertUnprocessable();
+        $replay->assertJsonPath('code', 'idempotency_mismatch');
+        $this->assertSame(1, Order::query()->count());
+    }
+
+    public function test_an_identical_replay_still_returns_the_same_order(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package);
+
+        $first = $this->postJson('/api/checkout', $payload)->assertCreated();
+        // Contact details are not part of what is bought: editing a name
+        // between a timed-out submit and its retry is still the same order.
+        $replay = $this->postJson('/api/checkout', array_merge($payload, ['customer_name' => 'Edited Name']));
+
+        $replay->assertOk()->assertJsonPath('order_number', $first->json('order_number'));
+        $this->assertNotNull(Order::query()->firstOrFail()->idempotency_payload_hash);
+    }
+
     public function test_a_different_idempotency_key_creates_a_genuinely_separate_order(): void
     {
         $this->bindGateway();
@@ -907,9 +944,51 @@ class CheckoutControllerTest extends TestCase
 
         $replay = $this->postJson('/api/checkout', $payload);
 
-        $replay->assertOk();
-        $replay->assertJsonPath('payment_actions', []);
+        // ADR-024 2026-10-04 addendum decision 6: a Failed order is closed.
+        $replay->assertUnprocessable();
+        $replay->assertJsonPath('code', 'checkout_closed');
         $this->assertNull($order->fresh()->payment_ref);
+    }
+
+    /**
+     * ADR-024 2026-10-04 addendum: a concurrent order drains the voucher
+     * after the unlocked preview. The customer gets a coded 422 and never
+     * the payment link; the order stays visible as Failed.
+     */
+    public function test_a_checkout_that_loses_the_voucher_race_returns_checkout_closed(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage(); // selling_price = 500
+        $voucher = $this->voucher(['remaining' => 200]);
+        Order::created(fn () => Voucher::query()->whereKey($voucher->id)->update(['remaining' => 0, 'status' => 'exhausted']));
+
+        $response = $this->postJson('/api/checkout', $this->payload($game, $package, ['voucher_code' => $voucher->code]));
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('code', 'checkout_closed');
+        $response->assertJsonMissingPath('payment_actions');
+        $this->assertSame('failed', Order::query()->firstOrFail()->payment_status->value);
+        $this->assertSame(0, VoucherRedemption::query()->count());
+    }
+
+    /**
+     * Decision 6: replaying the same idempotency key after the race was
+     * lost must not hand out the existing link either.
+     */
+    public function test_a_replayed_failed_checkout_with_a_link_returns_checkout_closed(): void
+    {
+        $this->bindGateway();
+        ['game' => $game, 'package' => $package] = $this->gameAndPackage();
+        $payload = $this->payload($game, $package);
+
+        $this->postJson('/api/checkout', $payload)->assertCreated();
+        Order::query()->firstOrFail()->update(['payment_status' => 'failed']);
+
+        $replay = $this->postJson('/api/checkout', $payload);
+
+        $replay->assertUnprocessable();
+        $replay->assertJsonPath('code', 'checkout_closed');
+        $replay->assertJsonMissingPath('payment_actions');
     }
 
     /**

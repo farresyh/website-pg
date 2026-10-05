@@ -14,7 +14,7 @@ change to those paths with the same care the existing code already does.
 
 | Path | What | Notes |
 | --- | --- | --- |
-| `backend/` | Laravel 13 API (PHP 8.3) | Sanctum bearer-token auth, MySQL, Redis queue (Horizon, ADR-048) + Redis cache (ADR-077). Own `AGENTS.md`: Laravel conventions + local-dev gotchas |
+| `backend/` | Laravel 13 API (PHP 8.4) | Sanctum bearer-token auth, MySQL, Redis queue (Horizon, ADR-048) + Redis cache (ADR-077). Own `AGENTS.md`: Laravel conventions + local-dev gotchas |
 | `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery, Affiliates, Resellers |
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
@@ -69,6 +69,14 @@ banner). This file covers the whole repo.
      Affiliate tier, ResellerWallet), not just Standard.
    ADR-118 passed four grill rounds plus a stress test and still had four
    silent-wrong-money gaps that only this pass found (see its review addendum).
+   **The same trace applies to a money bug fix with no ADR.** An audit
+   finding names one line; before proposing the fix, grep every writer and
+   reader of the field or state it touches, and fix where they all route
+   through (one shared seam plus an invariant test), not just the named
+   line. On 2026-10-04, four of six item-63 fixes were one-site patches
+   until this was done: the CHIP Paid logic had a drifted copy in
+   reconciliation, and the UTC-day bug sat in six places, not the three
+   named (build-log, 2026-10-04).
    Before "fix now or grill first?", pull real production scale (row counts,
    usage) rather than answering from code alone. After the grill, give the
    founder a plain-language recap of the whole plan before writing any code.

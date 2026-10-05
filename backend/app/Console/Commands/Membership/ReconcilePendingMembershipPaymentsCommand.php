@@ -92,7 +92,7 @@ class ReconcilePendingMembershipPaymentsCommand extends Command
 
         match ($payment->status) {
             PaymentStatus::Paid => $this->recover($attempt, $subscriptions, $amountSen),
-            PaymentStatus::Failed => $attempt->update(['status' => MembershipCheckoutAttemptStatus::Failed->value]),
+            PaymentStatus::Failed => $attempt->leavePending(MembershipCheckoutAttemptStatus::Failed),
             default => $this->expireIfStale($attempt, $expireAfterHours, is_array($payment->data) ? ($payment->data['status'] ?? null) : null),
         };
     }
@@ -119,7 +119,7 @@ class ReconcilePendingMembershipPaymentsCommand extends Command
     private function expireIfStale(MembershipCheckoutAttempt $attempt, int $expireAfterHours, ?string $reason): void
     {
         if ($attempt->created_at->lte(now()->subHours($expireAfterHours))) {
-            $attempt->update(['status' => MembershipCheckoutAttemptStatus::Expired->value]);
+            $attempt->leavePending(MembershipCheckoutAttemptStatus::Expired);
 
             Log::info('Membership reconciliation: expired an abandoned subscription attempt', [
                 'reason' => $reason,

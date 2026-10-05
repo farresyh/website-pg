@@ -2,11 +2,8 @@
 
 namespace App\Services\Payment;
 
-use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
-use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\PaymentStatus;
-use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -27,8 +24,7 @@ final class PaymentReconciliationService
 {
     public function __construct(
         private readonly PaymentGatewayFactory $gatewayFactory,
-        private readonly VoucherService $vouchers,
-        private readonly MembershipQuotaService $membershipQuota,
+        private readonly OrderPaymentOutcomeService $paymentOutcomes,
     ) {}
 
     /**
@@ -66,13 +62,23 @@ final class PaymentReconciliationService
             return ['outcome' => null, 'applied' => false, 'lookup_succeeded' => false, 'data' => $payment->data, 'error_code' => $payment->errorCode, 'error_message' => $payment->errorMessage];
         }
 
-        $applied = match ($payment->status) {
-            PaymentStatus::Paid => $this->recover($order, $payment),
-            PaymentStatus::Failed => $this->markFailed($order),
-            // PaymentStatus::Pending, or null (a gateway that somehow
-            // didn't set it) — both genuinely ambiguous, never guessed at.
-            default => false,
+        // Item 63: the same OrderPaymentOutcomeService the CHIP webhook
+        // uses, so the two can no longer drift (the copy here never got
+        // the webhook's M-4 / Paid-after-Failed branches). Pending or a
+        // null status stays genuinely ambiguous, never guessed at.
+        $amountSen = is_array($payment->data) ? ($payment->data['amount_sen'] ?? null) : null;
+
+        $outcome = match ($payment->status) {
+            PaymentStatus::Paid => $this->paymentOutcomes->applyPaid($order, $amountSen),
+            PaymentStatus::Failed => $this->paymentOutcomes->applyFailed($order),
+            default => null,
         };
+
+        if ($outcome === OrderPaymentOutcome::Fulfilling) {
+            Log::info('Payment reconciliation: recovered a stuck-pending order');
+        }
+
+        $applied = in_array($outcome, [OrderPaymentOutcome::Fulfilling, OrderPaymentOutcome::FlaggedForReview, OrderPaymentOutcome::Failed], true);
 
         return [
             'outcome' => $payment->status?->value,
@@ -97,63 +103,5 @@ final class PaymentReconciliationService
                 'age_hours' => $order->created_at->diffInHours(now()),
             ]);
         }
-    }
-
-    /**
-     * ADR-024 decision #6a — the second of the two paths (alongside
-     * the webhook's own terminal-Failed branch) that can catch a
-     * customer who applied a voucher then abandoned the gateway page
-     * entirely, without even the webhook ever firing. restore() is a
-     * no-op if this order never used a voucher. M-9, 2026-09-29 audit:
-     * same give-back for membership quota spent at payment-link creation.
-     */
-    private function markFailed(Order $order): bool
-    {
-        // A Paid webhook may have landed during the gateway lookup.
-        if (! $order->setPaymentStatusUnlessPaid(PaymentStatus::Failed)) {
-            return false;
-        }
-
-        $this->vouchers->restore($order->id);
-        $this->membershipQuota->restore($order->id);
-
-        return true;
-    }
-
-    /**
-     * Mirrors ChipWebhookController's own success branch exactly —
-     * same PAY-2 duplicate-processing guard (a late webhook could have
-     * already flipped this order to Paid and dispatched fulfillment
-     * before this run got to it).
-     */
-    private function recover(Order $order, PaymentResponse $payment): bool
-    {
-        if ($order->payment_status === PaymentStatus::Paid) {
-            return false;
-        }
-
-        // Defense-in-depth — same amount cross-check as the webhook
-        // controllers' own Paid branch. This pull-based path already
-        // asks the gateway directly (harder to forge than a webhook
-        // delivery), but a mismatch here still signals something is
-        // wrong enough to not silently fulfill for free.
-        $amountSen = is_array($payment->data) ? ($payment->data['amount_sen'] ?? null) : null;
-
-        if ($amountSen !== $order->final_amount) {
-            Log::error('Payment reconciliation: amount mismatch, refusing to mark paid', [
-                'expected_sen' => $order->final_amount,
-                'received_sen' => $amountSen,
-            ]);
-
-            return false;
-        }
-
-        $order->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
-
-        FulfillOrderJob::dispatch($order->fresh());
-
-        Log::info('Payment reconciliation: recovered a stuck-pending order');
-
-        return true;
     }
 }

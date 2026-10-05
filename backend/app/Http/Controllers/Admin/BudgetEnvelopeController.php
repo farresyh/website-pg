@@ -168,13 +168,16 @@ class BudgetEnvelopeController extends Controller
     /** @return list<array<string, mixed>> */
     public function entries(Request $request, BudgetEnvelope $budgetEnvelope): JsonResponse
     {
-        $from = $request->filled('from') ? Carbon::parse($request->query('from'))->startOfDay() : null;
-        $to = $request->filled('to') ? Carbon::parse($request->query('to'))->endOfDay() : null;
+        // Filtered on `transaction_date` — when the money moved, a KL
+        // calendar date — not when the row was typed in (item 63,
+        // founder's call 2026-10-04). Every writer sets it.
+        $from = self::klDate($request->query('from'));
+        $to = self::klDate($request->query('to'));
 
         $entries = $budgetEnvelope->entries()
             ->with('createdBy')
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($from, fn ($q) => $q->whereDate('transaction_date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('transaction_date', '<=', $to))
             ->orderByDesc('created_at')
             ->get()
             ->map(fn (BudgetEnvelopeEntry $entry) => [
@@ -244,13 +247,16 @@ class BudgetEnvelopeController extends Controller
      */
     public function export(Request $request): StreamedResponse
     {
-        $from = $request->filled('from') ? Carbon::parse($request->query('from'))->startOfDay() : null;
-        $to = $request->filled('to') ? Carbon::parse($request->query('to'))->endOfDay() : null;
+        // Filtered on `transaction_date` — when the money moved, a KL
+        // calendar date — not when the row was typed in (item 63,
+        // founder's call 2026-10-04). Every writer sets it.
+        $from = self::klDate($request->query('from'));
+        $to = self::klDate($request->query('to'));
 
         $entries = BudgetEnvelopeEntry::query()
             ->with(['budgetEnvelope', 'createdBy'])
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($to, fn ($q) => $q->where('created_at', '<=', $to))
+            ->when($from, fn ($q) => $q->whereDate('transaction_date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('transaction_date', '<=', $to))
             ->orderBy('created_at')
             ->get();
 
@@ -286,5 +292,16 @@ class BudgetEnvelopeController extends Controller
 
             fclose($out);
         }, 'envelope-ledger.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * Item 63 (2026-10-04): `from`/`to` are KL calendar dates — the same
+     * day bounds Reports and Orders use (`ReportService::dateRangeFromDates()`,
+     * exclusive upper bound). They used to be parsed as UTC days, cutting
+     * at 08:00 KL. A malformed value means "no bound".
+     */
+    private static function klDate(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : null;
     }
 }

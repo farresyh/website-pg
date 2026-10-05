@@ -2338,3 +2338,251 @@ It found three admin display bugs, all fixed:
 
 **Not live:** `main` is unchanged. Audit #3 (voucher/quota checkout race) is
 PRD §16 item 60; the remaining audit P2s are item 63.
+
+## 2026-10-04 — Earned profit everywhere, a 2-sheet Excel export, KL-day filters (ADR-108 addendum)
+
+**Why.** After the #346 release the founder saw "Reseller Markup" around
+100% on PG-B7RB8MON6Q9I and asked for a full check, not another patch. A
+read-only check of all 31 production orders against the ledger found:
+- **Profit shown where none was earned.** Order Detail, the CSV export and
+  the affiliate portal read the order's *expected* profit columns, not the
+  ledger.
+  - 10 failed/unpaid orders showed a profit.
+  - Order 15's ADR-105 ledger correction never reached the column (0.37 shown,
+    0.27 earned).
+  - The CSV profit column summed to RM 19.37 against a ledger of RM 7.05.
+- **Reseller Markup re-derived from prices.** −100% on that refunded order,
+  4.35% and 3.09% on two delivered 3.00% orders.
+- **UTC day bounds** on the Orders date filter and "today".
+
+The first fix attempt (subtracting the refund for every wallet order) was
+discarded uncommitted once the full check showed it was a patch.
+
+**What shipped** (`feature/2026-10-04-orders-export-xlsx-earned-profit`):
+- **Earned profit.** `Order::earnedProfit()` / `earnedProfitsFor()` — the
+  order's `order_profit` ledger entries, corrections included, null when
+  nothing was credited. Mirrors the `walletRefund*` pair.
+  - Order Detail shows earned with the expected figure as a note
+    ("Expected RM 10.01 (not earned)"); sandbox shows expected only.
+  - The affiliate portal's "Your margin" is earned ("—" when nothing).
+  - The resend modal says "vs expected".
+- **Reseller Markup** reads `wholesale_markup_pct`.
+- **Export → Excel** (`OrdersWorkbook`, OpenSpout already installed).
+  - **Summary sheet:** every figure is an Excel formula over the Orders sheet
+    (Gross Sales, − wallet refunds, Net Sales, earned profit, margin, CHIP vs
+    wallet, vouchers, expected-but-not-earned on paid orders), plus balance
+    checks and a column dictionary.
+  - **Orders sheet:** one row per order with earned/expected, compensation
+    columns and a per-row Price Check formula.
+  - Columns are defined once; formulas find columns by header and Summary
+    cells by the row they were written to.
+  - Customer text is always a StringCell — `Cell::fromValue()` turns a
+    leading "=" into a live formula (formula injection; covered by a test).
+- **Dates.** The Orders date filter, "today" and the KPI use KL days via
+  `ReportService::dateRangeFromDates()`.
+
+**Verified:**
+- **Suites and builds:** backend 2489/2489 (new tests: earned helper,
+  affiliate margin, admin payload, KL filters, workbook incl. injection);
+  admin and reseller `tsc` / `lint` / `build` clean.
+- **Formulas recalculated in Numbers, not just text-checked.** On a scratch
+  copy of the dev DB (195 orders), Summary matched `ReportService::summary()`
+  exactly: Net Sales RM 5,484.18, Platform Profit RM 573.05, Affiliate RM 16.58,
+  Margin 10.45%. Both balance checks read OK.
+- **Browser:** a replica of PG-B7RB8MON6Q9I shows Reseller Markup +3.00% and
+  Platform Profit "—" / "Expected RM 10.01 (not earned)". The export endpoint
+  returns a valid `.xlsx` through the browser session; the button reads
+  "Export Excel".
+- **Production expectation** (read-only, earlier): earned totals for the 31
+  orders are RM 7.05 platform / RM 0.15 affiliate.
+
+**Gotchas:**
+- XLSX is a zip, so it is written to a temp file, then
+  `download()->deleteFileAfterSend()`.
+- Sanctum tokens in the scratch DB had expired; verification used a fresh
+  test token.
+- A partially applied tool command earlier left an uncommitted build-log
+  entry; it was discarded with the superseded fix.
+
+## 2026-10-04 — Docs status sync (docs only)
+
+**Why.** A docs-vs-system audit (git `main..staging`, code, read-only prod
+checks) found status claims that had drifted.
+
+**Fixed.**
+- PRD §14: added the 2026-10-03 release (#346, server on `908f16b`) and #347
+  as staging-only; the smoke-test line now covers every release since 09-29.
+- Release markers: items 61/62 and the Combo row now say live via #346; the
+  Orders row, item 63 and the ADR-108 index say #347 is still on `staging`;
+  stale "on `staging`" claims fixed for ADR-081/082/084/086/113/116.
+- §15: Gemini key is set on prod; real logo uploaded (placeholder is only the
+  fallback); membership renewal reminder's "vendor unpicked" reason replaced.
+- §16: removed an orphaned fragment under item 55 (left from the closed
+  Envelope Ledger item); added items 64 (renewal reminder), 65 (ADR-104 PR-3
+  Reports), 66 (combo admin gaps), 67 (ADR-109 live verify), which were only
+  mentioned inside §15.
+- `AGENTS.md`: PHP 8.4 (composer, CI and prod all run 8.4).
+
+## 2026-10-04 — Voucher / member-quota checkout race fails closed (pre-launch money audit #3, ADR-024 addendum)
+
+**Why.** `CheckoutService` reserved the voucher and member quota after the
+CHIP link existed and only logged a lost race, then handed the link out. One
+customer racing N tabs got N discounted orders on one voucher or one quota.
+ADR-024 had accepted this on two wrong premises (an accident only, and
+"money already moved"). Grilled Q1–Q15 with a stress-test round and the
+money-ADR code-trace pass; full design in the ADR-024 2026-10-04 addendum.
+
+**Shipped.**
+- `CheckoutService::reserveOrClose()` / `reserveAll()`: reserve under the
+  Order row lock; on a loss restore the instrument that won, mark the order
+  Failed, throw `CheckoutAttemptClosedException`. Full-cover reserves quota
+  before Paid. `resume()` refuses a Failed order and reserves before any
+  replayed link goes out.
+- `CheckoutController`: coded 422 `{code: checkout_closed}`.
+- Storefront: on `checkout_closed`, new idempotency key, voucher cleared,
+  Review Modal remounted, totals re-fetched (a quota-only loss changes the
+  price without changing any preview key input).
+- Admin: `has_used_voucher` and the "Voucher Used to Pay" card read
+  `voucher_redemptions`, not `orders.voucher_id`.
+
+**Verified.**
+- Backend 2498/2498. New service tests (voucher race, quota race restoring
+  the voucher, full-cover quota race, replay Failed / Pending-without-
+  reservation / late loss / Paid) and controller tests (coded 422 on race and
+  on replay).
+- New `CheckoutReservationRaceConcurrencyTest` (two real processes, MySQL),
+  3/3 runs green with the other checkout/voucher/quota concurrency tests.
+  Run once against the old `CheckoutService`: both tests failed exactly as
+  the exploit describes (two links on one voucher; a member order linked with
+  no quota debit).
+- `tsc`/`eslint`/`build` clean on storefront and admin; e2e 5/5. A temporary
+  Playwright check (never committed) mocked a `checkout_closed` response:
+  the message shows, totals re-fetch, the next click carries a new key.
+
+**Gotchas.**
+- `Model::update()` on a stale instance writes nothing when the in-memory
+  values already match; test fixtures that rewind DB state use a query
+  update instead.
+- Remounting the Review Modal unticks T&C, so the customer re-confirms the
+  fresh attempt. Intended.
+
+## 2026-10-04 — Item 63 no-grill batch: payment-outcome seam, replay hash, KL days, labels
+
+**Why.** Pre-launch audit P2s (PRD §16 item 63). Before building, each
+proposed fix was re-checked for root cause; four of six first proposals
+were one-site patches and were widened.
+
+**Shipped.**
+- **Payment outcomes (bullet 1).** `OrderPaymentOutcomeService` is the one
+  locked seam the CHIP webhook and `PaymentReconciliationService` share; the
+  reconcile copy had drifted since 2026-09-29 (no M-4 / Paid-after-Failed).
+  Non-terminal CHIP statuses are no longer written (they could move a Failed
+  order back to Pending). `Order::setPaymentStatusUnlessPaid()` removed.
+  Attempts: all 8 Failed/Expired writers use `LeavesPendingOnce`. ADR-110
+  2026-10-04 addendum.
+- **Replay hash (bullet 4).** Storefront replays must match a payload hash of
+  game, package, channel, voucher, player and server (the Reseller API rule).
+  Column renamed `reseller_api_idempotency_payload_hash` →
+  `idempotency_payload_hash`. The storefront mints a new key on voucher change.
+- **KL days (bullet 7).** Six accounting filters used UTC days; the PRD named
+  three. All use `ReportService::dateRangeFromDates()` (exclusive upper bound).
+  `settled_on` (a DATE) untouched. Budget Envelope filters on
+  `transaction_date` (founder). Found on the way: a void's reversal had no
+  `transaction_date` (a date filter dropped it; it now carries the cancelled
+  entry's date), and the default date, `before_or_equal:today` and the form
+  max were UTC "today".
+- **Labels.** `PricingBasis::label()` for the Reports export (wallet/affiliate
+  were "Standard"); combo cost basis counts real legs (none → `estimated`).
+
+**Verified.** Backend 2516/2516; concurrency 28/28 on MySQL (incl. the new
+Paid-vs-Failed race, both arrival orders seen, and the column rename);
+storefront and admin build; e2e 5/5. The KL register test and the reservation
+tests fail on the old code.
+
+**Gotchas.**
+- `date`-cast columns hold `Y-m-d 00:00:00` in sqlite, so a string `<=` on a
+  bare date fails there; `whereDate()` is portable.
+- An existing combo test asserted `mixed` for a combo with no real leg cost —
+  it encoded the bug.
+- Why bullet 1 was missed before: each 2026-09-29 fix was scoped to its
+  finding, and the reconcile copy's "mirrors exactly" comment hid the drift.
+  Nothing in prod was harmed (no Paid order with a restored voucher/quota
+  other than a legitimate Issue Voucher).
+
+## 2026-10-05 — Late Digiflazz result after NeedsReview; Confirm Failed asks the supplier first (item 63 bullet 1, ADR-102 addendum)
+
+**Why.** Pre-launch audit P2 (PRD §16 item 63). Reproduced with a real test
+through the real paths: a Digiflazz order Pending for 2 hours ages out to
+NeedsReview; a later `Sukses` (webhook or poll) hit `finalizePendingSuccess()`
+(Pending-only), answered `200 already finalized`, and was dropped — no SN, no
+`order_profit`, only the supplier balance updated. Confirm Failed then accepted
+the order without asking the supplier, unlocking Issue Voucher / Refund to
+Wallet for goods the customer received. Digiflazz has no cancel endpoint, so
+the fix is to never compensate before Digiflazz's own final answer. Prod
+2026-10-05: 0 NeedsReview, the 2 orders ever Confirm-Failed were real Gagal
+(rc 55, 02), slowest normal delivery ~19 min — never happened.
+
+**Shipped** (`fix/2026-10-05-late-digiflazz-sukses`, PR #352, merged to
+`staging` 2026-10-05 as `11bba23`, all PR checks green; not yet on `main`). Grilled Q1–Q15 +
+money-ADR code-trace (profit per basis, voucher, quota, wallet, reseller
+webhook, receipt, drawdown — all reuse the existing Success branch).
+- `OrderStatusService::finalizePendingSuccess()/Failure()` accept NeedsReview
+  — one seam for the webhook, the poll, Check supplier and combo legs. A
+  confirmed `Gagal` on NeedsReview therefore also moves it to Failed.
+- A result contradicting a terminal status (`Sukses` on Failed/Partially,
+  `Gagal` on Delivered) is merged into `supplier_response.late_supplier_result`
+  and logged at error level; status never changes (combo leg: log only).
+- Combo: `finalizePendingDeliveryLeg()` locks the order then the leg and runs
+  the roll-up in the same transaction; `resolveComboOutcome()` exits
+  NeedsReview (all Delivered → Delivered, a leg still NeedsReview → no-op,
+  mix → PartiallyDelivered). `checkComboLegs()` also asks NeedsReview legs
+  that have a reference.
+- `SupplierDeliveryCheckService::confirmFailed()`: Digiflazz is asked first
+  (Sukses → Delivered, confirmed Gagal → Failed, else 422 and nothing
+  changes; no override), under the Check-supplier cooldown. Exceptions: no
+  `reference_number`, or past `max_reconcile_age_days` (a re-submit would be a
+  new transaction) — confirmed without a check, reason recorded. Gamevion and
+  sandbox unchanged.
+- Check from Supplier also works on NeedsReview (`supplier_askable` on Order
+  Detail); Confirm Failed modal copy explains the supplier decides.
+- `Order::blocksPackageSwapTo()`: no package swap from NeedsReview on a
+  replay-safe supplier (the ref_id is reused, so Digiflazz would replay the
+  original SKU); checked in the controller and again in `OrderResendService`.
+
+**Local browser check found a real bug (fixed in the same PR).** Seeded four
+NeedsReview orders on Digiflazz's official test cases (`xld10`,
+`0878000012xx`, `testing=true`) in the local dev DB; the founder clicked
+through. The local IP is not whitelisted at Digiflazz, so every call answered
+`status: Gagal, rc 45` ("IP Anda tidak kami kenali"), and Check supplier (A)
+and Confirm Failed (C) **failed** the orders instead of leaving them — the
+exact leak this PR closes. Cause: any `status: Gagal` counted as confirmed
+(ADR-102 decision 5). Digiflazz's rc table marks 45 "Terbentuk Transaksi =
+Tidak": the request was rejected, the original transaction never looked at.
+Fix (ADR-102 2026-10-05 addendum, decision 9): on a re-submit (`checkStatus()`,
+or `createOrder()` reusing a stored reference — new
+`SupplierOrderRequest::$resubmit`), Gagal confirms only for a code in the
+existing 20-code "Ya" table minus rate limits 85/86; otherwise the outcome is
+unknown. A first submit is unchanged. The existing table was re-checked
+against the live docs: identical, no sync needed. This also closes a
+pre-existing path: the Pending poll getting `rc 45` (e.g. during an IP
+change; prod logged one `rc 45` resend attempt) used to fail the order.
+Test data deleted from the local DB afterwards (orders, voucher, ledger,
+notifications, attempts, request logs, test game/packages).
+
+**Verified.** Backend 2549/2549 (incl. end-to-end tests through the real
+adapter with `Http::fake`: rc 45 → Confirm Failed refused, a NeedsReview
+retry parked Pending; rc 02 → still Failed); concurrency 29/29 on MySQL (new:
+two legs of one NeedsReview combo finalized at once → both succeed, order
+Delivered, profit credited once); admin tsc, eslint, build. The Sukses/Gagal
+browser paths could not be exercised locally (IP not whitelisted); they are
+covered by the tests above.
+
+**Gotchas.**
+- A PHP arrow function captures by value, so a test's `&$array` capture lost
+  every recorded call; an `ArrayObject` fixed the test, not the code.
+- Pint realigned an unrelated docblock in `OrderResendService`; reverted to
+  keep the diff on-topic.
+- The money-ADR code-trace pass missed decision 9: it checked every writer of
+  the state, but took the adapter's "confirmed Gagal" on trust. A local
+  browser check against the real API caught it — worth doing for any change
+  that relies on a supplier's answer.

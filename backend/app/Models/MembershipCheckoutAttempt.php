@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\LeavesPendingOnce;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class MembershipCheckoutAttempt extends Model
 {
+    use LeavesPendingOnce;
+
     protected $fillable = [
         'affiliate_id',
         'email',

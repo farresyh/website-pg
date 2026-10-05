@@ -10,6 +10,7 @@ use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
 
@@ -120,5 +121,92 @@ class OrderDeliveryLegFinalizeConcurrencyTest extends TestCase
         // even under a race; the one attemptLeg() (or, here, the test
         // fixture) originally stored stays exactly as-is.
         $this->assertSame('REF-RACE-COMBO-LEG-1-L1', $fresh->reference_number);
+    }
+
+    /**
+     * ADR-102 2026-10-05 addendum, decision 7: two late Sukses for the two
+     * NeedsReview legs of one order at once. Leg + roll-up commit together
+     * under the order lock, so both calls succeed, the order is Delivered
+     * once, and profit is credited once — never a leg saved Delivered with
+     * its roll-up failing behind it.
+     */
+    public function test_two_legs_finalized_at_once_deliver_the_order_exactly_once(): void
+    {
+        $supplier = Supplier::query()->create([
+            'name' => 'Race Test Supplier Legs', 'slug' => 'race-test-supplier-legs', 'api_config' => [], 'currency' => 'MYR',
+        ]);
+        $game = Game::query()->create(['name' => 'Race Test Game Legs', 'slug' => 'race-test-game-legs']);
+        $component = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Component', 'denomination' => 100,
+            'cost_price' => 250, 'standard_selling_price' => 300, 'markup_percent' => 20,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'RACE-LEGS-REF',
+        ]);
+        $combo = Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Combo', 'is_combo' => true,
+            'denomination' => 200, 'cost_price' => 500, 'standard_selling_price' => 600, 'markup_percent' => 20,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 2, 'sort_order' => 0]);
+
+        $order = Order::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-RACE-COMBO-LEGS-1',
+            'reference_number' => 'REF-RACE-COMBO-LEGS-1',
+            'customer_email' => 'race@example.com',
+            'game_id' => $game->id,
+            'package_id' => $combo->id,
+            'player_id' => '123456',
+            'cost_price' => 500,
+            'standard_selling_price' => 600,
+            'selling_price' => 700,
+            'transaction_fee' => 100,
+            'final_amount' => 800,
+            'platform_profit' => 200,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::NeedsReview->value,
+        ]);
+
+        $legs = collect([1, 2])->map(fn (int $n) => OrderDeliveryLeg::query()->create([
+            'order_id' => $order->id,
+            'component_package_id' => $component->id,
+            'supplier_id' => $supplier->id,
+            'leg_number' => $n,
+            'reference_number' => "REF-RACE-COMBO-LEGS-1-L{$n}",
+            'status' => DeliveryStatus::NeedsReview->value,
+        ]));
+
+        $env = [
+            'APP_ENV' => 'testing',
+            'DB_CONNECTION' => 'mysql',
+            'DB_HOST' => '127.0.0.1',
+            'DB_PORT' => '3306',
+            'DB_DATABASE' => 'kerox',
+            'DB_USERNAME' => 'kerox',
+            'DB_PASSWORD' => 'kerox',
+        ];
+
+        $runs = $legs->map(function (OrderDeliveryLeg $leg) use ($env) {
+            $resultFile = tempnam(sys_get_temp_dir(), 'finalize_legs_test_');
+
+            return [$resultFile, Process::path(base_path())->env($env)->start([
+                PHP_BINARY, 'artisan', 'app:order-delivery-leg-finalize-test-finalize', (string) $leg->id, $resultFile, 'success',
+            ])];
+        });
+
+        $outcomes = $runs->map(function (array $run) {
+            [$resultFile, $process] = $run;
+            $process->wait();
+            $result = file_get_contents($resultFile);
+            unlink($resultFile);
+
+            return $result;
+        })->all();
+
+        $this->assertSame(['success', 'success'], $outcomes);
+        $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
+        $this->assertSame([DeliveryStatus::Delivered, DeliveryStatus::Delivered], $legs->map(fn ($leg) => $leg->fresh()->status)->all());
+        $this->assertSame(1, DB::table('ledger_entries')
+            ->where('type', 'order_profit')->where('owner_type', 'platform')
+            ->where('reference_type', 'order')->where('reference_id', $order->id)->count());
     }
 }

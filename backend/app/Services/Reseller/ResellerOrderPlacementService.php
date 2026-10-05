@@ -100,7 +100,7 @@ final class ResellerOrderPlacementService
                     supplierId: $request->supplierId,
                     supplierProductRef: $request->supplierProductRef,
                     walletResellerId: $reseller->id,
-                    resellerApiIdempotencyPayloadHash: $request->payloadHash,
+                    idempotencyPayloadHash: $request->payloadHash,
                 ));
 
                 // ADR-073 decision 4: debit AFTER the Order exists (not
@@ -169,11 +169,11 @@ final class ResellerOrderPlacementService
      */
     private function assertPayloadMatches(Order $existing, ?string $payloadHash): void
     {
-        if ($payloadHash === null || $existing->reseller_api_idempotency_payload_hash === null) {
+        if ($payloadHash === null || $existing->idempotency_payload_hash === null) {
             return;
         }
 
-        if (! hash_equals($existing->reseller_api_idempotency_payload_hash, $payloadHash)) {
+        if (! hash_equals($existing->idempotency_payload_hash, $payloadHash)) {
             throw new IdempotencyKeyPayloadMismatchException(
                 "Idempotency key {$existing->checkout_idempotency_key} was reused with a different payload.",
             );

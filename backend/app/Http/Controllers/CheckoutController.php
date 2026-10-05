@@ -12,6 +12,7 @@ use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
+use App\Services\Checkout\CheckoutAttemptClosedException;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Checkout\CheckoutRequest;
@@ -125,9 +126,11 @@ class CheckoutController extends Controller
         // worst. This is a retry (double-click, client timeout retry)
         // of an attempt already in flight or already finished, not a
         // new checkout to re-vet.
+        $payloadHash = self::payloadHash($data);
+
         $existing = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->first();
         if ($existing !== null) {
-            return $this->respondForExistingOrder($existing, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+            return $this->respondForExistingOrder($existing, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
         }
 
         if ($game->player_validator_enabled && $game->player_validator_profile_id !== null) {
@@ -166,6 +169,7 @@ class CheckoutController extends Controller
                 paymentGateway: $paymentMethod->gateway,
                 channelCode: $data['channel_code'],
                 idempotencyKey: $data['idempotency_key'],
+                idempotencyPayloadHash: $payloadHash,
                 channelProperties: $data['channel_properties'] ?? [],
                 voucherCode: $data['voucher_code'] ?? null,
                 supplierProductRef: $package->supplier_package_ref,
@@ -181,7 +185,9 @@ class CheckoutController extends Controller
             // Treat it exactly like the lookup had found it.
             $winner = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->firstOrFail();
 
-            return $this->respondForExistingOrder($winner, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+            return $this->respondForExistingOrder($winner, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+        } catch (CheckoutAttemptClosedException $e) {
+            return $this->checkoutClosedResponse($e);
         } catch (CheckoutFailedException $e) {
             // ADR-019: previously silent — no record anywhere of *why*
             // a checkout failed. game_id/package_id/channel_code are
@@ -281,16 +287,26 @@ class CheckoutController extends Controller
     /**
      * Idempotent-replay path for an Order already tagged with the
      * incoming request's idempotency_key (ADR-019). If it already has a
-     * payment_ref, this is a pure replay of an attempt that already
-     * succeeded — no new work, just the same response shape a fresh
-     * checkout would have returned. If it doesn't, the previous attempt
+     * payment_ref, this is a replay of an attempt that already got its
+     * link — the same response shape a fresh checkout returned, after
+     * resume() confirms the reservation. If it doesn't, the previous attempt
      * created the Order but never reached a successful payment (gateway
      * error, or the process died in between) — retry just the payment
      * leg via CheckoutService::resume() against this same Order, never
      * a new one.
      */
-    private function respondForExistingOrder(Order $order, PaymentGateway $gateway, string $channelCode, array $channelProperties): JsonResponse
+    private function respondForExistingOrder(Order $order, string $payloadHash, PaymentGateway $gateway, string $channelCode, array $channelProperties): JsonResponse
     {
+        // Item 63: a replay must be the same request — the Reseller API's
+        // payload-hash rule (ADR-084 PR-1 decision 5). An order from before
+        // hashing has no hash and is not checked.
+        if ($order->idempotency_payload_hash !== null && ! hash_equals($order->idempotency_payload_hash, $payloadHash)) {
+            return response()->json([
+                'code' => 'idempotency_mismatch',
+                'message' => 'This checkout was already submitted with different details. Please review your order and try again.',
+            ], 422);
+        }
+
         // ADR-024 decision #5: an order already settled entirely by a
         // voucher has payment_ref permanently null and payment_status
         // already Paid — resume() (which calls the gateway) is neither
@@ -301,22 +317,58 @@ class CheckoutController extends Controller
             return $this->buildCheckoutResponse($order, $gateway, 200);
         }
 
-        if ($order->payment_ref === null) {
-            try {
-                $order = $this->checkout->resume($order, $gateway, $channelCode, $channelProperties);
-            } catch (CheckoutFailedException $e) {
-                Log::warning('Checkout resume failed', [
-                    'order_id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
+        // ADR-024 2026-10-04 addendum decision 6: every other replay goes
+        // through resume(), which reserves before a link goes back out and
+        // refuses a Failed order — including one that already has a link.
+        try {
+            $order = $this->checkout->resume($order, $gateway, $channelCode, $channelProperties);
+        } catch (CheckoutAttemptClosedException $e) {
+            return $this->checkoutClosedResponse($e);
+        } catch (CheckoutFailedException $e) {
+            Log::warning('Checkout resume failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
 
-                throw ValidationException::withMessages([
-                    'payment' => [$e->getMessage()],
-                ]);
-            }
+            throw ValidationException::withMessages([
+                'payment' => [$e->getMessage()],
+            ]);
         }
 
         return $this->buildCheckoutResponse($order, $gateway, 200);
+    }
+
+    /**
+     * What is bought, charged and delivered — not contact details (a
+     * name edited between a timed-out submit and its retry is still the
+     * same order) and not the key itself. Stable field order.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private static function payloadHash(array $data): string
+    {
+        return hash('sha256', json_encode([
+            'game_id' => (int) $data['game_id'],
+            'package_id' => (int) $data['package_id'],
+            'channel_code' => $data['channel_code'],
+            'voucher_code' => $data['voucher_code'] ?? null,
+            'player_id' => $data['player_id'],
+            'server_id' => $data['server_id'] ?? null,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * A coded 422 (same `code` + `message` shape as
+     * ResolveStorefrontBrand's) so the storefront can tell "this attempt
+     * is closed — start a fresh, re-priced one" apart from an ordinary
+     * payment error it should retry with the same idempotency key.
+     */
+    private function checkoutClosedResponse(CheckoutAttemptClosedException $e): JsonResponse
+    {
+        return response()->json([
+            'code' => 'checkout_closed',
+            'message' => $e->getMessage(),
+        ], 422);
     }
 
     /**
