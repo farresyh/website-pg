@@ -762,4 +762,14 @@ class CatalogControllerTest extends TestCase
         $this->assertSame('Free Fire Global', $second->json()[0]['name']);
         $this->assertIsString($second->json()[0]['created_at']);
     }
+
+    /** ADR-097 2026-10-05 addendum, decision 34 — flat, defaults to numeric. */
+    public function test_show_returns_the_games_player_id_format(): void
+    {
+        Game::query()->create(['name' => 'Valorant', 'slug' => 'valorant-fmt', 'is_active' => true, 'validation_rules' => ['player_id_format' => 'text']]);
+        Game::query()->create(['name' => 'FF', 'slug' => 'ff-fmt', 'is_active' => true]);
+
+        $this->getJson('/api/catalog/games/valorant-fmt')->assertJsonPath('player_id_format', 'text');
+        $this->getJson('/api/catalog/games/ff-fmt')->assertJsonPath('player_id_format', 'numeric');
+    }
 }

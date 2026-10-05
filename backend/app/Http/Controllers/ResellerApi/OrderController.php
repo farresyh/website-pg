@@ -101,7 +101,7 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'Place an order',
-        description: 'Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict.',
+        description: 'Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game\'s `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged.',
     )]
     #[Response(status: 201, description: 'The order was placed.', examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 200, description: 'Idempotent replay — the original order (also carries `Idempotent-Replayed: true`).', examples: [self::ORDER_EXAMPLE])]
@@ -128,7 +128,7 @@ class OrderController extends Controller
         // an already-resolved gameId, mirroring exactly where the Bot
         // already does this same check today).
         $game = Game::query()->find($package->game_id);
-        if ($game !== null && $error = $this->checkoutInputValidator->validate($game, $data['server_id'] ?? null)) {
+        if ($game !== null && $error = $this->checkoutInputValidator->validate($game, $data['player_id'], $data['server_id'] ?? null)) {
             throw ResellerApiException::validationFailed([$error['field'] => [$error['message']]]);
         }
 

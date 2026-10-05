@@ -25,6 +25,42 @@ const EXTRA_FIELD_LABEL: Record<"server_id" | "zone_id", string> = {
   zone_id: "Zone ID",
 };
 
+/**
+ * ADR-097 2026-10-05 addendum, decision 34 — the backend's
+ * CheckoutInputValidator rule, mirrored for an inline hint before
+ * submit. The backend stays the authority.
+ */
+function inputError(value: string, label: string, kind: "digits" | "text" | "any"): string | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  if (/\s/.test(trimmed)) return `${label} must not contain spaces.`;
+  if (trimmed.length > 64) return `${label} must not be longer than 64 characters.`;
+  if (kind === "digits" && !/^\d+$/.test(trimmed)) return `${label} must contain digits only.`;
+  if (kind === "text" && !/^[A-Za-z0-9#._-]+$/.test(trimmed)) return `${label} may only contain letters, digits and # . _ -`;
+  return null;
+}
+
+/**
+ * Typing a non-digit into a digits-only field is blocked. A paste is
+ * not filtered — "12345678 (2001)" stripped would become a plausible
+ * wrong ID — it is left as-is and `inputError` explains it. React's
+ * onBeforeInput also fires for a paste (Chrome's textInput), right
+ * after the paste event, so the paste marks itself first.
+ */
+const digitsOnlyHandlers = {
+  onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.currentTarget.dataset.pasting = "1";
+  },
+  onBeforeInput: (e: React.FormEvent<HTMLInputElement>) => {
+    if (e.currentTarget.dataset.pasting) {
+      delete e.currentTarget.dataset.pasting;
+      return;
+    }
+    const data = (e.nativeEvent as InputEvent).data;
+    if (data && /\D/.test(data)) e.preventDefault();
+  },
+};
+
 const inputClass =
   "min-h-11 rounded-md border-2 border-ink bg-surface-container-lowest px-3.5 text-sm text-on-surface placeholder:text-outline focus:border-secondary focus:outline-none";
 const labelClass = "mb-1.5 block font-display text-[13px] font-bold";
@@ -49,7 +85,15 @@ export default function Step1AccountInfo({
   verifyError,
   result,
 }: Step1AccountInfoProps) {
-  const idReady = playerId.trim().length > 0 && (!game.extraField || serverId.trim().length > 0);
+  const playerIdError = inputError(playerId, "User ID", game.playerIdFormat === "text" ? "text" : "digits");
+  const serverIdError = game.extraField
+    ? inputError(serverId, EXTRA_FIELD_LABEL[game.extraField], game.extraField === "server_id" ? "digits" : "any")
+    : null;
+  const idReady =
+    playerId.trim().length > 0 &&
+    (!game.extraField || serverId.trim().length > 0) &&
+    playerIdError === null &&
+    serverIdError === null;
 
   // ADR-109 decisions 8/9/10 — auto-opens once per page load, only when
   // there's real content to show; the manual re-open button is gated
@@ -78,10 +122,18 @@ export default function Step1AccountInfo({
             type="text"
             value={playerId}
             onChange={(e) => setPlayerId(e.target.value)}
-            placeholder="e.g. 123456789"
-            inputMode="numeric"
+            {...(game.playerIdFormat === "text" ? {} : digitsOnlyHandlers)}
+            placeholder={game.playerIdFormat === "text" ? "e.g. JettMain#1234" : "e.g. 123456789"}
+            inputMode={game.playerIdFormat === "text" ? "text" : "numeric"}
+            aria-invalid={playerIdError !== null}
+            aria-describedby={playerIdError ? "playerIdError" : undefined}
             className={`${inputClass} w-full font-mono`}
           />
+          {playerIdError && (
+            <p id="playerIdError" role="alert" className="mt-1.5 text-[13px] font-medium text-danger">
+              {playerIdError}
+            </p>
+          )}
         </div>
         {game.extraField && (
           <div>
@@ -111,9 +163,18 @@ export default function Step1AccountInfo({
                 type="text"
                 value={serverId}
                 onChange={(e) => setServerId(e.target.value)}
+                {...(game.extraField === "server_id" ? digitsOnlyHandlers : {})}
                 placeholder="e.g. 1234"
+                inputMode={game.extraField === "server_id" ? "numeric" : "text"}
+                aria-invalid={serverIdError !== null}
+                aria-describedby={serverIdError ? "serverIdError" : undefined}
                 className={`${inputClass} w-full font-mono`}
               />
+            )}
+            {serverIdError && (
+              <p id="serverIdError" role="alert" className="mt-1.5 text-[13px] font-medium text-danger">
+                {serverIdError}
+              </p>
             )}
           </div>
         )}

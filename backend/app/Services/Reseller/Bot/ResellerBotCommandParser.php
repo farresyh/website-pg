@@ -15,6 +15,11 @@ namespace App\Services\Reseller\Bot;
  * minus a product code), and the argument-less `.info`. ADR-076 PR-H
  * adds `.topupbaki {amount}` (amount in RM, e.g. `.topupbaki 50`).
  *
+ * ADR-097 2026-10-05 addendum, decision 32: a token past
+ * `{code} {userId} {serverId}` on `.order`/`.checkid` sets
+ * `extraArguments` instead of being dropped — the handler rejects it.
+ * That also covers a multi-line message (newline is whitespace here).
+ *
  * Pure text-in, DTO-out — no DB/service call here, so it's trivially
  * unit-testable without a database.
  */
@@ -53,6 +58,7 @@ final class ResellerBotCommandParser
                     productCode: strtoupper($parts[1]),
                     playerId: $parts[2],
                     serverId: $parts[3] ?? null,
+                    extraArguments: count($parts) > 4,
                 )
                 : new ResellerBotCommand(ResellerBotCommandType::Unrecognized, $raw),
 
@@ -67,6 +73,7 @@ final class ResellerBotCommandParser
                     gameCode: strtoupper($parts[1]),
                     playerId: $parts[2],
                     serverId: $parts[3] ?? null,
+                    extraArguments: count($parts) > 4,
                 )
                 : new ResellerBotCommand(ResellerBotCommandType::Unrecognized, $raw),
 

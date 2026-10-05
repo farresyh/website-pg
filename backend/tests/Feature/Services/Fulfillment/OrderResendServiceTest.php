@@ -1040,14 +1040,15 @@ class OrderResendServiceTest extends TestCase
     {
         $supplier = $this->supplier();
         $game = $this->game();
+        $game->update(['validation_rules' => ['extra_field' => 'server_id']]);
         $package = $this->package($game, $supplier);
-        $order = $this->failedOrder($game, $package, $supplier, ['player_id' => 'typo-id']);
+        $order = $this->failedOrder($game, $package, $supplier, ['player_id' => '11111']);
 
         $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'GV-1']))
-            ->resend($order, $package, null, 'Admin', playerId: 'corrected-id', serverId: 'srv-2');
+            ->resend($order, $package, null, 'Admin', playerId: '22222', serverId: '2002');
 
-        $this->assertSame('corrected-id', $result->player_id);
-        $this->assertSame('srv-2', $result->server_id);
+        $this->assertSame('22222', $result->player_id);
+        $this->assertSame('2002', $result->server_id);
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
     }
 
@@ -1143,5 +1144,23 @@ class OrderResendServiceTest extends TestCase
         $this->assertSame(0, $fresh->affiliate_profit);
         $this->assertSame(200, $fresh->platform_profit);
         $this->assertSame(200, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
+    }
+
+    /** ADR-097 2026-10-05 addendum, decision 31 — a corrected ID meets the same per-game contract. */
+    public function test_rejects_a_malformed_player_id_correction(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $package = $this->package($game, $supplier);
+        $order = $this->failedOrder($game, $package, $supplier, ['player_id' => '11111']);
+
+        try {
+            $this->service($this->fakeSupplierAdapter(true))->resend($order, $package, null, 'Admin', playerId: '22222 (2001)');
+            $this->fail('expected a ValidationException');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('player_id', $e->errors());
+        }
+
+        $this->assertSame('11111', $order->fresh()->player_id);
     }
 }

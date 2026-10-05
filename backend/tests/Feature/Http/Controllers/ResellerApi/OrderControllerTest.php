@@ -64,7 +64,6 @@ class OrderControllerTest extends TestCase
         $response = $this->postJson('/api/reseller/v1/orders', [
             'product_code' => 'MLMY-14',
             'player_id' => '123456789',
-            'server_id' => '9999',
             'idempotency_key' => 'reseller-order-test-1',
         ], $this->authHeaders($key));
 
@@ -106,11 +105,11 @@ class OrderControllerTest extends TestCase
         [$reseller, $key] = $this->makeFundedReseller();
 
         $this->postJson('/api/reseller/v1/orders', [
-            'product_code' => 'MLMY-14', 'player_id' => 'alice', 'idempotency_key' => 'reused-key',
+            'product_code' => 'MLMY-14', 'player_id' => '1111', 'idempotency_key' => 'reused-key',
         ], $this->authHeaders($key))->assertCreated();
 
         $conflict = $this->postJson('/api/reseller/v1/orders', [
-            'product_code' => 'MLMY-14', 'player_id' => 'bob', 'idempotency_key' => 'reused-key',
+            'product_code' => 'MLMY-14', 'player_id' => '2222', 'idempotency_key' => 'reused-key',
         ], $this->authHeaders($key));
 
         $conflict->assertStatus(409);
@@ -454,5 +453,35 @@ class OrderControllerTest extends TestCase
         $this->getJson('/api/reseller/v1/orders')
             ->assertUnauthorized()
             ->assertJsonPath('error', 'MISSING_API_KEY');
+    }
+
+    /** ADR-097 2026-10-05 addendum, decisions 27/33 — same VALIDATION_FAILED envelope, field-specific details. */
+    public function test_rejects_a_server_id_on_a_game_that_takes_none(): void
+    {
+        Queue::fake();
+        $this->makePackage(costPrice: 1000);
+        [, $key] = $this->makeFundedReseller(walletBalance: 10000, markupPercent: 10);
+
+        $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLMY-14', 'player_id' => '123456789', 'server_id' => 'tq', 'idempotency_key' => 'no-server-1',
+        ], $this->authHeaders($key))
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'VALIDATION_FAILED')
+            ->assertJsonPath('details.server_id.0', 'This game does not take a Server ID.');
+
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_rejects_a_non_numeric_player_id(): void
+    {
+        Queue::fake();
+        $this->makePackage(costPrice: 1000);
+        [, $key] = $this->makeFundedReseller(walletBalance: 10000, markupPercent: 10);
+
+        $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLMY-14', 'player_id' => '1234 5678', 'idempotency_key' => 'bad-player-1',
+        ], $this->authHeaders($key))
+            ->assertStatus(422)
+            ->assertJsonPath('details.player_id.0', 'User ID must not contain spaces.');
     }
 }

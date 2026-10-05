@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\PlayerValidation;
+use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Pricing\InvalidPricingConfigException;
 use App\Services\Pricing\MembershipPricingService;
@@ -34,6 +35,7 @@ final class OrderResendService
         private readonly OrderFulfillmentService $fulfillment,
         private readonly PricingService $pricing,
         private readonly MembershipPricingService $membershipPricing,
+        private readonly CheckoutInputValidator $checkoutInputValidator = new CheckoutInputValidator,
     ) {}
 
     /**
@@ -77,6 +79,16 @@ final class OrderResendService
         }
         if ($serverId !== null) {
             $order->server_id = $serverId !== '' ? $serverId : null;
+        }
+
+        // ADR-097 2026-10-05 addendum, decision 31 — a corrected ID is
+        // re-sent to the supplier, so it meets the same per-game
+        // contract as checkout. Only when a correction is given: an
+        // untouched order resends what it was placed with.
+        $corrected = ($playerId !== null && $playerId !== '') || $serverId !== null;
+        if ($corrected && $order->game !== null
+            && $error = $this->checkoutInputValidator->validate($order->game, $order->player_id, $order->server_id)) {
+            throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
         }
 
         $this->assertPlayerIdIsValidatedIfRequired($order);

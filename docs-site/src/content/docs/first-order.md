@@ -33,7 +33,7 @@ GET /v1/catalog
     {
       "code": "MLMY",
       "name": "Mobile Legends (Malaysia)",
-      "checkout_input": { "field": "zone_id", "options": ["SouthEastAsia", "MENA"] },
+      "checkout_input": { "field": "server_id", "options": null, "player_id_format": "numeric" },
       "packages": [
         { "code": "MLMY-14", "name": "14 Diamonds", "price_sen": 1200 },
         { "code": "MLMY-86", "name": "86 Diamonds", "price_sen": 6300 }
@@ -46,12 +46,22 @@ GET /v1/catalog
 `price_sen` is **your** price for that package, in sen. Order against
 `packages[].code` — see [Product codes](/product-codes/).
 
-`checkout_input` tells you, per game, whether placing an order needs an
-extra value beyond `player_id` — `field`/`options` are both `null` when it
-doesn't. When present, send that value as `server_id` on the order below
-(the request field is always named `server_id`, regardless of what
-`checkout_input.field` calls it for that particular game) — `options`, when
-present, is the exact picklist of valid values; anything else is rejected.
+`checkout_input` is each game's input contract. Check it programmatically
+rather than hardcoding per game:
+
+| Key | Value | What to send |
+| --- | --- | --- |
+| `player_id_format` | `numeric` | `player_id` is digits only |
+| | `text` | `player_id` is letters, digits and `# . _ -` (e.g. a Riot ID, `JettMain#1234`) |
+| `field` | `null` | **no** `server_id` — sending one is rejected |
+| | `server_id` | `server_id` is required, digits only |
+| | `zone_id` | `server_id` is required and must be one of `options` |
+
+The request field is always named `server_id`, even for a zone. `options` is
+the exact picklist when present; a zone game with `options: null` accepts any
+value. No value may contain spaces, and each is at most 64 characters. A value
+that breaks the contract gets a `422 VALIDATION_FAILED` naming the field —
+nothing is charged.
 
 ## 3. Place the order
 
@@ -67,9 +77,8 @@ Content-Type: application/json
 }
 ```
 
-- `server_id` is required only for games whose catalog entry has a non-null
-  `checkout_input` (Mobile Legends does; many games don't) — check that
-  field programmatically rather than hardcoding which games need it.
+- `server_id` only when the game's `checkout_input.field` is not `null`
+  (Mobile Legends needs one; many games don't).
 - `idempotency_key` is a **fresh UUID you generate per order**. See
   [Idempotency & retries](/idempotency/).
 

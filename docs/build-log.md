@@ -2611,3 +2611,58 @@ release (2026-10-04 onward) and are unrelated.
 
 **Gotcha.** Auto mode blocks the model from merging into `main` (it
 deploys); the founder merged #354 themselves.
+
+## 2026-10-05 — Per-game player-input contract (item 63, Bot multi-line bullet; ADR-097 addendum)
+
+**Why.** The audit bullet was "several `.order` lines place only the first".
+The trace found the real gap in the shared seam: `CheckoutInputValidator`
+passed any `server_id` on a User-ID-only game (17 of 30 reseller games) and
+`DigiflazzAdapter::normalizeCustomerNo()` appended it, so `.order X 123456 tq`
+sent `customer_no = 123456tq` after the wallet debit, and nothing checked an
+ID's format (`12345678 (2001)` went out as-is). Same path on the Reseller
+API. Founder confirmed resellers send one order per message, so the
+single-line cases were the real risk. Prod: 0 orders anywhere broke the new
+rules — nothing to remediate.
+
+**What shipped.** Grilled Q1–Q13, ADR-097 2026-10-05 addendum (decisions
+27–35):
+- One per-game contract in `CheckoutInputValidator`: User ID digits only
+  (default) or Text (`[A-Za-z0-9#._-]`, a Riot ID), Server ID digits only,
+  zone in the list, no `server_id` on a User-ID-only game, no whitespace,
+  64-char cap. Returns `{field, reason, message}`.
+- Used by storefront checkout, Reseller API, Bot `.order`/`.checkid`, admin
+  Resend with an ID correction, and storefront Check ID (before the paid
+  provider call). Sandbox/Developer Tool exempt.
+- Bot: extra tokens rejected (covers multi-line); BM replies built from the
+  game's `validation_rules` (`.order MLMY-14 {userId} {serverId}`, zone list);
+  `.list` footer the same.
+- `Game.validation_rules.player_id_format`, edited in Product Manager's
+  checkout-input editor ("User ID format"); `linkCategory()` merges instead of
+  replacing (LinkCategoryModal's re-link was wiping zone list + separator).
+- Reseller API v1.3.0: `checkout_input.player_id_format`, same
+  `VALIDATION_FAILED` envelope; `scramble.php` docs revision was stuck at
+  1.1.0, now 1.3.0. Storefront: keyboard + typing block per field, paste kept
+  with an inline error.
+
+**Verified.** Backend 2580/2580 (new: validator contract, every channel,
+Resend, Check ID before the provider, Bot extra tokens + BM replies, link
+merge, editor payload); admin + storefront lint/build; docs-site build.
+Local browser: typed `12a34(5)` → `12345` (numeric keypad); pasted
+`12345678 (2001)` kept with "User ID must not contain spaces.", Continue
+disabled, colour `rgb(186, 26, 26)`; a Text game shows the text keyboard,
+accepts `JettMain#1234`, flags `JettMain#1234(x)`. Real HTTP (local test
+token, deleted afterwards): editor save → 200, an extra-field-only re-link
+keeps `player_id_format: text`, catalog shows it. The Bot and Reseller API
+were not exercised against a live OpenWA/API key — covered by the tests.
+
+**Gotchas.**
+- The first storefront build blocked pastes too: React's `onBeforeInput`
+  fires for a paste (Chrome `textInput`). Found only in the browser.
+- The real HTTP check found a pre-existing 422: the editor sends
+  `zone_options: null` for a non-zone game and the request read it as a
+  list. Every editor Update on a non-zone game had failed since 2026-09-16.
+- Port 3000 was another app (Remotion Studio), not admin, and no seeded
+  admin password exists, so the editor UI itself was checked by tsc/lint and
+  the endpoint by real HTTP; the founder's click-through is owed.
+- Local `CACHE_STORE` needed `redis` for the catalog list (gotcha 5).
+- Local dev data touched for the check (games 2, 3) was restored.

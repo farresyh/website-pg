@@ -83,8 +83,8 @@ final class ResellerBotReplyFormatter
 
         $separator = "\n━━━━━━━━━━━━━━━\n";
         $firstCode = $items->first()['code'];
-        $footer = "\n\n".'Guna .order {kod} {playerId} [{serverId}] untuk order.'
-            ."\nContoh: .order {$firstCode} 123456789";
+        $footer = "\n\n".'Guna '.self::commandFormat($game, '{kod}').' untuk order.'
+            ."\nContoh: ".self::commandExample($game, $firstCode);
 
         // The header carries a "(part/total)" suffix once split into more
         // than one message. Reserve room for the widest plausible count
@@ -310,12 +310,73 @@ final class ResellerBotReplyFormatter
             "🤖 SENARAI ARAHAN\n\n"
             .".listharga — senarai semua game\n"
             .".list {kod} — package & harga\n"
-            .".order {kod} {playerId} [{serverId}] — buat order\n"
+            .".order {kod} {userId} [{serverId}] — buat order\n"
             .".trackorder {no_order} — semak status order\n"
-            .".checkid {kod} {playerId} [{serverId}] — semak ID pemain\n"
+            .".checkid {kod} {userId} [{serverId}] — semak ID pemain\n"
             .".baki — semak baki wallet\n"
             .'.topupbaki {jumlah} — top-up baki wallet (RM)'
         );
+    }
+
+    /**
+     * ADR-097 2026-10-05 addendum, decision 32 — the game's real input
+     * format, built from its `validation_rules` (never hardcoded per
+     * game), e.g. `.order MLMY-14 {userId} {serverId}` or
+     * `.checkid GIMY {userId} {zone}` + the zone list.
+     */
+    public static function commandFormat(Game $game, string $code, string $command = '.order'): string
+    {
+        $extra = match ($game->validation_rules['extra_field'] ?? null) {
+            'server_id' => ' {serverId}',
+            'zone_id' => ' {zone}',
+            default => '',
+        };
+        $zones = $game->zoneOptions();
+
+        return "{$command} {$code} {userId}{$extra}".($extra === ' {zone}' && $zones !== null ? "\nZone: ".implode(' / ', $zones) : '');
+    }
+
+    private static function commandExample(Game $game, string $code): string
+    {
+        $userId = $game->playerIdFormat() === 'text' ? 'Nama#1234' : '123456789';
+        $extra = match ($game->validation_rules['extra_field'] ?? null) {
+            'server_id' => ' 2001',
+            'zone_id' => ' '.($game->zoneOptions()[0] ?? '{zone}'),
+            default => '',
+        };
+
+        return ".order {$code} {$userId}{$extra}";
+    }
+
+    /**
+     * ADR-097 2026-10-05 addendum, decision 28 — `CheckoutInputValidator`'s
+     * reason, worded in BM, plus the game's real format.
+     *
+     * @param  array{field: string, reason: string, message: string}  $error
+     */
+    public static function inputRejected(array $error, Game $game, string $code, string $command = '.order'): string
+    {
+        $label = $error['field'] === 'player_id'
+            ? 'User ID'
+            : (($game->validation_rules['extra_field'] ?? null) === 'zone_id' ? 'Zone ID' : 'Server ID');
+
+        $reason = match ($error['reason']) {
+            'required' => "Game ini memerlukan {$label}.",
+            'not_taken' => 'Game ini tidak memerlukan Server ID.',
+            'digits_only' => "{$label} mesti nombor sahaja.",
+            'text_chars' => "{$label} hanya boleh mengandungi huruf, nombor dan # . _ -",
+            'whitespace' => "{$label} tidak boleh ada ruang.",
+            'too_long' => "{$label} terlalu panjang (maksimum 64 aksara).",
+            'invalid_zone' => 'Zone ID tidak sah. Pilihan: '.implode(', ', $game->zoneOptions() ?? []).'.',
+            default => $error['message'],
+        };
+
+        return "{$reason}\nFormat: ".self::commandFormat($game, $code, $command);
+    }
+
+    public static function extraArguments(Game $game, string $code, string $command = '.order'): string
+    {
+        return "Format salah — hantar satu arahan sahaja setiap mesej, tanpa maklumat tambahan.\nFormat: ".self::commandFormat($game, $code, $command);
     }
 
     public static function unrecognized(): string
