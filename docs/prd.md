@@ -789,25 +789,7 @@ production before building on it.
 
 ## Next up
 
-69. **WhatsApp status-card and not-found throttles are silent — founder is
-    reconsidering whether to reply every time** (found in the 2026-10-06
-    smoke test). A second message with the same order number within 30
-    minutes (same order + status, ADR-116 addendum decision 3), or a second
-    unknown order number within 10 minutes, gets no reply, and the throttle
-    returns before a `customer_notifications` row is written, so admin can't
-    see why. A customer who taps "Send Receipt to WhatsApp" right after
-    "Contact Support" gets silence. Options:
-    - (a) reply every time, keeping only a per-phone abuse cap (e.g. N cards
-      per 10 min) whose overflow writes a `skipped` row with the reason;
-    - (b) keep the throttles, record a `skipped` "throttled" row, shorten the
-      same-card window;
-    - (c) as is.
-    Weigh: replies to a customer who wrote first are not capped by OpenWA's
-    `SEND_PACING` and carry little ban risk, but every card goes through the
-    one paced `whatsapp` worker (10–30 s gap), so an unbounded sender could
-    delay other customers' voucher messages — hence a cap stays in (a).
-    A "support vs updates" split was already rejected (addendum decision 1).
-    Needs an ADR-116 addendum before building.
+Nothing scheduled; item 63 (Hardening) is the current focus.
 
 ## Hardening (founder `.env` / infra)
 
@@ -888,6 +870,26 @@ production before building on it.
 
 
 ## Polish (not blocking)
+
+69. **WhatsApp status-card and not-found throttles are silent — founder may
+    reconsider replying every time** (found in the 2026-10-06 smoke test;
+    founder's call 2026-10-06: small, after item 63). A second message with the same order number within 30
+    minutes (same order + status, ADR-116 addendum decision 3), or a second
+    unknown order number within 10 minutes, gets no reply, and the throttle
+    returns before a `customer_notifications` row is written, so admin can't
+    see why. A customer who taps "Send Receipt to WhatsApp" right after
+    "Contact Support" gets silence. Options:
+    - (a) reply every time, keeping only a per-phone abuse cap (e.g. N cards
+      per 10 min) whose overflow writes a `skipped` row with the reason;
+    - (b) keep the throttles, record a `skipped` "throttled" row, shorten the
+      same-card window;
+    - (c) as is.
+    Weigh: replies to a customer who wrote first are not capped by OpenWA's
+    `SEND_PACING` and carry little ban risk, but every card goes through the
+    one paced `whatsapp` worker (10–30 s gap), so an unbounded sender could
+    delay other customers' voucher messages — hence a cap stays in (a).
+    A "support vs updates" split was already rejected (addendum decision 1).
+    Needs an ADR-116 addendum before building.
 
 70. **A full-voucher-cover order shows "Payment Method: fpx"** (seen
     2026-10-06 on `PG-SJDWBIKMYC1Z`). `payment_method` keeps the method picked
