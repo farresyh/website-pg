@@ -51,13 +51,13 @@ class CatalogController extends Controller
 
     #[Endpoint(
         title: 'List the catalogue',
-        description: "Every orderable product for the calling reseller, grouped by game. Each package's `price_sen` is your own price for that package, in sen. Order against `packages[].code` (`{game code}-{denomination}`).",
+        description: "Every orderable product for the calling reseller, grouped by game. Each package's `price_sen` is your own price for that package, in sen. Order against `packages[].code` (`{game code}-{denomination}`). `checkout_input` is the game's input contract: `player_id_format` (`numeric` = digits only, `text` = letters, digits and `# . _ -`), and `field` (`null` = send no `server_id`; `server_id` = digits only; `zone_id` = one of `options`).",
     )]
     #[Response(status: 200, description: 'Your priced catalogue.', examples: [[
         'games' => [[
             'code' => 'MLMY',
             'name' => 'Mobile Legends (Malaysia)',
-            'checkout_input' => ['field' => 'zone_id', 'options' => ['SouthEastAsia', 'MENA']],
+            'checkout_input' => ['field' => 'server_id', 'options' => null, 'player_id_format' => 'numeric'],
             'packages' => [
                 ['code' => 'MLMY-14', 'name' => '14 Diamonds', 'price_sen' => 1200],
                 ['code' => 'MLMY-86', 'name' => '86 Diamonds', 'price_sen' => 6300],
@@ -84,7 +84,7 @@ class CatalogController extends Controller
     }
 
     /**
-     * @return array<int, array{code: string, name: string, checkout_input: array{field: ?string, options: ?array<int, string>}, packages: array<int, array{code: string, name: string, price_sen: int}>}>
+     * @return array<int, array{code: string, name: string, checkout_input: array{field: ?string, options: ?array<int, string>, player_id_format: string}, packages: array<int, array{code: string, name: string, price_sen: int}>}>
      */
     private function pricedCatalogForTier(int $tierId, float $markupPercent): array
     {
