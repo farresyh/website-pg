@@ -327,6 +327,59 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
         Queue::assertPushed(ResendOrderDeliveryJob::class);
     }
 
+    /**
+     * ADR-102 2026-10-05 addendum (rc correction) — found in the local
+     * browser check: through the REAL adapter, Digiflazz answering rc 45
+     * (IP not recognised, "Terbentuk Transaksi = Tidak") rejected the
+     * request itself. Confirm Failed must refuse, not fail the order.
+     */
+    public function test_confirm_failed_refuses_when_digiflazz_rejects_the_request_itself(): void
+    {
+        $this->realDigiflazzAnswers(['status' => 'Gagal', 'rc' => '45', 'message' => 'IP Anda tidak kami kenali']);
+        $order = $this->needsReviewOrder();
+
+        $this->confirm($order)->assertUnprocessable();
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    public function test_confirm_failed_through_the_real_adapter_still_fails_on_a_formed_gagal(): void
+    {
+        $this->realDigiflazzAnswers(['status' => 'Gagal', 'rc' => '02', 'message' => 'Transaksi Gagal']);
+        $order = $this->needsReviewOrder();
+
+        $this->confirm($order)->assertOk()->assertJsonPath('delivery_status', 'failed');
+    }
+
+    /** A Retry from NeedsReview re-submits the stored reference: a request rejection parks it Pending, never Failed. */
+    public function test_a_needs_review_retry_rejected_by_digiflazz_is_parked_pending_not_failed(): void
+    {
+        Queue::fake();
+        $this->realDigiflazzAnswers(['status' => 'Gagal', 'rc' => '45', 'message' => 'IP Anda tidak kami kenali']);
+        $order = $this->needsReviewOrder();
+
+        app(\App\Services\Fulfillment\OrderFulfillmentService::class)->fulfill($order);
+
+        $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
+    }
+
+    /** @param  array<string, string>  $data  Digiflazz's `data` envelope */
+    private function realDigiflazzAnswers(array $data): void
+    {
+        Supplier::query()->updateOrCreate(['slug' => 'digiflazz'], [
+            'name' => 'Digiflazz',
+            'currency' => 'IDR',
+            'api_config' => [
+                'base_url' => 'https://api.digiflazz.com',
+                'username' => 'test-username',
+                'api_key' => 'test-api-key',
+                'testing' => false,
+                'customer_no_separator' => '|',
+            ],
+        ]);
+        \Illuminate\Support\Facades\Http::fake(['api.digiflazz.com/*' => \Illuminate\Support\Facades\Http::response(['data' => $data], 200)]);
+    }
+
     /** @return array{0: Package, 1: Package} */
     private function twoPackages(): array
     {

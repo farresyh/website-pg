@@ -116,7 +116,7 @@ final class OrderFulfillmentService
         // NeedsReview — markNeedsReview() only accepts Processing/Failed/
         // Pending as the FROM state, which a full rollback would have
         // undone had this stayed one transaction.
-        [$referenceNumber, $wasNotStarted] = DB::transaction(function () use ($order) {
+        [$referenceNumber, $wasNotStarted, $resubmit] = DB::transaction(function () use ($order) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             // ADR-102 decision 1: the real, final defense-in-depth
@@ -186,6 +186,11 @@ final class OrderFulfillmentService
                 ? $this->referenceNumbers->generate()
                 : $this->referenceNumbers->resolve($locked->reference_number);
 
+            // ADR-102 2026-10-05 addendum (rc correction): a reused stored
+            // reference may already exist at the supplier, so this call
+            // is a status check as much as an order.
+            $resubmit = $locked->delivery_status !== DeliveryStatus::Failed && $locked->reference_number !== null;
+
             // ADR-014: extends whatever context the caller already set
             // (order_number, from the webhook/job) with the ORD-8 key
             // Gamevion itself is called with — the two together are
@@ -199,7 +204,7 @@ final class OrderFulfillmentService
                 'delivery_status' => $processingStatus->value,
             ]);
 
-            return [$referenceNumber, $wasNotStarted];
+            return [$referenceNumber, $wasNotStarted, $resubmit];
         });
 
         // Phase 2: the actual supplier call and outcome handling, in its
@@ -207,7 +212,7 @@ final class OrderFulfillmentService
         // this phase's own writes, never phase 1's already-committed
         // Processing/reference state.
         try {
-            $delivered = DB::transaction(function () use ($order, $referenceNumber, $wasNotStarted, &$drawdownPrice, &$recoveryPollScheduled, $triggeredBy, $note, $recordAttempt) {
+            $delivered = DB::transaction(function () use ($order, $referenceNumber, $wasNotStarted, $resubmit, &$drawdownPrice, &$recoveryPollScheduled, $triggeredBy, $note, $recordAttempt) {
                 $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
                 $adapter = $this->supplierAdapters->make($locked->supplier->slug);
@@ -222,6 +227,7 @@ final class OrderFulfillmentService
                     // every other adapter.
                     customerNoSeparator: $locked->game?->customerNoSeparatorOverride(),
                     orderId: $locked->id,
+                    resubmit: $resubmit,
                 ));
 
                 // ADR-032: branches on the adapter's normalized outcome,
@@ -597,6 +603,9 @@ final class OrderFulfillmentService
                 // ORD-8/decision 9). Persisted BEFORE the supplier call
                 // (not after) so a thrown exception below still leaves
                 // this attempt's reference queryable.
+                // ADR-102 2026-10-05 addendum (rc correction), leg form.
+                $resubmit = $lockedLeg->status !== DeliveryStatus::Failed && $lockedLeg->reference_number !== null;
+
                 $legReferenceNumber = match ($lockedLeg->status) {
                     DeliveryStatus::Failed => "{$order->reference_number}-L{$lockedLeg->leg_number}-".Str::ulid(),
                     DeliveryStatus::NeedsReview => $lockedLeg->reference_number,
@@ -623,6 +632,7 @@ final class OrderFulfillmentService
                     // anyway, and $order already carries it.
                     customerNoSeparator: $order->game?->customerNoSeparatorOverride(),
                     orderId: $order->id,
+                    resubmit: $resubmit,
                 ));
 
                 if ($result->outcome === SupplierOutcome::Pending) {
