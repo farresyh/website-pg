@@ -2663,6 +2663,12 @@ were not exercised against a live OpenWA/API key — covered by the tests.
   list. Every editor Update on a non-zone game had failed since 2026-09-16.
 - Port 3000 was another app (Remotion Studio), not admin, and no seeded
   admin password exists, so the editor UI itself was checked by tsc/lint and
-  the endpoint by real HTTP; the founder's click-through is owed.
+  the endpoint by real HTTP. Later the same day, with the founder logged in
+  (Remotion stopped to free :3000): the editor's User ID format control
+  saved Text, and it persisted across a reload. The Text label was
+  truncated in its select; shortened to "Text (e.g. Riot ID)" (#357).
+- Seen, not fixed (pre-existing, cosmetic): the editor's "Checkout field"
+  select shows blank for a User-ID-only game — PrimeReact treats the `""`
+  option value as no selection. The saved data is correct.
 - Local `CACHE_STORE` needed `redis` for the catalog list (gotcha 5).
 - Local dev data touched for the check (games 2, 3) was restored.
