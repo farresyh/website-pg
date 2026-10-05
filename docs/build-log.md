@@ -2672,3 +2672,58 @@ were not exercised against a live OpenWA/API key — covered by the tests.
   option value as no selection. The saved data is correct.
 - Local `CACHE_STORE` needed `redis` for the catalog list (gotcha 5).
 - Local dev data touched for the check (games 2, 3) was restored.
+
+## 2026-10-06 — Founder real-order smoke test on prod: §16 items 51 and 54 closed (docs only)
+
+**What ran.** The founder placed real orders on production (`main` =
+`1a446d5`, release #354) with their own money, voucher and WhatsApp number,
+and reported each result; the model traced each result against the live
+code (`origin/main`) and checked the money on the admin Order Detail
+screenshots. #356/#357 (player-input contract) were still staging-only, so
+they are not covered here.
+
+| Test | Result |
+| --- | --- |
+| 51(a) storefront order (`orders` lane) | Delivered; Delivered receipt arrived on WhatsApp |
+| 51(b) reseller bot `.order` (`orders-reseller` lane) | Delivered; wallet debited; bot replied |
+| 51(c) full-voucher-cover order `PG-SJDWBIKMYC1Z` (MLBB MY 14 Diamonds) | Final RM 0.00, transaction fee 0, no CHIP payment ref, Delivered. Voucher `VC-WQQANL67` RM 3.19 → RM 2.13 (−RM 1.06). Platform profit RM 0.14 = 1.06 − 0.92 cost |
+| 54(b) status card / not-found | Both reply; see "Throttle" below |
+| 54(c) voucher over WhatsApp, `PG-12A9VRY5KLCE` (PUBG 60 UC) | Paid RM 4.19 FPX + RM 0.97 voucher `VC-GHCL5MZW`; delivery failed on a deliberately invalid Player ID (Digiflazz "Transaksi Gagal"). Issue Voucher restored RM 0.97 to `VC-GHCL5MZW` and issued `VC-WQQANL67` RM 3.19 (= RM 4.19 − RM 1.00 fee); the code arrived on WhatsApp (row `sent`) |
+| 54(d) re-send the old skipped receipt | Skipped by choice (proves nothing new) |
+
+**Money check (`PG-12A9VRY5KLCE`).** Compensation RM 0.97 + RM 3.19 =
+RM 4.16 = selling price. The RM 1.00 FPX fee is not returned: by design
+(`OrderSettlementService::amounts()`, "a retail voucher never refunds the
+payment-gateway fee"; ADR-107's "a voucher reflects what the customer
+paid"). The customer bears the fee even when the supplier, not the
+customer, caused the failure; this is a policy to keep stated in the
+terms, not a bug.
+
+**Throttle (why two WhatsApp messages got no reply).**
+- On a delivered order, "Contact Support" got a status card, then "Send
+  Receipt to WhatsApp" right after got nothing. Both buttons prefill the
+  same order number, and the card is not repeated to the same phone for
+  the same order + status within 30 minutes (ADR-116 addendum decision 3,
+  `CustomerNotificationService::orderStatusCard`).
+- A mistyped order number got nothing the first time, then a reply on a
+  later retry: the "not found" reply is limited to once per phone every
+  10 minutes.
+- Both throttles return before a `customer_notifications` row is written,
+  so a throttled reply leaves no trace in admin, and the cause had to be
+  inferred from code. New §16 item 69.
+
+**Seen, not fixed.**
+- The founder's number is opted out again (`STOP` was sent during the
+  test), which is why `PG-SJDWBIKMYC1Z` got a status card but no Delivered
+  receipt. `START` restores it.
+- A full-voucher-cover order keeps `payment_method = fpx` (the method
+  picked at checkout), so Order Detail shows "fpx" and the Reports
+  Payment Methods tab counts it as an RM 0 FPX order, although no gateway
+  was involved (`payment_ref` is null, as ADR-024 decision 5 intends). No
+  money effect. New §16 item 70.
+- A status card went to a second number (60143670787), not the order's
+  phone. Expected: the card goes to whoever sends the order number
+  (ADR-116 addendum decision 2).
+
+**Not covered.** Order numbers for 51(a)/(b) were not recorded. Test
+orders count as real sales revenue (item 55, no test flag).
