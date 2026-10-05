@@ -109,7 +109,9 @@ class LinkSupplierProductCategoryRequest extends FormRequest
                 }
             }
 
-            $zoneOptions = $this->input('validation_rules.zone_options', []);
+            // `?? []`: CheckoutInputEditor sends an explicit null for a
+            // non-zone game, which is "no list", not a list.
+            $zoneOptions = $this->input('validation_rules.zone_options') ?? [];
             if ($zoneOptions !== [] && $this->input('validation_rules.extra_field') !== 'zone_id') {
                 $validator->errors()->add(
                     'validation_rules.zone_options',

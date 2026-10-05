@@ -684,4 +684,25 @@ class SupplierProductControllerTest extends TestCase
 
         $link(['player_id_format' => 'alphanumeric'])->assertUnprocessable();
     }
+
+    /**
+     * Found 2026-10-05 in a real HTTP check: CheckoutInputEditor sends
+     * `zone_options: null` for a non-zone game, and the relevance check
+     * read that null as "a list was sent" — every Update on a non-zone
+     * game was a 422.
+     */
+    public function test_link_category_accepts_the_editors_full_payload_for_a_non_zone_game(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Valorant']);
+        $game = Game::query()->create(['name' => 'Valorant', 'slug' => 'valorant']);
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'supplier_id' => $supplier->id, 'group_label' => 'Valorant', 'game_id' => $game->id,
+            'validation_rules' => ['extra_field' => null, 'customer_no_separator' => null, 'zone_options' => null, 'player_id_format' => 'text'],
+        ])->assertOk();
+
+        $this->assertSame('text', $game->refresh()->playerIdFormat());
+    }
 }
