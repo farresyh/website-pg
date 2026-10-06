@@ -27,6 +27,8 @@ class ResendSandboxOrderDeliveryRequest extends FormRequest
         return [
             'package_id' => ['required', 'integer', 'exists:packages,id'],
             'note' => ['nullable', 'string', 'max:255'],
+            // ADR-105 2026-10-06 decision 11 — same loss gate as the real path.
+            'override_reason' => ['nullable', 'string', 'max:255'],
             'simulate_success' => ['required', 'boolean'],
             'error_code' => ['nullable', 'string', 'max:64'],
             'error_message' => ['nullable', 'string', 'max:255'],

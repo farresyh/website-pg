@@ -333,6 +333,31 @@ export function getOrder(token: string, id: number) {
  * `POST /api/orders/{order}/retry-delivery` endpoint (ADR-014) still
  * exists on the backend, just isn't called from this UI anymore.
  */
+/**
+ * ADR-105 2026-10-06 decision 12/15 — what one resend to this package
+ * would record, computed by the backend's OrderResendService::preflight().
+ * The modal shows it; it never re-derives a profit or a guard itself.
+ */
+export interface ResendImpact {
+  cost_price: number;
+  cost_diff: number;
+  affiliate_profit: number;
+  platform_profit: number;
+  override_required: boolean;
+  blocked_reason: string | null;
+}
+
+export interface ResendOption {
+  id: number;
+  name: string;
+  supplier_package_ref: string | null;
+  impact: ResendImpact;
+}
+
+export function getResendOptions(token: string, id: number) {
+  return apiFetch<{ data: ResendOption[] }>(`/api/orders/${id}/resend-options`, { token }).then((r) => r.data);
+}
+
 export function resendOrderDelivery(
   token: string,
   id: number,

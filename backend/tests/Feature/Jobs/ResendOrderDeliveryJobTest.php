@@ -17,8 +17,6 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
-use App\Services\Pricing\MembershipPricingService;
-use App\Services\Pricing\PricingService;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
@@ -53,8 +51,6 @@ class ResendOrderDeliveryJobTest extends TestCase
                 new SupplierFundingService,
                 new CurrencyRateService,
             ),
-            new PricingService,
-            new MembershipPricingService(new PricingService),
         );
     }
 
@@ -169,16 +165,38 @@ class ResendOrderDeliveryJobTest extends TestCase
         $this->assertSame(0, OrderResendAttempt::query()->count());
     }
 
-    public function test_handle_swallows_a_validation_rejection_without_failing_the_job(): void
+    /**
+     * ADR-105 2026-10-06 decision 16 — a resend refused at attempt time
+     * no longer vanishes into a log line: it leaves a `rejected` row the
+     * admin sees in Delivery & Activity Logs. The job still does not fail.
+     */
+    public function test_handle_records_a_rejected_row_without_failing_the_job(): void
     {
-        Log::spy();
         [$order, $package] = $this->failedOrderWithPackage();
         $order->update(['delivery_status' => DeliveryStatus::Delivered->value]); // no longer resendable by the time the job runs
+        $job = new ResendOrderDeliveryJob($order, $package->id, 'Bigger pack', 'Admin User');
+
+        $job->handle($this->resendService($this->fakeSupplierAdapter(true)));
+
+        $attempt = OrderResendAttempt::query()->sole();
+        $this->assertSame('rejected', $attempt->outcome);
+        $this->assertSame('Only an order with a failed or needs-review delivery can be resent.', $attempt->note);
+        $this->assertSame('Admin User', $attempt->triggered_by);
+        $this->assertSame($package->id, $attempt->package_id);
+    }
+
+    /** Decision 16 — the case the controller used to miss: a tier-order loss refused in the job, now visible. */
+    public function test_handle_records_a_rejected_row_for_a_loss_without_an_override_reason(): void
+    {
+        [$order, $package] = $this->failedOrderWithPackage();
+        $package->update(['cost_price' => 1100]);
         $job = new ResendOrderDeliveryJob($order, $package->id, null, 'Admin');
 
         $job->handle($this->resendService($this->fakeSupplierAdapter(true)));
 
-        Log::shouldHaveReceived('info')->once();
-        $this->assertSame(0, OrderResendAttempt::query()->count());
+        $attempt = OrderResendAttempt::query()->sole();
+        $this->assertSame('rejected', $attempt->outcome);
+        $this->assertStringContainsString('would result in a loss', $attempt->note);
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 }

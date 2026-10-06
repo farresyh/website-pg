@@ -2727,3 +2727,89 @@ terms, not a bug.
 
 **Not covered.** Order numbers for 51(a)/(b) were not recorded. Test
 orders count as real sales revenue (item 55, no test flag).
+
+## 2026-10-06 — One resend seam: residual profit on every basis (item 63, member-resend bullet; ADR-105 addendum)
+
+**Why.** The audit bullet was "a member order resent to a dearer package
+records a re-priced member profit and skips the loss prompt". The trace
+(read-only prod check included) found it wider: the resend rules lived in
+three copies that had drifted (service, controller guard — Standard basis
+only — and a TypeScript copy in the modal, wrong for lapsed-affiliate
+orders); a swap never wrote `orders.cost_price`, so orders 15 and 19 show
+the old package's cost in Order Detail, the export, the Transaction
+Register and COGS; a refused job vanished into `Log::info`; and two
+overlapping resends wrote unlocked. Ledger was right throughout; no
+customer money was affected.
+
+**What shipped.** Grilled Q1–Q13, ADR-105 2026-10-06 addendum (decisions
+9–20) plus its build-time corrections (cloud session, `f09cef8`):
+- `OrderResendService::preflight()` → `ResendImpact`: every guard plus the
+  impact. One rule for every basis: affiliate share kept at checkout,
+  `platform_profit = selling_price − live cost − affiliate_profit`. The
+  Member branch, `calculateForAffiliate` and the pricing catch are gone;
+  the service no longer depends on `PricingService` /
+  `MembershipPricingService`.
+- A loss needs an override on every basis. The controller calls
+  `preflight()` (its own copies of the status / compensated / same-game /
+  swap-block checks and the Standard-only loss check are deleted; the
+  reference-unsafe guard stays, it is shared with Retry).
+- `resend()` re-runs `preflight()` and writes package, IDs, `cost_price`
+  and `platform_profit` under `lockForUpdate()`; the attempt row records
+  what `fulfill()` actually sent and `price_diff_sen` against the cost
+  assigned before it.
+- `ResendOrderDeliveryJob` records a refused attempt as `outcome =
+  rejected` (reason in `note`), red in Delivery & Activity Logs.
+- `GET /api/orders/{order}/resend-options` and the sandbox twin; the modal
+  renders that, marks a blocked package "unavailable", and sends
+  `override_reason` in sandbox too.
+- Data migration `2026_10_06_000000_correct_cost_price_on_resent_orders`
+  (two-part rule, ledger-guarded, idempotent, query builder so no
+  broadcast).
+
+**Deviations from the addendum (small).**
+- The modal picks its endpoint from its existing `sandbox` flag, the way
+  its submit already did, instead of a fetcher prop; the two pages are
+  unchanged.
+- Player-ID checks (contract on a correction, validation window) stay in
+  `resend()` under the lock, not in `preflight()`: the preview has no
+  correction to check.
+- The sandbox resend request now accepts `override_reason`; before, a loss
+  in the sandbox could never be submitted.
+- Copy: "Original cost (snapshot)" → "Current cost on this order"
+  (decision 13), and a package with no supplier ref shows "—", not "null".
+
+**Verified.** Backend 2612/2612 (new: 5-basis × same/cheaper/dearer
+invariant incl. ledger, member loss + residual, preflight impact and
+blocked reason, rejected rows, second-resend diff, the exact race window
+pinned with an `Order::updated` + `DB::afterCommit` hook, controller loss
+on tier/wallet/member, preview endpoint admin + sandbox, migration incl.
+ledger mismatch skip and a second run issuing no UPDATE). Concurrency
+suite 30/30 on real MySQL, incl. the new two-process resend race. Admin
+tsc / eslint / build clean. Local dev (`php artisan migrate`, no
+`fresh`):
+- curl with a local test token (revoked afterwards): preview for a member
+  and a tier order (combo listed as blocked), 422 `override_reason` for a
+  loss on both; a sandbox resend refused without a reason, delivered with
+  one — `cost_price` 1650, profit 390 − 1650 = −1260, attempt row right.
+- Browser: member order, same package +RM 0.13; 310 + 25 Bonds shows a
+  RM 13.12 loss, override required, submit disabled (the old formula
+  showed a profit here). A `rejected` row renders red, `rgb(180, 35, 24)`
+  on `rgb(252, 235, 234)`. No real resend was submitted from the admin
+  path (it queues a real supplier call). Local test orders deleted.
+
+**CI e2e flake, fixed at the cause (second time).** The storefront
+checkout spec landed on `needs_review` again; the CI trace's
+`supplier_response` showed `SQLSTATE[HY000]: 5 database is locked` on the
+fulfilment's `update orders` — not this PR's code path (a first
+`fulfill()`, no resend). The 2026-10-04 fix (busy timeout 5000 ms + WAL)
+does not cover it: a DEFERRED transaction that reads first and writes
+after another connection committed gets `SQLITE_BUSY` at once in WAL, and
+the busy timeout is never consulted. `config/database.php` sqlite
+`transaction_mode` now reads `DB_TRANSACTION_MODE` (default still
+`DEFERRED`, dev and MySQL prod unchanged); `e2e/scripts/boot-backend.sh`
+sets `IMMEDIATE`, so BEGIN takes the write lock and waits. e2e 5/5
+locally, backend 2612/2612.
+
+**Still to do at release.** Run decision 18's check on prod and record
+orders 15 / 19 before/after, plus the September accounting summary
+before/after (decision 19: COGS and FX variance both +RM 0.18).
