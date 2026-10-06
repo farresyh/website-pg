@@ -43,7 +43,10 @@ return [
             'busy_timeout' => env('DB_BUSY_TIMEOUT'),
             'journal_mode' => env('DB_JOURNAL_MODE'),
             'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            // e2e sets IMMEDIATE: a DEFERRED transaction that reads, then
+            // writes after another connection committed, gets SQLITE_BUSY at
+            // once in WAL mode — busy_timeout is never consulted for it.
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'DEFERRED'),
             // ADR-039 decision 1: excluded by name from every backup dump
             // to preserve ADR-021's 7-day PII-retention guarantee — a raw
             // dump that retained these rows for the backup's own

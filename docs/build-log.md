@@ -2797,6 +2797,19 @@ tsc / eslint / build clean. Local dev (`php artisan migrate`, no
   on `rgb(252, 235, 234)`. No real resend was submitted from the admin
   path (it queues a real supplier call). Local test orders deleted.
 
+**CI e2e flake, fixed at the cause (second time).** The storefront
+checkout spec landed on `needs_review` again; the CI trace's
+`supplier_response` showed `SQLSTATE[HY000]: 5 database is locked` on the
+fulfilment's `update orders` — not this PR's code path (a first
+`fulfill()`, no resend). The 2026-10-04 fix (busy timeout 5000 ms + WAL)
+does not cover it: a DEFERRED transaction that reads first and writes
+after another connection committed gets `SQLITE_BUSY` at once in WAL, and
+the busy timeout is never consulted. `config/database.php` sqlite
+`transaction_mode` now reads `DB_TRANSACTION_MODE` (default still
+`DEFERRED`, dev and MySQL prod unchanged); `e2e/scripts/boot-backend.sh`
+sets `IMMEDIATE`, so BEGIN takes the write lock and waits. e2e 5/5
+locally, backend 2612/2612.
+
 **Still to do at release.** Run decision 18's check on prod and record
 orders 15 / 19 before/after, plus the September accounting summary
 before/after (decision 19: COGS and FX variance both +RM 0.18).
