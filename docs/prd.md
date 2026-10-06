@@ -812,6 +812,14 @@ Nothing scheduled; item 63 (Hardening) is the current focus.
       package's member price, unlike decision 8's residual (`selling_price −
       live cost − affiliate`) and ADR-111. Small; check how voucher affects
       `selling_price` first. Prod: 1 member order, 3 same-package resends.
+      **Grilled 2026-10-06 → ADR-105 2026-10-06 addendum (decisions 9–20),
+      design only, build on `fix/2026-10-06-resend-profit-seam`.** Widened
+      by the trace: one `OrderResendService::preflight()` seam (the
+      controller guard and the modal's TypeScript copy had drifted), frozen
+      affiliate share, a resend writes `cost_price` (orders 15/19 show the
+      old package's cost in Order Detail, export, Register and COGS),
+      locked write, rejected resends leave a row, ledger-guarded data
+      migration. `selling_price` is pre-voucher — safe anchor.
     - Reseller API catalogue cached 60s with no `max_price_sen` ceiling on an
       order (charged at the live price). API contract change, ADR-074.
       Proposed: an optional `max_price_sen` → `PRICE_CHANGED`, so additive;
