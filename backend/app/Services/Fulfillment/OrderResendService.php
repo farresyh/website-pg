@@ -6,11 +6,9 @@ use App\Models\Order;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\PlayerValidation;
+use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Order\DeliveryStatus;
-use App\Services\Pricing\InvalidPricingConfigException;
-use App\Services\Pricing\MembershipPricingService;
-use App\Services\Pricing\PricingBasis;
-use App\Services\Pricing\PricingService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -32,251 +30,154 @@ final class OrderResendService
 {
     public function __construct(
         private readonly OrderFulfillmentService $fulfillment,
-        private readonly PricingService $pricing,
-        private readonly MembershipPricingService $membershipPricing,
+        private readonly CheckoutInputValidator $checkoutInputValidator = new CheckoutInputValidator,
     ) {}
 
     /**
-     * @param  $overrideReason  ADR-105 decision 4 — required only when
-     *                          this attempt's live cost would sell below
-     *                          what the customer already paid (Standard/
-     *                          lapsed-affiliate basis only; see the guard
-     *                          below). Reuses the same field/mechanism
-     *                          ADR-102 decision 3 already threads through
-     *                          this call for its own, unrelated guard.
+     * ADR-105 2026-10-06 decision 12 — the one owner of every resend rule.
+     * Reads only; never throws for a business rule (a broken one becomes
+     * `blockedReason`, so the admin preview can show it per package).
+     * Decisions 9-10: one profit rule for every basis — the affiliate's
+     * checkout share is kept, and the platform takes whatever is left of
+     * what the customer actually paid after this package's live cost.
+     */
+    public function preflight(Order $order, Package $targetPackage): ResendImpact
+    {
+        [$blockedField, $blockedReason] = $this->blockedBy($order, $targetPackage) ?? [null, null];
+        $liveCostPrice = $targetPackage->cost_price;
+
+        return new ResendImpact(
+            costPriceSen: $liveCostPrice,
+            costDiffSen: $liveCostPrice - $order->cost_price,
+            affiliateProfitSen: $order->affiliate_profit,
+            platformProfitSen: $order->selling_price - $liveCostPrice - $order->affiliate_profit,
+            blockedField: $blockedField,
+            blockedReason: $blockedReason,
+        );
+    }
+
+    /**
+     * ADR-105 2026-10-06 decision 15 — every active package of the
+     * order's game with its preflight() impact, for the admin preview
+     * (admin and sandbox). Admin-only: cost and profit are shown.
      *
-     * @throws ValidationException when the target package isn't a
-     *                             same-game swap (decision #1), isn't active, the order
-     *                             isn't currently in a resendable state, the game
-     *                             requires player-ID validation that hasn't happened
-     *                             recently (decision #6), or this attempt's live cost
-     *                             would sell below the order's frozen price with no
-     *                             override reason supplied (decision #4).
+     * @return list<array<string, mixed>>
+     */
+    public function options(Order $order): array
+    {
+        return Package::query()
+            ->where('game_id', $order->game_id)
+            ->where('is_active', true)
+            ->orderBy('cost_price')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Package $package) => [
+                'id' => $package->id,
+                'name' => $package->name,
+                'supplier_package_ref' => $package->supplier_package_ref,
+                'impact' => $this->preflight($order, $package)->toArray(),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  $overrideReason  ADR-105 decision 11 — required only when
+     *                         this attempt's live cost leaves the
+     *                         platform a loss on any basis.
+     *
+     * @throws ValidationException when preflight() blocks the resend, a
+     *                             loss has no override reason, a corrected
+     *                             ID breaks the game's contract, or the
+     *                             game's player-ID validation is missing.
      */
     public function resend(Order $order, Package $targetPackage, ?string $note, ?string $triggeredBy, ?string $playerId = null, ?string $serverId = null, ?string $overrideReason = null): Order
     {
-        $this->assertResendable($order);
-        $this->assertSameGamePackage($order, $targetPackage);
+        // ADR-105 2026-10-06 decision 14: re-checked and written under the
+        // row lock, so a second overlapping resend sees this one's write
+        // (or its Processing state) instead of overwriting it.
+        [$locked, $costBefore] = DB::transaction(function () use ($order, $targetPackage, $playerId, $serverId, $overrideReason) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+            $costBefore = $locked->cost_price;
 
-        // ADR-102 2026-10-05 addendum, decision 8 — the controller's
-        // pre-check can go stale before this queued job runs.
-        if ($order->blocksPackageSwapTo($targetPackage)) {
-            throw ValidationException::withMessages(['package_id' => [Order::PACKAGE_SWAP_BLOCKED_MESSAGE]]);
-        }
+            $impact = $this->preflight($locked, $targetPackage);
+            $impact->assertAllowed($overrideReason);
 
-        // ADR-102 decision 10: applied in-memory (not yet persisted)
-        // BEFORE the player-ID validation check below, so a corrected
-        // ID is what actually gets validated and, further down, what
-        // actually gets sent to the supplier — not the original
-        // customer-typo'd value. An empty string clears server_id
-        // (some games have none); an empty player_id is treated as "no
-        // correction given" (a blank Player ID is never a legitimate
-        // value to submit).
-        if ($playerId !== null && $playerId !== '') {
-            $order->player_id = $playerId;
-        }
-        if ($serverId !== null) {
-            $order->server_id = $serverId !== '' ? $serverId : null;
-        }
-
-        $this->assertPlayerIdIsValidatedIfRequired($order);
-
-        // Decision #3: live cost is the one figure this reconciliation
-        // ever reads off the *target* package — the order's own frozen
-        // cost_price/standard_selling_price (decision #2, untouched) is
-        // what everything else below reconciles against.
-        //
-        // ADR-105: `$liveStandardSellingPrice` is still recorded on the
-        // `order_resend_attempts` audit row below (what this package's
-        // own retail price happened to be at this moment) but is
-        // deliberately never fed into a profit formula — that field
-        // drifts independently of this resend (routine Digiflazz
-        // price-syncs), so using it there decoupled recorded profit
-        // from what the customer actually paid (found live on order 15
-        // — see ADR-105's Context). Every profit formula below
-        // reconciles live cost against the order's own frozen figures
-        // instead.
-        $liveCostPrice = $targetPackage->cost_price;
-        $liveStandardSellingPrice = $targetPackage->standard_selling_price;
-        $priceDiff = $liveCostPrice - $order->cost_price;
-
-        // Decision #5: platform_profit/affiliate_profit are recomputed
-        // from this attempt's live cost — same formula PricingService
-        // already applies at checkout, reused here rather than invented
-        // fresh — and set on Order *before* calling fulfill(), so that
-        // if (and only if) this attempt is the one that actually
-        // succeeds, creditProfit() inside fulfill() credits the ledger
-        // with these exact figures. final_amount/selling_price/
-        // transaction_fee are never part of this update — decision
-        // #2/#5's immutability line.
-        //
-        // ADR-027 Phase 6 / ADR-105 decision 3: a member-priced order
-        // recomputes via the member formula instead — live cost_price
-        // (things a resync can change), the order's own frozen
-        // member_discount_percent (never a live tier lookup), AND the
-        // order's own frozen markup_percent (the *package's*
-        // markup_percent at checkout time — falls back to the target
-        // package's current value only for a pre-ADR-105 order that was
-        // never backfilled, since no frozen value exists to read).
-        //
-        // ADR-060 PR-4b / ADR-105 decisions 1-2: every non-member basis —
-        // Standard, Affiliate and ResellerWallet — computes
-        // `affiliateProfit` through the supplier-cost chain
-        // (`calculateForAffiliate`). The frozen `wholesale_markup_pct` is
-        // null for a plain Standard order (so `calculateForAffiliate`
-        // delegates to `calculate`, reconciling live cost against the
-        // order's own frozen `standard_selling_price` rather than the
-        // target package's live one — ADR-105 decision 1) and the
-        // snapshotted tier markup for an Affiliate or ResellerWallet
-        // order (unchanged by ADR-105 — decision 2 keeps this basis's
-        // live-cost-proportional-margin `affiliateProfit` formula on
-        // purpose).
-        //
-        // ADR-105 decision 8 (addendum, found while explaining decision
-        // 2 to the founder): `platformProfit` itself is NOT read off
-        // `calculateForAffiliate()`'s own breakdown for either branch —
-        // it's always derived afterward as one money-conservation
-        // identity, `order.selling_price (frozen total) - liveCostPrice
-        // - affiliateProfit`. The pre-addendum code computed
-        // platformProfit independently for the tier branch
-        // (`wholesaleBase - liveCostPrice`), which is never reconciled
-        // against what was actually collected — `wholesaleBase >=
-        // liveCostPrice` always holds by construction for a
-        // non-negative tier%, so that formula could never "sell below
-        // cost," but nothing stopped `liveCostPrice + affiliateProfit +
-        // platformProfit` from exceeding `order.selling_price`, silently
-        // crediting both the platform and the affiliate more than the
-        // order ever actually collected. The residual formula below
-        // can't do that: it's derived FROM the frozen total, so the
-        // three pieces always sum back to exactly it.
-        if ($order->pricing_basis === PricingBasis::Member) {
-            $liveMemberPrice = $this->membershipPricing->calculateMemberPrice(
-                $liveCostPrice,
-                $order->markup_percent !== null ? (float) $order->markup_percent : (float) $targetPackage->markup_percent,
-                (float) $order->member_discount_percent,
-            );
-            $platformProfit = $liveMemberPrice - $liveCostPrice;
-            $affiliateProfit = 0;
-        } else {
-            // `calculateForAffiliate()`'s own `standardSellingPrice <
-            // costPrice` guard runs unconditionally, before it even
-            // branches on `$tierMarkupPct` — so which value is safe to
-            // pass here differs by basis. For a tier-affiliate/
-            // ResellerWallet order, the target package's own live
-            // standard price is always >= its own live cost by package
-            // curation (a package-data-integrity check, unrelated to
-            // decision 8's residual below) — passing it here keeps this
-            // branch's `affiliateProfit` formula byte-identical to
-            // pre-ADR-105 behavior. For a Standard/lapsed-affiliate
-            // order, the order's own frozen standard_selling_price is
-            // what both this guard AND (via `calculate()`) the real
-            // `affiliateProfit` formula reconcile against instead
-            // (decision 1).
-            $standardSellingPriceForGuard = $order->wholesale_markup_pct !== null
-                ? $liveStandardSellingPrice
-                : $order->standard_selling_price;
-
-            try {
-                $affiliateProfit = $this->pricing->calculateForAffiliate(
-                    $liveCostPrice,
-                    $standardSellingPriceForGuard,
-                    $order->wholesale_markup_pct !== null ? (float) $order->wholesale_markup_pct : null,
-                    (float) $order->affiliate_markup_pct,
-                )->affiliateProfit;
-            } catch (InvalidPricingConfigException) {
-                // Standard/lapsed-affiliate basis only — the tier
-                // branch's own guard argument is always safe, per the
-                // note above. This package's live cost already exceeds
-                // the order's frozen standard_selling_price before
-                // affiliateProfit is even subtracted, so affiliateProfit
-                // is computed the same way `calculate()` would have: a
-                // flat percentage of the order's own frozen
-                // standard_selling_price, untouched by live cost.
-                $affiliateProfit = (int) round($order->standard_selling_price * (float) $order->affiliate_markup_pct / 100);
+            // ADR-102 decision 10: a corrected ID is applied before the
+            // player-ID checks, so the corrected value is what gets
+            // validated and sent. An empty server_id clears it; an empty
+            // player_id means "no correction given".
+            if ($playerId !== null && $playerId !== '') {
+                $locked->player_id = $playerId;
+            }
+            if ($serverId !== null) {
+                $locked->server_id = $serverId !== '' ? $serverId : null;
             }
 
-            $platformProfit = $order->selling_price - $liveCostPrice - $affiliateProfit;
-        }
+            // ADR-097 2026-10-05 addendum, decision 31 — a corrected ID is
+            // re-sent to the supplier, so it meets the same per-game
+            // contract as checkout. An untouched order resends as placed.
+            $corrected = ($playerId !== null && $playerId !== '') || $serverId !== null;
+            if ($corrected && $locked->game !== null
+                && $error = $this->checkoutInputValidator->validate($locked->game, $locked->player_id, $locked->server_id)) {
+                throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
+            }
 
-        // ADR-105 decision 4 (Standard/lapsed-affiliate) + decision 8
-        // addendum (extended to Affiliate/ResellerWallet): a resend
-        // whose live cost drives platformProfit negative is a genuine
-        // loss — on top of whatever's already been absorbed, or landing
-        // straight on a loss for the first time. A manual admin resend
-        // may still proceed and take it, but only with an explicit
-        // override reason; the automatic reconcile-driven retry path
-        // never reaches this method with a package swap at all
-        // (ResendOrderDeliveryJob is admin-dispatched only), so there is
-        // no unattended path that can hit this silently. Never reachable
-        // for Member (memberPrice = cost × (1 + markup%) with markup% ≥
-        // 0 can never sell below cost, decision 3, unchanged).
-        if ($order->pricing_basis !== PricingBasis::Member && $platformProfit < 0) {
-            if ($overrideReason === null || trim($overrideReason) === '') {
-                throw ValidationException::withMessages([
-                    'override_reason' => ['This resend would result in a loss — live cost now exceeds what was actually collected for this order. Provide an override reason to proceed anyway and accept the loss.'],
+            $this->assertPlayerIdIsValidatedIfRequired($locked);
+
+            if ($impact->overrideRequired()) {
+                Log::warning('Admin resend accepted a loss below cost', [
+                    'order_id' => $locked->id,
+                    'pricing_basis' => $locked->pricing_basis?->value,
+                    'live_cost_price' => $impact->costPriceSen,
+                    'affiliate_profit' => $impact->affiliateProfitSen,
+                    'resulting_platform_profit' => $impact->platformProfitSen,
+                    'override_reason' => $overrideReason,
                 ]);
             }
 
-            Log::warning('Admin resend accepted a loss below cost', [
-                'order_id' => $order->id,
-                'pricing_basis' => $order->pricing_basis?->value,
-                'live_cost_price' => $liveCostPrice,
-                'affiliate_profit' => $affiliateProfit,
-                'resulting_platform_profit' => $platformProfit,
-                'override_reason' => $overrideReason,
+            // Decision 13: cost_price follows the package actually sent;
+            // selling_price/final_amount/transaction_fee never move
+            // (ADR-017 decision 2). affiliate_profit is unchanged by
+            // definition (decision 10) and so is not written.
+            $locked->update([
+                'package_id' => $targetPackage->id,
+                'supplier_id' => $targetPackage->supplier_id,
+                'supplier_product_ref' => $targetPackage->supplier_package_ref,
+                'player_id' => $locked->player_id,
+                'server_id' => $locked->server_id,
+                'cost_price' => $impact->costPriceSen,
+                'platform_profit' => $impact->platformProfitSen,
             ]);
-        }
 
-        $order->update([
-            'package_id' => $targetPackage->id,
-            'supplier_id' => $targetPackage->supplier_id,
-            'supplier_product_ref' => $targetPackage->supplier_package_ref,
-            // ADR-102 decision 10 — already applied in-memory above;
-            // listed explicitly here (rather than left to the
-            // already-dirty attribute) so this update() call remains
-            // the one place that documents every field a resend can
-            // change.
-            'player_id' => $order->player_id,
-            'server_id' => $order->server_id,
-            'platform_profit' => $platformProfit,
-            'affiliate_profit' => $affiliateProfit,
-        ]);
+            return [$locked, $costBefore];
+        });
 
         // ADR-106 addendum (2026-09-21): $recordAttempt=false — this
-        // method writes its own, richer `attempt_type=resend` row right
-        // below (package swap + live-cost reconciliation), so
-        // fulfill()'s own generic initial/retry write must stay silent
-        // here, or every resend would double-book two rows for one
-        // attempt.
-        $result = $this->fulfillment->fulfill($order->fresh(), recordAttempt: false);
+        // method writes its own, richer `attempt_type=resend` row below.
+        $result = $this->fulfillment->fulfill($locked->fresh(), recordAttempt: false);
+
+        // Decision 14: the row names what fulfill() actually sent, which
+        // an overlapping resend may have changed after our commit.
+        $sentPackage = $result->package_id === $targetPackage->id ? $targetPackage : $result->package;
 
         OrderResendAttempt::query()->create([
             'order_id' => $result->id,
-            // ADR-106 decision 2 — this write site only ever produces a
-            // genuine admin-triggered resend; 'initial'/'manual_confirm'
-            // are written from inside OrderFulfillmentService instead.
             'attempt_type' => 'resend',
-            'package_id' => $targetPackage->id,
-            'cost_price_sen' => $liveCostPrice,
-            'standard_selling_price_sen' => $liveStandardSellingPrice,
-            'price_diff_sen' => $priceDiff,
-            // 2026-09-15 bugfix: a genuinely still-Pending async result
-            // (Digiflazz rc=03) is no longer coerced into a hard
-            // 'failed' — it self-corrects the moment the real outcome
-            // resolves, via OrderFulfillmentService::resolvePendingResendAttempt()
-            // (called from finalizePendingDelivery(), the one shared
-            // path a webhook/reconcile-poll/manual-check all use).
+            'package_id' => $result->package_id,
+            'cost_price_sen' => $result->cost_price,
+            'standard_selling_price_sen' => $sentPackage?->standard_selling_price ?? 0,
+            // Decision 13: against the cost assigned before this attempt.
+            'price_diff_sen' => $result->cost_price - $costBefore,
+            // 2026-09-15 bugfix: a still-Pending async result self-corrects
+            // later via OrderFulfillmentService::resolvePendingResendAttempt().
             'outcome' => match ($result->delivery_status) {
                 DeliveryStatus::Delivered => 'success',
                 DeliveryStatus::Pending => 'pending',
                 default => 'failed',
             },
             'supplier_response' => $result->supplier_response,
-            // ADR-106 addendum (2026-09-21), grill Q7: override_reason
-            // used to only ever reach Log::warning() above, never this
-            // durable row — the exact reason an admin decided to accept
-            // a loss and force the resend, worth keeping queryable. A
-            // real $note always wins; this is only a fallback.
+            // ADR-106 addendum (2026-09-21), grill Q7: a real $note wins;
+            // the override reason is the fallback.
             'note' => $note ?: $overrideReason,
             'triggered_by' => $triggeredBy,
         ]);
@@ -285,63 +186,62 @@ final class OrderResendService
     }
 
     /**
-     * Mirrors OrderController::retryDelivery()'s own guard exactly —
-     * ADR-017 doesn't loosen it, it only adds package-swap/reconciliation
-     * on top of the same "only a failed (or, per ADR-026, needs_review)
-     * delivery can be resent" rule.
+     * ADR-105 2026-10-06 decision 16 — a resend refused at attempt time
+     * leaves a row the admin can see in Delivery & Activity Logs.
      */
+    public function recordRejection(Order $order, Package $targetPackage, string $reason, ?string $triggeredBy): void
+    {
+        OrderResendAttempt::query()->create([
+            'order_id' => $order->id,
+            'attempt_type' => 'resend',
+            'package_id' => $targetPackage->id,
+            'cost_price_sen' => $targetPackage->cost_price,
+            'standard_selling_price_sen' => $targetPackage->standard_selling_price,
+            'price_diff_sen' => $targetPackage->cost_price - $order->cost_price,
+            'outcome' => 'rejected',
+            'note' => $reason,
+            'triggered_by' => $triggeredBy,
+        ]);
+    }
+
     /**
-     * ADR-102 decision 1: this is the actual attempt-time re-check —
-     * `OrderController::resend()`'s own guard is only a fast, friendly
-     * pre-check that can pass and then go stale before this job
-     * actually runs (an admin issues a voucher for this order in the
-     * gap between the click and the queue picking it up). Found this
-     * was a real, previously-unguarded gap here specifically: this
-     * method never checked `Voucher::exists()`/wallet-refund at all
-     * before ADR-102 — only the controller did.
+     * Every hard guard, as [field, message], or null when none applies.
+     * ADR-102 decision 1: re-run under the lock at attempt time, since the
+     * controller's synchronous call can go stale before the job runs.
+     *
+     * @return array{0: string, 1: string}|null
      */
-    private function assertResendable(Order $order): void
+    private function blockedBy(Order $order, Package $targetPackage): ?array
     {
         if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
-            throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a failed or needs-review delivery can be resent.'],
-            ]);
+            return ['delivery_status', 'Only an order with a failed or needs-review delivery can be resent.'];
         }
 
         if ($order->isAlreadyCompensated()) {
-            throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'],
-            ]);
+            return ['delivery_status', 'This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'];
         }
-    }
 
-    private function assertSameGamePackage(Order $order, Package $targetPackage): void
-    {
         if ($targetPackage->game_id !== $order->game_id) {
-            throw ValidationException::withMessages([
-                'package_id' => ['The selected package must belong to the same game as this order.'],
-            ]);
+            return ['package_id', 'The selected package must belong to the same game as this order.'];
         }
 
         if (! $targetPackage->is_active) {
-            throw ValidationException::withMessages([
-                'package_id' => ['This package is not currently active.'],
-            ]);
+            return ['package_id', 'This package is not currently active.'];
         }
 
-        // ADR-094 decision 10: this "swap to a different package/supplier"
-        // tool assumes exactly one supplier_product_ref to copy onto the
-        // Order below — nonsensical for a combo (multi-leg) entity, and
-        // doing nothing here would silently write a null/garbage
-        // supplier_product_ref onto a real order. The ordinary "Resend
-        // Delivery" retry (no package swap, OrderController::retryDelivery())
-        // stays fully usable for a combo order — it just calls fulfill()
-        // again, unaffected by this guard.
+        // ADR-094 decision 10: a package swap copies one
+        // supplier_product_ref onto the order — meaningless for a combo.
+        // A combo uses the ordinary Retry instead.
         if ($order->package?->is_combo || $targetPackage->is_combo) {
-            throw ValidationException::withMessages([
-                'package_id' => ['A combo order cannot be resent to a different package — use the ordinary Resend Delivery retry instead.'],
-            ]);
+            return ['package_id', 'A combo order cannot be resent to a different package — use the ordinary Resend Delivery retry instead.'];
         }
+
+        // ADR-102 2026-10-05 addendum, decision 8.
+        if ($order->blocksPackageSwapTo($targetPackage)) {
+            return ['package_id', Order::PACKAGE_SWAP_BLOCKED_MESSAGE];
+        }
+
+        return null;
     }
 
     /**

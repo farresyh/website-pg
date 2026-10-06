@@ -32,6 +32,8 @@ const CatalogGameWireSchema = z.object({
    * narrow-response-shape discipline), not `.nullable()`-only.
    */
   zone_options: z.array(z.string()).nullable().optional(),
+  /** ADR-097 2026-10-05 addendum, decision 34 — detail-only, same shape as zone_options. */
+  player_id_format: z.enum(["numeric", "text"]).optional(),
   /**
    * ADR-109 decisions 11/12 — same detail-only-response shape as
    * zone_options above. description/important_notes gate the "How to
@@ -112,6 +114,8 @@ export interface GameDetail extends Game {
    * <select>.
    */
   zoneOptions: string[] | null;
+  /** ADR-097 2026-10-05 addendum — `numeric` (digits only) unless the game is set to `text` (e.g. a Riot ID). */
+  playerIdFormat: "numeric" | "text";
   /** ADR-109 — null/empty gates the "How to Buy" popup's auto-open and its manual re-open trigger. */
   description: string | null;
   importantNotes: string[];
@@ -158,6 +162,7 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
     schemaCategory: wire.schema_category ?? null,
     noIndex: wire.no_index ?? false,
     zoneOptions: wire.zone_options && wire.zone_options.length > 0 ? wire.zone_options : null,
+    playerIdFormat: wire.player_id_format ?? "numeric",
     description: wire.description ?? null,
     importantNotes: wire.important_notes ?? [],
     deliveryMode: wire.delivery_mode ?? "instant",

@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
-import type { OrderDetail, OrderPage } from "@/lib/orders";
+import type { OrderDetail, OrderPage, ResendOption } from "@/lib/orders";
 
 /**
  * ADR-018 — a middleware-only sandbox for exercising the real Order
@@ -56,9 +56,15 @@ export function createSandboxOrder(token: string, values: CreateSandboxOrderValu
 export interface ResendSandboxOrderDeliveryValues {
   package_id: number;
   note?: string;
+  override_reason?: string;
   simulate_success: boolean;
   error_code?: string;
   error_message?: string;
+}
+
+/** ADR-105 2026-10-06 decision 15 — sandbox twin of getResendOptions() in lib/orders.ts. */
+export function getSandboxResendOptions(token: string, id: number) {
+  return apiFetch<{ data: ResendOption[] }>(`/api/middleware/sandbox/${id}/resend-options`, { token }).then((r) => r.data);
 }
 
 export function resendSandboxOrderDelivery(token: string, id: number, values: ResendSandboxOrderDeliveryValues) {

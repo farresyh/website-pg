@@ -46,6 +46,7 @@ import {
 import {
   CUSTOMER_NO_SEPARATOR_OPTIONS,
   EXTRA_FIELD_OPTIONS,
+  PLAYER_ID_FORMAT_OPTIONS,
   type Game,
   type GamePackage,
   type GameValidationRules,
@@ -93,12 +94,10 @@ function sameGroup(a: SupplierProductCategory, b: SupplierProductCategory): bool
  *
  * ADR-097 decision 16: ONE "Update" button saves the WHOLE
  * `validation_rules` object (every field this editor knows about),
- * never a partial `{extra_field: X}`-only payload — the backend
- * (`SupplierProductController::linkCategory()`) does a straight
- * column replace, not a merge, so a partial save here would silently
- * wipe out `customer_no_separator` (decision 15) the next time either
- * control is touched. This is why there's one shared save action
- * instead of a separate button per field.
+ * never a partial `{extra_field: X}`-only payload. The backend
+ * (`SupplierProductController::linkCategory()`) merges since the
+ * 2026-10-05 addendum (decision 30), but this editor still owns every
+ * key it shows, so one shared save action sends them all.
  */
 function CheckoutInputEditor({
   initial,
@@ -112,6 +111,7 @@ function CheckoutInputEditor({
 }) {
   const [extraField, setExtraField] = useState(initial?.extra_field ?? "");
   const [separator, setSeparator] = useState(initial?.customer_no_separator ?? "");
+  const [playerIdFormat, setPlayerIdFormat] = useState<string>(initial?.player_id_format ?? "numeric");
   // ADR-097 decision 8 — comma-separated text, same house pattern
   // EditSupplierModal already uses for a "list"-type api_config field
   // (split/trim/filter on save), not a bespoke chip editor.
@@ -137,6 +137,7 @@ function CheckoutInputEditor({
         customer_no_separator: isDigiflazz && separator !== "" ? (separator as "concat" | "space" | "pipe") : null,
         // Same discipline: never send a stale list for a non-zone_id game.
         zone_options: isZoneId ? parsedZoneOptions() : null,
+        player_id_format: playerIdFormat === "text" ? "text" : "numeric",
       });
     } finally {
       setSaving(false);
@@ -148,6 +149,16 @@ function CheckoutInputEditor({
       <div className="flex flex-wrap items-center gap-3">
         <label className="w-40 text-sm text-gray-600 dark:text-gray-300">Checkout field</label>
         <SimpleSelect value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} className="w-56" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="w-40 text-sm text-gray-600 dark:text-gray-300">User ID format</label>
+          <SimpleSelect value={playerIdFormat} onChange={setPlayerIdFormat} options={PLAYER_ID_FORMAT_OPTIONS} className="w-56" />
+        </div>
+        <p className="ml-[10.75rem] text-theme-xs text-gray-500 dark:text-gray-400">
+          Checked on every channel (storefront, Reseller API, WhatsApp bot). Text allows letters, digits and # . _ -
+          (e.g. a Riot ID, JettMain#1234). Server ID is always digits only.
+        </p>
       </div>
       {isDigiflazz && (
         <div className="flex flex-wrap items-center gap-3">
@@ -180,6 +191,7 @@ function CheckoutInputEditor({
         <code className="rounded bg-gray-100 px-1.5 py-0.5 text-theme-xs text-gray-500 dark:bg-white/5 dark:text-gray-400">
           {JSON.stringify({
             extra_field: extraField === "" ? null : extraField,
+            player_id_format: playerIdFormat,
             ...(isDigiflazz ? { customer_no_separator: separator === "" ? null : separator } : {}),
             ...(isZoneId ? { zone_options: parsedZoneOptions() } : {}),
           })}

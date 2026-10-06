@@ -58,7 +58,7 @@ class CatalogControllerTest extends TestCase
         $response->assertExactJson(['games' => [[
             'code' => 'MLMY',
             'name' => 'Mobile Legends Malaysia',
-            'checkout_input' => ['field' => null, 'options' => null],
+            'checkout_input' => ['field' => null, 'options' => null, 'player_id_format' => 'numeric'],
             'packages' => [
                 ['code' => 'MLMY-14', 'name' => '14 Diamond', 'price_sen' => 1100], // 1000 * 1.10
                 ['code' => 'MLMY-86', 'name' => '86 Diamond', 'price_sen' => 5500], // 5000 * 1.10
@@ -79,7 +79,7 @@ class CatalogControllerTest extends TestCase
         $response = $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key));
 
         $response->assertOk();
-        $response->assertJsonPath('games.0.checkout_input', ['field' => 'zone_id', 'options' => ['SouthEastAsia', 'MENA']]);
+        $response->assertJsonPath('games.0.checkout_input', ['field' => 'zone_id', 'options' => ['SouthEastAsia', 'MENA'], 'player_id_format' => 'numeric']);
     }
 
     public function test_excludes_games_without_a_reseller_code(): void

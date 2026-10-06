@@ -27,6 +27,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class OrderControllerTest extends TestCase
@@ -1210,6 +1211,97 @@ class OrderControllerTest extends TestCase
         $response->assertOk();
         Queue::assertPushed(ResendOrderDeliveryJob::class, fn (ResendOrderDeliveryJob $job) => $job->order->id === $order->id
             && $job->overrideReason === 'Customer already paid, deliver anyway per founder instruction.');
+    }
+
+    /**
+     * ADR-105 2026-10-06 decision 12 — the controller asks the same
+     * preflight() as the job, so a loss on a tier-affiliate, reseller
+     * wallet or member order is caught here too (it used to check the
+     * Standard basis only, and the job then refused it silently).
+     *
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function lossOnEveryBasis(): array
+    {
+        return [
+            'tier affiliate' => [['pricing_basis' => 'affiliate', 'wholesale_markup_pct' => 10.00, 'affiliate_markup_pct' => 5.00, 'selling_price' => 1040, 'affiliate_profit' => 50]],
+            'reseller wallet' => [['pricing_basis' => 'reseller-wallet', 'wholesale_markup_pct' => 10.00, 'selling_price' => 990]],
+            'member' => [['pricing_basis' => 'member', 'member_discount_percent' => 80.00, 'markup_percent' => 15.00, 'selling_price' => 927]],
+        ];
+    }
+
+    /** @param array<string, mixed> $orderOverrides */
+    #[DataProvider('lossOnEveryBasis')]
+    public function test_resend_requires_an_override_reason_for_a_loss_on_every_basis(array $orderOverrides): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1200, 'standard_selling_price' => 1500,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        $order = $this->order(array_merge([
+            'game_id' => $game->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ], $orderOverrides));
+
+        $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('override_reason');
+        Queue::assertNothingPushed();
+    }
+
+    /** ADR-105 2026-10-06 decision 15 — the modal's preview comes from the backend, per package. */
+    public function test_resend_options_lists_the_games_active_packages_with_each_ones_impact(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $otherGame = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb']);
+        $cheaper = Package::query()->create([
+            'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 850, 'standard_selling_price' => 950,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
+        ]);
+        $dearer = Package::query()->create([
+            'game_id' => $game->id, 'name' => '210 Diamonds', 'cost_price' => 1100, 'standard_selling_price' => 1200,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B', 'is_active' => true,
+        ]);
+        Package::query()->create([
+            'game_id' => $game->id, 'name' => 'Inactive', 'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'C', 'is_active' => false,
+        ]);
+        Package::query()->create([
+            'game_id' => $otherGame->id, 'name' => 'Other game', 'cost_price' => 500, 'standard_selling_price' => 600,
+            'supplier_id' => $supplier->id, 'supplier_package_ref' => 'D', 'is_active' => true,
+        ]);
+        $order = $this->order([
+            'game_id' => $game->id,
+            'package_id' => $cheaper->id,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Failed->value,
+        ]);
+
+        $response = $this->getJson("/api/orders/{$order->id}/resend-options")->assertOk();
+
+        $this->assertSame([$cheaper->id, $dearer->id], array_column($response->json('data'), 'id'));
+        $response->assertJsonPath('data.0.supplier_package_ref', 'A');
+        $response->assertJsonPath('data.0.impact.platform_profit', 150); // 1000 − 850 − 0
+        $response->assertJsonPath('data.0.impact.override_required', false);
+        $response->assertJsonPath('data.1.impact.platform_profit', -100); // 1000 − 1100 − 0
+        $response->assertJsonPath('data.1.impact.override_required', true);
+        $response->assertJsonPath('data.1.impact.cost_diff', 200);
+        $response->assertJsonPath('data.1.impact.blocked_reason', null);
+    }
+
+    public function test_resend_options_404s_for_a_sandbox_order(): void
+    {
+        $this->actingAsAdmin();
+        $order = $this->order(['is_test' => true, 'delivery_status' => DeliveryStatus::Failed->value, 'payment_status' => PaymentStatus::Paid->value]);
+
+        $this->getJson("/api/orders/{$order->id}/resend-options")->assertNotFound();
     }
 
     /**

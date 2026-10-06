@@ -242,15 +242,8 @@ final class ResellerBotService
 
         $game = Game::query()->find($package->game_id);
 
-        // ADR-097 decision 19 — the same presence+value rule the
-        // storefront and the Reseller API now enforce, not just
-        // presence. This channel's own format-hint suffix (unique to
-        // it — the raw .order command syntax) rides along after the
-        // shared validator's message, not inside it.
-        if ($game !== null && $error = $this->checkoutInputValidator->validate($game, $command->serverId)) {
-            $this->logFailure($reseller, $groupId, $command->raw, $command->serverId === null ? 'missing_server_id' : 'invalid_zone_id');
-
-            return "{$error['message']} Format: .order {$command->productCode} {playerId} {serverId}";
+        if ($game !== null && $rejection = $this->rejectInput($reseller, $groupId, $command, $game, (string) $command->productCode, '.order')) {
+            return $rejection;
         }
 
         if ($game !== null && $game->player_validator_enabled && $game->player_validator_profile_id !== null) {
@@ -420,6 +413,10 @@ final class ResellerBotService
             return "Kod game '{$gameCode}' tidak dijumpai. Guna .listharga untuk senarai kod yang sah.";
         }
 
+        if ($rejection = $this->rejectInput($reseller, $groupId, $command, $game, $gameCode, '.checkid')) {
+            return $rejection;
+        }
+
         if (! $game->player_validator_enabled || $game->player_validator_profile_id === null) {
             return ResellerBotReplyFormatter::checkIdUnsupported();
         }
@@ -482,6 +479,34 @@ final class ResellerBotService
         }
 
         return ResellerBotReplyFormatter::checkIdValid($result);
+    }
+
+    /**
+     * ADR-097 decision 19 + 2026-10-05 addendum (decisions 27-32) — the
+     * same per-game contract every channel enforces, plus this channel's
+     * own extra-token rule; the reply carries the game's real format.
+     * Returns null when the input is acceptable.
+     */
+    private function rejectInput(Reseller $reseller, string $groupId, ResellerBotCommand $command, Game $game, string $code, string $verb): ?string
+    {
+        if ($command->extraArguments) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'extra_arguments');
+
+            return ResellerBotReplyFormatter::extraArguments($game, $code, $verb);
+        }
+
+        $error = $this->checkoutInputValidator->validate($game, $command->playerId, $command->serverId);
+        if ($error === null) {
+            return null;
+        }
+
+        $this->logFailure($reseller, $groupId, $command->raw, match (true) {
+            $error['field'] === 'server_id' && $error['reason'] === 'required' => 'missing_server_id',
+            $error['reason'] === 'invalid_zone' => 'invalid_zone_id',
+            default => "{$error['field']}_{$error['reason']}",
+        });
+
+        return ResellerBotReplyFormatter::inputRejected($error, $game, $code, $verb);
     }
 
     private function checkIdStatus(bool $valid, ?Game $wrongRegionGame): string

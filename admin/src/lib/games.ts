@@ -27,6 +27,11 @@ export interface GameValidationRules {
    * free-text <input> exactly — no game is forced to migrate.
    */
   zone_options?: string[] | null;
+  /**
+   * ADR-097 2026-10-05 addendum, decision 29 — what a User ID may
+   * contain on every channel. null/unset = numeric.
+   */
+  player_id_format?: "numeric" | "text" | null;
 }
 
 /** Shared between LinkCategoryModal (set at link time) and the inline editor next to the Product Manager Catalog tab (correct it later). */
@@ -34,6 +39,12 @@ export const EXTRA_FIELD_OPTIONS = [
   { value: "", label: "UID only (Player ID)" },
   { value: "server_id", label: "UID + Server ID" },
   { value: "zone_id", label: "UID + Zone ID" },
+];
+
+/** ADR-097 2026-10-05 addendum, decision 29 — CheckoutInputEditor's User ID format control. */
+export const PLAYER_ID_FORMAT_OPTIONS = [
+  { value: "numeric", label: "Digits only" },
+  { value: "text", label: "Text (e.g. Riot ID)" },
 ];
 
 /** ADR-097 decision 2 — CheckoutInputEditor's separator control, Digiflazz-linked games only. */

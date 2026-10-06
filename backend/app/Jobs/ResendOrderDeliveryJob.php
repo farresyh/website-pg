@@ -74,12 +74,13 @@ final class ResendOrderDeliveryJob implements ShouldQueue
         try {
             $resend->resend($this->order, $package, $this->note, $this->triggeredBy, $this->playerId, $this->serverId, $this->overrideReason);
         } catch (ValidationException $e) {
-            // A guard (same-game, active, resendable, player-ID
-            // window) that held at request time but no longer does by
-            // the time this job actually runs — e.g. the order was
-            // already resolved another way in between. Expected,
-            // occasional outcome, not a job failure to retry.
+            // A guard that held at request time but no longer does by the
+            // time this job runs — e.g. the order was resolved another way
+            // in between. Expected, not a job failure to retry. ADR-105
+            // 2026-10-06 decision 16: recorded as a `rejected` attempt row,
+            // since the admin was already told "Resend queued."
             Log::info('Resend rejected at attempt time', ['reason' => $e->getMessage()]);
+            $resend->recordRejection($this->order, $package, $e->getMessage(), $this->triggeredBy);
         }
     }
 

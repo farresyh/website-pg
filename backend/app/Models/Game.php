@@ -77,6 +77,17 @@ class Game extends Model
     }
 
     /**
+     * ADR-097 2026-10-05 addendum, decision 29 — `numeric` unless an
+     * admin opted the game into `text` (e.g. a Riot ID).
+     *
+     * @return 'numeric'|'text'
+     */
+    public function playerIdFormat(): string
+    {
+        return ($this->validation_rules['player_id_format'] ?? null) === 'text' ? 'text' : 'numeric';
+    }
+
+    /**
      * ADR-097 decision 6/7 — the admin-curated Zone ID picklist. Empty
      * array normalizes to null (same "unset preserves free text"
      * behavior either way, one less shape for a caller to check).

@@ -120,7 +120,16 @@ class SupplierProductController extends Controller
                 'category' => $data['new_game']['category'] ?? null,
             ]);
 
-        $game->update(['validation_rules' => $data['validation_rules'] ?? null]);
+        // ADR-097 2026-10-05 addendum, decision 30 — merge, never
+        // replace: `LinkCategoryModal` sends only `extra_field`, and a
+        // replace wiped the game's zone list, separator and User ID
+        // format. A key sent as null still clears it. A zone list only
+        // means something on a zone game, so it goes with the field.
+        $rules = array_merge($game->validation_rules ?? [], $data['validation_rules'] ?? []);
+        if (($rules['extra_field'] ?? null) !== 'zone_id') {
+            unset($rules['zone_options']);
+        }
+        $game->update(['validation_rules' => $rules === [] ? null : $rules]);
 
         SupplierProduct::query()
             ->where('supplier_id', $data['supplier_id'])

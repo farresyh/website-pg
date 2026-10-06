@@ -32,6 +32,18 @@ The version number on this documentation (shown in the API Reference) is the
 
 ## Changelog
 
+### 2026-10 — v1.3.0
+
+- `GET /v1/catalog`: `checkout_input` gains `player_id_format` (`numeric` or
+  `text`).
+- `POST /v1/orders` now checks each game's full input contract (see
+  [Your first order](/first-order/)). **Input that used to be accepted can now
+  be rejected** with `422 VALIDATION_FAILED`: a `server_id` on a game whose
+  `checkout_input.field` is `null`, a non-digit `player_id` on a `numeric`
+  game, a non-digit Server ID, a value with spaces, or one over 64
+  characters. Before, such an order was charged and then failed at the
+  supplier. The response shape and error code are unchanged.
+
 ### 2026-10 — v1.2.0
 
 - New final `delivery_status`: `partially_delivered` — part of an order was

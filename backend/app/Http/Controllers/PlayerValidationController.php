@@ -6,6 +6,7 @@ use App\Http\Requests\PlayerValidation\ValidatePlayerRequest;
 use App\Models\Game;
 use App\Models\PlayerRegionMapping;
 use App\Models\PlayerValidation;
+use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
@@ -30,7 +31,10 @@ use Illuminate\Validation\ValidationException;
  */
 class PlayerValidationController extends Controller
 {
-    public function __construct(private readonly PlayerValidatorRegistry $registry) {}
+    public function __construct(
+        private readonly PlayerValidatorRegistry $registry,
+        private readonly CheckoutInputValidator $checkoutInputValidator,
+    ) {}
 
     public function store(ValidatePlayerRequest $request, Game $game): JsonResponse
     {
@@ -40,6 +44,12 @@ class PlayerValidationController extends Controller
             throw ValidationException::withMessages([
                 'player_id' => ['Player ID validation is not available for this game.'],
             ]);
+        }
+
+        // ADR-097 2026-10-05 addendum, decision 31 — a malformed ID is
+        // rejected here, before a paid provider call is spent on it.
+        if ($error = $this->checkoutInputValidator->validate($game, $data['player_id'], $data['server_id'] ?? null)) {
+            throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
         }
 
         $profile = $game->playerValidatorProfile()->firstOrFail();

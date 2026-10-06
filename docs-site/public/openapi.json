@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "PekanGame Reseller API",
-        "version": "1.1.0",
+        "version": "1.3.0",
         "description": "Order placement, order status, price list, and wallet balance for a PekanGame reseller account. Every request needs a Bearer API key issued by PekanGame \u2014 Authorization: Bearer <key>."
     },
     "servers": [
@@ -139,7 +139,7 @@
         "/v1/catalog": {
             "get": {
                 "operationId": "catalog.index",
-                "description": "Every orderable product for the calling reseller, grouped by game. Each package's `price_sen` is your own price for that package, in sen. Order against `packages[].code` (`{game code}-{denomination}`).",
+                "description": "Every orderable product for the calling reseller, grouped by game. Each package's `price_sen` is your own price for that package, in sen. Order against `packages[].code` (`{game code}-{denomination}`). `checkout_input` is the game's input contract: `player_id_format` (`numeric` = digits only, `text` = letters, digits and `# . _ -`), and `field` (`null` = send no `server_id`; `server_id` = digits only; `zone_id` = one of `options`).",
                 "summary": "List the catalogue",
                 "tags": [
                     "Catalog"
@@ -158,11 +158,9 @@
                                                     "code": "MLMY",
                                                     "name": "Mobile Legends (Malaysia)",
                                                     "checkout_input": {
-                                                        "field": "zone_id",
-                                                        "options": [
-                                                            "SouthEastAsia",
-                                                            "MENA"
-                                                        ]
+                                                        "field": "server_id",
+                                                        "options": null,
+                                                        "player_id_format": "numeric"
                                                     },
                                                     "packages": [
                                                         {
@@ -212,11 +210,19 @@
                                                                 "items": {
                                                                     "type": "string"
                                                                 }
+                                                            },
+                                                            "player_id_format": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "text",
+                                                                    "numeric"
+                                                                ]
                                                             }
                                                         },
                                                         "required": [
                                                             "field",
-                                                            "options"
+                                                            "options",
+                                                            "player_id_format"
                                                         ]
                                                     },
                                                     "packages": {
@@ -676,7 +682,7 @@
             },
             "post": {
                 "operationId": "order.store",
-                "description": "Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict.",
+                "description": "Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game's `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged.",
                 "summary": "Place an order",
                 "tags": [
                     "Order"

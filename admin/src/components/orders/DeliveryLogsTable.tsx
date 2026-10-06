@@ -71,6 +71,9 @@ function getOutcomeSeverity(outcome: string): "success" | "danger" | "warn" | "i
     case "delivered":
       return "success";
     case "failed":
+    // ADR-105 2026-10-06 decision 16 — a resend refused before it reached
+    // the supplier; its note says why.
+    case "rejected":
       return "danger";
     // ADR-104 decision 3 — the artifact's own distinct review token,
     // same reasoning as the order-level delivery_status map.

@@ -21,7 +21,6 @@ use App\Services\Order\OrderNumberService;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Order\ReferenceNumberService;
-use App\Services\Pricing\MembershipPricingService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -172,16 +171,25 @@ class SandboxOrderController extends Controller
             app(CurrencyRateService::class),
         );
 
-        $resend = new OrderResendService($fulfillment, app(PricingService::class), app(MembershipPricingService::class));
+        $resend = new OrderResendService($fulfillment);
 
         $result = $resend->resend(
             $order,
             $targetPackage,
             $request->validated('note'),
             $request->user()?->name,
+            overrideReason: $request->validated('override_reason'),
         );
 
         return response()->json($result->fresh(['game', 'package', 'supplier', 'affiliate', 'resendAttempts']));
+    }
+
+    /** ADR-105 2026-10-06 decision 15 — the sandbox twin of the admin resend preview. */
+    public function resendOptions(Order $order, OrderResendService $resend): JsonResponse
+    {
+        $this->assertIsSandboxOrder($order);
+
+        return response()->json(['data' => $resend->options($order)]);
     }
 
     /**

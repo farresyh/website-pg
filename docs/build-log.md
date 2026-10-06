@@ -2586,3 +2586,230 @@ covered by the tests above.
   the state, but took the adapter's "confirmed Gagal" on trust. A local
   browser check against the real API caught it — worth doing for any change
   that relies on a supplier's answer.
+
+## 2026-10-05 — Release #354 (`staging`→`main`): #347, #349, #350, #352
+
+**What shipped.** Earned profit + Excel export + KL-day Orders filters
+(#347), the voucher/quota checkout race fix (#349), item 63's no-grill batch
+(#350), and the late Digiflazz result after NeedsReview (#352), plus docs
+(#348, #351, #353). Released before grilling the remaining item 63 bullets:
+those bullets touch none of the shipped code (only `OrderResendService`
+overlapped, and only for #352's package-swap guard, not the member-profit
+branch), and every PR in the batch was complete on its own.
+
+**Pre-deploy (read-only, prod):** HEAD `908f16b`, last migration batch 30,
+`orders.reseller_api_idempotency_payload_hash` present, 0 pending/processing
+orders.
+
+**Post-deploy (read-only, prod):** HEAD `1a446d5` (= `origin/main`, CI
+`deploy` job success); `2026_10_04_100000_rename_...payload_hash` Ran in
+batch 31; old column gone, `idempotency_payload_hash` present; Horizon
+running; `/up` 200; `/api/health` ok (database, queue, horizon); 0 failed
+jobs in the last 2 h. The only `production.ERROR` lines are Digiflazz
+`rc 83` pricelist rate limits from `SyncSupplierPricesJob`, which predate the
+release (2026-10-04 onward) and are unrelated.
+
+**Gotcha.** Auto mode blocks the model from merging into `main` (it
+deploys); the founder merged #354 themselves.
+
+## 2026-10-05 — Per-game player-input contract (item 63, Bot multi-line bullet; ADR-097 addendum)
+
+**Why.** The audit bullet was "several `.order` lines place only the first".
+The trace found the real gap in the shared seam: `CheckoutInputValidator`
+passed any `server_id` on a User-ID-only game (17 of 30 reseller games) and
+`DigiflazzAdapter::normalizeCustomerNo()` appended it, so `.order X 123456 tq`
+sent `customer_no = 123456tq` after the wallet debit, and nothing checked an
+ID's format (`12345678 (2001)` went out as-is). Same path on the Reseller
+API. Founder confirmed resellers send one order per message, so the
+single-line cases were the real risk. Prod: 0 orders anywhere broke the new
+rules — nothing to remediate.
+
+**What shipped.** Grilled Q1–Q13, ADR-097 2026-10-05 addendum (decisions
+27–35):
+- One per-game contract in `CheckoutInputValidator`: User ID digits only
+  (default) or Text (`[A-Za-z0-9#._-]`, a Riot ID), Server ID digits only,
+  zone in the list, no `server_id` on a User-ID-only game, no whitespace,
+  64-char cap. Returns `{field, reason, message}`.
+- Used by storefront checkout, Reseller API, Bot `.order`/`.checkid`, admin
+  Resend with an ID correction, and storefront Check ID (before the paid
+  provider call). Sandbox/Developer Tool exempt.
+- Bot: extra tokens rejected (covers multi-line); BM replies built from the
+  game's `validation_rules` (`.order MLMY-14 {userId} {serverId}`, zone list);
+  `.list` footer the same.
+- `Game.validation_rules.player_id_format`, edited in Product Manager's
+  checkout-input editor ("User ID format"); `linkCategory()` merges instead of
+  replacing (LinkCategoryModal's re-link was wiping zone list + separator).
+- Reseller API v1.3.0: `checkout_input.player_id_format`, same
+  `VALIDATION_FAILED` envelope; `scramble.php` docs revision was stuck at
+  1.1.0, now 1.3.0. Storefront: keyboard + typing block per field, paste kept
+  with an inline error.
+
+**Verified.** Backend 2580/2580 (new: validator contract, every channel,
+Resend, Check ID before the provider, Bot extra tokens + BM replies, link
+merge, editor payload); admin + storefront lint/build; docs-site build.
+Local browser: typed `12a34(5)` → `12345` (numeric keypad); pasted
+`12345678 (2001)` kept with "User ID must not contain spaces.", Continue
+disabled, colour `rgb(186, 26, 26)`; a Text game shows the text keyboard,
+accepts `JettMain#1234`, flags `JettMain#1234(x)`. Real HTTP (local test
+token, deleted afterwards): editor save → 200, an extra-field-only re-link
+keeps `player_id_format: text`, catalog shows it. The Bot and Reseller API
+were not exercised against a live OpenWA/API key — covered by the tests.
+
+**Gotchas.**
+- The first storefront build blocked pastes too: React's `onBeforeInput`
+  fires for a paste (Chrome `textInput`). Found only in the browser.
+- The real HTTP check found a pre-existing 422: the editor sends
+  `zone_options: null` for a non-zone game and the request read it as a
+  list. Every editor Update on a non-zone game had failed since 2026-09-16.
+- Port 3000 was another app (Remotion Studio), not admin, and no seeded
+  admin password exists, so the editor UI itself was checked by tsc/lint and
+  the endpoint by real HTTP. Later the same day, with the founder logged in
+  (Remotion stopped to free :3000): the editor's User ID format control
+  saved Text, and it persisted across a reload. The Text label was
+  truncated in its select; shortened to "Text (e.g. Riot ID)" (#357).
+- Seen, not fixed (pre-existing, cosmetic): the editor's "Checkout field"
+  select shows blank for a User-ID-only game — PrimeReact treats the `""`
+  option value as no selection. The saved data is correct.
+- Local `CACHE_STORE` needed `redis` for the catalog list (gotcha 5).
+- Local dev data touched for the check (games 2, 3) was restored.
+
+## 2026-10-06 — Founder real-order smoke test on prod: §16 items 51 and 54 closed (docs only)
+
+**What ran.** The founder placed real orders on production (`main` =
+`1a446d5`, release #354) with their own money, voucher and WhatsApp number,
+and reported each result; the model traced each result against the live
+code (`origin/main`) and checked the money on the admin Order Detail
+screenshots. #356/#357 (player-input contract) were still staging-only, so
+they are not covered here.
+
+| Test | Result |
+| --- | --- |
+| 51(a) storefront order (`orders` lane) | Delivered; Delivered receipt arrived on WhatsApp |
+| 51(b) reseller bot `.order` (`orders-reseller` lane) | Delivered; wallet debited; bot replied |
+| 51(c) full-voucher-cover order `PG-SJDWBIKMYC1Z` (MLBB MY 14 Diamonds) | Final RM 0.00, transaction fee 0, no CHIP payment ref, Delivered. Voucher `VC-WQQANL67` RM 3.19 → RM 2.13 (−RM 1.06). Platform profit RM 0.14 = 1.06 − 0.92 cost |
+| 54(b) status card / not-found | Both reply; see "Throttle" below |
+| 54(c) voucher over WhatsApp, `PG-12A9VRY5KLCE` (PUBG 60 UC) | Paid RM 4.19 FPX + RM 0.97 voucher `VC-GHCL5MZW`; delivery failed on a deliberately invalid Player ID (Digiflazz "Transaksi Gagal"). Issue Voucher restored RM 0.97 to `VC-GHCL5MZW` and issued `VC-WQQANL67` RM 3.19 (= RM 4.19 − RM 1.00 fee); the code arrived on WhatsApp (row `sent`) |
+| 54(d) re-send the old skipped receipt | Skipped by choice (proves nothing new) |
+
+**Money check (`PG-12A9VRY5KLCE`).** Compensation RM 0.97 + RM 3.19 =
+RM 4.16 = selling price. The RM 1.00 FPX fee is not returned: by design
+(`OrderSettlementService::amounts()`, "a retail voucher never refunds the
+payment-gateway fee"; ADR-107's "a voucher reflects what the customer
+paid"). The customer bears the fee even when the supplier, not the
+customer, caused the failure; this is a policy to keep stated in the
+terms, not a bug.
+
+**Throttle (why two WhatsApp messages got no reply).**
+- On a delivered order, "Contact Support" got a status card, then "Send
+  Receipt to WhatsApp" right after got nothing. Both buttons prefill the
+  same order number, and the card is not repeated to the same phone for
+  the same order + status within 30 minutes (ADR-116 addendum decision 3,
+  `CustomerNotificationService::orderStatusCard`).
+- A mistyped order number got nothing the first time, then a reply on a
+  later retry: the "not found" reply is limited to once per phone every
+  10 minutes.
+- Both throttles return before a `customer_notifications` row is written,
+  so a throttled reply leaves no trace in admin, and the cause had to be
+  inferred from code. New §16 item 69.
+
+**Seen, not fixed.**
+- The founder's number is opted out again (`STOP` was sent during the
+  test), which is why `PG-SJDWBIKMYC1Z` got a status card but no Delivered
+  receipt. `START` restores it.
+- A full-voucher-cover order keeps `payment_method = fpx` (the method
+  picked at checkout), so Order Detail shows "fpx" and the Reports
+  Payment Methods tab counts it as an RM 0 FPX order, although no gateway
+  was involved (`payment_ref` is null, as ADR-024 decision 5 intends). No
+  money effect. New §16 item 70.
+- A status card went to a second number (60143670787), not the order's
+  phone. Expected: the card goes to whoever sends the order number
+  (ADR-116 addendum decision 2).
+
+**Not covered.** Order numbers for 51(a)/(b) were not recorded. Test
+orders count as real sales revenue (item 55, no test flag).
+
+## 2026-10-06 — One resend seam: residual profit on every basis (item 63, member-resend bullet; ADR-105 addendum)
+
+**Why.** The audit bullet was "a member order resent to a dearer package
+records a re-priced member profit and skips the loss prompt". The trace
+(read-only prod check included) found it wider: the resend rules lived in
+three copies that had drifted (service, controller guard — Standard basis
+only — and a TypeScript copy in the modal, wrong for lapsed-affiliate
+orders); a swap never wrote `orders.cost_price`, so orders 15 and 19 show
+the old package's cost in Order Detail, the export, the Transaction
+Register and COGS; a refused job vanished into `Log::info`; and two
+overlapping resends wrote unlocked. Ledger was right throughout; no
+customer money was affected.
+
+**What shipped.** Grilled Q1–Q13, ADR-105 2026-10-06 addendum (decisions
+9–20) plus its build-time corrections (cloud session, `f09cef8`):
+- `OrderResendService::preflight()` → `ResendImpact`: every guard plus the
+  impact. One rule for every basis: affiliate share kept at checkout,
+  `platform_profit = selling_price − live cost − affiliate_profit`. The
+  Member branch, `calculateForAffiliate` and the pricing catch are gone;
+  the service no longer depends on `PricingService` /
+  `MembershipPricingService`.
+- A loss needs an override on every basis. The controller calls
+  `preflight()` (its own copies of the status / compensated / same-game /
+  swap-block checks and the Standard-only loss check are deleted; the
+  reference-unsafe guard stays, it is shared with Retry).
+- `resend()` re-runs `preflight()` and writes package, IDs, `cost_price`
+  and `platform_profit` under `lockForUpdate()`; the attempt row records
+  what `fulfill()` actually sent and `price_diff_sen` against the cost
+  assigned before it.
+- `ResendOrderDeliveryJob` records a refused attempt as `outcome =
+  rejected` (reason in `note`), red in Delivery & Activity Logs.
+- `GET /api/orders/{order}/resend-options` and the sandbox twin; the modal
+  renders that, marks a blocked package "unavailable", and sends
+  `override_reason` in sandbox too.
+- Data migration `2026_10_06_000000_correct_cost_price_on_resent_orders`
+  (two-part rule, ledger-guarded, idempotent, query builder so no
+  broadcast).
+
+**Deviations from the addendum (small).**
+- The modal picks its endpoint from its existing `sandbox` flag, the way
+  its submit already did, instead of a fetcher prop; the two pages are
+  unchanged.
+- Player-ID checks (contract on a correction, validation window) stay in
+  `resend()` under the lock, not in `preflight()`: the preview has no
+  correction to check.
+- The sandbox resend request now accepts `override_reason`; before, a loss
+  in the sandbox could never be submitted.
+- Copy: "Original cost (snapshot)" → "Current cost on this order"
+  (decision 13), and a package with no supplier ref shows "—", not "null".
+
+**Verified.** Backend 2612/2612 (new: 5-basis × same/cheaper/dearer
+invariant incl. ledger, member loss + residual, preflight impact and
+blocked reason, rejected rows, second-resend diff, the exact race window
+pinned with an `Order::updated` + `DB::afterCommit` hook, controller loss
+on tier/wallet/member, preview endpoint admin + sandbox, migration incl.
+ledger mismatch skip and a second run issuing no UPDATE). Concurrency
+suite 30/30 on real MySQL, incl. the new two-process resend race. Admin
+tsc / eslint / build clean. Local dev (`php artisan migrate`, no
+`fresh`):
+- curl with a local test token (revoked afterwards): preview for a member
+  and a tier order (combo listed as blocked), 422 `override_reason` for a
+  loss on both; a sandbox resend refused without a reason, delivered with
+  one — `cost_price` 1650, profit 390 − 1650 = −1260, attempt row right.
+- Browser: member order, same package +RM 0.13; 310 + 25 Bonds shows a
+  RM 13.12 loss, override required, submit disabled (the old formula
+  showed a profit here). A `rejected` row renders red, `rgb(180, 35, 24)`
+  on `rgb(252, 235, 234)`. No real resend was submitted from the admin
+  path (it queues a real supplier call). Local test orders deleted.
+
+**CI e2e flake, fixed at the cause (second time).** The storefront
+checkout spec landed on `needs_review` again; the CI trace's
+`supplier_response` showed `SQLSTATE[HY000]: 5 database is locked` on the
+fulfilment's `update orders` — not this PR's code path (a first
+`fulfill()`, no resend). The 2026-10-04 fix (busy timeout 5000 ms + WAL)
+does not cover it: a DEFERRED transaction that reads first and writes
+after another connection committed gets `SQLITE_BUSY` at once in WAL, and
+the busy timeout is never consulted. `config/database.php` sqlite
+`transaction_mode` now reads `DB_TRANSACTION_MODE` (default still
+`DEFERRED`, dev and MySQL prod unchanged); `e2e/scripts/boot-backend.sh`
+sets `IMMEDIATE`, so BEGIN takes the write lock and waits. e2e 5/5
+locally, backend 2612/2612.
+
+**Still to do at release.** Run decision 18's check on prod and record
+orders 15 / 19 before/after, plus the September accounting summary
+before/after (decision 19: COGS and FX variance both +RM 0.18).

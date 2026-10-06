@@ -69,7 +69,7 @@ class PlayerValidationControllerTest extends TestCase
     public function test_valid_id_in_the_correct_region_returns_valid(): void
     {
         $profile = $this->profile();
-        $game = $this->game(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $game = $this->game(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id, 'validation_rules' => ['extra_field' => 'server_id']]);
         $profile->mappings()->create(['country_code' => 'MY', 'country_name' => 'Malaysia', 'game_id' => $game->id]);
         $this->bindFakeValidator(PlayerValidationResult::valid('AcidGameShop', 'TestNickname', 'MY'));
 
@@ -93,7 +93,7 @@ class PlayerValidationControllerTest extends TestCase
         $game = $this->game(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
         $this->bindFakeValidator(PlayerValidationResult::invalid('AcidGameShop'));
 
-        $response = $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => 'bad-id']);
+        $response = $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '99999999']);
 
         $response->assertOk();
         $response->assertJson(['status' => 'invalid', 'nickname' => null, 'country_code' => null]);
@@ -164,5 +164,19 @@ class PlayerValidationControllerTest extends TestCase
         $this->bindFakeValidator(PlayerValidationResult::invalid('AcidGameShop'));
 
         $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '51049607'])->assertOk();
+    }
+
+    /** ADR-097 2026-10-05 addendum, decision 31 — no paid provider call for a malformed ID. */
+    public function test_a_malformed_player_id_is_rejected_before_the_provider_is_called(): void
+    {
+        $profile = $this->profile();
+        $game = $this->game(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
+        $this->bindFakeValidator(new \LogicException('the paid validator must not be called'));
+
+        $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '1234(5678)'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('player_id');
+
+        $this->assertSame(0, PlayerValidation::query()->count());
     }
 }

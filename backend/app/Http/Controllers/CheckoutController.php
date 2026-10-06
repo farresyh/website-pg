@@ -99,10 +99,9 @@ class CheckoutController extends Controller
             ]);
         }
 
-        // ADR-097 decision 19 — the same rule the Reseller API and Bot
-        // now enforce too (presence AND, for a zone_id game with a
-        // defined list, exact-match against it), not just presence.
-        if ($error = $this->checkoutInputValidator->validate($game, $data['server_id'] ?? null)) {
+        // ADR-097 decision 19 + 2026-10-05 addendum — the same per-game
+        // player-input contract every channel enforces.
+        if ($error = $this->checkoutInputValidator->validate($game, $data['player_id'], $data['server_id'] ?? null)) {
             throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
         }
 

@@ -13,13 +13,13 @@ use App\Models\Order;
 use App\Models\Package;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Fulfillment\OrderResendService;
 use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Fulfillment\SupplierDeliveryCheckService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrdersWorkbook;
 use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
-use App\Services\Pricing\PricingBasis;
 use App\Services\Report\ReportService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Support\ManualCheckCooldown;
@@ -382,50 +382,44 @@ class OrderController extends Controller
      * both retryDelivery() and resend() so the two never drift on this
      * rule.
      *
-     * ADR-105 decision 4 — extended with a second, independent trigger:
-     * a package swap (never a same-package retry, hence `$targetPackage`
-     * is null from retryDelivery()) whose live cost now exceeds what
-     * the customer already paid. This is purely a fast, same-request
-     * echo of the check `OrderResendService::resend()` makes for real at
-     * attempt time (same reasoning as this whole method's own doc
-     * comment above it in resend() — a controller-side check can go
-     * stale, the job re-checks everything itself) — its only job is
-     * giving the admin an immediate, clear rejection instead of a
-     * queued job that silently fails later.
+     * ADR-105 2026-10-06 decision 12: the loss check that used to live
+     * here too now belongs to `OrderResendService::preflight()`, which
+     * resend() calls — it covered the Standard basis only.
      */
-    private function guardResendUnsafeOverride(Request $request, Order $order, ?Package $targetPackage = null): void
+    private function guardResendUnsafeOverride(Request $request, Order $order): void
     {
-        $unsafeReference = $order->resendUnsafeToOverride();
-
-        $wouldSellBelowCost = $targetPackage !== null
-            && $order->pricing_basis !== PricingBasis::Member
-            && $order->wholesale_markup_pct === null
-            && $targetPackage->cost_price > $order->standard_selling_price;
-
-        if (! $unsafeReference && ! $wouldSellBelowCost) {
+        if (! $order->resendUnsafeToOverride()) {
             return;
         }
 
         $reason = trim((string) $request->input('override_reason', ''));
 
         if ($reason === '') {
-            $message = $wouldSellBelowCost
-                ? sprintf(
-                    "This package's live cost (RM%s) now exceeds what the customer already paid (RM%s) — provide a reason to resend anyway and accept the loss.",
-                    number_format($targetPackage->cost_price / 100, 2),
-                    number_format($order->standard_selling_price / 100, 2),
-                )
-                : 'This order already has a final, confirmed result for its reference — a package swap does not escape this either. Provide a reason to override and resend anyway.';
-
-            throw ValidationException::withMessages(['override_reason' => [$message]]);
+            throw ValidationException::withMessages(['override_reason' => [
+                'This order already has a final, confirmed result for its reference — a package swap does not escape this either. Provide a reason to override and resend anyway.',
+            ]]);
         }
 
         Log::warning('Admin overrode a resend guard', [
             'order_number' => $order->order_number,
             'admin' => $request->user()->name,
             'override_reason' => $reason,
-            'guard' => $unsafeReference ? 'resend_unsafe_reference' : 'sell_below_cost',
+            'guard' => 'resend_unsafe_reference',
         ]);
+    }
+
+    /**
+     * ADR-105 2026-10-06 decision 15 — what ResendDeliveryModal shows:
+     * the game's active packages, each with preflight()'s impact. The
+     * modal renders this and computes nothing itself.
+     */
+    public function resendOptions(Order $order, OrderResendService $resend): JsonResponse
+    {
+        if ($order->is_test) {
+            abort(404);
+        }
+
+        return response()->json(['data' => $resend->options($order)]);
     }
 
     /**
@@ -436,45 +430,20 @@ class OrderController extends Controller
      * attempt time (ResendOrderDeliveryJob), since state can change
      * between "admin clicked the button" and "the job actually ran".
      */
-    public function resend(ResendOrderDeliveryRequest $request, Order $order): JsonResponse
+    public function resend(ResendOrderDeliveryRequest $request, Order $order, OrderResendService $resend): JsonResponse
     {
         // ADR-018 decision #2: same reasoning as retryDelivery() above.
         if ($order->is_test) {
             abort(404);
         }
 
-        if (! in_array($order->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)) {
-            throw ValidationException::withMessages([
-                'delivery_status' => ['Only an order with a failed or needs-review delivery can be resent.'],
-            ]);
-        }
-
-        // ADR-024 decision #8 / ADR-102 decision 1 — see retryDelivery()'s
-        // identical guard for the full reasoning.
-        if ($order->isAlreadyCompensated()) {
-            throw ValidationException::withMessages([
-                'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be resent.'],
-            ]);
-        }
-
         $targetPackage = Package::query()->findOrFail($request->validated('package_id'));
 
-        if ($targetPackage->game_id !== $order->game_id) {
-            throw ValidationException::withMessages([
-                'package_id' => ['The selected package must belong to the same game as this order.'],
-            ]);
-        }
-
-        if ($order->blocksPackageSwapTo($targetPackage)) {
-            throw ValidationException::withMessages([
-                'package_id' => [Order::PACKAGE_SWAP_BLOCKED_MESSAGE],
-            ]);
-        }
-
-        // ADR-105 decision 4: resolved above, not before, since this
-        // guard now also needs $targetPackage for its sell-below-cost
-        // check.
-        $this->guardResendUnsafeOverride($request, $order, $targetPackage);
+        // ADR-105 2026-10-06 decision 12 — the same preflight() the job
+        // re-runs under the row lock: every guard and the loss check, so
+        // an admin gets a 422 now rather than a silently refused job.
+        $resend->preflight($order, $targetPackage)->assertAllowed($request->input('override_reason'));
+        $this->guardResendUnsafeOverride($request, $order);
 
         ResendOrderDeliveryJob::dispatch(
             $order,

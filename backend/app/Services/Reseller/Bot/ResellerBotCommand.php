@@ -14,5 +14,7 @@ final class ResellerBotCommand
         public readonly ?string $serverId = null,
         public readonly ?string $orderNumber = null,
         public readonly ?string $amount = null,
+        /** ADR-097 2026-10-05 addendum, decision 32 — `.order`/`.checkid` got more than {code} {userId} [{serverId}]. */
+        public readonly bool $extraArguments = false,
     ) {}
 }

@@ -40,6 +40,11 @@ export QUEUE_CONNECTION=database
 # (2026-10-04, PR #345). WAL lets readers proceed during a write.
 export DB_BUSY_TIMEOUT=5000
 export DB_JOURNAL_MODE=wal
+# The timeout alone did not hold (2026-10-06, PR #360, same symptom): a
+# DEFERRED transaction that reads first and then writes after another
+# connection committed fails at once in WAL. IMMEDIATE takes the write lock
+# at BEGIN, so the busy timeout applies.
+export DB_TRANSACTION_MODE=IMMEDIATE
 export CACHE_STORE=database
 # ADR-027's 2026-08-29 addendum, decision 18: CatalogController's
 # packages cache is scoped to its own store (config('cache.
