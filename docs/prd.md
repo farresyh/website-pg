@@ -603,6 +603,14 @@ was wrong from at least then on.
   v1.3.0. No migration. **At release the founder sets Valorant (×5) and any
   other non-numeric game to Text in Product Manager** — their orders are
   refused until then — and adds ZZZ's server field.
+- #360: one resend seam (pre-launch audit item 63, member-resend bullet;
+  ADR-105 2026-10-06 addendum). Residual profit on every basis incl.
+  Member, affiliate share frozen, a resend writes `cost_price`, locked
+  write, rejected resends leave a row, backend-computed resend preview.
+  **Has a data migration** (`cost_price` on resent orders 15/19, profit
+  only where it matches the ledger). **After release:** record orders
+  15/19 and the September accounting summary before/after (COGS and FX
+  variance both +RM 0.18). Also: e2e sqlite runs IMMEDIATE transactions.
 
 **Release 2026-10-05 (`staging`→`main`, PR #354), deploy verified.** The
 server runs `1a446d5`; migration batch 31 (the column rename) Ran;
