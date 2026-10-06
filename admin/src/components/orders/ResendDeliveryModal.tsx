@@ -19,9 +19,8 @@ import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
-import { listGamePackages, type GamePackage } from "@/lib/games";
-import { resendOrderDelivery, validatePlayerForResend, type OrderDetail } from "@/lib/orders";
-import { resendSandboxOrderDelivery } from "@/lib/sandboxOrders";
+import { getResendOptions, resendOrderDelivery, validatePlayerForResend, type OrderDetail, type ResendOption } from "@/lib/orders";
+import { getSandboxResendOptions, resendSandboxOrderDelivery } from "@/lib/sandboxOrders";
 
 interface ResendDeliveryModalProps {
   isOpen: boolean;
@@ -44,55 +43,6 @@ function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
-interface ResendImpact {
-  newAffiliateProfit: number | null;
-  newPlatformProfit: number;
-}
-
-/**
- * ADR-105 decision 8 (addendum) — a preview of the resend picker's
- * package choice, mirroring `OrderResendService::resend()`'s own
- * formulas exactly (never re-derived independently — the founder-facing
- * bug ADR-105 exists to fix was born from two "equivalent-looking"
- * formulas quietly drifting apart). Kept as a small pure function, not
- * inline in the component, so it stays a direct 1:1 mirror that's easy
- * to diff against the backend if either ever changes.
- */
-function computeResendImpact(order: OrderDetail, targetPackage: GamePackage): ResendImpact {
-  const liveCostPrice = targetPackage.cost_price;
-
-  if (order.pricing_basis === "member") {
-    const packageMarkupPercent = order.markup_percent !== null ? parseFloat(order.markup_percent) : parseFloat(targetPackage.markup_percent);
-    const discountPercent = order.member_discount_percent !== null ? parseFloat(order.member_discount_percent) : 0;
-    const effectiveMarkupPercent = Math.max(0, packageMarkupPercent * (1 - discountPercent / 100));
-    const newMemberPrice = Math.round(liveCostPrice * (1 + effectiveMarkupPercent / 100));
-
-    return { newAffiliateProfit: null, newPlatformProfit: newMemberPrice - liveCostPrice };
-  }
-
-  const affiliateMarkupPct = parseFloat(order.affiliate_markup_pct);
-
-  if (order.wholesale_markup_pct !== null && order.wholesale_markup_pct !== undefined) {
-    // Tier-affiliate/ResellerWallet basis (decision 2's formula,
-    // unchanged) — affiliateProfit still scales with live cost via the
-    // tier multiplier; platformProfit is the residual against the
-    // order's own frozen selling_price (decision 8), never wholesaleBase
-    // - liveCost directly.
-    const tierMarkupPct = parseFloat(order.wholesale_markup_pct);
-    const wholesaleBase = Math.round(liveCostPrice * (1 + tierMarkupPct / 100));
-    const newAffiliateProfit = Math.round(wholesaleBase * (affiliateMarkupPct / 100));
-
-    return { newAffiliateProfit, newPlatformProfit: order.selling_price - liveCostPrice - newAffiliateProfit };
-  }
-
-  // Standard/lapsed-affiliate basis (decision 1) — both figures
-  // reconcile against the order's own frozen standard_selling_price,
-  // never the target package's live one.
-  const newAffiliateProfit = Math.round(order.standard_selling_price * (affiliateMarkupPct / 100));
-
-  return { newAffiliateProfit, newPlatformProfit: order.standard_selling_price - liveCostPrice - newAffiliateProfit };
-}
-
 /**
  * ADR-017, merged with ORD-7's original plain retry (founder feedback,
  * 2026-07-27 — two separate buttons for "fix a failed delivery" was
@@ -105,7 +55,7 @@ function computeResendImpact(order: OrderDetail, targetPackage: GamePackage): Re
  * closed — fresh state every open, same convention as CreateValidatorModal.
  */
 function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit<ResendDeliveryModalProps, "isOpen">) {
-  const [packages, setPackages] = useState<GamePackage[] | null>(null);
+  const [packages, setPackages] = useState<ResendOption[] | null>(null);
   const [packagesError, setPackagesError] = useState<string | null>(null);
   const [packageId, setPackageId] = useState<number | null>(null);
   const [note, setNote] = useState("");
@@ -116,9 +66,8 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   // backend's own scoped rule (Order::resendUnsafeToOverride()) says
   // so: non-combo orders only from needs_review (a Failed order is
   // never futile — decision 9 always regenerates its reference). ADR-
-  // 105 decision 4 adds a second, independent trigger below
-  // (`wouldSellBelowCost`) — same field, same mechanism, a different
-  // reason to need it.
+  // 105 adds a second trigger, a loss on any basis (`wouldSellBelowCost`,
+  // from the backend's preview) — same field, a different reason.
   const [overrideReason, setOverrideReason] = useState("");
 
   // ADR-102 decision 10 — optional correction to a customer-typo'd
@@ -143,11 +92,12 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   const originalPackageId = order.package?.id ?? null;
   const requiresPlayerValidation = Boolean(order.game?.player_validator_enabled && order.game?.player_validator_profile_id);
 
+  // ADR-105 2026-10-06 decision 15 — the backend lists the game's active
+  // packages, each with OrderResendService::preflight()'s impact.
   useEffect(() => {
     if (!gameId) return;
-    listGamePackages(token, gameId)
-      .then((all) => {
-        const active = all.filter((p) => p.is_active);
+    (sandbox ? getSandboxResendOptions : getResendOptions)(token, order.id)
+      .then((active) => {
         setPackages(active);
         // Default to the order's own package — a same-package submit
         // is the "just retry" case; the order's own package is
@@ -168,23 +118,12 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   const isSamePackage = packageId !== null && packageId === originalPackageId;
   const originalPackageNoLongerActive = packages !== null && originalPackageId !== null && !packages.some((p) => p.id === originalPackageId);
 
-  // ADR-105 decision 8 (addendum) — a basis-aware preview of what this
-  // attempt would actually record, mirroring OrderResendService::resend()'s
-  // own formulas exactly rather than a raw cost-diff that's only
-  // accurate for the Standard/lapsed-affiliate basis. A tier-affiliate
-  // order's affiliateProfit moves with live cost too (the tier
-  // multiplier), so a raw cost diff understates what the platform
-  // actually absorbs — the founder-facing bug this preview exists to
-  // avoid.
-  const impact = selectedPackage ? computeResendImpact(order, selectedPackage) : null;
-
-  // ADR-105 decision 4 — a fast, same-request echo of the guard
-  // OrderResendService::resend() enforces for real: any non-Member
-  // basis whose projected platformProfit would go negative is a
-  // genuine loss, not just an absorbed markup dip. Never true for a
-  // Member order — memberPrice = cost × (1 + markup%) with markup% ≥ 0
-  // can never sell below cost (decision 3).
-  const wouldSellBelowCost = Boolean(impact && order.pricing_basis !== "member" && impact.newPlatformProfit < 0);
+  // ADR-105 2026-10-06 decision 12 — the backend's own figures for this
+  // package; nothing is re-derived here (a TypeScript copy of the
+  // formula had already drifted from the backend once).
+  const impact = selectedPackage?.impact ?? null;
+  const wouldSellBelowCost = Boolean(impact?.override_required);
+  const blockedReason = impact?.blocked_reason ?? null;
   const overrideRequired = order.resend_unsafe_to_override || wouldSellBelowCost;
 
   // ADR-102 decision 10 — the effective (possibly corrected) Player/
@@ -211,7 +150,8 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   }
 
   const blockedOnValidation = requiresPlayerValidation && verifyResult !== "valid";
-  const canSubmit = packageId !== null && !blockedOnValidation && !submitting && (!overrideRequired || overrideReason.trim() !== "");
+  const canSubmit =
+    packageId !== null && blockedReason === null && !blockedOnValidation && !submitting && (!overrideRequired || overrideReason.trim() !== "");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -223,6 +163,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
         await resendSandboxOrderDelivery(token, order.id, {
           package_id: packageId,
           note: note.trim() || undefined,
+          override_reason: overrideReason.trim() || undefined,
           simulate_success: simulateSuccess,
           error_code: !simulateSuccess ? errorCode.trim() || undefined : undefined,
           error_message: !simulateSuccess ? errorMessage.trim() || undefined : undefined,
@@ -268,13 +209,17 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           This order&apos;s original package is no longer active — choose a replacement package below.
         </p>
       )}
-      {wouldSellBelowCost && impact && (
-        // ADR-105 decision 4/8 — a genuine loss, distinct from
-        // ADR-102's "unlikely to help" warning above: this one is about
-        // money, not futility, so it gets its own copy and its own
-        // error tone.
+      {blockedReason && (
         <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
-          This resend would record a platform loss of {formatRm(Math.abs(impact.newPlatformProfit))} — live cost now exceeds
+          {blockedReason}
+        </p>
+      )}
+      {wouldSellBelowCost && impact && !blockedReason && (
+        // ADR-105 decision 11 — a genuine loss on any basis, distinct
+        // from ADR-102's "unlikely to help" warning below: this one is
+        // about money, not futility, so it gets its own copy and tone.
+        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          This resend would record a platform loss of {formatRm(Math.abs(impact.platform_profit))} — live cost now exceeds
           what was actually collected for this order. Provide a reason below to proceed anyway and accept the loss.
         </p>
       )}
@@ -305,47 +250,46 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
                 // without it an admin has to guess which is which.
                 ...packages.map((p) => ({
                   value: String(p.id),
-                  label: `${p.name} — ${p.supplier_package_ref} — ${formatRm(p.cost_price)}`,
+                  label: `${p.name} — ${p.supplier_package_ref ?? "—"} — ${formatRm(p.impact.cost_price)}${p.impact.blocked_reason ? " — unavailable" : ""}`,
                 })),
               ]}
             />
           )}
         </div>
 
-        {selectedPackage && impact && (
-          // ADR-105 decision 8 (addendum) — basis-aware, mirrors
-          // OrderResendService::resend()'s own formulas (see
-          // computeResendImpact() above) rather than a raw cost diff,
-          // which understates the real impact on a tier-affiliate
-          // order (the tier multiplier moves affiliateProfit too).
+        {selectedPackage && impact && !blockedReason && (
+          // ADR-105 2026-10-06 decisions 9-10 — the backend's figures:
+          // the affiliate's share stays as checkout set it, the
+          // platform takes what is left after this package's live cost.
           <div className="rounded-lg bg-subtle px-3 py-2 text-sm space-y-1">
             <div className="flex justify-between text-ink-muted">
-              <span>Original cost (snapshot)</span>
+              {/* ADR-105 2026-10-06 decision 13 — a resend moves cost_price to the package it sent. */}
+              <span>Current cost on this order</span>
               <span>{formatRm(order.cost_price)}</span>
             </div>
             <div className="flex justify-between text-ink-muted">
               <span>Live cost (this package now)</span>
-              <span>{formatRm(selectedPackage.cost_price)}</span>
+              <span>{formatRm(impact.cost_price)}</span>
             </div>
-            {impact.newAffiliateProfit !== null && order.pricing_basis !== "reseller-wallet" && (
+            {impact.affiliate_profit !== 0 && (
               <div className="flex justify-between text-ink-muted">
-                <span>Affiliate profit (this attempt)</span>
-                <span>{formatRm(impact.newAffiliateProfit)}</span>
+                <span>Affiliate profit (unchanged)</span>
+                <span>{formatRm(impact.affiliate_profit)}</span>
               </div>
             )}
             <div
-              className={`flex justify-between font-medium ${impact.newPlatformProfit < 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}
+              className={`flex justify-between font-medium ${impact.platform_profit < 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}
             >
               <span>Platform profit (this attempt)</span>
-              <span>{impact.newPlatformProfit < 0 ? formatRm(impact.newPlatformProfit) : `+${formatRm(impact.newPlatformProfit)}`}</span>
+              <span>{impact.platform_profit < 0 ? formatRm(impact.platform_profit) : `+${formatRm(impact.platform_profit)}`}</span>
             </div>
             <div
-              className={`flex justify-between font-medium ${impact.newPlatformProfit < order.platform_profit ? "text-error-600 dark:text-error-400" : impact.newPlatformProfit > order.platform_profit ? "text-success-600 dark:text-success-400" : "text-ink-muted"}`}
+              className={`flex justify-between font-medium ${impact.platform_profit < order.platform_profit ? "text-error-600 dark:text-error-400" : impact.platform_profit > order.platform_profit ? "text-success-600 dark:text-success-400" : "text-ink-muted"}`}
             >
               <span>Change vs expected ({formatRm(order.platform_profit)})</span>
               <span>
-                {impact.newPlatformProfit - order.platform_profit >= 0 ? "+" : ""}
-                {formatRm(impact.newPlatformProfit - order.platform_profit)}
+                {impact.platform_profit - order.platform_profit >= 0 ? "+" : ""}
+                {formatRm(impact.platform_profit - order.platform_profit)}
               </span>
             </div>
           </div>
@@ -442,7 +386,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
             <Label htmlFor="resend_override_reason">Override Reason (Required)</Label>
             <Input
               id="resend_override_reason"
-              placeholder="Why resend anyway despite the unlikely-to-help warning?"
+              placeholder="Why resend anyway?"
               value={overrideReason}
               onChange={(e) => setOverrideReason(e.target.value)}
             />
