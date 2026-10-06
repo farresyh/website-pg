@@ -584,7 +584,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-10-04).** The platform is feature-complete and live
+**Where things stand (2026-10-06).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -597,20 +597,23 @@ any analysis that needs the distinction must judge each order (corrected
 2026-09-30, see `docs/build-log.md`). The older "no external customers" line
 was wrong from at least then on.
 
-**On `staging`, not yet on `main`** (release when the founder asks):
+**On `staging`, not yet on `main`:** nothing (2026-10-06).
+
+**Release 2026-10-06 (`staging`→`main`, PR #362), deploy verified.** The
+server runs `3d27145`; migration batch 32 (the resent-order cost
+correction) Ran; `/api/health` ok, Horizon running.
 - #356 + #357: per-game player-input contract on every channel (pre-launch
   audit item 63, Bot bullet; ADR-097 2026-10-05 addendum). Reseller API docs
-  v1.3.0. No migration. **At release the founder sets Valorant (×5) and any
-  other non-numeric game to Text in Product Manager** — their orders are
-  refused until then — and adds ZZZ's server field.
+  v1.3.0. Every game is still "Digits only" (0 prod orders ever had a
+  non-digit User ID); **before selling a game whose User ID has letters
+  (e.g. Valorant), the founder sets it to Text in Product Manager**, and
+  adds ZZZ's server field.
 - #360: one resend seam (pre-launch audit item 63, member-resend bullet;
   ADR-105 2026-10-06 addendum). Residual profit on every basis incl.
   Member, affiliate share frozen, a resend writes `cost_price`, locked
   write, rejected resends leave a row, backend-computed resend preview.
-  **Has a data migration** (`cost_price` on resent orders 15/19, profit
-  only where it matches the ledger). **After release:** record orders
-  15/19 and the September accounting summary before/after (COGS and FX
-  variance both +RM 0.18). Also: e2e sqlite runs IMMEDIATE transactions.
+  Its data migration corrected orders 15 and 19 as expected (see
+  `docs/build-log.md`).
 
 **Release 2026-10-05 (`staging`→`main`, PR #354), deploy verified.** The
 server runs `1a446d5`; migration batch 31 (the column rename) Ran;
