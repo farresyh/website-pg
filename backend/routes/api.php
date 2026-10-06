@@ -535,6 +535,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/export', [OrderController::class, 'export']);
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::post('/{order}/retry-delivery', [OrderController::class, 'retryDelivery']);
+        // ADR-105 2026-10-06 decision 15 — the resend modal's preview.
+        Route::get('/{order}/resend-options', [OrderController::class, 'resendOptions']);
         Route::post('/{order}/resend', [OrderController::class, 'resend']);
         // ADR-096 — manual poll: a synchronous, read-only status-check
         // call, deliberately exempt from ADR-014's "never sync" rule.
@@ -562,6 +564,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [SandboxOrderController::class, 'index']);
         Route::post('/', [SandboxOrderController::class, 'store']);
         Route::get('/{order}', [SandboxOrderController::class, 'show']);
+        Route::get('/{order}/resend-options', [SandboxOrderController::class, 'resendOptions']);
         Route::post('/{order}/resend', [SandboxOrderController::class, 'resend']);
         // ADR-026 decision 4a's sandbox counterpart.
         Route::post('/{order}/mark-delivered', [SandboxOrderController::class, 'markDelivered']);

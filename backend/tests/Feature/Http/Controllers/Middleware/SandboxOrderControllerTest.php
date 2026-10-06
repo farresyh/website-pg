@@ -237,6 +237,20 @@ class SandboxOrderControllerTest extends TestCase
      * mechanism resolves a needs_review test order, not just a failed
      * one.
      */
+    /** ADR-105 2026-10-06 decision 15 — the sandbox has its own preview, scoped to is_test orders. */
+    public function test_resend_options_returns_each_packages_impact_for_a_sandbox_order(): void
+    {
+        [$game, $package] = $this->gameWithPackage();
+        $this->actingAsAdmin();
+        $orderId = $this->createSandboxOrder($game, $package);
+
+        $response = $this->getJson("/api/middleware/sandbox/{$orderId}/resend-options")->assertOk();
+
+        $response->assertJsonPath('data.0.id', $package->id);
+        $response->assertJsonPath('data.0.impact.blocked_reason', null);
+        $this->assertIsInt($response->json('data.0.impact.platform_profit'));
+    }
+
     public function test_resend_from_needs_review_is_allowed(): void
     {
         [$game, $package] = $this->gameWithPackage();
