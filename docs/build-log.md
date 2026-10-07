@@ -2916,7 +2916,7 @@ FAQ screen in a browser (see gotchas) — founder click-through owed.
   fixed it. CI starts clean.
 - A dev server restarted with different `NEXT_PUBLIC_*` values kept the old
   inlined ones until `.next` was removed.
-- Local admin dev didn't hydrate (unstyled login, native form reload).
+- Local admin login failed in the browser (form did a native reload, no API call). First read as "didn't hydrate" — wrong: prod's login page looks identically plain. Cause not found; the API login itself returned 200 via curl.
 - `pint app/Services` reformats dozens of unrelated files — pass files, not
   directories.
 
@@ -2928,3 +2928,42 @@ option. Founder confirmed it's intentional.
 check; clear the 38 identical per-game SEO fields in admin (ADR-120 d5,
 before/after recorded here); GSC Request Indexing. Founder-deferred: GA4,
 default OG image, Bing Webmaster Tools.
+
+## 2026-10-08 — Release #369 (`staging`→`main`): ADR-120 (#364–#368)
+
+**Deploy.** Merged by the founder; CI on `main` green incl. `deploy`; the
+server runs `acaecbd`; `2026_10_08_000000_create_faqs_table` Ran in batch
+33 (5 FAQ rows); `/api/health` ok (database, queue, horizon).
+
+**Live checks (curl, raw HTML).**
+
+| | pekangame.com | fixfastapp.com |
+| --- | --- | --- |
+| MLBB title | own store name, no tokens | own store name, no tokens |
+| canonical / og:url | `https://pekangame.com/order/…` | `https://fixfastapp.com/order/…` |
+| Organization / Breadcrumb url | pekangame.com | fixfastapp.com |
+| sitemap / robots `Sitemap:` / llms.txt | 44 / 1 / 42 on pekangame.com | 42 / 1 / 41 on fixfastapp.com |
+| `offers` | RM1.06–RM2044.65, 49 | RM1.06–RM2053.54, 49 (affiliate markup) |
+| `aggregateRating` | 5, 4 reviews | 5, 3 reviews (brand-scoped) |
+| packages in HTML | 49 (37 CSS-hidden) | 49 |
+
+Homepage carries `FAQPage`; `pekangame-storefront.vercel.app` answers
+503. The first fixfastapp.com read right after deploy still showed the
+pekangame.com canonical — a pre-deploy Data Cache entry inside its 60s
+window; a fresh `MISS` was correct.
+
+**ADR-120 decision 5 cleanup (founder, admin UI).** Before: 38/38 active
+games had the same per-game `seo_title`/`seo_description`. Game 1 and 2
+were cleared by Claude via the admin screen, the rest by the founder.
+After: 0 active games with a per-game title/description; 38 OG images
+kept; `seo_title_local` untouched. Live titles now come from the primary's
+BM template on every brand, e.g. `Top Up PUBG Mobile Global Murah &
+Instant Delivery | FixFast`.
+
+**Search Console.** MLBB page: "unknown to Google" → Request Indexing →
+"Indexing requested". Homepage (already indexed): re-index requested, the
+confirmation wasn't seen. Other game pages left to the sitemap.
+
+**Still open.** Founder click-through of SEO › FAQ in admin; GA4, default
+OG image, Bing Webmaster Tools (deferred); re-check GSC coverage for
+canonical/duplicate reports across both domains in ~2 weeks (ADR-120).
