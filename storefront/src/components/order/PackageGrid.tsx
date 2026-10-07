@@ -43,13 +43,12 @@ function PackageGrid({ packages, selectedId, onSelect, quotaRemainingRm = null }
   });
 
   const collapsible = filteredPackages.length > COLLAPSED_COUNT + 3;
-  let shown = filteredPackages;
-  if (collapsible && !expanded) {
-    shown = filteredPackages.slice(0, COLLAPSED_COUNT);
-    const selected = filteredPackages.find((p) => p.id === selectedId);
-    if (selected && !shown.includes(selected)) shown = [...shown, selected];
-  }
-  const hiddenCount = filteredPackages.length - shown.length;
+  // ADR-120 decision 8: every package stays in the HTML — collapsed ones
+  // are hidden with CSS, not sliced out — so a crawler that reads the raw
+  // page (AI bots don't run JS) still sees the full price list.
+  const isCollapsed = (pkg: GamePackage, index: number) =>
+    collapsible && !expanded && index >= COLLAPSED_COUNT && pkg.id !== selectedId;
+  const hiddenCount = filteredPackages.filter(isCollapsed).length;
 
   const tabs: { id: TabType; label: string; count: number }[] = [
     { id: "all", label: "All", count: packages.length },
@@ -94,7 +93,7 @@ function PackageGrid({ packages, selectedId, onSelect, quotaRemainingRm = null }
       )}
 
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
-        {shown.map((pkg) => {
+        {filteredPackages.map((pkg, index) => {
           const selected = pkg.id === selectedId;
           // ADR-027's 2026-08-29 addendum, decisions 9/21: a display-only
           // savings figure — the actual charged price is always computed
@@ -126,7 +125,7 @@ function PackageGrid({ packages, selectedId, onSelect, quotaRemainingRm = null }
               type="button"
               onClick={() => onSelect(pkg.id)}
               aria-pressed={selected}
-              className={`relative flex min-h-11 flex-col items-start gap-1 rounded-md border-2 p-3 text-left transition-all ${
+              className={`relative ${isCollapsed(pkg, index) ? "hidden" : "flex"} min-h-11 flex-col items-start gap-1 rounded-md border-2 p-3 text-left transition-all ${
                 selected
                   ? "border-primary bg-primary-fixed neo"
                   : "border-ink bg-surface-container-lowest neo-hover hover:bg-surface-container-low"
