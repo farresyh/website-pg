@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Auth\AccountOwnerType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -141,6 +142,33 @@ class Affiliate extends Model
     public static function primary(): self
     {
         return static::query()->where('is_primary', true)->sole();
+    }
+
+    /**
+     * ADR-120 decision 2: the one place a brand's public storefront
+     * origin is resolved — canonical tags, sitemap, robots, llms.txt,
+     * JSON-LD, and customer-message links. The platform brand's
+     * hostnames are deploy config (`STOREFRONT_URL`); an affiliate's is
+     * its active primary domain, else its first active one (a row can
+     * keep a stale primary flag mid-failover), else the platform's.
+     * Never the request host — an alias (`www.`) must not self-canonicalise.
+     */
+    public function canonicalOrigin(): string
+    {
+        $platform = rtrim((string) config('services.storefront.url'), '/');
+
+        if ($this->is_primary) {
+            return $platform;
+        }
+
+        $host = AffiliateDomain::withoutAffiliateScope()
+            ->where('affiliate_id', $this->id)
+            ->where('status', AffiliateDomainStatus::Active->value)
+            ->orderByDesc('is_primary')
+            ->orderBy('id')
+            ->value('hostname');
+
+        return $host !== null ? 'https://'.$host : $platform;
     }
 
     /**

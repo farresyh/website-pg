@@ -69,6 +69,9 @@ class BrandingController extends Controller
 
                 return [
                     'store_name' => $storeName,
+                    // ADR-120 decision 2. Busted on a domain change by
+                    // AffiliateDomainService::propagateChange().
+                    'canonical_origin' => $affiliate->canonicalOrigin(),
                     'description' => $branding?->description,
                     // ADR-060 PR-6: derived from `logo_path` via the
                     // gallery disk — a plain string URL or null, safe to

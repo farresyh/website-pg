@@ -2,10 +2,10 @@
 
 namespace App\Services\Affiliate\Domain;
 
+use App\Http\Controllers\BrandingController;
 use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Services\Affiliate\AffiliateDomainStatus;
-use App\Services\Cache\NextRevalidation;
 use App\Services\Cors\ActiveCustomDomainOrigins;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -86,7 +86,7 @@ class AffiliateDomainService
         }
 
         $this->applyState($domain, $state);
-        $this->propagateChange();
+        $this->propagateChange($affiliate->id);
 
         return $domain->refresh();
     }
@@ -122,7 +122,7 @@ class AffiliateDomainService
         $this->applyState($domain, $state);
 
         if ([$domain->status, $domain->is_primary] !== $before) {
-            $this->propagateChange();
+            $this->propagateChange($domain->affiliate_id);
         }
 
         return $domain->refresh();
@@ -150,7 +150,7 @@ class AffiliateDomainService
             $this->failoverPrimary($affiliate);
         }
 
-        $this->propagateChange();
+        $this->propagateChange($domain->affiliate_id);
     }
 
     /**
@@ -173,7 +173,7 @@ class AffiliateDomainService
             $domain->forceFill(['is_primary' => true])->save();
         });
 
-        $this->propagateChange();
+        $this->propagateChange($domain->affiliate_id);
     }
 
     /**
@@ -188,7 +188,7 @@ class AffiliateDomainService
             ->whereNotNull('provider_ref')
             ->update(['is_primary' => false, 'status' => AffiliateDomainStatus::Suspended]);
 
-        $this->propagateChange();
+        $this->propagateChange($affiliate->id);
     }
 
     /**
@@ -236,7 +236,7 @@ class AffiliateDomainService
 
         $affiliate->customDomains()->forceDelete();
 
-        $this->propagateChange();
+        $this->propagateChange($affiliate->id);
     }
 
     /**
@@ -269,7 +269,7 @@ class AffiliateDomainService
             $this->failoverPrimary($affiliate);
         }
 
-        $this->propagateChange();
+        $this->propagateChange($domain->affiliate_id);
     }
 
     /**
@@ -283,11 +283,15 @@ class AffiliateDomainService
      * otherwise; the cache forget is a single store delete. On failure
      * the TTLs are the backstop. No cross-Vercel-instance `proxy.ts`
      * invalidation is attempted — its TTL (now 15s) is the floor.
+     *
+     * ADR-120: the brand's cached branding payload too — it carries
+     * `canonical_origin`, which follows the primary domain.
+     * `BrandingController::forgetCache()` also runs the Next purge.
      */
-    private function propagateChange(): void
+    private function propagateChange(int $affiliateId): void
     {
         $this->corsOrigins->flush();
-        NextRevalidation::purge();
+        BrandingController::forgetCache($affiliateId);
     }
 
     /**
