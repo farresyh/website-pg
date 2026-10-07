@@ -3,6 +3,7 @@ import SiteFooter from "@/components/layout/SiteFooter";
 import OrderStatusTracker from "@/components/order/OrderStatusTracker";
 import FaqSection from "@/components/home/FaqSection";
 import { getBranding } from "@/lib/branding";
+import { listFaqs } from "@/lib/faq";
 
 interface OrderStatusPageProps {
   params: Promise<{ orderNumber: string }>;
@@ -19,7 +20,7 @@ export async function generateMetadata({ params }: OrderStatusPageProps): Promis
  * component, two entry points, per the founder's own steer.
  */
 export default async function OrderStatusPage({ params }: OrderStatusPageProps) {
-  const { orderNumber } = await params;
+  const [{ orderNumber }, faqs] = await Promise.all([params, listFaqs()]);
 
   return (
     <>
@@ -29,7 +30,7 @@ export default async function OrderStatusPage({ params }: OrderStatusPageProps) 
           <OrderStatusTracker orderNumber={orderNumber} />
         </div>
         <div className="mx-auto max-w-[1200px] px-4">
-          <FaqSection />
+          <FaqSection items={faqs} />
         </div>
       </main>
       <SiteFooter />
