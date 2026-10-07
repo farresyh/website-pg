@@ -1,17 +1,21 @@
 import { CaretDown } from "@phosphor-icons/react/dist/ssr";
 import SectionHeading from "@/components/home/SectionHeading";
-import { FAQ_ITEMS } from "@/lib/placeholder-data";
+import type { FaqItem } from "@/lib/faq";
 
 /**
  * Native <details>/<summary> — fully keyboard accessible and
- * screen-reader friendly without any custom JS accordion logic.
+ * screen-reader friendly without any custom JS accordion logic. The
+ * answers stay in the HTML while collapsed, which is what lets the
+ * homepage `FAQPage` JSON-LD match visible content (ADR-120 decision 13).
  */
-export default function FaqSection() {
+export default function FaqSection({ items }: { items: FaqItem[] }) {
+  if (items.length === 0) return null;
+
   return (
     <section className="mx-auto max-w-[840px] px-4 py-9 lg:py-12">
       <SectionHeading title="Frequently Asked Questions" />
       <div className="flex flex-col gap-3">
-        {FAQ_ITEMS.map((item) => (
+        {items.map((item) => (
           <details
             key={item.question}
             className="group rounded-lg border-2 border-ink bg-surface-container-lowest neo open:bg-surface-container-low"
