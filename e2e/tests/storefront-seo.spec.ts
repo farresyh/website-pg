@@ -16,4 +16,6 @@ test("game page serves crawler-ready meta", async ({ request }) => {
 
   expect(html).toContain(`<link rel="canonical" href="${STOREFRONT_URL}/order/${E2E_GAME_SLUG}"/>`);
   expect(html).toContain('"@type":"Product"');
+  // ADR-120 decision 9: the guest Standard price range, in MYR.
+  expect(html).toMatch(/"offers":\{"@type":"AggregateOffer","priceCurrency":"MYR","lowPrice":"\d+\.\d{2}"/);
 });

@@ -6,6 +6,7 @@ import SiteFooter from "@/components/layout/SiteFooter";
 import MemberAwareOrderForm from "@/components/order/MemberAwareOrderForm";
 import OrderFormSkeleton from "@/components/skeletons/OrderFormSkeleton";
 import ProductHeaderCard from "@/components/order/ProductHeaderCard";
+import GameFactLine from "@/components/order/GameFactLine";
 import GameReviewsSection from "@/components/order/GameReviewsSection";
 import { getGame, getGamePackages } from "@/lib/catalog";
 import { listPaymentChannels } from "@/lib/payment-methods";
@@ -64,6 +65,35 @@ export default async function OrderPage({ params }: OrderPageProps) {
   const pageUrl = `${origin}/order/${game.slug}`;
   const { description } = resolveGameMeta(game, settings, branding.storeName);
 
+  // ADR-120 decision 9: `offers` from the anonymous `packages` above —
+  // the guest Standard price per brand, the same number every card shows
+  // and checkout charges a guest (never a member/personalised price).
+  const prices = packages.map((pkg) => pkg.priceRm);
+  const offers =
+    prices.length > 0
+      ? {
+          "@type": "AggregateOffer",
+          priceCurrency: "MYR",
+          lowPrice: Math.min(...prices).toFixed(2),
+          highPrice: Math.max(...prices).toFixed(2),
+          offerCount: prices.length,
+          availability: "https://schema.org/InStock",
+          url: pageUrl,
+        }
+      : null;
+  // ADR-120 decision 10: only with real, approved, brand-scoped reviews —
+  // the same data GameReviewsSection shows on this page.
+  const aggregateRating =
+    gameReviews.review_count > 0
+      ? {
+          "@type": "AggregateRating",
+          ratingValue: Number(gameReviews.average_rating.toFixed(1)),
+          reviewCount: gameReviews.review_count,
+          bestRating: 5,
+          worstRating: 1,
+        }
+      : null;
+
   // ADR-029 addendum decision 12: Product + Breadcrumb JSON-LD, each toggled per reseller_seo_settings.
   const productJsonLd = settings.schema_product_enabled
     ? {
@@ -74,6 +104,8 @@ export default async function OrderPage({ params }: OrderPageProps) {
         description,
         ...(game.schemaBrand ? { brand: { "@type": "Brand", name: game.schemaBrand } } : {}),
         ...(game.schemaCategory ? { category: game.schemaCategory } : {}),
+        ...(offers ? { offers } : {}),
+        ...(aggregateRating ? { aggregateRating } : {}),
       }
     : null;
 
@@ -112,6 +144,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
         <div className="mx-auto max-w-[1200px] px-4 pb-10">
           <ProductHeaderCard game={game} />
+          <GameFactLine game={game} packages={packages} paymentChannels={paymentChannels} />
           {/* ADR-071 PR2b — the membership-cookie read lives inside this
             * Suspense child (MemberAwareOrderForm), so it never blocks
             * the route's own `loading.tsx`. A guest resolves instantly;
