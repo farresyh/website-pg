@@ -129,11 +129,12 @@ export async function proxy(request: NextRequest) {
 
   // ADR-060 PR-5 — an unrecognised custom domain gets the hard
   // "store unavailable" page, not the fallback storefront. Skipped for
-  // the page itself (avoid a rewrite loop).
+  // the page itself (avoid a rewrite loop). ADR-120 decision 14: with a
+  // real 503 (what the page itself says), not a 200 a crawler could index.
   if (pathname !== "/store-unavailable") {
     const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
     if (host && !(await isKnownHost(host))) {
-      return NextResponse.rewrite(new URL("/store-unavailable", request.url));
+      return NextResponse.rewrite(new URL("/store-unavailable", request.url), { status: 503 });
     }
   }
 

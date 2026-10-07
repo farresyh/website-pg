@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Affiliate;
+use App\Models\AffiliateBranding;
 use App\Models\AffiliateSeoSettings;
 use App\Models\CrawlerRule;
+use App\Models\Faq;
 use App\Models\Redirect;
 use App\Services\Cache\NextRevalidation;
 use App\Support\StorefrontBrand;
@@ -153,6 +155,48 @@ class SeoController extends Controller
         );
 
         return response()->json($payload);
+    }
+
+    /**
+     * ADR-120 decision 13: the platform FAQ for the homepage text and its
+     * `FAQPage` JSON-LD, `{store_name}` resolved against the serving brand
+     * (same substitution as BrandingController's footer/legal text).
+     */
+    public function faqs(): JsonResponse
+    {
+        $affiliate = $this->brand->get();
+
+        $payload = Cache::remember(
+            "catalog.public.faqs.{$affiliate->id}",
+            self::CACHE_TTL_SECONDS,
+            function () use ($affiliate) {
+                $storeName = AffiliateBranding::query()->where('affiliate_id', $affiliate->id)->value('store_name')
+                    ?? $affiliate->business_name;
+
+                return Faq::query()
+                    ->where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->get(['question', 'answer'])
+                    ->map(fn (Faq $faq) => [
+                        'question' => str_replace('{store_name}', $storeName, $faq->question),
+                        'answer' => str_replace('{store_name}', $storeName, $faq->answer),
+                    ])
+                    ->all();
+            },
+        );
+
+        return response()->json($payload);
+    }
+
+    /** The FAQ is one platform set, so a write invalidates every brand's copy. */
+    public static function forgetFaqCache(): void
+    {
+        foreach (Affiliate::query()->pluck('id') as $affiliateId) {
+            Cache::forget("catalog.public.faqs.{$affiliateId}");
+        }
+
+        NextRevalidation::purge();
     }
 
     public static function forgetCache(int $affiliateId): void

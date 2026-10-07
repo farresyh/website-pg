@@ -1,12 +1,14 @@
 import { Suspense } from "react";
-import type { Metadata } from "next";
+import { canonicalMetadata } from "@/lib/seo";
+import type { Metadata, ResolvingMetadata } from "next";
 import SiteFooter from "@/components/layout/SiteFooter";
 import TrackOrderClient from "@/components/order/TrackOrderClient";
 import { getBranding } from "@/lib/branding";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
   const branding = await getBranding();
   return {
+    ...(await canonicalMetadata("/track-order", parent)),
     title: `Track Order - ${branding.storeName}`,
   };
 }

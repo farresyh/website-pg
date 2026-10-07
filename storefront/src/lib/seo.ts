@@ -1,3 +1,4 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
@@ -93,16 +94,22 @@ export async function getCrawlerRules(): Promise<CrawlerRuleWire[]> {
 }
 
 /**
- * ADR-028 addendum decision 13 / ADR-029 addendum decision 8: the one
- * template convention this codebase uses everywhere — only the exact
- * literal tokens are replaced, any other brace sequence (a typo, an
- * unrecognized token) is left verbatim, no error.
+ * ADR-120 decision 3: a page's canonical + og:url, as paths that the
+ * root layout's `metadataBase` (the brand's canonical origin) resolves.
+ * Setting `openGraph` on a page replaces the parent's whole object
+ * (Next metadata merging), so the inherited OG image is carried over
+ * unless the page passes its own.
  */
-export function renderTemplate(template: string, tokens: Record<string, string>): string {
-  return Object.entries(tokens).reduce(
-    (result, [key, value]) => result.split(`{${key}}`).join(value),
-    template,
-  );
+export async function canonicalMetadata(
+  path: string,
+  parent: ResolvingMetadata,
+  ogImage?: string | null,
+): Promise<Pick<Metadata, "alternates" | "openGraph">> {
+  const inheritedImages = (await parent).openGraph?.images ?? [];
+  return {
+    alternates: { canonical: path },
+    openGraph: { url: path, images: ogImage ? [{ url: ogImage }] : inheritedImages },
+  };
 }
 
 /**

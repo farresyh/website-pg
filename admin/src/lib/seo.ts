@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api-client";
 
-/** ADR-029 — SEO Management: Overview, Global Settings/Templates, Game SEO, Redirects, Crawler. `Scripts` removed by ADR-101 decision 9. */
+/** ADR-029 — SEO Management: Overview, Global Settings/Templates, Game SEO, Redirects, FAQ, Crawler. `Scripts` removed by ADR-101 decision 9. */
 
 export interface SeoOverview {
   games: {
@@ -94,6 +94,17 @@ export interface Redirect {
 
 export type SaveRedirectValues = Pick<Redirect, "from_path" | "to_path" | "status_code">;
 
+/** ADR-120 decision 13: platform-wide FAQ, `{store_name}` resolved per brand on the storefront. */
+export interface Faq {
+  id: number;
+  question: string;
+  answer: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export type SaveFaqValues = Omit<Faq, "id">;
+
 export interface CrawlerRule {
   id: number;
   bot_name: string;
@@ -149,6 +160,22 @@ export function updateRedirect(token: string, id: number, values: SaveRedirectVa
 
 export function deleteRedirect(token: string, id: number) {
   return apiFetch<null>(`/api/seo/redirects/${id}`, { method: "DELETE", token });
+}
+
+export function listFaqs(token: string) {
+  return apiFetch<Faq[]>("/api/seo/faqs", { token });
+}
+
+export function createFaq(token: string, values: SaveFaqValues) {
+  return apiFetch<Faq>("/api/seo/faqs", { method: "POST", token, body: values });
+}
+
+export function updateFaq(token: string, id: number, values: SaveFaqValues) {
+  return apiFetch<Faq>(`/api/seo/faqs/${id}`, { method: "PUT", token, body: values });
+}
+
+export function deleteFaq(token: string, id: number) {
+  return apiFetch<null>(`/api/seo/faqs/${id}`, { method: "DELETE", token });
 }
 
 export function listCrawlerRules(token: string) {

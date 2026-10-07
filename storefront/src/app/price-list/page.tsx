@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
+import { canonicalMetadata } from "@/lib/seo";
 import { notFound } from "next/navigation";
 import SiteFooter from "@/components/layout/SiteFooter";
 import ResellerPriceListTable from "@/components/price-list/ResellerPriceListTable";
@@ -6,9 +7,10 @@ import { getBranding } from "@/lib/branding";
 import { getResellerPriceList } from "@/lib/reseller-price-list";
 import { resolveWhatsappHref } from "@/lib/whatsapp";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
   const branding = await getBranding();
   return {
+    ...(await canonicalMetadata("/price-list", parent)),
     title: `Reseller Price List - ${branding.storeName}`,
     description: `Real-time wholesale top-up pricing for ${branding.storeName} reseller tiers. See the rates before you sign up.`,
   };

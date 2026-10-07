@@ -2,6 +2,7 @@ import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
 import { catalogCache, safeRead } from "@/lib/cache";
+import { SITE_URL } from "@/lib/site";
 
 /**
  * ADR-028 + its 2026-08-22 addendum — real store branding/footer/legal
@@ -21,6 +22,9 @@ const BrandingFooterGameWireSchema = z.object({
 
 const BrandingWireSchema = z.object({
   store_name: z.string(),
+  // ADR-120 decision 2: the brand's own public origin (its primary
+  // domain), never the request host. Optional so an older backend parses.
+  canonical_origin: z.url().optional(),
   description: z.string().nullable(),
   // ADR-060 PR-6: the brand's uploaded logo, derived server-side from
   // `affiliate_branding.logo_path` (a full URL on the backend host), or
@@ -50,6 +54,8 @@ const BrandingWireSchema = z.object({
 
 export interface Branding {
   storeName: string;
+  /** No trailing slash. Every canonical/sitemap/robots/llms/JSON-LD URL starts here. */
+  canonicalOrigin: string;
   description: string | null;
   logoUrl: string | null;
   faviconUrl: string | null;
@@ -65,6 +71,7 @@ export interface Branding {
 
 const BRANDING_FALLBACK: Branding = {
   storeName: "PekanGame",
+  canonicalOrigin: SITE_URL,
   description: null,
   logoUrl: null,
   faviconUrl: null,
@@ -93,6 +100,7 @@ export async function getBranding(): Promise<Branding> {
       const wire = parseResponse(BrandingWireSchema, raw, "BrandingWire", path);
       return {
         storeName: wire.store_name,
+        canonicalOrigin: (wire.canonical_origin ?? SITE_URL).replace(/\/+$/, ""),
         description: wire.description,
         logoUrl: wire.logo_url,
         faviconUrl: wire.favicon_url ?? null,

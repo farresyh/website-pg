@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
+import { canonicalMetadata } from "@/lib/seo";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import SiteFooter from "@/components/layout/SiteFooter";
@@ -6,9 +7,10 @@ import MembershipClient from "@/components/order/MembershipClient";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
   const branding = await getBranding();
   return {
+    ...(await canonicalMetadata("/membership", parent)),
     title: `Membership - ${branding.storeName}`,
   };
 }
