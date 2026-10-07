@@ -11,8 +11,8 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import BottomNav from "@/components/layout/BottomNav";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
-import { getSeoSettings, jsonLdHtml, renderTemplate } from "@/lib/seo";
-import { SITE_URL } from "@/lib/site";
+import { getSeoSettings, jsonLdHtml } from "@/lib/seo";
+import { resolveSiteMeta } from "@/lib/seo-meta";
 import { getThemePreset, generateThemeCss } from "@/lib/theme-presets";
 
 // ADR-071 PR1: `force-dynamic` removed. Branding/SEO reads now go
@@ -46,22 +46,19 @@ const jetbrainsMono = JetBrains_Mono({
 /**
  * ADR-029 decision 2/5: storefront-wide default meta, falling back to
  * the brand-aware copy when no reseller_seo_settings row (or empty field)
- * exists yet. Resolves {store_name} token live against the resolved brand.
+ * exists yet. Tokens resolve live against the resolved brand (ADR-120
+ * decision 4). ADR-120 decision 3: `metadataBase` is the brand's own
+ * canonical origin, so every page's relative canonical/og:url resolves
+ * onto its primary domain — never pekangame.com on an affiliate's site.
  */
 export async function generateMetadata(): Promise<Metadata> {
   const [settings, branding] = await Promise.all([getSeoSettings(), getBranding()]);
-
-  const defaultTitle = settings.default_meta_title
-    ? renderTemplate(settings.default_meta_title, { store_name: branding.storeName })
-    : `${branding.storeName} - Top Up Games in Malaysia`;
-
-  const defaultDesc = settings.default_meta_description
-    ? renderTemplate(settings.default_meta_description, { store_name: branding.storeName })
-    : `Fast, secure game top-ups at ${branding.storeName}. Delivered in 3 minutes.`;
+  const { title, description } = resolveSiteMeta(settings, branding.storeName);
 
   return {
-    title: defaultTitle,
-    description: defaultDesc,
+    metadataBase: new URL(branding.canonicalOrigin),
+    title,
+    description,
     openGraph: settings.default_og_image ? { images: [{ url: settings.default_og_image }] } : undefined,
   };
 }
@@ -83,13 +80,20 @@ export default async function RootLayout({
 
   // ADR-029 addendum decision 12: Organization JSON-LD, toggled per
   // reseller_seo_settings.schema_organization_enabled.
+  // ADR-120 decision 11: url/logo/sameAs from the brand's own data.
+  // WhatsApp is a chat link, not a profile page, so it isn't an identity.
+  const sameAs = Object.entries(branding.socialLinks)
+    .filter(([network, link]) => network !== "whatsapp" && !!link && /^https?:\/\//.test(link))
+    .map(([, link]) => link as string);
   const organizationJsonLd = settings.schema_organization_enabled
     ? {
         "@context": "https://schema.org",
         "@type": "Organization",
         name: branding.storeName,
-        url: SITE_URL,
+        url: branding.canonicalOrigin,
+        ...(branding.logoUrl ? { logo: branding.logoUrl } : {}),
         ...(branding.supportEmail ? { email: branding.supportEmail } : {}),
+        ...(sameAs.length > 0 ? { sameAs } : {}),
       }
     : null;
 

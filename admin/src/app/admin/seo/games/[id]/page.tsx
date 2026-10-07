@@ -96,7 +96,11 @@ export default function GameSeoEditPage() {
 
       <div className="space-y-6">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Meta</h2>
+          <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Meta</h2>
+          {/* ADR-120 decision 5: per-game SEO is shared by every brand, so it's for exceptions. */}
+          <p className="mb-4 mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Leave blank to use the Meta Templates. Shown on every brand&apos;s storefront — use <code>{"{store_name}"}</code> (and <code>{"{game_name}"}</code>) rather than a store name.
+          </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="seo_title">SEO title ({(game.seo_title ?? "").length}/70)</Label>

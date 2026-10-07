@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getCrawlerRules } from "@/lib/seo";
-import { SITE_URL } from "@/lib/site";
+import { getBranding } from "@/lib/branding";
 
 /** Same request-time reasoning as app/sitemap.ts — an admin-added crawler rule shouldn't need a rebuild to take effect. */
 export const dynamic = "force-dynamic";
@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
  * AGENTS.md), driven by the admin-editable crawler_rules table. An
  * empty/unreachable backend falls back to allow-all rather than
  * erroring — a cold start after deploy shouldn't leave /robots.txt
- * broken.
+ * broken. ADR-120 decision 7: the rules are one platform-owned set for
+ * every brand; only the `Sitemap:` line follows the serving brand.
  */
 export default async function robots(): Promise<MetadataRoute.Robots> {
   let rules: MetadataRoute.Robots["rules"] = { userAgent: "*", allow: "/" };
@@ -38,8 +39,10 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     // Backend unreachable at build/request time — allow-all fallback above stands.
   }
 
+  const { canonicalOrigin } = await getBranding();
+
   return {
     rules,
-    sitemap: `${SITE_URL}/sitemap.xml`,
+    sitemap: `${canonicalOrigin}/sitemap.xml`,
   };
 }

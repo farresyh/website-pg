@@ -1,11 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
+import { canonicalMetadata } from "@/lib/seo";
 import SiteFooter from "@/components/layout/SiteFooter";
 import LegalPageContent from "@/components/legal/LegalPageContent";
 import { getBranding, getLegalContent } from "@/lib/branding";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
   const branding = await getBranding();
   return {
+    ...(await canonicalMetadata("/privacy", parent)),
     title: `Privacy Policy - ${branding.storeName}`,
   };
 }

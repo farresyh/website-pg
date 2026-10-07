@@ -87,6 +87,9 @@ class E2ESeeder extends Seeder
                 // third-party validator call to fake or await.
                 'player_validator_enabled' => false,
                 'validation_rules' => null,
+                // ADR-120: tokens in a per-game field must render
+                // (storefront-seo.spec.ts) — the live bug shipped them raw.
+                'seo_title' => '{game_name} Top Up | {store_name}',
             ],
         );
 

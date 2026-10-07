@@ -1,7 +1,7 @@
 import { getBranding } from "@/lib/branding";
 import { getSeoSettings } from "@/lib/seo";
 import { listGames } from "@/lib/catalog";
-import { SITE_URL } from "@/lib/site";
+import { resolveSiteMeta } from "@/lib/seo-meta";
 
 /**
  * ADR-029 addendum 4 (2026-08-22, same session, founder request):
@@ -23,7 +23,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const [branding, settings, games] = await Promise.all([getBranding(), getSeoSettings(), listGames()]);
 
-  const summary = settings.default_meta_description || branding.description || `${branding.storeName}: fast, secure game top-ups.`;
+  // ADR-120 decisions 1 + 4: the serving brand's own origin, tokens rendered.
+  const origin = branding.canonicalOrigin;
+  const summary = settings.default_meta_description
+    ? resolveSiteMeta(settings, branding.storeName).description
+    : branding.description || `${branding.storeName}: fast, secure game top-ups.`;
 
   const lines: string[] = [];
   lines.push(`# ${branding.storeName}`);
@@ -36,16 +40,16 @@ export async function GET() {
     for (const game of games) {
       const price = game.priceFromRm !== null ? ` - from RM${game.priceFromRm.toFixed(2)}` : "";
       const category = game.category ? ` (${game.category})` : "";
-      lines.push(`- [${game.name}](${SITE_URL}/order/${game.slug})${category}${price}`);
+      lines.push(`- [${game.name}](${origin}/order/${game.slug})${category}${price}`);
     }
     lines.push("");
   }
 
   lines.push("## Pages");
-  lines.push(`- [Track Order](${SITE_URL}/track-order): check the delivery status of a past order`);
-  lines.push(`- [About Us](${SITE_URL}/about-us)`);
-  lines.push(`- [Terms & Conditions](${SITE_URL}/terms)`);
-  lines.push(`- [Privacy Policy](${SITE_URL}/privacy)`);
+  lines.push(`- [Track Order](${origin}/track-order): check the delivery status of a past order`);
+  lines.push(`- [About Us](${origin}/about-us)`);
+  lines.push(`- [Terms & Conditions](${origin}/terms)`);
+  lines.push(`- [Privacy Policy](${origin}/privacy)`);
 
   return new Response(lines.join("\n") + "\n", {
     headers: { "Content-Type": "text/markdown; charset=utf-8" },
