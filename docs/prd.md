@@ -935,7 +935,7 @@ Nothing scheduled; item 63 (Hardening) is the current focus.
    2026-09-18, ADR-108** — SET-9 (the Telegram
    *sender* — the setting fields exist), gallery in-modal picker (paste-URL —
    gallery→WebP + delete referential safety already shipped, ADR-095),
-   SEO `AggregateRating` JSON-LD on the PDP,
+   SEO `AggregateRating` JSON-LD on the PDP (now ADR-120 decision 10, item 71),
    ~~ADR-090's dark-palette backfill (`bumblebee`/`redgiants`/`emerald`/`cobalt`)~~
    — **built 2026-09-24, ADR-113**, the **reseller-family audit's item A3**
    (per-tier rate limit on the Reseller API/Bot) — deliberately deferred design
@@ -1004,6 +1004,14 @@ Nothing scheduled; item 63 (Hardening) is the current focus.
     delivery badge editing (§15 Storefront row) — never done.
 
 ## Buildable when triggered (design done or needs its own ADR)
+
+71. **ADR-120 SEO/GEO overhaul — design accepted 2026-10-08, build in
+    progress.** PR-1 meta + per-brand canonical (fixes literal
+    `{game_name}`/`{store_name}` on all 38 live game pages, affiliate domains
+    pointing at `pekangame.com`), PR-2 GEO (all packages in HTML, `offers`,
+    `aggregateRating`, fact line), PR-3 admin FAQ + `FAQPage`, PR-4 hygiene,
+    then one `staging` → `main` release, admin per-game SEO cleanup and GSC
+    Request Indexing. Founder-deferred: GA4, default OG image, Bing.
 
 64. **Membership renewal reminder over WhatsApp** (ADR-068's deferred half).
     The original blocker, no vendor, is gone: ADR-116's OpenWA
