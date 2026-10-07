@@ -2842,3 +2842,89 @@ reviewer if they kept September's old COGS / variance figures.
 by the new contract. Founder action stays: set a letters-ID game (e.g.
 Valorant) to Text before selling it; add ZZZ's server field.
 
+
+## 2026-10-08 — SEO/GEO overhaul (ADR-120): audit, Vercel 308s, PR #364–#367 + this PR
+
+**Why.** A founder GEO question (claude.ai session) produced findings
+worth checking; a live audit of `pekangame.com` + `fixfastapp.com`, the
+code, and read-only prod data confirmed most of them and found worse:
+- **All 38 game pages served literal tokens to Google** —
+  `Instant {game_name} Top Up & Membership Rates | {store_name}`. Every
+  active game's per-game `seo_title`/`seo_description` held the same
+  template text (1 distinct value), but tokens rendered only in Meta
+  Templates. GSC URL Inspection: game pages "unknown to Google" (sitemap
+  first submitted 2026-10-07), so the fix lands before the first crawl.
+- **Affiliate domains pointed at the platform.** On `fixfastapp.com` the
+  sitemap (42 URLs), robots `Sitemap:`, `llms.txt` (41 links),
+  Organization `url`, Breadcrumb all read `https://pekangame.com`. No
+  `rel=canonical` anywhere — ADR-060 §E decided it, never built.
+- 12 of 49 MLBB packages in the HTML; Product JSON-LD without
+  `offers`/`aggregateRating`; store-unavailable answered 200.
+- The claude.ai session put the meta/JSON-LD decisions under ADR-042;
+  they're ADR-029's. Its robots.txt alarm was already resolved on prod
+  (every AI bot allowed); its "soft 404" for a bad slug already carries
+  `noindex` (left alone).
+
+**Prod config change (founder-approved, browser-driven).** Vercel →
+team `jw-brothers` → `pekangame-storefront` → Domains:
+`www.pekangame.com`, `pekangame.space`, `www.pekangame.space` redirect
+**307 → 308** to `pekangame.com`. Before: `curl -sI` → `HTTP/2 307`
+on all three. After: `HTTP/2 308`, `location: https://pekangame.com/…`
+(path preserved). `pekangame-storefront.vercel.app` left as is (serves
+"Store unavailable", now a real 503).
+
+**Shipped (all into `staging`).**
+- #364 ADR-120 (grilled Q1–Q17) + addenda on ADR-029/042/060.
+- #365 PR-1: `Affiliate::canonicalOrigin()` (platform = `STOREFRONT_URL`,
+  affiliate = active primary domain, never the request host) →
+  `canonical_origin` on `/api/catalog/branding`, busted on any domain
+  change (`AffiliateDomainService::propagateChange`), reused by
+  `CustomerNotificationService` (was its own copy). Storefront
+  `resolveGameMeta`/`resolveSiteMeta` render tokens in every SEO field;
+  `metadataBase` + canonical + `og:url`; per-brand sitemap/robots/llms/
+  Organization (+`logo`/`sameAs`)/Breadcrumb; store-unavailable → 503.
+  e2e `storefront-seo.spec.ts`.
+- #366 PR-2: every package in the HTML (CSS-hidden past 12); Product
+  `offers` (guest Standard price — traced: catalog display and the guest
+  checkout charge call `calculateForAffiliate()` with the same brand
+  args) and `aggregateRating` (approved, brand-scoped, ≥1); a generated
+  per-game fact line. FPX's RM 1 transaction fee stays out of `offers`
+  (founder call: match the price the cards show).
+- #367 PR-3: `faqs` table (seeded with the five hardcoded items), admin
+  SEO › FAQ, per-brand `{store_name}` list, homepage `FAQPage`;
+  `placeholder-data.ts` deleted.
+- This PR: `CrawlerRuleSeeder` defaults match the prod policy (all
+  allowed) with correct labels — `ChatGPT-User`/`PerplexityBot` are
+  answer-time fetchers, not training; adds OAI-SearchBot, Perplexity-User,
+  Claude-SearchBot/-User. `firstOrCreate`, so prod rows are untouched.
+
+**Verified.** Backend 2622/2622; e2e spec green; tsc/eslint clean.
+Local storefront against prod data: PekanGame and FixFast titles render
+with their own store name; MLBB `offers` RM1.06–RM2044.65 (49), rating
+5.0 (4); 49/49 packages in HTML. Local backend with a test affiliate:
+`www.acme.localhost` → canonical, sitemap, robots, llms, Organization
+all on `https://acme.localhost`; unknown host → 503 + noindex. Fact
+line screenshot, contrast 8.43:1 (computed). **Not verified:** the admin
+FAQ screen in a browser (see gotchas) — founder click-through owed.
+
+**Gotchas.**
+- Local `next build` of the storefront fails on `staging` too
+  (`Can't resolve '@vercel/turbopack-next/internal/font/google/font'`) —
+  environment; Vercel Preview builds were the check.
+- e2e reused a stale `storefront/.next/cache/fetch-cache` from an earlier
+  dev run and served the pre-fix title; `rm -rf storefront/.next/cache/fetch-cache`
+  fixed it. CI starts clean.
+- A dev server restarted with different `NEXT_PUBLIC_*` values kept the old
+  inlined ones until `.next` was removed.
+- Local admin dev didn't hydrate (unstyled login, native form reload).
+- `pint app/Services` reformats dozens of unrelated files — pass files, not
+  directories.
+
+**Found, out of scope.** `payment_methods` has no active row since
+2026-10-07 07:46 (FPX switched off) — storefront checkout has no payment
+option. Founder confirmed it's intentional.
+
+**Still to do at release.** `staging`→`main`; live curl + Rich Results
+check; clear the 38 identical per-game SEO fields in admin (ADR-120 d5,
+before/after recorded here); GSC Request Indexing. Founder-deferred: GA4,
+default OG image, Bing Webmaster Tools.

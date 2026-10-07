@@ -597,7 +597,15 @@ any analysis that needs the distinction must judge each order (corrected
 2026-09-30, see `docs/build-log.md`). The older "no external customers" line
 was wrong from at least then on.
 
-**On `staging`, not yet on `main`:** nothing (2026-10-06).
+**Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
+hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
+`cdn.` stay on `pekangame.space`.
+
+**On `staging`, not yet on `main` (2026-10-08):** ADR-120 SEO/GEO overhaul —
+#364 (ADR), #365 (meta tokens + per-brand canonical; fixes literal
+`{game_name}` titles on all 38 live game pages), #366 (all packages in HTML,
+`offers`, `aggregateRating`, fact line), #367 (admin FAQ + `FAQPage`, a
+migration), plus the hygiene/docs PR. See `docs/build-log.md` 2026-10-08.
 
 **Release 2026-10-06 (`staging`→`main`, PR #362), deploy verified.** The
 server runs `3d27145`; migration batch 32 (the resent-order cost
@@ -728,7 +736,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
-| SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage | ADR-029 |
+| SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 on `staging`:** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 Telegram *sender* unbuilt. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
@@ -1005,8 +1013,8 @@ Nothing scheduled; item 63 (Hardening) is the current focus.
 
 ## Buildable when triggered (design done or needs its own ADR)
 
-71. **ADR-120 SEO/GEO overhaul — design accepted 2026-10-08, build in
-    progress.** PR-1 meta + per-brand canonical (fixes literal
+71. **ADR-120 SEO/GEO overhaul — built 2026-10-08, on `staging`, release
+    pending.** PR-1 meta + per-brand canonical (fixes literal
     `{game_name}`/`{store_name}` on all 38 live game pages, affiliate domains
     pointing at `pekangame.com`), PR-2 GEO (all packages in HTML, `offers`,
     `aggregateRating`, fact line), PR-3 admin FAQ + `FAQPage`, PR-4 hygiene,

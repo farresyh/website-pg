@@ -12,11 +12,13 @@ use Illuminate\Database\Seeder;
  * ADR-029 addendum 2 decision 14: "A curated default bot list plus an
  * 'Add Custom Rule' escape hatch" — a fresh install must never ship
  * with an empty crawler_rules table (same reasoning DatabaseSeeder's
- * HeroSlide default already uses). Three groups: search engines and
- * social-preview bots allowed (blocking them would hide the storefront
- * from Google/social link previews — the opposite of this feature's
- * purpose); AI-training bots disallowed by default (the "genuinely
- * timely... AI-scraper blocking" concern the ADR itself names) — all
+ * HeroSlide default already uses). Every curated bot is allowed: search
+ * engines, social link-preview bots, AI answer bots (they fetch a page
+ * live to quote and link it — blocking them removes the store from
+ * ChatGPT/Perplexity/Claude answers), and AI training crawlers (ADR-120:
+ * the platform's choice is to let models learn the brand; block one from
+ * `/admin/seo/crawler` if logs show abuse). Each has its own row so it
+ * can be flipped individually —
  * `is_custom = false` (curated, distinct from an admin's own "Add
  * Custom Rule" entries) and editable/removable from `/admin/seo/crawler`
  * like any other row, this is a starting default, not a locked config.
@@ -28,7 +30,7 @@ class CrawlerRuleSeeder extends Seeder
     private const ALLOWED = [
         // Search engines
         'Googlebot' => 'Google Search',
-        'Bingbot' => 'Bing',
+        'Bingbot' => 'Bing (also feeds Copilot)',
         'Slurp' => 'Yahoo',
         'DuckDuckBot' => 'DuckDuckGo',
         'Baiduspider' => 'Baidu',
@@ -39,16 +41,19 @@ class CrawlerRuleSeeder extends Seeder
         'Twitterbot' => 'X (Twitter) link preview',
         'LinkedInBot' => 'LinkedIn link preview',
         'WhatsApp' => 'WhatsApp link preview',
-    ];
-
-    private const DISALLOWED = [
-        'GPTBot' => 'OpenAI (GPT training)',
-        'ChatGPT-User' => 'OpenAI (ChatGPT browsing)',
-        'CCBot' => 'Common Crawl (feeds many LLM training sets)',
-        'ClaudeBot' => 'Anthropic (Claude training)',
-        'Google-Extended' => 'Google (Gemini/Bard training — separate from Googlebot Search above)',
-        'Bytespider' => 'ByteDance (AI training)',
-        'PerplexityBot' => 'Perplexity AI',
+        // AI answer/search bots — fetch pages live to cite them.
+        'OAI-SearchBot' => 'OpenAI (ChatGPT search index)',
+        'ChatGPT-User' => 'OpenAI (ChatGPT opening a page for a user)',
+        'PerplexityBot' => 'Perplexity (search index)',
+        'Perplexity-User' => 'Perplexity (opening a page for a user)',
+        'Claude-SearchBot' => 'Anthropic (Claude search index)',
+        'Claude-User' => 'Anthropic (Claude opening a page for a user)',
+        // AI training crawlers — content may be used to train models.
+        'GPTBot' => 'OpenAI (model training)',
+        'ClaudeBot' => 'Anthropic (model training)',
+        'Google-Extended' => 'Google (Gemini training — separate from Googlebot Search)',
+        'CCBot' => 'Common Crawl (feeds many training sets)',
+        'Bytespider' => 'ByteDance (model training)',
     ];
 
     public function run(): void
@@ -65,13 +70,6 @@ class CrawlerRuleSeeder extends Seeder
             CrawlerRule::query()->firstOrCreate(
                 ['user_agent' => $userAgent],
                 ['bot_name' => $botName, 'is_allowed' => true, 'is_custom' => false, 'sort_order' => $sortOrder++],
-            );
-        }
-
-        foreach (self::DISALLOWED as $userAgent => $botName) {
-            CrawlerRule::query()->firstOrCreate(
-                ['user_agent' => $userAgent],
-                ['bot_name' => $botName, 'is_allowed' => false, 'is_custom' => false, 'sort_order' => $sortOrder++],
             );
         }
 
