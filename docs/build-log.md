@@ -2813,3 +2813,32 @@ locally, backend 2612/2612.
 **Still to do at release.** Run decision 18's check on prod and record
 orders 15 / 19 before/after, plus the September accounting summary
 before/after (decision 19: COGS and FX variance both +RM 0.18).
+
+## 2026-10-06 — Release #362 (`staging`→`main`): #356, #357, #360
+
+**Deploy.** CI on `main` green incl. `deploy`; the server runs `3d27145`;
+`2026_10_06_000000_correct_cost_price_on_resent_orders` Ran in batch 32;
+`/api/health` ok (database, queue, horizon); Horizon running.
+
+**Data migration, read-only before/after on prod (decision 18–19).**
+
+| | Before | After |
+| --- | --- | --- |
+| Order 15 (standard) | cost 356, profit 37 | cost 365, profit 27 (= ledger 37 − 10) |
+| Order 19 (reseller-wallet) | cost 356, profit 2 | cost 365, profit 2 |
+| Orders 18, 34 | 92 / 9, 92 / 9 | unchanged |
+| September summary COGS | 15042 | 15060 |
+| September FX variance true-up | −144 | −126 |
+| September sales revenue | 15781 | 15781 |
+
+Ledger untouched (order 15: 2 platform entries, sum 27; order 19: 1 entry,
+2). Order Detail now balances: `selling − cost − affiliate = profit` for
+both (27 and 2). No "correction skipped" log line. The RM 0.18 the FX
+variance line had carried was swap cost, not FX; tell the external
+reviewer if they kept September's old COGS / variance figures.
+
+**Player-input contract.** Pre-deploy: 0 orders with a non-digit
+`player_id`, 0 games with `player_id_format` set, so nothing is refused
+by the new contract. Founder action stays: set a letters-ID game (e.g.
+Valorant) to Text before selling it; add ZZZ's server field.
+
