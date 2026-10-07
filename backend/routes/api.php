@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\BudgetEnvelopeController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\CustomerAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
@@ -294,6 +295,7 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::get('/seo/redirects', [SeoController::class, 'redirects']);
     Route::post('/seo/redirects/record-hit', [SeoController::class, 'recordRedirectHit'])->middleware('throttle:60,1,redirect-hit');
     Route::get('/seo/robots', [SeoController::class, 'robots']);
+    Route::get('/seo/faqs', [SeoController::class, 'faqs']); // ADR-120 decision 13
 
     // ADR-060 PR-5 — the storefront `proxy.ts` hits this once per Host to
     // decide whether to serve the brand or the hard "store unavailable"
@@ -884,6 +886,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/redirects', [RedirectController::class, 'store']);
         Route::put('/redirects/{redirect}', [RedirectController::class, 'update']);
         Route::delete('/redirects/{redirect}', [RedirectController::class, 'destroy']);
+        // ADR-120 decision 13: platform-wide FAQ.
+        Route::get('/faqs', [FaqController::class, 'index']);
+        Route::post('/faqs', [FaqController::class, 'store']);
+        Route::put('/faqs/{faq}', [FaqController::class, 'update']);
+        Route::delete('/faqs/{faq}', [FaqController::class, 'destroy']);
 
         // ADR-101 decision 9: reverses ADR-029 addendum 2 decision 13 —
         // admin-authored free-text <script> injection (`/scripts` CRUD,
