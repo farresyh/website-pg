@@ -10,6 +10,7 @@ use App\Services\Order\DuplicateOrderException;
 use App\Services\Order\OrderDraft;
 use App\Services\Order\OrderFactory;
 use App\Services\Order\PaymentStatus;
+use App\Services\Order\PlacedVia;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
@@ -131,6 +132,7 @@ final class CheckoutService
                 // channel picked at checkout would be a false label in
                 // Order Detail and the Reports Payment Methods tab.
                 paymentMethod: $fullyCoveredByVoucher ? 'voucher' : $request->paymentMethod,
+                placedVia: PlacedVia::Storefront,
                 gameId: $request->gameId,
                 packageId: $request->packageId,
                 supplierId: $request->supplierId,

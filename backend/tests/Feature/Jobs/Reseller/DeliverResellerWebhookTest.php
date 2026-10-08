@@ -32,7 +32,7 @@ class DeliverResellerWebhookTest extends TestCase
         $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true]);
         $this->secret = app(ResellerWebhookService::class)->setEndpoint($reseller, 'https://example.test/hook')['secret'];
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'wallet_reseller_id' => $reseller->id,
             'order_number' => 'PG-'.uniqid(),

@@ -20,6 +20,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderNumberService;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
+use App\Services\Order\PlacedVia;
 use App\Services\Order\ReferenceNumberService;
 use App\Services\Pricing\PricingService;
 use App\Services\Supplier\FakeSupplierAdapter;
@@ -130,6 +131,7 @@ class SandboxOrderController extends Controller
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Failed->value,
             'payment_method' => 'sandbox',
+            'placed_via' => PlacedVia::Sandbox->value,
         ]);
 
         return response()->json($order, 201);

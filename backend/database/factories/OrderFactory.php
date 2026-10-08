@@ -6,6 +6,7 @@ use App\Models\Affiliate;
 use App\Models\Order;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Order\PlacedVia;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -58,6 +59,7 @@ class OrderFactory extends Factory
             'affiliate_profit' => 0,
             'payment_status' => PaymentStatus::Paid,
             'delivery_status' => DeliveryStatus::NotStarted,
+            'placed_via' => PlacedVia::Storefront,
         ];
     }
 

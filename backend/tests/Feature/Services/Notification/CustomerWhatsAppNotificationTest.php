@@ -52,7 +52,7 @@ class CustomerWhatsAppNotificationTest extends TestCase
 
     private function failedOrder(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'PG-TEST'.Str::upper(Str::random(5)),
             'customer_email' => 'buyer@example.com',

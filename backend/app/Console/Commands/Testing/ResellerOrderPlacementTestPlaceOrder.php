@@ -5,6 +5,7 @@ namespace App\Console\Commands\Testing;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\Ledger\InsufficientBalanceException;
+use App\Services\Order\PlacedVia;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
 use App\Services\Supplier\SupplierAdapter;
@@ -80,6 +81,7 @@ class ResellerOrderPlacementTestPlaceOrder extends Command
                 costPriceSen: (int) $this->argument('costPriceSen'),
                 standardSellingPriceSen: (int) $this->argument('standardSellingPriceSen'),
                 idempotencyKey: $this->argument('idempotencyKey'),
+                placedVia: PlacedVia::ResellerApi,
                 supplierProductRef: 'CONCURRENCY-TEST-REF',
                 supplierId: $supplierId,
             ));

@@ -15,6 +15,7 @@ use App\Models\WalletTopupAttempt;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\OpenWa\OpenWaClient;
+use App\Services\Order\PlacedVia;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
 use App\Services\PlayerValidation\UnsupportedPlayerValidatorException;
@@ -279,6 +280,7 @@ final class ResellerBotService
                 costPriceSen: $package->cost_price,
                 standardSellingPriceSen: $package->standard_selling_price,
                 idempotencyKey: $idempotencyKey,
+                placedVia: PlacedVia::ResellerBot,
                 supplierProductRef: $package->supplier_package_ref,
                 gameId: $package->game_id,
                 packageId: $package->id,

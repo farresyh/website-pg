@@ -116,7 +116,7 @@ class ResellerWebhookServiceTest extends TestCase
 
     private function order(Reseller $reseller): Order
     {
-        return Order::query()->create([
+        return Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'wallet_reseller_id' => $reseller->id,
             'order_number' => 'PG-'.uniqid(),

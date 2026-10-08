@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Package;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Order\PlacedVia;
 use App\Services\Payment\Chip\ChipCredentialResolver;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -139,6 +140,7 @@ class ChipWebhookSmokeTest extends Command
             'delivery_status' => DeliveryStatus::NotStarted->value,
             'payment_gateway' => 'chip',
             'channel_code' => 'fpx',
+            'placed_via' => PlacedVia::Storefront->value,
             'payment_ref' => $purchaseId,
         ]);
 

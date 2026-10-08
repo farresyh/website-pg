@@ -9,6 +9,7 @@ use App\Models\ResellerTier;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
@@ -50,6 +51,7 @@ class ResellerOrderPlacementServiceTest extends TestCase
             costPriceSen: 900,
             standardSellingPriceSen: 900,
             idempotencyKey: $idempotencyKey,
+            placedVia: PlacedVia::ResellerApi,
             payloadHash: $payloadHash,
             maxPriceSen: $maxPriceSen,
         );

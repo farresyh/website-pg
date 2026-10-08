@@ -27,7 +27,7 @@ class CheckoutResumeConcurrencyTest extends TestCase
 
     public function test_two_simultaneous_resumes_call_the_gateway_only_once(): void
     {
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-RESUME-RACE-1',
             'idempotency_key' => 'idem-resume-race-1',

@@ -42,7 +42,7 @@ class RefundToWalletConcurrencyTest extends TestCase
         $reseller = Reseller::query()->create(['business_name' => 'Acme Reseller', 'is_active' => true]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $affiliate->id,
             'order_number' => 'KRS-REFUND-RACE-1',
             'customer_email' => 'buyer@example.com',

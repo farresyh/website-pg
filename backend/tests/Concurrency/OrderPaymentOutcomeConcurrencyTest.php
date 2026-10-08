@@ -35,7 +35,7 @@ class OrderPaymentOutcomeConcurrencyTest extends TestCase
             'status' => 'exhausted',
             'reason' => 'test',
         ]);
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'PG-OUTCOMERACE',
             'customer_email' => 'buyer@example.com',

@@ -7,12 +7,16 @@ use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Reseller;
+use App\Models\Voucher;
+use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
+use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -105,6 +109,30 @@ final class ReportService
         return [$from, $toExclusive];
     }
 
+    /**
+     * ADR-104 2026-10-08 addendum R17 — the trend chart's range. Same as
+     * every other tab when bounded; an unbounded side becomes the first
+     * paid order's KL day (in this filter's scope) or today, so "All
+     * time" really is all time. The page picks the bucket from the length.
+     * ponytail: zero-fills one row per day (~1,100 after 3 years); bucket
+     * server-side if that ever gets slow.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
+     */
+    public function trendRange(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $todayKl = CarbonImmutable::now(self::TIMEZONE)->startOfDay();
+
+        if ($from === null) {
+            $firstPaidAt = $this->scopedOrders(null, $toExclusive, $affiliateId)->min('paid_at');
+            $from = ($firstPaidAt !== null
+                ? CarbonImmutable::parse($firstPaidAt, 'UTC')->setTimezone(self::TIMEZONE)->startOfDay()
+                : $todayKl)->setTimezone('UTC');
+        }
+
+        return [$from, $toExclusive ?? $todayKl->addDay()->setTimezone('UTC')];
+    }
+
     public function summary(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
         // One pass for the two aggregates (was a separate ->sum() and
@@ -139,16 +167,98 @@ final class ReportService
     }
 
     /**
+     * ADR-104 2026-10-08 addendum R12–R14 — the summary's Compare block:
+     * the same `summary()` over the previous range, and each KPI's change
+     * through the shared `PeriodComparison`. No new aggregation. Null for
+     * an unbounded ("All time") range, which has no previous period.
+     */
+    public function summaryComparison(array $current, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, bool $monthToDate): ?array
+    {
+        if ($from === null || $toExclusive === null) {
+            return null;
+        }
+
+        [$prevFrom, $prevTo] = PeriodComparison::previousRange($from, $toExclusive, $monthToDate);
+        $previous = $this->summary($prevFrom, $prevTo, $affiliateId);
+
+        $changes = [];
+        foreach (['total_sales', 'orders_count', 'platform_profit', 'affiliate_profit', 'avg_order_value'] as $key) {
+            $changes[$key] = PeriodComparison::change($current[$key], $previous[$key]);
+        }
+        $changes['margin_pct'] = PeriodComparison::points($current['margin_pct'], $previous['margin_pct'], $previous['total_sales'] > 0);
+
+        return [
+            'previous_range' => [
+                'from' => $prevFrom->setTimezone(self::TIMEZONE)->toDateString(),
+                'to' => $prevTo->setTimezone(self::TIMEZONE)->subDay()->toDateString(),
+            ],
+            'previous' => Arr::except($previous, 'latest_order'),
+            'changes' => $changes,
+        ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R7 — walks Paid sales (money collected)
+     * to recognised revenue (the Monthly Summary's figure, from the one
+     * `RecognisedRevenue` seam). Per order, `final_amount = selling_price
+     * − voucher_discount + transaction_fee`, so:
+     *
+     *   paid_sales − transaction_fees + voucher_discounts
+     *   − not_recognised (failed / in flight / unsettled partial: selling_price net of wallet refunds)
+     *   − partial_compensation (settled partials: compensation not already out of Paid sales as a wallet refund)
+     *   = recognised_revenue + unexplained_difference
+     *
+     * `unexplained_difference` must be 0; it is returned, never hidden,
+     * so a future drift between the two definitions shows on the page.
+     * Company-wide only: the Monthly Summary has no affiliate dimension.
+     */
+    public function accountingBridge(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): array
+    {
+        $revenue = app(RecognisedRevenue::class);
+        $settledPartials = $revenue->settledPartialOrders($from, $toExclusive)
+            ->filter(fn (Order $o) => $o->payment_status === PaymentStatus::Paid);
+        $settledIds = $settledPartials->pluck('id')->all();
+
+        // selling_price net of wallet refunds, from the shared Net Sales seam.
+        $netSelling = 'selling_price - '.Order::walletRefundSql();
+
+        $totals = $this->scopedOrders($from, $toExclusive, null)
+            ->selectRaw('COALESCE(SUM('.Order::netSalesSql().'), 0) as paid_sales, COALESCE(SUM(transaction_fee), 0) as fees, COALESCE(SUM(voucher_discount), 0) as discounts')
+            ->first();
+
+        $notRecognised = (int) $this->scopedOrders($from, $toExclusive, null)
+            ->where('delivery_status', '!=', DeliveryStatus::Delivered->value)
+            ->whereNotIn('id', $settledIds)
+            ->sum(DB::raw($netSelling));
+
+        $settledNetSelling = (int) $this->scopedOrders($from, $toExclusive, null)
+            ->whereIn('id', $settledIds)
+            ->sum(DB::raw($netSelling));
+        $partialCompensation = $settledNetSelling - (int) $settledPartials->sum(fn (Order $o) => $revenue->keptSen($o));
+
+        $recognised = $revenue->revenueSen($from, $toExclusive);
+        $walked = (int) $totals->paid_sales - (int) $totals->fees + (int) $totals->discounts - $notRecognised - $partialCompensation;
+
+        return [
+            'paid_sales' => (int) $totals->paid_sales,
+            'transaction_fees' => (int) $totals->fees,
+            'voucher_discounts' => (int) $totals->discounts,
+            'not_recognised' => $notRecognised,
+            'partial_compensation' => $partialCompensation,
+            'recognised_revenue' => $recognised,
+            'unexplained_difference' => $walked - $recognised,
+        ];
+    }
+
+    /**
      * ADR-086 filter-unification follow-up (2026-09-11) — the trend chart
      * now follows the SAME date-range filter as every other tab, instead
      * of its own private "last N days from today" toggle (RPT-2's
      * original 2026-08-26 rule, reversed after the founder found the two
      * filters silently disagreeing in production). `$from`/`$toExclusive`
-     * are always concrete (never null) — `ReportController` is
-     * responsible for substituting a bounded fallback window (the
-     * previous last-30-days default) when the page's resolved filter is
-     * unbounded ("All time"), so this method never has to guess a range
-     * to zero-fill.
+     * are always concrete (never null) — `trendRange()` resolves "All
+     * time" to the first paid order through today (ADR-104 R17), so this
+     * method never has to guess a range to zero-fill.
      *
      * Both sales and profit are attributed to the order's own `paid_at`
      * day (KL), even though profit may only be ledger-credited later
@@ -378,6 +488,89 @@ final class ReportService
     }
 
     /**
+     * ADR-104 2026-10-08 addendum R15 — sales by channel, three exclusive
+     * buckets checked in order: Reseller wallet (`wallet_reseller_id`;
+     * these orders also carry the primary affiliate), Own brand (the
+     * affiliate's `is_owned`), External affiliate. Buckets by the
+     * affiliate's *current* `is_owned`, so flipping it re-buckets history
+     * (accepted, labelled on the page).
+     *
+     * R16 — `reseller_wallet_by_placed_via` splits the wallet bucket by
+     * door (API vs Bot).
+     */
+    public function channelBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $channelExpr = fn (string $t) => "CASE WHEN {$t}.wallet_reseller_id IS NOT NULL THEN 'reseller_wallet'"
+            ." WHEN (SELECT a.is_owned FROM affiliates a WHERE a.id = {$t}.affiliate_id) = 1 THEN 'own_brand'"
+            ." ELSE 'external_affiliate' END";
+
+        $sales = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), $channelExpr('orders'));
+        $profit = $this->profitByGroup($from, $toExclusive, $affiliateId, $channelExpr('orders'));
+
+        $channels = array_map(fn (string $channel) => [
+            'channel' => $channel,
+            'sales' => (int) ($sales->get($channel)->sales ?? 0),
+            'orders_count' => (int) ($sales->get($channel)->orders_count ?? 0),
+            'platform_profit' => $profit->get($channel)['platform'] ?? 0,
+            'affiliate_profit' => $profit->get($channel)['affiliate'] ?? 0,
+        ], ['own_brand', 'reseller_wallet', 'external_affiliate']);
+
+        $byPlacedVia = $this->salesByGroup(
+            $this->scopedOrders($from, $toExclusive, $affiliateId)->whereNotNull('wallet_reseller_id'),
+            'placed_via',
+        );
+
+        return [
+            'channels' => $channels,
+            'reseller_wallet_by_placed_via' => $byPlacedVia->map(fn ($row, $placedVia) => [
+                'placed_via' => $placedVia,
+                'sales' => (int) $row->sales,
+                'orders_count' => (int) $row->orders_count,
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R5 — delivery outcomes per game among
+     * paid orders, the per-game version of `orderStatusFunnel()`. Most
+     * orders first.
+     */
+    public function deliveryByGame(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $rows = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->selectRaw(
+                'COALESCE(game_id, 0) as game_key, COUNT(*) as total,'
+                .' SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as delivered,'
+                .' SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as failed,'
+                .' SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as partially_delivered',
+                [DeliveryStatus::Delivered->value, DeliveryStatus::Failed->value, DeliveryStatus::PartiallyDelivered->value],
+            )
+            ->groupBy('game_key')
+            ->get();
+
+        $names = Game::query()->whereIn('id', $rows->pluck('game_key')->reject(fn ($id) => (int) $id === 0))->pluck('name', 'id');
+
+        return $rows->map(function ($row) use ($names) {
+            $total = (int) $row->total;
+            $delivered = (int) $row->delivered;
+            $failed = (int) $row->failed;
+            $partial = (int) $row->partially_delivered;
+            $gameId = (int) $row->game_key;
+
+            return [
+                'game_id' => $gameId ?: null,
+                'game_name' => $gameId ? ($names[$gameId] ?? 'Unknown Game') : 'Unknown Game',
+                'total' => $total,
+                'delivered' => $delivered,
+                'failed' => $failed,
+                'partially_delivered' => $partial,
+                'in_progress' => $total - $delivered - $failed - $partial,
+                'success_rate_pct' => round($delivered / $total * 100, 2),
+            ];
+        })->sortByDesc('total')->values()->all();
+    }
+
+    /**
      * Membership tab (ADR-027 continued addendum decision 15 / Phase
      * 6.5, grilled 2026-08-29, Q10) — splits Paid-order sales by
      * `pricing_basis` (member vs standard), plus the two figures that
@@ -492,6 +685,65 @@ final class ReportService
                 ? round($byStatus[DeliveryStatus::Delivered->value] / $total * 100, 2)
                 : 0.0,
         ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R8/R9 — Orders tab "Failed &
+     * compensated". A failed order's cash is a liability (owed back as
+     * store credit), never an expense: its profit is already 0 because
+     * `order_profit` is credited only on delivery, so nothing here is
+     * netted from profit. Scoped by the order's `paid_at` like every
+     * Reports figure (the Monthly Summary scopes vouchers by their own
+     * `created_at`; the two can differ across a month boundary).
+     *
+     * The three compensation columns are set-based mirrors of
+     * `Order::cashCompensationSen()` (voucher + wallet refund) and
+     * `compensationAmountSen()` (+ restored checkout voucher);
+     * `ReportCompensationTest` holds them equal. `vouchers.order_id` and
+     * `voucher_redemptions.order_id` are both unique, so SUM equals the
+     * model's hasOne.
+     */
+    public function failedAndCompensated(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $walletRefund = "SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.owner_type = '".LedgerOwnerType::ResellerWallet->value."'"
+            ." AND wr.owner_id = orders.wallet_reseller_id AND wr.type = 'wallet_refund' AND wr.reference_type = 'order' AND wr.reference_id = orders.id";
+
+        $row = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->selectRaw(
+                'SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as failed_count,'
+                .' COALESCE(SUM(CASE WHEN delivery_status = ? THEN final_amount ELSE 0 END), 0) as failed_paid_amount,'
+                .' COALESCE(SUM((SELECT v.amount FROM vouchers v WHERE v.order_id = orders.id)), 0) as voucher_issued,'
+                ." COALESCE(SUM(({$walletRefund})), 0) as wallet_refund,"
+                .' COALESCE(SUM((SELECT vr.restored_amount FROM voucher_redemptions vr WHERE vr.order_id = orders.id)), 0) as voucher_restored',
+                [DeliveryStatus::Failed->value, DeliveryStatus::Failed->value],
+            )
+            ->first();
+
+        return [
+            'failed_count' => (int) $row->failed_count,
+            'failed_paid_amount' => (int) $row->failed_paid_amount,
+            'voucher_issued' => (int) $row->voucher_issued,
+            'wallet_refund' => (int) $row->wallet_refund,
+            'voucher_restored' => (int) $row->voucher_restored,
+        ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R10 — store credit still owed to
+     * customers, as of now (not period-scoped, like the Monthly Summary's
+     * reseller wallet balance): Σ `remaining` of active, unexpired
+     * compensation vouchers. Path A vouchers are a discount promise, not
+     * cash held, so they are excluded. The affiliate filter follows the
+     * source order's brand, like every other Reports figure.
+     */
+    public function outstandingStoreCredit(?int $affiliateId): int
+    {
+        return (int) Voucher::query()
+            ->compensation()
+            ->where('status', 'active')
+            ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->when($affiliateId, fn (Builder $q) => $q->whereHas('sourceOrder', fn (Builder $o) => $o->where('affiliate_id', $affiliateId)))
+            ->sum('remaining');
     }
 
     /**

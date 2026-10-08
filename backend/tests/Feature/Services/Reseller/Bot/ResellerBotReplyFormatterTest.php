@@ -35,7 +35,7 @@ class ResellerBotReplyFormatterTest extends TestCase
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
 
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST1',
             'game_id' => $game->id,

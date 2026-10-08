@@ -70,7 +70,7 @@ class TransactionRegisterControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REG-1',
             'customer_email' => 'buyer@example.com',
@@ -126,7 +126,7 @@ class TransactionRegisterControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'wallet_reseller_id' => $reseller->id,
             'order_number' => 'KRS-REG-WALLET',
@@ -172,7 +172,7 @@ class TransactionRegisterControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'wallet_reseller_id' => $reseller->id,
             'order_number' => 'KRS-REG-FAILED-WALLET',
@@ -239,7 +239,7 @@ class TransactionRegisterControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REG-UNDELIVERED',
             'customer_email' => 'buyer@example.com',
@@ -278,7 +278,7 @@ class TransactionRegisterControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REG-TEST',
             'customer_email' => 'buyer@example.com',
@@ -360,7 +360,7 @@ class TransactionRegisterControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 1000,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REG-2',
             'customer_email' => 'buyer@example.com',
@@ -478,7 +478,7 @@ class TransactionRegisterControllerTest extends TestCase
     public function test_the_date_filter_uses_kl_days(): void
     {
         $this->actAsSuperAdmin();
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REG-KL',
             'customer_email' => 'buyer@example.com',

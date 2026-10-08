@@ -47,7 +47,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
                 ['name' => 'Digiflazz Test', 'api_config' => [], 'currency' => 'IDR'],
             )->id;
 
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-CHECK-TEST-1',
             'reference_number' => 'REF-CHECK-TEST-1',
@@ -206,7 +206,7 @@ class CheckSupplierDeliveryJobTest extends TestCase
             'denomination' => 100, 'cost_price' => 500, 'standard_selling_price' => 600, 'markup_percent' => 20,
         ]);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-CHECK-COMBO-1',
             'reference_number' => 'REF-CHECK-COMBO-1',
