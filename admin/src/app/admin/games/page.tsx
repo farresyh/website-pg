@@ -73,6 +73,7 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { Times as CloseIcon } from "@primeicons/react/times";
+import { Switch } from "@/components/ui/switch";
 
 /**
  * ADR-094 decision 13: the deactivate-cascade confirm — shown only
@@ -567,16 +568,7 @@ export default function GamesPage() {
                       return (
                         <DataTableRow key={pkg.id}>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
-                            <button
-                              role="switch"
-                              aria-checked={pkg.is_active}
-                              onClick={() => handleToggleStatus(pkg)}
-                              className={`h-6 w-11 rounded-full transition ${pkg.is_active ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"}`}
-                            >
-                              <span
-                                className={`block h-5 w-5 translate-x-0.5 rounded-full bg-white transition ${pkg.is_active ? "translate-x-[22px]" : ""}`}
-                              />
-                            </button>
+                            <Switch checked={pkg.is_active} onChange={() => handleToggleStatus(pkg)} />
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
                             <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>

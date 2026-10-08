@@ -3056,3 +3056,46 @@ features, after the backlog). Each "open" claim was re-checked on 2026-10-08:
   with ADR-120; §14 said the old droplet was rollback-only, it was destroyed
   2026-09-30; ADR-110's index row still called the CHIP `.env` cutover owed,
   while §16 "Parked" records keeping them as a fallback on purpose.
+
+## 2026-10-08 — §16 items 70, 68, 67 + one shared admin `Switch`
+
+**#70, full-voucher-cover order showed "fpx".** `CheckoutService::initiate()`
+now stores `payment_method = 'voucher'` when the voucher covers the whole
+price (no gateway runs, ADR-024 decision 5). Every reader just prints the
+string (Order Detail, orders list, Track Order, Affiliate/portal order,
+WhatsApp status card, Reports Payment Methods tab, CSV export, LLM view), so
+one write-side change fixes all of them; `payment_gateway` / `channel_code`
+are left as picked (reconcile only reads pending orders; settlement recon
+excludes a null `payment_ref`). A data migration relabels existing rows
+(voucher, RM 0, no `payment_ref`): prod has exactly 4, all Paid, checked
+read-only on 2026-10-08. It runs on the next `main` deploy.
+
+**#68, blank "UID only" select — wider than reported.** PrimeReact's Select
+treats `""` as no value (`isNotEmpty`), so every `""` option in admin rendered
+blank: "UID only", "All suppliers", "— No tier —", "Inherit supplier default"
+and 10 more. Fixed once in `SimpleSelect` (sentinel inside, callers keep
+`""`); request-logs' own `FilterSelect` now uses `SimpleSelect`.
+
+**Toggle overflow (founder report, same session).** Seven hand-rolled
+toggles. The four `Switch` copies placed an absolute knob with no `left`
+inside a centring `<button>`, so it started mid-track and slid out. Replaced
+by one `components/ui/switch.tsx` on PrimeReact `ToggleSwitch` (ADR-038),
+knob in a flex row. Measured live: knob inside the 44×24 track in both
+states (Membership, Payment Methods, Games packages).
+
+**#67, ADR-109 admin click-through — passed.** `/admin/games` → Edit Game →
+Content: description, two notes, Manual Processing, custom subtext saved; the
+modal reloads them; public `GET /api/catalog/games/{slug}` serves them (cache
+flushed); clearing every field saves back to `null` / `instant`. Dev DB
+restored to its original values afterwards.
+
+**Found, not fixed (prod, read-only check).** Five
+`storage/app/backup-temp/restore-extract-*` folders (2026-09-26..30, 34–60 MB
+each) hold plaintext DB dumps with customer PII. `RunDatabaseBackupJob`
+deletes them in `finally`; these are from runs killed before it ran. None
+since 2026-09-30 though the job still runs daily. Removing them is a prod
+write — founder's call.
+
+**Verification.** +1 test (full cover → `voucher`, partial keeps the
+channel); fast suite 2633/2633. `admin/` tsc + eslint clean. Live checks in a
+local browser as above.

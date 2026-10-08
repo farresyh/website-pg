@@ -33,6 +33,7 @@ import {
   updatePaymentMethodFee,
   testPaymentMethod,
 } from "@/lib/payment-methods";
+import { Switch } from "@/components/ui/switch";
 
 const CATEGORY_LABELS: Record<string, string> = {
   fpx: "FPX",
@@ -215,16 +216,7 @@ export default function PaymentMethodsPage() {
                     return (
                       <DataTableRow key={method.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <button
-                            role="switch"
-                            aria-checked={method.is_active}
-                            onClick={() => handleToggleStatus(method)}
-                            className={`h-6 w-11 rounded-full transition ${method.is_active ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"}`}
-                          >
-                            <span
-                              className={`block h-5 w-5 translate-x-0.5 rounded-full bg-white transition ${method.is_active ? "translate-x-[22px]" : ""}`}
-                            />
-                          </button>
+                          <Switch checked={method.is_active} onChange={() => handleToggleStatus(method)} />
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">{method.label}</span>

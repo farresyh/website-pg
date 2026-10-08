@@ -816,21 +816,16 @@ feature.** Every open item sorted by what it needs to finish. Verified against
 code and production on 2026-10-08; re-verify before building.
 
 **A. Buildable now: code, no new design** (in suggested order)
-1. **70** Full-voucher order shows "fpx" — still true on prod (4 RM 0
-   voucher orders, all `fpx`). Grep every `payment_method` reader first.
-2. **68** Product Manager "UID only" select shows blank
-   (`admin/src/lib/games.ts:39`, `value: ""`).
-3. **56** `accounting_disk` to R2 — `ACCOUNTING_DISK` is not set on prod, so
-   receipts still sit on local disk. Small code/config plus a prod write
+1. **56** `accounting_disk` to R2 — `ACCOUNTING_DISK` is not set on prod, so
+   receipts still sit on local disk (3 files, 2026-10-08). Small code/config plus a prod write
    (env + copying existing receipts): needs the founder's go-ahead.
-4. **67** ADR-109 admin-side live check (info modal + delivery badge editing)
-   — verification only.
-5. **66** Combo admin gaps: edit-composition UI, leg-attempt history view.
-6. **65** ADR-104 PR-3 Reports visual redesign — open the founder's artifact
+   `WALLET_RECEIPTS_DISK` is unset too (0 rows today).
+2. **66** Combo admin gaps: edit-composition UI, leg-attempt history view.
+3. **65** ADR-104 PR-3 Reports visual redesign — open the founder's artifact
    first.
-7. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
+4. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
    in-modal picker.
-8. **27** e2e admin `next dev` boot flake → `next build && next start`.
+5. **27** e2e admin `next dev` boot flake → `next build && next start`.
 
 **B. Needs a short grill / ADR addendum first**
 - **69** WhatsApp silent throttles (ADR-116 addendum).
@@ -921,14 +916,6 @@ code and production on 2026-10-08; re-verify before building.
     A "support vs updates" split was already rejected (addendum decision 1).
     Needs an ADR-116 addendum before building.
 
-70. **A full-voucher-cover order shows "Payment Method: fpx"** (seen
-    2026-10-06 on `PG-SJDWBIKMYC1Z`). `payment_method` keeps the method picked
-    at checkout although no gateway ran (`payment_ref` null, ADR-024
-    decision 5), so Order Detail says "fpx" and the Reports Payment Methods
-    tab counts an RM 0 FPX order. No money effect. Fix: show "Voucher" when
-    `final_amount = 0` with a voucher (display), or store it at checkout
-    (check every `payment_method` reader first).
-
 72. **Reseller Bot price ceiling — optional `max=` token on `.order`**
     (ADR-074 2026-10-08 addendum decision 5). The API has `max_price_sen`;
     the Bot charges the live price and shows `Harga` only after. The seam
@@ -943,12 +930,6 @@ code and production on 2026-10-08; re-verify before building.
 73. **Reseller API rejections aren't logged anywhere** (decision 6 of the
     same addendum). If wanted, log in the one `ResellerApiException` render
     hook (`bootstrap/app.php`) for every code, not per code.
-
-68. **Product Manager's "Checkout field" select shows blank for a User-ID-only
-    game** (seen 2026-10-05). PrimeReact's Select treats the `""` option value
-    ("UID only (Player ID)") as no selection. Cosmetic: the saved
-    `extra_field: null` is correct. Fix: a non-empty sentinel value mapped to
-    null on save.
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. OpenWA now shares `pekangame-prod-lwf` with the API
@@ -1025,9 +1006,6 @@ code and production on 2026-10-08; re-verify before building.
 66. **Combo admin gaps, deliberately deferred** (§15 Combo row): no
     edit-composition UI (delete and recreate only), and no admin view of the
     per-leg attempt history (the rows exist and are queryable).
-67. **ADR-109 admin-side live verification** of the game info modal and
-    delivery badge editing (§15 Storefront row) — never done.
-
 ## Buildable when triggered (design done or needs its own ADR)
 
 71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: founder
@@ -1157,6 +1135,7 @@ code and production on 2026-10-08; re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **70 / 68 / 67** 2026-10-08: full-voucher-cover orders store `payment_method = voucher` (+ data migration for the 4 prod rows); every `""` admin select option shows its label (fixed in `SimpleSelect`, not just "UID only"); one shared admin `Switch` replaces 7 toggles whose knob slid out of the track; ADR-109 admin Content tab clicked through and passed. On `staging` until the next release.
 - **63** 2026-10-03 pre-launch money audit, remaining P2s — all built (none moved money in prod): payment-outcome seam, replay hash, KL days, late Digiflazz Sukses (ADR-102), member resend profit (ADR-105, #360), per-game player-input contract (ADR-097, #356/#357), Reseller API `max_price_sen` (ADR-074, #371), and on 2026-10-08 the LLM assistant matching Reports (ADR-087) plus the Monthly Summary tier-fee line (ADR-083). The last two on `staging`.
 - **51** Founder real-order smoke test — passed 2026-10-06 on prod: storefront, reseller bot, full-voucher cover (`PG-SJDWBIKMYC1Z`), each Delivered (see `docs/build-log.md`).
 - **54** Customer WhatsApp live testing — passed 2026-10-06: status card, not-found reply, voucher code on WhatsApp after Issue Voucher (`PG-12A9VRY5KLCE`). The silent throttles it surfaced are item 69; (d) skipped by choice.
