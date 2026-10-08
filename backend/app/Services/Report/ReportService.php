@@ -7,6 +7,7 @@ use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Reseller;
+use App\Models\Voucher;
 use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
@@ -546,6 +547,65 @@ final class ReportService
                 ? round($byStatus[DeliveryStatus::Delivered->value] / $total * 100, 2)
                 : 0.0,
         ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R8/R9 — Orders tab "Failed &
+     * compensated". A failed order's cash is a liability (owed back as
+     * store credit), never an expense: its profit is already 0 because
+     * `order_profit` is credited only on delivery, so nothing here is
+     * netted from profit. Scoped by the order's `paid_at` like every
+     * Reports figure (the Monthly Summary scopes vouchers by their own
+     * `created_at`; the two can differ across a month boundary).
+     *
+     * The three compensation columns are set-based mirrors of
+     * `Order::cashCompensationSen()` (voucher + wallet refund) and
+     * `compensationAmountSen()` (+ restored checkout voucher);
+     * `ReportCompensationTest` holds them equal. `vouchers.order_id` and
+     * `voucher_redemptions.order_id` are both unique, so SUM equals the
+     * model's hasOne.
+     */
+    public function failedAndCompensated(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $walletRefund = "SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.owner_type = '".LedgerOwnerType::ResellerWallet->value."'"
+            ." AND wr.owner_id = orders.wallet_reseller_id AND wr.type = 'wallet_refund' AND wr.reference_type = 'order' AND wr.reference_id = orders.id";
+
+        $row = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->selectRaw(
+                'SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as failed_count,'
+                .' COALESCE(SUM(CASE WHEN delivery_status = ? THEN final_amount ELSE 0 END), 0) as failed_paid_amount,'
+                .' COALESCE(SUM((SELECT v.amount FROM vouchers v WHERE v.order_id = orders.id)), 0) as voucher_issued,'
+                ." COALESCE(SUM(({$walletRefund})), 0) as wallet_refund,"
+                .' COALESCE(SUM((SELECT vr.restored_amount FROM voucher_redemptions vr WHERE vr.order_id = orders.id)), 0) as voucher_restored',
+                [DeliveryStatus::Failed->value, DeliveryStatus::Failed->value],
+            )
+            ->first();
+
+        return [
+            'failed_count' => (int) $row->failed_count,
+            'failed_paid_amount' => (int) $row->failed_paid_amount,
+            'voucher_issued' => (int) $row->voucher_issued,
+            'wallet_refund' => (int) $row->wallet_refund,
+            'voucher_restored' => (int) $row->voucher_restored,
+        ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R10 — store credit still owed to
+     * customers, as of now (not period-scoped, like the Monthly Summary's
+     * reseller wallet balance): Σ `remaining` of active, unexpired
+     * compensation vouchers. Path A vouchers are a discount promise, not
+     * cash held, so they are excluded. The affiliate filter follows the
+     * source order's brand, like every other Reports figure.
+     */
+    public function outstandingStoreCredit(?int $affiliateId): int
+    {
+        return (int) Voucher::query()
+            ->compensation()
+            ->where('status', 'active')
+            ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->when($affiliateId, fn (Builder $q) => $q->whereHas('sourceOrder', fn (Builder $o) => $o->where('affiliate_id', $affiliateId)))
+            ->sum('remaining');
     }
 
     /**
