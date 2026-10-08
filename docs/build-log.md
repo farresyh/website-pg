@@ -1296,5 +1296,6 @@ before any test ran. `e2e/playwright.config.ts` now boots admin with
 `npx next build && npx next start --port 3000` (webServer timeout 60s → 300s
 to cover the build). The build compiles once and fails loudly; `start` has no
 on-demand compile. `--webpack` dev (tried 2026-09-28) broke two admin specs;
-the production build passes all three. Local run: 6/6 passed. Storefront still
-uses `next dev`: it has not hit this crash.
+the production build passes all three. Storefront hit the same crash on its
+Inter font the same day (PR #379's run), so it got the same change. Local run
+with both on production builds: 6/6 passed.

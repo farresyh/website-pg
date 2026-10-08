@@ -66,11 +66,13 @@ export default defineConfig({
       env: { NEXT_PUBLIC_API_URL: BACKEND_URL },
     },
     {
-      command: "npx next dev --port 3001",
+      // Item 27: same Turbopack font crash hit storefront's Inter
+      // (PR #379, 2026-10-08) — same fix as admin above.
+      command: "npx next build && npx next start --port 3001",
       cwd: path.join(ROOT_DIR, "storefront"),
       url: STOREFRONT_URL,
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 300_000,
       env: { NEXT_PUBLIC_API_URL: BACKEND_URL },
     },
   ],
