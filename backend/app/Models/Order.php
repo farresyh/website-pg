@@ -477,7 +477,18 @@ class Order extends Model
      */
     public static function netSalesSql(): string
     {
-        return "final_amount - COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.reference_type = 'order' AND wr.reference_id = orders.id AND wr.type = 'wallet_refund'), 0)";
+        return 'final_amount - '.self::walletRefundSql();
+    }
+
+    /**
+     * The `wallet_refund` total for one `orders` row, as SQL — the half of
+     * netSalesSql() the Reports Bridge also nets from `selling_price`
+     * (ADR-104 R7). Subtract it from a money column directly: on MySQL the
+     * columns are unsigned, so `selling_price - final_amount` overflows.
+     */
+    public static function walletRefundSql(): string
+    {
+        return "COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.reference_type = 'order' AND wr.reference_id = orders.id AND wr.type = 'wallet_refund'), 0)";
     }
 
     /**

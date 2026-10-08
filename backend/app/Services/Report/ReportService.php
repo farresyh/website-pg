@@ -196,7 +196,7 @@ final class ReportService
         $settledIds = $settledPartials->pluck('id')->all();
 
         // selling_price net of wallet refunds, from the shared Net Sales seam.
-        $netSelling = 'selling_price - final_amount + ('.Order::netSalesSql().')';
+        $netSelling = 'selling_price - '.Order::walletRefundSql();
 
         $totals = $this->scopedOrders($from, $toExclusive, null)
             ->selectRaw('COALESCE(SUM('.Order::netSalesSql().'), 0) as paid_sales, COALESCE(SUM(transaction_fee), 0) as fees, COALESCE(SUM(voucher_discount), 0) as discounts')
