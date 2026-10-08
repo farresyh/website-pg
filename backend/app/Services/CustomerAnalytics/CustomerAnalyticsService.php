@@ -455,7 +455,7 @@ final class CustomerAnalyticsService
         }
 
         $rows = $query
-            ->selectRaw("customer_email, COUNT(*) as orders_count, SUM({$this->netSpentExpr()}) as total_spent, MIN(paid_at) as first_order_at, MAX(paid_at) as last_order_at, MAX(wallet_reseller_id) as wallet_reseller_id")
+            ->selectRaw('customer_email, COUNT(*) as orders_count, SUM('.Order::netSalesSql().') as total_spent, MIN(paid_at) as first_order_at, MAX(paid_at) as last_order_at, MAX(wallet_reseller_id) as wallet_reseller_id')
             ->groupBy('customer_email')
             ->get();
 
@@ -525,25 +525,10 @@ final class CustomerAnalyticsService
     }
 
     /**
-     * 2026-09-21 fix (ADR-086 addendum, Bug 4) — re-expressed here for
-     * the same reason this class's own doc comment already gives for
-     * duplicating `ReportService::scopedOrders()`'s rule verbatim rather
-     * than reusing it: a per-customer-email GROUP BY needs its own SQL
-     * shape. See `ReportService::netSalesExpr()` for the full rationale
-     * (a `wallet_refund` genuinely reverses a wallet-order debit, unlike
-     * a storefront Voucher's `voucher_discount`, which already nets out
-     * of a later redeeming order — no double count there).
-     */
-    private function netSpentExpr(): string
-    {
-        return "final_amount - COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.reference_type = 'order' AND wr.reference_id = orders.id AND wr.type = 'wallet_refund'), 0)";
-    }
-
-    /**
      * Sets a `net_final_amount` attribute on every order in the given
      * (already-loaded) collection — `final_amount` minus any
      * `wallet_refund` ledger amount tied to that same order (see
-     * `netSpentExpr()`). PHP-side batched lookup, not a per-order query
+     * `Order::netSalesSql()`). PHP-side batched lookup, not a per-order query
      * (mirrors `customerDetail()`'s own `profitByOrder` batching
      * pattern), since these orders are already loaded into memory here.
      */
