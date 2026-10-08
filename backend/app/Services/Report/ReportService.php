@@ -146,7 +146,7 @@ final class ReportService
 
         $latest = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->orderByDesc('paid_at')
-            ->first(['order_number', 'paid_at', 'customer_email', 'final_amount']);
+            ->first(['id', 'order_number', 'paid_at', 'customer_email', 'final_amount']);
 
         $profit = $this->profitTotals($from, $toExclusive, $affiliateId);
 
@@ -158,6 +158,7 @@ final class ReportService
             'margin_pct' => $totalSales > 0 ? round($profit['platform'] / $totalSales * 100, 2) : 0.0,
             'avg_order_value' => $ordersCount > 0 ? (int) round($totalSales / $ordersCount) : 0,
             'latest_order' => $latest ? [
+                'id' => $latest->id,
                 'order_number' => $latest->order_number,
                 'paid_at' => $latest->paid_at?->setTimezone(self::TIMEZONE)->toIso8601String(),
                 'customer_email' => $latest->customer_email,
@@ -283,6 +284,7 @@ final class ReportService
             $rows[] = [
                 'date' => $key,
                 'sales' => (int) ($salesByDate->get($key)->sales ?? 0),
+                'orders_count' => (int) ($salesByDate->get($key)->orders_count ?? 0),
                 'platform_profit' => $profit['platform'] ?? 0,
                 'affiliate_profit' => $profit['affiliate'] ?? 0,
             ];

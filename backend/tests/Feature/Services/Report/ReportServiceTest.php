@@ -143,12 +143,14 @@ class ReportServiceTest extends TestCase
     public function test_latest_order_is_most_recent_paid_by_paid_at(): void
     {
         $this->order(['order_number' => 'OLDER', 'paid_at' => now()->subDay()]);
-        $this->order(['order_number' => 'NEWER', 'paid_at' => now()]);
+        $newer = $this->order(['order_number' => 'NEWER', 'paid_at' => now()]);
         $this->order(['order_number' => 'PENDING-NEWEST', 'payment_status' => PaymentStatus::Pending->value, 'paid_at' => null]);
 
         $summary = $this->reports->summary(null, null, null);
 
         $this->assertSame('NEWER', $summary['latest_order']['order_number']);
+        // ADR-104 R5 — the page links straight to the order (`/admin/orders?order={id}`).
+        $this->assertSame($newer->id, $summary['latest_order']['id']);
     }
 
     public function test_daily_trend_attributes_todays_late_night_order_to_today_kl(): void
@@ -157,12 +159,16 @@ class ReportServiceTest extends TestCase
         $lateNight = $todayKl->addHours(23)->addMinutes(30);
 
         $this->order(['final_amount' => 1500, 'paid_at' => $lateNight->setTimezone('UTC')]);
+        $this->order(['final_amount' => 500, 'paid_at' => $todayKl->addHour()->setTimezone('UTC')]);
 
         [$from, $to] = $this->lastNDaysRange(7);
         $days = collect($this->reports->dailyTrend($from, $to, null));
         $todayRow = $days->firstWhere('date', $todayKl->toDateString());
 
-        $this->assertSame(1500, $todayRow['sales']);
+        $this->assertSame(2000, $todayRow['sales']);
+        // ADR-104 R6 — the Overview chart's Orders toggle; empty days are zero-filled too.
+        $this->assertSame(2, $todayRow['orders_count']);
+        $this->assertSame(0, $days->first()['orders_count']);
     }
 
     public function test_export_rows_include_recognized_profit_and_affiliate_name(): void

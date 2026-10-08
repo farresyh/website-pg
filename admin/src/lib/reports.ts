@@ -27,6 +27,7 @@ export interface ReportSummary {
   margin_pct: number;
   avg_order_value: number;
   latest_order: {
+    id: number;
     order_number: string;
     paid_at: string;
     customer_email: string;
@@ -117,6 +118,7 @@ export interface ReportDeliveryByGameRow {
 export interface ReportTrendDay {
   date: string;
   sales: number;
+  orders_count: number;
   platform_profit: number;
   affiliate_profit: number;
 }
