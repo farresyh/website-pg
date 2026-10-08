@@ -510,6 +510,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
         Route::get('/breakdown/affiliates', [ReportController::class, 'affiliateBreakdown']);
         Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);
+        Route::get('/breakdown/channels', [ReportController::class, 'channelBreakdown']);
+        Route::get('/breakdown/delivery-by-game', [ReportController::class, 'deliveryByGame']);
+        Route::get('/accounting-bridge', [ReportController::class, 'accountingBridge']);
+        Route::get('/failed-compensated', [ReportController::class, 'failedCompensated']);
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
         Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
         Route::get('/export', [ReportController::class, 'export']);

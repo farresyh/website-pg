@@ -13,8 +13,8 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
-use Carbon\CarbonImmutable;
 use App\Support\PeriodComparison;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -107,6 +107,30 @@ final class ReportService
             : null;
 
         return [$from, $toExclusive];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R17 — the trend chart's range. Same as
+     * every other tab when bounded; an unbounded side becomes the first
+     * paid order's KL day (in this filter's scope) or today, so "All
+     * time" really is all time. The page picks the bucket from the length.
+     * ponytail: zero-fills one row per day (~1,100 after 3 years); bucket
+     * server-side if that ever gets slow.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
+     */
+    public function trendRange(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $todayKl = CarbonImmutable::now(self::TIMEZONE)->startOfDay();
+
+        if ($from === null) {
+            $firstPaidAt = $this->scopedOrders(null, $toExclusive, $affiliateId)->min('paid_at');
+            $from = ($firstPaidAt !== null
+                ? CarbonImmutable::parse($firstPaidAt, 'UTC')->setTimezone(self::TIMEZONE)->startOfDay()
+                : $todayKl)->setTimezone('UTC');
+        }
+
+        return [$from, $toExclusive ?? $todayKl->addDay()->setTimezone('UTC')];
     }
 
     public function summary(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
@@ -232,11 +256,9 @@ final class ReportService
      * of its own private "last N days from today" toggle (RPT-2's
      * original 2026-08-26 rule, reversed after the founder found the two
      * filters silently disagreeing in production). `$from`/`$toExclusive`
-     * are always concrete (never null) — `ReportController` is
-     * responsible for substituting a bounded fallback window (the
-     * previous last-30-days default) when the page's resolved filter is
-     * unbounded ("All time"), so this method never has to guess a range
-     * to zero-fill.
+     * are always concrete (never null) — `trendRange()` resolves "All
+     * time" to the first paid order through today (ADR-104 R17), so this
+     * method never has to guess a range to zero-fill.
      *
      * Both sales and profit are attributed to the order's own `paid_at`
      * day (KL), even though profit may only be ledger-credited later
@@ -463,6 +485,89 @@ final class ReportService
         usort($rows, fn (array $a, array $b) => $b['sales'] <=> $a['sales']);
 
         return $rows;
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R15 — sales by channel, three exclusive
+     * buckets checked in order: Reseller wallet (`wallet_reseller_id`;
+     * these orders also carry the primary affiliate), Own brand (the
+     * affiliate's `is_owned`), External affiliate. Buckets by the
+     * affiliate's *current* `is_owned`, so flipping it re-buckets history
+     * (accepted, labelled on the page).
+     *
+     * R16 — `reseller_wallet_by_placed_via` splits the wallet bucket by
+     * door (API vs Bot).
+     */
+    public function channelBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $channelExpr = fn (string $t) => "CASE WHEN {$t}.wallet_reseller_id IS NOT NULL THEN 'reseller_wallet'"
+            ." WHEN (SELECT a.is_owned FROM affiliates a WHERE a.id = {$t}.affiliate_id) = 1 THEN 'own_brand'"
+            ." ELSE 'external_affiliate' END";
+
+        $sales = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), $channelExpr('orders'));
+        $profit = $this->profitByGroup($from, $toExclusive, $affiliateId, $channelExpr('orders'));
+
+        $channels = array_map(fn (string $channel) => [
+            'channel' => $channel,
+            'sales' => (int) ($sales->get($channel)->sales ?? 0),
+            'orders_count' => (int) ($sales->get($channel)->orders_count ?? 0),
+            'platform_profit' => $profit->get($channel)['platform'] ?? 0,
+            'affiliate_profit' => $profit->get($channel)['affiliate'] ?? 0,
+        ], ['own_brand', 'reseller_wallet', 'external_affiliate']);
+
+        $byPlacedVia = $this->salesByGroup(
+            $this->scopedOrders($from, $toExclusive, $affiliateId)->whereNotNull('wallet_reseller_id'),
+            'placed_via',
+        );
+
+        return [
+            'channels' => $channels,
+            'reseller_wallet_by_placed_via' => $byPlacedVia->map(fn ($row, $placedVia) => [
+                'placed_via' => $placedVia,
+                'sales' => (int) $row->sales,
+                'orders_count' => (int) $row->orders_count,
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R5 — delivery outcomes per game among
+     * paid orders, the per-game version of `orderStatusFunnel()`. Most
+     * orders first.
+     */
+    public function deliveryByGame(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $rows = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->selectRaw(
+                'COALESCE(game_id, 0) as game_key, COUNT(*) as total,'
+                .' SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as delivered,'
+                .' SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as failed,'
+                .' SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as partially_delivered',
+                [DeliveryStatus::Delivered->value, DeliveryStatus::Failed->value, DeliveryStatus::PartiallyDelivered->value],
+            )
+            ->groupBy('game_key')
+            ->get();
+
+        $names = Game::query()->whereIn('id', $rows->pluck('game_key')->reject(fn ($id) => (int) $id === 0))->pluck('name', 'id');
+
+        return $rows->map(function ($row) use ($names) {
+            $total = (int) $row->total;
+            $delivered = (int) $row->delivered;
+            $failed = (int) $row->failed;
+            $partial = (int) $row->partially_delivered;
+            $gameId = (int) $row->game_key;
+
+            return [
+                'game_id' => $gameId ?: null,
+                'game_name' => $gameId ? ($names[$gameId] ?? 'Unknown Game') : 'Unknown Game',
+                'total' => $total,
+                'delivered' => $delivered,
+                'failed' => $failed,
+                'partially_delivered' => $partial,
+                'in_progress' => $total - $delivered - $failed - $partial,
+                'success_rate_pct' => round($delivered / $total * 100, 2),
+            ];
+        })->sortByDesc('total')->values()->all();
     }
 
     /**

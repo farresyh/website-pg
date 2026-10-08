@@ -23,7 +23,7 @@ class ReportControllerTest extends TestCase
 
     private function order(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
@@ -110,15 +110,47 @@ class ReportControllerTest extends TestCase
         $this->getJson('/api/reports/summary?from=2026-10-01&to=2026-10-08&compare=yoy')->assertUnprocessable();
     }
 
-    /** ADR-086 filter-unification follow-up — no ?from/?to (the "All time" filter) falls back to a bounded last-30-days window. */
-    public function test_trend_defaults_to_last_30_days_when_unbounded(): void
+    /** ADR-104 R17 — "All time" spans the first paid order to today; the old 30-day fallback is gone. */
+    public function test_trend_for_all_time_spans_the_first_paid_order_to_today(): void
     {
+        $this->order(['paid_at' => now()->subDays(44)]);
         $this->actingAsAdmin();
 
         $response = $this->getJson('/api/reports/trend');
 
         $response->assertOk();
-        $this->assertCount(30, $response->json('days'));
+        $this->assertCount(45, $response->json('days'));
+    }
+
+    public function test_accounting_bridge_endpoint_and_hidden_under_an_affiliate_filter(): void
+    {
+        $this->order();
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/accounting-bridge')->assertOk()
+            ->assertJsonPath('bridge.recognised_revenue', 1000)
+            ->assertJsonPath('bridge.unexplained_difference', 0);
+        $this->getJson('/api/reports/accounting-bridge?affiliate_id='.$this->primaryAffiliate()->id)->assertOk()
+            ->assertJsonPath('bridge', null);
+    }
+
+    public function test_failed_compensated_endpoint_returns_the_section_and_store_credit(): void
+    {
+        $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/failed-compensated')->assertOk()
+            ->assertJsonPath('failed_count', 1)
+            ->assertJsonPath('outstanding_store_credit', 0);
+    }
+
+    public function test_channel_and_delivery_by_game_endpoints_return_rows(): void
+    {
+        $this->order();
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/breakdown/channels')->assertOk()->assertJsonCount(3, 'channels');
+        $this->getJson('/api/reports/breakdown/delivery-by-game')->assertOk()->assertJsonCount(1, 'games');
     }
 
     public function test_trend_follows_the_same_from_to_filter_as_every_other_tab(): void
