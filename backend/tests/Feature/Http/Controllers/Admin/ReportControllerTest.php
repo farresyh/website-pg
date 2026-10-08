@@ -63,6 +63,53 @@ class ReportControllerTest extends TestCase
         ]);
     }
 
+    /** ADR-104 R12–R14 — Compare period: a second call to the same summary, plus deltas. */
+    public function test_summary_compares_with_the_previous_period_when_asked(): void
+    {
+        $this->order(['paid_at' => '2026-10-05 04:00:00', 'final_amount' => 1500]);
+        $this->order(['paid_at' => '2026-09-28 04:00:00', 'final_amount' => 1000]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/reports/summary?from=2026-10-02&to=2026-10-08&compare=previous');
+
+        $response->assertOk()->assertJson([
+            'total_sales' => 1500,
+            'compare' => [
+                'previous_range' => ['from' => '2026-09-25', 'to' => '2026-10-01'],
+                'previous' => ['total_sales' => 1000, 'orders_count' => 1],
+                'changes' => [
+                    'total_sales' => ['pct' => 50, 'direction' => 'up'],
+                    'orders_count' => ['pct' => 0, 'direction' => 'flat'],
+                    'margin_pct' => ['points' => 0, 'direction' => 'flat'],
+                ],
+            ],
+        ]);
+    }
+
+    public function test_summary_month_to_date_compares_with_the_same_days_of_last_month(): void
+    {
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/summary?from=2026-10-01&to=2026-10-08&compare=month_to_date')
+            ->assertOk()
+            ->assertJsonPath('compare.previous_range', ['from' => '2026-09-01', 'to' => '2026-09-08']);
+    }
+
+    /** R12 — All time has no previous period. */
+    public function test_summary_has_no_comparison_for_all_time(): void
+    {
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/summary?compare=previous')->assertOk()->assertJsonPath('compare', null);
+    }
+
+    public function test_summary_rejects_an_unknown_compare_mode(): void
+    {
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/summary?from=2026-10-01&to=2026-10-08&compare=yoy')->assertUnprocessable();
+    }
+
     /** ADR-086 filter-unification follow-up — no ?from/?to (the "All time" filter) falls back to a bounded last-30-days window. */
     public function test_trend_defaults_to_last_30_days_when_unbounded(): void
     {

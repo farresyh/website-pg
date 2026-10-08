@@ -14,7 +14,9 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
 use Carbon\CarbonImmutable;
+use App\Support\PeriodComparison;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -137,6 +139,37 @@ final class ReportService
                 'customer_email' => $latest->customer_email,
                 'final_amount' => $latest->final_amount,
             ] : null,
+        ];
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R12–R14 — the summary's Compare block:
+     * the same `summary()` over the previous range, and each KPI's change
+     * through the shared `PeriodComparison`. No new aggregation. Null for
+     * an unbounded ("All time") range, which has no previous period.
+     */
+    public function summaryComparison(array $current, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, bool $monthToDate): ?array
+    {
+        if ($from === null || $toExclusive === null) {
+            return null;
+        }
+
+        [$prevFrom, $prevTo] = PeriodComparison::previousRange($from, $toExclusive, $monthToDate);
+        $previous = $this->summary($prevFrom, $prevTo, $affiliateId);
+
+        $changes = [];
+        foreach (['total_sales', 'orders_count', 'platform_profit', 'affiliate_profit', 'avg_order_value'] as $key) {
+            $changes[$key] = PeriodComparison::change($current[$key], $previous[$key]);
+        }
+        $changes['margin_pct'] = PeriodComparison::points($current['margin_pct'], $previous['margin_pct'], $previous['total_sales'] > 0);
+
+        return [
+            'previous_range' => [
+                'from' => $prevFrom->setTimezone(self::TIMEZONE)->toDateString(),
+                'to' => $prevTo->setTimezone(self::TIMEZONE)->subDay()->toDateString(),
+            ],
+            'previous' => Arr::except($previous, 'latest_order'),
+            'changes' => $changes,
         ];
     }
 

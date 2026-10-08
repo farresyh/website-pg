@@ -41,13 +41,26 @@ class ReportController extends Controller
         );
     }
 
+    /**
+     * ADR-104 R12 — `?compare=previous` (same-length range immediately
+     * before) or `?compare=month_to_date` (same days of last month). The
+     * page picks the mode from its preset: dates alone can't tell "This
+     * month" from a "Last 7 days" that happens to start on the 1st.
+     */
     public function summary(Request $request): JsonResponse
     {
+        $request->validate(['compare' => ['nullable', 'in:previous,month_to_date']]);
         [$from, $toExclusive] = $this->rangeFromRequest($request);
+        $affiliateId = $this->affiliateId($request);
+        $summary = $this->reports->summary($from, $toExclusive, $affiliateId);
 
-        return response()->json(
-            $this->reports->summary($from, $toExclusive, $this->affiliateId($request)),
-        );
+        if ($request->filled('compare')) {
+            $summary['compare'] = $this->reports->summaryComparison(
+                $summary, $from, $toExclusive, $affiliateId, $request->query('compare') === 'month_to_date',
+            );
+        }
+
+        return response()->json($summary);
     }
 
     public function trend(Request $request): JsonResponse
