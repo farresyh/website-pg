@@ -18,7 +18,7 @@ behind them, not left implicit.
 
 | App | Tech | Purpose |
 | --- | --- | --- |
-| `backend/` | Laravel 13 (PHP 8.3), MySQL | API for storefront, admin, partner portal, and middleware — checkout, orders, ledger, suppliers, payments |
+| `backend/` | Laravel 13 (PHP 8.4), MySQL, Redis (queue + cache) | API for storefront, admin, partner portal, and middleware — checkout, orders, ledger, suppliers, payments |
 | `admin/` | Next.js 16 + React 19 + Tailwind v4 | Internal admin panel — games/packages, orders, withdrawals, vouchers, affiliates, resellers, Price Sync Center, gallery |
 | `storefront/` | Next.js 16 + React 19 + Tailwind v4 | Public storefront — catalog, guest checkout, order tracking. Also renders every Affiliate whitelabel brand per `Host`/custom domain (ADR-060) |
 | `reseller/` | Next.js 16 + React 19 + Tailwind v4 | Partner portal — one app, two account types: Affiliate (earnings ledger, withdrawals, wholesale tier, storefront config, custom domain — ADR-058/059/060) and Reseller (prepaid wallet, API keys, bot — ADR-072–076) |
@@ -30,16 +30,18 @@ auth and no CSRF surface between the frontends and the API (see ADR-009 and
 
 ## Getting started
 
-Requires PHP 8.3+, Composer, Node 20+, and Docker (for the MySQL container
-used by concurrency tests — the app itself can run against SQLite locally).
+Requires PHP 8.4+, Composer, Node 20+, and Docker (local Redis for the queue,
+and the MySQL container used by concurrency tests — the app itself can run
+against SQLite locally). `./scripts/dev.sh` starts everything below at once.
 
 ```bash
 # Backend
 cd backend
+docker compose up -d redis   # Horizon needs Redis (ADR-048)
 composer install
 cp .env.example .env && php artisan key:generate
 php artisan migrate --seed
-composer run dev     # serves the API + queue worker + vite together, http://localhost:8000
+composer run dev     # API + Horizon + Reverb + Pulse + pail + vite, http://localhost:8000
 
 # Admin (separate terminal)
 cd admin
@@ -50,19 +52,25 @@ npm run dev           # http://localhost:3000
 # Storefront (separate terminal)
 cd storefront
 npm install
+npm run dev           # http://localhost:3001
+
+# Partner portal (separate terminal)
+cd reseller
+npm install
 cp .env.local.example .env.local
-npm run dev           # http://localhost:3001 (or whatever port is free)
+npm run dev           # http://localhost:3002
 ```
 
-`composer run dev` starts `php artisan serve`, `queue:listen`, `pail`
-(log tailing), and `vite` together — **the queue worker matters**: dispatched
-jobs (order fulfillment, price sync) sit unprocessed in the `jobs` table
-without one running. A bare `php artisan serve` or Laravel Herd on its own
-does not start a worker for you.
+`composer run dev` starts `php artisan serve`, `horizon`, `reverb:start`,
+`pulse:work`, `pail` (log tailing) and `vite` together — **the queue worker
+matters**: dispatched jobs (order fulfillment, price sync) never run without
+Horizon, and Horizon needs Redis. A bare `php artisan serve` or Laravel Herd on
+its own does not start a worker for you. More local gotchas:
+`backend/AGENTS.md`.
 
 You'll need real credentials to exercise supplier/payment integrations
-end-to-end — `GAMEVION_BEARER_TOKEN`/`GAMEVION_API_KEY` (set
-`GAMEVION_SANDBOX=true` to avoid touching production), and
+end-to-end — Digiflazz (the live supplier), `GAMEVION_BEARER_TOKEN`/`GAMEVION_API_KEY`
+(set `GAMEVION_SANDBOX=true` to avoid touching production), and
 `CHIP_SECRET_KEY`/`CHIP_BRAND_ID` for the payment gateway (CHIP is the sole
 gateway since ADR-022's 2026-09-01 addendum — Xendit was removed). Without
 them, everything up to the supplier/payment call still works against the
@@ -86,14 +94,15 @@ cd reseller && npm run lint && npx tsc --noEmit
 ```
 
 ```bash
-cd e2e && npm test   # Playwright, 4 golden paths (ADR-023) — boots its own throwaway backend+DB, real Chromium
+cd e2e && npm test   # Playwright golden paths (ADR-023, 6 specs) — boots its own throwaway backend+DB, real Chromium
 ```
 
 ## Documentation
 
 | Doc | What's in it |
 | --- | --- |
-| `docs/prd.md` | Full product spec (§1–13), plus a running build-status log (§14) and a coarse per-feature tracker (§15) — check §15 first for "how much of X is actually built" |
+| `docs/prd.md` | Full product spec (§1–13), the current-state headline (§14), a coarse per-feature tracker (§15) and the live backlog (§16) — check §15 first for "how much of X is actually built" |
+| `docs/build-log.md` | Chronological record of what shipped and why, 2026-10-01 onward; older entries in `docs/build-log-archive.md` |
 | `docs/adr.md` | Architecture Decision Log — every non-trivial trade-off, numbered, with context/rationale, stress-tested before being accepted. The source of truth for *why* |
 | `docs/foundation-security.md` | Actionable security checklist derived from the ADRs |
 | `docs/legacy-reference-notes.md` | Notes from studying a prior/reference system — read as reference material, not as facts about this codebase |
@@ -102,14 +111,11 @@ cd e2e && npm test   # Playwright, 4 golden paths (ADR-023) — boots its own th
 
 ## Current status
 
-**Deployed and feature-complete, pre-commercial-launch — it has taken its first
-real money.** The backend is live on a Laravel Forge–managed DigitalOcean droplet
-at `api.pekangame.space`; the four frontends are on Vercel (`pekangame.space`,
-`admin.pekangame.space`, `reseller.pekangame.space`, `docs.pekangame.space`) — see
-[ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation).
-CHIP FPX is **live** and one real order (`PG-PYAYMRYNUYV0`, RM1.94) has been paid
-end-to-end through the hosted page + `success_callback` webhook. The one thing
-still gating real customers: **no supplier account is funded** (deliberate founder
-hold), so orders can be paid but not delivered. `docs/prd.md` §15 has the
-per-feature status and §16 the live backlog; `docs/build-log.md` is the running
-chronological build record; `docs/adr.md` is the decision log.
+**Live in production with real money.** The backend runs on a Laravel
+Forge–managed DigitalOcean droplet at `api.pekangame.space`; the four
+frontends are on Vercel (storefront `pekangame.com`, `admin.pekangame.space`,
+`reseller.pekangame.space`, `docs.pekangame.space`) — see
+[ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)
+and ADR-114. CHIP is the sole payment gateway and Digiflazz the live supplier;
+reseller wallet orders are real customer orders. `docs/prd.md` §14 has the
+current state, §15 the per-feature status and §16 the live backlog.
