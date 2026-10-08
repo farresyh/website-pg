@@ -4,6 +4,8 @@ namespace App\Services\ReportAssistant;
 
 use App\Models\AdminUser;
 use App\Models\ReportAssistantAuditLog;
+use App\Services\Order\DeliveryStatus;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Report\ReportService;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
 use Illuminate\Support\Facades\DB;
@@ -40,6 +42,7 @@ final class ReportAssistantService
     /** Audit log keeps only a sample of the result set, not the full rows. */
     private const AUDIT_SAMPLE_ROWS = 20;
 
+    /** Placeholders filled from the enums by `schemaDescription()`, so the list can't go stale. */
     private const SCHEMA_DESCRIPTION = <<<'SCHEMA'
         You may query ONLY these three read-only SQL views. No other table exists to you.
 
@@ -53,8 +56,10 @@ final class ReportAssistantService
           - customer_email, customer_phone
           - game_id, game_name, package_id, package_name
           - payment_method (e.g. fpx)
-          - pricing_basis ('member' or 'standard')
-          - delivery_status ('delivered', 'partially_delivered', 'failed', 'processing', 'not_started', ...)
+          - pricing_basis, one of: {pricing_basis_values} ('standard' = retail storefront,
+            'member' = member price, 'affiliate' = an affiliate's whitelabel storefront,
+            'reseller-wallet' = a prepaid-wallet Reseller order)
+          - delivery_status, one of: {delivery_status_values}
           - affiliate_id, affiliate_name (the whitelabel storefront brand; null = primary brand)
           - wallet_reseller_id, reseller_name (a prepaid-wallet Reseller order; null = not one)
           - supplier_id, supplier_name (which supplier fulfilled this order)
@@ -62,11 +67,18 @@ final class ReportAssistantService
             llm_report_catalog instead for today's cost, they can legitimately differ)
           - transaction_fee, voucher_discount (sen)
           - affiliate_markup_pct, wholesale_markup_pct (percent, whichever channel applied)
-          - final_amount (what the customer paid, sen)
+          - final_amount (what the customer paid, sen, before any wallet refund)
+          - wallet_refund (sen credited back to a reseller's wallet for this order; 0 if none)
+          - net_sales (final_amount - wallet_refund, sen)
           - normal_selling_price (member order's counterfactual standard price, sen; null for standard orders)
           - selling_price (sen)
-          - platform_profit, affiliate_profit (ledger-recognized, sen; 0 if not yet delivered)
-          Gross margin on one order = final_amount - cost_price - transaction_fee.
+          - platform_profit, affiliate_profit (earned, from the ledger, sen; 0 if not yet delivered
+            or failed — already net of affiliate share, vouchers, real cost and combo legs)
+          Use the Reports page's definitions, so answers match it:
+            sales/revenue = SUM(net_sales) over every row, failed orders included (a failed
+            retail order's money is kept as store credit; a refunded wallet order nets to 0);
+            profit = SUM(platform_profit); margin % = SUM(platform_profit) / SUM(net_sales) * 100.
+          Never compute profit or margin yourself from cost_price/final_amount/transaction_fee.
 
         llm_report_membership_fees — one row per membership subscription/renewal fee
         actually booked (ledger type=membership_fee).
@@ -93,6 +105,16 @@ final class ReportAssistantService
         to fetch more than a couple hundred rows — aggregate in SQL (GROUP BY/SUM/COUNT),
         don't ask for raw rows to aggregate yourself.
         SCHEMA;
+
+    private static function schemaDescription(): string
+    {
+        $quoted = fn (array $cases): string => implode(', ', array_map(fn ($c) => "'{$c->value}'", $cases));
+
+        return strtr(self::SCHEMA_DESCRIPTION, [
+            '{pricing_basis_values}' => $quoted(PricingBasis::cases()),
+            '{delivery_status_values}' => $quoted(DeliveryStatus::cases()),
+        ]);
+    }
 
     /**
      * Found live 2026-09-12: without this, Gemini defaulted to
@@ -191,7 +213,7 @@ final class ReportAssistantService
     {
         $driver = DB::connection($this->connectionName())->getDriverName();
 
-        $systemPrompt = self::SCHEMA_DESCRIPTION."\n\n".$this->dialectNote($driver)."\n\n"
+        $systemPrompt = self::schemaDescription()."\n\n".$this->dialectNote($driver)."\n\n"
             .'You are the planning step of a two-step pipeline for a business-reports '
             .'assistant. Given the conversation, reply with ONLY a JSON object: '
             .'{"needs_query": boolean, "sql": string|null, "direct_answer": string|null}. '

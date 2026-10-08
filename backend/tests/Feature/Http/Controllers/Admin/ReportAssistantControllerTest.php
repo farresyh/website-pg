@@ -12,6 +12,7 @@ use App\Models\SupplierProduct;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Report\ReportService;
 use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
@@ -240,6 +241,28 @@ class ReportAssistantControllerTest extends TestCase
         $this->assertStringContainsString('SQLite', $planPrompt);
         $this->assertStringContainsString((string) now(ReportService::TIMEZONE)->format('Y-m-d'), $planPrompt);
         $this->assertStringContainsString('date_trunc', $planPrompt);
+    }
+
+    /**
+     * ADR-087 2026-10-08 addendum: the prompt defines sales and profit the
+     * way the Reports page does, and lists every enum value from the enum
+     * itself so the list can't go stale again.
+     */
+    public function test_plan_prompt_uses_the_reports_definitions_and_every_enum_value(): void
+    {
+        $this->actingAsSuperAdmin();
+        $fake = new FakeGeminiClient([json_encode(['needs_query' => false, 'direct_answer' => null]), 'ok']);
+        $this->app->instance(GeminiClient::class, $fake);
+
+        $this->postJson('/api/reports/assistant/ask', ['question' => 'sales this month?'])->assertOk();
+
+        $planPrompt = $fake->calls[0]['systemPrompt'];
+        $this->assertStringContainsString('SUM(net_sales)', $planPrompt);
+        $this->assertStringContainsString('SUM(platform_profit) / SUM(net_sales)', $planPrompt);
+        $this->assertStringNotContainsString('final_amount - cost_price - transaction_fee', $planPrompt);
+        foreach ([...PricingBasis::cases(), ...DeliveryStatus::cases()] as $case) {
+            $this->assertStringContainsString("'{$case->value}'", $planPrompt);
+        }
     }
 
     public function test_ask_answers_directly_without_a_query_for_pure_strategy_questions(): void
