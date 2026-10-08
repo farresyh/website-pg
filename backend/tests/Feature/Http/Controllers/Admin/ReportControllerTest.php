@@ -110,6 +110,44 @@ class ReportControllerTest extends TestCase
         $this->getJson('/api/reports/summary?from=2026-10-01&to=2026-10-08&compare=yoy')->assertUnprocessable();
     }
 
+    /** ADR-104 R13 Phase 1 — Compare reaches every tab's KPI cards through the same seam as the summary. */
+    public function test_membership_breakdown_compares_with_the_previous_period_when_asked(): void
+    {
+        $this->order(['paid_at' => '2026-10-05 04:00:00', 'final_amount' => 1500]);
+        $this->order(['paid_at' => '2026-09-28 04:00:00', 'final_amount' => 1000]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/membership-breakdown?from=2026-10-02&to=2026-10-08&compare=previous')
+            ->assertOk()
+            ->assertJsonPath('standard_sales', 1500)
+            ->assertJsonPath('compare.previous_range', ['from' => '2026-09-25', 'to' => '2026-10-01'])
+            ->assertJsonPath('compare.previous.standard_sales', 1000)
+            ->assertJsonPath('compare.changes.standard_sales', ['pct' => 50, 'direction' => 'up'])
+            ->assertJsonPath('compare.changes.member_sales', ['pct' => null, 'direction' => 'flat']);
+    }
+
+    public function test_channel_breakdown_compares_each_channel_with_the_previous_period(): void
+    {
+        $this->order(['paid_at' => '2026-10-05 04:00:00', 'final_amount' => 1500]);
+        $this->order(['paid_at' => '2026-09-28 04:00:00', 'final_amount' => 1000]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/breakdown/channels?from=2026-10-02&to=2026-10-08&compare=previous')
+            ->assertOk()
+            ->assertJsonPath('compare.changes.own_brand', ['pct' => 50, 'direction' => 'up'])
+            ->assertJsonPath('compare.changes.reseller_wallet', ['pct' => null, 'direction' => 'flat']);
+    }
+
+    public function test_breakdown_compare_is_null_for_all_time_and_absent_when_not_asked(): void
+    {
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/membership-breakdown?compare=previous')->assertOk()->assertJsonPath('compare', null);
+        $this->getJson('/api/reports/breakdown/channels?compare=previous')->assertOk()->assertJsonPath('compare', null);
+        $this->getJson('/api/reports/membership-breakdown?from=2026-10-01&to=2026-10-08')->assertOk()->assertJsonMissingPath('compare');
+        $this->getJson('/api/reports/breakdown/channels?from=2026-10-01&to=2026-10-08&compare=yoy')->assertUnprocessable();
+    }
+
     /** ADR-104 R17 — "All time" spans the first paid order to today; the old 30-day fallback is gone. */
     public function test_trend_for_all_time_spans_the_first_paid_order_to_today(): void
     {

@@ -98,6 +98,23 @@ class ReportChannelAndDeliveryTest extends TestCase
         $this->assertSame('MLBB', $rows->keys()->first()); // most orders first
     }
 
+    /** R5 — game rows carry the game's own icon; an unknown game has none (2-letter fallback). */
+    public function test_game_rows_carry_the_game_image_url(): void
+    {
+        $mlbb = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb', 'image_url' => 'https://cdn.test/mlbb.webp']);
+        $this->order(['game_id' => $mlbb->id]);
+        $this->order(['game_id' => null]);
+
+        $service = new ReportService;
+        $delivery = collect($service->deliveryByGame(null, null, null))->keyBy('game_name');
+        $games = collect($service->gameBreakdown(null, null, null))->keyBy('game_name');
+
+        $this->assertSame('https://cdn.test/mlbb.webp', $delivery['MLBB']['image_url']);
+        $this->assertSame('https://cdn.test/mlbb.webp', $games['MLBB']['image_url']);
+        $this->assertNull($delivery['Unknown Game']['image_url']);
+        $this->assertNull($games['Unknown Game']['image_url']);
+    }
+
     /** R17 — All time spans the first paid order to today. */
     public function test_trend_range_for_all_time_starts_at_the_first_paid_order(): void
     {
