@@ -178,7 +178,7 @@ class ReportControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $this->getJson('/api/reports/failed-compensated')->assertOk()
-            ->assertJsonPath('failed_count', 1)
+            ->assertJsonPath('failed.count', 1)
             ->assertJsonPath('outstanding_store_credit', 0);
     }
 

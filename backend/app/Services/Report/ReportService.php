@@ -736,11 +736,19 @@ final class ReportService
     }
 
     /**
-     * ADR-104 2026-10-08 addendum R8/R9 — Orders tab "Failed &
-     * compensated". A failed order's cash is a liability (owed back as
-     * store credit), never an expense: its profit is already 0 because
-     * `order_profit` is credited only on delivery, so nothing here is
-     * netted from profit. Scoped by the order's `paid_at` like every
+     * ADR-104 2026-10-08 addendum R8/R9, revised 2026-10-09 — Orders tab
+     * "Failed & compensated", one block per delivery status:
+     *
+     * - `failed`: the cash is a liability (owed back as store credit),
+     *   never an expense; its profit is already 0 (`order_profit` is
+     *   credited only on delivery), so nothing is netted from profit.
+     * - `partially_delivered`: the compensation IS already deducted from
+     *   that order's profit at settlement (OrderSettlementService).
+     * - `other`: compensation on any other status (a late payment turns a
+     *   compensated order NeedsReview), so no compensation goes missing.
+     *
+     * `awaiting_compensation` uses `Order::scopeNeedsAction()`, the same
+     * scope as Orders' Need action pill. Scoped by the order's `paid_at` like every
      * Reports figure (the Monthly Summary scopes vouchers by their own
      * `created_at`; the two can differ across a month boundary).
      *
@@ -753,26 +761,55 @@ final class ReportService
      */
     public function failedAndCompensated(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $walletRefund = "SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.owner_type = '".LedgerOwnerType::ResellerWallet->value."'"
-            ." AND wr.owner_id = orders.wallet_reseller_id AND wr.type = 'wallet_refund' AND wr.reference_type = 'order' AND wr.reference_id = orders.id";
+        $voucher = '(SELECT v.amount FROM vouchers v WHERE v.order_id = orders.id)';
+        $walletRefund = "(SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.owner_type = '".LedgerOwnerType::ResellerWallet->value."'"
+            ." AND wr.owner_id = orders.wallet_reseller_id AND wr.type = 'wallet_refund' AND wr.reference_type = 'order' AND wr.reference_id = orders.id)";
+        $restored = '(SELECT vr.restored_amount FROM voucher_redemptions vr WHERE vr.order_id = orders.id)';
+        $compensation = "COALESCE({$voucher}, 0) + COALESCE({$walletRefund}, 0) + COALESCE({$restored}, 0)";
 
-        $row = $this->scopedOrders($from, $toExclusive, $affiliateId)
+        $rows = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->selectRaw(
-                'SUM(CASE WHEN delivery_status = ? THEN 1 ELSE 0 END) as failed_count,'
-                .' COALESCE(SUM(CASE WHEN delivery_status = ? THEN final_amount ELSE 0 END), 0) as failed_paid_amount,'
-                .' COALESCE(SUM((SELECT v.amount FROM vouchers v WHERE v.order_id = orders.id)), 0) as voucher_issued,'
-                ." COALESCE(SUM(({$walletRefund})), 0) as wallet_refund,"
-                .' COALESCE(SUM((SELECT vr.restored_amount FROM voucher_redemptions vr WHERE vr.order_id = orders.id)), 0) as voucher_restored',
-                [DeliveryStatus::Failed->value, DeliveryStatus::Failed->value],
+                'delivery_status, COUNT(*) as order_count,'
+                ." SUM(CASE WHEN {$compensation} > 0 THEN 1 ELSE 0 END) as compensated_count,"
+                .' COALESCE(SUM(final_amount), 0) as paid_amount,'
+                ." COALESCE(SUM({$voucher}), 0) as voucher_issued,"
+                ." COALESCE(SUM({$walletRefund}), 0) as wallet_refund,"
+                ." COALESCE(SUM({$restored}), 0) as voucher_restored",
             )
-            ->first();
+            ->groupBy('delivery_status')
+            ->get()
+            ->toBase() // Eloquent's only() filters by primary key, not by these status keys
+            ->keyBy(fn ($row) => $row->delivery_status instanceof DeliveryStatus ? $row->delivery_status->value : $row->delivery_status);
+
+        // Awaiting = Orders' Need action: the same scope, so the two counts cannot drift.
+        $awaiting = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->needsAction()
+            ->selectRaw('delivery_status, COUNT(*) as n')
+            ->groupBy('delivery_status')
+            ->pluck('n', 'delivery_status');
+
+        $block = function (array $statuses, bool $compensatedOnly) use ($rows, $awaiting): array {
+            $picked = $rows->only($statuses);
+
+            return [
+                'count' => (int) $picked->sum($compensatedOnly ? 'compensated_count' : 'order_count'),
+                'paid_amount' => $compensatedOnly ? 0 : (int) $picked->sum('paid_amount'),
+                'voucher_issued' => (int) $picked->sum('voucher_issued'),
+                'wallet_refund' => (int) $picked->sum('wallet_refund'),
+                'voucher_restored' => (int) $picked->sum('voucher_restored'),
+                'awaiting_compensation' => (int) collect($statuses)->sum(fn ($status) => $awaiting[$status] ?? 0),
+            ];
+        };
+
+        $failed = DeliveryStatus::Failed->value;
+        $partial = DeliveryStatus::PartiallyDelivered->value;
 
         return [
-            'failed_count' => (int) $row->failed_count,
-            'failed_paid_amount' => (int) $row->failed_paid_amount,
-            'voucher_issued' => (int) $row->voucher_issued,
-            'wallet_refund' => (int) $row->wallet_refund,
-            'voucher_restored' => (int) $row->voucher_restored,
+            'failed' => $block([$failed], false),
+            'partially_delivered' => $block([$partial], false),
+            // Compensation on any other status (e.g. a late payment on a
+            // compensated order turns it NeedsReview), so none goes missing.
+            'other' => $block($rows->keys()->diff([$failed, $partial])->values()->all(), true),
         ];
     }
 
@@ -821,11 +858,14 @@ final class ReportService
         $orders = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->with(['affiliate:id,business_name', 'game:id,name', 'package:id,name', 'walletReseller:id,business_name'])
             ->orderBy('paid_at')
-            ->get([
+            ->select([
                 'id', 'order_number', 'paid_at', 'customer_email', 'final_amount',
                 'affiliate_id', 'game_id', 'package_id', 'wallet_reseller_id',
                 'payment_method', 'pricing_basis', 'delivery_status',
-            ]);
+            ])
+            // ADR-104 R8 revision — from the same seam as Paid sales, so the export can't drift from the page.
+            ->selectRaw(Order::walletRefundSql().' as wallet_refund_sen, '.Order::netSalesSql().' as net_sales_sen')
+            ->get();
 
         $profitByOrder = LedgerEntry::query()
             ->where('type', 'order_profit')
@@ -848,7 +888,9 @@ final class ReportService
                 'pricing_basis' => $order->pricing_basis->label(),
                 'reseller_name' => $order->walletReseller?->business_name,
                 'delivery_status' => $order->delivery_status->value,
-                'final_amount' => $order->final_amount,
+                'paid_amount' => $order->final_amount,
+                'wallet_refund' => (int) $order->wallet_refund_sen,
+                'net_sales' => (int) $order->net_sales_sen,
                 'platform_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Platform->value)->sum('amount'),
                 'affiliate_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Affiliate->value)->sum('amount'),
             ];

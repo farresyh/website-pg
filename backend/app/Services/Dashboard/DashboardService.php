@@ -6,7 +6,6 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\Voucher;
-use App\Support\PeriodComparison;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
@@ -15,6 +14,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -70,7 +70,7 @@ final class DashboardService
             'sales_today' => [
                 'value' => $today['total_sales'],
                 'comparison' => PeriodComparison::change($today['total_sales'], $yesterday['total_sales']),
-                'definition' => 'SUM(final_amount), sen, where payment_status=Paid, paid_at = today (Asia/Kuala_Lumpur), excludes is_test orders. Same rule Reports (RPT-1) uses.',
+                'definition' => 'Paid sales: SUM(final_amount) minus wallet refunds (Order::netSalesSql), sen, where payment_status=Paid, paid_at = today (Asia/Kuala_Lumpur), excludes is_test orders. Same rule Reports (RPT-1) uses.',
             ],
             'orders_today' => [
                 'value' => $today['orders_count'],

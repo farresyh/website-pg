@@ -35,9 +35,11 @@ export function OrderStatusFunnelChart({ funnel }: { funnel: ReportOrderStatusFu
     return <p className="py-8 text-center text-sm text-ink-muted">No paid orders in this range yet.</p>;
   }
 
-  const other = total - s.delivered - s.failed;
+  // ADR-104 R8 revision — a partial delivery is its own outcome, not "in progress".
+  const other = total - s.delivered - s.failed - s.partially_delivered;
   const share = [
     { label: "Delivered", count: s.delivered, dot: "bg-chart-positive" },
+    { label: "Partially delivered", count: s.partially_delivered, dot: "bg-review-ink" },
     { label: "Failed", count: s.failed, dot: "bg-chart-negative" },
     { label: "In progress or review", count: other, dot: "bg-warning-ink" },
   ];
@@ -54,7 +56,7 @@ export function OrderStatusFunnelChart({ funnel }: { funnel: ReportOrderStatusFu
         )}
       </div>
       <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-theme-xs text-ink-muted">
-        {share.map((x) => (
+        {share.filter((x) => x.count > 0 || x.label !== "Partially delivered").map((x) => (
           <span key={x.label} className="flex items-center gap-1.5">
             <span className={`size-2 rounded-full ${x.dot}`} />
             {x.label} <b className="font-semibold text-ink">{pct(x.count, total).toFixed(0)}%</b> · {x.count.toLocaleString()}{" "}
