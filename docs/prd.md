@@ -742,7 +742,6 @@ code and production on 2026-10-08; re-verify before building.
    first.
 3. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
    in-modal picker.
-4. **27** e2e admin `next dev` boot flake → `next build && next start`.
 
 **B. Needs a short grill / ADR addendum first**
 - **69** WhatsApp silent throttles (ADR-116 addendum).
@@ -898,15 +897,6 @@ code and production on 2026-10-08; re-verify before building.
     explicit payment/delivery/compensation semantics and a versioned API
     contract; never sum the current paginated page in the browser. Requires a
     separate ADR before implementation.
-27. **`e2e`'s `playwright` job intermittently fails to boot admin's `next dev`**
-    (Turbopack `next/font/google` crash on JetBrains Mono, no test runs).
-    Recurred 2026-09-30 (#324, twice) and 2026-10-08 on the `main` push of
-    release #376 (the same tree passed on the PR). `deploy` doesn't wait for
-    `playwright`, so it doesn't block a release, but every hit is a red run.
-    Tried 2026-09-28: pinning `--webpack` made two admin specs fail
-    consistently, reverted. The real fix is `next build && next start` for the
-    e2e admin server (deterministic, no on-demand compile). Full investigation:
-    `docs/build-log-archive.md`, 2026-09-28.
 28. **Supplier balance comfortable-buffer forecast — [ADR-115](./adr.md),
     fully designed + grilled, build deliberately parked.** Digiflazz-only,
     rolling lead-time-window-sum percentile (not a flat daily rate — a
@@ -968,6 +958,7 @@ code and production on 2026-10-08; re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **27** 2026-10-08: e2e boots admin with `next build && next start` instead of Turbopack `next dev` (the `next/font/google` on-demand compile crash). 6/6 specs pass locally; reopen if `playwright` goes red on a boot error again.
 - **56** 2026-10-08: accounting + wallet top-up receipts on the private R2 bucket `pekangame-accounting` (`r2_accounting`, #375, live via #376); the 3 live supplier receipts copied and downloading. The 2 lost receipts (voided transfers) stay lost.
 - **70 / 68 / 67** 2026-10-08: full-voucher-cover orders store `payment_method = voucher` (+ data migration for the 4 prod rows); every `""` admin select option shows its label (fixed in `SimpleSelect`, not just "UID only"); one shared admin `Switch` replaces 7 toggles whose knob slid out of the track; ADR-109 admin Content tab clicked through and passed. Live via #376 (2026-10-08).
 - **63** 2026-10-03 pre-launch money audit, remaining P2s — all built (none moved money in prod): payment-outcome seam, replay hash, KL days, late Digiflazz Sukses (ADR-102), member resend profit (ADR-105, #360), per-game player-input contract (ADR-097, #356/#357), Reseller API `max_price_sen` (ADR-074, #371), and on 2026-10-08 the LLM assistant matching Reports (ADR-087) plus the Monthly Summary tier-fee line (ADR-083). All live via #376 (2026-10-08).
