@@ -53,27 +53,26 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      // Item 27: plain `next dev` defaults to Turbopack on Next 16, whose
-      // Google Fonts loader has intermittently failed to compile
-      // layout.tsx in CI (twice in one day, 2026-09-24, on two unrelated
-      // PRs — same known Turbopack CSS-worker/font-loader class of
-      // failure as AGENTS.md's local-dev gotcha, worked around there the
-      // same way). `--webpack` pins the stable bundler for this
-      // CI-only boot, matching `next build --webpack`'s existing use
-      // elsewhere in this repo (docs/build-log.md, 2026-09-24).
-      command: "npx next dev --port 3000",
+      // Item 27: `next dev` (Turbopack) intermittently crashed compiling
+      // layout.tsx's `next/font/google` on demand in CI, so no test ran.
+      // A production build compiles once up front and fails loudly if it
+      // fails; `next start` then serves with no on-demand compile.
+      // (`--webpack` dev was tried 2026-09-28 and broke two specs.)
+      command: "npx next build && npx next start --port 3000",
       cwd: path.join(ROOT_DIR, "admin"),
       url: ADMIN_URL,
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 300_000,
       env: { NEXT_PUBLIC_API_URL: BACKEND_URL },
     },
     {
-      command: "npx next dev --port 3001",
+      // Item 27: same Turbopack font crash hit storefront's Inter
+      // (PR #379, 2026-10-08) — same fix as admin above.
+      command: "npx next build && npx next start --port 3001",
       cwd: path.join(ROOT_DIR, "storefront"),
       url: STOREFRONT_URL,
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 300_000,
       env: { NEXT_PUBLIC_API_URL: BACKEND_URL },
     },
   ],

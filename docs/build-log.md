@@ -1288,6 +1288,18 @@ out of docs where it no longer belongs, and stale docs archived.
     backup local-disk gap (closed by R2); §16 items 6, 9, 27, 49 trimmed
     to what is still open (closed parts are in the build-log).
 
+## 2026-10-08 — Item 27: e2e admin boots from a production build
+
+`playwright` went red on the `main` push of release #376 (third time) because
+Turbopack `next dev` crashed compiling admin's `next/font/google` on demand,
+before any test ran. `e2e/playwright.config.ts` now boots admin with
+`npx next build && npx next start --port 3000` (webServer timeout 60s → 300s
+to cover the build). The build compiles once and fails loudly; `start` has no
+on-demand compile. `--webpack` dev (tried 2026-09-28) broke two admin specs;
+the production build passes all three. Storefront hit the same crash on its
+Inter font the same day (PR #379's run), so it got the same change. Local run
+with both on production builds: 6/6 passed.
+
 ## 2026-10-08 — Combo modal shows each component's supplier SKU (item 66, part)
 
 Founder couldn't tell which supplier product a combo leg was (e.g. "60 UC ×3"
