@@ -2967,3 +2967,42 @@ confirmation wasn't seen. Other game pages left to the sitemap.
 **Still open.** Founder click-through of SEO › FAQ in admin; GA4, default
 OG image, Bing Webmaster Tools (deferred); re-check GSC coverage for
 canonical/duplicate reports across both domains in ~2 weeks (ADR-120).
+
+## 2026-10-08 — Reseller API `max_price_sen` (item 63, API bullet; ADR-074 addendum)
+
+**What shipped.** `POST /v1/orders` takes an optional `max_price_sen`. If the
+live wallet price is above it, the order is refused with `422 PRICE_CHANGED`
+and `details.current_price_sen`, and nothing is charged. A lower live price is
+charged as is. Omitted = the old behaviour. API docs v1.4.0.
+
+**Why, and the corrected premise.** The backlog said "catalogue cached 60s".
+The trace showed the charge was always computed live (`resolveByCode()` is
+uncached) and both catalogue caches flush on every price write. The real gap
+is read-then-order time on the integrator's side. Prod, 7 days: 11,683 cost
+changes, 230 rises >2%, 12 >10%, max +37%. API orders ever: 0 (2 keys); Bot: 7.
+
+**Design (grilled, then stress-tested at the founder's request).**
+- Guard in `ResellerOrderPlacementService::placeOrder()`, after the replay
+  check, comparing the same `$pricing` the debit uses. Only the service knows
+  the final price, so a controller guard would have duplicated pricing.
+- `PriceAboveMaxException` (channel-neutral) → `ResellerApiException::priceChanged()`.
+- `max_price_sen` is **not** in the idempotency payload hash: a rejected order
+  leaves no row, so the same key can retry; stored hashes stay valid.
+- The stress test changed two grill answers: `details` is now documented as
+  code-specific (no top-level field outside the envelope), and the planned
+  one-off `Log::info` was dropped (no API rejection is logged today; a generic
+  hook is §16 item 73).
+- Bot unchanged; its `max=` token is §16 item 72.
+
+**Gotcha.** Scramble turns a comment above a FormRequest rule into the
+public field description. The first export published an internal ADR
+reference; the comment is now integrator-facing.
+
+**Verification.** +6 tests (3 service, 3 HTTP: rejection envelope with no
+order or debit, same-key retry after rejection, validation of 0 / 63.5 /
+"abc"). Fast suite 2628/2628 on the final code; Pint clean; `scramble:export` regenerated
+`docs-site/public/openapi.json`; docs-site `check` + `build` clean. No curl
+check: the local dev DB has no reseller and seeding one wasn't worth writing
+to the unbacked dev DB; the HTTP tests run the real route, key middleware,
+FormRequest and envelope render hook. No migration; concurrency suite not
+affected (no lock change).
