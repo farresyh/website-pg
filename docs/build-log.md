@@ -1562,3 +1562,28 @@ ledger from checkout to delivery.
 - **Verified:** backend 2674/2674 (sqlite); report and dashboard tests
   on docker MySQL; admin tsc/eslint/build; Orders tab screenshot, light
   and dark, against the dev DB.
+
+## 2026-10-09 — Release #385 (staging → main): #377–#384
+
+Founder-requested release, merged 2026-10-09 (`6db0470`). Ships the Reports
+redesign (#380–#384, item 65), the combo component SKU (#379), the e2e
+`next start` boot (#378) and docs (#377). CI on `main` is all green,
+`playwright` included (it failed on the #376 release; #378 fixed that).
+The deploy job succeeded.
+
+- **Deploy window:** `add_placed_via_to_orders_table` runs before the new
+  release activates, so old code inserting an order in those seconds would
+  fail on NOT NULL (no money moves). Released at ~03:30 KL, low traffic.
+- **Verified on prod (read-only tinker):**
+  - The box serves `6db0470`, the migration is `Ran`, and `/up` returns 200.
+  - `placed_via`: 28 storefront, 7 reseller_bot, 0 null — exactly the
+    backfill.
+  - Summary: Paid sales RM 184.00, 31 orders, owner RM 7.38, affiliate
+    RM 0.15.
+  - Bridge: RM 184.00 → RM 160.90 (= Monthly Summary), RM 0.00
+    unexplained.
+  - Failed block: 7 orders, voucher RM 13.18 + wallet RM 344.43 +
+    restored RM 5.22, 0 awaiting. Partial and other: 0.
+  - Outstanding store credit RM 3.10. Export net sum RM 184.00.
+  - Channels sum to RM 184.00 (58.79 + 117.02 + 8.19). Profit 3.68 + 3.35
+    + 0.35 = RM 7.38.
