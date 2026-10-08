@@ -115,7 +115,7 @@ banner). This file covers the whole repo.
   status, `git fetch` and diff `origin/main..origin/staging`. Local branch refs
   go stale silently, and a doc or memory "LIVE PROD" label can be wrong.
 - A push to `main` auto-deploys the backend (CI `deploy` job → Forge hook,
-  gated on all test jobs, ADR-066); the four frontends auto-deploy from `main`
+  gated on every CI job except `playwright`, ADR-066); the four frontends auto-deploy from `main`
   on Vercel. A `staging`→`main` release happens only when the founder asks.
 - A fix merged to `staging` is **not** live. If a bug was patched in prod data
   but its code fix is still staging-only, the bug can recur — say so plainly

@@ -3099,3 +3099,38 @@ write — founder's call.
 **Verification.** +1 test (full cover → `voucher`, partial keeps the
 channel); fast suite 2633/2633. `admin/` tsc + eslint clean. Live checks in a
 local browser as above.
+
+## 2026-10-08 — Release #376 (`staging`→`main`) + item 56 prod cutover + backup-temp cleanup
+
+**Release #376** (#370–#375). Server runs `7ff58ae`; batch 34 Ran:
+`add_net_sales_to_llm_report_orders_view` and
+`relabel_full_voucher_cover_orders_payment_method`. Before: the 4 RM 0
+full-cover orders read `fpx`; after: `[{"payment_method":"voucher","c":4}]`.
+`/api/health` 200. The `main` push run's `playwright` job failed on the
+known item 27 flake (Turbopack `next/font/google` crash booting admin
+`next dev`, no test ran); the same tree passed playwright on PR #376.
+`deploy` still ran: its `needs:` lists every job except `playwright`, so
+AGENTS.md's "gated on all test jobs" was corrected.
+
+**Item 56 cutover (founder go-ahead; founder set the `.env` values).**
+- Founder created bucket `pekangame-accounting` (APAC, private: no custom
+  domain, public dev URL off, only the default multipart-abort lifecycle
+  rule; checked in the Cloudflare dashboard) and a token scoped to it.
+- `.env`: `R2_ACCOUNTING_ACCESS_KEY_ID/SECRET/BUCKET`,
+  `ACCOUNTING_DISK=r2_accounting`, `WALLET_RECEIPTS_DISK=r2_accounting`
+  (set after the deploy, since the disk name didn't exist in the old release).
+- Ran: `php artisan config:cache`; a put/get/delete round trip on
+  `r2_accounting` (read `ok`, gone after delete).
+- Ran: tinker copy of `local:accounting/**` → `r2_accounting`, skipping
+  existing keys. First run copied 3 PDFs (22570/22569/22561 bytes, sizes match
+  on both sides); second run skipped all 3.
+- After: transfers 3, 4, 5 resolve on the new disk and stream 200 with a
+  valid `%PDF` body through `SupplierFundingService::downloadReceipt()`;
+  transfers 1, 2 (voided) stay missing, as recorded in ADR-114's 2026-10-01
+  addendum. 0 budget receipts, 0 wallet receipts. The local copies were left
+  in place (harmless, a fallback until the next droplet move).
+
+**backup-temp cleanup (founder ran the command).** Before: five
+`storage/app/backup-temp/restore-extract-*` folders (2026-09-26..30, 34–60 MB,
+plaintext DB dumps with customer PII), left by restore tests killed before
+`RunDatabaseBackupJob`'s `finally` ran. After: the folder is empty (4.0K).
