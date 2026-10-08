@@ -111,7 +111,7 @@ final class ReportService
         // ->count()); the latest-order row can't fold into a GROUP-less
         // aggregate, so it stays its own query — two, down from three.
         $totals = $this->scopedOrders($from, $toExclusive, $affiliateId)
-            ->selectRaw("COALESCE(SUM({$this->netSalesExpr()}), 0) as total_sales, COUNT(*) as orders_count")
+            ->selectRaw('COALESCE(SUM('.Order::netSalesSql().'), 0) as total_sales, COUNT(*) as orders_count')
             ->first();
         $totalSales = (int) $totals->total_sales;
         $ordersCount = (int) $totals->orders_count;
@@ -194,7 +194,7 @@ final class ReportService
         $dayExpr = $this->dayBucketExpr('paid_at');
 
         $sales = $this->scopedOrders($from, $toExclusive, $affiliateId)
-            ->selectRaw("{$dayExpr} as report_key, COALESCE(SUM({$this->netSalesExpr()}), 0) as sales, COUNT(*) as orders_count, COALESCE(SUM(transaction_fee), 0) as transaction_fees")
+            ->selectRaw("{$dayExpr} as report_key, COALESCE(SUM(".Order::netSalesSql().'), 0) as sales, COUNT(*) as orders_count, COALESCE(SUM(transaction_fee), 0) as transaction_fees')
             ->groupBy('report_key')
             ->get()
             ->keyBy('report_key');
@@ -624,34 +624,10 @@ final class ReportService
     private function salesByGroup(Builder $ordersQuery, string $groupExpr): Collection
     {
         return $ordersQuery
-            ->selectRaw("{$groupExpr} as report_key, COALESCE(SUM({$this->netSalesExpr()}), 0) as sales, COUNT(*) as orders_count")
+            ->selectRaw("{$groupExpr} as report_key, COALESCE(SUM(".Order::netSalesSql().'), 0) as sales, COUNT(*) as orders_count')
             ->groupBy('report_key')
             ->get()
             ->keyBy('report_key');
-    }
-
-    /**
-     * 2026-09-21 fix (ADR-086 addendum, Bug 4) — a reseller-wallet
-     * order's compensation (`wallet_refund` ledger entry, ADR-073/
-     * ADR-102) genuinely reverses the wallet debit, unlike a storefront
-     * Voucher (whose `voucher_discount` already nets out of a later
-     * redeeming order's own `final_amount` via
-     * `CheckoutTotalService::calculate()` — no double count there, so
-     * this expression only needs to cover the wallet-refund case).
-     *
-     * Net Sales = Gross `final_amount` − Σ(`wallet_refund` ledger amount
-     * for THIS order) — a correlated subquery scoped by `orders.id`
-     * (never the refund's own `created_at`), so a refund posted on a
-     * later day still nets against the day the order was originally
-     * *paid* (Q5's own "each day stays self-contained" call), not the
-     * day it happened to be reversed. Real prod evidence this fixes:
-     * reseller "Naeem Industries" order 27 (RM343.51, failed+refunded
-     * same day) and "FixFast" order 5 (92 sen, refunded then re-spent on
-     * two later orders) both inflated Sales before this fix.
-     */
-    private function netSalesExpr(): string
-    {
-        return "final_amount - COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.reference_type = 'order' AND wr.reference_id = orders.id AND wr.type = 'wallet_refund'), 0)";
     }
 
     /**

@@ -5,7 +5,9 @@ namespace Tests\Feature\Http\Controllers\Admin;
 use App\Models\AdminUser;
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
+use App\Models\LedgerEntry;
 use App\Services\Accounting\BudgetEnvelopeEntryCategory;
+use App\Services\Ledger\LedgerOwnerType;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -135,6 +137,21 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertIsInt($response->json('current_month_rough_pl_estimate_sen'));
         // No orders/memberships/vouchers recorded this month in this test — the estimate must be exactly 0, not null/missing.
         $this->assertSame(0, $response->json('current_month_rough_pl_estimate_sen'));
+    }
+
+    /** ADR-083 2026-10-08 addendum: a tier fee adds to profit whether booked as revenue or contra-commission. */
+    public function test_rough_pl_estimate_adds_this_months_affiliate_tier_fees(): void
+    {
+        $this->actAsSuperAdmin();
+        LedgerEntry::query()->create([
+            'owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 1, 'type' => 'affiliate_tier_fee',
+            'amount' => -1500, 'reference_type' => 'affiliate_subscription', 'reference_id' => 1,
+        ]);
+
+        $response = $this->getJson('/api/accounting/envelopes')->assertOk();
+
+        $this->assertSame(1500, $response->json('current_month_summary.affiliate_tier_fees_sen'));
+        $this->assertSame(1500, $response->json('current_month_rough_pl_estimate_sen'));
     }
 
     /** CapitalInjection's typical sign is positive — the request sends a plain magnitude, the controller applies the sign. */

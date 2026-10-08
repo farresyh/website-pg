@@ -3006,3 +3006,37 @@ check: the local dev DB has no reseller and seeding one wasn't worth writing
 to the unbacked dev DB; the HTTP tests run the real route, key middleware,
 FormRequest and envelope render hook. No migration; concurrency suite not
 affected (no lock change).
+
+## 2026-10-08 — Item 63 closed: Report Assistant matches Reports (ADR-087) + tier-fee line (ADR-083)
+
+**What shipped.**
+- `llm_report_orders` gains `wallet_refund` and `net_sales` (= `final_amount`
+  − wallet refunds, the Reports page's Net Sales). Migration
+  `2026_10_08_120000`, drop + recreate like 2026_09_15_100000.
+- The assistant prompt: sales = `SUM(net_sales)`, profit =
+  `SUM(platform_profit)`, margin = profit ÷ net sales. The hand margin
+  formula is gone. `pricing_basis` / `delivery_status` lists are generated
+  from the enums.
+- `Order::netSalesSql()` replaces two identical copies (`ReportService`,
+  `CustomerAnalyticsService`); `LlmReportViewParityTest` holds the view to
+  `ReportService::summary()`.
+- Monthly Summary: neutral `affiliate_tier_fees_sen` line ("from earnings, no
+  cash"), also added to the Envelope Ledger's rough P&L.
+
+**Corrected premises.** "Failed orders counted as revenue" matches Reports'
+own Net Sales (a failed retail order's money is kept as store credit), so
+the fix was to mirror Reports, not drop failed rows. Prod tier-fee entries
+are 1, not 0 (RM0.00; both tiers are RM0).
+
+**Found by the reader trace.** `BudgetEnvelopeController`'s rough P&L sums the
+summary lines; without the tier fee it would understate profit. Added under
+either accounting treatment.
+
+**Not done on purpose.** No reviewer question drafted: nothing to book while
+tier fees are RM0 (§16 item 74 is the trigger). Customer email/phone stay in
+the view (noted in the ADR-087 addendum).
+
+**Verification.** +4 tests (tier-fee KL month bounds, rough P&L, view parity,
+prompt definitions + enum lists). Fast suite 2632/2632; Pint clean; `admin/`
+tsc, lint and build clean. Local dev DB migrated (`php artisan migrate`); the
+view returns 183 rows there. Concurrency suite: see the PR.
