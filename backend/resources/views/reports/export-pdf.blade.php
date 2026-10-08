@@ -29,7 +29,9 @@
                 <th>Pricing Basis</th>
                 <th>Reseller</th>
                 <th>Delivery Status</th>
-                <th>Sales (RM)</th>
+                <th>Paid (RM)</th>
+                <th>Wallet Refund (RM)</th>
+                <th>Paid Sales (RM)</th>
                 <th>Platform Profit (RM)</th>
                 <th>Affiliate Profit (RM)</th>
             </tr>
@@ -47,7 +49,9 @@
                 <td>{{ $row['pricing_basis'] }}</td>
                 <td>{{ $row['reseller_name'] ?? '-' }}</td>
                 <td>{{ $row['delivery_status'] }}</td>
-                <td class="num">{{ number_format($row['final_amount'] / 100, 2) }}</td>
+                <td class="num">{{ number_format($row['paid_amount'] / 100, 2) }}</td>
+                <td class="num">{{ number_format($row['wallet_refund'] / 100, 2) }}</td>
+                <td class="num">{{ number_format($row['net_sales'] / 100, 2) }}</td>
                 <td class="num">{{ number_format($row['platform_profit'] / 100, 2) }}</td>
                 <td class="num">{{ number_format($row['affiliate_profit'] / 100, 2) }}</td>
             </tr>

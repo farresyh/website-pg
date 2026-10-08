@@ -83,13 +83,27 @@ export interface ReportAccountingBridge {
   unexplained_difference: number;
 }
 
-/** ADR-104 R8–R10 — failure is a liability, never netted from profit. */
-export interface ReportFailedCompensated {
-  failed_count: number;
-  failed_paid_amount: number;
+/** One delivery status's compensation (ADR-104 R8, revised 2026-10-09). */
+export interface CompensationBlock {
+  count: number;
+  paid_amount: number;
   voucher_issued: number;
   wallet_refund: number;
   voucher_restored: number;
+  /** Still needing compensation: Orders' Need action, same scope. */
+  awaiting_compensation: number;
+}
+
+/**
+ * ADR-104 R8–R10, revised 2026-10-09 — a block per delivery status.
+ * Failed: a liability, never netted from profit. Partially delivered: the
+ * compensation is already inside that order's profit. Other: compensation
+ * on any other status (count = compensated orders, paid_amount 0).
+ */
+export interface ReportFailedCompensated {
+  failed: CompensationBlock;
+  partially_delivered: CompensationBlock;
+  other: CompensationBlock;
   outstanding_store_credit: number;
   outstanding_store_credit_as_of: string;
 }

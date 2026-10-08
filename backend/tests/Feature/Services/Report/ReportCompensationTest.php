@@ -87,27 +87,78 @@ class ReportCompensationTest extends TestCase
         return [$voucherIssued, $walletRefunded, $restoredOnly, $mixed, $partial, $delivered];
     }
 
+    private function section(?int $affiliateId = null): array
+    {
+        return (new ReportService)->failedAndCompensated(...[...$this->october(), $affiliateId]);
+    }
+
+    /** Σ over every block, so no compensation can fall between them. */
+    private function total(array $section, string $key): int
+    {
+        return $section['failed'][$key] + $section['partially_delivered'][$key] + $section['other'][$key];
+    }
+
     public function test_compensation_aggregates_equal_the_order_model_methods(): void
     {
         $orders = collect($this->seedEveryCompensationForm())->map->fresh();
 
-        $section = (new ReportService)->failedAndCompensated(...[...$this->october(), null]);
+        $section = $this->section();
 
-        $this->assertSame((int) $orders->sum->cashCompensationSen(), $section['voucher_issued'] + $section['wallet_refund']);
-        $this->assertSame((int) $orders->sum->compensationAmountSen(), $section['voucher_issued'] + $section['wallet_refund'] + $section['voucher_restored']);
-        $this->assertSame(1100 + 700 + 2000, $section['voucher_issued']);
-        $this->assertSame(1000, $section['wallet_refund']);
-        $this->assertSame(1000 + 400, $section['voucher_restored']);
+        $this->assertSame((int) $orders->sum->cashCompensationSen(), $this->total($section, 'voucher_issued') + $this->total($section, 'wallet_refund'));
+        $this->assertSame((int) $orders->sum->compensationAmountSen(), $this->total($section, 'voucher_issued') + $this->total($section, 'wallet_refund') + $this->total($section, 'voucher_restored'));
     }
 
-    public function test_failed_count_and_paid_amount(): void
+    /** ADR-104 R8 revision (2026-10-09) — Failed and Partially delivered are separate blocks. */
+    public function test_failed_block_holds_only_failed_orders(): void
     {
         $this->seedEveryCompensationForm();
 
-        $section = (new ReportService)->failedAndCompensated(...[...$this->october(), null]);
+        $failed = $this->section()['failed'];
 
-        $this->assertSame(4, $section['failed_count']);
-        $this->assertSame(1100 + 1000 + 0 + 700, $section['failed_paid_amount']);
+        $this->assertSame(4, $failed['count']);
+        $this->assertSame(1100 + 1000 + 0 + 700, $failed['paid_amount']);
+        $this->assertSame(1100 + 700, $failed['voucher_issued']);
+        $this->assertSame(1000, $failed['wallet_refund']);
+        $this->assertSame(1000 + 400, $failed['voucher_restored']);
+        $this->assertSame(0, $failed['awaiting_compensation']);
+    }
+
+    public function test_partial_block_counts_settled_and_awaiting_partials(): void
+    {
+        $this->settledPartialComboOrder();
+        $this->partialComboOrder();
+
+        $partial = $this->section()['partially_delivered'];
+
+        $this->assertSame(2, $partial['count']);
+        $this->assertSame(5100 + 5100, $partial['paid_amount']);
+        $this->assertSame(2000, $partial['voucher_issued']);
+        $this->assertSame(1, $partial['awaiting_compensation']);
+        $this->assertSame(0, $this->section()['failed']['count']);
+    }
+
+    /** Awaiting = Orders' Need action (Order::scopeNeedsAction), the same scope, so the numbers match. */
+    public function test_awaiting_compensation_matches_need_action(): void
+    {
+        $this->order(['delivery_status' => DeliveryStatus::Failed]);
+        $this->order(['delivery_status' => DeliveryStatus::Failed]);
+        $this->voucher($this->order(['delivery_status' => DeliveryStatus::Failed]));
+
+        $this->assertSame(2, $this->section()['failed']['awaiting_compensation']);
+        $this->assertSame(Order::query()->needsAction()->count(), $this->section()['failed']['awaiting_compensation']);
+    }
+
+    /** A late payment on a compensated order becomes NeedsReview; its compensation lands in "other", never nowhere. */
+    public function test_compensation_on_any_other_status_lands_in_other(): void
+    {
+        $underReview = $this->order(['delivery_status' => DeliveryStatus::NeedsReview]);
+        $this->voucher($underReview, ['amount' => 900]);
+        $this->order(['delivery_status' => DeliveryStatus::Delivered]);
+
+        $other = $this->section()['other'];
+
+        $this->assertSame(1, $other['count']);
+        $this->assertSame(900, $other['voucher_issued']);
     }
 
     /** R8 — a liability, not an expense: profit is untouched by compensation. */
@@ -129,10 +180,10 @@ class ReportCompensationTest extends TestCase
         $september = $this->order(['delivery_status' => DeliveryStatus::Failed, 'paid_at' => '2026-09-30 15:00:00']); // 30 Sep 23:00 KL
         $this->voucher($september, ['amount' => 1100]); // created now, in any month
 
-        $section = (new ReportService)->failedAndCompensated(...[...$this->october(), null]);
+        $section = $this->section();
 
-        $this->assertSame(0, $section['failed_count']);
-        $this->assertSame(0, $section['voucher_issued']);
+        $this->assertSame(0, $section['failed']['count']);
+        $this->assertSame(0, $this->total($section, 'voucher_issued'));
     }
 
     public function test_affiliate_filter_scopes_the_section(): void
@@ -142,11 +193,11 @@ class ReportCompensationTest extends TestCase
         $theirs = $this->order(['delivery_status' => DeliveryStatus::Failed, 'affiliate_id' => $other->id]);
         $this->voucher($theirs, ['amount' => 1100]);
 
-        $section = (new ReportService)->failedAndCompensated(...[...$this->october(), $other->id]);
+        $section = $this->section($other->id);
 
-        $this->assertSame(1, $section['failed_count']);
-        $this->assertSame(1100, $section['voucher_issued']);
-        $this->assertSame(0, $section['wallet_refund']);
+        $this->assertSame(1, $section['failed']['count']);
+        $this->assertSame(1100, $this->total($section, 'voucher_issued'));
+        $this->assertSame(0, $this->total($section, 'wallet_refund'));
     }
 
     /** R10 — Σ remaining of active, unexpired compensation vouchers, as of now. */

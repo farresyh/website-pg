@@ -243,7 +243,8 @@ class ReportController extends Controller
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'Order #', 'Paid At', 'Customer', 'Affiliate', 'Game', 'Package', 'Payment Method',
-                'Pricing Basis', 'Reseller', 'Delivery Status', 'Sales (RM)', 'Platform Profit (RM)', 'Affiliate Profit (RM)',
+                'Pricing Basis', 'Reseller', 'Delivery Status', 'Paid (RM)', 'Wallet Refund (RM)', 'Paid Sales (RM)',
+                'Platform Profit (RM)', 'Affiliate Profit (RM)',
             ]);
 
             foreach ($rows as $row) {
@@ -258,7 +259,9 @@ class ReportController extends Controller
                     $row['pricing_basis'],
                     $row['reseller_name'] ?? '',
                     $row['delivery_status'],
-                    number_format($row['final_amount'] / 100, 2, '.', ''),
+                    number_format($row['paid_amount'] / 100, 2, '.', ''),
+                    number_format($row['wallet_refund'] / 100, 2, '.', ''),
+                    number_format($row['net_sales'] / 100, 2, '.', ''),
                     number_format($row['platform_profit'] / 100, 2, '.', ''),
                     number_format($row['affiliate_profit'] / 100, 2, '.', ''),
                 ]);

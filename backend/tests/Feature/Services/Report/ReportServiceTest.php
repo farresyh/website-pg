@@ -6,6 +6,7 @@ use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Reseller;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -206,6 +207,25 @@ class ReportServiceTest extends TestCase
         $this->assertSame('Acme Reseller', $rows[0]['reseller_name']);
         $this->assertSame('failed', $rows[0]['delivery_status']);
         $this->assertSame(0, $rows[0]['platform_profit']); // paid but not delivered — no ledger credit, matches the pinned rule
+    }
+
+    /**
+     * ADR-104 R8 revision (2026-10-09) — the export's net column is Paid
+     * sales: its sum equals the summary, so the export can't drift from the
+     * page again (it summed gross final_amount, wallet refunds included).
+     */
+    public function test_export_net_sales_sums_to_the_summary_paid_sales(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Refunded Reseller', 'is_active' => true]);
+        $refunded = $this->order(['wallet_reseller_id' => $reseller->id, 'final_amount' => 900, 'delivery_status' => 'failed']);
+        (new LedgerService)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 900, 'wallet_refund', 'order', $refunded->id);
+        $this->order(['final_amount' => 1100]);
+
+        $rows = $this->reports->exportRows(null, null, null);
+
+        $this->assertSame($this->reports->summary(null, null, null)['total_sales'], (int) $rows->sum('net_sales'));
+        $row = $rows->firstWhere('order_number', $refunded->order_number);
+        $this->assertSame(['paid_amount' => 900, 'wallet_refund' => 900, 'net_sales' => 0], array_intersect_key($row, array_flip(['paid_amount', 'wallet_refund', 'net_sales'])));
     }
 
     /** Item 63: a wallet or wholesale-tier order was exported as "Standard". */

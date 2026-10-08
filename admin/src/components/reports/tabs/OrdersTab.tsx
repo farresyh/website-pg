@@ -8,7 +8,7 @@
  */
 
 import Link from "next/link";
-import { getDeliveryByGame, getFailedCompensated, getOrderStatusFunnel } from "@/lib/reports";
+import { type CompensationBlock, getDeliveryByGame, getFailedCompensated, getOrderStatusFunnel } from "@/lib/reports";
 import { GameIcon, Pending, ReportCard, ReportTable, ShareBar, useReport, type ReportTabProps } from "../ReportKit";
 import { OrderStatusFunnelChart } from "../OrderStatusFunnelChart";
 import { formatRm } from "../format";
@@ -23,6 +23,34 @@ function Stat({ label, value, sub, strong = false }: { label: string; value: str
   );
 }
 
+/**
+ * One delivery status's compensation (ADR-104 R8, revised 2026-10-09).
+ * "Awaiting" is Orders' Need action scope, so the link lands on the same count.
+ */
+function CompensationBlockView({ title, note, block, countLabel, showPaid = true }: { title: string; note: string; block: CompensationBlock; countLabel: string; showPaid?: boolean }) {
+  return (
+    <section className="rounded-md border border-border p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-theme-sm font-semibold text-ink">{title}</h3>
+        {block.awaiting_compensation > 0 ? (
+          <Link href="/admin/orders?status=need_action" className="text-theme-xs font-medium text-danger-ink hover:underline">
+            {block.awaiting_compensation} awaiting compensation →
+          </Link>
+        ) : (
+          <span className="text-theme-xs text-ink-muted">None awaiting compensation</span>
+        )}
+      </div>
+      <p className="mt-0.5 text-theme-xs text-ink-muted">{note}</p>
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-4">
+        <Stat strong label={countLabel} value={block.count.toLocaleString()} sub={showPaid ? `${formatRm(block.paid_amount)} paid` : undefined} />
+        <Stat label="Store credit voucher issued" value={formatRm(block.voucher_issued)} sub="Compensation vouchers" />
+        <Stat label="Refunded to reseller wallet" value={formatRm(block.wallet_refund)} sub="Already out of Paid sales" />
+        <Stat label="Checkout voucher restored" value={formatRm(block.voucher_restored)} sub="Given back to the customer's voucher" />
+      </dl>
+    </section>
+  );
+}
+
 export function OrdersTab(props: ReportTabProps) {
   const { token, filters } = props;
   const funnel = useReport(props, () => getOrderStatusFunnel(token, filters));
@@ -30,8 +58,10 @@ export function OrdersTab(props: ReportTabProps) {
   const delivery = useReport(props, () => getDeliveryByGame(token, filters));
 
   const f = funnel.data;
-  const inProgress = f ? f.total - f.by_status.delivered - f.by_status.failed : 0;
+  // ADR-104 R8 revision — a partial delivery is its own outcome, not "in progress".
+  const inProgress = f ? f.total - f.by_status.delivered - f.by_status.failed - f.by_status.partially_delivered : 0;
   const fc = failed.data;
+  const partialAwaiting = fc?.partially_delivered.awaiting_compensation;
   // Lowest delivery rate first: the games that need a look.
   const games = delivery.data ? [...delivery.data.games].sort((a, b) => a.success_rate_pct - b.success_rate_pct || b.total - a.total) : null;
 
@@ -58,10 +88,21 @@ export function OrdersTab(props: ReportTabProps) {
                   ["Paid orders", f.total],
                   ["Delivered", f.by_status.delivered],
                   ["Failed", f.by_status.failed],
+                  [
+                    "Partially delivered",
+                    f.by_status.partially_delivered,
+                    // Settled = compensated for the undelivered part; awaiting = Need action.
+                    partialAwaiting !== undefined && f.by_status.partially_delivered > 0
+                      ? `${f.by_status.partially_delivered - partialAwaiting} settled · ${partialAwaiting} awaiting`
+                      : undefined,
+                  ],
                   ["In progress or review", inProgress],
-                ].map(([label, n]) => (
-                  <div key={label} className="flex justify-between py-2.5">
-                    <dt className="text-ink-muted">{label}</dt>
+                ].map(([label, n, detail]) => (
+                  <div key={label} className="flex justify-between gap-3 py-2.5">
+                    <dt className="text-ink-muted">
+                      {label}
+                      {detail && <span className="block text-theme-xs">{detail}</span>}
+                    </dt>
                     <dd className="font-semibold tabular-nums text-ink">{Number(n).toLocaleString()}</dd>
                   </div>
                 ))}
@@ -83,17 +124,32 @@ export function OrdersTab(props: ReportTabProps) {
 
       <ReportCard
         title="Failed & compensated"
-        subtitle="A failed order's cash is owed back to the customer. It is a liability, not an expense, so it is never taken off profit: a failed order's profit is already RM 0.00."
+        subtitle="Money owed back on orders that did not deliver in full, and how it was given back. Counted on orders paid in this range."
       >
         {fc ? (
-          <div>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-4">
-              <Stat strong label="Failed orders" value={fc.failed_count.toLocaleString()} sub={`${formatRm(fc.failed_paid_amount)} paid`} />
-              <Stat label="Store credit voucher issued" value={formatRm(fc.voucher_issued)} sub="Compensation vouchers" />
-              <Stat label="Refunded to reseller wallet" value={formatRm(fc.wallet_refund)} sub="Already out of Paid sales" />
-              <Stat label="Checkout voucher restored" value={formatRm(fc.voucher_restored)} sub="Given back to the customer's voucher" />
-            </dl>
-            <div className="mt-5 flex flex-wrap items-end justify-between gap-3 rounded-md bg-subtle px-4 py-3">
+          <div className="flex flex-col gap-4">
+            <CompensationBlockView
+              title="Failed"
+              countLabel="Failed orders"
+              note="A liability, not an expense, so it is never taken off profit: a failed order's profit is already RM 0.00."
+              block={fc.failed}
+            />
+            <CompensationBlockView
+              title="Partially delivered"
+              countLabel="Partial orders"
+              note="Already inside profit: on settlement, the compensation is deducted from that order's profit and only the delivered part is recognised."
+              block={fc.partially_delivered}
+            />
+            {fc.other.count > 0 && (
+              <CompensationBlockView
+                title="Other (under review)"
+                countLabel="Compensated orders"
+                note="Compensation on an order now in another status, e.g. paid late after it was compensated. An admin resolves it in Orders."
+                block={fc.other}
+                showPaid={false}
+              />
+            )}
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-md bg-subtle px-4 py-3">
               <dl>
                 <Stat
                   strong
@@ -106,8 +162,8 @@ export function OrdersTab(props: ReportTabProps) {
                 Vouchers →
               </Link>
             </div>
-            <p className="mt-3 text-theme-xs text-ink-muted">
-              Counted on orders paid in this range. Accounting counts vouchers by the day they were issued, so the two can differ across a month boundary.
+            <p className="text-theme-xs text-ink-muted">
+              Accounting counts vouchers by the day they were issued, so the two can differ across a month boundary.
             </p>
           </div>
         ) : (
@@ -144,7 +200,8 @@ export function OrdersTab(props: ReportTabProps) {
               { key: "paid", header: "Paid orders", align: "right", render: (r) => r.total, total: f.total },
               { key: "delivered", header: "Delivered", align: "right", render: (r) => r.delivered, total: f.by_status.delivered },
               { key: "failed", header: "Failed", align: "right", render: (r) => <span className={r.failed > 0 ? "font-semibold text-danger-ink" : "text-ink-muted"}>{r.failed}</span>, total: f.by_status.failed },
-              { key: "progress", header: "In progress or review", align: "right", render: (r) => <span className={r.in_progress + r.partially_delivered > 0 ? "" : "text-ink-muted"}>{r.in_progress + r.partially_delivered}</span>, total: inProgress },
+              { key: "partial", header: "Partial", align: "right", render: (r) => <span className={r.partially_delivered > 0 ? "" : "text-ink-muted"}>{r.partially_delivered}</span>, total: f.by_status.partially_delivered },
+              { key: "progress", header: "In progress or review", align: "right", render: (r) => <span className={r.in_progress > 0 ? "" : "text-ink-muted"}>{r.in_progress}</span>, total: inProgress },
               {
                 key: "rate",
                 header: "Delivery rate",
