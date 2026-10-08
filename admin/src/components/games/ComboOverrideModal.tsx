@@ -91,6 +91,7 @@ function ComboOverrideFields({
               <span>
                 {c.name} {c.quantity > 1 ? `×${c.quantity}` : ""}
                 {!c.is_active && <span className="ml-1 text-theme-xs text-error-600 dark:text-error-400">(inactive)</span>}
+                <span className="block font-mono text-theme-xs text-gray-500 dark:text-gray-400">{c.supplier_package_ref}</span>
               </span>
               <span className="text-gray-500 dark:text-gray-400">{formatRm(c.standard_selling_price * c.quantity)}</span>
             </li>

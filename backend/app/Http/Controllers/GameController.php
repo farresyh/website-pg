@@ -176,7 +176,7 @@ class GameController extends Controller
                     // itself (AGENTS.md).
                     $package->components = $package->is_combo
                         ? $package->components()
-                            ->get(['packages.id', 'packages.name', 'packages.denomination', 'packages.cost_price', 'packages.standard_selling_price', 'packages.is_active'])
+                            ->get(['packages.id', 'packages.name', 'packages.denomination', 'packages.cost_price', 'packages.standard_selling_price', 'packages.is_active', 'packages.supplier_package_ref'])
                             ->map(fn (Package $c) => [
                                 'id' => $c->id,
                                 'name' => $c->name,
@@ -184,6 +184,7 @@ class GameController extends Controller
                                 'cost_price' => $c->cost_price,
                                 'standard_selling_price' => $c->standard_selling_price,
                                 'is_active' => $c->is_active,
+                                'supplier_package_ref' => $c->supplier_package_ref,
                                 'quantity' => $c->pivot->quantity,
                             ])->values()->all()
                         : [];

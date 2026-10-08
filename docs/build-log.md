@@ -1287,3 +1287,12 @@ out of docs where it no longer belongs, and stale docs archived.
   - PRD §15 ADR-109 "admin verification still owed" (done, item 67); §12
     backup local-disk gap (closed by R2); §16 items 6, 9, 27, 49 trimmed
     to what is still open (closed parts are in the build-log).
+
+## 2026-10-08 — Combo modal shows each component's supplier SKU (item 66, part)
+
+Founder couldn't tell which supplier product a combo leg was (e.g. "60 UC ×3"
+with no SKU). `GameController::packages()` now includes
+`supplier_package_ref` in each combo component, and `ComboOverrideModal` shows
+it under the name, the same SKU the Create Combo picker already shows. Admin
+route only. Test: `ComboPackageControllerTest`. Item 66's edit-composition and
+leg-history parts stay open.

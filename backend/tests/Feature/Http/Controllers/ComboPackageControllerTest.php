@@ -102,6 +102,24 @@ class ComboPackageControllerTest extends TestCase
         $this->assertSame(1, $combo->components->firstWhere('id', $a->id)->pivot->quantity);
     }
 
+    public function test_package_listing_shows_each_combo_components_supplier_sku(): void
+    {
+        $game = $this->game();
+        $supplier = $this->supplier();
+        $a = $this->package($game, $supplier);
+        $this->actingAsAdmin();
+        $this->postJson("/api/games/{$game->id}/packages/combo", [
+            'name' => '9620 Diamonds (Combo)',
+            'components' => [['package_id' => $a->id, 'quantity' => 2]],
+        ])->assertCreated();
+
+        $combo = collect($this->getJson("/api/games/{$game->id}/packages")->assertOk()->json())
+            ->firstWhere('is_combo', true);
+
+        $this->assertSame('GV-4810', $combo['components'][0]['supplier_package_ref']);
+        $this->assertSame(2, $combo['components'][0]['quantity']);
+    }
+
     public function test_store_combo_supports_a_repeated_component_via_quantity(): void
     {
         $game = $this->game();
