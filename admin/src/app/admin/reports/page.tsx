@@ -51,27 +51,27 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { type ReportAffiliate, type ReportFilters, listReportAffiliates, exportReport } from "@/lib/reports";
 import { DATE_RANGE_PRESETS, type DateRangePreset, compareModeFor, resolveDateRange, todayInKL } from "@/lib/date-range";
+import type { ReportTabProps } from "@/components/reports/ReportKit";
 import { OverviewTab } from "@/components/reports/tabs/OverviewTab";
-import { SalesAnalysisTab } from "@/components/reports/tabs/SalesAnalysisTab";
-import { ProfitAnalysisTab } from "@/components/reports/tabs/ProfitAnalysisTab";
+import { SalesTab } from "@/components/reports/tabs/SalesTab";
+import { ProfitTab } from "@/components/reports/tabs/ProfitTab";
 import { OrdersTab } from "@/components/reports/tabs/OrdersTab";
 import { GamesTab } from "@/components/reports/tabs/GamesTab";
-import { PaymentMethodsTab } from "@/components/reports/tabs/PaymentMethodsTab";
-import { AffiliatesTab } from "@/components/reports/tabs/AffiliatesTab";
+import { PartnersTab } from "@/components/reports/tabs/PartnersTab";
 import { MembershipTab } from "@/components/reports/tabs/MembershipTab";
 
 const AFFILIATE_ALL = "all";
 
-const TABS = [
-  { value: "overview", label: "Overview" },
-  { value: "sales", label: "Sales Analysis" },
-  { value: "profit", label: "Profit Analysis" },
-  { value: "orders", label: "Orders" },
-  { value: "games", label: "Games" },
-  { value: "payment-methods", label: "Payment Methods" },
-  { value: "affiliates", label: "Affiliates" },
-  { value: "membership", label: "Membership" },
-] as const;
+// ADR-104 R2 — 8 tabs become 7: Payment Methods merges into Sales, Affiliates is renamed Partners.
+const TABS: { value: string; label: string; Tab: (props: ReportTabProps) => React.ReactNode }[] = [
+  { value: "overview", label: "Overview", Tab: OverviewTab },
+  { value: "sales", label: "Sales", Tab: SalesTab },
+  { value: "profit", label: "Profit", Tab: ProfitTab },
+  { value: "orders", label: "Orders", Tab: OrdersTab },
+  { value: "games", label: "Games", Tab: GamesTab },
+  { value: "partners", label: "Partners", Tab: PartnersTab },
+  { value: "membership", label: "Membership", Tab: MembershipTab },
+];
 
 export default function ReportsPage() {
   const router = useRouter();
@@ -271,11 +271,11 @@ export default function ReportsPage() {
           <TabsIndicator />
         </TabsList>
         <TabsPanels key={refreshKey}>
-          {session && (
-            <>
-              <TabsPanel value="overview">
-                {activeTab === "overview" && (
-                  <OverviewTab
+          {session &&
+            TABS.map(({ value, Tab }) => (
+              <TabsPanel key={value} value={value}>
+                {activeTab === value && (
+                  <Tab
                     token={session.token}
                     filters={filters}
                     compare={compare}
@@ -284,29 +284,7 @@ export default function ReportsPage() {
                   />
                 )}
               </TabsPanel>
-              <TabsPanel value="sales">
-                {activeTab === "sales" && <SalesAnalysisTab token={session.token} filters={filters} />}
-              </TabsPanel>
-              <TabsPanel value="profit">
-                {activeTab === "profit" && <ProfitAnalysisTab token={session.token} filters={filters} />}
-              </TabsPanel>
-              <TabsPanel value="orders">
-                {activeTab === "orders" && <OrdersTab token={session.token} filters={filters} />}
-              </TabsPanel>
-              <TabsPanel value="games">
-                {activeTab === "games" && <GamesTab token={session.token} filters={filters} />}
-              </TabsPanel>
-              <TabsPanel value="payment-methods">
-                {activeTab === "payment-methods" && <PaymentMethodsTab token={session.token} filters={filters} />}
-              </TabsPanel>
-              <TabsPanel value="affiliates">
-                {activeTab === "affiliates" && <AffiliatesTab token={session.token} filters={filters} />}
-              </TabsPanel>
-              <TabsPanel value="membership">
-                {activeTab === "membership" && <MembershipTab token={session.token} filters={filters} />}
-              </TabsPanel>
-            </>
-          )}
+            ))}
         </TabsPanels>
       </Tabs>
     </div>

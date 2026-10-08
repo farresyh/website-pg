@@ -53,18 +53,24 @@ export interface PointsChange {
 
 export type CompareMode = "previous" | "month_to_date";
 
-export interface ReportComparison {
+/** ADR-104 R12–R14 — backend `ReportService::compareWith()`: the same figures over the previous range, plus each change. */
+export interface Comparison<Previous, Changes> {
   previous_range: { from: string; to: string };
-  previous: Omit<ReportSummary, "latest_order" | "compare">;
-  changes: {
+  previous: Previous;
+  changes: Changes;
+}
+
+export type ReportComparison = Comparison<
+  Omit<ReportSummary, "latest_order" | "compare">,
+  {
     total_sales: PercentChange;
     orders_count: PercentChange;
     platform_profit: PercentChange;
     affiliate_profit: PercentChange;
     avg_order_value: PercentChange;
     margin_pct: PointsChange;
-  };
-}
+  }
+>;
 
 /** ADR-104 R7 — Paid sales walked to recognised revenue; null under an affiliate filter. */
 export interface ReportAccountingBridge {
@@ -91,6 +97,13 @@ export interface ReportFailedCompensated {
 export type ReportChannel = "own_brand" | "reseller_wallet" | "external_affiliate";
 export type PlacedVia = "storefront" | "reseller_api" | "reseller_bot" | "sandbox";
 
+/** R15 — the three exclusive channel buckets, in the backend's order. */
+export const CHANNEL_LABELS: Record<ReportChannel, string> = {
+  own_brand: "Own brand",
+  reseller_wallet: "Reseller wallet",
+  external_affiliate: "External affiliate",
+};
+
 /** ADR-104 R15/R16. */
 export interface ReportChannelBreakdown {
   channels: {
@@ -101,12 +114,15 @@ export interface ReportChannelBreakdown {
     affiliate_profit: number;
   }[];
   reseller_wallet_by_placed_via: { placed_via: PlacedVia; sales: number; orders_count: number }[];
+  /** R13 — each channel's sales change; present only when `compare` was requested, null for "All time". */
+  compare?: Comparison<unknown, Record<ReportChannel, PercentChange>> | null;
 }
 
 /** ADR-104 R5. */
 export interface ReportDeliveryByGameRow {
   game_id: number | null;
   game_name: string;
+  image_url: string | null;
   total: number;
   delivered: number;
   failed: number;
@@ -136,6 +152,7 @@ export interface ReportDailyBreakdownRow {
 export interface ReportGameRow {
   game_id: number | null;
   game_name: string;
+  image_url: string | null;
   sales: number;
   orders_count: number;
   platform_profit: number;
@@ -192,6 +209,8 @@ export interface ReportMembershipBreakdown {
   standard_orders_count: number;
   margin_forgone: number;
   membership_fee_revenue: number;
+  /** R13 — present only when `compare` was requested, null for "All time". */
+  compare?: Comparison<unknown, Record<Exclude<keyof ReportMembershipBreakdown, "compare">, PercentChange>> | null;
 }
 
 export interface ReportAffiliate {
@@ -227,8 +246,8 @@ export function getFailedCompensated(token: string, filters: ReportFilters) {
   return apiFetch<ReportFailedCompensated>(`/api/reports/failed-compensated${query}`, { token });
 }
 
-export function getChannelBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+export function getChannelBreakdown(token: string, filters: ReportFilters, compare?: CompareMode) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, compare });
   return apiFetch<ReportChannelBreakdown>(`/api/reports/breakdown/channels${query}`, { token });
 }
 
@@ -278,8 +297,8 @@ export function getOrderStatusFunnel(token: string, filters: ReportFilters) {
   return apiFetch<ReportOrderStatusFunnel>(`/api/reports/order-status-funnel${query}`, { token });
 }
 
-export function getMembershipBreakdown(token: string, filters: ReportFilters) {
-  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+export function getMembershipBreakdown(token: string, filters: ReportFilters, compare?: CompareMode) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, compare });
   return apiFetch<ReportMembershipBreakdown>(`/api/reports/membership-breakdown${query}`, { token });
 }
 

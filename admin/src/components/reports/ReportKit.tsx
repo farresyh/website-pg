@@ -6,10 +6,80 @@
  * only: every figure comes from the backend as-is.
  */
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
-import type { PercentChange, PointsChange } from "@/lib/reports";
+import { ApiError } from "@/lib/api-client";
+import type { CompareMode, PercentChange, PointsChange, ReportFilters } from "@/lib/reports";
+import { formatShortRange } from "./format";
+
+/** What the page hands every tab. */
+export interface ReportTabProps {
+  token: string;
+  filters: ReportFilters;
+  /** Set only when Compare is on and the range is bounded (R12). */
+  compare?: CompareMode;
+  /** R13 — profit KPIs note that profit lands on delivery. */
+  rangeIncludesToday: boolean;
+  onOpenTab: (tab: string) => void;
+}
+
+export type Loaded<T> = { data: T | null; error: string | null };
+
+/**
+ * One report fetch, re-run when the filters or Compare change. A slower
+ * earlier response never lands on top of a newer one.
+ */
+export function useReport<T>({ token, filters, compare }: Pick<ReportTabProps, "token" | "filters" | "compare">, load: () => Promise<T>): Loaded<T> {
+  const [state, setState] = useState<Loaded<T>>({ data: null, error: null });
+
+  useEffect(() => {
+    let current = true;
+    load()
+      .then((data) => current && setState({ data, error: null }))
+      .catch((err: unknown) => current && setState({ data: null, error: err instanceof ApiError ? err.message : "Could not load this report." }));
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, filters.from, filters.to, filters.affiliateId, compare]);
+
+  return state;
+}
+
+/** Loading or error text in place of a card's body. */
+export function Pending({ error, className = "" }: { error: string | null; className?: string }) {
+  return error ? (
+    <p className={`text-sm text-danger-ink ${className}`}>{error}</p>
+  ) : (
+    <p className={`text-sm text-ink-muted ${className}`}>Loading…</p>
+  );
+}
+
+/** "vs 12 Apr – 10 Jul" on a KPI card. */
+export function previousLabelOf(compare: { previous_range: { from: string; to: string } } | null | undefined): string | undefined {
+  return compare ? formatShortRange(compare.previous_range.from, compare.previous_range.to) : undefined;
+}
+
+/** A small pill naming a channel or status, on the artifact's surface/ink pairs. */
+export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "info" | "review" | "nude" }) {
+  const tones = {
+    neutral: "bg-neutral-surface text-neutral-ink",
+    info: "bg-info-surface text-info-ink",
+    review: "bg-review-surface text-review-ink",
+    nude: "bg-nude-100 text-nude-ink",
+  };
+  return <span className={`inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium ${tones[tone]}`}>{children}</span>;
+}
+
+/** A thin share bar beside a percentage, as in the mockup's "% of sales" columns. */
+export function ShareBar({ pct, className = "w-12" }: { pct: number; className?: string }) {
+  return (
+    <span className={`inline-block h-1.5 overflow-hidden rounded-full bg-subtle align-middle ${className}`} aria-hidden>
+      <span className="block h-full rounded-full bg-chart-1" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+    </span>
+  );
+}
 
 export function ReportCard({
   title,
@@ -49,7 +119,7 @@ export function ReportCard({
  * R13 — margin moves in percentage points; an empty previous period shows
  * "No data", never "+∞%". Neutral ink: up is not always good news.
  */
-function ChangeLine({ change, previousLabel }: { change: PercentChange | PointsChange; previousLabel?: string }) {
+export function ChangeLine({ change, previousLabel }: { change: PercentChange | PointsChange; previousLabel?: string }) {
   let text: string;
   if (change.direction === "new") {
     text = "— No data";
