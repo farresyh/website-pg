@@ -61,7 +61,7 @@ export function MembershipTab({ token, filters }: { token: string; filters: Repo
               { label: "Standard", value: toRm(row.standard_sales), sublabel: `${row.standard_orders_count} orders` },
               { label: "Member", value: toRm(row.member_sales), sublabel: `${row.member_orders_count} orders` },
             ]}
-            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`}
+            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>

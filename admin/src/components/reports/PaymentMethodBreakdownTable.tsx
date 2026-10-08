@@ -2,6 +2,7 @@
 
 import type { ReportPaymentMethodRow } from "@/lib/reports";
 import { formatRm } from "./format";
+import { paymentMethodLabel } from "@/lib/payment-methods";
 
 export function PaymentMethodBreakdownTable({ rows }: { rows: ReportPaymentMethodRow[] }) {
   if (rows.length === 0) {
@@ -22,8 +23,8 @@ export function PaymentMethodBreakdownTable({ rows }: { rows: ReportPaymentMetho
         <tbody>
           {rows.map((row) => (
             <tr key={row.payment_method} className="border-b border-gray-100 last:border-0 dark:border-gray-800/60">
-              <td className="whitespace-nowrap px-4 py-3 font-medium capitalize text-gray-800 dark:text-white/90">
-                {row.payment_method}
+              <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800 dark:text-white/90">
+                {paymentMethodLabel(row.payment_method)}
               </td>
               <td className="whitespace-nowrap px-4 py-3 tabular-nums text-gray-800 dark:text-white/90">{formatRm(row.sales)}</td>
               <td className="whitespace-nowrap px-4 py-3 tabular-nums text-gray-500 dark:text-gray-400">{row.pct_of_sales.toFixed(1)}%</td>

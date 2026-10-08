@@ -11,6 +11,7 @@ import { Tag as TagIcon } from "@primeicons/react/tag";
 import { CreditCard } from "@primeicons/react/credit-card";
 import { InfoCircle } from "@primeicons/react/info-circle";
 import type { OrderDetail } from "@/lib/orders";
+import { paymentMethodLabel } from "@/lib/payment-methods";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -276,7 +277,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         {/* ADR-104 D1 fix: same explicit `text-ink` addition as the cards
             above — same confirmed rgb(0,0,0)-on-dark-card bug. */}
         <dl className="space-y-2 text-sm">
-          <div className="flex justify-between"><dt className="text-ink-muted">Payment Method</dt><dd className="text-ink">{order.payment_method ?? "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-muted">Payment Method</dt><dd className="text-ink">{paymentMethodLabel(order.payment_method)}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Payment Ref (CHIP)</dt><dd className="text-ink">{order.payment_ref ?? "—"}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Reference # (ORD-8)</dt><dd className="font-mono text-code-id text-ink">{order.reference_number ?? "—"}</dd></div>
         </dl>

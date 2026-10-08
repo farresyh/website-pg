@@ -21,6 +21,32 @@ export interface PaymentMethod {
   last_test_result: string | null;
 }
 
+/**
+ * ADR-104 R19 — the one display label for an order's stored
+ * `payment_method` (the checkout category, `wallet` for a reseller-wallet
+ * order, `voucher` when a voucher covered the whole price). Reports and
+ * Order Detail both read it; anything unmapped falls back to Title Case.
+ */
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  fpx: "FPX",
+  duitnow_qr: "DuitNow QR",
+  card: "Card",
+  ewallet: "E-wallet",
+  wallet: "Wallet",
+  voucher: "Voucher (full cover)",
+};
+
+export function paymentMethodLabel(method: string | null | undefined): string {
+  if (!method) return "—";
+  return (
+    PAYMENT_METHOD_LABELS[method] ??
+    method
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+  );
+}
+
 export function listPaymentMethods(token: string, params: { category?: string } = {}) {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);

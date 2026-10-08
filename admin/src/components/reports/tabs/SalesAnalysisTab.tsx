@@ -5,6 +5,7 @@ import { type ReportFilters, type ReportPaymentMethodRow, type ReportGameRow, ge
 import { HorizontalBarList } from "../HorizontalBarList";
 import { PaymentMethodBreakdownTable } from "../PaymentMethodBreakdownTable";
 import { toRm } from "../format";
+import { paymentMethodLabel } from "@/lib/payment-methods";
 
 export function SalesAnalysisTab({ token, filters }: { token: string; filters: ReportFilters }) {
   const [paymentMethods, setPaymentMethods] = useState<ReportPaymentMethodRow[] | null>(null);
@@ -26,8 +27,8 @@ export function SalesAnalysisTab({ token, filters }: { token: string; filters: R
         <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Sales by Payment Method</h2>
         {paymentMethods ? (
           <HorizontalBarList
-            items={paymentMethods.map((p) => ({ label: p.payment_method, value: toRm(p.sales), sublabel: `${p.pct_of_sales.toFixed(1)}% of sales · ${p.orders_count} orders` }))}
-            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`}
+            items={paymentMethods.map((p) => ({ label: paymentMethodLabel(p.payment_method), value: toRm(p.sales), sublabel: `${p.pct_of_sales.toFixed(1)}% of sales · ${p.orders_count} orders` }))}
+            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
@@ -39,7 +40,7 @@ export function SalesAnalysisTab({ token, filters }: { token: string; filters: R
         {games ? (
           <HorizontalBarList
             items={games.map((g) => ({ label: g.game_name, value: toRm(g.sales), sublabel: `${g.pct_of_sales.toFixed(1)}% of sales` }))}
-            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`}
+            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>

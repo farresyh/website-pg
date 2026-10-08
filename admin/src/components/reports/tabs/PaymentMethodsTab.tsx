@@ -5,6 +5,7 @@ import { type ReportFilters, type ReportPaymentMethodRow, getPaymentMethodBreakd
 import { HorizontalBarList } from "../HorizontalBarList";
 import { PaymentMethodBreakdownTable } from "../PaymentMethodBreakdownTable";
 import { toRm } from "../format";
+import { paymentMethodLabel } from "@/lib/payment-methods";
 
 export function PaymentMethodsTab({ token, filters }: { token: string; filters: ReportFilters }) {
   const [rows, setRows] = useState<ReportPaymentMethodRow[] | null>(null);
@@ -22,8 +23,8 @@ export function PaymentMethodsTab({ token, filters }: { token: string; filters: 
         <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Sales by Payment Method</h2>
         {rows ? (
           <HorizontalBarList
-            items={rows.map((r) => ({ label: r.payment_method, value: toRm(r.sales), sublabel: `${r.orders_count} orders` }))}
-            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`}
+            items={rows.map((r) => ({ label: paymentMethodLabel(r.payment_method), value: toRm(r.sales), sublabel: `${r.orders_count} orders` }))}
+            formatValue={(v) => `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
