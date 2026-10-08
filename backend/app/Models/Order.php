@@ -460,6 +460,24 @@ class Order extends Model
     }
 
     /**
+     * Net Sales for one `orders` row, as SQL (ADR-086 addendum, Bug 4):
+     * `final_amount` minus its `wallet_refund` ledger entries. A wallet
+     * refund reverses a wallet debit; a storefront voucher already nets
+     * out of the redeeming order's `final_amount`, so it needs nothing
+     * here. A correlated subquery on `orders.id`, never the refund's own
+     * `created_at`, so a later refund still nets against the day the order
+     * was paid. Prod evidence it fixed: Naeem Industries order 27 (RM343.51
+     * failed + refunded) and FixFast order 5 had inflated Sales.
+     * The one PHP copy, used by Reports and Customer Analytics. The
+     * `llm_report_orders` view inlines the same SQL (frozen migration);
+     * `LlmReportViewParityTest` fails if the two drift.
+     */
+    public static function netSalesSql(): string
+    {
+        return "final_amount - COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.reference_type = 'order' AND wr.reference_id = orders.id AND wr.type = 'wallet_refund'), 0)";
+    }
+
+    /**
      * Read the same wallet-refund facts for an already-paginated set of
      * orders in one query. Include null entries so serializers can tell
      * "looked up, no refund" from "not looked up yet" without N+1 reads.

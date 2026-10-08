@@ -60,6 +60,7 @@ const SUMMARY_LINE_LABELS: Record<string, string> = {
   bank_transfer_fees_sen: "Bank / transfer fees",
   supplier_prepaid_fx_variance_sen: "Supplier prepaid — FX variance true-up",
   affiliate_commission_expense_sen: "Affiliate commission expense",
+  affiliate_tier_fees_sen: "Affiliate tier fees (from earnings, no cash)",
   voucher_liability_issued_sen: "Voucher liability issued",
   reseller_wallet_balance_sen: "Reseller wallet balance (current, not month-end)",
 };

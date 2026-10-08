@@ -34,6 +34,7 @@ import {
   deleteHeroSlide,
 } from "@/lib/hero-slides";
 import HeroSlideModal from "@/components/hero-slides/HeroSlideModal";
+import { Switch } from "@/components/ui/switch";
 
 export default function HeroSlidesPage() {
   const router = useRouter();
@@ -159,16 +160,7 @@ export default function HeroSlidesPage() {
                           )}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <button
-                            role="switch"
-                            aria-checked={slide.is_active}
-                            onClick={() => handleToggleStatus(slide)}
-                            className={`h-6 w-11 rounded-full transition ${slide.is_active ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"}`}
-                          >
-                            <span
-                              className={`block h-5 w-5 translate-x-0.5 rounded-full bg-white transition ${slide.is_active ? "translate-x-[22px]" : ""}`}
-                            />
-                          </button>
+                          <Switch checked={slide.is_active} onChange={() => handleToggleStatus(slide)} />
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Button size="small" variant="outlined" onClick={() => setEditingSlide(slide)}>Edit</Button>

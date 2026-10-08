@@ -2916,7 +2916,7 @@ FAQ screen in a browser (see gotchas) — founder click-through owed.
   fixed it. CI starts clean.
 - A dev server restarted with different `NEXT_PUBLIC_*` values kept the old
   inlined ones until `.next` was removed.
-- Local admin dev didn't hydrate (unstyled login, native form reload).
+- Local admin login failed in the browser (form did a native reload, no API call). First read as "didn't hydrate" — wrong: prod's login page looks identically plain. Cause not found; the API login itself returned 200 via curl.
 - `pint app/Services` reformats dozens of unrelated files — pass files, not
   directories.
 
@@ -2928,3 +2928,174 @@ option. Founder confirmed it's intentional.
 check; clear the 38 identical per-game SEO fields in admin (ADR-120 d5,
 before/after recorded here); GSC Request Indexing. Founder-deferred: GA4,
 default OG image, Bing Webmaster Tools.
+
+## 2026-10-08 — Release #369 (`staging`→`main`): ADR-120 (#364–#368)
+
+**Deploy.** Merged by the founder; CI on `main` green incl. `deploy`; the
+server runs `acaecbd`; `2026_10_08_000000_create_faqs_table` Ran in batch
+33 (5 FAQ rows); `/api/health` ok (database, queue, horizon).
+
+**Live checks (curl, raw HTML).**
+
+| | pekangame.com | fixfastapp.com |
+| --- | --- | --- |
+| MLBB title | own store name, no tokens | own store name, no tokens |
+| canonical / og:url | `https://pekangame.com/order/…` | `https://fixfastapp.com/order/…` |
+| Organization / Breadcrumb url | pekangame.com | fixfastapp.com |
+| sitemap / robots `Sitemap:` / llms.txt | 44 / 1 / 42 on pekangame.com | 42 / 1 / 41 on fixfastapp.com |
+| `offers` | RM1.06–RM2044.65, 49 | RM1.06–RM2053.54, 49 (affiliate markup) |
+| `aggregateRating` | 5, 4 reviews | 5, 3 reviews (brand-scoped) |
+| packages in HTML | 49 (37 CSS-hidden) | 49 |
+
+Homepage carries `FAQPage`; `pekangame-storefront.vercel.app` answers
+503. The first fixfastapp.com read right after deploy still showed the
+pekangame.com canonical — a pre-deploy Data Cache entry inside its 60s
+window; a fresh `MISS` was correct.
+
+**ADR-120 decision 5 cleanup (founder, admin UI).** Before: 38/38 active
+games had the same per-game `seo_title`/`seo_description`. Game 1 and 2
+were cleared by Claude via the admin screen, the rest by the founder.
+After: 0 active games with a per-game title/description; 38 OG images
+kept; `seo_title_local` untouched. Live titles now come from the primary's
+BM template on every brand, e.g. `Top Up PUBG Mobile Global Murah &
+Instant Delivery | FixFast`.
+
+**Search Console.** MLBB page: "unknown to Google" → Request Indexing →
+"Indexing requested". Homepage (already indexed): re-index requested, the
+confirmation wasn't seen. Other game pages left to the sitemap.
+
+**Still open.** Founder click-through of SEO › FAQ in admin; GA4, default
+OG image, Bing Webmaster Tools (deferred); re-check GSC coverage for
+canonical/duplicate reports across both domains in ~2 weeks (ADR-120).
+
+## 2026-10-08 — Reseller API `max_price_sen` (item 63, API bullet; ADR-074 addendum)
+
+**What shipped.** `POST /v1/orders` takes an optional `max_price_sen`. If the
+live wallet price is above it, the order is refused with `422 PRICE_CHANGED`
+and `details.current_price_sen`, and nothing is charged. A lower live price is
+charged as is. Omitted = the old behaviour. API docs v1.4.0.
+
+**Why, and the corrected premise.** The backlog said "catalogue cached 60s".
+The trace showed the charge was always computed live (`resolveByCode()` is
+uncached) and both catalogue caches flush on every price write. The real gap
+is read-then-order time on the integrator's side. Prod, 7 days: 11,683 cost
+changes, 230 rises >2%, 12 >10%, max +37%. API orders ever: 0 (2 keys); Bot: 7.
+
+**Design (grilled, then stress-tested at the founder's request).**
+- Guard in `ResellerOrderPlacementService::placeOrder()`, after the replay
+  check, comparing the same `$pricing` the debit uses. Only the service knows
+  the final price, so a controller guard would have duplicated pricing.
+- `PriceAboveMaxException` (channel-neutral) → `ResellerApiException::priceChanged()`.
+- `max_price_sen` is **not** in the idempotency payload hash: a rejected order
+  leaves no row, so the same key can retry; stored hashes stay valid.
+- The stress test changed two grill answers: `details` is now documented as
+  code-specific (no top-level field outside the envelope), and the planned
+  one-off `Log::info` was dropped (no API rejection is logged today; a generic
+  hook is §16 item 73).
+- Bot unchanged; its `max=` token is §16 item 72.
+
+**Gotcha.** Scramble turns a comment above a FormRequest rule into the
+public field description. The first export published an internal ADR
+reference; the comment is now integrator-facing.
+
+**Verification.** +6 tests (3 service, 3 HTTP: rejection envelope with no
+order or debit, same-key retry after rejection, validation of 0 / 63.5 /
+"abc"). Fast suite 2628/2628 on the final code; Pint clean; `scramble:export` regenerated
+`docs-site/public/openapi.json`; docs-site `check` + `build` clean. No curl
+check: the local dev DB has no reseller and seeding one wasn't worth writing
+to the unbacked dev DB; the HTTP tests run the real route, key middleware,
+FormRequest and envelope render hook. No migration; concurrency suite not
+affected (no lock change).
+
+## 2026-10-08 — Item 63 closed: Report Assistant matches Reports (ADR-087) + tier-fee line (ADR-083)
+
+**What shipped.**
+- `llm_report_orders` gains `wallet_refund` and `net_sales` (= `final_amount`
+  − wallet refunds, the Reports page's Net Sales). Migration
+  `2026_10_08_120000`, drop + recreate like 2026_09_15_100000.
+- The assistant prompt: sales = `SUM(net_sales)`, profit =
+  `SUM(platform_profit)`, margin = profit ÷ net sales. The hand margin
+  formula is gone. `pricing_basis` / `delivery_status` lists are generated
+  from the enums.
+- `Order::netSalesSql()` replaces two identical copies (`ReportService`,
+  `CustomerAnalyticsService`); `LlmReportViewParityTest` holds the view to
+  `ReportService::summary()`.
+- Monthly Summary: neutral `affiliate_tier_fees_sen` line ("from earnings, no
+  cash"), also added to the Envelope Ledger's rough P&L.
+
+**Corrected premises.** "Failed orders counted as revenue" matches Reports'
+own Net Sales (a failed retail order's money is kept as store credit), so
+the fix was to mirror Reports, not drop failed rows. Prod tier-fee entries
+are 1, not 0 (RM0.00; both tiers are RM0).
+
+**Found by the reader trace.** `BudgetEnvelopeController`'s rough P&L sums the
+summary lines; without the tier fee it would understate profit. Added under
+either accounting treatment.
+
+**Not done on purpose.** No reviewer question drafted: nothing to book while
+tier fees are RM0 (§16 item 74 is the trigger). Customer email/phone stay in
+the view (noted in the ADR-087 addendum).
+
+**Verification.** +4 tests (tier-fee KL month bounds, rough P&L, view parity,
+prompt definitions + enum lists). Fast suite 2632/2632; Pint clean; `admin/`
+tsc, lint and build clean. Local dev DB migrated (`php artisan migrate`); the
+view returns 183 rows there. Concurrency suite: see the PR.
+
+## 2026-10-08 — Backlog hygiene: one sorted queue in §16 "Next up" (docs only)
+
+The founder's rule from this session: clear the backlog before any new
+feature. §16 "Next up" now sorts every open item into A (buildable now), B
+(grill first), C (founder actions), D (waiting on a trigger) and E (new
+features, after the backlog). Each "open" claim was re-checked on 2026-10-08:
+
+- Still open on prod: #70 (4 RM 0 voucher orders show `fpx`), #56
+  (`ACCOUNTING_DISK` unset), #59 (`ENGINE_TYPE=baileys`), #58 (OpenWA still
+  deploys from upstream, no fork), A3 (one 60/min limit per key).
+- Corrected: the Valorant/ZZZ follow-up from release #362 is done (5 Valorant
+  games are Text, ZZZ has its zone field); `AggregateRating` (item 6) shipped
+  with ADR-120; §14 said the old droplet was rollback-only, it was destroyed
+  2026-09-30; ADR-110's index row still called the CHIP `.env` cutover owed,
+  while §16 "Parked" records keeping them as a fallback on purpose.
+
+## 2026-10-08 — §16 items 70, 68, 67 + one shared admin `Switch`
+
+**#70, full-voucher-cover order showed "fpx".** `CheckoutService::initiate()`
+now stores `payment_method = 'voucher'` when the voucher covers the whole
+price (no gateway runs, ADR-024 decision 5). Every reader just prints the
+string (Order Detail, orders list, Track Order, Affiliate/portal order,
+WhatsApp status card, Reports Payment Methods tab, CSV export, LLM view), so
+one write-side change fixes all of them; `payment_gateway` / `channel_code`
+are left as picked (reconcile only reads pending orders; settlement recon
+excludes a null `payment_ref`). A data migration relabels existing rows
+(voucher, RM 0, no `payment_ref`): prod has exactly 4, all Paid, checked
+read-only on 2026-10-08. It runs on the next `main` deploy.
+
+**#68, blank "UID only" select — wider than reported.** PrimeReact's Select
+treats `""` as no value (`isNotEmpty`), so every `""` option in admin rendered
+blank: "UID only", "All suppliers", "— No tier —", "Inherit supplier default"
+and 10 more. Fixed once in `SimpleSelect` (sentinel inside, callers keep
+`""`); request-logs' own `FilterSelect` now uses `SimpleSelect`.
+
+**Toggle overflow (founder report, same session).** Seven hand-rolled
+toggles. The four `Switch` copies placed an absolute knob with no `left`
+inside a centring `<button>`, so it started mid-track and slid out. Replaced
+by one `components/ui/switch.tsx` on PrimeReact `ToggleSwitch` (ADR-038),
+knob in a flex row. Measured live: knob inside the 44×24 track in both
+states (Membership, Payment Methods, Games packages).
+
+**#67, ADR-109 admin click-through — passed.** `/admin/games` → Edit Game →
+Content: description, two notes, Manual Processing, custom subtext saved; the
+modal reloads them; public `GET /api/catalog/games/{slug}` serves them (cache
+flushed); clearing every field saves back to `null` / `instant`. Dev DB
+restored to its original values afterwards.
+
+**Found, not fixed (prod, read-only check).** Five
+`storage/app/backup-temp/restore-extract-*` folders (2026-09-26..30, 34–60 MB
+each) hold plaintext DB dumps with customer PII. `RunDatabaseBackupJob`
+deletes them in `finally`; these are from runs killed before it ran. None
+since 2026-09-30 though the job still runs daily. Removing them is a prod
+write — founder's call.
+
+**Verification.** +1 test (full cover → `voucher`, partial keeps the
+channel); fast suite 2633/2633. `admin/` tsc + eslint clean. Live checks in a
+local browser as above.

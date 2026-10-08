@@ -167,6 +167,27 @@ return [
             'report' => false,
         ],
 
+        /*
+         * PRD §16 item 56 (ADR-114 2026-10-01 addendum): the
+         * `accounting_disk` and `wallet_receipts_disk` target once
+         * `ACCOUNTING_DISK` / `WALLET_RECEIPTS_DISK=r2_accounting`. Local
+         * disk lost 2 supplier receipts in the droplet move. Private like
+         * `r2_backups`: no `url`, own scoped token. `throw` is on, unlike
+         * the backups disk: a failed receipt upload must fail the save,
+         * never leave a `receipt_path` pointing at nothing.
+         */
+        'r2_accounting' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCOUNTING_ACCESS_KEY_ID'),
+            'secret' => env('R2_ACCOUNTING_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('R2_ACCOUNTING_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
     /*

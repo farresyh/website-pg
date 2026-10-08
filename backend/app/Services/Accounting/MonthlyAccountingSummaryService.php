@@ -53,6 +53,7 @@ final class MonthlyAccountingSummaryService
             'bank_transfer_fees_sen' => $this->bankTransferFees($from, $toExclusive),
             'supplier_prepaid_fx_variance_sen' => $this->supplierPrepaidFxVarianceTrueUp($from, $toExclusive),
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
+            'affiliate_tier_fees_sen' => $this->affiliateTierFees($from, $toExclusive),
             'voucher_liability_issued_sen' => $this->voucherLiabilityIssued($from, $toExclusive),
             'reseller_wallet_balance_sen' => $this->resellerWalletBalance(),
         ];
@@ -269,6 +270,22 @@ final class MonthlyAccountingSummaryService
             ->where('orders.paid_at', '>=', $from)
             ->where('orders.paid_at', '<', $toExclusive)
             ->sum('ledger_entries.amount');
+    }
+
+    /**
+     * ADR-083 2026-10-08 addendum — tier fees deducted from affiliates'
+     * earnings (ADR-056). No cash moves, so neither the bank statement nor
+     * any other line here shows them. Neutral on purpose: revenue vs
+     * contra-commission is the external reviewer's call (PRD §16).
+     */
+    private function affiliateTierFees(Carbon $from, Carbon $toExclusive): int
+    {
+        return -(int) LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::Affiliate->value)
+            ->where('type', 'affiliate_tier_fee')
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
+            ->sum('amount');
     }
 
     private function voucherLiabilityIssued(Carbon $from, Carbon $toExclusive): int

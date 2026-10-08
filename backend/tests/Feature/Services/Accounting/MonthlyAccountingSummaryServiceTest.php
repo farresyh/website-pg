@@ -286,4 +286,30 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
 
         $this->assertSame(150, $summary['affiliate_commission_expense_sen']);
     }
+
+    /**
+     * ADR-083 2026-10-08 addendum: the tier fee is deducted from the
+     * affiliate's earnings (a negative ledger debit, no cash), so nothing
+     * else in this summary or the bank statement shows it. Positive here,
+     * scoped to the KL month by the entry's own `created_at`.
+     */
+    public function test_affiliate_tier_fees_sum_this_kl_months_debits_as_a_positive_figure(): void
+    {
+        $fee = fn (int $amount, string $at) => LedgerEntry::query()->forceCreate([
+            'owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 1, 'type' => 'affiliate_tier_fee',
+            'amount' => $amount, 'reference_type' => 'affiliate_subscription', 'reference_id' => 1, 'created_at' => $at,
+        ]);
+        $fee(-2000, '2026-08-31 16:00:00'); // 1 Sep 00:00 KL — in
+        $fee(-500, '2026-09-30 15:59:59');  // 30 Sep 23:59:59 KL — in
+        $fee(-9999, '2026-09-30 16:00:00'); // 1 Oct KL — out
+        $fee(-7777, '2026-08-31 15:59:59'); // 31 Aug KL — out
+        LedgerEntry::query()->forceCreate([
+            'owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 1, 'type' => 'withdrawal',
+            'amount' => -3000, 'reference_type' => 'withdrawal', 'reference_id' => 1, 'created_at' => '2026-09-10 00:00:00',
+        ]);
+
+        $summary = $this->service()->forPeriod(2026, 9);
+
+        $this->assertSame(2500, $summary['affiliate_tier_fees_sen']);
+    }
 }

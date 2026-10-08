@@ -412,6 +412,20 @@ class CheckoutServiceTest extends TestCase
         Queue::assertNotPushed(FulfillOrderJob::class);
     }
 
+    /** §16 item 70: no gateway ran, so the order must not claim the checkout's channel. */
+    public function test_a_full_cover_order_records_voucher_as_its_payment_method(): void
+    {
+        Queue::fake();
+        $this->voucher(5000);
+
+        $full = $this->service()->initiate($this->request(['voucherCode' => 'KRS-RACE']), $this->fakePaymentGateway(true));
+        $partial = $this->service()->initiate($this->request(), $this->fakePaymentGateway(true, ['payment_request_id' => 'pr-1']));
+
+        $this->assertSame(0, $full->final_amount);
+        $this->assertSame('voucher', $full->payment_method);
+        $this->assertSame('duitnow', $partial->payment_method);
+    }
+
     /** Decision 6: a replay of a Failed order never gets a link. */
     public function test_resume_refuses_an_order_that_already_failed(): void
     {

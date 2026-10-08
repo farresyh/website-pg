@@ -32,6 +32,16 @@ The version number on this documentation (shown in the API Reference) is the
 
 ## Changelog
 
+### 2026-10 — v1.4.0
+
+- `POST /v1/orders` accepts an optional `max_price_sen`. If your current
+  price is above it, the order is refused with the new
+  `422 PRICE_CHANGED` (`details.current_price_sen`) and nothing is charged.
+  Omitting it keeps the old behaviour. See
+  [Your first order](/first-order/#prices-change--send-max_price_sen).
+- `details` on an error is now documented as code-specific; see
+  [Errors](/errors/).
+
 ### 2026-10 — v1.3.0
 
 - `GET /v1/catalog`: `checkout_input` gains `player_id_format` (`numeric` or

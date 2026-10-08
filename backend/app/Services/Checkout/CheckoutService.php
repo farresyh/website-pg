@@ -127,7 +127,10 @@ final class CheckoutService
                 // full-cover order never calls one).
                 paymentStatus: PaymentStatus::Pending,
                 paidAt: null,
-                paymentMethod: $request->paymentMethod,
+                // §16 item 70: no gateway runs on a full cover, so the
+                // channel picked at checkout would be a false label in
+                // Order Detail and the Reports Payment Methods tab.
+                paymentMethod: $fullyCoveredByVoucher ? 'voucher' : $request->paymentMethod,
                 gameId: $request->gameId,
                 packageId: $request->packageId,
                 supplierId: $request->supplierId,

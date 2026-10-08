@@ -86,6 +86,8 @@ class BudgetEnvelopeController extends Controller
                 + $monthSummary['payment_processing_gain_loss_sen']
                 - $monthSummary['bank_transfer_fees_sen']
                 - $monthSummary['affiliate_commission_expense_sen']
+                // ADR-083 2026-10-08 addendum: profit either way, revenue or contra-commission.
+                + $monthSummary['affiliate_tier_fees_sen']
                 - $monthSummary['voucher_liability_issued_sen'],
             'current_month_label' => $now->format('F Y'),
         ]);

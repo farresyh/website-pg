@@ -30,6 +30,8 @@ class PlaceOrderRequest extends FormRequest
             'player_id' => ['required', 'string', 'max:64'],
             'server_id' => ['nullable', 'string', 'max:64'],
             'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
+            // The most you agree to pay, in sen. If your current price is higher: `PRICE_CHANGED`, nothing charged.
+            'max_price_sen' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

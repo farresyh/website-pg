@@ -79,6 +79,13 @@ final class ResellerOrderPlacementService
             (float) $tier->markup_percent,
         );
 
+        // ADR-074 2026-10-08 addendum: checked against the same $pricing
+        // the debit below uses, so the guarded and charged amounts are one
+        // number. After the replay check: a replay charges nothing.
+        if ($request->maxPriceSen !== null && $pricing->sellingPriceSen > $request->maxPriceSen) {
+            throw new PriceAboveMaxException($pricing->sellingPriceSen, $request->maxPriceSen);
+        }
+
         $primaryAffiliateId = Affiliate::primary()->id;
 
         try {
