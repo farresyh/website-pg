@@ -7,17 +7,20 @@
  */
 
 import { useState, type ReactNode } from "react";
+import type * as React from "react";
 import { Button } from "@/components/ui/button";
 import type { PercentChange, PointsChange } from "@/lib/reports";
 
 export function ReportCard({
   title,
+  subtitle,
   actions,
   children,
   className = "",
   flush = false,
 }: {
   title?: ReactNode;
+  subtitle?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -28,7 +31,12 @@ export function ReportCard({
     <section className={`overflow-hidden rounded-lg border border-border bg-surface shadow-xs ${className}`}>
       {(title || actions) && (
         <header className={`flex flex-wrap items-center justify-between gap-3 ${flush ? "px-4 pt-4 pb-3" : "px-5 pt-5"}`}>
-          {title && <h2 className="text-section-title font-semibold text-ink">{title}</h2>}
+          {title && (
+            <div>
+              <h2 className="text-section-title font-semibold text-ink">{title}</h2>
+              {subtitle && <p className="mt-0.5 text-theme-xs text-ink-muted">{subtitle}</p>}
+            </div>
+          )}
           {actions}
         </header>
       )}
@@ -68,9 +76,12 @@ export function KpiCard({
   previousLabel,
   note,
   onClick,
+  lead = false,
 }: {
   label: string;
   value: string;
+  /** The mockup's lead cards (Paid sales, Owner profit) carry the 30px value; the rest 22px. */
+  lead?: boolean;
   sub?: string;
   change?: PercentChange | PointsChange;
   previousLabel?: string;
@@ -82,14 +93,20 @@ export function KpiCard({
   const body = (
     <>
       <p className="text-theme-xs font-medium text-ink-muted">{label}</p>
-      <p className="mt-1 text-metric-lg font-semibold tabular-nums text-ink">{value}</p>
+      <p
+        className={`mt-1 whitespace-nowrap font-semibold tabular-nums tracking-tight text-ink ${
+          lead ? "text-[26px] leading-8 2xl:text-metric-lg" : "text-[22px] leading-8"
+        }`}
+      >
+        {value}
+      </p>
       {sub && <p className="mt-0.5 text-theme-xs text-ink-muted">{sub}</p>}
       {change && <ChangeLine change={change} previousLabel={previousLabel} />}
       {note && <p className="mt-1 text-theme-xs text-ink-muted">{note}</p>}
     </>
   );
 
-  const base = "flex flex-col justify-start rounded-lg border border-border bg-surface p-5 text-left shadow-xs";
+  const base = "flex min-w-0 flex-col justify-start rounded-lg border border-border bg-surface p-4 text-left shadow-xs";
   return onClick ? (
     <button
       type="button"
@@ -208,5 +225,61 @@ export function GameIcon({ name, src, size = 28 }: { name: string; src?: string 
     >
       {initials}
     </span>
+  );
+}
+
+/** The mockup's segmented toggle (Revenue & profit / Orders, Daily / Weekly / Monthly). */
+export function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  label: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-md bg-subtle p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={`rounded-[5px] px-2.5 py-1 text-theme-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-focus-ring ${
+            value === o.value ? "bg-surface text-ink shadow-xs" : "text-ink-muted hover:text-ink"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Header / filter-row button in the mockup's style: 36px, surface ground, control border. */
+export function ToolbarButton({
+  children,
+  className = "",
+  dashed = false,
+  active = false,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { dashed?: boolean; active?: boolean }) {
+  const tone = active
+    ? "border-cyan-600 bg-cyan-50 text-cyan-ink"
+    : dashed
+      ? "border-dashed border-border-control bg-transparent text-ink-muted hover:text-ink"
+      : "border-border-strong bg-surface text-ink hover:bg-subtle";
+  return (
+    <button
+      type="button"
+      className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 ${tone} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
   );
 }

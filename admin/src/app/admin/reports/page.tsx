@@ -24,7 +24,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -39,7 +38,14 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTab, TabsIndicator, TabsPanels, TabsPanel } from "@/components/ui/tabs";
 import { Popover, PopoverPortal, PopoverPositioner, PopoverPopup, PopoverClose } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
+import { ToolbarButton } from "@/components/reports/ReportKit";
+import { Calendar } from "@primeicons/react/calendar";
+import { ChevronDown } from "@primeicons/react/chevron-down";
+import { Comment } from "@primeicons/react/comment";
+import { Download } from "@primeicons/react/download";
+import { Plus } from "@primeicons/react/plus";
+import { Refresh } from "@primeicons/react/refresh";
+import { Times } from "@primeicons/react/times";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -148,41 +154,44 @@ export default function ReportsPage() {
   }
 
   const affiliateOptions = [
-    { label: "All Affiliates", value: AFFILIATE_ALL },
+    { label: "All affiliates", value: AFFILIATE_ALL },
     ...affiliates.map((r) => ({ label: r.business_name, value: String(r.id) })),
   ];
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      {/* ADR-104 — header in the artifact mockup's shape: title + status/actions, then one filter row. */}
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Reports</h1>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-            Sales and profit are recognized only for orders that were actually paid and — for profit — actually
-            delivered, sourced from the ledger, not a cached balance.
-          </p>
+          <h1 className="text-page-title font-semibold tracking-tight text-ink">Reports</h1>
+          <p className="mt-1 text-theme-sm text-ink-muted">Track sales, profit and operational performance across PekanGame.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-theme-xs text-ink-muted" aria-live="polite">
+          <span className="mr-2 flex items-center gap-1.5 text-theme-xs text-ink-muted" aria-live="polite">
+            <span className="size-1.5 rounded-full bg-success-ink" />
             {updatedLabel}
           </span>
-          <Button variant="outlined" size="small" onClick={refetched(() => setRefreshKey((k) => k + 1))}>
-            Refresh
-          </Button>
           {/* ADR-087 decision 6/9 — super_admin only, own route (not a tab here). */}
           {session?.role === "super_admin" && (
-            <Link href="/admin/reports/assistant">
-              <Button variant="outlined" size="small">
-                Ask Assistant
-              </Button>
+            <Link
+              href="/admin/reports/assistant"
+              className="inline-flex h-9 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium text-ink hover:bg-overlay focus-visible:outline-2 focus-visible:outline-focus-ring"
+            >
+              <Comment width={14} height={14} />
+              Ask assistant
             </Link>
           )}
+          <ToolbarButton aria-label="Refresh" title="Refresh" className="w-9 justify-center px-0" onClick={refetched(() => setRefreshKey((k) => k + 1))}>
+            <Refresh width={14} height={14} />
+          </ToolbarButton>
           {/* ADR-104 R5 — one Export menu; export content unchanged. Manual
-              anchor pattern (UserDropdown.tsx): Button isn't forwardRef. */}
+              anchor pattern (UserDropdown.tsx): the trigger needs a ref. */}
           <span ref={setExportTriggerEl}>
-            <Button variant="outlined" size="small" disabled={exporting !== null} onClick={() => setExportMenuOpen((v) => !v)}>
+            <ToolbarButton disabled={exporting !== null} onClick={() => setExportMenuOpen((v) => !v)} aria-haspopup="menu">
+              <Download width={14} height={14} />
               {exporting ? "Exporting…" : "Export"}
-            </Button>
+              <ChevronDown width={12} height={12} />
+            </ToolbarButton>
           </span>
           <Popover open={exportMenuOpen} onOpenChange={(e) => setExportMenuOpen(e.value ?? false)} anchor={exportTriggerEl}>
             <PopoverPortal>
@@ -205,41 +214,51 @@ export default function ReportsPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
       {/* Filter row — one row, above the charts (dataviz interaction.md) */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <FilterSelect label="Affiliate" value={affiliateId} onChange={refetched(setAffiliateId)} options={affiliateOptions} />
-        <FilterSelect
-          label="Date Range"
-          value={rangePreset}
-          onChange={refetched((v: string) => setRangePreset(v as DateRangePreset))}
-          options={DATE_RANGE_PRESETS}
-        />
-        {rangePreset === "custom" && (
-          <>
-            <Input type="date" value={customFrom} onChange={refetched((e: React.ChangeEvent<HTMLInputElement>) => setCustomFrom(e.target.value))} className="w-[9.5rem]" />
-            <span className="text-theme-xs text-gray-400 dark:text-gray-500">to</span>
-            <Input type="date" value={customTo} onChange={refetched((e: React.ChangeEvent<HTMLInputElement>) => setCustomTo(e.target.value))} className="w-[9.5rem]" />
-          </>
-        )}
-        {/* ADR-104 R12 — All time has no previous period, so Compare says why it's off. */}
-        <label className="flex items-center gap-2 text-theme-xs text-ink-muted">
-          <Switch
-            checked={compareOn && compareMode !== null}
-            disabled={compareMode === null}
-            onChange={refetched(setCompareOn)}
-            ariaLabel="Compare with the previous period"
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterSelect
+            icon={<Calendar width={14} height={14} />}
+            value={rangePreset}
+            onChange={refetched((v: string) => setRangePreset(v as DateRangePreset))}
+            options={DATE_RANGE_PRESETS}
+            suffix={from && to ? `${formatShortDate(from)} – ${formatShortDate(to)}` : undefined}
+            ariaLabel="Date range"
           />
-          {compareMode === null
-            ? "Compare (not available for All time)"
-            : compareMode === "month_to_date"
-              ? "Compare with same days last month"
-              : "Compare with previous period"}
-        </label>
+          {rangePreset === "custom" && (
+            <>
+              <Input type="date" value={customFrom} onChange={refetched((e: React.ChangeEvent<HTMLInputElement>) => setCustomFrom(e.target.value))} className="w-[9.5rem]" />
+              <span className="text-theme-xs text-ink-muted">to</span>
+              <Input type="date" value={customTo} onChange={refetched((e: React.ChangeEvent<HTMLInputElement>) => setCustomTo(e.target.value))} className="w-[9.5rem]" />
+            </>
+          )}
+          <FilterSelect
+            label="Affiliate"
+            value={affiliateId}
+            onChange={refetched(setAffiliateId)}
+            options={affiliateOptions}
+            ariaLabel="Affiliate"
+          />
+          {/* ADR-104 R12 — All time has no previous period, so Compare is off and says why. */}
+          {compare ? (
+            <ToolbarButton active onClick={refetched(() => setCompareOn(false))} aria-pressed="true">
+              {compareMode === "month_to_date" ? "Comparing with same days last month" : "Comparing with previous period"}
+              <Times width={12} height={12} aria-hidden />
+            </ToolbarButton>
+          ) : (
+            <ToolbarButton dashed disabled={compareMode === null} onClick={refetched(() => setCompareOn(true))} aria-pressed="false">
+              <Plus width={12} height={12} />
+              Compare period
+            </ToolbarButton>
+          )}
+          {compareMode === null && <span className="text-theme-xs text-ink-muted">Compare needs a bounded range, not All time.</span>}
+        </div>
+        <p className="text-theme-xs text-ink-muted">Paid orders only · Malaysia time (GMT+8)</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(e) => refetched(setActiveTab)(e.value as string)}>
@@ -296,46 +315,57 @@ export default function ReportsPage() {
 
 function FilterSelect({
   label,
+  icon,
+  suffix,
   value,
   onChange,
   options,
-  disabled,
+  ariaLabel,
 }: {
-  label: string;
+  label?: string;
+  icon?: React.ReactNode;
+  suffix?: string;
   value: string;
   onChange: (value: string) => void;
   options: { label: string; value: string }[];
-  disabled?: boolean;
+  ariaLabel: string;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</span>
-      <Select
-        value={value}
-        options={options}
-        optionLabel="label"
-        optionValue="value"
-        disabled={disabled}
-        onValueChange={(e) => onChange(e.value as string)}
+    <Select
+      value={value}
+      options={options}
+      optionLabel="label"
+      optionValue="value"
+      onValueChange={(e) => onChange(e.value as string)}
+    >
+      <SelectTrigger
+        aria-label={ariaLabel}
+        className="h-9 w-auto gap-2 rounded-md border-border-strong bg-surface px-3 py-0 text-[13px] font-medium text-ink shadow-none dark:border-border-strong dark:bg-surface dark:text-ink"
       >
-        <SelectTrigger className="min-w-[9rem]">
-          <SelectValue />
-          <SelectIndicator />
-        </SelectTrigger>
-        <SelectPortal>
-          <SelectPositioner>
-            <SelectPopup>
-              <SelectList>
-                {options.map((option, index) => (
-                  <SelectOption key={option.value} index={index}>
-                    {option.label}
-                  </SelectOption>
-                ))}
-              </SelectList>
-            </SelectPopup>
-          </SelectPositioner>
-        </SelectPortal>
-      </Select>
-    </div>
+        {icon && <span className="text-ink-muted">{icon}</span>}
+        {label && <span className="font-normal text-ink-muted">{label}</span>}
+        <SelectValue />
+        {suffix && <span className="border-l border-border pl-2 font-normal text-ink-muted">{suffix}</span>}
+        <SelectIndicator />
+      </SelectTrigger>
+      <SelectPortal>
+        <SelectPositioner>
+          <SelectPopup>
+            <SelectList>
+              {options.map((option, index) => (
+                <SelectOption key={option.value} index={index}>
+                  {option.label}
+                </SelectOption>
+              ))}
+            </SelectList>
+          </SelectPopup>
+        </SelectPositioner>
+      </SelectPortal>
+    </Select>
   );
+}
+
+/** 'YYYY-MM-DD' → "19 Aug 2026", read as the calendar date it already is. */
+function formatShortDate(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
