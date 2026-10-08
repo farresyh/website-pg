@@ -78,6 +78,15 @@ final class ResellerApiException extends RuntimeException
     }
 
     /**
+     * ADR-074 2026-10-08 addendum: only reachable when the caller sent
+     * `max_price_sen`. `details.current_price_sen` is their own live price.
+     */
+    public static function priceChanged(int $currentPriceSen): self
+    {
+        return new self('PRICE_CHANGED', 422, 'The current price is above your max_price_sen. Nothing was charged.', ['current_price_sen' => $currentPriceSen]);
+    }
+
+    /**
      * @param  array<string, array<int, string>>  $details
      */
     public static function validationFailed(array $details): self

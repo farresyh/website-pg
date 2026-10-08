@@ -87,7 +87,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-071** | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidati… |
 | **ADR-072** | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename… |
 | **ADR-073** | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit b… |
-| **ADR-074** | Reseller API channel — per-tenant API keys, order-placement/status endpoints. **2026-09-26 addendum:** cross-reseller idempotency-key isolation gap found (a 4-branch production audit), grilled, decided, **BUILT** — `idempotency_scope` generated column + composite unique index |
+| **ADR-074** | Reseller API channel — per-tenant API keys, order-placement/status endpoints. **2026-09-26 addendum:** cross-reseller idempotency-key isolation gap found (a 4-branch production audit), grilled, decided, **BUILT** — `idempotency_scope` generated column + composite unique index. **2026-10-08 addendum:** optional `max_price_sen` ceiling on `POST /v1/orders` → `422 PRICE_CHANGED`, not in the idempotency hash, Bot unchanged — **BUILT** |
 | **ADR-075** | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology. 2026-10-02 addendum: OpenWA chat-list rehydration on process restart (fork + DB-backed chat-summary fallback), design-only, not built |
 | **ADR-076** | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, re… |
 | **ADR-077** | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagati… |
@@ -97,7 +97,7 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-081** | Affiliate storefront theme presets — a curated fixed set, NOT the THM-1..4 custom theme system |
 | **ADR-082** | Public-facing review display — homepage marquee + per-game reviews on the product page |
 | **ADR-083** | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Re… |
-| **ADR-084** | Reseller API — developer documentation site, plus the surface hardening that must land first |
+| **ADR-084** | Reseller API — developer documentation site, plus the surface hardening that must land first. Error list gains `PRICE_CHANGED` and `details` is code-specific (ADR-074 2026-10-08 addendum) |
 | **ADR-086** | Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite |
 | **ADR-087** | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs |
 | **ADR-088** | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening |
@@ -4273,6 +4273,27 @@ Live-verified against the same real wallet order from the walkthrough above (`co
   `UNIQUE` constraint works identically either way — no storage or
   read-performance loss from the switch, since this column only exists to
   be indexed and queried, never read as ordinary application data.
+
+**Addendum — optional `max_price_sen` price ceiling on `POST /v1/orders`, grilled 2026-10-08 (§16 item 63, last API bullet).**
+
+*Context.* The backlog line read "catalogue cached 60s, no ceiling". The trace corrected the premise: the charge is computed live at order time (`resolveByCode()` reads `Package` uncached; `placeOrder()` prices via `resolveResellerWallet()` and debits that), and both catalogue caches are flushed on every price write (`SyncSupplierPricesJob` → `forgetIndexCache()` → `ResellerCatalogService::CACHE_KEY` + `PRICED_CACHE_TAG`). The real gap is the time between a reseller *reading* a price (their own cached catalogue, or `.list` minutes earlier) and *ordering*. Other causes: a 30-minute price sync, `cheapestActiveFor()` switching the code to another package, a tier markup edit. Prod, 7 days to 2026-10-08: 11,683 cost changes over 1,438 packages, 5,406 up, 230 up by >2%, 12 by >10%, max +37%. Reseller API orders ever: **0** (2 keys); Bot: 7.
+
+*Decisions.*
+1. **Optional, additive, stays `/v1`** (ADR-084 decision 9). `null` = accept the live price (unchanged behaviour). Docs recommend sending it. A per-key "require max price" switch is not built.
+2. **A ceiling, not an exact match** — a lower live price is charged as is (same semantics as Digiflazz's own `max_price`, cf. ADR-030 decision 4).
+3. **`422 PRICE_CHANGED` + `details.current_price_sen`.** 422 to sit with `INSUFFICIENT_BALANCE`; 409 stays the idempotency conflict only. `current_price_sen` is the caller's own price, nothing private.
+4. **Not in the idempotency payload hash.** It guards a charge; it isn't the order's identity. A rejected order leaves no row, so the same key may retry with a higher max; a replay of a placed order returns the original whatever its max. Stored hashes stay valid.
+5. **Bot: no change now.** Its reply already shows `Harga`; an optional `max=` token is a §16 line. The DTO field is `null` for the Bot.
+6. **No per-code log.** No API rejection is logged today; if observability is ever wanted it goes in the one `ResellerApiException` render hook for every code (§16 line).
+7. **Lands here** (the order contract), cross-referenced from ADR-084's error list.
+
+*Stress test (founder-requested).* Revised two answers: `details` is now documented as **code-specific** (`errors.md`) rather than putting a top-level field outside the uniform envelope — the PHP type was already `array<string, mixed>`, only the docs said validation-only; and decision 6 replaced a one-off `Log::info`. Held: the guard sits in `ResellerOrderPlacementService::placeOrder()` because only it knows the final price (a controller guard would recompute pricing); it compares the very `$pricing` object the debit uses (`sellingPriceSen` is `int`), so the guarded and charged amounts can't differ; it runs after the replay check; a new error code reachable only by opting in can't surprise an old client; no new query or lock.
+
+*Code-trace (money).* For a wallet order `selling_price` = `final_amount` (`OrderDraft::resolvedFinalAmountSen()`, no voucher/fee) = the debit = `price_sen` in the order response = `price_sen` in the catalogue (same resolver). The guard writes no money column. Basis: ResellerWallet only. Callers of `ResellerOrderPlacementRequest`: API (passes it), Bot and `ResellerOrderPlacementTestPlaceOrder` (null).
+
+*Consequence to track.* An integrator that auto-retries at `current_price_sen` has no ceiling at all; the docs say so. Revisit the Bot `max=` token if a Bot reseller complains about a price they didn't see.
+
+**🟢 BUILT 2026-10-08** (`feature/2026-10-08-reseller-api-max-price`): `PriceAboveMaxException`, `ResellerApiException::priceChanged()`, `PlaceOrderRequest` rule, API docs v1.4.0. +6 tests; fast suite green.
 
 ---
 

@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "PekanGame Reseller API",
-        "version": "1.3.0",
+        "version": "1.4.0",
         "description": "Order placement, order status, price list, and wallet balance for a PekanGame reseller account. Every request needs a Bearer API key issued by PekanGame \u2014 Authorization: Bearer <key>."
     },
     "servers": [
@@ -682,7 +682,7 @@
             },
             "post": {
                 "operationId": "order.store",
-                "description": "Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game's `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged.",
+                "description": "Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game's `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged. Optional `max_price_sen` caps the charge: if your current price is above it, the order is refused with `PRICE_CHANGED` (`details.current_price_sen`) and nothing is charged; a lower current price is charged as is. Omit it to accept the current price. It is not part of the idempotency payload.",
                 "summary": "Place an order",
                 "tags": [
                     "Order"
@@ -724,7 +724,7 @@
                         }
                     },
                     "422": {
-                        "description": "`VALIDATION_FAILED` (with `details`), `UNKNOWN_PRODUCT_CODE`, `NO_TIER_ASSIGNED` or `INSUFFICIENT_BALANCE`.",
+                        "description": "`VALIDATION_FAILED` (with `details`), `PRICE_CHANGED` (with `details.current_price_sen`, only when `max_price_sen` was sent), `UNKNOWN_PRODUCT_CODE`, `NO_TIER_ASSIGNED` or `INSUFFICIENT_BALANCE`.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1169,6 +1169,14 @@
                         "type": "string",
                         "minLength": 8,
                         "maxLength": 100
+                    },
+                    "max_price_sen": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "The most you agree to pay, in sen. If your current price is higher: `PRICE_CHANGED`, nothing charged.",
+                        "minimum": 1
                     }
                 },
                 "required": [

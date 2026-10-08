@@ -32,6 +32,14 @@ The key must be 8–100 characters. A UUID v4 is the recommended form.
 The 200-with-`Idempotent-Replayed` response is how a safe retry looks: you get
 the real order, and you can tell it was a replay.
 
+`max_price_sen` is **not** part of the payload compared above. It guards a new
+charge only:
+
+- An order refused with `422 PRICE_CHANGED` was never created, so you may retry
+  with the **same** key and a higher `max_price_sen`.
+- A replay of an order that already went through returns that original order,
+  whatever `max_price_sen` the replay carries. Nothing is charged again.
+
 ## How to retry
 
 If a `POST /v1/orders` call times out or returns a `5xx`, **retry it with the

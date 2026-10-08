@@ -12,13 +12,26 @@ Every error response has the same shape:
 Branch on **`error`** (a stable machine code) and the **HTTP status** — never on
 `message`, which is prose and may change.
 
-`VALIDATION_FAILED` responses carry an extra `details` object:
+Some errors carry an extra `details` object. Its shape depends on the `error`
+code, so read it only for the codes below:
+
+`VALIDATION_FAILED` — field name → list of messages:
 
 ```json
 {
   "error": "VALIDATION_FAILED",
   "message": "The request payload failed validation.",
   "details": { "player_id": ["The player id field is required."] }
+}
+```
+
+`PRICE_CHANGED` — your current price for the product, in sen:
+
+```json
+{
+  "error": "PRICE_CHANGED",
+  "message": "The current price is above your max_price_sen. Nothing was charged.",
+  "details": { "current_price_sen": 6450 }
 }
 ```
 
@@ -35,6 +48,7 @@ Branch on **`error`** (a stable machine code) and the **HTTP status** — never 
 | 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method for that path. | Check the reference. |
 | 409 | `IDEMPOTENCY_KEY_CONFLICT` | The `idempotency_key` was already used with a different payload. | Use a fresh UUID. |
 | 422 | `VALIDATION_FAILED` | A field is missing or malformed. See `details`. | Fix the payload. |
+| 422 | `PRICE_CHANGED` | Your current price is above the `max_price_sen` you sent. Nothing was charged. See `details.current_price_sen`. | Decide whether the new price still works for you; if so, retry (the same `idempotency_key` is fine). |
 | 422 | `UNKNOWN_PRODUCT_CODE` | The `product_code` is unknown or unavailable. | Re-read `GET /v1/catalog`. |
 | 422 | `NO_TIER_ASSIGNED` | Your account has no pricing configured yet. | Contact PekanGame. |
 | 422 | `INSUFFICIENT_BALANCE` | The order would overdraw the wallet. | Top up; retry with a fresh key. |
