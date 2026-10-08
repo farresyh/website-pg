@@ -89,7 +89,7 @@
    * that the artifact specifies as genuinely DIFFERENT hex per mode
    * (not just a different stop of the same ramp, unlike brand/gray/
    * surface above) get their dark values here. Anything not listed —
-   * on-cyan, chart-negative, focus-ring — is documented in the artifact
+   * on-cyan, focus-ring — is documented in the artifact
    * as "inherits light", i.e. deliberately the same hex in both modes,
    * so it has no entry here by design, not by omission. `info-*` USED
    * to be filed under that same "inherits light" bucket — a founder
@@ -148,6 +148,23 @@
   --shadow-theme-sm: var(--shadow-xs);
   --shadow-theme-md: var(--shadow-md);
   --shadow-theme-lg: var(--shadow-md);
+}
+
+/*
+ * ADR-104 R1: chart series are aliases in the artifact's tokens.json, so
+ * they follow each base token's own `.dark` value (`.dark` sits on <html>,
+ * the same element as :root). chart-negative was a fixed hex before; the
+ * artifact aliases it to danger-ink, which has a dark value. `static`
+ * because Recharts reads them as `var(--color-chart-*)` from TSX props,
+ * which Tailwind's unused-variable pruning can't see.
+ */
+@theme static {
+  --color-chart-1: var(--color-cyan-600);
+  --color-chart-2: var(--color-purple-600);
+  --color-chart-3: var(--color-nude-ink);
+  --color-chart-grid: var(--color-border);
+  --color-chart-positive: var(--color-success-ink);
+  --color-chart-negative: var(--color-danger-ink);
 }
 
 @theme {
@@ -257,7 +274,7 @@
    * across all 9 of its sections before this ADR was grilled). Light
    * values here; dark overrides live in the `.dark{}` block above for
    * every token the artifact defines a genuinely different dark hex for
-   * — the rest (on-cyan, info-*, chart-negative, focus-ring) are
+   * — the rest (on-cyan, info-*, focus-ring) are
    * deliberately "inherits light" per the artifact, so they have no
    * `.dark` entry. "surface"/"ink" suffixes (not "bg") avoid a
    * bg-x-bg-style stutter in the generated Tailwind utility names.
@@ -297,7 +314,6 @@
   --color-info-surface: #e6f4f6;
   --color-info-ink: #0a6374;
 
-  --color-chart-negative: #b42318;
   --color-focus-ring: #0b7285;
 
   /*
