@@ -12,6 +12,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
+use App\Services\Reseller\PriceAboveMaxException;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
@@ -41,7 +42,7 @@ class ResellerOrderPlacementServiceTest extends TestCase
         return $reseller;
     }
 
-    private function request(string $idempotencyKey = 'test-key-1', ?string $payloadHash = null): ResellerOrderPlacementRequest
+    private function request(string $idempotencyKey = 'test-key-1', ?string $payloadHash = null, ?int $maxPriceSen = null): ResellerOrderPlacementRequest
     {
         return new ResellerOrderPlacementRequest(
             playerId: '123456789',
@@ -50,6 +51,7 @@ class ResellerOrderPlacementServiceTest extends TestCase
             standardSellingPriceSen: 900,
             idempotencyKey: $idempotencyKey,
             payloadHash: $payloadHash,
+            maxPriceSen: $maxPriceSen,
         );
     }
 
@@ -185,5 +187,52 @@ class ResellerOrderPlacementServiceTest extends TestCase
 
         $this->assertTrue($replay->wasReplay);
         $this->assertSame(1, Order::query()->count());
+    }
+
+    public function test_a_live_price_above_max_price_rejects_before_creating_an_order(): void
+    {
+        $reseller = $this->makeReseller(markupPercent: 5);
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 10000, 'wallet_topup');
+
+        try {
+            app(ResellerOrderPlacementService::class)->placeOrder($reseller, $this->request(maxPriceSen: 944));
+            $this->fail('Expected PriceAboveMaxException.');
+        } catch (PriceAboveMaxException $e) {
+            $this->assertSame(945, $e->currentPriceSen);
+        }
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(10000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
+    public function test_max_price_is_a_ceiling_an_equal_or_cheaper_live_price_is_charged_live(): void
+    {
+        Queue::fake();
+        $reseller = $this->makeReseller(markupPercent: 5);
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 10000, 'wallet_topup');
+        $service = app(ResellerOrderPlacementService::class);
+
+        $equal = $service->placeOrder($reseller, $this->request('equal-key', maxPriceSen: 945))->order;
+        $higher = $service->placeOrder($reseller, $this->request('higher-key', maxPriceSen: 5000))->order;
+
+        $this->assertSame(945, $equal->selling_price);
+        $this->assertSame(945, $higher->selling_price);
+        $this->assertSame(10000 - 945 - 945, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
+    public function test_a_replay_returns_the_original_order_whatever_its_max_price(): void
+    {
+        // Max price guards a new charge only; a replay charges nothing.
+        Queue::fake();
+        $reseller = $this->makeReseller(markupPercent: 5);
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 10000, 'wallet_topup');
+        $service = app(ResellerOrderPlacementService::class);
+
+        $first = $service->placeOrder($reseller, $this->request('replay-key', maxPriceSen: 945));
+        $replay = $service->placeOrder($reseller, $this->request('replay-key', maxPriceSen: 1));
+
+        $this->assertTrue($replay->wasReplay);
+        $this->assertSame($first->order->id, $replay->order->id);
+        $this->assertSame(10000 - 945, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
     }
 }

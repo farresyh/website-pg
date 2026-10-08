@@ -244,6 +244,54 @@ class OrderControllerTest extends TestCase
         $this->assertSame(0, Order::query()->count());
     }
 
+    public function test_422s_price_changed_when_the_live_price_exceeds_max_price_sen(): void
+    {
+        Queue::fake();
+        $this->makePackage(costPrice: 1000);
+        [$reseller, $key] = $this->makeFundedReseller(walletBalance: 10000, markupPercent: 10);
+
+        $response = $this->postJson('/api/reseller/v1/orders', [
+            'product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => 'max-price-test-1',
+            'max_price_sen' => 1099,
+        ], $this->authHeaders($key));
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', 'PRICE_CHANGED')
+            ->assertJsonPath('details.current_price_sen', 1100);
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(10000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
+
+    public function test_a_price_changed_rejection_leaves_the_idempotency_key_free_to_retry(): void
+    {
+        Queue::fake();
+        $this->makePackage(costPrice: 1000);
+        [, $key] = $this->makeFundedReseller(markupPercent: 10);
+        $payload = ['product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => 'max-price-retry'];
+
+        $this->postJson('/api/reseller/v1/orders', $payload + ['max_price_sen' => 1000], $this->authHeaders($key))
+            ->assertStatus(422)->assertJsonPath('error', 'PRICE_CHANGED');
+
+        $this->postJson('/api/reseller/v1/orders', $payload + ['max_price_sen' => 1100], $this->authHeaders($key))
+            ->assertCreated()
+            ->assertJsonPath('price_sen', 1100);
+    }
+
+    public function test_max_price_sen_must_be_a_positive_integer(): void
+    {
+        [, $key] = $this->makeFundedReseller();
+
+        foreach ([0, 63.5, 'abc'] as $i => $bad) {
+            $this->postJson('/api/reseller/v1/orders', [
+                'product_code' => 'MLMY-14', 'player_id' => '1', 'idempotency_key' => "max-price-invalid-{$i}",
+                'max_price_sen' => $bad,
+            ], $this->authHeaders($key))
+                ->assertStatus(422)
+                ->assertJsonPath('error', 'VALIDATION_FAILED')
+                ->assertJsonPath('details.max_price_sen.0', fn ($m) => is_string($m));
+        }
+    }
+
     public function test_show_returns_the_callers_own_order(): void
     {
         Queue::fake();

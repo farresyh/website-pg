@@ -12,6 +12,7 @@ use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
+use App\Services\Reseller\PriceAboveMaxException;
 use App\Services\Reseller\ResellerCatalogService;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
@@ -101,14 +102,14 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'Place an order',
-        description: 'Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game\'s `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged.',
+        description: 'Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game\'s `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged. Optional `max_price_sen` caps the charge: if your current price is above it, the order is refused with `PRICE_CHANGED` (`details.current_price_sen`) and nothing is charged; a lower current price is charged as is. Omit it to accept the current price. It is not part of the idempotency payload.',
     )]
     #[Response(status: 201, description: 'The order was placed.', examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 200, description: 'Idempotent replay — the original order (also carries `Idempotent-Replayed: true`).', examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
     #[Response(status: 403, description: '`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.', type: self::ERROR_SHAPE, examples: [self::ERROR_403])]
     #[Response(status: 409, description: '`IDEMPOTENCY_KEY_CONFLICT` — the key was reused with a different payload.', type: self::ERROR_SHAPE, examples: [self::ERROR_409])]
-    #[Response(status: 422, description: '`VALIDATION_FAILED` (with `details`), `UNKNOWN_PRODUCT_CODE`, `NO_TIER_ASSIGNED` or `INSUFFICIENT_BALANCE`.', type: self::ERROR_SHAPE, examples: [self::ERROR_422])]
+    #[Response(status: 422, description: '`VALIDATION_FAILED` (with `details`), `PRICE_CHANGED` (with `details.current_price_sen`, only when `max_price_sen` was sent), `UNKNOWN_PRODUCT_CODE`, `NO_TIER_ASSIGNED` or `INSUFFICIENT_BALANCE`.', type: self::ERROR_SHAPE, examples: [self::ERROR_422])]
     #[Response(status: 429, description: '`RATE_LIMITED` — retry after the `Retry-After` header.', type: self::ERROR_SHAPE, examples: [self::ERROR_429])]
     public function store(PlaceOrderRequest $request): JsonResponse
     {
@@ -144,6 +145,7 @@ class OrderController extends Controller
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
                 payloadHash: self::payloadHash($data),
+                maxPriceSen: isset($data['max_price_sen']) ? (int) $data['max_price_sen'] : null,
             ));
         } catch (ResellerInactiveException) {
             throw ResellerApiException::resellerInactive();
@@ -151,6 +153,8 @@ class OrderController extends Controller
             throw ResellerApiException::noTierAssigned();
         } catch (InsufficientBalanceException) {
             throw ResellerApiException::insufficientBalance();
+        } catch (PriceAboveMaxException $e) {
+            throw ResellerApiException::priceChanged($e->currentPriceSen);
         } catch (IdempotencyKeyPayloadMismatchException) {
             throw ResellerApiException::idempotencyKeyConflict();
         }
@@ -194,7 +198,9 @@ class OrderController extends Controller
     /**
      * ADR-084 PR-1 decision 5: the idempotency payload hash covers the
      * semantic order inputs only — not `idempotency_key` itself (that is
-     * the key), and not any transport noise. A stable field order so the
+     * the key), and not any transport noise. Nor `max_price_sen`: it guards
+     * a charge, it isn't the order's identity (ADR-074 2026-10-08
+     * addendum), and leaving it out keeps stored hashes valid. A stable field order so the
      * same logical request always hashes identically.
      *
      * @param  array<string, mixed>  $data

@@ -29,5 +29,11 @@ final class ResellerOrderPlacementRequest
          * the same-key-different-payload conflict check entirely.
          */
         public readonly ?string $payloadHash = null,
+        /**
+         * ADR-074 2026-10-08 addendum: optional ceiling on the charged
+         * price. Null (Bot channel, or an API caller that omits it)
+         * accepts the live price. Not part of `payloadHash`.
+         */
+        public readonly ?int $maxPriceSen = null,
     ) {}
 }
