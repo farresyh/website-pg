@@ -1308,3 +1308,34 @@ with no SKU). `GameController::packages()` now includes
 it under the name, the same SKU the Create Combo picker already shows. Admin
 route only. Test: `ComboPackageControllerTest`. Item 66's edit-composition and
 leg-history parts stay open.
+
+## 2026-10-08 — Reports redesign designed (item 65, ADR-104 addendum R1–R21)
+
+Design only, nothing built. The founder found the live Reports page untidy
+and the 2026-09-17 mockups partly outdated, so every tab was compared side by
+side (private artifact `https://claude.ai/artifact/F5gLCNTsLq4NydriLuvoRY`,
+screenshots from the local demo DB + the artifact's own preview HTML rendered
+with its `tokens.json`/`bundle.css`), then grilled (4 rounds), stress-tested
+and code-traced.
+
+- **Live defects found:** "All time" KPIs vs a silent 30-day trend chart; an
+  unbounded daily table; raw, inconsistently cased payment-method labels; RM
+  rounding that differs between a bar list and its table.
+- **Money facts (prod, 31 paid non-test orders):** Reports "Sales" (paid,
+  incl. failed, net wallet refunds) and the Monthly Summary's revenue
+  (delivered `selling_price`) differ by design. Owner `order_profit` RM 7.38
+  vs `voucher_issued` −RM 13.18: compensation is a liability and must not be
+  netted from profit. 7 failed orders, 0 Need action (all compensated). All
+  7 reseller orders came from the Bot (`wa:` keys); the reseller portal
+  cannot place orders.
+- **Stress test turned up reuse/drift points the build must route through:**
+  `DashboardService::comparison()` (Compare period), two hand-mirrored
+  Path B voucher definitions (Dashboard + Transaction Register),
+  `SandboxOrderController` bypassing `OrderFactory`, and ADR-086's
+  deliberate hand-rolled chart house style (reversed on record by R1).
+- **Gotcha:** the artifact page itself reads as an empty shell through the
+  Artifact tool, but `read` with `paths` returns its files (preview HTML,
+  tokens, CSS, fonts). Headless Playwright login to local admin needs a
+  click on "Sign in" (Enter didn't submit), and `goto('/admin/reports')`
+  after login bounced to `/login`; navigating via the sidebar link worked.
+- New §16 item 75 (voucher-liability definition, for the external reviewer).
