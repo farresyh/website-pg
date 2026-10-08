@@ -1469,3 +1469,61 @@ PR-C; the current 8 tabs keep working on the new pieces.
 - **Not in this PR:** the old tabs' dark-mode
   `text-success-600` / `dark:text-success-400` profit cells are faint
   (`success-400` isn't defined) and go away with the PR-C reskin.
+
+## 2026-10-09 — Reports redesign PR-C: the 7 tabs (item 65, ADR-104 R2, R4–R10, R13, R15, R18)
+
+On `feature/2026-10-09-reports-pr-c`. Staging-only until a release.
+
+- **Tabs (R2):** Overview, Sales, Profit, Orders, Games, Partners,
+  Membership. Payment Methods merged into Sales (with Avg order); Affiliates
+  renamed Partners. Each tab rebuilt on `ReportKit` in its mockup's shape.
+- **Overview:** collapsible Bridge to Accounting (native `<details>`,
+  hidden under an Affiliate filter), top-3 games with "All games →", and
+  the breakdown table following the chart's Daily/Weekly/Monthly bucket
+  (R18) with a Total row and 31-row paging.
+- **Sales:** KPIs, payment-method and game bar lists, payment method detail
+  table, Sales by channel (R15). The mockup's "Paid orders per day" is
+  dropped (R6).
+- **Profit:** KPIs incl. margin in pts, the two trend charts, Profit by
+  game. "From this period's data" dropped (R4).
+- **Orders:** delivery health + performance, **Failed & compensated**
+  (R8–R10, with the `paid_at` vs voucher `created_at` note) and outstanding
+  store credit, Delivery by game (lowest rate first).
+- **Games:** KPIs, game icons, filter box (Total row hidden while filtered).
+- **Partners:** three channel cards with the API vs Bot split (R16).
+- **Compare (R13 Phase 1)** on every tab's KPIs. Backend: membership and
+  channel endpoints take `?compare=`; one `ReportService::compareWith()`
+  seam, `summaryComparison()` routed through it. Game rows carry
+  `image_url`. Both test-first (`ReportControllerTest`,
+  `ReportChannelAndDeliveryTest`).
+- One `useReport()` hook replaces each tab's hand-copied stale-response
+  guard; failed fetches now show an error instead of "Loading…" forever.
+  Nine superseded components deleted.
+- **Default range stays All time** (founder decision 2026-10-09).
+- **Verified:** backend 2669/2669; admin tsc, eslint, `npm test`, build.
+  Local production build against the dev DB (Playwright): all 7 tabs in
+  light, dark, 390px and Last 90 days + Compare; no console errors, 0px
+  horizontal overflow, each tab compared against its mockup. Bridge on the
+  dev DB walks RM 5,240.18 → RM 4,774.38 with RM 0.00 unexplained.
+- **R6 "View failed orders"** (founder chose option 1 the same day):
+  Orders gains a **Failed** pill, `?status=failed`, every failed delivery
+  compensated or not (ADR-108 2026-10-09 addendum, test-first in
+  `OrderControllerTest`). Orders reads `?status=` from the URL. Verified:
+  the button lands on the Failed pill with 16 rows (= Reports' 16 failed),
+  both themes. The PrimeReact `bg-primary` pair measured 4.23:1 in light
+  (below 4.5 for 13px), so light uses the artifact's `cyan-600` + `on-cyan`
+  (5.59:1) and dark keeps `primary` (5.53:1).
+- **Gotchas.**
+  - Local backend CORS allows only `localhost:3000/3001/3002`. A built
+    admin on another port (or on `127.0.0.1`) logs in and then bounces
+    back to `/login`.
+  - `./scripts/dev.sh` has no backend URL of its own: the frontends call
+    `NEXT_PUBLIC_API_URL` (`https://kedairuncit-backend.test`, Herd), not
+    the `php artisan serve` it starts on :8000. With Herd stopped, admin
+    login fails with `ConnectTimeoutError ... kedairuncit-backend.test:443`.
+    Start Herd first.
+  - Dev seed wallet orders carry `pricing_basis = standard` (prod uses
+    `reseller-wallet`), so locally Membership's member + standard sales
+    exceed Paid sales by the wallet refunds. Prod is unaffected (checked
+    read-only 2026-10-09: member 1, standard 19, reseller-wallet 7,
+    affiliate 4).

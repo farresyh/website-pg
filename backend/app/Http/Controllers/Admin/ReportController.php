@@ -48,18 +48,7 @@ class ReportController extends Controller
      */
     public function summary(Request $request): JsonResponse
     {
-        $request->validate(['compare' => ['nullable', 'in:previous,month_to_date']]);
-        [$from, $toExclusive] = $this->rangeFromRequest($request);
-        $affiliateId = $this->affiliateId($request);
-        $summary = $this->reports->summary($from, $toExclusive, $affiliateId);
-
-        if ($request->filled('compare')) {
-            $summary['compare'] = $this->reports->summaryComparison(
-                $summary, $from, $toExclusive, $affiliateId, $request->query('compare') === 'month_to_date',
-            );
-        }
-
-        return response()->json($summary);
+        return response()->json($this->withCompare($request, 'summary', 'summaryComparison'));
     }
 
     public function trend(Request $request): JsonResponse
@@ -130,9 +119,7 @@ class ReportController extends Controller
     /** ADR-104 R15/R16 — sales by channel, plus the reseller-wallet API vs Bot split. */
     public function channelBreakdown(Request $request): JsonResponse
     {
-        [$from, $toExclusive] = $this->rangeFromRequest($request);
-
-        return response()->json($this->reports->channelBreakdown($from, $toExclusive, $this->affiliateId($request)));
+        return response()->json($this->withCompare($request, 'channelBreakdown', 'channelComparison'));
     }
 
     public function deliveryByGame(Request $request): JsonResponse
@@ -178,11 +165,7 @@ class ReportController extends Controller
 
     public function membershipBreakdown(Request $request): JsonResponse
     {
-        [$from, $toExclusive] = $this->rangeFromRequest($request);
-
-        return response()->json(
-            $this->reports->membershipBreakdown($from, $toExclusive, $this->affiliateId($request)),
-        );
+        return response()->json($this->withCompare($request, 'membershipBreakdown', 'membershipComparison'));
     }
 
     public function export(Request $request): JsonResponse|StreamedResponse|Response
@@ -199,6 +182,26 @@ class ReportController extends Controller
         return $format === 'pdf'
             ? $this->exportPdf($rows, $rangeLabel, $affiliateLabel)
             : $this->exportCsv($rows, $rangeLabel);
+    }
+
+    /**
+     * `ReportService::$fetch` over the request's range, plus its Compare
+     * block (`ReportService::$compare`) when `?compare=` asks for one.
+     */
+    private function withCompare(Request $request, string $fetch, string $compare): array
+    {
+        $request->validate(['compare' => ['nullable', 'in:previous,month_to_date']]);
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+        $affiliateId = $this->affiliateId($request);
+        $current = $this->reports->{$fetch}($from, $toExclusive, $affiliateId);
+
+        if ($request->filled('compare')) {
+            $current['compare'] = $this->reports->{$compare}(
+                $current, $from, $toExclusive, $affiliateId, $request->query('compare') === 'month_to_date',
+            );
+        }
+
+        return $current;
     }
 
     private function affiliateId(Request $request): ?int

@@ -175,27 +175,71 @@ final class ReportService
      */
     public function summaryComparison(array $current, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, bool $monthToDate): ?array
     {
+        return $this->compareWith($from, $toExclusive, $monthToDate,
+            fn ($prevFrom, $prevTo) => Arr::except($this->summary($prevFrom, $prevTo, $affiliateId), 'latest_order'),
+            function (array $previous) use ($current) {
+                $changes = $this->changes($current, $previous, ['total_sales', 'orders_count', 'platform_profit', 'affiliate_profit', 'avg_order_value']);
+                $changes['margin_pct'] = PeriodComparison::points($current['margin_pct'], $previous['margin_pct'], $previous['total_sales'] > 0);
+
+                return $changes;
+            },
+        );
+    }
+
+    /**
+     * R13 Phase 1 — Compare for the Membership tab's KPI cards: the same
+     * breakdown over the previous range, through the same seam as the summary.
+     */
+    public function membershipComparison(array $current, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, bool $monthToDate): ?array
+    {
+        return $this->compareWith($from, $toExclusive, $monthToDate,
+            fn ($prevFrom, $prevTo) => $this->membershipBreakdown($prevFrom, $prevTo, $affiliateId),
+            fn (array $previous) => $this->changes($current, $previous, array_keys($current)),
+        );
+    }
+
+    /** R13 Phase 1 — Compare for the Partners tab's channel cards: each channel's sales. */
+    public function channelComparison(array $current, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, bool $monthToDate): ?array
+    {
+        $salesByChannel = fn (array $breakdown) => array_column($breakdown['channels'], 'sales', 'channel');
+
+        return $this->compareWith($from, $toExclusive, $monthToDate,
+            fn ($prevFrom, $prevTo) => $this->channelBreakdown($prevFrom, $prevTo, $affiliateId),
+            fn (array $previous) => $this->changes($salesByChannel($current), $salesByChannel($previous), array_keys($salesByChannel($current))),
+        );
+    }
+
+    /**
+     * The one Compare seam (R12–R14): `$fetch` re-runs the tab's own
+     * breakdown over the previous range, `$changes` turns current vs
+     * previous into `PeriodComparison` results. Null for an unbounded
+     * ("All time") range, which has no previous period.
+     *
+     * @param  \Closure(CarbonImmutable, CarbonImmutable): array  $fetch
+     * @param  \Closure(array): array  $changes
+     */
+    private function compareWith(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, bool $monthToDate, \Closure $fetch, \Closure $changes): ?array
+    {
         if ($from === null || $toExclusive === null) {
             return null;
         }
 
         [$prevFrom, $prevTo] = PeriodComparison::previousRange($from, $toExclusive, $monthToDate);
-        $previous = $this->summary($prevFrom, $prevTo, $affiliateId);
-
-        $changes = [];
-        foreach (['total_sales', 'orders_count', 'platform_profit', 'affiliate_profit', 'avg_order_value'] as $key) {
-            $changes[$key] = PeriodComparison::change($current[$key], $previous[$key]);
-        }
-        $changes['margin_pct'] = PeriodComparison::points($current['margin_pct'], $previous['margin_pct'], $previous['total_sales'] > 0);
+        $previous = $fetch($prevFrom, $prevTo);
 
         return [
             'previous_range' => [
                 'from' => $prevFrom->setTimezone(self::TIMEZONE)->toDateString(),
                 'to' => $prevTo->setTimezone(self::TIMEZONE)->subDay()->toDateString(),
             ],
-            'previous' => Arr::except($previous, 'latest_order'),
-            'changes' => $changes,
+            'previous' => $previous,
+            'changes' => $changes($previous),
         ];
+    }
+
+    private function changes(array $current, array $previous, array $keys): array
+    {
+        return array_combine($keys, array_map(fn ($key) => PeriodComparison::change($current[$key], $previous[$key]), $keys));
     }
 
     /**
@@ -346,7 +390,7 @@ final class ReportService
         $profitByGame = $this->profitByGroup($from, $toExclusive, $affiliateId, 'COALESCE(orders.game_id, 0)');
 
         $gameIds = $sales->keys()->reject(fn ($id) => (int) $id === 0)->all();
-        $gameNames = Game::query()->whereIn('id', $gameIds)->pluck('name', 'id');
+        $games = Game::query()->whereIn('id', $gameIds)->get(['id', 'name', 'image_url'])->keyBy('id');
         $totalSales = (int) $sales->sum('sales');
 
         $rows = [];
@@ -358,7 +402,8 @@ final class ReportService
 
             $rows[] = [
                 'game_id' => $gameIdInt ?: null,
-                'game_name' => $gameIdInt ? ($gameNames[$gameIdInt] ?? 'Unknown Game') : 'Unknown Game',
+                'game_name' => $games[$gameIdInt]->name ?? 'Unknown Game',
+                'image_url' => $games[$gameIdInt]->image_url ?? null,
                 'sales' => (int) $row->sales,
                 'orders_count' => $ordersCount,
                 'platform_profit' => $profit['platform'] ?? 0,
@@ -550,9 +595,9 @@ final class ReportService
             ->groupBy('game_key')
             ->get();
 
-        $names = Game::query()->whereIn('id', $rows->pluck('game_key')->reject(fn ($id) => (int) $id === 0))->pluck('name', 'id');
+        $games = Game::query()->whereIn('id', $rows->pluck('game_key')->reject(fn ($id) => (int) $id === 0))->get(['id', 'name', 'image_url'])->keyBy('id');
 
-        return $rows->map(function ($row) use ($names) {
+        return $rows->map(function ($row) use ($games) {
             $total = (int) $row->total;
             $delivered = (int) $row->delivered;
             $failed = (int) $row->failed;
@@ -561,7 +606,8 @@ final class ReportService
 
             return [
                 'game_id' => $gameId ?: null,
-                'game_name' => $gameId ? ($names[$gameId] ?? 'Unknown Game') : 'Unknown Game',
+                'game_name' => $games[$gameId]->name ?? 'Unknown Game',
+                'image_url' => $games[$gameId]->image_url ?? null,
                 'total' => $total,
                 'delivered' => $delivered,
                 'failed' => $failed,

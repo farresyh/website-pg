@@ -56,7 +56,8 @@ class OrderController extends Controller
      * completed (delivered), awaiting_payment (still pending 30+
      * minutes after checkout — ADR-021/PAY-3's own visibility gap for
      * a webhook that never arrived; ReconcilePendingPaymentsCommand
-     * acts on the same window), today, or omitted for all.
+     * acts on the same window), failed (every failed delivery,
+     * compensated or not), today, or omitted for all.
      */
     public function index(Request $request): JsonResponse
     {
@@ -139,6 +140,9 @@ class OrderController extends Controller
             // summary() below, so an already-compensated order (voucher/
             // wallet-refund/restore) never shows up asking for one.
             'need_action' => $query->needsAction(),
+            // ADR-108 addendum 2026-10-09 — every failed delivery, compensated
+            // or not; Reports' "View failed orders" opens this.
+            'failed' => $query->where('delivery_status', DeliveryStatus::Failed->value),
             'needs_review' => $query->where('delivery_status', DeliveryStatus::NeedsReview->value),
             'pending_delivery' => $query->where('delivery_status', DeliveryStatus::Pending->value),
             'processing' => $query->where('delivery_status', DeliveryStatus::Processing->value),
