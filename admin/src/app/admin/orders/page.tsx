@@ -70,6 +70,7 @@ import {
   exportOrders,
 } from "@/lib/orders";
 import { type Game, listGames } from "@/lib/games";
+import { paymentMethodLabel } from "@/lib/payment-methods";
 import { DATE_RANGE_PRESETS, type DateRangePreset, resolveDateRange } from "@/lib/date-range";
 import ResendDeliveryModal from "@/components/orders/ResendDeliveryModal";
 import IssueVoucherModal, { isRestoreOnly } from "@/components/orders/IssueVoucherModal";
@@ -763,7 +764,7 @@ function OrdersPageInner() {
               <p className="text-theme-xs text-ink-muted">Amount</p>
               <p className="text-theme-sm font-medium text-ink">
                 {formatRm(selected.final_amount)}
-                {selected.payment_method && <span className="text-ink-muted"> · {selected.payment_method}</span>}
+                {selected.payment_method && <span className="text-ink-muted"> · {paymentMethodLabel(selected.payment_method)}</span>}
               </p>
             </div>
             {/* ADR-104: same derived value OrderDetailCards' "Channel" row
@@ -1087,7 +1088,7 @@ function OrdersPageInner() {
                           <DataTableCell className="px-5 py-4 text-theme-sm">
                             <span className="font-medium text-ink">{formatRm(order.final_amount)}</span>
                             {order.payment_method && (
-                              <div className="text-theme-xs text-ink-muted">{order.payment_method}</div>
+                              <div className="text-theme-xs text-ink-muted">{paymentMethodLabel(order.payment_method)}</div>
                             )}
                           </DataTableCell>
                         )}

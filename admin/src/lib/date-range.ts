@@ -68,3 +68,14 @@ export function resolveDateRange(preset: DateRangePreset, customFrom?: string, c
       return { from: customFrom || undefined, to: customTo || undefined };
   }
 }
+
+/**
+ * ADR-104 R12 — which previous period a preset compares with. "This
+ * month" is month-to-date vs the same days of last month; every other
+ * bounded range vs the same-length range just before it. "All time"
+ * has no previous period (null), so Compare is disabled for it.
+ */
+export function compareModeFor(preset: DateRangePreset): "previous" | "month_to_date" | null {
+  if (preset === "all") return null;
+  return preset === "this_month" ? "month_to_date" : "previous";
+}

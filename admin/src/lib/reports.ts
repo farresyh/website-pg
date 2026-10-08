@@ -27,16 +27,98 @@ export interface ReportSummary {
   margin_pct: number;
   avg_order_value: number;
   latest_order: {
+    id: number;
     order_number: string;
     paid_at: string;
     customer_email: string;
     final_amount: number;
   } | null;
+  /** Present only when `compare` was requested; null for "All time". */
+  compare?: ReportComparison | null;
+}
+
+/**
+ * ADR-104 R12–R14 — backend `PeriodComparison`: `pct`/`points` are
+ * absolute, `direction` carries the sign; "new" = previous period empty.
+ */
+export type ChangeDirection = "up" | "down" | "flat" | "new";
+export interface PercentChange {
+  pct: number | null;
+  direction: ChangeDirection;
+}
+export interface PointsChange {
+  points: number | null;
+  direction: ChangeDirection;
+}
+
+export type CompareMode = "previous" | "month_to_date";
+
+export interface ReportComparison {
+  previous_range: { from: string; to: string };
+  previous: Omit<ReportSummary, "latest_order" | "compare">;
+  changes: {
+    total_sales: PercentChange;
+    orders_count: PercentChange;
+    platform_profit: PercentChange;
+    affiliate_profit: PercentChange;
+    avg_order_value: PercentChange;
+    margin_pct: PointsChange;
+  };
+}
+
+/** ADR-104 R7 — Paid sales walked to recognised revenue; null under an affiliate filter. */
+export interface ReportAccountingBridge {
+  paid_sales: number;
+  transaction_fees: number;
+  voucher_discounts: number;
+  not_recognised: number;
+  partial_compensation: number;
+  recognised_revenue: number;
+  unexplained_difference: number;
+}
+
+/** ADR-104 R8–R10 — failure is a liability, never netted from profit. */
+export interface ReportFailedCompensated {
+  failed_count: number;
+  failed_paid_amount: number;
+  voucher_issued: number;
+  wallet_refund: number;
+  voucher_restored: number;
+  outstanding_store_credit: number;
+  outstanding_store_credit_as_of: string;
+}
+
+export type ReportChannel = "own_brand" | "reseller_wallet" | "external_affiliate";
+export type PlacedVia = "storefront" | "reseller_api" | "reseller_bot" | "sandbox";
+
+/** ADR-104 R15/R16. */
+export interface ReportChannelBreakdown {
+  channels: {
+    channel: ReportChannel;
+    sales: number;
+    orders_count: number;
+    platform_profit: number;
+    affiliate_profit: number;
+  }[];
+  reseller_wallet_by_placed_via: { placed_via: PlacedVia; sales: number; orders_count: number }[];
+}
+
+/** ADR-104 R5. */
+export interface ReportDeliveryByGameRow {
+  game_id: number | null;
+  game_name: string;
+  total: number;
+  delivered: number;
+  failed: number;
+  partially_delivered: number;
+  in_progress: number;
+  success_rate_pct: number;
 }
 
 export interface ReportTrendDay {
   date: string;
   sales: number;
+  orders_count: number;
   platform_profit: number;
   affiliate_profit: number;
 }
@@ -130,9 +212,29 @@ export function listReportAffiliates(token: string) {
   return apiFetch<ReportAffiliate[]>("/api/reports/affiliates", { token });
 }
 
-export function getReportSummary(token: string, filters: ReportFilters) {
-  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+export function getReportSummary(token: string, filters: ReportFilters, compare?: CompareMode) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, compare });
   return apiFetch<ReportSummary>(`/api/reports/summary${query}`, { token });
+}
+
+export function getAccountingBridge(token: string, filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+  return apiFetch<{ bridge: ReportAccountingBridge | null }>(`/api/reports/accounting-bridge${query}`, { token });
+}
+
+export function getFailedCompensated(token: string, filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+  return apiFetch<ReportFailedCompensated>(`/api/reports/failed-compensated${query}`, { token });
+}
+
+export function getChannelBreakdown(token: string, filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+  return apiFetch<ReportChannelBreakdown>(`/api/reports/breakdown/channels${query}`, { token });
+}
+
+export function getDeliveryByGame(token: string, filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+  return apiFetch<{ games: ReportDeliveryByGameRow[] }>(`/api/reports/breakdown/delivery-by-game${query}`, { token });
 }
 
 /** ADR-086 filter-unification follow-up — trend chart now follows the same filters as every other tab, no more its own days=7|14|30 param. */
