@@ -14,17 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectIndicator,
-  SelectPortal,
-  SelectPositioner,
-  SelectPopup,
-  SelectList,
-  SelectOption,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/select";
 import {
   DataTable,
   DataTableTableContainer,
@@ -102,25 +92,7 @@ function FilterSelect({
   return (
     <div className="flex items-center gap-2">
       <span className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</span>
-      <Select value={value} options={options} optionLabel="label" optionValue="value" onValueChange={(e) => onChange(e.value as string)}>
-        <SelectTrigger className="min-w-[10rem]">
-          <SelectValue />
-          <SelectIndicator />
-        </SelectTrigger>
-        <SelectPortal>
-          <SelectPositioner>
-            <SelectPopup>
-              <SelectList>
-                {options.map((option, index) => (
-                  <SelectOption key={option.value} index={index}>
-                    {option.label}
-                  </SelectOption>
-                ))}
-              </SelectList>
-            </SelectPopup>
-          </SelectPositioner>
-        </SelectPortal>
-      </Select>
+      <SimpleSelect value={value} onChange={onChange} options={options} className="min-w-[10rem]" />
     </div>
   );
 }

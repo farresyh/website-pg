@@ -106,15 +106,24 @@ interface SimpleSelectProps {
  * needs a shape `SimpleSelect` doesn't offer (e.g. Report's `FilterSelect`
  * itself, which pairs the trigger with an inline label).
  */
+// PrimeReact's Select reads `""` as no value (`isNotEmpty`), so an option
+// whose value is `""` ("All", "None", "UID only") never shows its label.
+// Swapped for a sentinel inside, so callers keep using `""`.
+const EMPTY = '__empty__';
+const toInner = (v: string) => (v === '' ? EMPTY : v);
+const toOuter = (v: string) => (v === EMPTY ? '' : v);
+
 function SimpleSelect({ options, value, onChange, className, id, disabled }: SimpleSelectProps) {
+    const innerOptions = React.useMemo(() => options.map((o) => ({ ...o, value: toInner(o.value) })), [options]);
+
     return (
         <Select
-            value={value}
-            options={options}
+            value={toInner(value)}
+            options={innerOptions}
             optionLabel="label"
             optionValue="value"
             disabled={disabled}
-            onValueChange={(e) => onChange(e.value as string)}
+            onValueChange={(e) => onChange(toOuter(e.value as string))}
         >
             <SelectTrigger id={id} className={className}>
                 <SelectValue />
@@ -124,7 +133,7 @@ function SimpleSelect({ options, value, onChange, className, id, disabled }: Sim
                 <SelectPositioner>
                     <SelectPopup>
                         <SelectList>
-                            {options.map((option, index) => (
+                            {innerOptions.map((option, index) => (
                                 <SelectOption key={option.value} index={index}>
                                     {option.label}
                                 </SelectOption>
