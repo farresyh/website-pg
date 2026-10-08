@@ -1505,12 +1505,23 @@ On `feature/2026-10-09-reports-pr-c`. Staging-only until a release.
   light, dark, 390px and Last 90 days + Compare; no console errors, 0px
   horizontal overflow, each tab compared against its mockup. Bridge on the
   dev DB walks RM 5,240.18 → RM 4,774.38 with RM 0.00 unexplained.
-- **Not built:** R6 "View failed orders". Orders has no Failed filter;
-  founder to choose.
+- **R6 "View failed orders"** (founder chose option 1 the same day):
+  Orders gains a **Failed** pill, `?status=failed`, every failed delivery
+  compensated or not (ADR-108 2026-10-09 addendum, test-first in
+  `OrderControllerTest`). Orders reads `?status=` from the URL. Verified:
+  the button lands on the Failed pill with 16 rows (= Reports' 16 failed),
+  both themes. The PrimeReact `bg-primary` pair measured 4.23:1 in light
+  (below 4.5 for 13px), so light uses the artifact's `cyan-600` + `on-cyan`
+  (5.59:1) and dark keeps `primary` (5.53:1).
 - **Gotchas.**
   - Local backend CORS allows only `localhost:3000/3001/3002`. A built
     admin on another port (or on `127.0.0.1`) logs in and then bounces
     back to `/login`.
+  - `./scripts/dev.sh` has no backend URL of its own: the frontends call
+    `NEXT_PUBLIC_API_URL` (`https://kedairuncit-backend.test`, Herd), not
+    the `php artisan serve` it starts on :8000. With Herd stopped, admin
+    login fails with `ConnectTimeoutError ... kedairuncit-backend.test:443`.
+    Start Herd first.
   - Dev seed wallet orders carry `pricing_basis = standard` (prod uses
     `reseller-wallet`), so locally Membership's member + standard sales
     exceed Paid sales by the wallet refunds. Prod is unaffected (checked

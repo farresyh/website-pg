@@ -740,8 +740,7 @@ code and production on 2026-10-08; re-verify before building.
 **A. Buildable now: code, no new design** (in suggested order)
 1. **66** Combo admin gaps: edit-composition UI, leg-attempt history view.
 2. **65** Reports redesign: designed and grilled 2026-10-08 (ADR-104
-   addendum R1–R21). PR-A, PR-B and PR-C built (staging-only); open: the
-   "View failed orders" link (no Failed filter on Orders, see item 65).
+   addendum R1–R21). PR-A, PR-B and PR-C built (staging-only).
 3. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
    in-modal picker.
 
@@ -876,10 +875,9 @@ code and production on 2026-10-08; re-verify before building.
       Export menu / Compare (wired on Overview), panel trend chart and
       delivery-health funnel in the mockup's shape.
     - **PR-C, the 7 tabs.** **Built** (build-log 2026-10-09), audited per
-      tab in light/dark and at 390px against the mockups. Still open: R6's
-      "View failed orders" button. Orders has no Failed filter to open
-      (only Need action, which excludes compensated orders), so the button
-      is not built until the founder picks where it goes.
+      tab in light/dark and at 390px against the mockups. R6's "View failed
+      orders" opens a new Failed pill on Orders (ADR-108 2026-10-09
+      addendum; Need action excludes compensated orders).
 66. **Combo admin gaps, deliberately deferred** (§15 Combo row): no
     edit-composition UI (delete and recreate only), and no admin view of the
     per-leg attempt history (the rows exist and are queryable).
