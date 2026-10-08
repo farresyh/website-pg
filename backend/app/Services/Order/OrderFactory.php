@@ -77,6 +77,7 @@ final class OrderFactory
                 'payment_method' => $draft->paymentMethod,
                 'payment_gateway' => $draft->paymentGateway,
                 'channel_code' => $draft->channelCode,
+                'placed_via' => $draft->placedVia->value,
             ]);
         } catch (UniqueConstraintViolationException $e) {
             // Laravel's own driver-aware detection (same subclass

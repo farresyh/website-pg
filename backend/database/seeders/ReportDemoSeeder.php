@@ -184,6 +184,7 @@ class ReportDemoSeeder extends Seeder
             'package_id' => $package->id,
             'affiliate_id' => $affiliateId,
             'wallet_reseller_id' => $walletResellerId,
+            'placed_via' => $walletResellerId !== null ? 'reseller_bot' : 'storefront',
             'pricing_basis' => $isMember ? PricingBasis::Member : PricingBasis::Standard,
             'membership_id' => $isMember ? $membership->id : null,
             'normal_selling_price' => $isMember ? $standardPrice : null,

@@ -47,7 +47,7 @@ class SetAffiliateContextTest extends TestCase
 
     private function orderFor(Affiliate $affiliate): void
     {
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'order_number' => 'KRS-'.$affiliate->id.'-'.uniqid(),
             'customer_email' => 'buyer@example.com',
             'player_id' => '123456',

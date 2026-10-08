@@ -32,6 +32,7 @@ use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -75,7 +76,7 @@ class OrderFulfillmentServiceTest extends TestCase
                 ['name' => 'Test Supplier', 'api_config' => [], 'currency' => 'MYR'],
             )->id;
 
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST-1',
             'customer_email' => 'buyer@example.com',
@@ -645,7 +646,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $order = $this->paidOrder();
 
         $adapter = $this->throwingSupplierAdapter(
-            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+            new ConnectionException('Connection timed out'),
         );
 
         $result = $this->service($adapter)->fulfill($order);
@@ -668,7 +669,7 @@ class OrderFulfillmentServiceTest extends TestCase
         $order = $this->paidOrder();
 
         $needsReview = $this->service($this->throwingSupplierAdapter(
-            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+            new ConnectionException('Connection timed out'),
         ))->fulfill($order);
         $firstReference = $needsReview->reference_number;
 
@@ -697,7 +698,7 @@ class OrderFulfillmentServiceTest extends TestCase
     {
         Queue::fake();
         [$order, $service] = $this->digiflazzOrder($this->throwingSupplierAdapter(
-            new \Illuminate\Http\Client\ConnectionException('Connection timed out'),
+            new ConnectionException('Connection timed out'),
         ));
 
         $result = $service->fulfill($order);

@@ -8,6 +8,7 @@ use App\Services\Order\DuplicateOrderException;
 use App\Services\Order\OrderDraft;
 use App\Services\Order\OrderFactory;
 use App\Services\Order\PaymentStatus;
+use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Pricing\PricingResolution;
 use Illuminate\Database\QueryException;
@@ -53,6 +54,7 @@ class OrderFactoryTest extends TestCase
             'paymentStatus' => PaymentStatus::Pending,
             'paidAt' => null,
             'paymentMethod' => 'fpx',
+            'placedVia' => PlacedVia::Storefront,
         ], $overrides));
     }
 
@@ -68,6 +70,7 @@ class OrderFactoryTest extends TestCase
 
         $this->assertNotNull($order->order_number);
         $this->assertSame('idem-1', $order->checkout_idempotency_key);
+        $this->assertSame(PlacedVia::Storefront, $order->placed_via);
         $this->assertFalse($order->is_test);
         $this->assertSame('buyer@example.test', $order->customer_email);
         $this->assertSame(900, $order->cost_price);

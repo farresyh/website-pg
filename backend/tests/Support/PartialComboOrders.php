@@ -27,7 +27,7 @@ trait PartialComboOrders
         $legB = Package::query()->create(['game_id' => $gameId, 'name' => 'B', 'denomination' => 2, 'cost_price' => 1700, 'standard_selling_price' => 2000, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B-'.uniqid()]);
         $combo = Package::query()->create(['game_id' => $gameId, 'name' => 'Combo', 'is_combo' => true, 'denomination' => 3, 'cost_price' => 4100, 'standard_selling_price' => 5000]);
 
-        $order = Order::query()->create(array_merge([
+        $order = Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'PG-PARTIAL-'.uniqid(),
             'customer_email' => 'buyer@example.com',

@@ -548,6 +548,7 @@ class ResellerBotServiceTest extends TestCase
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
 
         $order = Order::query()->firstOrFail();
+        $this->assertSame('reseller_bot', $order->placed_via->value);
         $this->assertDatabaseHas('reseller_bot_order_notifications', [
             'order_id' => $order->id,
             'whatsapp_group_id' => self::GROUP_ID,

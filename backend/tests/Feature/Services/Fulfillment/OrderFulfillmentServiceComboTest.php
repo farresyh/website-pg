@@ -96,7 +96,7 @@ class OrderFulfillmentServiceComboTest extends TestCase
 
     private function paidComboOrder(Package $combo, array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-COMBO-1',
             'customer_email' => 'buyer@example.com',

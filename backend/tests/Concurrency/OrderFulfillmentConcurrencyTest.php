@@ -40,7 +40,7 @@ class OrderFulfillmentConcurrencyTest extends TestCase
             'name' => 'Race Test Supplier', 'slug' => 'race-test-supplier', 'api_config' => [], 'currency' => 'MYR',
         ]);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-RACE-1',
             'customer_email' => 'race@example.com',

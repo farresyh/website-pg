@@ -139,7 +139,7 @@ class WebhookControllerTest extends TestCase
         $token = $this->tokenFor($mine);
 
         foreach ([$mine, $other] as $r) {
-            $order = Order::query()->create([
+            $order = Order::query()->create(['placed_via' => 'storefront',
                 'affiliate_id' => $this->primaryAffiliate()->id,
                 'wallet_reseller_id' => $r->id,
                 'order_number' => 'PG-'.uniqid(),

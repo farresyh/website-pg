@@ -49,7 +49,7 @@ class DigiflazzWebhookControllerTest extends TestCase
     {
         $supplierId = $overrides['supplier_id'] ?? $this->digiflazzSupplier()->id;
 
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-DGF-1',
             'reference_number' => 'REF-DGF-1',
@@ -389,7 +389,7 @@ class DigiflazzWebhookControllerTest extends TestCase
         ]);
         $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
 
-        $order = Order::query()->create(array_merge([
+        $order = Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-DGF-COMBO-1',
             'reference_number' => 'REF-DGF-COMBO-1',

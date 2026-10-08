@@ -73,7 +73,7 @@ class OrderControllerTest extends TestCase
         $response->assertJsonPath('payment_status', 'paid');
 
         $this->assertSame(10000 - 1100, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
-        $this->assertDatabaseHas('orders', ['player_id' => '123456789', 'wallet_reseller_id' => $reseller->id]);
+        $this->assertDatabaseHas('orders', ['player_id' => '123456789', 'wallet_reseller_id' => $reseller->id, 'placed_via' => 'reseller_api']);
     }
 
     public function test_replays_the_same_order_on_a_repeated_idempotency_key(): void

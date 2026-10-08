@@ -87,7 +87,7 @@ class MembershipQuotaDecrementConcurrencyTest extends TestCase
 
     private function order(string $orderNumber): Order
     {
-        return Order::query()->create([
+        return Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => $orderNumber,
             'customer_email' => 'race@example.com',

@@ -146,6 +146,7 @@ class AffiliateScopeTest extends TestCase
                 'platform_profit' => 100,
                 'affiliate_profit' => 0,
                 'affiliate_id' => $affiliate->id,
+                'placed_via' => 'storefront',
             ],
             Redirect::class => [
                 'affiliate_id' => $affiliate->id,

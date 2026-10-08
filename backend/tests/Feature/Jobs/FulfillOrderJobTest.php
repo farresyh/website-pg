@@ -46,7 +46,7 @@ class FulfillOrderJobTest extends TestCase
                 ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
             )->id;
 
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-JOB-TEST-1',
             'customer_email' => 'buyer@example.com',

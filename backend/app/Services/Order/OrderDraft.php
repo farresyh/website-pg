@@ -35,6 +35,8 @@ final readonly class OrderDraft
         public PaymentStatus $paymentStatus,
         public ?DateTimeInterface $paidAt,
         public string $paymentMethod,
+        // ADR-104 R16: required, so every order-creating channel names its door.
+        public PlacedVia $placedVia,
         public ?int $gameId = null,
         public ?int $packageId = null,
         public ?int $supplierId = null,

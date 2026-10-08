@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToAffiliate;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
@@ -68,6 +69,7 @@ class Order extends Model
         'payment_method',
         'payment_gateway',
         'channel_code',
+        'placed_via',
         'payment_ref',
         'supplier_ref',
         'supplier_response',
@@ -94,6 +96,7 @@ class Order extends Model
         'payment_status' => PaymentStatus::class,
         'paid_at' => 'datetime',
         'delivery_status' => DeliveryStatus::class,
+        'placed_via' => PlacedVia::class,
         'delivered_at' => 'datetime',
         'supplier_response' => 'array',
     ];

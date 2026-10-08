@@ -43,7 +43,7 @@ class OrderResendConcurrencyTest extends TestCase
         $packageA = $package('PA', 920);
         $packageB = $package('PB', 950);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-RACE-RESEND-1',
             'customer_email' => 'race@example.com',

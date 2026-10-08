@@ -28,7 +28,7 @@ class OrdersWorkbookTest extends TestCase
 
     private function order(array $overrides): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'PG-'.uniqid(),
             'customer_email' => 'buyer@example.com',
