@@ -96,10 +96,10 @@ _Generated 2026-09-11 — navigation aid only. Each entry's own **Status:** line
 | **ADR-080** | Membership × per-brand — close the `/membership` surface consistently on a membership-disabl… |
 | **ADR-081** | Affiliate storefront theme presets — a curated fixed set, NOT the THM-1..4 custom theme system |
 | **ADR-082** | Public-facing review display — homepage marquee + per-game reviews on the product page |
-| **ADR-083** | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Re… |
+| **ADR-083** | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Re… **2026-10-08 addendum:** Monthly Summary gains a neutral affiliate tier-fee line (from earnings, no cash), added to the rough P&L — **BUILT** |
 | **ADR-084** | Reseller API — developer documentation site, plus the surface hardening that must land first. Error list gains `PRICE_CHANGED` and `details` is code-specific (ADR-074 2026-10-08 addendum) |
 | **ADR-086** | Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite |
-| **ADR-087** | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs |
+| **ADR-087** | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs. **2026-10-08 addendum:** view gains `wallet_refund`/`net_sales` (Reports' Net Sales), prompt uses ledger profit + enum-generated lists, `Order::netSalesSql()` one source + view parity test — **BUILT** |
 | **ADR-088** | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening |
 | **ADR-089** | Brand asset pipeline — aspect-preserving logo sizing, a primary-brand admin Logo/Favicon panel, per-brand dynamic favicon |
 | **ADR-090** | Theme preset background/ink tokens + a per-affiliate Site Mode (light/dark), the first slice of ADR-081's pinned dark-mode requirement |
@@ -5155,6 +5155,17 @@ Two findings were traced to a **real discrepancy the reviewer hit, not a system 
 
 Related: [[project_pekangame_no_external_customers_yet_2026_09_25]], the first 2026-09-30 addendum above.
 
+**Addendum — affiliate tier-fee line in the Monthly Summary, 2026-10-08 (§16 item 63, last bullet).**
+
+*Context.* An affiliate's wholesale-tier fee (ADR-056) is a debit on its earnings ledger (`affiliate_tier_fee`, negative, one writer: `AffiliateTierFeeService`). No cash moves, so neither the bank statement nor any summary line showed it: in the external SaaS the affiliate payable read too high and the fee income was missing. The backlog parked it on the external reviewer (revenue vs contra-commission). Prod 2026-10-08: 1 active subscription, both tiers RM0, 1 entry of RM0.00 (the PRD's "0 entries" was wrong).
+
+*Decisions.*
+1. **A neutral line, built now:** `affiliate_tier_fees_sen` = −Σ `affiliate_tier_fee` amounts whose `created_at` falls in the KL month (same scoping as membership revenue), shown positive as "Affiliate tier fees (from earnings, no cash)". The number is the same under either treatment; only the SaaS account differs, which the definition text leaves to the accountant.
+2. **The rough P&L estimate adds it** (`BudgetEnvelopeController`): it raises profit whether booked as revenue or contra-commission. Found by the reader trace; the estimate would otherwise understate.
+3. **The reviewer question waits for a trigger**, not a draft now: §16 item 74 — ask before the first non-zero tier fee (revenue vs contra-commission, e-Invoice).
+
+**🟢 BUILT 2026-10-08** (`feature/2026-10-08-item63-llm-views-tier-fee`), with ADR-087's same-day addendum.
+
 ---
 
 ## ADR-084: Reseller API — developer documentation site, plus the surface hardening that must land first
@@ -5417,6 +5428,21 @@ The curated-view approach (decision 1) is the resolution to the safety-vs-flexib
 **Consequence to track:** the curated-view layer is a new deep-module seam (same category as `SupplierAdapter`/`PaymentGateway`) — any future change to a sales/profit business rule must update it, and it should be built to compose directly on top of ADR-086's rewritten grouped-SQL queries rather than duplicate their logic (exact factoring — shared query builder vs. views literally selecting from the same underlying aggregation — is a build-time decision, not pinned here). Gemini's Flash-tier pricing used in this decision is time-sensitive introductory pricing (through end of 2026); re-check cost assumptions at build time and again if usage scales. The `.env`-only credential storage (decision 10) inherits the same rotation/access-hygiene gap already tracked against the CHIP credential — no new gap, but also no improvement, until that cross-cutting migration happens.
 
 **Addendum (2026-09-29, Wave 3 S-2 — `SqlGuard` bypasses closed; decision 2's "hard backstop" is not yet real in prod):** the 2026-09-28 audit found decision 2's table allow-list could be bypassed, and that decision 1's scoped read-only credential was never provisioned in prod — `config/database.php`'s `report_assistant` connection falls back to the main `DB_USERNAME` when `REPORT_ASSISTANT_DB_USERNAME` is unset, so the regex guard was the *only* defense, not defense-in-depth. Bypasses found and closed (all proven red→green in `SqlGuardTest`): comma join (`FROM v, admin_users` — including after a derived table, detected per paren depth, not by regex), parenthesised table (`JOIN (admin_users)`), `STRAIGHT_JOIN`, a backtick with no preceding space (`` FROM`admin_users` ``), a comment as the separator (`FROM/**/admin_users`), and MySQL 8's `TABLE admin_users` statement inside a subquery. Chosen shape: **reject** those forms outright (comments, comma joins, non-subquery parenthesised tables, the `TABLE` keyword) rather than teach the regex to parse them — Gemini can always express the same query with an explicit `JOIN`, and the guard's own stated rule is "reject what it can't confidently classify". Still a regex check, not a parser — it narrows the gap, it does not make the guard a security boundary. **Provisioned the same day (2026-09-29):** `report_assistant`@`%` created on the DO managed MySQL (`CREATE USER` doesn't accept a bound `?` placeholder — the password went in via `PDO::quote`) with `GRANT SELECT` on the three `llm_report_*` views only; the views are `SQL SECURITY DEFINER` (`doadmin@%`), so no base-table grant is needed. `REPORT_ASSISTANT_DB_USERNAME`/`_PASSWORD` were added to the prod `.env` (backup `.env.bak-2026-09-29-report-assistant`), followed by `config:cache` and an fpm reload. Verified on prod that the connection runs as `report_assistant@%`, reads all three views, and is denied with 1142 on `admin_users`/`orders`/`reseller_api_keys`. Decision 2's hard backstop now exists. Rollback: `DROP USER 'report_assistant'@'%'`, remove the two env keys, then `config:cache`.
+
+**Addendum — the assistant gives the Reports page's numbers, 2026-10-08 (§16 item 63).**
+
+*Context.* `llm_report_orders` had no wallet-refund column, so "sales" summed gross `final_amount` (Naeem's refunded RM343.51 still counted). The prompt told Gemini `margin = final_amount − cost_price − transaction_fee` (wrong for affiliate, voucher, real-cost and combo orders, though the view already carried ledger-earned profit) and listed only 2 of 4 `pricing_basis` values. The backlog's "failed orders counted as revenue" was not itself a bug: Reports' Net Sales counts every paid order minus wallet refunds (a failed retail order's money is kept as store credit, ADR-004). Prod: 31 paid orders (7 failed), 2 wallet refunds, 9 questions ever.
+
+*Decisions.*
+1. **Mirror Reports, not accounting:** the view gains `wallet_refund` and `net_sales` (= `final_amount − wallet_refund`); failed orders stay (failure questions need them). Monthly Summary's delivered-only recognition stays its own (ADR-083).
+2. **Prompt:** sales = `SUM(net_sales)`, profit = `SUM(platform_profit)`, margin % = `SUM(platform_profit) / SUM(net_sales)`; the hand formula is removed — never computed from cost/price columns.
+3. **Enum lists generated** from `PricingBasis::cases()` / `DeliveryStatus::cases()` into the prompt (`schemaDescription()`), so they can't go stale.
+4. **One PHP source for Net Sales:** `Order::netSalesSql()` replaces the identical copies in `ReportService` and `CustomerAnalyticsService` (no behaviour change). The view inlines the same SQL because migrations stay frozen; `LlmReportViewParityTest` asserts the view's count / net sales / platform and affiliate profit equal `ReportService::summary()` over failed, refunded-wallet, affiliate, voucher, test and unpaid orders.
+5. Migration `2026_10_08_120000` drops and recreates the view (pattern of 2026_09_15_100000, which prod survived with the `report_assistant` grants intact); `down()` restores the previous shape.
+
+*Consequence to track.* Any change to the Net Sales rule now has one PHP place plus the view; the parity test fails until both match. Customer data (`customer_email`/`customer_phone`) is still in the view and can reach Gemini if a query selects it; not changed here.
+
+**🟢 BUILT 2026-10-08** (`feature/2026-10-08-item63-llm-views-tier-fee`).
 
 ---
 

@@ -601,7 +601,7 @@ was wrong from at least then on.
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**On `staging`, not yet on `main`:** Reseller API `max_price_sen` (ADR-074 2026-10-08 addendum, API v1.4.0).
+**On `staging`, not yet on `main`:** Reseller API `max_price_sen` (ADR-074 2026-10-08 addendum, API v1.4.0); Report Assistant matches Reports + Monthly Summary tier-fee line (ADR-087/083 2026-10-08 addenda, closes item 63).
 
 **Release 2026-10-08 (`staging`→`main`, PR #369), deploy verified.** The
 server runs `acaecbd`; migration batch 33 (`faqs`) Ran. ADR-120 SEO/GEO
@@ -730,7 +730,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save. **2026-09-24:** the bulk "Deactivate All"/"Deactivate by Game"/"Reactivate" toggle now cascades onto dependent combos (found while auditing the Pending Reactivation combo gap above — the bulk toggle had never called `ComboPricingService`'s cascade at all, deactivate or reactivate). Released `main` via PR #286, 2026-09-24 | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — model + fulfillment + checkout, Resend Delivery (same-game swap), ORD-10 reconciliation, async `pending_delivery`. First real prod order 2026-09-03. Six KPI cards on `/admin/orders` (ADR-092, 2026-09-13). **"Check from Supplier"/"Check from Gateway" manual-poll buttons built (ADR-096, 2026-09-15)** — synchronous on-demand status check for a Pending order, shares logic with the scheduled reconcile jobs, cache-based cooldown. **ADR-102 Phase 1 built 2026-09-16** — `Order::isAlreadyCompensated()` unifies every Resend/Retry/Mark-Delivered/Confirm-Failed guard against a voucher OR a wallet refund already given (was voucher-only), checked inside `fulfill()`/`fulfillCombo()`'s own row lock as the real final defense, not just a controller pre-check. Also fixed mid-build: `refundToWallet()` had no DB-level backstop against a double wallet-refund (unlike Voucher's real unique index) — now locks the same way, proven via a new concurrency test. **ADR-102 Phase 2 built 2026-09-16 (decisions 3-9)** — a Digiflazz confirmed-Gagal `rc` (even one unsafe to resubmit) now routes straight to `Failed` instead of `needs_review` (Issue Voucher immediately available, superseding ADR-098 decision 6); a non-combo resend from `Failed` regenerates its `reference_number` (safe — confirmed non-delivery), reuse preserved from `needs_review`; Resend/Retry button disables with a mandatory logged override reason when genuinely futile (non-combo: `needs_review` only; combo: regardless of status); `ReconcilePendingDeliveriesCommand` permanently self-corrects any stuck `needs_review` row. **ADR-102 Phase 3 built 2026-09-16 (decisions 10-13, closes out ADR-102's own decision list)** — an optional Player ID/Server ID correction on Resend (re-validated before resubmitting); Order Detail's 3 independent Refund Information cards (Voucher Used to Pay / Compensation Voucher Issued / Wallet Refund) replace the old single-line mentions; `/admin/orders` gains 🎫/🎟️/💰 compensation badges; `NeedsReviewBanner` explains in plain language why Resend/Retry is disabled. **ADR-103 built 2026-09-17** — a combo leg now gets its own independently-regenerable `reference_number` (was derived/regex-parsed off the order's), closing the combo scope ADR-102 decision 9 explicitly deferred: a `Failed` leg mints a fresh (ULID-suffixed) reference on retry, a `NeedsReview` leg keeps reusing its stored one; the Digiflazz webhook resolves `ref_id` via two direct lookups (Order, then OrderDeliveryLeg) instead of a regex parse; the combo-wide Retry button's futility warning is now an OR-rollup across legs' own unsafe flag, retiring ADR-102 decision 3's old (always-quiet) combo branch. This family is now fully built. **ADR-024 restore-only addendum built 2026-09-17** — a full-cover-by-voucher order that later fails delivery no longer mints a pointless RM0.00 compensation voucher (button auto-labels "Restore Voucher," restores the original voucher only); found and fixed the same session: `isAlreadyCompensated()`'s guard had a real gap for this exact order shape. The 🎫/🎟️/💰 badges above are now plain-text `<Tag>` pills (founder feedback — emoji read as noisy next to the status tags), plus a 4th "Restored" pill/card. **ADR-104 PR-2 + PR-2b + a founder-driven live-browser audit, all 2026-09-17** — header action-bar + compact 5-column summary strip (incl. Channel), card-merge (Game & fulfillment / Payment & supplier), card-heading icons, `RefundInformationCards` emoji→icon + responsive 2-col grid, sidebar regrouped into 6 titled sections (app shell newly brought into ADR-104 scope), plus 2 real dark-mode token bugs found+fixed (D1: unstyled `<dd>` rendering `rgb(0,0,0)` on dark cards; D2: `info-surface`/`info-ink` missing a `.dark` override entirely) — see the ADR-038/104 note below the table. **ADR-108 built 2026-09-18** — `need_action` (KPI + tab) now excludes an already-compensated order (found live on prod: real actionable count was 0, KPI showed 4); Delivery column caps compensation badges to 1 (was up to 4 stacked, ADR-102 decision 12 reversed); new toolbar — Source/Game/date-range filters, a Columns toggle, and **ORD-5 export finally built** (CSV streams the current filtered view, plus a money-audit breakdown — Pricing Basis/Cost/Markup%/Profit — beyond the visible table). Founder live-verified. **2026-10-04 (ADR-108 addendum, #347 — live via #354, 2026-10-05):** Order Detail, the export and the affiliate portal show *earned* profit from the ledger (expected kept as a labelled note/column); Reseller Markup reads the frozen tier; the export is now a 2-sheet Excel workbook (formula-driven Summary that matches Reports + Orders sheet); Orders date filters/"today" use KL days. **2026-10-05 (ADR-102 addendum, #352 — live via #354, 2026-10-05):** a late Digiflazz `Sukses`/`Gagal` on a `needs_review` order (or combo leg) is applied instead of dropped (combo leg + roll-up in one transaction); Confirm Failed on Digiflazz asks the supplier first and has no override; Check from Supplier also works on `needs_review`; no package swap from `needs_review`; a contradicting late result is kept as evidence, never applied; on a re-submit a Digiflazz Gagal confirms only for a "Terbentuk Transaksi = Ya" rc (an rc 45 IP rejection no longer fails the order — found in the local browser check). | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 108 **2026-10-06 (ADR-105 addendum):** one resend seam (`OrderResendService::preflight()`) for the controller, the locked write and a backend preview; residual profit on every basis, affiliate share frozen, a resend writes `cost_price`, refused jobs leave a `rejected` row |
-| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. **ADR-087 built 2026-09-12** — Gemini Flash LLM assistant at `/admin/reports/assistant`, `super_admin`-only; `GEMINI_API_KEY` is set on prod (checked 2026-10-04) | ADR-086, 087, 088 |
+| Reports (RPT-1..3) | ✅ Live — ledger-sourced profit, `paid_at`-scoped sales, reseller-aware, tabbed analytics suite, CSV/PDF (now 13-column, every breakdown dimension). **ADR-086 complete** (PR-1 grouped-SQL rewrite + PR-2 Reseller-wallet breakdown; PR-3 chart migration closed without a code change — no charting library, matches the hand-rolled-visual house style). **ADR-088 built** same day — unified date-range filter (trend charts now follow the page filter, no more a private day-toggle), export widening. **ADR-087 built 2026-09-12** — Gemini Flash LLM assistant at `/admin/reports/assistant`, `super_admin`-only; `GEMINI_API_KEY` is set on prod (checked 2026-10-04). **2026-10-08 (ADR-087 addendum, on `staging`):** the assistant's sales/profit/margin match the Reports page (`net_sales`/`wallet_refund` view columns, ledger profit, enum-generated lists, `Order::netSalesSql()` + view parity test) | ADR-086, 087, 088 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`) | — |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..4) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
@@ -745,7 +745,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork uploaded 2026-09-14 (§16 item 2); the placeholder mark is only the fallback when no logo is set. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin-side live verification still owed. **2026-10-05 (ADR-097 addendum, #356 — released via #362, 2026-10-06):** the ID fields follow the game's contract — digits-only fields get the numeric keypad and block typed non-digits, a paste is kept with an inline error, a Text game (e.g. Riot ID) gets a normal keyboard; the backend refuses the same input on checkout and Check ID | ADR-062–065, 071, 077–079, 089, 090, 097, 109 |
-| Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file | ADR-083, ADR-110 |
+| Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file. **2026-10-08 (ADR-083 addendum, on `staging`):** neutral "Affiliate tier fees (from earnings, no cash)" line, also in the Envelope Ledger's rough P&L | ADR-083, ADR-110 |
 | Balance / Wallet Visibility | 🟢 Part A live (released 2026-09-29, #320) — standalone `/admin/balance` (deliberately not nested under Accounting — a Commerce-level item, since Part B grows it into operational monitoring, not bookkeeping): live-refreshable supplier balance per supplier + every Reseller's prepaid wallet balance (total + per-row), zero new backend, reuses ADR-046/073. Part B (learned "comfortable buffer" forecast) is grilled and designed as ADR-115, with the build parked (§16 item 28) | ADR-046, ADR-073, ADR-115 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
@@ -811,62 +811,9 @@ production before building on it.
 
 ## Next up
 
-Nothing scheduled; item 63 (Hardening) is the current focus.
+Nothing scheduled. Item 63 (pre-launch money audit P2s) closed 2026-10-08.
 
 ## Hardening (founder `.env` / infra)
-
-63. **2026-10-03 pre-launch money audit — remaining P2s** (none moved money in
-    production; 27 paid orders at the time). The no-grill batch is built
-    (2026-10-04, live via #354, see `docs/build-log.md`): bullet 1 (one locked
-    payment-outcome seam for the webhook and reconciliation; attempts leave
-    pending once), 4 (storefront replay payload hash), 7 (KL days in every
-    accounting filter), the Reports export label, and the combo cost label.
-    Bullet 1's wallet risk was overstated: the ledger dedupe index already
-    blocked a double credit; the real bug was a Paid top-up shown as Failed.
-    **Built 2026-10-05 (grilled, ADR-102 2026-10-05 addendum, PR #352 —
-    live via #354, 2026-10-05):** Digiflazz "Sukses" after an order aged Pending→NeedsReview
-    was dropped, and Confirm Failed + voucher then over-compensated. A
-    late result is now applied; Confirm Failed asks the supplier first.
-    **Still open — each needs a short grill and an ADR addendum:**
-    - ~~Member order resent to a dearer package records profit from a recomputed
-      member price and skips the loss prompt (`OrderResendService`). Reverses
-      ADR-105 decision 3. Traced 2026-10-05: the member branch uses the *new*
-      package's member price, unlike decision 8's residual (`selling_price −
-      live cost − affiliate`) and ADR-111. Small; check how voucher affects
-      `selling_price` first. Prod: 1 member order, 3 same-package resends.~~
-      **Built 2026-10-06 (grilled, ADR-105 2026-10-06 addendum, decisions
-      9–20, branch `fix/2026-10-06-resend-profit-seam`).** Widened
-      by the trace: one `OrderResendService::preflight()` seam (the
-      controller guard and the modal's TypeScript copy had drifted), frozen
-      affiliate share, a resend writes `cost_price` (orders 15/19 show the
-      old package's cost in Order Detail, export, Register and COGS),
-      locked write, rejected resends leave a row, ledger-guarded data
-      migration. `selling_price` is pre-voucher — safe anchor. At release:
-      record orders 15/19 and the September summary before/after.
-    - ~~Reseller API catalogue cached 60s with no `max_price_sen` ceiling on an
-      order (charged at the live price).~~ **Built 2026-10-08 (grilled +
-      stress-tested, ADR-074 2026-10-08 addendum, branch
-      `feature/2026-10-08-reseller-api-max-price`).** Premise corrected: the
-      charge was always live and the catalogue caches flush on every price
-      write; the gap was read-then-order time. Optional `max_price_sen` →
-      `422 PRICE_CHANGED`, not in the idempotency hash, API v1.4.0. Bot left
-      as is (item 72).
-    - ~~Bot: several `.order` lines in one message place only the first.~~
-      **Built 2026-10-05 (ADR-097 2026-10-05 addendum).** The real gap was
-      the shared seam: a `server_id` on a User-ID-only game, or a malformed
-      ID, reached Digiflazz's `customer_no` from every channel. Now one
-      per-game contract on every channel, plus admin Resend and Check ID.
-      Founder action at release: set Valorant (and any other non-numeric
-      game) to **Text** in Product Manager; add ZZZ's server field.
-    - LLM report views sum gross `final_amount` (no wallet-refund netting) and
-      the prompt's margin formula is wrong for affiliate/voucher/real-cost
-      orders. ADR-087, reuse ADR-108's earned-profit definition. The views'
-      profit columns are already ledger-based; the gaps are no refund column,
-      Failed orders counted as revenue, and a stale `pricing_basis` list in the
-      prompt. Prod: 9 questions ever, last 2026-09-16 — low priority.
-    - Monthly summary has no affiliate tier-fee line (accounting treatment;
-      check with the external reviewer). ADR-083. Prod: 0 tier-fee ledger
-      entries ever, 2 affiliates — blocked on the reviewer's answer.
 
 9. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
    are later phases; DNSSEC (founder's call). ~~`.env.example` gaps~~ — closed 2026-10-02:
@@ -940,6 +887,11 @@ Nothing scheduled; item 63 (Hardening) is the current focus.
     exists (`ResellerOrderPlacementRequest::$maxPriceSen`), so this is
     parsing + a BM reply. Build if a Bot reseller is charged a price they
     didn't expect. Prod 2026-10-08: 7 Bot orders ever.
+74. **Ask the external reviewer before the first non-zero affiliate tier
+    fee** (ADR-083 2026-10-08 addendum). The Monthly Summary shows the fee
+    as a neutral line; the reviewer decides whether it is revenue or a
+    reduction of commission expense, and whether it needs an e-Invoice to
+    the affiliate. Both tiers are RM0 today (1 entry ever, RM0.00).
 73. **Reseller API rejections aren't logged anywhere** (decision 6 of the
     same addendum). If wanted, log in the one `ResellerApiException` render
     hook (`bootstrap/app.php`) for every code, not per code.
@@ -1157,6 +1109,7 @@ Nothing scheduled; item 63 (Hardening) is the current focus.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **63** 2026-10-03 pre-launch money audit, remaining P2s — all built (none moved money in prod): payment-outcome seam, replay hash, KL days, late Digiflazz Sukses (ADR-102), member resend profit (ADR-105, #360), per-game player-input contract (ADR-097, #356/#357), Reseller API `max_price_sen` (ADR-074, #371), and on 2026-10-08 the LLM assistant matching Reports (ADR-087) plus the Monthly Summary tier-fee line (ADR-083). The last two on `staging`.
 - **51** Founder real-order smoke test — passed 2026-10-06 on prod: storefront, reseller bot, full-voucher cover (`PG-SJDWBIKMYC1Z`), each Delivered (see `docs/build-log.md`).
 - **54** Customer WhatsApp live testing — passed 2026-10-06: status card, not-found reply, voucher code on WhatsApp after Issue Voucher (`PG-12A9VRY5KLCE`). The silent throttles it surfaced are item 69; (d) skipped by choice.
 - **60** Pre-launch money audit #3 — one voucher or member quota could discount several racing checkouts (log-and-proceed on a lost reservation). Now fails closed on every path, replay included; two-process concurrency proofs (ADR-024 2026-10-04 addendum). Live via #354 (2026-10-05).
