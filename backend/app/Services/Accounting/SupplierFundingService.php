@@ -315,15 +315,18 @@ final class SupplierFundingService
             });
         } catch (\Throwable $e) {
             // The write failed/rolled back — don't leave an orphan newly-uploaded receipt behind.
+            // Best-effort: a storage error here must not replace $e.
             if ($newReceiptPath !== null) {
-                Storage::disk(config('filesystems.accounting_disk'))->delete($newReceiptPath);
+                rescue(fn () => Storage::disk(config('filesystems.accounting_disk'))->delete($newReceiptPath));
             }
 
             throw $e;
         }
 
+        // Already committed: an R2 hiccup here leaves an orphan file, never a
+        // 500 on a correction that was saved (r2_accounting throws).
         if ($oldReceiptPathToDelete !== null) {
-            Storage::disk(config('filesystems.accounting_disk'))->delete($oldReceiptPathToDelete);
+            rescue(fn () => Storage::disk(config('filesystems.accounting_disk'))->delete($oldReceiptPathToDelete));
         }
 
         return $correction;
