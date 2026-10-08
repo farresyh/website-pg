@@ -878,6 +878,10 @@ code and production on 2026-10-08; re-verify before building.
       tab in light/dark and at 390px against the mockups. R6's "View failed
       orders" opens a new Failed pill on Orders (ADR-108 2026-10-09
       addendum; Need action excludes compensated orders).
+    - **Pre-release money audit, 2026-10-09:** prod figures reconcile
+      (Bridge = Monthly Summary, RM 0.00 unexplained). R8 revised
+      (ADR-104 addendum): compensation per delivery status, partials as
+      their own bucket, Reports export carries Paid sales.
 66. **Combo admin gaps, deliberately deferred** (§15 Combo row): no
     edit-composition UI (delete and recreate only), and no admin view of the
     per-leg attempt history (the rows exist and are queryable).

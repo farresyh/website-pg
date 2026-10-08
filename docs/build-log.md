@@ -1527,3 +1527,38 @@ On `feature/2026-10-09-reports-pr-c`. Staging-only until a release.
     exceed Paid sales by the wallet refunds. Prod is unaffected (checked
     read-only 2026-10-09: member 1, standard 19, reseller-wallet 7,
     affiliate 4).
+
+## 2026-10-09 — Reports pre-release money audit + R8 revision (item 65, ADR-104 addendum)
+
+On `fix/2026-10-09-reports-money-audit`. Before releasing the redesign,
+the founder asked whether every Reports figure matches the money-critical
+ledger from checkout to delivery.
+
+- **Audit:** three read-only forks (checkout and pricing; ledger,
+  fulfillment and compensation; downstream readers) plus a read-only prod
+  reconciliation via `php artisan tinker` (SELECTs only). Prod matched:
+  - Paid sales RM 184.00 = RM 528.43 collected − RM 344.43 wallet refunds.
+    That is FPX RM 66.98 + wallet net RM 117.02.
+  - Bridge → RM 160.90 = Monthly Summary, RM 0.00 unexplained.
+  - Owner profit RM 7.38 and affiliate RM 0.15, all on delivered orders.
+    Order 15's ADR-105 manual correction (+37, −10 sen) nets as intended.
+  - The 7 failed orders' compensation RM 362.83 equals their `selling_price`.
+  - No order breaks `final = selling − discount + fee`.
+- **Fixed (test-first):**
+  - Reports CSV/PDF now carry Paid / Wallet refund / Paid sales, from the
+    `netSalesSql()` seam. This was live on `main` before the redesign.
+  - "Failed & compensated" split into Failed / Partially delivered /
+    Other blocks, each with "awaiting compensation" from
+    `scopeNeedsAction()`.
+  - Partial is its own bucket in the funnel, the performance card and
+    Delivery by game.
+  - Stale texts: the Dashboard `sales_today` definition, and the Orders
+    workbook "Total Sales" → "Paid sales".
+- **Gotcha:** `Eloquent\Collection::only()` filters by model primary key,
+  not by collection key. A `keyBy('delivery_status')` result needs
+  `->toBase()` first, or every block silently reads 0.
+- **An audit claim that didn't hold:** "the Bridge test has no partial
+  combo" — it has both. Verify fork findings before acting.
+- **Verified:** backend 2674/2674 (sqlite); report and dashboard tests
+  on docker MySQL; admin tsc/eslint/build; Orders tab screenshot, light
+  and dark, against the dev DB.
