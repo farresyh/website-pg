@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -51,6 +52,20 @@ class Voucher extends Model
     public function sourceOrder(): BelongsTo
     {
         return $this->belongsTo(Order::class, 'order_id');
+    }
+
+    /**
+     * ADR-104 2026-10-08 addendum R11 — the one "compensation voucher"
+     * definition: ADR-004 Path B (issued for an order), the source order
+     * not a sandbox one. Dashboard, the Transaction Register and Reports
+     * all read this; a standalone Path A voucher is a marketing promise,
+     * not customer cash held.
+     */
+    public function scopeCompensation(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('vouchers.order_id')
+            ->whereHas('sourceOrder', fn (Builder $q) => $q->where('is_test', false));
     }
 
     /** ADR-116 decision 9 — WhatsApp messages sent (or skipped) about this voucher. */

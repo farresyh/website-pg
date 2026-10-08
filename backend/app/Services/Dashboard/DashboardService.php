@@ -343,8 +343,7 @@ final class DashboardService
     private function vouchersIssued(CarbonImmutable $from, CarbonImmutable $toExclusive): array
     {
         $vouchers = Voucher::query()
-            ->whereNotNull('order_id')
-            ->whereHas('sourceOrder', fn ($query) => $query->where('is_test', false))
+            ->compensation()
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->get(['amount']);
