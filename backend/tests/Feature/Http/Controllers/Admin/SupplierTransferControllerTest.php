@@ -535,6 +535,37 @@ class SupplierTransferControllerTest extends TestCase
         $response->assertJsonPath('correction.changes.paid_by', ['farres', 'company_account']);
     }
 
+    /**
+     * §16 item 56: `r2_accounting` throws on a storage error. Deleting the
+     * replaced receipt runs after commit, so a failure there must not 500 a
+     * correction that was saved.
+     */
+    public function test_correct_with_a_new_receipt_survives_a_failed_old_receipt_delete(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $fake = Storage::fake('local');
+        $this->post("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
+            'amount_foreign_received' => 832672,
+            'receipt' => UploadedFile::fake()->create('old.pdf', 50, 'application/pdf'),
+        ], ['Accept' => 'application/json'])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+        $oldPath = $transfer->receipt_path;
+
+        $disk = \Mockery::mock($fake)->makePartial();
+        $disk->shouldReceive('delete')->andThrow(new \RuntimeException('R2 unreachable'));
+        Storage::set('local', $disk);
+
+        $this->post("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'receipt' => UploadedFile::fake()->create('new.pdf', 50, 'application/pdf'),
+            'reason' => 'Attaching the right receipt',
+        ], ['Accept' => 'application/json'])->assertCreated();
+
+        $this->assertNotSame($oldPath, $transfer->fresh()->receipt_path);
+        $fake->assertExists($transfer->fresh()->receipt_path);
+    }
+
     // ── ADR-083 2026-09-28 addendum: "Edit Details" (metadata-only correction) ──
 
     public function test_correct_edits_metadata_fields_and_writes_an_audit_row(): void
