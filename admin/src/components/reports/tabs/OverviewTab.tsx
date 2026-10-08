@@ -7,21 +7,18 @@ import {
   type ReportTrendDay,
   type ReportGameRow,
   type ReportDailyBreakdownRow,
+  type CompareMode,
   getReportSummary,
   getReportTrend,
   getTopGames,
   getReportDailyBreakdown,
 } from "@/lib/reports";
 import { ApiError } from "@/lib/api-client";
-import { StatCard } from "../StatCard";
+import { KpiCard } from "../ReportKit";
 import { TrendChart } from "../TrendChart";
 import { HorizontalBarList } from "../HorizontalBarList";
 import { DailyBreakdownTable } from "../DailyBreakdownTable";
-import { formatRm, toRm } from "../format";
-import { ChartLine as ChartLineIcon, ChartLine as TrendUpIcon } from "@primeicons/react/chart-line";
-import { List as ListIcon } from "@primeicons/react/list";
-import { User as UserCircleIcon } from "@primeicons/react/user";
-import { Tag as TagIcon } from "@primeicons/react/tag";
+import { formatDate, formatRm, toRm } from "../format";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -33,7 +30,19 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export function OverviewTab({ token, filters }: { token: string; filters: ReportFilters }) {
+export function OverviewTab({
+  token,
+  filters,
+  compare,
+  rangeIncludesToday,
+  onOpenTab,
+}: {
+  token: string;
+  filters: ReportFilters;
+  compare?: CompareMode;
+  rangeIncludesToday: boolean;
+  onOpenTab: (tab: string) => void;
+}) {
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [trend, setTrend] = useState<ReportTrendDay[] | null>(null);
   const [topGames, setTopGames] = useState<ReportGameRow[] | null>(null);
@@ -41,7 +50,7 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getReportSummary(token, filters)
+    getReportSummary(token, filters, compare)
       .then(setSummary)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load report summary."));
     getTopGames(token, filters, 5)
@@ -56,7 +65,12 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
       .then((res) => setTrend(res.days))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the sales trend."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.from, filters.to, filters.affiliateId]);
+  }, [token, filters.from, filters.to, filters.affiliateId, compare]);
+
+  const cmp = summary?.compare ?? undefined;
+  const previousLabel = cmp ? `${formatDate(cmp.previous_range.from)} – ${formatDate(cmp.previous_range.to)}` : undefined;
+  // ADR-104 R13 — profit is credited on delivery, so a range ending today still moves.
+  const profitNote = rangeIncludesToday ? "Profit is recognised on delivery" : undefined;
 
   return (
     <div>
@@ -66,12 +80,12 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
         </p>
       )}
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <StatCard icon={<ChartLineIcon width={18} height={18} />} color="blue" label="Total Sales" value={summary ? formatRm(summary.total_sales) : "—"} />
-        <StatCard icon={<ListIcon width={18} height={18} />} color="indigo" label="Total Orders" value={summary ? summary.orders_count.toLocaleString() : "—"} />
-        <StatCard icon={<TrendUpIcon width={18} height={18} />} color="green" label="Owner Profit" value={summary ? formatRm(summary.platform_profit) : "—"} sub={summary ? `${summary.margin_pct.toFixed(2)}% margin` : undefined} />
-        <StatCard icon={<UserCircleIcon width={18} height={18} />} color="violet" label="Affiliate Profit" value={summary ? formatRm(summary.affiliate_profit) : "—"} />
-        <StatCard icon={<TagIcon width={18} height={18} />} color="amber" label="Avg Order Value" value={summary ? formatRm(summary.avg_order_value) : "—"} />
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-5">
+        <KpiCard label="Paid Sales" value={summary ? formatRm(summary.total_sales) : "—"} change={cmp?.changes.total_sales} previousLabel={previousLabel} onClick={() => onOpenTab("sales")} />
+        <KpiCard label="Paid Orders" value={summary ? summary.orders_count.toLocaleString() : "—"} change={cmp?.changes.orders_count} previousLabel={previousLabel} onClick={() => onOpenTab("orders")} />
+        <KpiCard label="Owner Profit" value={summary ? formatRm(summary.platform_profit) : "—"} sub={summary ? `${summary.margin_pct.toFixed(2)}% margin` : undefined} change={cmp?.changes.platform_profit} previousLabel={previousLabel} note={profitNote} onClick={() => onOpenTab("profit")} />
+        <KpiCard label="Affiliate Profit" value={summary ? formatRm(summary.affiliate_profit) : "—"} change={cmp?.changes.affiliate_profit} previousLabel={previousLabel} note={profitNote} onClick={() => onOpenTab("affiliates")} />
+        <KpiCard label="Avg Order Value" value={summary ? formatRm(summary.avg_order_value) : "—"} change={cmp?.changes.avg_order_value} previousLabel={previousLabel} />
       </div>
 
       {summary?.latest_order && (
@@ -93,7 +107,7 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
               series1={{ label: "Sales", values: trend.map((d) => toRm(d.sales)) }}
               series2={{ label: "Owner Profit", values: trend.map((d) => toRm(d.platform_profit)) }}
               formatValue={(v) => `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-              formatTick={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v < 10 ? v.toFixed(2) : v.toFixed(0))}
+              formatTick={(v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(0))}
             />
           ) : (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
@@ -105,7 +119,7 @@ export function OverviewTab({ token, filters }: { token: string; filters: Report
           {topGames ? (
             <HorizontalBarList
               items={topGames.map((g) => ({ label: g.game_name, value: toRm(g.sales), sublabel: `${g.orders_count} orders` }))}
-              formatValue={(v) => `RM ${v.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`}
+              formatValue={(v) => `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             />
           ) : (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>

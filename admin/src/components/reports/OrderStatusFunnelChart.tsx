@@ -1,63 +1,92 @@
 "use client";
 
 /**
- * Orders tab — delivery-status funnel. Uses the dataviz skill's fixed
- * status palette (good/warning/serious/critical — never themed, never
- * reused for series identity elsewhere on this page): delivered=good,
- * in-flight states=warning, needs_review=serious, failed=critical.
+ * Orders tab — delivery-status breakdown. ADR-104 R1: Recharts, with the
+ * artifact's status tokens (delivered = chart-positive, in flight =
+ * warning-ink, needs review / partial = review-ink, failed =
+ * chart-negative). Status colour is reserved for delivery health and
+ * always travels with its label and count, never colour alone.
  */
 
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ReportOrderStatusFunnel } from "@/lib/reports";
 
-const STATUS_COLOR = {
-  good: "#0ca30c",
-  warning: "#fab219",
-  serious: "#ec835a",
-  critical: "#d03b3b",
-};
-
-const STATUS_META: Array<{
-  key: keyof ReportOrderStatusFunnel["by_status"];
-  label: string;
-  color: string;
-}> = [
-  { key: "delivered", label: "Delivered", color: STATUS_COLOR.good },
-  { key: "processing", label: "Processing", color: STATUS_COLOR.warning },
-  { key: "pending", label: "Pending (supplier)", color: STATUS_COLOR.warning },
-  { key: "not_started", label: "Not Started", color: STATUS_COLOR.warning },
-  { key: "needs_review", label: "Needs Review", color: STATUS_COLOR.serious },
-  { key: "partially_delivered", label: "Partially Delivered", color: STATUS_COLOR.serious },
-  { key: "failed", label: "Failed", color: STATUS_COLOR.critical },
+const STATUS_META: { key: keyof ReportOrderStatusFunnel["by_status"]; label: string; color: string }[] = [
+  { key: "delivered", label: "Delivered", color: "var(--color-chart-positive)" },
+  { key: "processing", label: "Processing", color: "var(--color-warning-ink)" },
+  { key: "pending", label: "Pending (supplier)", color: "var(--color-warning-ink)" },
+  { key: "not_started", label: "Not started", color: "var(--color-warning-ink)" },
+  { key: "needs_review", label: "Needs review", color: "var(--color-review-ink)" },
+  { key: "partially_delivered", label: "Partially delivered", color: "var(--color-review-ink)" },
+  { key: "failed", label: "Failed", color: "var(--color-chart-negative)" },
 ];
+
+const ROW_HEIGHT = 36;
 
 export function OrderStatusFunnelChart({ funnel }: { funnel: ReportOrderStatusFunnel }) {
   if (funnel.total === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No paid orders in this range yet.</p>;
+    return <p className="py-8 text-center text-sm text-ink-muted">No paid orders in this range yet.</p>;
   }
 
-  return (
-    <ul className="space-y-3">
-      {STATUS_META.map(({ key, label, color }) => {
-        const count = funnel.by_status[key];
-        const pct = (count / funnel.total) * 100;
+  const data = STATUS_META.map((s) => {
+    const count = funnel.by_status[s.key];
+    const pct = (count / funnel.total) * 100;
+    // Count on its own right-hand category axis: every row, zero included, keeps its number.
+    return { ...s, count, pct, countLabel: `${count.toLocaleString()} (${pct.toFixed(1)}%)` };
+  });
 
-        return (
-          <li key={key}>
-            <div className="mb-1 flex items-baseline justify-between gap-3 text-theme-sm">
-              <span className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
-                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                {label}
-              </span>
-              <span className="tabular-nums text-gray-800 dark:text-white/90">
-                {count.toLocaleString()} <span className="text-gray-400 dark:text-gray-500">({pct.toFixed(1)}%)</span>
-              </span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-white/[0.06]">
-              <div className="h-2 rounded-full" style={{ width: `${Math.max(pct, count > 0 ? 2 : 0)}%`, backgroundColor: color }} />
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+  return (
+    <div style={{ height: data.length * ROW_HEIGHT }} role="img" aria-label="Orders by delivery status">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }} barSize={12}>
+          <XAxis type="number" hide domain={[0, funnel.total]} />
+          <YAxis
+            yAxisId="label"
+            type="category"
+            dataKey="label"
+            width={140}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 13, fill: "var(--color-ink)" }}
+          />
+          <YAxis
+            yAxisId="count"
+            orientation="right"
+            type="category"
+            dataKey="countLabel"
+            width={96}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 12, fill: "var(--color-ink-muted)" }}
+          />
+          <Tooltip
+            cursor={{ fill: "var(--color-overlay)" }}
+            content={({ active, payload }) => {
+              const row = active ? payload?.[0]?.payload : null;
+              if (!row) return null;
+              return (
+                <div className="rounded-lg border border-border bg-surface px-3 py-2 text-theme-xs shadow-md">
+                  <p className="font-semibold tabular-nums text-ink">
+                    {row.count.toLocaleString()} <span className="font-normal text-ink-muted">({row.pct.toFixed(1)}%)</span>
+                  </p>
+                  <p className="text-ink-muted">{row.label}</p>
+                </div>
+              );
+            }}
+          />
+          <Bar
+            yAxisId="label"
+            dataKey="count"
+            radius={[0, 4, 4, 0]}
+            background={{ fill: "var(--color-chart-grid)", radius: 4 }}
+            isAnimationActive={false}
+          >
+            {data.map((row) => (
+              <Cell key={row.key} fill={row.color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

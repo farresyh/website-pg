@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { type ReportFilters, type ReportTrendDay, getReportTrend } from "@/lib/reports";
 import { TrendChart } from "../TrendChart";
 import { toRm } from "../format";
+import { marginPct } from "@/lib/report-buckets";
 
 export function ProfitAnalysisTab({ token, filters }: { token: string; filters: ReportFilters }) {
   const [trend, setTrend] = useState<ReportTrendDay[] | null>(null);
@@ -18,7 +19,7 @@ export function ProfitAnalysisTab({ token, filters }: { token: string; filters: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, filters.from, filters.to, filters.affiliateId]);
 
-  const marginPct = trend?.map((d) => (d.sales > 0 ? (d.platform_profit / d.sales) * 100 : 0)) ?? [];
+  const marginPcts = trend?.map((d) => marginPct(d.platform_profit, d.sales)) ?? [];
 
   return (
     <div className="grid grid-cols-1 gap-6">
@@ -29,10 +30,10 @@ export function ProfitAnalysisTab({ token, filters }: { token: string; filters: 
         {trend ? (
           <TrendChart
             dates={trend.map((d) => d.date)}
-            series1={{ label: "Owner Profit", values: trend.map((d) => toRm(d.platform_profit)) }}
-            series2={{ label: "Affiliate Profit", values: trend.map((d) => toRm(d.affiliate_profit)) }}
+            series1={{ label: "Owner Profit", values: trend.map((d) => toRm(d.platform_profit)), color: "chart-2" }}
+            series2={{ label: "Affiliate Profit", values: trend.map((d) => toRm(d.affiliate_profit)), color: "chart-3" }}
             formatValue={(v) => `RM ${v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            formatTick={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v < 10 ? v.toFixed(2) : v.toFixed(0))}
+            formatTick={(v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(0))}
           />
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
@@ -48,7 +49,7 @@ export function ProfitAnalysisTab({ token, filters }: { token: string; filters: 
         {trend ? (
           <TrendChart
             dates={trend.map((d) => d.date)}
-            series1={{ label: "Margin %", values: marginPct }}
+            series1={{ label: "Margin %", values: marginPcts, color: "chart-2" }}
             formatValue={(v) => `${v.toFixed(2)}%`}
             formatTick={(v) => `${v.toFixed(0)}%`}
           />

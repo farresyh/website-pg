@@ -1,258 +1,206 @@
 "use client";
 
 /**
- * Generic 1- or 2-series daily trend line chart, built per the dataviz
- * skill's procedure (2026-08-26, extended 2026-08-27 for reuse beyond
- * RPT-2's Sales-vs-Profit overlay): hand-rolled inline SVG (no charting
- * library installed), single shared y-axis (never dual-axis), palette
- * validated with the skill's own contrast/CVD checker (categorical slot
- * 1 blue + slot 3 aqua for 2 series; single-hue blue, the skill's
- * documented "sequential is the safe default", for 1 series). The
- * light-mode aqua contrast WARN is why the legend, end-labels, and
- * table view all exist for the 2-series case — required "relief", not
- * decoration.
+ * 1- or 2-series trend line chart. ADR-104 R1: Recharts, replacing the
+ * hand-rolled SVG (reverses ADR-086's PR-3 closure). Series colours are
+ * the artifact's chart tokens (`chart-1` sales/orders, `chart-2` owner
+ * profit/margin, `chart-3` affiliate profit), resolved through CSS vars
+ * so light/dark follow the theme with no JS. One y-axis, never two.
+ *
+ * The dataviz validator passes the palette on CVD and normal-vision
+ * separation and contrast, but flags the muted brand hues on chroma; so
+ * identity never rests on colour alone: legend + end labels + a table view.
  */
 
-import { useMemo, useState } from "react";
-import { useTheme } from "@/context/ThemeContext";
+import { useState } from "react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { TrendBucket } from "@/lib/report-buckets";
 
-const COLORS = {
-  light: { series1: "#2a78d6", series2: "#1baf7a", grid: "#e1e0d9", axis: "#898781", text: "#52514e" },
-  dark: { series1: "#3987e5", series2: "#199e70", grid: "#2c2c2a", axis: "#898781", text: "#c3c2b7" },
-};
+export type ChartColor = "chart-1" | "chart-2" | "chart-3";
 
-function niceCeil(value: number): number {
-  if (value <= 0) return 1;
-  const magnitude = 10 ** Math.floor(Math.log10(value));
-  const normalized = value / magnitude;
-  const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  return step * magnitude;
-}
-
-function formatDateLabel(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-MY", { day: "numeric", month: "short" });
-}
-
-const WIDTH = 720;
-const HEIGHT = 260;
-const PADDING = { top: 16, right: 64, bottom: 28, left: 56 };
-
-export interface TrendSeries {
-  key: string;
+export interface TrendSeriesInput {
   label: string;
+  values: (number | null)[];
+  color?: ChartColor;
 }
 
 interface TrendChartProps {
   dates: string[];
-  series1: { label: string; values: number[] };
-  series2?: { label: string; values: number[] };
+  series1: TrendSeriesInput;
+  series2?: TrendSeriesInput;
   formatValue: (value: number) => string;
   formatTick: (value: number) => string;
+  /** Labels each point as a day, the week starting that day, or a month. */
+  bucket?: TrendBucket;
 }
 
-export function TrendChart({ dates, series1, series2, formatValue, formatTick }: TrendChartProps) {
-  const { theme } = useTheme();
-  const colors = COLORS[theme];
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+function formatDateLabel(iso: string, bucket: TrendBucket): string {
+  const d = new Date(`${iso}T00:00:00`);
+  if (bucket === "month") return d.toLocaleDateString("en-MY", { month: "short", year: "numeric" });
+  const day = d.toLocaleDateString("en-MY", { day: "numeric", month: "short" });
+  return bucket === "week" ? `Week of ${day}` : day;
+}
+
+function shortDateLabel(iso: string, bucket: TrendBucket): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return bucket === "month"
+    ? d.toLocaleDateString("en-MY", { month: "short", year: "2-digit" })
+    : d.toLocaleDateString("en-MY", { day: "numeric", month: "short" });
+}
+
+const colorVar = (color: ChartColor) => `var(--color-${color})`;
+
+export function TrendChart({ dates, series1, series2, formatValue, formatTick, bucket = "day" }: TrendChartProps) {
   const [showTable, setShowTable] = useState(false);
 
-  const plotWidth = WIDTH - PADDING.left - PADDING.right;
-  const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
+  const series: (TrendSeriesInput & { key: "s1" | "s2"; color: ChartColor })[] = [
+    { key: "s1", ...series1, color: series1.color ?? "chart-1" },
+    ...(series2 ? [{ key: "s2" as const, ...series2, color: series2.color ?? "chart-2" }] : []),
+  ];
 
-  const allValues = series2 ? [...series1.values, ...series2.values] : series1.values;
-  const maxValue = niceCeil(Math.max(1, ...allValues));
-
-  const xFor = (index: number) => (dates.length <= 1 ? 0 : (index / (dates.length - 1)) * plotWidth);
-  const yFor = (value: number) => plotHeight - (value / maxValue) * plotHeight;
-
-  const path1 = useMemo(
-    () => series1.values.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i)},${yFor(v)}`).join(" "),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dates, maxValue, series1.values],
-  );
-  const path2 = useMemo(
-    () => series2?.values.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i)},${yFor(v)}`).join(" ") ?? null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dates, maxValue, series2?.values],
-  );
-
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => maxValue * f);
-  const xTickEvery = dates.length > 14 ? 5 : dates.length > 7 ? 2 : 1;
-  const hasData = allValues.some((v) => v > 0);
+  const data = dates.map((date, i) => ({ date, s1: series1.values[i], s2: series2?.values[i] ?? null }));
+  const hasData = series.some((s) => s.values.some((v) => v !== null && v !== 0));
 
   if (!hasData) {
-    return <p className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">No paid orders in this range yet.</p>;
+    return <p className="py-16 text-center text-sm text-ink-muted">No paid orders in this range yet.</p>;
   }
+
+  const lastIndex = dates.length - 1;
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        {series2 && (
-          <div className="flex items-center gap-4 text-theme-xs text-gray-500 dark:text-gray-400">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-0.5 w-3.5 rounded-full" style={{ backgroundColor: colors.series1 }} />
-              {series1.label}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-0.5 w-3.5 rounded-full" style={{ backgroundColor: colors.series2 }} />
-              {series2.label}
-            </span>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        {series.length > 1 && (
+          <div className="flex items-center gap-4 text-theme-xs text-ink-muted">
+            {series.map((s) => (
+              <span key={s.key} className="flex items-center gap-1.5">
+                <span className="inline-block h-0.5 w-3.5 rounded-full" style={{ backgroundColor: colorVar(s.color) }} />
+                {s.label}
+              </span>
+            ))}
           </div>
         )}
         <button
           type="button"
           onClick={() => setShowTable((v) => !v)}
-          className="ml-auto text-theme-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="ml-auto text-theme-xs font-medium text-cyan-ink hover:underline"
         >
           {showTable ? "View chart" : "View as table"}
         </button>
       </div>
 
       {showTable ? (
-        <div className="max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800">
+        <div className="max-h-72 overflow-auto rounded-lg border border-border">
           <table className="w-full text-theme-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-left text-theme-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium">{series1.label}</th>
-                {series2 && <th className="px-3 py-2 font-medium">{series2.label}</th>}
+              <tr className="border-b border-border text-left text-theme-xs text-ink-muted">
+                <th className="px-3 py-2 font-medium">{bucket === "month" ? "Month" : bucket === "week" ? "Week" : "Date"}</th>
+                {series.map((s) => (
+                  <th key={s.key} className="px-3 py-2 text-right font-medium">
+                    {s.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {dates.map((date, i) => (
-                <tr key={date} className="border-b border-gray-100 last:border-0 dark:border-gray-800/60">
-                  <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{formatDateLabel(date)}</td>
-                  <td className="px-3 py-2 tabular-nums text-gray-800 dark:text-white/90">{formatValue(series1.values[i])}</td>
-                  {series2 && (
-                    <td className="px-3 py-2 tabular-nums text-gray-800 dark:text-white/90">{formatValue(series2.values[i])}</td>
-                  )}
+              {data.map((row) => (
+                <tr key={row.date} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2 text-ink-muted">{formatDateLabel(row.date, bucket)}</td>
+                  {series.map((s) => {
+                    const v = row[s.key];
+                    return (
+                      <td key={s.key} className="px-3 py-2 text-right tabular-nums text-ink">
+                        {v === null || v === undefined ? "—" : formatValue(v)}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="relative">
-          <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full" role="img" aria-label="Daily trend">
-            <g transform={`translate(${PADDING.left},${PADDING.top})`}>
-              {yTicks.map((tick) => (
-                <g key={tick}>
-                  <line x1={0} x2={plotWidth} y1={yFor(tick)} y2={yFor(tick)} stroke={colors.grid} strokeWidth={1} />
-                  <text x={-8} y={yFor(tick)} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={colors.axis}>
-                    {formatTick(tick)}
-                  </text>
-                </g>
-              ))}
-
-              {dates.map((date, i) =>
-                i % xTickEvery === 0 ? (
-                  <text key={date} x={xFor(i)} y={plotHeight + 18} textAnchor="middle" fontSize={10} fill={colors.axis}>
-                    {formatDateLabel(date)}
-                  </text>
-                ) : null,
-              )}
-
-              <path d={path1} fill="none" stroke={colors.series1} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-              {path2 && (
-                <path d={path2} fill="none" stroke={colors.series2} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-              )}
-
-              {dates.length > 0 && (
-                <>
-                  <text
-                    x={xFor(dates.length - 1) + 6}
-                    y={yFor(series1.values[series1.values.length - 1])}
-                    fontSize={10}
-                    fontWeight={600}
-                    dominantBaseline="middle"
-                    fill={colors.text}
-                  >
-                    {formatValue(series1.values[series1.values.length - 1])}
-                  </text>
-                  {series2 && (
-                    <text
-                      x={xFor(dates.length - 1) + 6}
-                      y={yFor(series2.values[series2.values.length - 1]) + 12}
-                      fontSize={10}
-                      fontWeight={600}
-                      dominantBaseline="middle"
-                      fill={colors.text}
-                    >
-                      {formatValue(series2.values[series2.values.length - 1])}
-                    </text>
-                  )}
-                </>
-              )}
-
-              {hoverIndex !== null && (
-                <>
-                  <line x1={xFor(hoverIndex)} x2={xFor(hoverIndex)} y1={0} y2={plotHeight} stroke={colors.axis} strokeWidth={1} />
-                  <circle
-                    cx={xFor(hoverIndex)}
-                    cy={yFor(series1.values[hoverIndex])}
-                    r={4}
-                    fill={colors.series1}
-                    stroke={theme === "dark" ? "#1a1a19" : "#fcfcfb"}
-                    strokeWidth={2}
-                  />
-                  {series2 && (
-                    <circle
-                      cx={xFor(hoverIndex)}
-                      cy={yFor(series2.values[hoverIndex])}
-                      r={4}
-                      fill={colors.series2}
-                      stroke={theme === "dark" ? "#1a1a19" : "#fcfcfb"}
-                      strokeWidth={2}
-                    />
-                  )}
-                </>
-              )}
-
-              <rect
-                x={0}
-                y={0}
-                width={plotWidth}
-                height={plotHeight}
-                fill="transparent"
-                onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const relativeX = e.clientX - rect.left;
-                  const index = Math.round((relativeX / plotWidth) * (dates.length - 1));
-                  setHoverIndex(Math.min(dates.length - 1, Math.max(0, index)));
-                }}
-                onMouseLeave={() => setHoverIndex(null)}
+        <div className="h-[260px] w-full" role="img" aria-label={series.map((s) => s.label).join(" and ") + " trend"}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 12, right: 72, bottom: 0, left: 0 }}>
+              <CartesianGrid vertical={false} stroke="var(--color-chart-grid)" strokeWidth={1} />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(d: string) => shortDateLabel(d, bucket)}
+                tick={{ fontSize: 11, fill: "var(--color-ink-muted)" }}
+                tickLine={false}
+                axisLine={{ stroke: "var(--color-chart-grid)" }}
+                minTickGap={24}
               />
-            </g>
-          </svg>
-
-          {hoverIndex !== null && (
-            <div
-              className="pointer-events-none absolute top-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-xs shadow-theme-lg dark:border-gray-800 dark:bg-gray-900"
-              style={{ left: `${Math.min(85, Math.max(5, (xFor(hoverIndex) / plotWidth) * 100))}%` }}
-            >
-              <p className="mb-1 font-medium text-gray-500 dark:text-gray-400">{formatDateLabel(dates[hoverIndex])}</p>
-              <p className="flex items-center justify-between gap-4">
-                <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                  <span className="inline-block h-0.5 w-3 rounded-full" style={{ backgroundColor: colors.series1 }} />
-                  {series1.label}
-                </span>
-                <span className="tabular-nums font-semibold text-gray-800 dark:text-white/90">
-                  {formatValue(series1.values[hoverIndex])}
-                </span>
-              </p>
-              {series2 && (
-                <p className="flex items-center justify-between gap-4">
-                  <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                    <span className="inline-block h-0.5 w-3 rounded-full" style={{ backgroundColor: colors.series2 }} />
-                    {series2.label}
-                  </span>
-                  <span className="tabular-nums font-semibold text-gray-800 dark:text-white/90">
-                    {formatValue(series2.values[hoverIndex])}
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
+              <YAxis
+                tickFormatter={formatTick}
+                tick={{ fontSize: 11, fill: "var(--color-ink-muted)" }}
+                tickLine={false}
+                axisLine={false}
+                width={56}
+              />
+              <Tooltip
+                cursor={{ stroke: "var(--color-border-control)", strokeWidth: 1 }}
+                content={({ active, label }) => {
+                  if (!active || typeof label !== "string") return null;
+                  const row = data.find((d) => d.date === label);
+                  if (!row) return null;
+                  return (
+                    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-theme-xs shadow-md">
+                      <p className="mb-1 font-medium text-ink-muted">{formatDateLabel(label, bucket)}</p>
+                      {series.map((s) => {
+                        const v = row[s.key];
+                        return (
+                          <p key={s.key} className="flex items-center justify-between gap-4">
+                            <span className="flex items-center gap-1.5 text-ink-muted">
+                              <span className="inline-block h-0.5 w-3 rounded-full" style={{ backgroundColor: colorVar(s.color) }} />
+                              {s.label}
+                            </span>
+                            <span className="font-semibold tabular-nums text-ink">
+                              {v === null || v === undefined ? "—" : formatValue(v)}
+                            </span>
+                          </p>
+                        );
+                      })}
+                    </div>
+                  );
+                }}
+              />
+              {series.map((s, si) => (
+                <Line
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.label}
+                  type="linear"
+                  stroke={colorVar(s.color)}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  dot={false}
+                  activeDot={{ r: 4, fill: colorVar(s.color), stroke: "var(--color-surface)", strokeWidth: 2 }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                  label={(props: { x?: number | string; y?: number | string; index?: number; value?: unknown }) =>
+                    props.index === lastIndex && typeof props.value === "number" ? (
+                      <text
+                        key={`end-${s.key}`}
+                        x={Number(props.x) + 8}
+                        y={Number(props.y) + si * 12}
+                        fontSize={11}
+                        fontWeight={600}
+                        dominantBaseline="middle"
+                        fill="var(--color-ink)"
+                      >
+                        {formatValue(props.value)}
+                      </text>
+                    ) : (
+                      <g key={`end-${s.key}-${props.index}`} />
+                    )
+                  }
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       )}
     </div>
