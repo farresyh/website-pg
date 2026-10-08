@@ -1391,6 +1391,16 @@ on `feature/2026-10-08-reports-pr-a`.
   - 80 test sites create orders directly. They now pass
     `'placed_via' => 'storefront'` (mechanical edit) instead of the column
     getting a default.
+  - That sweep grepped `Order::query()->create` only and missed
+    `E2ESeeder`'s three `firstOrCreate` fixtures. CI's Playwright backend
+    boot failed with a bare "webServer was not able to start". Grep every
+    create form (`firstOrCreate`, `updateOrCreate`, `insert`) when a
+    column becomes required.
+  - A killed MySQL test run leaves the `llm_report_*` views behind in the
+    docker `kerox` DB. `RefreshDatabase`'s `migrate:fresh` doesn't drop
+    views, so every later run loops on `CREATE VIEW`. Fix: drop the three
+    views (the founder ran it), then re-run: 122/122 report, accounting and
+    dashboard tests green on MySQL.
 - **Gap found, not fixed (0 on prod):** `VoucherService::merge()` gives the
   merged voucher `order_id = null`. A merge of compensation vouchers
   therefore drops out of outstanding store credit (and out of the Dashboard
