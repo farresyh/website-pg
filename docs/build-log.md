@@ -1299,3 +1299,12 @@ on-demand compile. `--webpack` dev (tried 2026-09-28) broke two admin specs;
 the production build passes all three. Storefront hit the same crash on its
 Inter font the same day (PR #379's run), so it got the same change. Local run
 with both on production builds: 6/6 passed.
+
+## 2026-10-08 — Combo modal shows each component's supplier SKU (item 66, part)
+
+Founder couldn't tell which supplier product a combo leg was (e.g. "60 UC ×3"
+with no SKU). `GameController::packages()` now includes
+`supplier_package_ref` in each combo component, and `ComboOverrideModal` shows
+it under the name, the same SKU the Create Combo picker already shows. Admin
+route only. Test: `ComboPackageControllerTest`. Item 66's edit-composition and
+leg-history parts stay open.

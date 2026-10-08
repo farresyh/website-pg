@@ -854,6 +854,8 @@ code and production on 2026-10-08; re-verify before building.
 66. **Combo admin gaps, deliberately deferred** (§15 Combo row): no
     edit-composition UI (delete and recreate only), and no admin view of the
     per-leg attempt history (the rows exist and are queryable).
+    Each component's supplier SKU now shows in the Edit Combo modal
+    (2026-10-08).
 ## Buildable when triggered (design done or needs its own ADR)
 
 71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: founder
