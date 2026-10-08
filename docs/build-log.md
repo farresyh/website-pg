@@ -1339,3 +1339,59 @@ and code-traced.
   click on "Sign in" (Enter didn't submit), and `goto('/admin/reports')`
   after login bounced to `/login`; navigating via the sidebar link worked.
 - New §16 item 75 (voucher-liability definition, for the external reviewer).
+
+## 2026-10-08 — Reports redesign PR-A: backend (item 65, ADR-104 R5, R7–R17)
+
+Backend only; the Reports UI is unchanged until PR-B/PR-C. Built test-first
+on `feature/2026-10-08-reports-pr-a`.
+
+- **R7 one revenue seam.** `MonthlyAccountingSummaryService::salesRevenue()`
+  and its settled-partial helper moved into `Accounting\RecognisedRevenue`;
+  the Monthly Summary (revenue and COGS) and the new
+  `ReportService::accountingBridge()` both call it. The bridge returns
+  `unexplained_difference`; `ReportAccountingBridgeTest` proves it is 0 over
+  every order shape (delivered, voucher discount, full cover, failed +
+  voucher, wallet refund, in flight, settled and unsettled combo partial) and
+  that recognised revenue equals the Monthly Summary figure. A delivered but
+  unpaid order shows up as a non-zero difference, as designed.
+- **R8–R11.** `failedAndCompensated()` is one SQL pass mirroring
+  `Order::cashCompensationSen()` / `compensationAmountSen()`, held equal by
+  `ReportCompensationTest`. `outstandingStoreCredit()` counts active,
+  unexpired compensation vouchers. `Voucher::scopeCompensation()` is now the
+  only Path B definition; Dashboard and the Transaction Register route
+  through it.
+- **R12–R14.** `DashboardService::comparison()` became
+  `Support\PeriodComparison` (`change()`, plus `points()` for margin, and
+  `previousRange()`). `GET /reports/summary?compare=previous|month_to_date`
+  adds a `compare` block (null for All time). The page sends the mode
+  because dates alone can't tell "This month" from a "Last 7 days" that
+  starts on the 1st.
+- **R15/R16.** `orders.placed_via` (`PlacedVia` enum), required on
+  `OrderDraft` and `ResellerOrderPlacementRequest`; the sandbox and CHIP
+  smoke-test direct creates set it. The backfill was run on the local dev DB
+  (17 seeded wallet orders → `reseller_api`, 172 → `storefront`).
+  `breakdown/channels` returns own brand / reseller wallet / external
+  affiliate plus the wallet API-vs-Bot split.
+- **R17.** The trend's "All time" runs from the first paid order to today;
+  the 30-day fallback is gone.
+- **New endpoints:** `breakdown/channels`, `breakdown/delivery-by-game`,
+  `accounting-bridge` (null under an affiliate filter), `failed-compensated`.
+- **Gotchas.**
+  - The bridge first computed `selling_price - final_amount`. On MySQL
+    that is unsigned minus unsigned and errors for any order with a fee;
+    sqlite passed. It was caught only by re-running the report tests
+    against the docker MySQL (a temporary phpunit config pointing
+    `phpunit.concurrency.xml`'s env at `tests/Feature/Services/Report`).
+    The fix nets the new `Order::walletRefundSql()` from `selling_price`
+    directly.
+  - sqlite's `->change()` can't rebuild `orders` under the
+    `llm_report_*` views. The migration drops them and re-creates them from
+    `sqlite_master`'s stored SQL, so there is no fourth hand copy of the view
+    definition.
+  - 80 test sites create orders directly. They now pass
+    `'placed_via' => 'storefront'` (mechanical edit) instead of the column
+    getting a default.
+- **Gap found, not fixed (0 on prod):** `VoucherService::merge()` gives the
+  merged voucher `order_id = null`. A merge of compensation vouchers
+  therefore drops out of outstanding store credit (and out of the Dashboard
+  and Register counts, which predate this). Prod has 0 merges.
