@@ -3040,3 +3040,19 @@ the view (noted in the ADR-087 addendum).
 prompt definitions + enum lists). Fast suite 2632/2632; Pint clean; `admin/`
 tsc, lint and build clean. Local dev DB migrated (`php artisan migrate`); the
 view returns 183 rows there. Concurrency suite: see the PR.
+
+## 2026-10-08 — Backlog hygiene: one sorted queue in §16 "Next up" (docs only)
+
+The founder's rule from this session: clear the backlog before any new
+feature. §16 "Next up" now sorts every open item into A (buildable now), B
+(grill first), C (founder actions), D (waiting on a trigger) and E (new
+features, after the backlog). Each "open" claim was re-checked on 2026-10-08:
+
+- Still open on prod: #70 (4 RM 0 voucher orders show `fpx`), #56
+  (`ACCOUNTING_DISK` unset), #59 (`ENGINE_TYPE=baileys`), #58 (OpenWA still
+  deploys from upstream, no fork), A3 (one 60/min limit per key).
+- Corrected: the Valorant/ZZZ follow-up from release #362 is done (5 Valorant
+  games are Text, ZZZ has its zone field); `AggregateRating` (item 6) shipped
+  with ADR-120; §14 said the old droplet was rollback-only, it was destroyed
+  2026-09-30; ADR-110's index row still called the CHIP `.env` cutover owed,
+  while §16 "Parked" records keeping them as a fallback on purpose.

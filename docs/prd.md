@@ -584,7 +584,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-10-06).** The platform is feature-complete and live
+**Where things stand (2026-10-08).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -615,10 +615,9 @@ server runs `3d27145`; migration batch 32 (the resent-order cost
 correction) Ran; `/api/health` ok, Horizon running.
 - #356 + #357: per-game player-input contract on every channel (pre-launch
   audit item 63, Bot bullet; ADR-097 2026-10-05 addendum). Reseller API docs
-  v1.3.0. Every game is still "Digits only" (0 prod orders ever had a
-  non-digit User ID); **before selling a game whose User ID has letters
-  (e.g. Valorant), the founder sets it to Text in Product Manager**, and
-  adds ZZZ's server field.
+  v1.3.0. The founder's follow-up is done (checked on prod 2026-10-08): the
+  5 Valorant games are set to Text and Zenless Zone Zero has its zone
+  field.
 - #360: one resend seam (pre-launch audit item 63, member-resend bullet;
   ADR-105 2026-10-06 addendum). Residual profit on every basis incl.
   Member, affiliate share frozen, a resend writes `cost_price`, locked
@@ -701,7 +700,8 @@ and voucher message; §16 items 51 and 54 closed, `docs/build-log.md`).
 
 **Infrastructure:**
 - Backend runs on the `pekangame-prod-lwf` DigitalOcean droplet (ADR-114);
-  the old droplet is rollback-only with daemons paused.
+  the old droplet, its managed MySQL and Reserved IP were destroyed
+  2026-09-30 (§16 item 52).
 - The 4 frontends are on Vercel in `sin1`.
 - Cloudflare sits in front of `api.`.
 
@@ -811,7 +811,55 @@ production before building on it.
 
 ## Next up
 
-Nothing scheduled. Item 63 (pre-launch money audit P2s) closed 2026-10-08.
+**Founder's rule (2026-10-08): clear the backlog below before any new
+feature.** Every open item sorted by what it needs to finish. Verified against
+code and production on 2026-10-08; re-verify before building.
+
+**A. Buildable now: code, no new design** (in suggested order)
+1. **70** Full-voucher order shows "fpx" — still true on prod (4 RM 0
+   voucher orders, all `fpx`). Grep every `payment_method` reader first.
+2. **68** Product Manager "UID only" select shows blank
+   (`admin/src/lib/games.ts:39`, `value: ""`).
+3. **56** `accounting_disk` to R2 — `ACCOUNTING_DISK` is not set on prod, so
+   receipts still sit on local disk. Small code/config plus a prod write
+   (env + copying existing receipts): needs the founder's go-ahead.
+4. **67** ADR-109 admin-side live check (info modal + delivery badge editing)
+   — verification only.
+5. **66** Combo admin gaps: edit-composition UI, leg-attempt history view.
+6. **65** ADR-104 PR-3 Reports visual redesign — open the founder's artifact
+   first.
+7. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
+   in-modal picker.
+8. **27** e2e admin `next dev` boot flake → `next build && next start`.
+
+**B. Needs a short grill / ADR addendum first**
+- **69** WhatsApp silent throttles (ADR-116 addendum).
+- **6 / A3** Per-tier rate limit on the Reseller API/Bot — today one
+  60/min limit per key (`AppServiceProvider` `reseller-api`).
+- **64** Membership renewal reminder over WhatsApp (ADR-068's deferred half).
+
+**C. Founder actions (no code)**
+- **11** External uptime monitor on `https://api.pekangame.space/api/health`.
+- **71** SEO › FAQ click-through (5 FAQs exist on prod) and GSC recheck
+  around 2026-10-22.
+- **59** OpenWA engine: still `ENGINE_TYPE=baileys` for both sessions —
+  switch, or record an ADR-075 addendum accepting it.
+- **9** DB SSL CA / DNSSEC — founder's call.
+- Release `staging` → `main` when ready (#371, #372 waiting).
+
+**D. Waiting on a trigger — don't build early**
+- **4** bot-host resize (capacity), **10** MFA (withdrawal balances grow),
+  **28** supplier buffer forecast and **55** test-order flag (real volume),
+  **49** proxied-domain detect (an affiliate hits it), **53** parallel
+  reconcile (a slow CHIP lookup), **72** Bot `max=` (a Bot price complaint),
+  **73** API rejection logging (an integrator issue), **74** reviewer question
+  (first non-zero tier fee), **58** OpenWA chat rehydration (designed; founder
+  says when, needs a standby window).
+
+**E. New features — after the backlog** (each needs its own ADR + grill)
+- **13** self-serve reseller signup, **14** assistant chat history,
+  **24** wallet pending top-up resume/cancel, **25** portal "needs attention"
+  aggregate, **57** Marketing Campaigns (ADR-118, designed).
 
 ## Hardening (founder `.env` / infra)
 
@@ -912,7 +960,7 @@ Nothing scheduled. Item 63 (pre-launch money audit P2s) closed 2026-10-08.
    2026-09-18, ADR-108** — SET-9 (the Telegram
    *sender* — the setting fields exist), gallery in-modal picker (paste-URL —
    gallery→WebP + delete referential safety already shipped, ADR-095),
-   SEO `AggregateRating` JSON-LD on the PDP (now ADR-120 decision 10, item 71),
+   ~~SEO `AggregateRating` JSON-LD on the PDP~~ — **built** (ADR-120, live via #369),
    ~~ADR-090's dark-palette backfill (`bumblebee`/`redgiants`/`emerald`/`cobalt`)~~
    — **built 2026-09-24, ADR-113**, the **reseller-family audit's item A3**
    (per-tier rate limit on the Reseller API/Bot) — deliberately deferred design
@@ -983,8 +1031,8 @@ Nothing scheduled. Item 63 (pre-launch money audit P2s) closed 2026-10-08.
 ## Buildable when triggered (design done or needs its own ADR)
 
 71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: founder
-    click-through of SEO › FAQ; re-check GSC canonical/duplicate coverage
-    ~2026-10-22. PR-1 meta + per-brand canonical (fixes literal
+    click-through of SEO › FAQ (5 FAQs exist on prod, checked 2026-10-08);
+    re-check GSC canonical/duplicate coverage ~2026-10-22. PR-1 meta + per-brand canonical (fixes literal
     `{game_name}`/`{store_name}` on all 38 live game pages, affiliate domains
     pointing at `pekangame.com`), PR-2 GEO (all packages in HTML, `offers`,
     `aggregateRating`, fact line), PR-3 admin FAQ + `FAQPage`, PR-4 hygiene,
