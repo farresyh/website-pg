@@ -66,6 +66,14 @@ export function OrdersTab(props: ReportTabProps) {
                   </div>
                 ))}
               </dl>
+              {/* ADR-104 R6 + ADR-108 addendum — every failed order, compensated or not; not Need action. */}
+              <Link
+                href="/admin/orders?status=failed"
+                className="mt-4 flex h-10 items-center justify-center gap-2 rounded-md bg-cyan-600 text-[13px] font-medium text-on-cyan hover:opacity-90 dark:bg-primary dark:text-primary-contrast focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              >
+                View failed orders →
+              </Link>
+              <p className="mt-2 text-center text-theme-xs text-ink-muted">Opens Orders on the Failed filter, all dates</p>
             </div>
           ) : (
             <Pending error={funnel.error} />

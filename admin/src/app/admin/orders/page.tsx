@@ -93,6 +93,10 @@ const SUMMARY_POLL_MS = 60_000;
 const STATUS_FILTERS: { value: OrderStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "need_action", label: "Need Action" },
+  // ADR-108 addendum 2026-10-09 — every failed delivery, compensated or
+  // not (Need Action drops the compensated ones). A pill only, no KPI
+  // card; Reports' "View failed orders" opens it via ?status=failed.
+  { value: "failed", label: "Failed" },
   { value: "needs_review", label: "Needs Review" },
   { value: "pending_delivery", label: "Pending (Supplier)" },
   { value: "processing", label: "Processing" },
@@ -224,7 +228,11 @@ function OrdersPageInner() {
   // Read in an effect, not render body — see UserDropdown.tsx for why.
   const session = useClientSession();
 
-  const [status, setStatus] = useState<OrderStatusFilter>("all");
+  // A deep link (?status=failed from Reports) opens on that pill.
+  const [status, setStatus] = useState<OrderStatusFilter>(() => {
+    const fromUrl = searchParams.get("status");
+    return STATUS_FILTERS.find((f) => f.value === fromUrl)?.value ?? "all";
+  });
   const [search, setSearch] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   // ADR-108 decisions 5-7 — Source/Game/date-range, each orthogonal to

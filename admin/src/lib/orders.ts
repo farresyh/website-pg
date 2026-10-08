@@ -233,6 +233,7 @@ export interface OrderPage {
 export type OrderStatusFilter =
   | "all"
   | "need_action"
+  | "failed"
   | "needs_review"
   | "pending_delivery"
   | "processing"
