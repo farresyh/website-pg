@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\SupplierAdapter;
@@ -18,6 +19,7 @@ use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
@@ -92,7 +94,7 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
 
     private function needsReviewOrder(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'reference_number' => 'REF-'.uniqid(),
@@ -358,7 +360,7 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
         $this->realDigiflazzAnswers(['status' => 'Gagal', 'rc' => '45', 'message' => 'IP Anda tidak kami kenali']);
         $order = $this->needsReviewOrder();
 
-        app(\App\Services\Fulfillment\OrderFulfillmentService::class)->fulfill($order);
+        app(OrderFulfillmentService::class)->fulfill($order);
 
         $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
     }
@@ -377,7 +379,7 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
                 'customer_no_separator' => '|',
             ],
         ]);
-        \Illuminate\Support\Facades\Http::fake(['api.digiflazz.com/*' => \Illuminate\Support\Facades\Http::response(['data' => $data], 200)]);
+        Http::fake(['api.digiflazz.com/*' => Http::response(['data' => $data], 200)]);
     }
 
     /** @return array{0: Package, 1: Package} */

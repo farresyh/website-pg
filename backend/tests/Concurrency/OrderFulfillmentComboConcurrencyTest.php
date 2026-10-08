@@ -47,7 +47,7 @@ class OrderFulfillmentComboConcurrencyTest extends TestCase
         ]);
         $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-RACE-COMBO-1',
             'customer_email' => 'race@example.com',

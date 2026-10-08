@@ -23,7 +23,7 @@ class OrderTest extends TestCase
 
     private function makeOrder(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST-1',
             'reference_number' => null,

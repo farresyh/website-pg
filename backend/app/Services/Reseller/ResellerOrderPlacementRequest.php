@@ -2,6 +2,8 @@
 
 namespace App\Services\Reseller;
 
+use App\Services\Order\PlacedVia;
+
 /**
  * Inputs ResellerOrderPlacementService needs to place a wallet-debited
  * order. Mirrors CheckoutRequest's own shape (game_id/package_id/
@@ -19,6 +21,8 @@ final class ResellerOrderPlacementRequest
         public readonly int $costPriceSen,
         public readonly int $standardSellingPriceSen,
         public readonly string $idempotencyKey,
+        /** ADR-104 R16: which reseller channel (API or Bot) placed it. */
+        public readonly PlacedVia $placedVia,
         public readonly ?string $supplierProductRef = null,
         public readonly ?int $gameId = null,
         public readonly ?int $packageId = null,

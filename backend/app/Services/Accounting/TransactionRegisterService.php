@@ -285,11 +285,8 @@ final class TransactionRegisterService
             // ADR-004 Path B only — a compensation voucher IS a
             // money-moving liability event; a standalone admin-issued
             // (Path A) voucher is a business decision, not a
-            // checkout-generated one. Exact same scope as
-            // DashboardService::vouchersIssued(), is_test exclusion
-            // included.
-            ->whereNotNull('order_id')
-            ->whereHas('sourceOrder', fn ($q) => $q->where('is_test', false))
+            // checkout-generated one.
+            ->compensation()
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
             ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()

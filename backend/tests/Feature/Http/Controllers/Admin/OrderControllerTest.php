@@ -41,7 +41,7 @@ class OrderControllerTest extends TestCase
 
     private function order(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
@@ -198,6 +198,29 @@ class OrderControllerTest extends TestCase
         $response->assertOk();
         $this->assertCount(1, $response->json('data'));
         $this->assertSame('KRS-STILL-NEEDS-ACTION', $response->json('data.0.order_number'));
+    }
+
+    /**
+     * ADR-108 addendum 2026-10-09 — "failed" lists every failed delivery,
+     * compensated or not (Reports' "View failed orders"), unlike
+     * need_action, which drops the compensated ones.
+     */
+    public function test_index_failed_includes_compensated_orders(): void
+    {
+        $compensated = $this->order(['order_number' => 'KRS-FAILED-VOUCHERED', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        Voucher::query()->create([
+            'order_id' => $compensated->id, 'affiliate_id' => $compensated->affiliate_id,
+            'code' => 'KRS-COMP-FAILED', 'customer_email' => 'buyer@example.com',
+            'amount' => 500, 'remaining' => 500, 'status' => 'active', 'reason' => 'test',
+        ]);
+        $this->order(['order_number' => 'KRS-FAILED-OPEN', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $this->order(['order_number' => 'KRS-DELIVERED', 'payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Delivered->value]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson('/api/orders?status=failed');
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing(['KRS-FAILED-VOUCHERED', 'KRS-FAILED-OPEN'], array_column($response->json('data'), 'order_number'));
     }
 
     /**

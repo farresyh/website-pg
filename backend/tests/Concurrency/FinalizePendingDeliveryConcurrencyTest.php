@@ -40,7 +40,7 @@ class FinalizePendingDeliveryConcurrencyTest extends TestCase
             'name' => 'Digiflazz Test', 'slug' => 'digiflazz-race-test', 'api_config' => [], 'currency' => 'IDR',
         ]);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-PENDING-RACE-1',
             'customer_email' => 'race@example.com',

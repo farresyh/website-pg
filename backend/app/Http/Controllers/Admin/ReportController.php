@@ -21,10 +21,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * ADR-086 filter-unification follow-up (2026-09-11): the old separate
  * Year/Month picker is gone — every tab, `?from=`/`?to=` (KL calendar
  * dates, 'YYYY-MM-DD', both optional), resolved by `rangeFromRequest()`.
- * The trend chart alone gets `trendRangeFromRequest()`, which substitutes
- * a bounded last-30-days fallback when the page's own filter is
- * unbounded ("All time") — `ReportService::dailyTrend()` always
- * zero-fills its range, so it can never be handed an unbounded one.
+ * The trend chart alone gets `trendRangeFromRequest()`: "All time" runs
+ * from the first paid order to today (ADR-104 R17), since
+ * `ReportService::dailyTrend()` zero-fills a concrete range.
  */
 class ReportController extends Controller
 {
@@ -41,13 +40,15 @@ class ReportController extends Controller
         );
     }
 
+    /**
+     * ADR-104 R12 — `?compare=previous` (same-length range immediately
+     * before) or `?compare=month_to_date` (same days of last month). The
+     * page picks the mode from its preset: dates alone can't tell "This
+     * month" from a "Last 7 days" that happens to start on the 1st.
+     */
     public function summary(Request $request): JsonResponse
     {
-        [$from, $toExclusive] = $this->rangeFromRequest($request);
-
-        return response()->json(
-            $this->reports->summary($from, $toExclusive, $this->affiliateId($request)),
-        );
+        return response()->json($this->withCompare($request, 'summary', 'summaryComparison'));
     }
 
     public function trend(Request $request): JsonResponse
@@ -115,6 +116,44 @@ class ReportController extends Controller
         ]);
     }
 
+    /** ADR-104 R15/R16 — sales by channel, plus the reseller-wallet API vs Bot split. */
+    public function channelBreakdown(Request $request): JsonResponse
+    {
+        return response()->json($this->withCompare($request, 'channelBreakdown', 'channelComparison'));
+    }
+
+    public function deliveryByGame(Request $request): JsonResponse
+    {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+
+        return response()->json([
+            'games' => $this->reports->deliveryByGame($from, $toExclusive, $this->affiliateId($request)),
+        ]);
+    }
+
+    /** ADR-104 R7 — company-wide only, so null under an affiliate filter (the page hides it). */
+    public function accountingBridge(Request $request): JsonResponse
+    {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+
+        return response()->json([
+            'bridge' => $this->affiliateId($request) === null ? $this->reports->accountingBridge($from, $toExclusive) : null,
+        ]);
+    }
+
+    /** ADR-104 R8–R10 — failed orders and their compensation, plus store credit still owed (as of now). */
+    public function failedCompensated(Request $request): JsonResponse
+    {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+        $affiliateId = $this->affiliateId($request);
+
+        return response()->json([
+            ...$this->reports->failedAndCompensated($from, $toExclusive, $affiliateId),
+            'outstanding_store_credit' => $this->reports->outstandingStoreCredit($affiliateId),
+            'outstanding_store_credit_as_of' => now()->toIso8601String(),
+        ]);
+    }
+
     public function orderStatusFunnel(Request $request): JsonResponse
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);
@@ -126,11 +165,7 @@ class ReportController extends Controller
 
     public function membershipBreakdown(Request $request): JsonResponse
     {
-        [$from, $toExclusive] = $this->rangeFromRequest($request);
-
-        return response()->json(
-            $this->reports->membershipBreakdown($from, $toExclusive, $this->affiliateId($request)),
-        );
+        return response()->json($this->withCompare($request, 'membershipBreakdown', 'membershipComparison'));
     }
 
     public function export(Request $request): JsonResponse|StreamedResponse|Response
@@ -149,6 +184,26 @@ class ReportController extends Controller
             : $this->exportCsv($rows, $rangeLabel);
     }
 
+    /**
+     * `ReportService::$fetch` over the request's range, plus its Compare
+     * block (`ReportService::$compare`) when `?compare=` asks for one.
+     */
+    private function withCompare(Request $request, string $fetch, string $compare): array
+    {
+        $request->validate(['compare' => ['nullable', 'in:previous,month_to_date']]);
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+        $affiliateId = $this->affiliateId($request);
+        $current = $this->reports->{$fetch}($from, $toExclusive, $affiliateId);
+
+        if ($request->filled('compare')) {
+            $current['compare'] = $this->reports->{$compare}(
+                $current, $from, $toExclusive, $affiliateId, $request->query('compare') === 'month_to_date',
+            );
+        }
+
+        return $current;
+    }
+
     private function affiliateId(Request $request): ?int
     {
         return $request->filled('affiliate_id') ? (int) $request->query('affiliate_id') : null;
@@ -162,24 +217,10 @@ class ReportController extends Controller
         );
     }
 
-    /**
-     * The trend chart's own range: same as everything else on the page,
-     * except an unbounded ("All time") side is never passed through —
-     * `dailyTrend()` always zero-fills its window, so an unbounded one
-     * would mean an unbounded row count. Falls back to the last 30 days,
-     * matching this filter's pre-unification default.
-     */
+    /** ADR-104 R17 — the trend chart's range: "All time" runs from the first paid order. */
     private function trendRangeFromRequest(Request $request): array
     {
-        [$from, $toExclusive] = $this->rangeFromRequest($request);
-
-        if ($from === null || $toExclusive === null) {
-            $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay();
-
-            return [$todayKl->subDays(29)->setTimezone('UTC'), $todayKl->addDay()->setTimezone('UTC')];
-        }
-
-        return [$from, $toExclusive];
+        return $this->reports->trendRange(...[...$this->rangeFromRequest($request), $this->affiliateId($request)]);
     }
 
     private function rangeLabel(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): string
@@ -202,7 +243,8 @@ class ReportController extends Controller
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'Order #', 'Paid At', 'Customer', 'Affiliate', 'Game', 'Package', 'Payment Method',
-                'Pricing Basis', 'Reseller', 'Delivery Status', 'Sales (RM)', 'Platform Profit (RM)', 'Affiliate Profit (RM)',
+                'Pricing Basis', 'Reseller', 'Delivery Status', 'Paid (RM)', 'Wallet Refund (RM)', 'Paid Sales (RM)',
+                'Platform Profit (RM)', 'Affiliate Profit (RM)',
             ]);
 
             foreach ($rows as $row) {
@@ -217,7 +259,9 @@ class ReportController extends Controller
                     $row['pricing_basis'],
                     $row['reseller_name'] ?? '',
                     $row['delivery_status'],
-                    number_format($row['final_amount'] / 100, 2, '.', ''),
+                    number_format($row['paid_amount'] / 100, 2, '.', ''),
+                    number_format($row['wallet_refund'] / 100, 2, '.', ''),
+                    number_format($row['net_sales'] / 100, 2, '.', ''),
                     number_format($row['platform_profit'] / 100, 2, '.', ''),
                     number_format($row['affiliate_profit'] / 100, 2, '.', ''),
                 ]);

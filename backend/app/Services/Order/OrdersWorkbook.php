@@ -169,7 +169,7 @@ final class OrdersWorkbook
         $heading('A. Key figures', 'Amount (RM)', 'How it is calculated');
         $gross = $figure('Gross Sales', $paid('Final Amount (RM)'), 'Sum of Final Amount on paid orders.');
         $refunded = $figure('− Refunded to Wallet', $paid('Wallet Refund (RM)'), 'Money credited back to reseller wallets.');
-        $net = $figure('= Net Sales', "{$gross}-{$refunded}", 'Gross Sales minus wallet refunds. Matches Reports "Total Sales".');
+        $net = $figure('= Net Sales', "{$gross}-{$refunded}", 'Gross Sales minus wallet refunds. Matches Reports "Paid sales".');
         $platform = $figure('Platform Profit Earned', "SUM({$range('Platform Profit Earned (RM)')})", 'Profit actually credited to the platform. Matches Reports "Platform Profit".');
         $figure('Affiliate Profit Earned', "SUM({$range('Affiliate Profit Earned (RM)')})", 'Commission actually credited to affiliates.');
         $figure('Margin %', "IF({$net}=0,0,{$platform}/{$net})", 'Platform Profit Earned ÷ Net Sales.', $percent);

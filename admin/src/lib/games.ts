@@ -99,6 +99,8 @@ export interface ComboComponent {
   cost_price: number;
   standard_selling_price: number;
   is_active: boolean;
+  /** Supplier SKU — two components can share a name across suppliers. */
+  supplier_package_ref: string;
   /** How many of this component one unit of the combo delivers (decision 4's repeated-component allowance). */
   quantity: number;
 }

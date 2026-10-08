@@ -200,6 +200,7 @@ class CheckoutControllerTest extends TestCase
         );
 
         $order = Order::query()->firstOrFail();
+        $this->assertSame('storefront', $order->placed_via->value);
         $this->assertSame($game->id, $order->game_id);
         $this->assertSame($package->id, $order->package_id);
         $this->assertSame(500, $order->selling_price); // standard_selling_price + 0% affiliate markup

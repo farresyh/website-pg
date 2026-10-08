@@ -102,6 +102,7 @@ final class ResellerOrderPlacementService
                     paymentStatus: PaymentStatus::Paid,
                     paidAt: now(),
                     paymentMethod: 'wallet',
+                    placedVia: $request->placedVia,
                     gameId: $request->gameId,
                     packageId: $request->packageId,
                     supplierId: $request->supplierId,

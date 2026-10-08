@@ -45,7 +45,7 @@ class OrderControllerTest extends TestCase
             ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
         );
 
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'wallet_reseller_id' => $reseller->id,
             'order_number' => 'PG-'.uniqid(),

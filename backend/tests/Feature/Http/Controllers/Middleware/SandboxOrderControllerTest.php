@@ -85,7 +85,7 @@ class SandboxOrderControllerTest extends TestCase
         $this->assertTrue((bool) $response->json('is_test'));
         $this->assertSame(PaymentStatus::Paid->value, $response->json('payment_status'));
         $this->assertSame(DeliveryStatus::Failed->value, $response->json('delivery_status'));
-        $this->assertDatabaseHas('orders', ['id' => $response->json('id'), 'is_test' => true]);
+        $this->assertDatabaseHas('orders', ['id' => $response->json('id'), 'is_test' => true, 'placed_via' => 'sandbox']);
     }
 
     public function test_store_rejects_a_package_from_a_different_game(): void
@@ -118,7 +118,7 @@ class SandboxOrderControllerTest extends TestCase
     public function test_index_never_includes_real_orders(): void
     {
         [$game, $package] = $this->gameWithPackage();
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-1',
             'is_test' => false,
@@ -142,7 +142,7 @@ class SandboxOrderControllerTest extends TestCase
     public function test_show_404s_for_a_real_order(): void
     {
         [$game, $package] = $this->gameWithPackage();
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-2',
             'is_test' => false,
@@ -314,7 +314,7 @@ class SandboxOrderControllerTest extends TestCase
     public function test_mark_delivered_404s_for_a_real_order(): void
     {
         [$game, $package] = $this->gameWithPackage();
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-MARK-DELIVERED',
             'is_test' => false,
@@ -368,7 +368,7 @@ class SandboxOrderControllerTest extends TestCase
     public function test_confirm_failed_404s_for_a_real_order(): void
     {
         [$game, $package] = $this->gameWithPackage();
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-CONFIRM-FAILED',
             'is_test' => false,
@@ -439,7 +439,7 @@ class SandboxOrderControllerTest extends TestCase
     public function test_destroy_404s_for_a_real_order(): void
     {
         [$game, $package] = $this->gameWithPackage();
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-3',
             'is_test' => false,
@@ -461,7 +461,7 @@ class SandboxOrderControllerTest extends TestCase
     public function test_destroy_all_only_deletes_test_orders(): void
     {
         [$game, $package] = $this->gameWithPackage();
-        $realOrder = Order::query()->create([
+        $realOrder = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-REAL-4',
             'is_test' => false,

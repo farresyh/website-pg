@@ -10,6 +10,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
+use App\Services\Order\PlacedVia;
 use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PriceAboveMaxException;
@@ -140,6 +141,7 @@ class OrderController extends Controller
                 costPriceSen: $package->cost_price,
                 standardSellingPriceSen: $package->standard_selling_price,
                 idempotencyKey: $data['idempotency_key'],
+                placedVia: PlacedVia::ResellerApi,
                 supplierProductRef: $package->supplier_package_ref,
                 gameId: $package->game_id,
                 packageId: $package->id,

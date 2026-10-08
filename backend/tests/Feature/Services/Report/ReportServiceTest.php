@@ -6,6 +6,7 @@ use App\Models\Affiliate;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Reseller;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -41,7 +42,7 @@ class ReportServiceTest extends TestCase
 
     private function order(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
@@ -143,12 +144,14 @@ class ReportServiceTest extends TestCase
     public function test_latest_order_is_most_recent_paid_by_paid_at(): void
     {
         $this->order(['order_number' => 'OLDER', 'paid_at' => now()->subDay()]);
-        $this->order(['order_number' => 'NEWER', 'paid_at' => now()]);
+        $newer = $this->order(['order_number' => 'NEWER', 'paid_at' => now()]);
         $this->order(['order_number' => 'PENDING-NEWEST', 'payment_status' => PaymentStatus::Pending->value, 'paid_at' => null]);
 
         $summary = $this->reports->summary(null, null, null);
 
         $this->assertSame('NEWER', $summary['latest_order']['order_number']);
+        // ADR-104 R5 — the page links straight to the order (`/admin/orders?order={id}`).
+        $this->assertSame($newer->id, $summary['latest_order']['id']);
     }
 
     public function test_daily_trend_attributes_todays_late_night_order_to_today_kl(): void
@@ -157,12 +160,16 @@ class ReportServiceTest extends TestCase
         $lateNight = $todayKl->addHours(23)->addMinutes(30);
 
         $this->order(['final_amount' => 1500, 'paid_at' => $lateNight->setTimezone('UTC')]);
+        $this->order(['final_amount' => 500, 'paid_at' => $todayKl->addHour()->setTimezone('UTC')]);
 
         [$from, $to] = $this->lastNDaysRange(7);
         $days = collect($this->reports->dailyTrend($from, $to, null));
         $todayRow = $days->firstWhere('date', $todayKl->toDateString());
 
-        $this->assertSame(1500, $todayRow['sales']);
+        $this->assertSame(2000, $todayRow['sales']);
+        // ADR-104 R6 — the Overview chart's Orders toggle; empty days are zero-filled too.
+        $this->assertSame(2, $todayRow['orders_count']);
+        $this->assertSame(0, $days->first()['orders_count']);
     }
 
     public function test_export_rows_include_recognized_profit_and_affiliate_name(): void
@@ -200,6 +207,25 @@ class ReportServiceTest extends TestCase
         $this->assertSame('Acme Reseller', $rows[0]['reseller_name']);
         $this->assertSame('failed', $rows[0]['delivery_status']);
         $this->assertSame(0, $rows[0]['platform_profit']); // paid but not delivered — no ledger credit, matches the pinned rule
+    }
+
+    /**
+     * ADR-104 R8 revision (2026-10-09) — the export's net column is Paid
+     * sales: its sum equals the summary, so the export can't drift from the
+     * page again (it summed gross final_amount, wallet refunds included).
+     */
+    public function test_export_net_sales_sums_to_the_summary_paid_sales(): void
+    {
+        $reseller = Reseller::query()->create(['business_name' => 'Refunded Reseller', 'is_active' => true]);
+        $refunded = $this->order(['wallet_reseller_id' => $reseller->id, 'final_amount' => 900, 'delivery_status' => 'failed']);
+        (new LedgerService)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 900, 'wallet_refund', 'order', $refunded->id);
+        $this->order(['final_amount' => 1100]);
+
+        $rows = $this->reports->exportRows(null, null, null);
+
+        $this->assertSame($this->reports->summary(null, null, null)['total_sales'], (int) $rows->sum('net_sales'));
+        $row = $rows->firstWhere('order_number', $refunded->order_number);
+        $this->assertSame(['paid_amount' => 900, 'wallet_refund' => 900, 'net_sales' => 0], array_intersect_key($row, array_flip(['paid_amount', 'wallet_refund', 'net_sales'])));
     }
 
     /** Item 63: a wallet or wholesale-tier order was exported as "Standard". */

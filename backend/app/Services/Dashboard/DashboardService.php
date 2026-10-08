@@ -14,6 +14,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -68,23 +69,23 @@ final class DashboardService
         return [
             'sales_today' => [
                 'value' => $today['total_sales'],
-                'comparison' => $this->comparison($today['total_sales'], $yesterday['total_sales']),
-                'definition' => 'SUM(final_amount), sen, where payment_status=Paid, paid_at = today (Asia/Kuala_Lumpur), excludes is_test orders. Same rule Reports (RPT-1) uses.',
+                'comparison' => PeriodComparison::change($today['total_sales'], $yesterday['total_sales']),
+                'definition' => 'Paid sales: SUM(final_amount) minus wallet refunds (Order::netSalesSql), sen, where payment_status=Paid, paid_at = today (Asia/Kuala_Lumpur), excludes is_test orders. Same rule Reports (RPT-1) uses.',
             ],
             'orders_today' => [
                 'value' => $today['orders_count'],
-                'comparison' => $this->comparison($today['orders_count'], $yesterday['orders_count']),
+                'comparison' => PeriodComparison::change($today['orders_count'], $yesterday['orders_count']),
                 'definition' => 'COUNT(*) where payment_status=Paid, paid_at = today (Asia/Kuala_Lumpur), excludes is_test orders.',
             ],
             'profit_today' => [
                 'value' => $today['platform_profit'],
-                'comparison' => $this->comparison($today['platform_profit'], $yesterday['platform_profit']),
+                'comparison' => PeriodComparison::change($today['platform_profit'], $yesterday['platform_profit']),
                 'definition' => 'SUM(ledger_entries.amount), sen, type=order_profit, owner_type=platform, for orders paid today (Asia/Kuala_Lumpur) — never Order.platform_profit directly, since that column is stamped at checkout time before the delivery outcome is known (a paid-but-undelivered order correctly contributes RM0 here until it delivers).',
             ],
             'vouchers_issued_today' => [
                 'value' => $vouchersToday['count'],
                 'amount_sen' => $vouchersToday['amount'],
-                'comparison' => $this->comparison($vouchersToday['count'], $vouchersYesterday['count']),
+                'comparison' => PeriodComparison::change($vouchersToday['count'], $vouchersYesterday['count']),
                 'definition' => 'COUNT(*)/SUM(amount) of Vouchers with a non-null order_id (Path B — issued to compensate a failed order, ADR-004), created today (Asia/Kuala_Lumpur), excluding vouchers on is_test orders. Standalone admin-issued (Path A) vouchers are not counted — this tile tracks the order-failure compensation signal specifically.',
             ],
         ];
@@ -289,7 +290,7 @@ final class DashboardService
 
         $games = array_map(function (array $row) use ($previous) {
             $prevSales = $previous->get($row['game_id'])['sales'] ?? 0;
-            $row['comparison'] = $this->comparison($row['sales'], $prevSales);
+            $row['comparison'] = PeriodComparison::change($row['sales'], $prevSales);
 
             return $row;
         }, $current);
@@ -343,8 +344,7 @@ final class DashboardService
     private function vouchersIssued(CarbonImmutable $from, CarbonImmutable $toExclusive): array
     {
         $vouchers = Voucher::query()
-            ->whereNotNull('order_id')
-            ->whereHas('sourceOrder', fn ($query) => $query->where('is_test', false))
+            ->compensation()
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->get(['amount']);
@@ -352,23 +352,6 @@ final class DashboardService
         return [
             'count' => $vouchers->count(),
             'amount' => (int) $vouchers->sum('amount'),
-        ];
-    }
-
-    /**
-     * @return array{pct: float|null, direction: 'up'|'down'|'flat'|'new'}
-     */
-    private function comparison(int|float $current, int|float $previous): array
-    {
-        if ($previous == 0) {
-            return ['pct' => null, 'direction' => $current == 0 ? 'flat' : 'new'];
-        }
-
-        $pct = round((($current - $previous) / $previous) * 100, 2);
-
-        return [
-            'pct' => abs($pct),
-            'direction' => $pct > 0 ? 'up' : ($pct < 0 ? 'down' : 'flat'),
         ];
     }
 

@@ -38,7 +38,7 @@ class MembershipQuotaServiceTest extends TestCase
 
     private function order(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge([
+        return Order::query()->create(array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-QUOTA-1',
             'customer_email' => 'member@example.com',

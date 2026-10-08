@@ -77,7 +77,7 @@ class SupplierDeliveryCheckServiceTest extends TestCase
             'name' => 'MLBB', 'slug' => 'mlbb-check-'.uniqid(),
             'validation_rules' => ['customer_no_separator' => 'space'],
         ]);
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-DELIVCHECK-1',
             'reference_number' => 'REF-DELIVCHECK-1',
@@ -127,7 +127,7 @@ class SupplierDeliveryCheckServiceTest extends TestCase
         ]);
         $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-DELIVCHECK-COMBO-1',
             'reference_number' => 'REF-DELIVCHECK-COMBO-1',
@@ -208,7 +208,7 @@ class SupplierDeliveryCheckServiceTest extends TestCase
             'name' => 'Digiflazz Test', 'slug' => $supplierSlug, 'api_config' => [], 'currency' => 'IDR',
         ]);
 
-        return Order::query()->create([
+        return Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-DELIVCHECK-'.uniqid(),
             'reference_number' => 'REF-DELIVCHECK-'.uniqid(),
@@ -275,7 +275,7 @@ class SupplierDeliveryCheckServiceTest extends TestCase
         ]);
         $combo->components()->attach($component->id, ['quantity' => 1, 'sort_order' => 0]);
 
-        $order = Order::query()->create([
+        $order = Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-DELIVCHECK-COMBO-AMBIG-1',
             'reference_number' => 'REF-DELIVCHECK-COMBO-AMBIG-1',

@@ -19,7 +19,7 @@ change to those paths with the same care the existing code already does.
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
 | `docs-site/` | Astro 7 + Starlight — public Reseller API docs | The **4th frontend** (ADR-084), `docs.pekangame.space`. Spec is generated (`php artisan scramble:export`), never hand-edited; CI drift-guards it |
-| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log, index at the top), `build-log.md` (chronological record; older entries in `build-log-archive.md`), `foundation-security.md`, `legacy-reference-notes.md` | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
+| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log, index at the top), `build-log.md` (chronological record; older entries in `build-log-archive.md`), `foundation-security.md`, `legacy-reference-notes.md`; `archive/` holds superseded research (read only for history) | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
 
 > **Terminology (ADR-072):** the old whitelabel "Reseller" was renamed
 > **Affiliate**; "Reseller" now means a prepaid-wallet account with three order
@@ -115,7 +115,7 @@ banner). This file covers the whole repo.
   status, `git fetch` and diff `origin/main..origin/staging`. Local branch refs
   go stale silently, and a doc or memory "LIVE PROD" label can be wrong.
 - A push to `main` auto-deploys the backend (CI `deploy` job → Forge hook,
-  gated on all test jobs, ADR-066); the four frontends auto-deploy from `main`
+  gated on every CI job except `playwright`, ADR-066); the four frontends auto-deploy from `main`
   on Vercel. A `staging`→`main` release happens only when the founder asks.
 - A fix merged to `staging` is **not** live. If a bug was patched in prod data
   but its code fix is still staging-only, the bug can recur — say so plainly

@@ -132,7 +132,7 @@ class MembershipControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-TEST1', 'reference_number' => 'REF-TEST1',
             'game_id' => $game->id, 'package_id' => $package->id,
@@ -140,7 +140,7 @@ class MembershipControllerTest extends TestCase
             'player_id' => '12345', 'cost_price' => 250, 'standard_selling_price' => 300, 'selling_price' => 300,
             'transaction_fee' => 0, 'platform_profit' => 50, 'affiliate_profit' => 0, 'final_amount' => 300, 'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Delivered,
         ]);
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-OTHER', 'reference_number' => 'REF-OTHER',
             'game_id' => $game->id, 'package_id' => $package->id,
@@ -171,7 +171,7 @@ class MembershipControllerTest extends TestCase
         ]);
 
         for ($i = 0; $i < 12; $i++) {
-            $order = Order::query()->create([
+            $order = Order::query()->create(['placed_via' => 'storefront',
                 'affiliate_id' => $this->primaryAffiliate()->id,
                 'order_number' => "KRS-CAP{$i}", 'reference_number' => "REF-CAP{$i}",
                 'game_id' => $game->id, 'package_id' => $package->id,
@@ -227,7 +227,7 @@ class MembershipControllerTest extends TestCase
             'game_id' => $game->id, 'name' => '50 Diamonds', 'cost_price' => 250, 'standard_selling_price' => 300,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A', 'is_active' => true,
         ]);
-        Order::query()->create([
+        Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-LEGACY', 'reference_number' => 'REF-LEGACY',
             'game_id' => $game->id, 'package_id' => $package->id, 'membership_id' => $membership->id,

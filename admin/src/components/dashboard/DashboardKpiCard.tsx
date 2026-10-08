@@ -3,7 +3,7 @@
 /**
  * DASH-1 — wraps reports/StatCard with the comparison badge + info
  * tooltip every dashboard metric carries (ADR-045 decisions 4/25).
- * StatCard itself is left untouched (still used bare by Reports).
+ * StatCard itself is left untouched (Reports moved to ReportKit's KpiCard, ADR-104).
  */
 
 import type { ReactNode } from "react";
