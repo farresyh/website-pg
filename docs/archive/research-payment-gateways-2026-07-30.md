@@ -1,3 +1,7 @@
+> **Archived 2026-10-08 — historical.** Pre-launch gateway research behind
+> ADR-022. Since ADR-022's 2026-09-01 addendum CHIP is the sole gateway and
+> Xendit was removed; read this only for why CHIP was chosen.
+
 # Payment Gateway Research — CHIP vs HitPay (2026-07-30)
 
 > **OUTCOME (historical):** This fed **ADR-022** — CHIP was chosen, added alongside Xendit,
