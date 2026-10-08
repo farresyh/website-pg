@@ -73,7 +73,8 @@ Content-Type: application/json
   "product_code": "MLMY-86",
   "player_id": "123456789",
   "server_id": "2201",
-  "idempotency_key": "8f2b8c4e-1d3a-4a9c-9b1e-2f6a7c0d5e11"
+  "idempotency_key": "8f2b8c4e-1d3a-4a9c-9b1e-2f6a7c0d5e11",
+  "max_price_sen": 6300
 }
 ```
 
@@ -81,6 +82,25 @@ Content-Type: application/json
   (Mobile Legends needs one; many games don't).
 - `idempotency_key` is a **fresh UUID you generate per order**. See
   [Idempotency & retries](/idempotency/).
+- `max_price_sen` (optional, **recommended**) is the most you agree to pay,
+  in sen — usually the `price_sen` you last read from the catalogue.
+
+### Prices change — send `max_price_sen`
+
+Your price follows the supplier's cost, which PekanGame syncs every 30
+minutes, so a `price_sen` you read earlier may no longer be current. You are
+always charged the **current** price at the moment of the order:
+
+- current price ≤ `max_price_sen` → the order goes through at the current
+  price (lower, if it has dropped);
+- current price > `max_price_sen` → `422 PRICE_CHANGED`, nothing is charged,
+  and `details.current_price_sen` tells you the new price;
+- no `max_price_sen` → the order goes through at whatever the current price
+  is.
+
+Don't retry a `PRICE_CHANGED` automatically at `current_price_sen` — that is
+the same as not sending a ceiling. Check the new price against your own margin
+first.
 
 On success you get **HTTP 201** and the order:
 
