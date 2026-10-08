@@ -6548,7 +6548,8 @@ The code-trace also found that **Reports "Sales" and Accounting "Sales revenue" 
 
 See `docs/build-log.md`, 2026-10-08.
 
-**Build note, 2026-10-08 — PR-B (frontend foundation) built** on `feature/2026-10-08-reports-pr-b`, as designed, with three implementation choices:
+**Build note, 2026-10-08 — PR-B (frontend foundation) built** on `feature/2026-10-08-reports-pr-b`, as designed, with four implementation choices:
+- `OrderStatusFunnelChart` is plain HTML, not Recharts: the mockup's form (a share bar and labelled bar rows) needs no axes or scales. The trend charts are Recharts, as stacked panels with one y-scale each.
 - The chart tokens sit in a Tailwind `@theme static` block. Recharts reads them only as `var(--color-chart-*)`, which Tailwind's pruning can't see.
 - `chart-negative` now aliases `danger-ink` (it has a dark value), matching the artifact's `tokens.json`. It was a fixed hex, filed as "inherits light", and had no reader yet.
 - Compare is wired end to end on Overview's KPI cards only; the other tabs take it in PR-C with the rest of R13 Phase 1.

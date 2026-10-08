@@ -872,8 +872,8 @@ code and production on 2026-10-08; re-verify before building.
       components, payment-method label map. **Built** (build-log
       2026-10-08): `ReportKit` (card, KPI with Compare delta, paged table
       with Total row, game icon), `lib/report-buckets.ts`, header Refresh /
-      Export menu / Compare (wired on Overview). PR-C needs `orders_count`
-      added to the trend endpoint for the Orders toggle.
+      Export menu / Compare (wired on Overview), panel trend chart and
+      delivery-health funnel in the mockup's shape.
     - **PR-C, the 7 tabs.** Then a light/dark live-browser audit per tab.
 66. **Combo admin gaps, deliberately deferred** (§15 Combo row): no
     edit-composition UI (delete and recreate only), and no admin view of the

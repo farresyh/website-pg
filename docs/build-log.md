@@ -1411,8 +1411,11 @@ on `feature/2026-10-08-reports-pr-a`.
 Frontend only, on `feature/2026-10-08-reports-pr-b`. The 7-tab layout is
 PR-C; the current 8 tabs keep working on the new pieces.
 
-- **R1 Recharts 3.10.1.** `TrendChart` (same props, so tabs didn't change
-  shape) and `OrderStatusFunnelChart` rebuilt on it. Chart tokens
+- **R1 Recharts 3.10.1.** `TrendChart` takes stacked panels over one date
+  axis, each with its own y-scale (mockup: revenue bars over owner-profit
+  bars, so profit at ~3–10% of revenue isn't flattened; margin as a dotted
+  line with point labels). `OrderStatusFunnelChart` follows the mockup's
+  share bar + badge rows in plain HTML: no axes or scales to need Recharts. Chart tokens
   (`chart-1/2/3`, `chart-grid`, `chart-positive`, `chart-negative`) are
   aliases of the artifact's base tokens; `chart-negative` was a fixed hex,
   now `danger-ink` per the artifact's `tokens.json`. Profit charts use
@@ -1426,10 +1429,24 @@ PR-C; the current 8 tabs keep working on the new pieces.
   `KpiCard` (Compare delta, pts for margin, "— No data" for an empty
   previous period, clickable), `ReportTable` (Total row, 31 rows a page),
   `GameIcon` (2-letter fallback). `HorizontalBarList` gained a Total line.
-- **Header (R5/R12):** "Updated X min ago" + Refresh, one Export menu,
-  Compare switch (disabled with a reason on All time; "This month" sends
-  `month_to_date`). Wired end to end on Overview's KPIs; other tabs pick it
-  up in PR-C.
+- **Header (R5/R12), in the mockup's shape:** "Updated X min ago" + icon
+  Refresh, Ask assistant, Export menu; filter row with date range + its
+  dates, inline-labelled Affiliate select, dashed "+ Compare period"
+  (disabled with a reason on All time; "This month" sends
+  `month_to_date`), and "Paid orders only · Malaysia time (GMT+8)".
+  Compare is wired end to end on Overview's KPIs; other tabs pick it up in
+  PR-C. Overview's trend card has the Revenue & profit / Orders and
+  Daily / Weekly / Monthly toggles; Profit's charts share one bucket.
+- **Backend (small):** the trend endpoint returns `orders_count` per day
+  (Orders toggle) and `latest_order` carries `id` (the "Open →" link to
+  `/admin/orders?order={id}`), test-first in `ReportServiceTest`.
+- **Mockup comparison.** The first cut was checked for working colours and
+  data only, not against the artifact's mockups; a side-by-side found a
+  single-axis line chart (repeating review defect #06, profit flattened),
+  margin points invisible between empty days, and funnel/header styling
+  off. All fixed before merge, then re-screenshotted against the mockups.
+  Overview and Profit tabs also ignore a slower stale response after a
+  filter change (it could overwrite the newer one).
 - **R19** `paymentMethodLabel()` in `lib/payment-methods.ts`, used by
   Reports and Order Detail/list. **R20** every Reports bar list shows sen.
 - **Verified** in a local production build against the dev DB (Playwright,
@@ -1449,7 +1466,6 @@ PR-C; the current 8 tabs keep working on the new pieces.
     CVD and normal-vision separation and contrast pass. Kept as the
     artifact defines it; every chart has a legend, end labels and a table
     view.
-- **Not in this PR:** the trend endpoint has no `orders_count` (needed by
-  Overview's Orders toggle, PR-C); the old tabs' dark-mode
+- **Not in this PR:** the old tabs' dark-mode
   `text-success-600` / `dark:text-success-400` profit cells are faint
   (`success-400` isn't defined) and go away with the PR-C reskin.
