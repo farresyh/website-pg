@@ -1405,3 +1405,51 @@ on `feature/2026-10-08-reports-pr-a`.
   merged voucher `order_id = null`. A merge of compensation vouchers
   therefore drops out of outstanding store credit (and out of the Dashboard
   and Register counts, which predate this). Prod has 0 merges.
+
+## 2026-10-08 — Reports redesign PR-B: frontend foundation (item 65, ADR-104 R1, R3, R5, R12–R13, R17–R20)
+
+Frontend only, on `feature/2026-10-08-reports-pr-b`. The 7-tab layout is
+PR-C; the current 8 tabs keep working on the new pieces.
+
+- **R1 Recharts 3.10.1.** `TrendChart` (same props, so tabs didn't change
+  shape) and `OrderStatusFunnelChart` rebuilt on it. Chart tokens
+  (`chart-1/2/3`, `chart-grid`, `chart-positive`, `chart-negative`) are
+  aliases of the artifact's base tokens; `chart-negative` was a fixed hex,
+  now `danger-ink` per the artifact's `tokens.json`. Profit charts use
+  `chart-2` (owner) / `chart-3` (affiliate); the funnel uses the status
+  tokens.
+- **R3/R17 bucketing** in `lib/report-buckets.ts` (Monday weeks, KL months,
+  Σ profit ÷ Σ sales, the All-time auto bucket). Admin had no unit-test
+  runner: `npm test` runs `node --test` with type stripping, added to the
+  admin CI job.
+- **Shared pieces** (`components/reports/ReportKit.tsx`): `ReportCard`,
+  `KpiCard` (Compare delta, pts for margin, "— No data" for an empty
+  previous period, clickable), `ReportTable` (Total row, 31 rows a page),
+  `GameIcon` (2-letter fallback). `HorizontalBarList` gained a Total line.
+- **Header (R5/R12):** "Updated X min ago" + Refresh, one Export menu,
+  Compare switch (disabled with a reason on All time; "This month" sends
+  `month_to_date`). Wired end to end on Overview's KPIs; other tabs pick it
+  up in PR-C.
+- **R19** `paymentMethodLabel()` in `lib/payment-methods.ts`, used by
+  Reports and Order Detail/list. **R20** every Reports bar list shows sen.
+- **Verified** in a local production build against the dev DB (Playwright,
+  light + dark): line strokes compute to the token hex in both themes
+  (light `#0b7285`/`#6b4fcf`, dark `#4cc3d4`/`#a592f0`), funnel counts match
+  the DB (167 delivered / 16 failed), no console errors, no horizontal
+  scroll at 390px.
+- **Gotchas.**
+  - Tailwind v4 drops `@theme` variables no class uses. `chart-2`/`chart-3`
+    are only read as `var(--color-chart-*)` from Recharts props, so the
+    owner-profit line rendered invisible. The chart tokens live in an
+    `@theme static` block.
+  - Recharts 3's `LabelList` index counts only drawn bars, so zero-count
+    statuses shifted every label. The funnel puts its counts on a second,
+    right-hand category axis instead.
+  - The dataviz validator fails the brand palette on chroma (muted hues);
+    CVD and normal-vision separation and contrast pass. Kept as the
+    artifact defines it; every chart has a legend, end labels and a table
+    view.
+- **Not in this PR:** the trend endpoint has no `orders_count` (needed by
+  Overview's Orders toggle, PR-C); the old tabs' dark-mode
+  `text-success-600` / `dark:text-success-400` profit cells are faint
+  (`success-400` isn't defined) and go away with the PR-C reskin.
