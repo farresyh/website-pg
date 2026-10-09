@@ -19,7 +19,7 @@ change to those paths with the same care the existing code already does.
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
 | `docs-site/` | Astro 7 + Starlight — public Reseller API docs | The **4th frontend** (ADR-084), `docs.pekangame.space`. Spec is generated (`php artisan scramble:export`), never hand-edited; CI drift-guards it |
-| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (decision log, index at the top), `build-log.md` (chronological record; older entries in `build-log-archive.md`), `foundation-security.md`, `legacy-reference-notes.md`; `archive/` holds superseded research (read only for history) | Read `adr.md` before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision |
+| `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (the ADR **index**: one row per decision, with its Standing) + `adr/ADR-NNN-slug.md` (one file per decision), `build-log.md` (chronological record from 2026-10-06; older entries in `build-log-archive.md`), `foundation-security.md`, `legacy-reference-notes.md`; `archive/` holds superseded research (history only) | Read the ADR before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision. **One fact, one home:** build/live status → `prd.md` §15; why → the ADR file; what happened when → `build-log.md`. Archives are history, never current truth |
 
 > **Terminology (ADR-072):** the old whitelabel "Reseller" was renamed
 > **Affiliate**; "Reseller" now means a prepaid-wallet account with three order
@@ -43,18 +43,20 @@ banner). This file covers the whole repo.
 ## Task Lifecycle (build / fix work)
 
 1. **Orient first.** Check whether it already exists: the `docs/adr.md` index
-   (Accepted / RESERVED / parked?), `docs/prd.md` §15 (already built?) and §16
+   (Standing: in force, superseded, parked, reserved?), `docs/prd.md` §15 (already built?) and §16
    (on the backlog, or parked with a recorded reason?). Build on an existing
    ADR rather than writing a duplicate; if something was parked, surface *why*
    before re-opening it. Grep `docs/build-log.md` + `docs/build-log-archive.md`
    for "was this tried before". A doc or memory that says "open", "live", or
    "released" is a claim from when it was written — re-verify it against code,
    git, or production before building on it.
-2. **Decide + grill.** A non-trivial design or trade-off gets a numbered
-   `docs/adr.md` entry (Context → Decision → Rationale → Consequence to track),
-   stress-tested with `/mattpocock-skills:grilling` before it's marked Accepted.
-   Revising a recorded decision = addendum on that ADR; filling an
-   undocumented gap = new ADR.
+2. **Decide + grill.** A non-trivial design or trade-off gets a numbered ADR,
+   a new file `docs/adr/ADR-NNN-slug.md` (Context → Decision → Rationale →
+   Consequence to track) plus its `docs/adr.md` index row, stress-tested with
+   `/mattpocock-skills:grilling` before it's marked Accepted. Revising a
+   recorded decision = a dated `### YYYY-MM-DD addendum` appended to that
+   ADR's file; filling an undocumented gap = new ADR. The file format and
+   rules are at the top of `docs/adr.md`.
    **For a money-critical ADR (anything touching order price, profit, ledger,
    voucher, wallet, or budget), the grill alone is not enough — run a
    code-trace pass against real code before marking Accepted:**
@@ -100,8 +102,14 @@ banner). This file covers the whole repo.
      including a line for any design-only ADR/addendum not yet built.
    - `docs/prd.md` §14: the headline, whenever a status fact in it changed
      (what's released, which supplier is live, who the customers are).
-   - `docs/adr.md`: new entry or addendum, plus its index row.
-   Docs record verified facts — check against production, not memory.
+   - The ADR: a new `docs/adr/ADR-NNN-slug.md` or an addendum appended to
+     it, and its `docs/adr.md` index row (Standing, last addendum date). If it
+     revises or retires another ADR, update that one's Standing too (index
+     row + file banner). Build/live status never goes in the ADR index.
+   Docs record verified facts — check against production, not memory. A fact
+   lives in one place; elsewhere, point to it rather than restate it.
+   When `build-log.md` grows long, move its oldest entries verbatim to
+   `build-log-archive.md` and update both headers and every pointer to them.
 8. **Commit** (granular), **push**, **open a PR into `staging`**. CI green is
    the only merge gate. When CI fails, read the actual PR page
    (`gh pr view <n> --json mergeable,statusCheckRollup`) before theorizing —
@@ -208,6 +216,8 @@ banner). This file covers the whole repo.
 
 ```bash
 # All four at once (backend + admin + storefront + reseller); also starts local Redis.
+# The frontends call NEXT_PUBLIC_API_URL (the Herd site), so Herd must be
+# running — backend/AGENTS.md gotcha 6.
 ./scripts/dev.sh
 
 # Backend

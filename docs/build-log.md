@@ -5,8 +5,8 @@
 > Moved out of `prd.md` §14 on 2026-09-11 once it outgrew the spec doc.
 >
 > **This file is append-only history.** Current per-feature status lives in
-> `prd.md` §15; the live backlog is `prd.md` §16; decision rationale is
-> `adr.md`. **Everything before 2026-10-06** lives verbatim in
+> `prd.md` §15; the live backlog is `prd.md` §16; decision rationale is the
+> ADR log (`adr.md` index → `adr/`). **Everything before 2026-10-06** lives verbatim in
 > [`build-log-archive.md`](./build-log-archive.md): the foundation build, the
 > old §14 table and PrimeReact tracker, and the production-era entries
 > 2026-09-01 → 10-05 (moved in four passes, the last on 2026-10-09) to keep
@@ -807,3 +807,77 @@ The deploy job succeeded.
   - Outstanding store credit RM 3.10. Export net sum RM 184.00.
   - Channels sum to RM 184.00 (58.79 + 117.02 + 8.19). Profit 3.68 + 3.35
     + 0.35 = RM 7.38.
+
+## 2026-10-09 — Docs restructure + full markdown sync (docs only)
+
+The founder asked for every `.md` file to agree with each other and with the
+code, so future sessions follow correct instructions.
+
+- **ADR log split.** `docs/adr.md` was 2 MB, with a 45k-character index whose
+  rows had grown into build-status summaries.
+  - Each of the 119 ADRs is now its own file, `docs/adr/ADR-NNN-slug.md`,
+    copied verbatim: a check confirmed all 7,174 body lines match the old
+    sections exactly.
+  - Each file adds a **Standing** banner and turns its heading into `#`.
+  - All 48 cross-ADR anchors and the `adr.md#…` links in other docs now point
+    at the new files. 503 relative links were checked; none are broken.
+  - `adr.md` is now the index only (25 KB): rules for adding an ADR or
+    addendum, then one row per ADR with title, Standing and last addendum
+    date.
+  - Build/live status was removed from the index. It lives only in `prd.md`
+    §15, which is how the old index rows and the PRD had contradicted each
+    other.
+  - Standing marks the superseded or revised decisions: 001, 003, 008, 013,
+    014, 015, 017, 019, 020, 022, 029, 030, 053, 086, 098 and 102; 070 is
+    reserved; 115 is parked; 118 is design only.
+- **Audit.** Three read-only forks covered the agent/readme files,
+  `prd.md`, and the public docs-site plus the supporting docs. Every
+  finding acted on was verified against the code first. Fixed:
+  - `prd.md`:
+    - §15 said Reports PR-3 was "not yet built".
+    - MFA was listed as MVP/required (it is descoped).
+    - §7.1 described a Xendit payment flow.
+    - Old `reseller_profit` names; Phase-2 "in build" wording.
+    - The Order/LedgerEntry rows lacked `partially_delivered`,
+      `placed_via` and the wallet ledger types; `KRS-` → `PG-`.
+    - Three long §15 rows compacted, and three archive pointers fixed.
+  - `AGENTS.md`:
+    - The ADR workflow now points to per-file ADRs.
+    - New "one fact, one home" rule and a build-log archiving rule.
+    - Herd note on `dev.sh`.
+  - `README.md`: broken setup commands (`reseller/.env.local.example`
+    doesn't exist; storefront copy step missing), Node 22, ADR and
+    build-log pointers.
+  - `backend/AGENTS.md`: `orders-combo` is chosen by `FulfillOrderJob`, not
+    `orderLane()`; added the Digiflazz and CHIP-webhook smoke tests; gotcha
+    1 now covers `.env.example`'s `QUEUE_CONNECTION=database`. The config
+    itself is unchanged, because CI copies it.
+  - `reseller/AGENTS.md`: the third Next.js app; API docs at
+    `docs.pekangame.space`.
+  - `storefront/DESIGN.md`: four affiliate presets, all with dark tokens
+    (ADR-113). It said one.
+  - Public API docs:
+    - Product codes are not case-sensitive.
+    - Wallet top-up is FPX only (no card), and the Bot can top up too.
+    - Price sync runs about hourly, not every 30 minutes.
+    - Auth failures are limited to 20/min per IP.
+    - Webhooks time out at 10 s and don't follow redirects.
+    - `/v1/balance` path style.
+  - `foundation-security.md`: the compensation forms (wallet refund,
+    restore, partial settlement); stale pointers.
+  - `legacy-reference-notes.md`: "supplier stays Gamevion / reseller scope
+    stays Phase 2".
+  - `build-log-archive.md`: history-only banner and header range.
+- **Not changed, noted:** comment at `ci.yml:228` still names the old
+  `build-and-push` job; `storefront/src/lib/theme-presets.ts:23` comment
+  still says only `default` has dark tokens. Both are code comments, not
+  docs.
+- **Incidents.**
+  - One audit fork ran a read-only SSH `grep -c PRICE_SYNC_INTERVAL` on
+    the prod `.env`, against its no-production instruction. It counted the
+    key only; no value was read and nothing was written.
+  - A fork reported `docs-site/CLAUDE.md` as a duplicate of `AGENTS.md`. It
+    is a symlink to it. Writing `@AGENTS.md` into it overwrote
+    `docs-site/AGENTS.md`; restored from git at once, and no change was
+    committed.
+  - Lesson: check `ls -l` before writing to a file a fork calls a copy.

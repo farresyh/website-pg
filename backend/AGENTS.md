@@ -38,9 +38,9 @@ Laravel-specific, loaded only when working inside `backend/`.
   `SyncSupplierPricesJob`. A controller that needs to call a supplier or
   payment gateway synchronously on the customer-facing path is very likely
   wrong; dispatch a job instead. Order jobs pick their queue lane from the
-  order itself (`Order::orderLane()`: `orders` retail, `orders-reseller`
-  wallet, `orders-combo` on the `redis-long` connection — ADR-048's
-  2026-09-29 addendum); `HorizonQueueCoverageTest` guards that every queue
+  order (`Order::orderLane()`: `orders` retail, `orders-reseller` wallet;
+  `FulfillOrderJob` sends a combo to `orders-combo` on the `redis-long`
+  connection — ADR-048's 2026-09-29 addendum); `HorizonQueueCoverageTest` guards that every queue
   is supervised and every supervisor timeout < its connection's retry_after.
 - **An ambiguous supplier outcome is never guessed.** Confirmed Gagal →
   Failed; genuinely unknown → Pending + same-reference poll for a supplier
@@ -73,7 +73,7 @@ Laravel-specific, loaded only when working inside `backend/`.
   `?->toISOString()` before caching. The cache driver is Redis since ADR-077
   (was `database`), which does *not* corrupt nested objects, so this is now
   belt-and-braces / portability discipline rather than load-bearing — but keep
-  following it. Full story: ADR-014's addendum + ADR-077 in `docs/adr.md`.
+  following it. Full story: ADR-014's addendum + ADR-077 (`docs/adr/`).
 - **Every mutating route gets a `Http\Requests\*` FormRequest** — structural
   validation (types, `exists:`) lives in the FormRequest; cross-field/DB-
   dependent business rules live in the controller. Don't validate via
@@ -87,7 +87,9 @@ composer run dev                                          # serve + horizon + pa
 php artisan test                                           # fast suite (sqlite, no Docker)
 docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurrency suite, needs real MySQL
 php artisan app:chip-smoke-test                             # hits the real CHIP API (test-mode key; no separate sandbox URL)
-php artisan app:gamevion-smoke-test                         # hits the real Gamevion sandbox
+php artisan app:digiflazz-smoke-test                        # real Digiflazz API (the live supplier): balance, catalog, the 4 official test cases
+php artisan app:chip-webhook-smoke-test                     # CHIP success_callback end to end (non-production only)
+php artisan app:gamevion-smoke-test                         # hits the real Gamevion API (integrated, unfunded)
 ```
 
 ## Local dev gotchas (moved from the root `AGENTS.md`, 2026-10-02)
@@ -98,7 +100,11 @@ a session before.
 1. **Queued work does nothing.** Price Sync / fulfillment / resend need a
    worker. `composer run dev` runs one (`php artisan horizon`); bare
    `php artisan serve` or Herd alone does not. A stuck "Syncing…" is almost
-   always this. Two quieter causes of the same symptom:
+   always this. Three quieter causes of the same symptom:
+   - `.env` still says `QUEUE_CONNECTION=database`, which `.env.example`
+     ships with (CI copies it). Horizon supervises only `redis`/`redis-long`,
+     so jobs pile up in the `jobs` table. Set `QUEUE_CONNECTION=redis`
+     locally.
    - `backend/node_modules` was never installed (`npm install` inside
      `backend/`). The `vite` step fails, and `concurrently --kill-others`
      tears down `horizon` with it, visible only in the backend terminal
@@ -150,9 +156,9 @@ a session before.
 Migrations: verify new foreign-key columns actually get a standalone index on
 real MySQL via `SHOW INDEX FROM <table>` — `foreignId()->constrained()` has
 already been found, once, to not reliably leave one on its own (see the
-`packages.supplier_id` fix, `docs/adr.md`). Also check any new multi-column
+`packages.supplier_id` fix, in the ADR log). Also check any new multi-column
 `unique()`/`index()` (or a long table name + long FK column) against MySQL's
 64-character identifier limit — Laravel auto-names these as
 `table_col1_col2..._suffix`, sqlite never enforces the limit so `php artisan
 test` won't catch it, and this has already bitten `player_region_mappings`
-and `player_validations` once each (see ADR-021's addendum, `docs/adr.md`).
+and `player_validations` once each (see ADR-021's addendum).

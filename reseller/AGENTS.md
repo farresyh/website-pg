@@ -10,8 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # reseller/ — Partner Portal (ADR-059, ADR-072)
 
-The fourth Next.js app, alongside `admin/` and `storefront/` (runs on
-`:3002`). **One app, two account types** since ADR-072:
+The third Next.js app, alongside `admin/` and `storefront/`, on `:3002`
+(the fourth frontend, `docs-site/`, is Astro). **One app, two account types** since ADR-072:
 
 - **Affiliate** — a whitelabel storefront owner. Nav: Dashboard / Orders /
   Earnings / Withdrawals / Storefront config / Subscription / Domain. Earns a
@@ -21,7 +21,7 @@ The fourth Next.js app, alongside `admin/` and `storefront/` (runs on
 - **Reseller** — a prepaid-wallet, spend-only account (ADR-072/073). Nav:
   Dashboard / Orders / Wallet / API Keys / Profile. Tops up the wallet via
   CHIP, spends it placing orders through three channels: this portal, the
-  REST API (per-tenant keys — ADR-074, docs at `/docs/api`), and a WhatsApp
+  REST API (per-tenant keys — ADR-074, docs at `docs.pekangame.space`, ADR-084), and a WhatsApp
   bot (OpenWA — ADR-075). Never earns.
 
 The account type is **backend-enforced by `EnsureAccountType`** on every
