@@ -881,3 +881,22 @@ code, so future sessions follow correct instructions.
     `docs-site/AGENTS.md`; restored from git at once, and no change was
     committed.
   - Lesson: check `ls -l` before writing to a file a fork calls a copy.
+
+## 2026-10-09 — Admin `/admin/games` package order: cost price breaks denomination ties
+
+- **Why.** Founder saw three "60 UC" supplier variants (RM 3.63 / 3.72 /
+  3.64) in the wrong order. `GameController::packages()` ordered by
+  denomination then name only; same-name variants fell back to row order.
+- **What.** One ORDER BY: denomination ↑ → `cost_price` ↑ → name. The
+  no-denomination tail (passes/bundles, with or without `catalog_code`) keeps
+  name first, then cost, so "Weekly Pass 1..5" don't interleave by price.
+  Inactive packages sort by cost like active ones.
+- **Scope.** Admin list only. `CatalogController` and
+  `Package::dedupeActivePerGame()` show one package per denomination, so there
+  is no tie to break; storefront, reseller and bot output are unchanged.
+- **Prod scale (read-only).** 588 (game, denomination) groups have more than
+  one package; 556 of them differ in cost.
+- **Verified.** New test in `GameControllerTest` (red, then green); full
+  `php artisan test` 2675 passed; pint clean. No migration, no cache key change
+  (the cached closure is the same; entries refresh within the cache TTL or on
+  the next package change).
