@@ -130,6 +130,20 @@ a session before.
    throws against it. For a local smoke test that touches tag-flushing
    (`GameController::forgetIndexCache()`), run
    `CACHE_STORE=redis php artisan serve --no-reload`.
+6. **Admin login fails with `ConnectTimeoutError ... kedairuncit-backend.test:443`.**
+   The frontends call `NEXT_PUBLIC_API_URL` (`https://kedairuncit-backend.test`,
+   a Herd site), not the `php artisan serve` that `./scripts/dev.sh` starts
+   on :8000. Herd must be running. The dev scripts pass
+   `NODE_OPTIONS=--use-system-ca`, so Node trusts Herd's local certificate
+   (`docs/build-log.md`, 2026-10-09).
+7. **A built admin on another port logs in, then bounces back to `/login`.**
+   Local CORS allows only `localhost:3000`, `:3001` and `:3002`. Use one of
+   those, not `127.0.0.1` or another port, and build with
+   `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`.
+8. **Every MySQL test errors with `Table 'llm_report_orders' already exists`.**
+   A killed MySQL run leaves the `llm_report_*` views in docker `kerox`, and
+   `migrate:fresh` doesn't drop views. Drop them:
+   `docker compose exec -T mysql mysql -ukerox -pkerox kerox -e "DROP VIEW IF EXISTS llm_report_catalog, llm_report_membership_fees, llm_report_orders;"`
 
 ## Migrations
 

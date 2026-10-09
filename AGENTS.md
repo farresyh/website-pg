@@ -76,7 +76,7 @@ banner). This file covers the whole repo.
    line. On 2026-10-04, four of six item-63 fixes were one-site patches
    until this was done: the CHIP Paid logic had a drifted copy in
    reconciliation, and the UTC-day bug sat in six places, not the three
-   named (build-log, 2026-10-04).
+   named (build-log-archive, 2026-10-04).
    Before "fix now or grill first?", pull real production scale (row counts,
    usage) rather than answering from code alone. After the grill, give the
    founder a plain-language recap of the whole plan before writing any code.
