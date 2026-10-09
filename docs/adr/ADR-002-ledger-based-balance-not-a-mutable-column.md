@@ -1,0 +1,17 @@
+# ADR-002 (D2): Ledger-based balance, not a mutable column
+
+> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+
+**Status:** Accepted — 2026-07-23
+
+**Decision:** Every credit/debit (order profit, withdrawal, voucher issuance) is written as an immutable `LedgerEntry` row. Current balance for any owner (platform or, in Phase 2, reseller) is always `SUM(ledger entries)` — never a `balance` column that gets directly `UPDATE`d.
+
+**Rationale:** A mutable `balance` column is vulnerable to race conditions — e.g. two concurrent withdrawal requests both reading the same starting balance before either write completes, resulting in double payout. A ledger also gives a full, queryable audit trail for financial disputes ("why is the balance what it is?" is always answerable).
+
+**Addendum — implementation, 2026-07-23:** `SELECT SUM(...) FOR UPDATE` on `ledger_entries` alone can't serialize concurrent withdrawals reliably: a brand-new owner has zero existing rows to lock, so two first-ever withdrawals could both pass the sufficiency check before either commits. Solved with a second table, `ledger_accounts` — one row per owner, created upfront, holding **no balance data at all**, existing purely as a lock anchor. `LedgerService::withdraw()` runs inside a DB transaction that `lockForUpdate()`s this row before computing `SUM(ledger_entries)` and checking sufficiency, so a second concurrent withdrawal attempt blocks until the first commits. Verified with a real two-OS-process test (`tests/Concurrency/LedgerWithdrawConcurrencyTest.php`, run via `phpunit.concurrency.xml` against the dockerized MySQL in `docker-compose.yml` — SQLite's file-level locking can't faithfully exercise this, so the default `:memory:` test suite doesn't cover this specific guarantee). This does not weaken the "no mutable balance column" principle above: `ledger_accounts` never stores an amount, only `ledger_entries` does.
+
+**Addendum — DB-level duplicate backstop, 2026-09-29 (audit Wave 5 Lows).** Until now, "at most one entry" rested entirely on application-level locks. Two backstops were added:
+- **`dedupe_key`:** a virtual generated column with a unique index. It is non-null only for types that must occur at most once per (owner, reference): `order_profit`, `wallet_debit`, `wallet_refund`, `wallet_topup` and `voucher_issued`. `membership_fee` and `affiliate_tier_fee` are excluded because they repeat against the same membership/subscription every cycle. `owner_id` is COALESCEd to 0, because Platform rows have a NULL owner and NULLs never collide in a unique index. Only the automatic original entry is deduped (`reason IS NULL`). A reasoned correction against the same reference is legitimate: prod already holds one, a −10 sen `order_profit` fix on order 15 (ADR-105), found by a pre-merge prod check that would otherwise have failed the deploy migration. The key is a single concatenated column because a 5-column index over three utf8mb4 `varchar(255)` columns exceeds InnoDB's 3072-byte key limit.
+- **`idempotency_key`:** a unique, nullable column. Only the admin manual wallet credit (`ResellerWalletService::manualCredit()`) sets it, and a replay returns the first entry.
+
+A duplicate in the five types now fails the insert and rolls back its transaction instead of double-crediting. A new once-per-reference type must be added to the migration's list deliberately.

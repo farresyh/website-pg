@@ -10,8 +10,8 @@ validates player IDs against upstream suppliers.
 
 Money moves through this system for real: checkout payments, ledger-tracked
 balances, admin withdrawals, and store-credit vouchers. If you're new here,
-read `docs/adr.md` before changing anything money-adjacent — most of the
-non-obvious decisions in the code are recorded there with the reasoning
+read the ADR log (`docs/adr.md` index → `docs/adr/`) before changing anything
+money-adjacent — most of the non-obvious decisions in the code are recorded there with the reasoning
 behind them, not left implicit.
 
 ## Stack
@@ -25,14 +25,16 @@ behind them, not left implicit.
 | `docs-site/` | Astro 7 + Starlight | Public Reseller API developer docs → `docs.pekangame.space` (ADR-084). OpenAPI spec is generated from the backend, not hand-written |
 
 Auth is bearer-token (Laravel Sanctum) end to end — there's no session-cookie
-auth and no CSRF surface between the frontends and the API (see ADR-009 and
-`docs/adr.md`'s security notes).
+auth and no CSRF surface between the frontends and the API (see ADR-009, ADR-019 and
+`docs/foundation-security.md`).
 
 ## Getting started
 
-Requires PHP 8.4+, Composer, Node 20+, and Docker (local Redis for the queue,
+Requires PHP 8.4+, Composer, Node 22 (what CI uses), and Docker (local Redis for the queue,
 and the MySQL container used by concurrency tests — the app itself can run
 against SQLite locally). `./scripts/dev.sh` starts everything below at once.
+The frontends call `NEXT_PUBLIC_API_URL`, which locally is the Laravel Herd
+site for `backend/`, so Herd must be running (`backend/AGENTS.md`, gotcha 6).
 
 ```bash
 # Backend
@@ -52,12 +54,13 @@ npm run dev           # http://localhost:3000
 # Storefront (separate terminal)
 cd storefront
 npm install
+cp .env.local.example .env.local
 npm run dev           # http://localhost:3001
 
 # Partner portal (separate terminal)
 cd reseller
 npm install
-cp .env.local.example .env.local
+cp ../admin/.env.local.example .env.local   # same vars as admin (dev.sh does this for you)
 npm run dev           # http://localhost:3002
 ```
 
@@ -102,12 +105,12 @@ cd e2e && npm test   # Playwright golden paths (ADR-023, 6 specs) — boots its 
 | Doc | What's in it |
 | --- | --- |
 | `docs/prd.md` | Full product spec (§1–13), the current-state headline (§14), a coarse per-feature tracker (§15) and the live backlog (§16) — check §15 first for "how much of X is actually built" |
-| `docs/build-log.md` | Chronological record of what shipped and why, 2026-10-01 onward; older entries in `docs/build-log-archive.md` |
-| `docs/adr.md` | Architecture Decision Log — every non-trivial trade-off, numbered, with context/rationale, stress-tested before being accepted. The source of truth for *why* |
+| `docs/build-log.md` | Chronological record of what shipped and why, 2026-10-06 onward; older entries in `docs/build-log-archive.md` |
+| `docs/adr.md` + `docs/adr/` | Architecture Decision Log — `adr.md` is the index (one row per decision, with its Standing), each decision is its own file in `docs/adr/`. Every non-trivial trade-off, numbered, with context/rationale, stress-tested before being accepted. The source of truth for *why* |
 | `docs/foundation-security.md` | Actionable security checklist derived from the ADRs |
 | `docs/legacy-reference-notes.md` | Notes from studying a prior/reference system — read as reference material, not as facts about this codebase |
 | `AGENTS.md` / `CLAUDE.md` | Working conventions for AI coding agents (also useful as a quick orientation for a human joining the project) |
-| `backend/CLAUDE.md` | Laravel-specific conventions (money-as-integer-sen, ledger discipline, adapter pattern, queue-not-inline) |
+| `backend/AGENTS.md` | Laravel-specific conventions and local dev gotchas (`backend/CLAUDE.md` points to it) (money-as-integer-sen, ledger discipline, adapter pattern, queue-not-inline) |
 
 ## Current status
 
@@ -115,7 +118,7 @@ cd e2e && npm test   # Playwright golden paths (ADR-023, 6 specs) — boots its 
 Forge–managed DigitalOcean droplet at `api.pekangame.space`; the four
 frontends are on Vercel (storefront `pekangame.com`, `admin.pekangame.space`,
 `reseller.pekangame.space`, `docs.pekangame.space`) — see
-[ADR-066](docs/adr.md#adr-066-production-deploy-via-laravel-forge--reverses-adr-020s-docker-compose-containerisation)
+[ADR-066](docs/adr/ADR-066-production-deploy-via-laravel-forge.md)
 and ADR-114. CHIP is the sole payment gateway and Digiflazz the live supplier;
 reseller wallet orders are real customer orders. `docs/prd.md` §14 has the
 current state, §15 the per-feature status and §16 the live backlog.

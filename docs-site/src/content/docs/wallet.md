@@ -9,7 +9,7 @@ Every order is an immediate debit from your wallet balance.
 ## Reading your balance
 
 ```http
-GET /api/reseller/v1/balance
+GET /v1/balance
 ```
 
 ```json
@@ -21,10 +21,10 @@ truth — it is derived from a ledger, not a mutable counter.
 
 ## Topping up
 
-Top-ups are done from the **partner portal**, not the API:
+Top-ups are done from the **partner portal** or the WhatsApp bot, not the API:
 
-- **Self-serve** — pay by FPX / card through the portal's wallet page. The
-  balance updates once payment clears.
+- **Self-serve** — pay by FPX through the portal's wallet page (or the
+  WhatsApp bot's top-up command). The balance updates once payment clears.
 - **Manual** — arrange a bank transfer with PekanGame; support credits the
   wallet against your receipt.
 

@@ -1,0 +1,11 @@
+# ADR-011: Storefront stays guest-checkout — no Customer account/auth in MVP
+
+> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+
+**Status:** Accepted — 2026-07-24
+
+**Decision:** The storefront has no customer login/registration and no `Customer` table. A purchase only ever captures `customer_email`/`customer_phone` as plain strings on the `Order` row itself — there is no persistent customer identity anywhere in the system. Auth (Sanctum) exists only for `AdminUser` (Super Admin/Admin).
+
+**Rationale:** Confirmed via live comparison of two real reference sites: keroxshop.com (our own current storefront) has no login/register anywhere — only a "Track Order" page that looks up status by order number, which is exactly the guest-checkout + reference-lookup model already assumed in the PRD's data model (no Customer entity was ever listed in §8). gamevion.com, by contrast, does have full customer accounts — but for a reason specific to its own business model, not applicable here: it runs a pre-funded customer wallet ("Top Up" your own balance, then spend it) plus a reseller/membership-tier program where customers can upgrade and refer others. Both of those features genuinely require persistent identity. Neither exists in this PRD's MVP scope — there is no customer wallet, and Phase 2's reseller concept is a business owner with their own storefront, not a walk-in customer upgrading their tier. Since the actual driver behind Gamevion's account requirement doesn't apply here, adopting accounts anyway would be copying a competitor's architecture without its underlying reason.
+
+**Consequence to track:** if a customer-facing wallet, loyalty program, or persistent order-history feature is ever deliberately added later, it changes this decision and deserves its own ADR entry (per this file's own convention — supersede, don't silently rewrite). Until then, do not add a `Customer` model, customer login endpoints, or a `customer_id` foreign key "just in case" — `Order.customer_email` is sufficient for the guest-checkout model this ADR commits to.

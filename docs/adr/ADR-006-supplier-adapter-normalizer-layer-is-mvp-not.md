@@ -1,0 +1,13 @@
+# ADR-006 (D6): Supplier Adapter/Normalizer layer is MVP, not Phase 2
+
+> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+
+**Status:** Accepted — 2026-07-23 (supersedes the original PRD v0.2 draft, which listed a "Custom Supplier Adapter SDK" as a Phase 2 / future-phase item)
+
+**Decision:** Every supplier integration is implemented behind a common internal interface. Business logic never reads a raw supplier response directly — every adapter normalizes into one canonical internal shape.
+
+**Rationale:** Comparing two real supplier APIs during the foundation audit (Gamevion API docs; a second store's MLBB-validator endpoints) showed materially different auth schemes, response envelopes, and error shapes even between just two suppliers. Without a normalizing layer from day 1, every new supplier integration touches business logic directly, and inconsistent error handling across suppliers becomes a direct source of financial/logic bugs.
+
+**Addendum — shared outbound proxy seam, 2026-07-25:** some suppliers require the *calling* party's IP to be whitelisted before their API accepts requests at all — a constraint that has nothing to do with Adapter normalization, but does affect how an Adapter's HTTP client is constructed. Confirmed (by reading Gamevion's own API docs directly) that Gamevion itself does **not** require IP whitelisting — auth is Bearer + `X-API-KEY` only, no network-level restriction. This addendum exists for the *next* supplier that does. Rather than let each Adapter invent its own proxy handling, `config/services.php['proxy']` (`SUPPLIER_PROXY_ENABLED`/`SUPPLIER_PROXY_URL`) is one shared, generic outbound-proxy config any Adapter can accept as an optional constructor argument (see `GamevionAdapter`'s `proxyUrl` param) — one proxy/static-IP covers every supplier that needs whitelisting, since the whitelisting party only cares which IP the request came from, not what else that IP is also used for. Only build a second proxy if a future supplier demands an exclusive or region-specific IP. The proxy credential itself follows the same handling as every other supplier secret in this codebase (§7 of `foundation-security.md`): env-only, never committed, not yet moved to `Supplier.api_config` (SUPP-5) pending that table's real wiring.
+
+**See ADR-040** for the Gamevion sandbox integration investigation saga (originally 9 addenda to this entry, 2026-07-25 through 2026-08-14 — sandbox `500` bug, `telp` normalization fix, `callback_url` fix, production delivery verification) — moved out to its own entry to keep the adapter-pattern decision itself readable.

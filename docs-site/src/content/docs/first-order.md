@@ -87,8 +87,8 @@ Content-Type: application/json
 
 ### Prices change — send `max_price_sen`
 
-Your price follows the supplier's cost, which PekanGame syncs every 30
-minutes, so a `price_sen` you read earlier may no longer be current. You are
+Your price follows the supplier's cost, which PekanGame syncs from the supplier
+regularly (about hourly), so a `price_sen` you read earlier may no longer be current. You are
 always charged the **current** price at the moment of the order:
 
 - current price ≤ `max_price_sen` → the order goes through at the current

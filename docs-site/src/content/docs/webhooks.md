@@ -102,8 +102,8 @@ if (! hash_equals($expected, $request->header('X-Hub-Signature-256', ''))) {
 
 ## Delivery & retries
 
-- Respond with any **2xx** to acknowledge. Anything else (or a timeout) is a
-  failure.
+- Respond with any **2xx** within 10 seconds to acknowledge. Anything else, a
+  timeout, or a redirect (redirects are not followed) is a failure.
 - A failed delivery is retried with exponential backoff — roughly **5 attempts
   over about an hour** — then marked `exhausted` in the portal's
   deliveries table.

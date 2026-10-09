@@ -1,0 +1,13 @@
+# ADR-012: Admin Panel UI built on the free TailAdmin template as a component/layout reference
+
+> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+
+**Status:** Accepted — 2026-07-24
+
+**Decision:** The Admin Panel's visual layer (sidebar, header, tables, badges, buttons, modals, dropdowns, Tailwind v4 theme tokens) is built by porting and trimming components from the free, MIT-licensed TailAdmin Next.js dashboard template, rather than designing a component system from scratch or adopting a full component library (shadcn/ui, MUI, etc.). Only components an actual screen uses get ported in — the template's calendar, charts, carousel, and other unused pieces are left behind, not brought in speculatively.
+
+**Rationale:** ADR-009 already committed the Admin Panel to a client-rendered Next.js SPA; TailAdmin is itself a Next.js App Router template on the same stack (Next 16, React 19, Tailwind v4), and the components actually used (Table/Badge/Button/Modal/Dropdown) are pure React + Tailwind with zero external runtime dependencies — porting them costs no new npm packages. The template ships **zero business logic and zero data-fetching**: every page/component hardcodes its own inline mock data array, with no API abstraction, loading, or error states anywhere. That's treated as a feature, not a gap — there's no wrong data-layer pattern baked in to fight against, only visual/structural components to reuse.
+
+**Build approach this implies:** wire per-feature, not "build the whole UI as a mockup, then wire everything to the backend afterward." For each screen: adopt the template's UI shell, define the TypeScript data contract the screen needs, then wire it to the real backend endpoint in the same pass whenever that endpoint already exists or is simple to add — as done for AUTH-4 (Admin Users list/create/edit/status), the first full vertical slice built this way. Only stub with placeholder data when the backend shape is still genuinely undecided (e.g. Dashboard KPI aggregation queries not yet designed), and swap it for the real fetch before moving to the next screen — never as a separate later "wiring phase."
+
+**Consequence to track:** TailAdmin's own source lives outside this repo (on the founder's machine) and is a **UI/UX reference only** — its business data, feature-completeness claims, and any "Pro"-tier upsell content are not part of this project, the same "reference, not fact" discipline applied to the legacy KeroxShop walkthrough in [`legacy-reference-notes.md`](../legacy-reference-notes.md). Copy component shape and interaction patterns; never copy business assumptions.
