@@ -725,9 +725,8 @@ feature.** Every open item sorted by what it needs to finish. Verified against
 code and production on 2026-10-09; re-verify before building.
 
 **A. Buildable now: code, no new design** (in suggested order)
-1. **76** Debounce server-side search inputs + guard against stale responses.
-2. **66** Combo admin: leg-attempt history view.
-3. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
+1. **66** Combo admin: leg-attempt history view.
+2. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
    in-modal picker.
 
 **B. Needs a short grill / ADR addendum first**
