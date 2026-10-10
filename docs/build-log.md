@@ -1140,3 +1140,28 @@ succeeded.
   endpoint answered 200 with database, queue and horizon true when checked.
 - Not verified from here: the UptimeRobot dashboard was not opened. Error tracking
   (Sentry) is still not set up.
+
+## 2026-10-10 — §16 item 76: debounced, stale-guarded server-side search (admin)
+
+- Two shared hooks in `admin/src/hooks/`: `useDebouncedValue` (300 ms) and
+  `useLatestRequest` (a per-list guard; `begin()` returns an `isLatest()`
+  check). The input binds to the raw state; every fetch and every
+  "back to page 1" reset binds to the debounced value.
+- Why a guard on top of the debounce: a list is reloaded from several paths,
+  not just the filter effect. `/admin/orders` has four (filter effect, manual
+  Refresh, Reverb push, resume hook), and Games, Gallery and Product Manager
+  also reload after a mutation. All of them now go through one guarded loader
+  per list, so the newest request wins whichever path fired it. The Orders
+  push listener's deps still exclude the filters (2026-09-28 addendum).
+- Pages: orders, games, seo/games, gallery, sandbox, product-manager.
+  Reports' custom from/to are debounced before they reach `resolveDateRange`
+  (`useReport()` already had its own guard). Product Manager's two inline
+  re-fetches after link/checkout-input now reuse `refreshCategories()`.
+- Verified on a local production build (Playwright, real API): typing
+  "PUBG" fast sends 1 request, not 4; typing 9 characters in Orders sends 1;
+  a slow in-flight `search=zzz` response that lands after the box was cleared
+  no longer replaces the full list (5 rows stay 5). `tsc`, `lint`, `build`,
+  admin `npm test` clean.
+- Not verified: the Reports custom-date inputs in a browser (same hook,
+  not clicked through); and the stale case was not reproduced on the old
+  code, so it is proven to hold now, not proven to have failed before.

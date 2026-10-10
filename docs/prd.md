@@ -854,34 +854,6 @@ code and production on 2026-10-09; re-verify before building.
     per-leg attempt history (the rows exist and are queryable).
     Each component's supplier SKU now shows in the Edit Combo modal
     (2026-10-08, live via #385).
-76. **Server-side search fires on every keystroke, with no stale-response
-    guard** (found 2026-10-09, founder report). One request per character on
-    `/admin/orders` (a `LIKE` over orders, emails and games), `/admin/games`,
-    `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product
-    Manager. Reports' custom date range reloads the whole tab on each date
-    change while the year is typed. Load is negligible at today's scale;
-    the real defect is correctness: no guard, so a slow "PU" response can
-    overwrite "PUBG". Fix once, not per page: a shared
-    `useDebouncedValue(value, 300)` per app plus the stale guard
-    `ReportKit`'s `useReport()` already uses. Client-side filters (Reports
-    Games tab, storefront header search, price list, reseller catalog) and
-    submit-based search (Membership members, reseller orders) are fine.
-77. **`next` 16.3.5 has open advisories** (`npm audit`, 2026-10-09):
-    admin, storefront and reseller each report 1 critical + 8 high.
-    - The critical is RCE in `next/og` `ImageResponse`
-      (GHSA-vcvr-r3jv-pc5j). Storefront's `app/icon.tsx` uses it, but only
-      with fixed content.
-    - Also SSRF in Image Optimization (GHSA-cjq9-62q9-8jv4). Storefront
-      uses `next/image`.
-    - Plus cache-poisoning and info-disclosure moderates.
-    - Fixed in `next` ≥ 16.3.8, a patch within the pinned `^16.3.1` range,
-      so it is a lockfile bump, not a major upgrade.
-    - The rest (`sharp`, `source-map-js`, eslint's `braces` / `micromatch`)
-      come along with it or are dev-only.
-    - docs-site has 13 moderate + 4 high (`devalue`, `sharp`, ...); check it
-      in the same pass.
-## Buildable when triggered (design done or needs its own ADR)
-
 71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: re-check GSC
     canonical/duplicate coverage ~2026-10-22. The admin SEO › FAQ click-through
     is done (founder, 2026-10-10: edit works, `{store_name}` works; prod has 5
@@ -1070,6 +1042,7 @@ code and production on 2026-10-09; re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **76** 2026-10-10: server-side search is debounced (300 ms) and stale-guarded on `/admin/orders`, `/admin/games`, `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product Manager, plus Reports' custom dates. Two shared admin hooks: `useDebouncedValue`, `useLatestRequest`. Admin only; the other apps have no affected search.
 - **65** 2026-10-09: Reports redesign (ADR-104 R1–R21 + the 2026-10-09 R8 addendum) — 7 tabs on Recharts, Paid sales with a Bridge to Accounting (= Monthly Summary), Failed & compensated per delivery status, Compare on every tab, sales by channel + `orders.placed_via`, an Orders Failed pill (ADR-108 addendum), export with Paid sales. A pre-release money audit reconciled every figure against prod. Live via #385; verified on prod the same night.
 - **27** 2026-10-08: e2e boots admin and storefront with `next build && next start` instead of Turbopack `next dev` (the `next/font/google` on-demand compile crash). 6/6 specs pass; `playwright` green on `main` after release #385 (2026-10-09). Reopen if it goes red on a boot error again.
 - **56** 2026-10-08: accounting + wallet top-up receipts on the private R2 bucket `pekangame-accounting` (`r2_accounting`, #375, live via #376); the 3 live supplier receipts copied and downloading. The 2 lost receipts (voided transfers) stay lost.
