@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Services\Accounting;
 
+use App\Models\AdminUser;
+use App\Models\BudgetEnvelope;
 use App\Models\LedgerEntry;
 use App\Models\Membership;
 use App\Models\MembershipFeeRecord;
@@ -12,7 +14,12 @@ use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\VoucherMerge;
+use App\Services\Accounting\BudgetEnvelopeService;
+use App\Services\Accounting\EnvelopePostingType;
+use App\Services\Accounting\ExpenseCategory;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
+use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
@@ -358,5 +365,139 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $summary = $this->service()->forPeriod(2026, 9);
 
         $this->assertSame(2500, $summary['affiliate_tier_fees_sen']);
+    }
+
+    // ADR-083 2026-10-10 addendum, decision 11 — the operating profit a month close allocates.
+
+    private function voucher(array $attributes, string $createdAt = '2026-09-10 00:00:00'): Voucher
+    {
+        $voucher = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id, 'code' => 'V'.uniqid(), 'customer_email' => 'a@example.com',
+            'amount' => 500, 'remaining' => 500, 'status' => 'active', 'reason' => 'test', ...$attributes,
+        ]);
+        $voucher->forceFill(['created_at' => $createdAt])->save();
+
+        return $voucher;
+    }
+
+    /** @return array{0: Supplier, 1: SupplierTransfer} rate 0.01 MYR per unit: RM1,000 buys 100,000 units */
+    private function supplierWithTransfer(string $transferredOn = '2026-09-05'): array
+    {
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
+        $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => $transferredOn, 'supplier_id' => $supplier->id, 'source_channel' => 'wise',
+            'amount_myr_sent' => 100000, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '100000.0000',
+        ]);
+
+        return [$supplier, $transfer];
+    }
+
+    public function test_voucher_breakage_is_the_remaining_balance_of_vouchers_expiring_in_the_month(): void
+    {
+        $this->voucher(['remaining' => 300, 'expires_at' => '2026-09-20 00:00:00']);
+        $this->voucher(['remaining' => 0, 'status' => 'exhausted', 'expires_at' => '2026-09-21 00:00:00']);
+        $this->voucher(['remaining' => 700, 'expires_at' => '2026-09-30 16:00:00']); // 1 Oct KL — October
+        $this->voucher(['remaining' => 900, 'expires_at' => null]);
+        // A sandbox order's compensation voucher was never customer cash.
+        $testOrder = Order::factory()->create(['is_test' => true]);
+        $this->voucher(['order_id' => $testOrder->id, 'remaining' => 4000, 'expires_at' => '2026-09-20 00:00:00']);
+
+        $this->assertSame(300, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
+    }
+
+    public function test_goodwill_vouchers_are_path_a_only_never_compensation_or_a_merge_result(): void
+    {
+        $this->voucher(['amount' => 200]); // Path A
+        $order = Order::factory()->create();
+        $this->voucher(['order_id' => $order->id, 'amount' => 3000]); // Path B — a liability, not an expense
+        $source = $this->voucher(['amount' => 400, 'remaining' => 0, 'status' => 'merged']);
+        $target = $this->voucher(['amount' => 400]);
+        VoucherMerge::query()->create(['source_voucher_id' => $source->id, 'target_voucher_id' => $target->id, 'reason' => 'merge']);
+
+        // The merge source was itself Path A goodwill when issued.
+        $this->assertSame(200 + 400, $this->service()->forPeriod(2026, 9)['goodwill_vouchers_issued_sen']);
+    }
+
+    public function test_supplier_manual_adjustments_convert_at_the_month_end_rate_and_skip_voided_transfers(): void
+    {
+        [$supplier, $transfer] = $this->supplierWithTransfer();
+        $voided = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-06', 'supplier_id' => $supplier->id, 'source_channel' => 'wise',
+            'amount_myr_sent' => 5000, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '500.0000', 'voided_at' => now(),
+        ]);
+        $adjust = fn (SupplierTransfer $t, string $amount, string $at) => SupplierLedgerEntry::query()->forceCreate([
+            'supplier_id' => $supplier->id, 'type' => SupplierLedgerEntryType::ManualAdjustment->value, 'amount' => $amount,
+            'currency' => 'IDR', 'reference_type' => 'supplier_transfer', 'reference_id' => $t->id, 'reason' => 'fee', 'created_at' => $at,
+        ]);
+        $adjust($transfer, '-2500', '2026-09-10 00:00:00'); // −2,500 units × RM0.01 = −RM25
+        $adjust($voided, '-100', '2026-09-10 00:00:00');
+        $adjust($transfer, '-9999', '2026-10-02 00:00:00'); // October
+
+        $this->assertSame(-2500, $this->service()->forPeriod(2026, 9)['supplier_manual_adjustments_sen']);
+    }
+
+    /** Decision 11 (Q24): a closed month stops moving when a later transfer changes the blended rate. */
+    public function test_fx_true_up_uses_the_rate_as_of_month_end_not_later_transfers(): void
+    {
+        [$supplier] = $this->supplierWithTransfer();
+        SupplierTransfer::query()->create([
+            'transferred_on' => '2026-10-03', 'supplier_id' => $supplier->id, 'source_channel' => 'wise',
+            'amount_myr_sent' => 900000, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '100000.0000',
+        ]);
+        $order = Order::factory()->delivered()->create(['paid_at' => '2026-09-15 10:00:00', 'cost_price' => 9000, 'supplier_id' => $supplier->id]);
+        SupplierLedgerEntry::query()->forceCreate([
+            'supplier_id' => $supplier->id, 'type' => SupplierLedgerEntryType::OrderDrawdown->value, 'amount' => -90000,
+            'currency' => 'IDR', 'reference_type' => 'order', 'reference_id' => $order->id, 'created_at' => '2026-09-15 10:00:00',
+        ]);
+
+        // 90,000 units × RM0.01 = RM900 — the October transfer's RM0.09 rate is not in September yet.
+        $this->assertSame(9000 - 90000, $this->service()->forPeriod(2026, 9)['supplier_prepaid_fx_variance_sen']);
+    }
+
+    public function test_operating_profit_follows_decision_11_and_leaves_out_compensation_vouchers(): void
+    {
+        [$supplier] = $this->supplierWithTransfer();
+        $order = Order::factory()->delivered()->create(['paid_at' => '2026-09-15 10:00:00', 'selling_price' => 10000, 'cost_price' => 9000, 'supplier_id' => $supplier->id]);
+        SupplierLedgerEntry::query()->forceCreate([
+            'supplier_id' => $supplier->id, 'type' => SupplierLedgerEntryType::OrderDrawdown->value, 'amount' => -9000,
+            'currency' => 'IDR', 'reference_type' => 'order', 'reference_id' => $order->id, 'created_at' => '2026-09-15 10:00:00',
+        ]);
+        $failed = Order::factory()->create(['paid_at' => '2026-09-15 10:00:00', 'delivery_status' => DeliveryStatus::Failed]);
+        $this->voucher(['order_id' => $failed->id, 'amount' => 3000]); // Path B
+        $this->voucher(['amount' => 200]); // goodwill
+        $this->voucher(['remaining' => 50, 'expires_at' => '2026-09-20 00:00:00'], '2026-08-01 00:00:00'); // breakage
+        LedgerEntry::query()->forceCreate([
+            'owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 1, 'type' => 'affiliate_tier_fee',
+            'amount' => -70, 'reference_type' => 'affiliate_subscription', 'reference_id' => 1, 'created_at' => '2026-09-10 00:00:00',
+        ]);
+
+        $summary = $this->service()->forPeriod(2026, 9);
+
+        // The drawdown costs exactly cost_price at the blended rate, so no FX true-up.
+        $this->assertSame(10000 - 9000 + 70 + 50 - 200, $summary['operating_profit_sen']);
+        $this->assertSame(3000 + 200, $summary['voucher_liability_issued_sen']);
+    }
+
+    public function test_envelope_manual_expenses_are_shown_by_category_and_never_in_operating_profit(): void
+    {
+        $envelope = BudgetEnvelope::query()->create(['name' => 'Marketing']);
+        $admin = AdminUser::factory()->create();
+        $service = new BudgetEnvelopeService;
+        $post = fn (string $type, array $lines, string $date, ?string $category) => $service->post(
+            EnvelopePostingType::from($type), $lines, $date, 'x', $admin->id,
+            counterparty: $type === 'expense' ? null : PaidFrom::directors()[0],
+            expenseCategory: $category ? ExpenseCategory::from($category) : null,
+        );
+        $post('expense', [['budget_envelope_id' => $envelope->id, 'amount_sen' => -1200]], '2026-09-10', 'advertising');
+        $post('director_paid_expense', [['budget_envelope_id' => $envelope->id, 'amount_sen' => 300], ['budget_envelope_id' => $envelope->id, 'amount_sen' => -300]], '2026-09-30', 'software');
+        $voided = $post('expense', [['budget_envelope_id' => $envelope->id, 'amount_sen' => -999]], '2026-09-12', 'advertising');
+        $service->void($voided, 'typo', $admin->id);
+        $post('expense', [['budget_envelope_id' => $envelope->id, 'amount_sen' => -5000]], '2026-10-01', 'advertising');
+
+        $summary = $this->service()->forPeriod(2026, 9);
+
+        $this->assertSame(['advertising' => 1200, 'software' => 300], $this->service()->envelopeExpensesByCategory(2026, 9));
+        $this->assertSame(1500, $summary['envelope_manual_expenses_sen']);
+        $this->assertSame(0, $summary['operating_profit_sen']);
     }
 }
