@@ -33,9 +33,6 @@ export interface PlatformSettings {
   vip_spend_threshold_sen: number;
   maintenance_mode: boolean;
   maintenance_message: string | null;
-  telegram_notifications_enabled: boolean;
-  telegram_bot_token: string | null;
-  telegram_chat_id: string | null;
   membership_enabled: boolean;
   whatsapp_notifications_enabled: boolean;
 }
@@ -61,9 +58,6 @@ export type UpdatePlatformValues = Pick<
   | "maintenance_mode"
   | "maintenance_message"
   | "vip_spend_threshold_sen"
-  | "telegram_notifications_enabled"
-  | "telegram_bot_token"
-  | "telegram_chat_id"
   | "whatsapp_notifications_enabled"
 >;
 

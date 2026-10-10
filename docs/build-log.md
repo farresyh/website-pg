@@ -1203,3 +1203,21 @@ succeeded.
   is the same `<img>`. SEO › Game was not clicked through (same component).
   Picker-closes-after-pick was only checked on Edit Game by screenshot.
 - The two test images uploaded for this were deleted again from the dev gallery.
+## 2026-10-10 — §16 item 6 (part): Telegram settings removed (SET-9 dropped)
+
+- Founder decision: no Telegram sender. Removed the `telegram_notifications_enabled`,
+  `telegram_bot_token` and `telegram_chat_id` columns (migration
+  `2026_10_10_210000_drop_telegram_columns_from_platform_settings_table`), the
+  model fillable/cast, the `UpdatePlatformSettingsRequest` rules, the admin
+  "Telegram ops notifications" card and the TypeScript types. `telegram_contact_link`
+  (the customer-facing contact link) is untouched. ADR-028 addendum, same day.
+- Read-only production check first: 2 `platform_settings` rows, no token, no chat
+  id, none enabled, so the drop loses nothing. (The table has 2 rows although the
+  model is read as a singleton; not looked into here.)
+- Verified: local dev DB migrated, rolled back and migrated again; backend
+  suite 2707/2707; `tsc` and `lint` clean; on a local production build the
+  Platform Settings tab has no Telegram card and Save Platform Settings returns
+  200 with no telegram fields in the request.
+- Deploy note: for the minutes between the Vercel deploy and the Forge deploy, the
+  new admin's Save Platform Settings can 422 against the old backend (the old
+  request rule requires `telegram_notifications_enabled`). Nothing else is affected.

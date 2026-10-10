@@ -20,9 +20,6 @@ export default function PlatformSettingsSection({
   const [vipThresholdRm, setVipThresholdRm] = useState(String(platform.vip_spend_threshold_sen / 100));
   const [maintenanceMode, setMaintenanceMode] = useState(platform.maintenance_mode);
   const [maintenanceMessage, setMaintenanceMessage] = useState(platform.maintenance_message ?? "");
-  const [telegramEnabled, setTelegramEnabled] = useState(platform.telegram_notifications_enabled);
-  const [telegramBotToken, setTelegramBotToken] = useState(platform.telegram_bot_token ?? "");
-  const [telegramChatId, setTelegramChatId] = useState(platform.telegram_chat_id ?? "");
   const [whatsappEnabled, setWhatsappEnabled] = useState(platform.whatsapp_notifications_enabled);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,9 +42,6 @@ export default function PlatformSettingsSection({
         maintenance_mode: maintenanceMode,
         maintenance_message: maintenanceMessage || null,
         vip_spend_threshold_sen: vipThresholdSen,
-        telegram_notifications_enabled: telegramEnabled,
-        telegram_bot_token: telegramBotToken || null,
-        telegram_chat_id: telegramChatId || null,
         whatsapp_notifications_enabled: whatsappEnabled,
       });
       onSaved();
@@ -159,28 +153,6 @@ export default function PlatformSettingsSection({
           </div>
           <Switch checked={whatsappEnabled} onChange={setWhatsappEnabled} />
         </div>
-      </div>
-
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Telegram ops notifications</h3>
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Alerts for new orders and withdrawal requests.</p>
-          </div>
-          <Switch checked={telegramEnabled} onChange={setTelegramEnabled} />
-        </div>
-        {telegramEnabled && (
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="telegram_bot_token">Bot token</Label>
-              <Input id="telegram_bot_token" value={telegramBotToken} onChange={(e) => setTelegramBotToken(e.target.value)} placeholder="123456:ABC-DEF…" />
-            </div>
-            <div>
-              <Label htmlFor="telegram_chat_id">Chat ID</Label>
-              <Input id="telegram_chat_id" value={telegramChatId} onChange={(e) => setTelegramChatId(e.target.value)} placeholder="-100XXXXXXXXXX" />
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="flex justify-end">
