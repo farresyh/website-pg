@@ -1,6 +1,6 @@
 # ADR-061: Every storefront is a Reseller — abolish the platform-owner special-case
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-10):** In force, except decision 7's `('platform', null)` withdrawal from `/admin`: retired by [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum, decision 17 (money leaving to a director is an Envelope Ledger repayment or dividend). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, immediately after ADR-058 58b shipped). **Supersedes ADR-013.** Lands as its own PR(s) between ADR-058 and ADR-059 in the reseller batch — see the phasing note above.
 

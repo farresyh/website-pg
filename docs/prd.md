@@ -202,6 +202,8 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **WTH-4** | Admin can view withdrawal details (full history), sourced from the ledger, not a cached balance field | **MVP** |
 | **WTH-5** | Withdrawals above a configurable threshold require **Super Admin** approval (maker-checker) — an Admin who created/initiated a withdrawal request cannot also be its sole approver | **MVP** |
 
+Requests come from Affiliates, through their portal (ADR-059). The platform owner no longer requests a withdrawal here: since [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum (decision 17), money leaving to a director is an Envelope Ledger repayment or dividend.
+
 ## 6.11 Admin — Voucher Management
 
 | ID | Functional Requirement | Priority |
@@ -421,15 +423,15 @@ whether the components came back through the Pending Reactivation queue
 
 ## 7.4 Withdrawal (ledger-based, per ADR-002)
 
-1. Platform owner (Phase 2: reseller) accrues profit from delivered orders — each order's profit is written as a **credit entry** in the ledger, not added to a mutable balance field.
-2. Owner/reseller submits withdrawal request: selects amount (validated against SUM of ledger entries, not a cached balance), enters bank details.
+1. An Affiliate accrues profit from delivered orders — each order's profit is written as a **credit entry** in the ledger, not added to a mutable balance field. (The platform's own `('platform', null)` account also accrues, but is no longer withdrawn from — ADR-083 2026-10-10 addendum, decision 17.)
+2. The Affiliate submits a withdrawal request from its portal: selects amount (validated against SUM of ledger entries, not a cached balance), enters bank details.
 3. Request created with status "Pending" — this itself does **not** yet write a ledger entry (a pending request is not a debit until approved).
 4. Admin sees new pending withdrawal on Withdrawal Management page.
 5. Admin reviews ledger history, confirms sufficiency.
 6. Admin approves — **if amount is above the configured threshold, a second Super Admin approval is required (WTH-5, maker-checker)**.
 7. On approval, a **debit entry** is written to the ledger atomically with the status change.
 8. Admin processes bank transfer externally, then marks withdrawal as "Completed" with processing timestamp.
-9. Owner/reseller notified of completed withdrawal.
+9. Affiliate notified of completed withdrawal.
 
 ## 7.5 Voucher Issuance (store-credit refund, per ADR-004)
 
@@ -555,6 +557,13 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - **Adapter / Normalizer :** A per-supplier module implementing a common internal interface, translating that supplier's specific auth/response format into one canonical shape so business logic never depends on raw supplier response structure (6.21).
 - **Ledger Entry :** An immutable, append-only record of a single credit or debit against a platform-owner or affiliate's balance. Balance is always a derived SUM, never a directly-mutated field (ADR-002).
 - **Idempotency Key / Reference Number :** A unique identifier generated before the first attempt at a money-moving or order-creating API call, reused on every retry of that same logical operation so a retried request cannot create a duplicate effect.
+- **Envelope / Envelope Ledger :** What company money is set aside for (Capital Rolling, Marketing Budget, …), never where it sits. Supplier top-ups, CHIP payouts and moves between the company's own accounts never touch an envelope ([ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md) 2026-10-10 addendum).
+- **Posting :** One Envelope Ledger action: a header (type, date, receipt, director) over signed lines into or out of envelopes. Types: funding (loan or share capital), transfer, expense, director-paid expense, repayment, distribution, and profit allocation (month close only). Corrected only by a void (a reversal posting).
+- **Director loan balance :** What the company owes one director: loans + director-paid expenses − repayments, computed from postings, never stored.
+- **Operating profit :** The month's profit as `MonthlyAccountingSummaryService::operatingProfit()` defines it (ADR-083 2026-10-10 addendum, decision 11). Excludes compensation vouchers (a liability) and envelope expenses (already out of their envelopes).
+- **Month close :** Once per ended KL month, in order from September 2026: allocates exactly the operating profit (plus any prior-month adjustment) to envelopes, snapshots the cash accounts, and checks the cash equation. Only the latest close can be reopened.
+- **Prior-month adjustment :** How much earlier closed months' live operating profit has moved since they were closed; carried into the next close so a closed month is never rewritten.
+- **Cash equation / gap :** At a close, what the company holds (cash accounts, supplier prepaid, CHIP not yet settled) minus what it owes or has set aside (envelopes, wallets, affiliate earnings and unpaid withdrawals, vouchers outstanding, undelivered orders). A gap above RM1 needs a written note.
 - **Maker-Checker :** A dual-control pattern where the person who initiates a sensitive action (large withdrawal, large voucher) cannot also be the sole approver of that same action.
 - **Cost Price :** Price from supplier (wholesale). Base for all markup calculations.
 - **System Markup :** Profit percentage added on top of cost price (system's margin).
@@ -610,8 +619,14 @@ delivery status, Compare period, sales by channel, export with Paid sales),
 an Orders Failed pill (ADR-108 addendum), the combo component SKU (item 66
 part) and the e2e `next start` boot (item 27). A read-only check after the
 deploy matched every Reports figure on prod: the Bridge equals the Monthly
-Summary, RM 0.00 unexplained. `staging` = `main` after this release, apart
-from docs PR #386.
+Summary, RM 0.00 unexplained.
+
+**On `staging`, not yet on `main` (2026-10-10):** docs #386 and #389, the
+admin package-order tiebreak #387, the settlement month-span fix #388, and
+the Envelope Ledger reshape (§16 item 78): postings and director loans #390,
+month close and cash equation #391, which also removes the platform-owner
+withdrawal. No Envelope Ledger entry may be recorded on production before
+this releases.
 
 **Earlier releases** (#376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
@@ -657,7 +672,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save. **2026-09-24:** the bulk "Deactivate All"/"Deactivate by Game"/"Reactivate" toggle now cascades onto dependent combos (found while auditing the Pending Reactivation combo gap above — the bulk toggle had never called `ComboPricingService`'s cascade at all, deactivate or reactivate). Released `main` via PR #286, 2026-09-24 | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — checkout + fulfillment, Resend (same-game swap, one resend seam, ADR-105), ORD-10 reconciliation, async `pending`, manual "Check from Supplier/Gateway" (ADR-096), one compensation guard `isAlreadyCompensated()` (ADR-102/103), restore-only voucher (ADR-024), six KPI cards (ADR-092), ADR-104 reskin, ADR-108 toolbar (Need Action excludes compensated, Source/Game/date filters, Columns, 2-sheet Excel export with earned profit) and a Failed pill (#385). Detail: build-log + ADRs | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 105, 108 |
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter | ADR-086, 087, 088, 104 |
-| Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`) | — |
+| Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`). **On `staging`, not yet on `main` (#391):** the platform-owner request (button, "Available balance", `POST /api/withdrawals`) is removed; the screen reviews Affiliate requests only | ADR-059, ADR-083 |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal reminder still deferred (§16 item 64; the vendor question is settled by ADR-116's OpenWA `customer-support` session) | ADR-027, 055, 068, 080 |
@@ -726,6 +741,8 @@ code and production on 2026-10-09; re-verify before building.
 - **79** Compensation vouchers debit the platform ledger (ADR-024 addendum).
 - **80** Voucher merge counts twice and can revive an expired voucher
   (ADR-036 addendum).
+- **81** Month-end pack for the external accountant (ADR-083 addendum);
+  get the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
 - **11** External uptime monitor on `https://api.pekangame.space/api/health`.
@@ -968,8 +985,9 @@ code and production on 2026-10-09; re-verify before building.
     - re-argue the ban-risk trade-off and switch engines (per session, if OpenWA supports it);
     - accept Baileys and record an ADR-075 addendum that corrects decision 6 to match reality.
 78. **Envelope Ledger reshape — [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md)'s
-    2026-10-10 addendum. Designed, grilled and stress-tested. PR-1 built 2026-10-10
-    (build-log); PR-2 built 2026-10-10 (build-log). Neither is on `main` yet.**
+    2026-10-10 addendum. Designed, grilled and stress-tested. PR-1 (#390) and
+    PR-2 (#391) built and merged to `staging` 2026-10-10 (build-log). Neither is
+    on `main` yet.**
     - **PR-1:** one posting header with typed lines (funding / transfer /
       expense / director-paid expense / repayment / distribution), per-director
       loan balances, `supplier_transfers.transferred_on`, and an append-only
@@ -977,17 +995,23 @@ code and production on 2026-10-09; re-verify before building.
     - **PR-2:** month close on the Monthly Summary page. It allocates exact
       operating profit once per KL month from September 2026, keeps a
       cash-account snapshot, and shows the "where is the money" equation. It
-      also removes the platform-owner withdrawal button.
+      also removes the platform-owner withdrawal (button and endpoint).
     - Production had 0 envelope entries on 2026-10-10, so no data migration is
-      needed.
+      needed. **Record none on production before the release**, or PR-1's
+      migration stops the deploy.
+    - Left after the release: the founder records the real September postings
+      (the 15 Sep RM500 loan, expenses) and closes September 2026 on prod; then
+      a read-only check of the close's figures and gap.
 79. **Compensation vouchers debit the platform ledger — needs an ADR-024
     addendum.**
     - `VoucherService::issue()` writes `voucher_issued` for a failed-order
       (Path B) voucher too. The order that redeems it still credits full
       `order_profit`, so the platform balance is understated by every
       compensation voucher (RM13.18 across 5 rows on 2026-10-10).
-    - Only `WithdrawalController` reads that balance, and item 78 removes it
-      from the screen.
+    - Nothing reads that balance any more: its one reader, the platform
+      withdrawal, was removed by item 78 PR-2 (#391). Every other platform
+      ledger reader reads `order_profit` only. So this is now data
+      hygiene, not a wrong figure on any screen.
     - The fix: stop the Path B debit going forward, plus a founder-approved
       reversing entry for the existing rows.
     - Found by the item 78 code-trace.
@@ -998,7 +1022,35 @@ code and production on 2026-10-09; re-verify before building.
     - `merge()` checks `status = active` but not `expires_at`, so an expired
       voucher can return with a new expiry after a closed month already
       booked its breakage (item 78).
+    - The month close stays right either way: "Voucher liability issued" is
+      an information line outside operating profit, goodwill excludes a merge
+      target, and a revived voucher's lost breakage comes through as the next
+      close's prior-month adjustment. So this is a business-rule bug (expired
+      credit given back), not a wrong envelope figure.
     - Production had 0 merges on 2026-10-10. Found by the item 78 code-trace.
+81. **Month-end pack for the external accountant — needs an ADR-083
+    addendum (grill first).**
+    - The founder's goal (2026-10-10): the accounting pages are a record
+      kept so that each month one download hands the outside accountant
+      everything, and nothing is reported missing.
+    - Today each piece downloads separately, and four gaps remain:
+      - The Monthly Summary and the month-close snapshot have no export.
+      - Receipts download one at a time.
+      - The original CHIP settlement `.xlsx` is not kept (only its
+        filename and the matched rows).
+      - A receipt is optional on an envelope expense, so one can be
+        missing without notice.
+    - Proposed: one "Month-end pack" zip per closed KL month, holding:
+      - the Transaction Register and Envelope Ledger CSVs;
+      - the Monthly Summary and close snapshot;
+      - every receipt from that month;
+      - the stored CHIP settlement files;
+      - a warning list (e.g. expenses without a receipt);
+      - a checklist of documents kept outside the system (bank
+        statements, Digiflazz deposit statement, original invoices,
+        company and payroll/tax documents) for the founder to tick.
+    - Before the grill: get the accountant's own monthly document list, so
+      the pack follows what they actually ask for.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
