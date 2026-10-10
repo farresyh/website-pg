@@ -51,6 +51,8 @@ import {
 import { Popover, PopoverPortal, PopoverPositioner, PopoverPopup } from "@/components/ui/popover";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { getEcho } from "@/lib/echo";
 import { useReconcileOnResume } from "@/lib/useReconcileOnResume";
 import { ApiError } from "@/lib/api-client";
@@ -234,6 +236,7 @@ function OrdersPageInner() {
     return STATUS_FILTERS.find((f) => f.value === fromUrl)?.value ?? "all";
   });
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [pageNumber, setPageNumber] = useState(1);
   // ADR-108 decisions 5-7 — Source/Game/date-range, each orthogonal to
   // the status tab above (can combine with any of them, same as the
@@ -273,29 +276,29 @@ function OrdersPageInner() {
   const orderFilters = useMemo(
     () => ({
       status,
-      search: search || undefined,
+      search: debouncedSearch || undefined,
       page: pageNumber,
       source: source === "all" ? undefined : source,
       gameId: gameId === "all" ? undefined : gameId,
       dateFrom,
       dateTo,
     }),
-    [status, search, pageNumber, source, gameId, dateFrom, dateTo],
+    [status, debouncedSearch, pageNumber, source, gameId, dateFrom, dateTo],
   );
   // Adjusted during render (React's own pattern for "reset state when
   // other state changes"), not in an effect — resets pagination to 1
   // whenever the filter/search changes, without a synchronous setState
   // call inside an effect.
-  const [paginationFilterKey, setPaginationFilterKey] = useState({ status, search, source, gameId, dateFrom, dateTo });
+  const [paginationFilterKey, setPaginationFilterKey] = useState({ status, search: debouncedSearch, source, gameId, dateFrom, dateTo });
   if (
     paginationFilterKey.status !== status ||
-    paginationFilterKey.search !== search ||
+    paginationFilterKey.search !== debouncedSearch ||
     paginationFilterKey.source !== source ||
     paginationFilterKey.gameId !== gameId ||
     paginationFilterKey.dateFrom !== dateFrom ||
     paginationFilterKey.dateTo !== dateTo
   ) {
-    setPaginationFilterKey({ status, search, source, gameId, dateFrom, dateTo });
+    setPaginationFilterKey({ status, search: debouncedSearch, source, gameId, dateFrom, dateTo });
     setPageNumber(1);
   }
   const [page, setPage] = useState<OrderPage | null>(null);
@@ -469,31 +472,35 @@ function OrdersPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The one place the list is (re)loaded from: the filter effect, the manual
+  // Refresh, the push listener and the resume hook all route through it, so
+  // the newest request wins whichever path fired it (useLatestRequest).
+  const beginListLoad = useLatestRequest();
+  const loadOrderList = useCallback(
+    (token: string, filters: Parameters<typeof listOrders>[1], silent = false) => {
+      const isLatest = beginListLoad();
+      listOrders(token, filters)
+        .then((p) => {
+          if (!isLatest()) return;
+          setPage(p);
+          setLastUpdatedAt(new Date());
+        })
+        .catch((err: unknown) => {
+          if (!silent && isLatest()) setError(err instanceof ApiError ? err.message : "Could not load orders.");
+        });
+    },
+    [beginListLoad],
+  );
+
   useEffect(() => {
     if (!session) return;
-
-    listOrders(session.token, orderFilters)
-      .then((p) => {
-        setPage(p);
-        setLastUpdatedAt(new Date());
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Could not load orders.");
-      });
-
-  }, [session, orderFilters]);
+    loadOrderList(session.token, orderFilters);
+  }, [session, orderFilters, loadOrderList]);
 
   /** Manual "Refresh" button — re-runs the same fetch the effect above already does, on demand. */
   function handleManualRefresh() {
     if (!session) return;
-    listOrders(session.token, orderFilters)
-      .then((p) => {
-        setPage(p);
-        setLastUpdatedAt(new Date());
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Could not load orders.");
-      });
+    loadOrderList(session.token, orderFilters);
   }
 
   // Read inside the push listener below without re-subscribing every time
@@ -539,12 +546,7 @@ function OrdersPageInner() {
 
     const channel = getEcho().private("admin-orders");
     channel.listen(".order.status.updated", (payload: { order_number: string }) => {
-      listOrders(session.token, orderFiltersRef.current)
-        .then((p) => {
-          setPage(p);
-          setLastUpdatedAt(new Date());
-        })
-        .catch(() => {});
+      loadOrderList(session.token, orderFiltersRef.current, true);
 
       const current = selectedRef.current;
       if (!current || current.order_number !== payload.order_number) return;
@@ -573,22 +575,17 @@ function OrdersPageInner() {
     return () => {
       getEcho().leave("admin-orders");
     };
-  }, [session]);
+  }, [session, loadOrderList]);
 
   useReconcileOnResume(
     useCallback(() => {
       if (!session) return;
-      listOrders(session.token, orderFiltersRef.current)
-        .then((p) => {
-          setPage(p);
-          setLastUpdatedAt(new Date());
-        })
-        .catch(() => {});
+      loadOrderList(session.token, orderFiltersRef.current, true);
 
       const current = selectedRef.current;
       if (!current) return;
       getOrder(session.token, current.id).then(setSelected).catch(() => {});
-    }, [session]),
+    }, [session, loadOrderList]),
   );
 
   // ADR-108 decision 6 — the Game filter's own dropdown options, loaded

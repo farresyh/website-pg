@@ -48,6 +48,7 @@ import { Refresh } from "@primeicons/react/refresh";
 import { Times } from "@primeicons/react/times";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { ApiError } from "@/lib/api-client";
 import { type ReportAffiliate, type ReportFilters, listReportAffiliates, exportReport } from "@/lib/reports";
 import { DATE_RANGE_PRESETS, type DateRangePreset, compareModeFor, resolveDateRange, todayInKL } from "@/lib/date-range";
@@ -108,7 +109,11 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { from, to } = resolveDateRange(rangePreset, customFrom, customTo);
+  // A date input fires onChange per typed digit (0002 → 0020 → 2026); only the
+  // settled value should reload every tab.
+  const settledCustomFrom = useDebouncedValue(customFrom);
+  const settledCustomTo = useDebouncedValue(customTo);
+  const { from, to } = resolveDateRange(rangePreset, settledCustomFrom, settledCustomTo);
   const filters: ReportFilters = {
     from,
     to,

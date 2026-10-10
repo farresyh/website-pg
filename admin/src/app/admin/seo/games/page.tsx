@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/select";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
 import { listGameSeo, type GameSeoListItem, type GameSeoStatus } from "@/lib/seo";
 
@@ -52,13 +54,16 @@ function GameSeoListPageInner() {
   const [games, setGames] = useState<GameSeoListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const beginListLoad = useLatestRequest();
   const [filter, setFilter] = useState(searchParams.get("filter") ?? "");
 
   function refresh(token: string) {
-    return listGameSeo(token, { search: search || undefined, filter: (filter || undefined) as GameSeoStatus | undefined })
-      .then(setGames)
+    const isLatest = beginListLoad();
+    return listGameSeo(token, { search: debouncedSearch || undefined, filter: (filter || undefined) as GameSeoStatus | undefined })
+      .then((list) => isLatest() && setGames(list))
       .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Could not load games.");
+        if (isLatest()) setError(err instanceof ApiError ? err.message : "Could not load games.");
       });
   }
 
@@ -75,7 +80,7 @@ function GameSeoListPageInner() {
   useEffect(() => {
     if (session) refresh(session.token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, filter]);
+  }, [debouncedSearch, filter]);
 
   return (
     <div>

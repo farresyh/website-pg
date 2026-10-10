@@ -1156,3 +1156,31 @@ succeeded.
 - Verified: `tsc`, `lint`, `build` clean in admin, storefront, reseller;
   docs-site builds (18 pages); e2e 6/6; the built storefront serves `/icon`
   as a 512x512 PNG and `/_next/image` answers 400 for a missing file.
+## 2026-10-10 — §16 item 76: debounced, stale-guarded server-side search (admin)
+
+- Two shared hooks in `admin/src/hooks/`: `useDebouncedValue` (300 ms) and
+  `useLatestRequest` (a per-list guard; `begin()` returns an `isLatest()`
+  check). The input binds to the raw state; every fetch and every
+  "back to page 1" reset binds to the debounced value.
+- Why a guard on top of the debounce: a list is reloaded from several paths,
+  not just the filter effect. `/admin/orders` has four (filter effect, manual
+  Refresh, Reverb push, resume hook), and Games, Gallery and Product Manager
+  also reload after a mutation. All of them now go through one guarded loader
+  per list, so the newest request wins whichever path fired it. The Orders
+  push listener's deps still exclude the filters (2026-09-28 addendum).
+- Pages: orders, games, seo/games, gallery, sandbox, product-manager.
+  Reports' custom from/to are debounced before they reach `resolveDateRange`
+  (`useReport()` already had its own guard). Product Manager's two inline
+  re-fetches after link/checkout-input now reuse `refreshCategories()`.
+- Verified on a local production build (Playwright, real API): typing
+  "PUBG" fast sends 1 request, not 4; typing 9 characters in Orders sends 1;
+  a slow in-flight `search=zzz` response that lands after the box was cleared
+  no longer replaces the full list (5 rows stay 5). `tsc`, `lint`, `build`,
+  admin `npm test` clean.
+- Reports custom dates, typed digit by digit into the from box: the old code
+  sent 4 rounds of the six report requests (`0002-…`, `0020-…`, `0202-…`,
+  `2026-…`); the new code sends one round, `2026-01-01`.
+- Stale response, same slow `search=zzz` test on the old code (`staging`
+  Games page, rebuilt): after the slow response landed the list showed 0 rows
+  instead of 5. The new code keeps 5. Both bugs reproduce on the old code and
+  are gone on the new.

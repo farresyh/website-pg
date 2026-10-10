@@ -725,9 +725,8 @@ feature.** Every open item sorted by what it needs to finish. Verified against
 code and production on 2026-10-09; re-verify before building.
 
 **A. Buildable now: code, no new design** (in suggested order)
-1. **76** Debounce server-side search inputs + guard against stale responses.
-2. **66** Combo admin: leg-attempt history view.
-3. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
+1. **66** Combo admin: leg-attempt history view.
+2. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
    in-modal picker.
 
 **B. Needs a short grill / ADR addendum first**
@@ -852,18 +851,6 @@ code and production on 2026-10-09; re-verify before building.
     per-leg attempt history (the rows exist and are queryable).
     Each component's supplier SKU now shows in the Edit Combo modal
     (2026-10-08, live via #385).
-76. **Server-side search fires on every keystroke, with no stale-response
-    guard** (found 2026-10-09, founder report). One request per character on
-    `/admin/orders` (a `LIKE` over orders, emails and games), `/admin/games`,
-    `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product
-    Manager. Reports' custom date range reloads the whole tab on each date
-    change while the year is typed. Load is negligible at today's scale;
-    the real defect is correctness: no guard, so a slow "PU" response can
-    overwrite "PUBG". Fix once, not per page: a shared
-    `useDebouncedValue(value, 300)` per app plus the stale guard
-    `ReportKit`'s `useReport()` already uses. Client-side filters (Reports
-    Games tab, storefront header search, price list, reseller catalog) and
-    submit-based search (Membership members, reseller orders) are fine.
 
 ## Buildable when triggered (design done or needs its own ADR)
 
@@ -1055,6 +1042,7 @@ code and production on 2026-10-09; re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **76** 2026-10-10: server-side search is debounced (300 ms) and stale-guarded on `/admin/orders`, `/admin/games`, `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product Manager, plus Reports' custom dates. Two shared admin hooks: `useDebouncedValue`, `useLatestRequest`. Admin only; the other apps have no affected search.
 - **77** 2026-10-10: `next` 16.3.5 → 16.3.8 in admin, storefront and reseller (the critical `next/og` RCE and the `next/image` SSRF); `npm audit --omit=dev` is now 0 in all three. docs-site: `sharp` 0.35.5 and a lockfile fix, no high left. Remaining: dev-only eslint `braces` (3 apps) and 11 moderate in docs-site (`postcss-selector-parser` under Starlight); both need `npm audit fix --force`, which downgrades Starlight, so left.
 - **65** 2026-10-09: Reports redesign (ADR-104 R1–R21 + the 2026-10-09 R8 addendum) — 7 tabs on Recharts, Paid sales with a Bridge to Accounting (= Monthly Summary), Failed & compensated per delivery status, Compare on every tab, sales by channel + `orders.placed_via`, an Orders Failed pill (ADR-108 addendum), export with Paid sales. A pre-release money audit reconciled every figure against prod. Live via #385; verified on prod the same night.
 - **27** 2026-10-08: e2e boots admin and storefront with `next build && next start` instead of Turbopack `next dev` (the `next/font/google` on-demand compile crash). 6/6 specs pass; `playwright` green on `main` after release #385 (2026-10-09). Reopen if it goes red on a boot error again.

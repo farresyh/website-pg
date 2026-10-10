@@ -14,6 +14,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
 import {
   type GalleryImage,
@@ -37,6 +39,15 @@ export default function GalleryPage() {
   const [page, setPage] = useState<GalleryImagePage | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const beginListLoad = useLatestRequest();
+  // Adjusted during render (see orders/page.tsx) — back to page 1 once the
+  // debounced term changes, not on every keystroke.
+  const [paginationSearchKey, setPaginationSearchKey] = useState(debouncedSearch);
+  if (paginationSearchKey !== debouncedSearch) {
+    setPaginationSearchKey(debouncedSearch);
+    setPageNumber(1);
+  }
   const [error, setError] = useState<string | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
@@ -58,11 +69,12 @@ export default function GalleryPage() {
 
   const refresh = useCallback(
     (token: string) => {
-      listGalleryImages(token, { search: search || undefined, page: pageNumber })
-        .then(setPage)
-        .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load the gallery."));
+      const isLatest = beginListLoad();
+      listGalleryImages(token, { search: debouncedSearch || undefined, page: pageNumber })
+        .then((p) => isLatest() && setPage(p))
+        .catch((err) => isLatest() && setError(err instanceof ApiError ? err.message : "Could not load the gallery."));
     },
-    [search, pageNumber],
+    [debouncedSearch, pageNumber, beginListLoad],
   );
 
   useEffect(() => {
@@ -179,10 +191,7 @@ export default function GalleryPage() {
       <input
         type="search"
         value={search}
-        onChange={(e) => {
-          setPageNumber(1);
-          setSearch(e.target.value);
-        }}
+        onChange={(e) => setSearch(e.target.value)}
         placeholder="Search by filename…"
         className="mb-6 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
       />
