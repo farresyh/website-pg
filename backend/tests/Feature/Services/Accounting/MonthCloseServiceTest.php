@@ -92,7 +92,7 @@ class MonthCloseServiceTest extends TestCase
      * Decision 13's identity on a whole month that touches every module:
      * director loan, supplier top-up, a delivered order drawn from the
      * supplier, an order still in flight, a failed order compensated with a
-     * voucher, goodwill, an envelope expense, CHIP not yet settled. Assets
+     * voucher, admin-issued voucher, an envelope expense, CHIP not yet settled. Assets
      * and claims must meet exactly, and the envelope check must agree.
      */
     public function test_cash_equation_balances_to_zero_across_every_module(): void
@@ -123,12 +123,12 @@ class MonthCloseServiceTest extends TestCase
             'affiliate_id' => $failed->affiliate_id, 'code' => 'V'.uniqid(), 'customer_email' => 'a@example.com', 'status' => 'active', 'reason' => 'x', ...$attrs,
         ]))->forceFill(['created_at' => '2026-09-26 03:00:00'])->save();
         $voucher(['order_id' => $failed->id, 'amount' => 3000, 'remaining' => 3000]);
-        $voucher(['amount' => 200, 'remaining' => 200]); // goodwill
+        $voucher(['amount' => 200, 'remaining' => 200]); // admin-issued
 
         $envelopes->post(EnvelopePostingType::Expense, [['budget_envelope_id' => $this->marketing->id, 'amount_sen' => -500]], '2026-09-28', 'ads', $this->admin->id, expenseCategory: ExpenseCategory::Advertising);
 
         $preview = $this->closes()->preview(2026, 9);
-        // 10000 revenue − 9000 cost (the drawdown at the blended RM0.01 rate) − 200 goodwill.
+        // 10000 revenue − 9000 cost (the drawdown at the blended RM0.01 rate) − 200 admin-issued voucher.
         $this->assertSame(800, $preview['operating_profit_sen']);
         $this->assertSame(800, $preview['allocate_sen']);
 

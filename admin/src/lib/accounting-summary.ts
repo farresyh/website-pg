@@ -12,9 +12,9 @@ export interface MonthlyAccountingSummary {
   affiliate_commission_expense_sen: number;
   affiliate_tier_fees_sen: number;
   voucher_breakage_sen: number;
-  goodwill_vouchers_issued_sen: number;
+  admin_issued_vouchers_sen: number;
   supplier_manual_adjustments_sen: number;
-  voucher_liability_issued_sen: number;
+  failed_order_credit_issued_sen: number;
   /** Always the CURRENT balance, never scoped to the viewed period — see MonthlyAccountingSummaryService::resellerWalletBalance()'s doc comment. */
   reseller_wallet_balance_sen: number;
   /** Information only: already taken out of their envelopes, never subtracted from operating profit. */
