@@ -900,3 +900,20 @@ code, so future sessions follow correct instructions.
   `php artisan test` 2675 passed; pint clean. No migration, no cache key change
   (the cached closure is the same; entries refresh within the cache TTL or on
   the next package change).
+
+## 2026-10-10 — Monthly Summary: a CHIP settlement that spans a month end now counts
+
+- **Why.** Found by the code-trace pass for the Envelope Ledger reshape
+  (ADR-083 addendum, being grilled). `paymentProcessingGainLoss()` kept a
+  settlement batch only when both `date_from` and `date_to` fell inside the
+  month. A weekly batch such as 28 Sep–4 Oct failed both months, so its fee
+  gain/(loss) counted nowhere.
+- **What.** The batch belongs to the month of its `date_to`, once (founder's
+  call, grill Q22). This is the only reader of settlement windows for a
+  monthly figure. `paidButNotSettled()` takes one settlement's own window and
+  is unaffected.
+- **Prod (read-only).** All 4 settlements (3–19 Sep, 20–21 Sep, 22–26 Sep,
+  6 Oct) sit inside one month, so no past month's figure changes.
+- **Verified.** New test in `MonthlyAccountingSummaryServiceTest` (red: Oct
+  showed 0 instead of 50, then green); full `php artisan test` 2676 passed;
+  pint clean. No migration.
