@@ -2,39 +2,27 @@
 
 namespace App\Models;
 
-use App\Services\Accounting\BudgetEnvelopeEntryCategory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * ADR-083 2026-09-28 "Envelope Ledger" addendum — append-only, enforced
- * at the model layer like `SupplierLedgerEntry`: `->update()`/`->save()`
- * on an existing row and `->delete()` both throw.
- * `App\Services\Accounting\BudgetEnvelopeService` is the sole writer.
+ * ADR-083 2026-10-10 addendum, decision 2 — one line of a
+ * `BudgetEnvelopePosting`: a signed amount into or out of one envelope.
+ * Everything else (date, description, receipt, void) lives on the posting.
+ * Append-only, like the posting.
  */
 class BudgetEnvelopeEntry extends Model
 {
     const UPDATED_AT = null;
 
     protected $fillable = [
+        'budget_envelope_posting_id',
         'budget_envelope_id',
-        'category',
         'amount_sen',
-        'transaction_date',
-        'description',
-        'paid_from',
-        'reference_no',
-        'receipt_path',
-        'reverses_entry_id',
-        'void_reason',
-        'created_by',
     ];
 
     protected $casts = [
-        'category' => BudgetEnvelopeEntryCategory::class,
         'amount_sen' => 'integer',
-        'transaction_date' => 'date',
-        'paid_from' => \App\Services\Accounting\PaidFrom::class,
     ];
 
     protected static function booted(): void
@@ -48,19 +36,13 @@ class BudgetEnvelopeEntry extends Model
         });
     }
 
+    public function posting(): BelongsTo
+    {
+        return $this->belongsTo(BudgetEnvelopePosting::class, 'budget_envelope_posting_id');
+    }
+
     public function budgetEnvelope(): BelongsTo
     {
         return $this->belongsTo(BudgetEnvelope::class);
-    }
-
-    public function createdBy(): BelongsTo
-    {
-        return $this->belongsTo(AdminUser::class, 'created_by');
-    }
-
-    /** Null unless this entry is itself a void's reversal. */
-    public function reversesEntry(): BelongsTo
-    {
-        return $this->belongsTo(self::class, 'reverses_entry_id');
     }
 }

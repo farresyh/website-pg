@@ -38,7 +38,8 @@ Use `packages[].code` verbatim as the `product_code` in
 
 ## Rules
 
-- Codes are **case-sensitive** and at most 32 characters.
+- Codes are **not case-sensitive** (they are matched in upper case) and at most
+  32 characters. Send them exactly as the catalogue shows.
 - The set of codes and their prices can change — re-read the catalogue
   regularly rather than caching it indefinitely. It is cached server-side, so
   polling it every few minutes is fine.

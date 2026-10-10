@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
 use App\Http\Controllers\Admin\MembershipPlanController;
+use App\Http\Controllers\Admin\MonthCloseController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PaymentSettlementController;
 use App\Http\Controllers\Admin\RedirectController;
@@ -439,7 +440,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // it depends on each withdrawal's own amount.
     Route::middleware('admin.role:super_admin,admin')->prefix('withdrawals')->group(function () {
         Route::get('/', [WithdrawalController::class, 'index']);
-        Route::post('/', [WithdrawalController::class, 'store']);
         Route::patch('/{withdrawal}/approve', [WithdrawalController::class, 'approve']);
         Route::patch('/{withdrawal}/reject', [WithdrawalController::class, 'reject']);
         Route::patch('/{withdrawal}/complete', [WithdrawalController::class, 'complete']);
@@ -744,6 +744,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // ADR-083 decision 8 — read-only Monthly Accounting Summary.
         Route::get('/summary', [AccountingSummaryController::class, 'show']);
+        // ADR-083 2026-10-10 addendum, decisions 9–14 — the month close (the only profit allocation) and its cash accounts.
+        Route::get('/month-close', [MonthCloseController::class, 'show']);
+        Route::post('/month-close', [MonthCloseController::class, 'store']);
+        Route::post('/month-close/{close}/reopen', [MonthCloseController::class, 'reopen']);
+        Route::post('/cash-accounts', [MonthCloseController::class, 'storeCashAccount']);
+        Route::patch('/cash-accounts/{cashAccount}', [MonthCloseController::class, 'updateCashAccount']);
 
         // ADR-083 2026-09-28 "Envelope Ledger" addendum — discretionary,
         // director-controlled budget tracking (Capital Rolling, Marketing
@@ -753,13 +759,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/envelopes', [BudgetEnvelopeController::class, 'index']);
         Route::post('/envelopes', [BudgetEnvelopeController::class, 'store']);
         Route::get('/envelopes/export', [BudgetEnvelopeController::class, 'export']);
-        Route::post('/envelopes/allocate-monthly-profit', [BudgetEnvelopeController::class, 'allocateMonthlyProfit']);
         // Rename and/or archive/reactivate — never a hard delete, see UpdateBudgetEnvelopeRequest's own doc comment.
         Route::patch('/envelopes/{budgetEnvelope}', [BudgetEnvelopeController::class, 'update']);
         Route::get('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'entries']);
-        Route::post('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'storeEntry']);
-        Route::post('/envelope-entries/{entry}/void', [BudgetEnvelopeController::class, 'voidEntry']);
-        Route::get('/envelope-entries/{entry}/receipt', [BudgetEnvelopeController::class, 'downloadReceipt']);
+        // ADR-083 2026-10-10 addendum: every action is one posting with typed lines.
+        Route::post('/envelope-postings', [BudgetEnvelopeController::class, 'storePosting']);
+        Route::post('/envelope-postings/{posting}/void', [BudgetEnvelopeController::class, 'voidPosting']);
+        Route::get('/envelope-postings/{posting}/receipt', [BudgetEnvelopeController::class, 'downloadReceipt']);
     });
 
     // ADR-058 58b (RES-1..6) — admin Affiliate Management. Same

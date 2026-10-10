@@ -3,61 +3,81 @@ import { apiFetch, apiUpload, ApiError } from "@/lib/api-client";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
- * ADR-083 2026-09-28 "Envelope Ledger" addendum — discretionary,
- * director-controlled budget tracking (Capital Rolling, Marketing
- * Budget, Maintenance/Operations, Company Savings), added by
- * re-grilling ADR-083 decision 11. Deliberately not a double-entry
- * engine — a categorized, append-only record with running balances.
- * All amounts are MYR sen.
+ * ADR-083 Envelope Ledger, reshaped by the 2026-10-10 addendum: every action
+ * is one posting (a header) with signed lines into or out of envelopes. An
+ * envelope is an allocation ("what this money is for"), never a location —
+ * supplier top-ups and CHIP payouts never appear here. All amounts are MYR sen.
  */
 export interface BudgetEnvelope {
   id: number;
   name: string;
-  /** Archived envelopes are hidden from the default active list but their entry history stays visible/exportable — never a hard delete, see the backend migration's own doc comment. */
+  /** Archived envelopes are hidden from the active grid; their history stays. Archiving needs a zero balance. */
   is_active: boolean;
   balance_sen: number;
 }
 
-export interface BudgetEnvelopeCategory {
+export interface Option {
   value: string;
   label: string;
-  typical_sign: "positive" | "negative" | "either";
 }
 
-/** 2026-09-30 addendum — shared with Supplier Funding's `paid_by` (same real-world set of payers funds both). */
-export interface PaidFromOption {
-  value: string;
+export type PostingType = "funding" | "transfer" | "expense" | "director_paid_expense" | "repayment" | "distribution";
+
+export interface LoanBalance {
+  counterparty: string;
   label: string;
+  balance_sen: number;
 }
 
 export interface BudgetEnvelopeIndex {
   envelopes: BudgetEnvelope[];
-  categories: BudgetEnvelopeCategory[];
-  paid_from_options: PaidFromOption[];
-  /** The same lines `/admin/accounting/summary` already shows, for the current month — reference context for the "Allocate Monthly Profit" decision, deliberately not a single derived "net profit" figure. */
-  current_month_summary: Record<string, number>;
-  current_month_label: string;
-  /** A rough, explicitly unaudited P&L estimate (sums the P&L-shaped lines only) — a soft-warning aid for Allocate Monthly Profit, never an authoritative figure. */
-  current_month_rough_pl_estimate_sen: number;
+  posting_types: Option[];
+  directors: Option[];
+  fund_types: Option[];
+  expense_categories: Option[];
+  /** What the company owes each director, computed from postings. */
+  loan_balances: LoanBalance[];
 }
 
+/** One line in one envelope, with its posting's details. */
 export interface BudgetEnvelopeEntry {
   id: number;
-  category: string;
-  category_label: string;
-  /** Signed — positive = money in, negative = money out. */
+  posting_id: number;
+  type: string;
+  type_label: string;
+  /** This line's signed amount — positive into the envelope, negative out. */
   amount_sen: number;
-  /** The day money actually moved — null on an older entry recorded before this field existed. */
-  transaction_date: string | null;
+  posting_amount_sen: number;
+  transaction_date: string;
   description: string;
-  paid_from: string | null;
-  paid_from_label: string | null;
+  counterparty: string | null;
+  counterparty_label: string | null;
+  fund_type_label: string | null;
+  expense_category_label: string | null;
   reference_no: string | null;
   has_receipt: boolean;
-  reverses_entry_id: number | null;
+  reverses_posting_id: number | null;
   is_voided: boolean;
   created_by: string | null;
   created_at: string;
+}
+
+export interface PostingLine {
+  budget_envelope_id: number;
+  /** Signed sen. */
+  amount_sen: number;
+}
+
+export interface RecordPostingValues {
+  type: PostingType;
+  transaction_date: string;
+  description: string;
+  lines: PostingLine[];
+  counterparty?: string;
+  fund_type?: string;
+  expense_category?: string;
+  reference_no?: string;
+  receipt?: File | null;
 }
 
 export function getBudgetEnvelopes(token: string) {
@@ -68,7 +88,7 @@ export function createBudgetEnvelope(token: string, name: string) {
   return apiFetch<{ envelope: BudgetEnvelope }>("/api/accounting/envelopes", { method: "POST", token, body: { name } });
 }
 
-/** Rename and/or archive/reactivate — never a hard delete (a used envelope is protected at the DB layer regardless). */
+/** Rename and/or archive/reactivate — never a hard delete. */
 export function updateBudgetEnvelope(token: string, envelopeId: number, values: { name?: string; is_active?: boolean }) {
   return apiFetch<{ envelope: BudgetEnvelope }>(`/api/accounting/envelopes/${envelopeId}`, { method: "PATCH", token, body: values });
 }
@@ -82,64 +102,41 @@ export function getBudgetEnvelopeEntries(token: string, envelopeId: number, filt
   return apiFetch<{ entries: BudgetEnvelopeEntry[] }>(`/api/accounting/envelopes/${envelopeId}/entries${qs ? `?${qs}` : ""}`, { token });
 }
 
-export interface RecordBudgetEnvelopeEntryValues {
-  category: string;
-  /** Always a positive magnitude — the backend applies the category's own sign. */
-  amount_sen: number;
-  /** The day money actually moved — Y-m-d. Defaults to today on the backend when omitted. */
-  transaction_date?: string;
-  description: string;
-  /** Required only when category is "adjustment", the one category allowed either sign. */
-  direction?: "in" | "out";
-  paid_from?: string;
-  reference_no?: string;
-  receipt?: File | null;
-}
-
-export function recordBudgetEnvelopeEntry(token: string, envelopeId: number, values: RecordBudgetEnvelopeEntryValues) {
+/** The backend enforces every type's rules (signs, sums, required fields) and answers 422 with the reason. */
+export function recordPosting(token: string, values: RecordPostingValues) {
   const formData = new FormData();
-  formData.append("category", values.category);
-  formData.append("amount_sen", String(values.amount_sen));
-  if (values.transaction_date) formData.append("transaction_date", values.transaction_date);
+  formData.append("type", values.type);
+  formData.append("transaction_date", values.transaction_date);
   formData.append("description", values.description);
-  if (values.direction) formData.append("direction", values.direction);
-  if (values.paid_from) formData.append("paid_from", values.paid_from);
+  values.lines.forEach((line, i) => {
+    formData.append(`lines[${i}][budget_envelope_id]`, String(line.budget_envelope_id));
+    formData.append(`lines[${i}][amount_sen]`, String(line.amount_sen));
+  });
+  if (values.counterparty) formData.append("counterparty", values.counterparty);
+  if (values.fund_type) formData.append("fund_type", values.fund_type);
+  if (values.expense_category) formData.append("expense_category", values.expense_category);
   if (values.reference_no) formData.append("reference_no", values.reference_no);
   if (values.receipt) formData.append("receipt", values.receipt);
 
-  return apiUpload<{ entry: BudgetEnvelopeEntry; balance_sen: number }>(
-    `/api/accounting/envelopes/${envelopeId}/entries`,
-    formData,
-    { token },
-  );
+  return apiUpload<{ posting: { id: number } }>("/api/accounting/envelope-postings", formData, { token });
 }
 
-/** Never edits/deletes the original entry — posts a new, negated entry referencing it. An already-voided entry is rejected. */
-export function voidBudgetEnvelopeEntry(token: string, entryId: number, reason: string) {
-  return apiFetch<{ reversal: BudgetEnvelopeEntry; balance_sen: number }>(
-    `/api/accounting/envelope-entries/${entryId}/void`,
-    { method: "POST", token, body: { reason } },
-  );
+/** Reverses every line of the posting; the original stays. A posting is voided at most once. */
+export function voidPosting(token: string, postingId: number, reason: string) {
+  return apiFetch<{ reversal: { id: number } }>(`/api/accounting/envelope-postings/${postingId}/void`, { method: "POST", token, body: { reason } });
 }
 
-export interface AllocateMonthlyProfitValues {
-  period_label: string;
-  allocations: Array<{ budget_envelope_id: number; amount_sen: number }>;
+/** Bearer-token-gated (private disk) — Blob + object-URL download. */
+export async function downloadPostingReceipt(token: string, postingId: number): Promise<void> {
+  await downloadBlob(token, `/api/accounting/envelope-postings/${postingId}/receipt`, `envelope-posting-${postingId}-receipt`);
 }
 
-/** "Allocate Monthly Profit" — the founder decides the split manually each month, never an automatic formula. */
-export function allocateMonthlyProfit(token: string, values: AllocateMonthlyProfitValues) {
-  return apiFetch<{ entries: BudgetEnvelopeEntry[] }>(
-    "/api/accounting/envelopes/allocate-monthly-profit",
-    { method: "POST", token, body: values },
-  );
+export async function downloadEnvelopeExport(token: string): Promise<void> {
+  await downloadBlob(token, "/api/accounting/envelopes/export", "envelope-ledger.csv");
 }
 
-/** Bearer-token-gated (private disk) — same Blob + object-URL pattern as `downloadSupplierTransferReceipt`. */
-export async function downloadBudgetEnvelopeEntryReceipt(token: string, entryId: number, filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/accounting/envelope-entries/${entryId}/receipt`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+async function downloadBlob(token: string, path: string, filename: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
 
   if (!response.ok) {
     throw new ApiError(response.status, undefined, `Download failed (${response.status})`);
@@ -154,4 +151,14 @@ export async function downloadBudgetEnvelopeEntryReceipt(token: string, entryId:
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+export function formatRm(sen: number): string {
+  const formatted = `RM ${(Math.abs(sen) / 100).toFixed(2)}`;
+  return sen < 0 ? `(${formatted})` : formatted;
+}
+
+/** "12.34" → 1234; NaN for anything that isn't a plain amount. */
+export function rmToSen(rm: string): number {
+  return /^\d+(\.\d{1,2})?$/.test(rm.trim()) ? Math.round(parseFloat(rm) * 100) : NaN;
 }

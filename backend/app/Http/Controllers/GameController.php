@@ -145,9 +145,15 @@ class GameController extends Controller
                 // previous alphabetical-by-name (which put "10209
                 // Diamonds" before "1192 Diamonds"). Packages without
                 // a curated denomination yet sort last, by name.
+                // 2026-10-09: supplier variants of one denomination go
+                // cheapest cost first; in the no-denomination tail name
+                // still leads (the CASE) and cost only orders same-name
+                // variants.
                 $packages = $game->packages()
                     ->orderByRaw('denomination IS NULL')
                     ->orderBy('denomination')
+                    ->orderByRaw('CASE WHEN denomination IS NULL THEN name END')
+                    ->orderBy('cost_price')
                     ->orderBy('name')
                     ->get();
 

@@ -8,6 +8,7 @@ use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\SupplierTransferCorrection;
+use App\Services\Report\ReportService;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
@@ -48,6 +49,7 @@ final class SupplierFundingService
      */
     public function recordTransfer(
         Supplier $supplier,
+        string $transferredOn,
         string $sourceChannel,
         int $amountMyrSent,
         int $feeMyr,
@@ -61,6 +63,7 @@ final class SupplierFundingService
     ): SupplierTransfer {
         return DB::transaction(function () use (
             $supplier,
+            $transferredOn,
             $sourceChannel,
             $amountMyrSent,
             $feeMyr,
@@ -82,6 +85,7 @@ final class SupplierFundingService
 
             $transfer = SupplierTransfer::query()->create([
                 'supplier_id' => $supplier->id,
+                'transferred_on' => $transferredOn,
                 'source_channel' => $sourceChannel,
                 'paid_by' => $paidBy?->value,
                 'amount_myr_sent' => $amountMyrSent,
@@ -245,7 +249,7 @@ final class SupplierFundingService
         int $adminUserId,
         ?UploadedFile $receipt = null,
     ): SupplierTransferCorrection {
-        $allowed = ['source_channel', 'paid_by', 'amount_myr_sent', 'fee_myr', 'reference_no'];
+        $allowed = ['transferred_on', 'source_channel', 'paid_by', 'amount_myr_sent', 'fee_myr', 'reference_no'];
         $changes = array_intersect_key($changes, array_flip($allowed));
 
         $newReceiptPath = null;
@@ -267,7 +271,12 @@ final class SupplierFundingService
                     // against the request's raw string value throws. Every
                     // other correctable field here is a plain string, so
                     // this normalization is a no-op for them.
-                    $oldValueForDiff = $oldValue instanceof \BackedEnum ? $oldValue->value : $oldValue;
+                    $oldValueForDiff = match (true) {
+                        $oldValue instanceof \BackedEnum => $oldValue->value,
+                        // `transferred_on` is a date cast — compare as Y-m-d, never as a datetime string.
+                        $oldValue instanceof CarbonInterface => $oldValue->toDateString(),
+                        default => $oldValue,
+                    };
                     if ((string) $oldValueForDiff !== (string) $newValue) {
                         $diff[$field] = [$oldValueForDiff, $newValue];
                     }
@@ -426,11 +435,13 @@ final class SupplierFundingService
     ): LengthAwarePaginator {
         return $supplier->transfers()
             ->with(['adjustments', 'corrections'])
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            // ADR-083 2026-10-10 addendum, decision 15: the day the money
+            // moved, a KL calendar date — not when the row was typed in.
+            ->when($from, fn ($q) => $q->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
+            ->when($toExclusive, fn ($q) => $q->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
             ->when($voided === true, fn ($q) => $q->whereNotNull('voided_at'))
             ->when($voided === false, fn ($q) => $q->whereNull('voided_at'))
-            ->orderByDesc('created_at')
+            ->orderByDesc('transferred_on')
             ->orderByDesc('id')
             ->paginate($perPage);
     }

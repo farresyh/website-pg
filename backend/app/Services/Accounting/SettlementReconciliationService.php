@@ -11,6 +11,7 @@ use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
+use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -218,27 +219,50 @@ final class SettlementReconciliationService
         // day); item 63 — they used to be read as UTC days, cutting at
         // 08:00 KL. Exclusive upper bound, same as Reports.
         [$from, $toExclusive] = app(ReportService::class)->dateRangeFromDates($dateFrom->toDateString(), $dateTo->toDateString());
-        $settledRefs = ChipSettledTransaction::query()->pluck('transaction_id')->all();
 
+        return $this->unsettled($from, $toExclusive, ChipSettledTransaction::query()->pluck('transaction_id')->all());
+    }
+
+    /**
+     * ADR-083 2026-10-10 addendum, decision 13 — every CHIP payment made
+     * before `$toExclusive` that no settlement had paid out by then (a
+     * settlement's `settled_on` is a KL date). The month close's "CHIP paid
+     * but not settled" asset.
+     *
+     * @return array<int, array{reference: string, amount_sen: int}>
+     */
+    public function paidButNotSettledBefore(Carbon $toExclusive): array
+    {
+        $klDay = $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString();
+
+        return $this->unsettled(null, $toExclusive, ChipSettledTransaction::query()->where('settled_on', '<', $klDay)->pluck('transaction_id')->all());
+    }
+
+    /**
+     * @param  list<string>  $settledRefs
+     * @return array<int, array{reference: string, amount_sen: int}>
+     */
+    private function unsettled(?CarbonInterface $from, CarbonInterface $toExclusive, array $settledRefs): array
+    {
         $orders = Order::query()
             ->where('payment_gateway', 'chip')
             ->where('payment_status', PaymentStatus::Paid->value)
             ->where('is_test', false)
-            ->where('paid_at', '>=', $from)->where('paid_at', '<', $toExclusive)
+            ->when($from, fn ($q) => $q->where('paid_at', '>=', $from))->where('paid_at', '<', $toExclusive)
             ->whereNotIn('payment_ref', $settledRefs)
             ->get(['order_number', 'final_amount'])
             ->map(fn (Order $o) => ['reference' => $o->order_number, 'amount_sen' => $o->final_amount]);
 
         $memberships = MembershipCheckoutAttempt::query()
             ->where('status', MembershipCheckoutAttemptStatus::Paid->value)
-            ->where('updated_at', '>=', $from)->where('updated_at', '<', $toExclusive)
+            ->when($from, fn ($q) => $q->where('updated_at', '>=', $from))->where('updated_at', '<', $toExclusive)
             ->whereNotIn('payment_ref', $settledRefs)
             ->get(['subscription_number', 'total_charged_sen'])
             ->map(fn (MembershipCheckoutAttempt $m) => ['reference' => $m->subscription_number, 'amount_sen' => $m->total_charged_sen]);
 
         $walletTopups = WalletTopupAttempt::query()
             ->where('status', WalletTopupAttemptStatus::Paid->value)
-            ->where('updated_at', '>=', $from)->where('updated_at', '<', $toExclusive)
+            ->when($from, fn ($q) => $q->where('updated_at', '>=', $from))->where('updated_at', '<', $toExclusive)
             ->whereNotIn('chip_payment_ref', $settledRefs)
             ->get(['reference', 'total_charged_sen'])
             ->map(fn (WalletTopupAttempt $w) => ['reference' => $w->reference, 'amount_sen' => $w->total_charged_sen]);

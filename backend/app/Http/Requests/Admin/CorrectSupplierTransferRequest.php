@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Services\Accounting\PaidFrom;
+use App\Services\Report\ReportService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,6 +27,7 @@ class CorrectSupplierTransferRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'transferred_on' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:'.now(ReportService::TIMEZONE)->toDateString()],
             'source_channel' => ['sometimes', 'in:wise,airwallex,bank'],
             'paid_by' => ['sometimes', 'nullable', 'string', Rule::in(array_map(fn (PaidFrom $p) => $p->value, PaidFrom::cases()))],
             'amount_myr_sent' => ['sometimes', 'integer', 'min:1'],

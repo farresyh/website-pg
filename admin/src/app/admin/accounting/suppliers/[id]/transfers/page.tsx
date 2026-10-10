@@ -20,6 +20,7 @@ import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { listSuppliers, type Supplier } from "@/lib/suppliers";
+import { todayInKL } from "@/lib/date-range";
 import {
   getSupplierTransfers,
   adjustSupplierTransfer,
@@ -76,6 +77,7 @@ export default function SupplierFundingHistoryPage() {
   const [correctionMode, setCorrectionMode] = useState<"adjust" | "void" | "edit">("adjust");
   const [correctionAmount, setCorrectionAmount] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
+  const [editTransferredOn, setEditTransferredOn] = useState("");
   const [editSourceChannel, setEditSourceChannel] = useState<"wise" | "airwallex" | "bank">("wise");
   const [editPaidBy, setEditPaidBy] = useState("");
   const [editReferenceNo, setEditReferenceNo] = useState("");
@@ -127,6 +129,7 @@ export default function SupplierFundingHistoryPage() {
     setCorrectionAmount("");
     setCorrectionReason("");
     setCorrectionError(null);
+    setEditTransferredOn(transfer.transferred_on);
     setEditSourceChannel(transfer.source_channel);
     setEditPaidBy(transfer.paid_by ?? "");
     setEditReferenceNo(transfer.reference_no ?? "");
@@ -160,6 +163,10 @@ export default function SupplierFundingHistoryPage() {
         const values: CorrectSupplierTransferValues = { reason: correctionReason.trim() };
         let hasChange = false;
 
+        if (editTransferredOn && editTransferredOn !== transfer.transferred_on) {
+          values.transferred_on = editTransferredOn;
+          hasChange = true;
+        }
         if (editSourceChannel !== transfer.source_channel) {
           values.source_channel = editSourceChannel;
           hasChange = true;
@@ -290,7 +297,10 @@ export default function SupplierFundingHistoryPage() {
                 return (
                   <React.Fragment key={transfer.id}>
                     <tr className={isVoided ? "opacity-60" : undefined}>
-                      <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatDate(transfer.created_at)}</td>
+                      <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
+                        {transfer.transferred_on}
+                        <span className="block text-theme-xs text-gray-400">recorded {formatDate(transfer.created_at)}</span>
+                      </td>
                       <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                         {sourceChannelLabel[transfer.source_channel] ?? transfer.source_channel}
                         {transfer.paid_by && (
@@ -415,8 +425,12 @@ export default function SupplierFundingHistoryPage() {
                             {correctionMode === "edit" && (
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <p className="text-theme-xs text-gray-400 sm:col-span-2">
-                                  Corrects only how this transfer was recorded (RM sent/fee/channel/reference/receipt) — never the {transfer.currency} amount credited to the ledger. Only the fields you change are sent.
+                                  Corrects only how this transfer was recorded (date/RM sent/fee/channel/reference/receipt) — never the {transfer.currency} amount credited to the ledger. Only the fields you change are sent.
                                 </p>
+                                <div>
+                                  <Label htmlFor={`edit_date_${transfer.id}`}>Transfer date</Label>
+                                  <Input id={`edit_date_${transfer.id}`} type="date" value={editTransferredOn} onChange={(e) => setEditTransferredOn(e.target.value)} max={todayInKL()} />
+                                </div>
                                 <div>
                                   <Label htmlFor={`edit_channel_${transfer.id}`}>Sent via</Label>
                                   <select

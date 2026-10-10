@@ -8,6 +8,9 @@ The API is rate-limited **per API key** at **60 requests per minute**.
 The limit is keyed on the key itself, not on your IP — a reseller behind shared
 infrastructure or NAT is never penalised for a neighbour's traffic.
 
+Separately, requests that fail authentication are limited per IP (20 per
+minute), then return `429 RATE_LIMITED`. A valid key is never blocked by this.
+
 ## Hitting the limit
 
 When you exceed it you get:

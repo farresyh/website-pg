@@ -33,4 +33,16 @@ class LedgerEntry extends Model
     protected $casts = [
         'amount' => 'integer',
     ];
+
+    /** ADR-083 2026-10-10 addendum, decision 16 — enforced, not just a convention. */
+    protected static function booted(): void
+    {
+        static::updating(function () {
+            throw new \LogicException('LedgerEntry rows are append-only — cannot update a persisted row.');
+        });
+
+        static::deleting(function () {
+            throw new \LogicException('LedgerEntry rows are append-only — cannot delete a persisted row.');
+        });
+    }
 }

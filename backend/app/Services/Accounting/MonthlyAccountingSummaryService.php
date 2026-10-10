@@ -2,6 +2,7 @@
 
 namespace App\Services\Accounting;
 
+use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
 use App\Models\MembershipFeeRecord;
 use App\Models\Order;
@@ -41,11 +42,9 @@ final class MonthlyAccountingSummaryService
         // Add the month in KL time, then convert: adding it after the UTC
         // shift ended the period one KL day early whenever the previous
         // month is shorter (31 Oct KL fell into no month at all).
-        $monthStart = Carbon::create($year, $month, 1, 0, 0, 0, ReportService::TIMEZONE);
-        $from = $monthStart->copy()->setTimezone('UTC');
-        $toExclusive = $monthStart->copy()->addMonthNoOverflow()->setTimezone('UTC');
+        [$from, $toExclusive] = self::monthBounds($year, $month);
 
-        return [
+        $lines = [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
             'cogs_sen' => $this->cogs($from, $toExclusive),
@@ -55,9 +54,137 @@ final class MonthlyAccountingSummaryService
             'supplier_prepaid_fx_variance_sen' => $this->supplierPrepaidFxVarianceTrueUp($from, $toExclusive),
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
             'affiliate_tier_fees_sen' => $this->affiliateTierFees($from, $toExclusive),
+            'voucher_breakage_sen' => $this->voucherBreakage($from, $toExclusive),
+            'goodwill_vouchers_issued_sen' => $this->goodwillVouchersIssued($from, $toExclusive),
+            'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'voucher_liability_issued_sen' => $this->voucherLiabilityIssued($from, $toExclusive),
             'reseller_wallet_balance_sen' => $this->resellerWalletBalance(),
+            'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
         ];
+
+        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
+    }
+
+    /**
+     * ADR-083 2026-10-10 addendum, decision 11 — what a month close
+     * allocates. A new line above must say which side it falls on.
+     * Deliberately left out: compensation vouchers (a liability — the cash
+     * was received and kept) and envelope expenses (they already reduced
+     * their envelope; subtracting here again counts them twice). Capital
+     * movements (supplier top-up, wallet balance) are not P&L at all.
+     *
+     * @param  array<string, int>  $lines
+     */
+    public static function operatingProfit(array $lines): int
+    {
+        return $lines['sales_revenue_sen']
+            + $lines['membership_revenue_sen']
+            - $lines['cogs_sen']
+            + $lines['supplier_prepaid_fx_variance_sen']
+            + $lines['payment_processing_gain_loss_sen']
+            - $lines['bank_transfer_fees_sen']
+            - $lines['affiliate_commission_expense_sen']
+            + $lines['affiliate_tier_fees_sen']
+            + $lines['voucher_breakage_sen']
+            - $lines['goodwill_vouchers_issued_sen']
+            + $lines['supplier_manual_adjustments_sen'];
+    }
+
+    /**
+     * The whole KL month as UTC instants. Add the month in KL time, then
+     * convert: adding it after the UTC shift ended the period one KL day
+     * early whenever the previous month is shorter (31 Oct KL fell into no
+     * month at all).
+     *
+     * @return array{0: Carbon, 1: Carbon} [from, toExclusive]
+     */
+    public static function monthBounds(int $year, int $month): array
+    {
+        $monthStart = Carbon::create($year, $month, 1, 0, 0, 0, ReportService::TIMEZONE);
+
+        return [$monthStart->copy()->setTimezone('UTC'), $monthStart->copy()->addMonthNoOverflow()->setTimezone('UTC')];
+    }
+
+    /**
+     * Decision 11 (Q19) — the month's Envelope Ledger expenses (plain and
+     * director-paid) by sub-category, an information line only. Scoped by
+     * the posting's KL `transaction_date`; a void is dated with its
+     * original, so a voided expense nets to nothing.
+     *
+     * @return array<string, int> expense_category value => sen, positive
+     */
+    public function envelopeExpensesByCategory(int $year, int $month): array
+    {
+        $first = Carbon::create($year, $month, 1)->toDateString();
+        $last = Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+
+        return BudgetEnvelopePosting::query()
+            ->whereIn('type', [EnvelopePostingType::Expense->value, EnvelopePostingType::DirectorPaidExpense->value])
+            ->whereDate('transaction_date', '>=', $first)
+            ->whereDate('transaction_date', '<=', $last)
+            ->get(['expense_category', 'amount_sen'])
+            ->groupBy(fn (BudgetEnvelopePosting $p) => $p->expense_category->value)
+            ->map(fn ($postings) => (int) $postings->sum('amount_sen'))
+            ->filter()
+            ->sortKeys()
+            ->all();
+    }
+
+    /**
+     * Decision 11 (Q21) — a voucher that expired this month keeps its
+     * remaining balance as income. Expiry is lazy (the status never flips),
+     * so `expires_at` alone decides. A sandbox order's voucher was never
+     * customer cash.
+     */
+    private function voucherBreakage(Carbon $from, Carbon $toExclusive): int
+    {
+        return (int) Voucher::query()
+            ->where('expires_at', '>=', $from)
+            ->where('expires_at', '<', $toExclusive)
+            ->where(fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false)))
+            ->sum('remaining');
+    }
+
+    /**
+     * Decision 11 — goodwill (ADR-004 Path A: no source order) is an
+     * expense when issued. A merge target is not new goodwill: its sources
+     * were already counted when they were issued.
+     */
+    private function goodwillVouchersIssued(Carbon $from, Carbon $toExclusive): int
+    {
+        return (int) Voucher::query()
+            ->whereNull('order_id')
+            ->whereDoesntHave('mergesAsTarget')
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
+            ->sum('amount');
+    }
+
+    /**
+     * Decision 11 (Q26) — a partial supplier-balance correction recorded
+     * this month, in MYR at the month-end rate. A voided transfer's
+     * adjustments are reversed by its void, so they are skipped.
+     */
+    private function supplierManualAdjustments(Carbon $from, Carbon $toExclusive): int
+    {
+        $rows = SupplierLedgerEntry::query()
+            ->where('type', SupplierLedgerEntryType::ManualAdjustment->value)
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
+            ->whereIn('reference_id', SupplierTransfer::query()->whereNull('voided_at')->select('id'))
+            ->selectRaw('supplier_id, SUM(amount) as total')
+            ->groupBy('supplier_id')
+            ->get();
+
+        $lastDay = self::klLastDay($toExclusive);
+
+        return (int) $rows->sum(fn ($row) => (int) round(((float) $row->total) * ($this->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+    }
+
+    /** The KL calendar date of the last day before an exclusive UTC bound. */
+    private static function klLastDay(Carbon $toExclusive): string
+    {
+        return $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->subDay()->toDateString();
     }
 
     /**
@@ -115,9 +242,11 @@ final class MonthlyAccountingSummaryService
 
     /**
      * ADR-083 decision 7 — "Σ transaction_fee charged − Σ CHIP Fee
-     * actual", from every settlement batch whose window falls inside
-     * this month (a batch is typically weekly, per this ADR's own
-     * recommended cadence — several may fall inside one month).
+     * actual", from every settlement batch whose window ends inside this
+     * month (a batch is typically weekly, per this ADR's own recommended
+     * cadence — several may fall inside one month). Keyed on `date_to`
+     * alone: requiring the whole window inside the month made a batch
+     * that crosses a month end count in neither month.
      * `matched_fee_sen` (not the old `expected_fee_sen`, dropped by this
      * ADR's own same-day addendum) sums our own fee assumption ONLY for
      * the transactions each settlement actually matched — the same fix
@@ -128,7 +257,7 @@ final class MonthlyAccountingSummaryService
         $totals = PaymentSettlement::query()
             // Settlement windows are KL calendar dates, so compare against
             // the KL dates, not the UTC instants' dates.
-            ->where('date_from', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('date_to', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->where('date_to', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->selectRaw('COALESCE(SUM(matched_fee_sen), 0) as matched_fee, COALESCE(SUM(file_fee_sen), 0) as file_fee')
             ->first();
@@ -150,8 +279,8 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->where('created_at', '>=', $from)
-            ->where('created_at', '<', $toExclusive)
+            ->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->sum('amount_myr_sent');
     }
 
@@ -164,22 +293,24 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->where('created_at', '>=', $from)
-            ->where('created_at', '<', $toExclusive)
+            ->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->sum('fee_myr');
     }
 
     /**
      * ADR-083 decision 5 — "Σ orders.cost_price (delivered that month)
      * minus Σ (foreign drawn that month × weighted-average rate of that
-     * supplier's transfers)". The weighted-average rate is computed
-     * across that supplier's entire non-voided transfer history to
-     * date (the "true blended cost of funds" framing decision 5's own
-     * rationale uses), not just transfers inside this month.
+     * supplier's transfers)". The weighted-average rate blends that
+     * supplier's whole non-voided transfer history up to the month's last
+     * KL day (the "true blended cost of funds" framing decision 5's own
+     * rationale uses). Not later transfers: 2026-10-10 addendum, decision
+     * 11 (Q24) — a closed month must stop moving on every new transfer.
      */
     private function supplierPrepaidFxVarianceTrueUp(Carbon $from, Carbon $toExclusive): int
     {
         $cogs = $this->cogs($from, $toExclusive);
+        $lastDay = self::klLastDay($toExclusive);
 
         $drawdownsBySupplier = SupplierLedgerEntry::query()
             ->where('type', SupplierLedgerEntryType::OrderDrawdown->value)
@@ -192,7 +323,7 @@ final class MonthlyAccountingSummaryService
         $foreignDrawnMyrSen = 0;
 
         foreach ($drawdownsBySupplier as $row) {
-            $rate = $this->weightedAverageRate((int) $row->supplier_id);
+            $rate = $this->weightedAverageRate((int) $row->supplier_id, $lastDay);
 
             if ($rate === null) {
                 continue; // no real transfer history yet for this supplier — nothing to true up against
@@ -207,13 +338,16 @@ final class MonthlyAccountingSummaryService
     /**
      * MYR per unit of foreign currency, weighted by each transfer's own
      * net foreign amount received — `Σ amount_myr_sent / Σ net_foreign_received`
-     * across every non-voided transfer for this supplier.
+     * across every non-voided transfer for this supplier sent on or before
+     * `$asOfDate` (a KL date). Public for the month close's supplier
+     * prepaid figure (2026-10-10 addendum, decision 13).
      */
-    private function weightedAverageRate(int $supplierId): ?float
+    public function weightedAverageRate(int $supplierId, string $asOfDate): ?float
     {
         $transfers = SupplierTransfer::query()
             ->where('supplier_id', $supplierId)
             ->whereNull('voided_at')
+            ->where('transferred_on', '<=', $asOfDate)
             ->get(['amount_myr_sent', 'amount_foreign_received', 'supplier_fee']);
 
         $totalMyrSen = $transfers->sum('amount_myr_sent');

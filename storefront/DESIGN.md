@@ -91,7 +91,7 @@ components:
 
 PekanGame's storefront reads like a pop-art receipt book crossed with an arcade cabinet: warm paper-cream surfaces, hard 2px ink-navy borders, and offset drop-shadows that never blur or glow. Every card looks physically stamped onto the page, not floated above it. The system is deliberately loud in structure (thick borders, blocky corners, bold uppercase display type) but restrained in palette — one electric primary hue carries almost every call-to-action, with a cyan secondary and a magenta tertiary appearing only as small, specific accents (a step indicator, a discount badge), never as competing focal points.
 
-The storefront is **whitelabeled**: an affiliate brand picks one of five curated "Theme Presets" (see Colors → Theme Presets) that swaps the primary/secondary/tertiary/surface family, while the neo-brutalist structural language — hard borders, offset shadows, squared-leaning radius, Space Grotesk display type — stays fixed across every preset. A preset changes the world's *color*, never its *bones*.
+The storefront is **whitelabeled**: an affiliate brand picks one of four curated "Theme Presets" (see Colors → Theme Presets) that swaps the primary/secondary/tertiary/surface family, while the neo-brutalist structural language — hard borders, offset shadows, squared-leaning radius, Space Grotesk display type — stays fixed across every preset. A preset changes the world's *color*, never its *bones*.
 
 Confirmed visual rejections: no gradients, no blur/glassmorphism, no soft ambient shadows, no rounded-pill everything, no purple-and-black "generic AI dark mode" default (see Colors → Dark Mode Rules).
 
@@ -127,9 +127,9 @@ The palette is built on a Material-3-style role system (primary/secondary/tertia
 
 ### Theme Presets
 
-Five curated presets an affiliate can pick in the reseller portal (`storefront/src/lib/theme-presets.ts`, canonical; synced to `reseller/`'s copy). Same role structure (primary/secondary/tertiary/surface + `on-*`/`container`/`fixed` pairs) as above, different hex per preset. Full values live in the source file — do not restate them in DESIGN.md prose to avoid a second source of truth; describe identity and behavior instead.
+Four curated presets an affiliate can pick in the reseller portal (Digital Architect is PekanGame's own brand and not selectable, ADR-113) (`storefront/src/lib/theme-presets.ts`, canonical; synced to `reseller/`'s copy). Same role structure (primary/secondary/tertiary/surface + `on-*`/`container`/`fixed` pairs) as above, different hex per preset. Full values live in the source file — do not restate them in DESIGN.md prose to avoid a second source of truth; describe identity and behavior instead.
 
-- **Digital Architect** (`default`) — the platform's own brand, documented above. The only preset live on a real affiliate storefront today; the only preset with a dark counterpart so far.
+- **Digital Architect** (`default`) — PekanGame's own brand, documented above. Not affiliate-selectable since ADR-113; light only.
 - **Cyber Bumblebee** — "Ohaha Style", bold golden yellow (`#FFC700`) + solid ink black, white highlights, pop-art energy. *Audit correction, 2026-09-24:* the raw primary yellow is ~1.6:1 on white — unusable as running text — so a separate `--color-primary-on-surface` (deep amber `#8a6500`) carries price/link text instead of the raw primary. `secondary-container`/`secondary-fixed-dim` are solid ink black (`#19192f`), not a washed grey tint, with `--color-on-secondary-fixed-dim` set to the primary yellow so icon badges read as a yellow-on-black pop rather than grey-on-grey.
 - **Red Giants Edition** — "Selangor Glory", crimson red (`#E51B24`) + golden yellow secondary, ink borders. Champion-esports energy.
 - **Cyber Emerald** — "Soloz Classic", gamer green (`#00875a`) + neon coral secondary, clean dark outlines. High-contrast arcade energy.
@@ -139,7 +139,7 @@ Five curated presets an affiliate can pick in the reseller portal (`storefront/s
 
 ### Dark Mode Rules
 
-Per-affiliate **fixed** choice (ADR-090) — an affiliate picks Light or Dark for their whole storefront; every visitor sees the same thing. Not a viewer toggle, not `prefers-color-scheme`. Only Digital Architect has a `tokensDark` today; the other four presets hide the Dark option in the reseller portal entirely rather than silently falling back to light.
+Per-affiliate **fixed** choice (ADR-090) — an affiliate picks Light or Dark for their whole storefront; every visitor sees the same thing. Not a viewer toggle, not `prefers-color-scheme`. All four affiliate-selectable presets have a `tokensDark` (ADR-113); Digital Architect has none. A preset without `tokensDark` hides the Dark option in the reseller portal rather than silently falling back to light.
 
 A dark counterpart is a **hue-preserving inversion**, not a fresh design: every rule below exists because Digital Architect's first dark build (built without these rules, shipped 2026-09-11) was tried live by the founder and rejected — it read as generic rather than as *this* brand's identity gone dark.
 

@@ -138,6 +138,38 @@ class GameControllerTest extends TestCase
     }
 
     /**
+     * Founder feedback 2026-10-09: several supplier variants share one
+     * denomination ("60 UC" x3) — within it the cheapest cost goes first,
+     * regardless of name. The no-denomination tail (passes/bundles) stays
+     * by name, with cost only breaking ties between same-named variants.
+     */
+    public function test_packages_breaks_denomination_ties_by_cost_and_tail_ties_by_name_then_cost(): void
+    {
+        $game = Game::query()->create(['name' => 'PUBG Mobile Global', 'slug' => 'pubg-mobile-global']);
+
+        foreach ([
+            ['60 UC', 60, 372],
+            ['60 UC', 60, 363],
+            ['60 UC b', 60, 364],
+            ['Weekly Pass 2', null, 1585],
+            ['Weekly Pass 2', null, 1502],
+            ['Weekly Card', null, 900],
+        ] as $i => [$name, $denomination, $cost]) {
+            Package::query()->create([
+                'game_id' => $game->id, 'name' => $name, 'denomination' => $denomination, 'cost_price' => $cost,
+                'standard_selling_price' => $cost, 'supplier_package_ref' => "R{$i}",
+            ]);
+        }
+
+        $this->actingAsAdmin();
+
+        $this->assertSame(
+            [363, 364, 372, 900, 1502, 1585],
+            collect($this->getJson("/api/games/{$game->id}/packages")->assertOk()->json())->pluck('cost_price')->all(),
+        );
+    }
+
+    /**
      * `supplier_active` (founder revision, 2026-07-25): a read-only
      * indicator distinct from `is_active` (our own control) — has the
      * supplier turned this item off on their own side, per the last

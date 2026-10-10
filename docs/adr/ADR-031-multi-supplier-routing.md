@@ -1,0 +1,21 @@
+# ADR-031: Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (built 2026-08-25)
+
+> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+
+**Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
+
+**Context:** `AppServiceProvider` currently binds a single global `SupplierAdapter` to Gamevion — its own comment calls this *"a deliberate placeholder, not the final shape"* (`AppServiceProvider.php:27-31`). The data model is already multi-supplier-ready: `Package` carries `supplier_id` + `supplier_package_ref`, `Order` carries `supplier_id` + `supplier_product_ref`, and `CheckoutService` already stores both at checkout. What does not exist is **resolution** — `OrderFulfillmentService::fulfill()` calls `$this->supplier->createOrder(...)` against the one global adapter without ever reading `$order->supplier_id`, so a Digiflazz-backed package would today still be submitted to Gamevion. ADR-030 (second supplier) makes this gap real.
+
+**Decision:**
+
+1. **New `SupplierAdapterFactory`** that resolves an adapter implementation by supplier slug/id through container bindings (`supplier-adapter.<slug>`), mirroring the proven `PaymentGatewayFactory` precedent on the payment side. Throws `UnsupportedSupplierException` for unregistered slugs. The single global `SupplierAdapter` binding is removed; `PaymentGateway::class` keeps its own default-binding asymmetry only because webhook URLs are inherently gateway-specific (unchanged).
+2. **One Package = one supplier.** Equivalent denominations across suppliers are separate `Package` rows (see ADR-034 for storefront dedup). **No auto-failover for MVP** — deliberately; an order's supplier is fixed at package-curation time, never decided at delivery.
+3. **`OrderFulfillmentService::fulfill()` and `OrderResendService` resolve the adapter by `$order->supplier_id`**, not a globally injected adapter. The `e2e` environment's `FakeSupplierAdapter` binding (ADR-023 decision #6) stays exactly as it is.
+4. **Sync commands loop over suppliers:** `app:sync-supplier-products` and `SyncSupplierPricesJob` iterate active `Supplier` rows, resolving each via the factory (the existing hardcoded `firstOrCreate(['slug' => 'gamevion'])` stopgap becomes a loop). `ProductSyncService`/`PackagePriceSyncService` already take a `Supplier` and operate per-supplier via `supplier_id` — unchanged.
+5. **Invariant: no supplier name appears in core services** (fulfillment, order-status, sync, pricing, checkout, reconcile). Only adapters, per-supplier webhook controllers, config/services, and tests are supplier-named. Supplier quirks live in adapters and `Supplier.api_config`.
+
+**Rationale:** This mirrors the payment side's already-proven factory pattern rather than inventing a new one. One-Package-one-supplier is the cheapest correct routing model — the schema already supports it, it keeps fulfillment deterministic, and it avoids the money-critical complexity of failover. A future supplier C costs exactly: one adapter + one config block + one factory binding + one thin webhook controller — zero changes to the state machine, fulfillment, sync, or pricing. The invariant (decision 5) is what makes that true; without it, "add a supplier" degrades into "fork the services."
+
+**Consequence to track:**
+- **Verify (don't change) the latent Gap-X behavior** during reconcile generalization: `ReconcilePendingDeliveriesCommand::retryStuckProcessing()` re-dispatches `FulfillOrderJob` for `Processing`+null-`supplier_ref` orders, but `FulfillOrderJob` catches `InvalidOrderTransitionException` (`FulfillOrderJob.php:67`) and `startDelivery()` rejects `Processing` — so that re-dispatch may be a no-op. It may also be unreachable in practice because `fulfill()` runs inside a single transaction (a hard crash rolls back to `NotStarted`). Verify with the existing tests; do not alter behavior in this ADR.
+- Circuit-breaker names must become per-supplier (currently hardcoded `'gamevion'` in `AppServiceProvider`).

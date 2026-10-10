@@ -18,6 +18,7 @@ class SupplierTransferCorrectionTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
 
         return SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000,
