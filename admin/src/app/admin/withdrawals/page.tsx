@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * WTH-1..5. Only ever operates on the single internal platform owner
- * for MVP — see backend/app/Http/Controllers/Admin/WithdrawalController.php.
+ * WTH-1..5 — reviews affiliate withdrawal requests. The platform owner no
+ * longer withdraws here (ADR-083 2026-10-10 addendum, decision 17): money
+ * leaving to a director is an Envelope Ledger repayment or dividend.
  * Maker-checker (WTH-5) is enforced server-side; this page just surfaces
  * whatever error the API returns if a below-permission action is tried.
  */
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
-import { Plus as PlusIcon } from "@primeicons/react/plus";
+import Link from "next/link";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -30,12 +31,10 @@ import {
   type Withdrawal,
   type WithdrawalIndexResponse,
   listWithdrawals,
-  requestWithdrawal,
   approveWithdrawal,
   rejectWithdrawal,
   completeWithdrawal,
 } from "@/lib/withdrawals";
-import WithdrawalRequestModal from "@/components/withdrawals/WithdrawalRequestModal";
 
 const STAT_CARDS: { key: keyof WithdrawalIndexResponse["stats"]; label: string }[] = [
   { key: "pending", label: "Pending" },
@@ -55,7 +54,6 @@ export default function WithdrawalsPage() {
 
   const [data, setData] = useState<WithdrawalIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [actingOnId, setActingOnId] = useState<number | null>(null);
 
   async function refresh(token: string) {
@@ -81,13 +79,6 @@ export default function WithdrawalsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleRequestSubmit(values: Parameters<typeof requestWithdrawal>[1]) {
-    if (!session) return;
-    await requestWithdrawal(session.token, values);
-    setIsModalOpen(false);
-    await refresh(session.token);
-  }
-
   async function handleAction(action: typeof approveWithdrawal, withdrawal: Withdrawal) {
     if (!session) return;
     setError(null);
@@ -112,17 +103,15 @@ export default function WithdrawalsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Withdrawals</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {data ? `Available balance: ${formatRm(data.available_balance)}` : "Review and process withdrawal requests."}
-          </p>
-        </div>
-        <Button size="small" onClick={() => setIsModalOpen(true)}>
-          <PlusIcon />
-          Request Withdrawal
-        </Button>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Withdrawals</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          Review and process affiliate withdrawal requests. Paying a director back, or a dividend, is recorded in the{" "}
+          <Link href="/admin/accounting/envelopes" className="text-brand-500 hover:underline">
+            Envelope Ledger
+          </Link>
+          .
+        </p>
       </div>
 
       {error && (
@@ -224,13 +213,6 @@ export default function WithdrawalsPage() {
           )}
         </div>
       </div>
-
-      <WithdrawalRequestModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={handleRequestSubmit}
-        availableBalance={data?.available_balance ?? 0}
-      />
     </div>
   );
 }
