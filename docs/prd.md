@@ -741,6 +741,8 @@ code and production on 2026-10-09; re-verify before building.
 - **79** Compensation vouchers debit the platform ledger (ADR-024 addendum).
 - **80** Voucher merge counts twice and can revive an expired voucher
   (ADR-036 addendum).
+- **81** Month-end pack for the external accountant (ADR-083 addendum);
+  get the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
 - **11** External uptime monitor on `https://api.pekangame.space/api/health`.
@@ -1026,6 +1028,29 @@ code and production on 2026-10-09; re-verify before building.
       close's prior-month adjustment. So this is a business-rule bug (expired
       credit given back), not a wrong envelope figure.
     - Production had 0 merges on 2026-10-10. Found by the item 78 code-trace.
+81. **Month-end pack for the external accountant — needs an ADR-083
+    addendum (grill first).**
+    - The founder's goal (2026-10-10): the accounting pages are a record
+      kept so that each month one download hands the outside accountant
+      everything, and nothing is reported missing.
+    - Today each piece downloads separately, and four gaps remain:
+      - The Monthly Summary and the month-close snapshot have no export.
+      - Receipts download one at a time.
+      - The original CHIP settlement `.xlsx` is not kept (only its
+        filename and the matched rows).
+      - A receipt is optional on an envelope expense, so one can be
+        missing without notice.
+    - Proposed: one "Month-end pack" zip per closed KL month, holding:
+      - the Transaction Register and Envelope Ledger CSVs;
+      - the Monthly Summary and close snapshot;
+      - every receipt from that month;
+      - the stored CHIP settlement files;
+      - a warning list (e.g. expenses without a receipt);
+      - a checklist of documents kept outside the system (bank
+        statements, Digiflazz deposit statement, original invoices,
+        company and payroll/tax documents) for the founder to tick.
+    - Before the grill: get the accountant's own monthly document list, so
+      the pack follows what they actually ask for.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
