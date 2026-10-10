@@ -619,8 +619,8 @@ reshape (§16 item 78: postings and director loans #390, month close and cash
 equation #391, which also removes the platform-owner withdrawal), the
 settlement month-span fix #388, the admin package-order tiebreak #387 and
 docs #386/#389/#392. A read-only check after the deploy: 0 postings, 0
-closes, September 2026 closable with operating profit RM 4.64. `staging` =
-`main` after this release. Since then (2026-10-10, same day): the founder
+closes, September 2026 closable with operating profit RM 4.64. `staging` = `main` at
+that moment; it has moved on since (check `git log origin/main..origin/staging`). Since then (2026-10-10, same day): the founder
 recorded the September postings and closed September 2026 (25 postings,
 operating profit RM 4.64, gap -RM 10.94), and the read-only check passed.
 
@@ -722,7 +722,9 @@ production before building on it.
 
 **Founder's rule (2026-10-08): clear the backlog below before any new
 feature.** Every open item sorted by what it needs to finish. Verified against
-code and production on 2026-10-09; re-verify before building.
+code and production on 2026-10-09; re-checked 2026-10-11 against git (77, 76,
+75 and the gallery picker / Telegram part of 6 are closed, see "Recently
+closed"). Re-verify before building.
 
 **A. Buildable now: code, no new design** (in suggested order)
 1. **66** Combo admin: leg-attempt history view.
