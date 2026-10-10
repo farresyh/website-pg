@@ -1052,6 +1052,20 @@ code and production on 2026-10-09; re-verify before building.
       - a checklist of documents kept outside the system (bank
         statements, Digiflazz deposit statement, original invoices,
         company and payroll/tax documents) for the founder to tick.
+    - Storage on `r2_accounting` (founder, 2026-10-10):
+      - Today every upload is `->store('<category>')`, a random name with
+        no date (`accounting/supplier-transfers/`,
+        `accounting/budget-envelopes/`, `wallet-topup-receipts/`), and the
+        CHIP `.xlsx` is parsed but never stored
+        (`PaymentSettlementController::store`).
+      - Proposed: new uploads go under `<category>/YYYY/MM/`, by the
+        accounting date (`transferred_on`, posting date, settlement
+        period), not the upload date, so a late-uploaded September
+        receipt sits in September. Year/month only; no day folder (the
+        date is in the DB).
+      - The CHIP settlement `.xlsx` is stored the same way.
+      - Existing files stay where they are: the app finds files by the
+        stored path, so moving them means a prod data patch for no gain.
     - Before the grill: get the accountant's own monthly document list, so
       the pack follows what they actually ask for.
 
