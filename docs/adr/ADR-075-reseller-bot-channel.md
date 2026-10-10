@@ -101,3 +101,20 @@ One grilled design (2026-09-04), split into four sequenced ADRs, delivered as se
 | 7 | **PR-G — Portal** | Polymorphic `affiliate_users.owner_type`/`owner_id`, new `Reseller`(wallet) portal screens (**including decision 3(a)'s self-serve CHIP top-up flow, re-scoped here from PR-C** — the Wallet screen is genuinely where it was always meant to trigger from), the `EnsureAccountType` backend gate on every reseller-guard endpoint (old and new) — **code shipped 2026-09-05**, own build addendum above. | PR-A, **PR-D** (corrected 2026-09-04 stress-test: the Wallet screen needs PR-C's ledger/manual-credit, the Orders screen needs PR-D's `wallet_reseller_id` — PR-D already chains through C→B→A, so this is genuinely last, not parallel to C/D) |
 
 **Not in this family, sequenced after PR-A specifically:** ADR-060 (branded whitelabel storefront + Cloudflare custom domains) — still has its own open grilling questions (logo upload, hero slides, domain-transfer timing) and touches a different risk surface (`storefront/` `Host`-resolution + `CheckoutService` pricing resolver). It must not be built before PR-A lands, since its own text assumes `Affiliate::primary()` (né `Reseller::primary()`).
+
+### 2026-10-10 addendum — decision 6's engine: Baileys stays until the droplet is upgraded
+
+**Status:** Accepted (founder, 2026-10-10). Resolves the discrepancy flagged in the 2026-10-02 addendum (§16 item 59). Overrides decision 6's engine choice for now.
+
+- **What is true.** Both OpenWA sessions (`reseller-bot`, `customer-support`) run `baileys`, because `ENGINE_TYPE` is one global setting. Decision 6 asked for `whatsapp-web.js` on the bot, for lower ban risk, with the droplet resized 4 → 8 GiB first.
+- **Decision.** Keep Baileys on both sessions. Decision 6's engine choice is parked, not abandoned: it comes back with the host resize (§16 item 4).
+- **Why, checked on prod 2026-10-10.**
+  - The box has 3.9 GB RAM, 2.1 GB used, 1.8 GB available. The resize decision 6 assumed never happened.
+  - OpenWA on Baileys uses about 230 MB for both sessions. `whatsapp-web.js` runs Chromium, about 300-500 MB per session (decision 6's own figure), so about 1 GB for two, which crosses ADR-020's 70% RAM alert.
+  - Switching re-pairs both numbers by QR scan, and the bot and customer notifications are down until each is done.
+  - Baileys has been stable: no `loggedOut` and no new QR since pairing on 2026-09-25, and 428/503 reconnects recover on their own. Volume is small (2026-10-01: 286 messages / 4 chats on `customer-support`, 57 / 6 on `reseller-bot`). Send pacing, typing simulation and the one-worker `whatsapp` lane (ADR-116) are the ban mitigation.
+- **Triggers to revisit** (any one):
+  - the droplet is upgraded (§16 item 4), so the RAM objection is gone;
+  - WhatsApp warns about or bans either number;
+  - `reseller-bot` volume grows until one ban costs more than the resize.
+- **Not checked.** Whether OpenWA can set the engine per session. Settle that before any switch, since a global switch would also move `customer-support`.

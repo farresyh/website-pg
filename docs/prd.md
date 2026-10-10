@@ -620,7 +620,9 @@ equation #391, which also removes the platform-owner withdrawal), the
 settlement month-span fix #388, the admin package-order tiebreak #387 and
 docs #386/#389/#392. A read-only check after the deploy: 0 postings, 0
 closes, September 2026 closable with operating profit RM 4.64. `staging` =
-`main` after this release.
+`main` after this release. Since then (2026-10-10, same day): the founder
+recorded the September postings and closed September 2026 (25 postings,
+operating profit RM 4.64, gap -RM 10.94), and the read-only check passed.
 
 **Release 2026-10-09 (`staging`→`main`, PR #385), deploy verified.** The
 server runs `6db0470`; migration batch 35 Ran (`orders.placed_via`, backfill
@@ -746,15 +748,8 @@ code and production on 2026-10-09; re-verify before building.
   get the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
-- **78** Record the real September postings (the 15 Sep RM500 director loan,
-  expenses) in the Envelope Ledger, then close September 2026 on the
-  Monthly Summary; then a read-only check of the close.
-- **11** External uptime monitor on `https://api.pekangame.space/api/health`.
-- **71** SEO › FAQ click-through (5 FAQs exist on prod) and GSC recheck
-  around 2026-10-22.
-- **59** OpenWA engine: still `ENGINE_TYPE=baileys` for both sessions —
-  switch, or record an ADR-075 addendum accepting it.
-- **9** DB SSL CA / DNSSEC — founder's call.
+- **71** GSC recheck around 2026-10-22 (Pages report: duplicate / canonical
+  reasons, indexed vs not indexed).
 - **75** Ask the external reviewer which vouchers the Monthly Summary's
   "voucher liability issued" line should count. It sums every voucher;
   the Transaction Register and Dashboard count compensation (Path B) only.
@@ -764,7 +759,8 @@ code and production on 2026-10-09; re-verify before building.
   Path A an expense; the line's own scope is still this question.
 
 **D. Waiting on a trigger — don't build early**
-- **4** bot-host resize (capacity), **10** MFA (withdrawal balances grow),
+- **4** bot-host resize (capacity) and **59** the OpenWA engine switch with it
+  (Baileys stays until then, ADR-075 2026-10-10 addendum), **10** MFA (withdrawal balances grow),
   **28** supplier buffer forecast and **55** test-order flag (real volume),
   **49** proxied-domain detect (an affiliate hits it), **53** parallel
   reconcile (a slow CHIP lookup), **72** Bot `max=` (a Bot price complaint),
@@ -779,24 +775,23 @@ code and production on 2026-10-09; re-verify before building.
 
 ## Hardening (founder `.env` / infra)
 
-9. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
-   are later phases; DNSSEC (founder's call).
+9. **DB TLS and DNSSEC — done 2026-10-10** (build-log, same day). The app's DB
+   connection now runs TLSv1.3 with the cluster CA (`MYSQL_ATTR_SSL_CA`); before,
+   `Ssl_cipher` was empty, so the old "VPC-private + TLS" note was wrong. DNSSEC is
+   on for `pekangame.space` and `pekangame.com` (ADR-020 2026-10-10 addendum).
+   DuitNow QR / `fpx_b2b1` are later phases.
 10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
     the partner portal's withdrawal balances get meaningful.
-11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
-    deferral — a real operational risk once real traffic exists. Since
-    2026-09-29 `/api/health` reports DB + Redis + **Horizon liveness** (503 if
-    any is down), but nothing external polls it yet; Horizon's own LongWait
-    alert (Plunk) can't fire if Horizon itself is dead. Point an uptime
-    monitor (UptimeRobot/Better Stack) at `https://api.pekangame.space/api/health`.
-    **Partial progress 2026-09-30:** DigitalOcean's own free Droplet
-    monitoring (`do-agent`) installed on `pekangame-prod-lwf` (founder-run via
-    DO's Launch Console, root/sudo required), plus two resource alerts
-    (Memory and Disk Utilization, both >80% for 5 min, emailing the founder)
-    — covers resource-exhaustion visibility on the droplet itself. The
-    external-uptime-of-the-API-endpoint gap (UptimeRobot/Better Stack style)
-    is still open; this only covers the box's own CPU/memory/disk, not
-    whether `api.pekangame.space` itself is reachable from outside.
+11. **External uptime monitor added 2026-10-10 (founder-reported, UptimeRobot on
+    `https://api.pekangame.space/api/health`); error tracking (Sentry) is still
+    not set up.** ADR-019's accepted deferral. Since 2026-09-29 `/api/health`
+    reports DB + Redis + **Horizon liveness** (503 if any is down), which is what
+    the monitor polls; Horizon's own LongWait alert (Plunk) can't fire if Horizon
+    itself is dead, so the external poll covers that. Also since 2026-09-30:
+    DigitalOcean's free Droplet monitoring (`do-agent`) on `pekangame-prod-lwf`,
+    with Memory and Disk alerts (both >80% for 5 min, emailing the founder).
+    Not independently verified: the UptimeRobot dashboard was not opened, so
+    confirm the monitor is green and its alert reaches the founder.
 
 ## Polish (not blocking)
 
@@ -836,7 +831,8 @@ code and production on 2026-10-09; re-verify before building.
     hook (`bootstrap/app.php`) for every code, not per code.
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
-   calls for it. OpenWA now shares `pekangame-prod-lwf` with the API
+   calls for it. It is also the moment to revisit the OpenWA engine (item 59:
+   Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114). The old `allow 127.0.0.1` nginx block on the bot webhook was
    **deliberately removed** at the Cloudflare cutover; HMAC is the intended
    auth layer, so there is nothing to re-add (see the 2026-09-25 entry in
@@ -886,9 +882,10 @@ code and production on 2026-10-09; re-verify before building.
       in the same pass.
 ## Buildable when triggered (design done or needs its own ADR)
 
-71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: founder
-    click-through of SEO › FAQ (5 FAQs exist on prod, checked 2026-10-08);
-    re-check GSC canonical/duplicate coverage ~2026-10-22. PR-1 meta + per-brand canonical (fixes literal
+71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: re-check GSC
+    canonical/duplicate coverage ~2026-10-22. The admin SEO › FAQ click-through
+    is done (founder, 2026-10-10: edit works, `{store_name}` works; prod has 5
+    FAQs and the live `FAQPage` JSON-LD carries all 5, no literal tokens). PR-1 meta + per-brand canonical (fixes literal
     `{game_name}`/`{store_name}` on all 38 live game pages, affiliate domains
     pointing at `pekangame.com`), PR-2 GEO (all packages in HTML, `offers`,
     `aggregateRating`, fact line), PR-3 admin FAQ + `FAQPage`, PR-4 hygiene,
@@ -982,16 +979,18 @@ code and production on 2026-10-09; re-verify before building.
     - validate on the single prod instance while the founder is standing by, with the
       pre-patch commit ready as a rollback.
     Build when the founder says so.
-59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — needs a founder decision.** ADR-075
-    decision 6 specified `whatsapp-web.js` for `reseller-bot` (lower ban risk on a live paid
-    ordering path). `ENGINE_TYPE` is a single global setting, so both sessions actually run
-    Baileys. Found during ADR-075's 2026-10-02 addendum and left unresolved there. Two options:
-    - re-argue the ban-risk trade-off and switch engines (per session, if OpenWA supports it);
-    - accept Baileys and record an ADR-075 addendum that corrects decision 6 to match reality.
+59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — decided 2026-10-10: Baileys
+    stays until the droplet is upgraded** ([ADR-075](./adr/ADR-075-reseller-bot-channel.md)'s
+    2026-10-10 addendum). Waiting on a trigger: the host resize (item 4), a WhatsApp
+    warning or ban, or `reseller-bot` volume that makes a ban cost more than the
+    resize. Before any switch, check whether OpenWA can set the engine per session
+    (`ENGINE_TYPE` is global, so a switch would also move `customer-support`), and
+    plan the QR re-pairing of both numbers.
 78. **Envelope Ledger reshape — [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md)'s
     2026-10-10 addendum. Designed, grilled and stress-tested. PR-1 (#390) and
     PR-2 (#391) built 2026-10-10 and live via release #393 the same day
-    (build-log). Code done; open only for the founder's first close.**
+    (build-log). Done: the founder closed September 2026 on 2026-10-10 and the
+    read-only check passed (build-log, same day).**
     - **PR-1:** one posting header with typed lines (funding / transfer /
       expense / director-paid expense / repayment / distribution), per-director
       loan balances, `supplier_transfers.transferred_on`, and an append-only
@@ -1002,9 +1001,9 @@ code and production on 2026-10-09; re-verify before building.
       also removes the platform-owner withdrawal (button and endpoint).
     - Production had 0 envelope entries on 2026-10-10, so no data migration was
       needed; the release migrated cleanly.
-    - Left: the founder records the real September postings
-      (the 15 Sep RM500 loan, expenses) and closes September 2026 on prod; then
-      a read-only check of the close's figures and gap.
+    - September 2026 is closed on prod: 25 postings, operating profit RM 4.64,
+      gap -RM 10.94 (a cutover difference, noted at the close). The October
+      close may show the same gap.
 79. **Compensation vouchers debit the platform ledger — needs an ADR-024
     addendum.**
     - `VoucherService::issue()` writes `voucher_issued` for a failed-order

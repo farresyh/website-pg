@@ -1084,3 +1084,59 @@ succeeded.
     CHIP unsettled 0, undelivered orders 0; envelope identity agrees.
 - **Next (founder):** record the real September postings, then close
   September 2026 (§16 item 78, list C).
+
+---
+
+## 2026-10-10 — §16 list C: item 59 decided (Baileys stays), item 78 verified (docs only)
+
+- **Item 59.** Prod read-only: OpenWA `ENGINE_TYPE=baileys`; box 3.9 GB RAM
+  (2.1 GB used, 1.8 GB available), OpenWA about 230 MB. The founder chose to
+  keep Baileys until the droplet is upgraded. ADR-075 2026-10-10 addendum
+  records the reasons and the triggers; item 59 now waits with item 4.
+- **Item 78, read-only check of the September close (prod).** Operating profit
+  recomputed live equals the closed RM 4.64 (drift 0, every `profit_lines` entry
+  the same). The cash equation recomputes to the stored gap of -RM 10.94, which
+  the founder's note explains (two pre-15-Sep CHIP payouts, RM 0.94 + RM 10.00).
+  Envelope identity (headers) equals the line sum, RM 312.34; hand check
+  RM 500 − RM 192.30 expenses + RM 4.64 = RM 312.34. 0 expense postings
+  without a receipt. The RM 17.52 expense dated 5 Oct sits outside September.
+  Expect the October close to show the same -RM 10.94 unless explained again.
+
+## 2026-10-10 — §16 item 9 done: DNSSEC on both domains, DB connection on TLS
+
+- **DNSSEC.** Enabled in Cloudflare for `pekangame.space` and `pekangame.com`.
+  `.space`: DS (key tag 2371, algorithm 13, SHA-256) added at the Vercel registrar
+  (team JW Brothers); visible at the registry about 5 minutes later. `.com`: Cloudflare
+  Registrar added the DS itself. After: `ad` flag on 1.1.1.1, 8.8.8.8, 9.9.9.9 for both
+  domains; API health 200, storefront 200, docs 200, bot 200, admin and reseller 307.
+  One resolver answered SERVFAIL for a moment when the `.space` DS first showed up.
+- **DB TLS, before.** Prod `.env` had no `MYSQL_ATTR_SSL_CA`. From the app, `SHOW SESSION
+  STATUS LIKE 'Ssl_cipher'` was empty, so the link to the managed MySQL (VPC host
+  `private-…`) was unencrypted. PRD's "VPC-private + TLS" was wrong.
+- **What ran on prod.** The CA (`ca-certificate.crt`, 1 certificate, no private key,
+  checksum equal to the founder's download) was copied to
+  `~/api.pekangame.space/`. A standalone PHP test first: without the CA `tls=NONE`, with
+  CA + server-certificate check TLSv1.3. Then the founder ran: `.env` copy to
+  `.env.bak-before-dbtls` (mode 600), one appended line `MYSQL_ATTR_SSL_CA=…`,
+  `config:cache`, `horizon:terminate`, `pulse:restart`.
+- **After (read-only, from the app).** config has the CA path; `Ssl_version` TLSv1.3,
+  `Ssl_cipher` TLS_AES_256_GCM_SHA384; 36 orders readable; `/api/health` 200 with
+  database, queue and horizon true; Horizon running. `.env` differs from the backup by
+  that one line only.
+- **Left (founder).** `.env.bak-before-dbtls` holds the DB password: delete it once the
+  change has run clean for a few days.
+
+## 2026-10-10 — §16 item 71: FAQ click-through done (docs only)
+
+- Founder checked SEO › FAQ in the admin: editing works, `{store_name}` works.
+- Read-only check of the live storefront: `pekangame.com` carries `FAQPage`
+  JSON-LD with all 5 FAQs and no literal `{store_name}`.
+- Left: the GSC canonical/duplicate recheck around 2026-10-22 (founder).
+
+## 2026-10-10 — §16 item 11: external uptime monitor added (founder-reported)
+
+- The founder added an UptimeRobot HTTP monitor on
+  `https://api.pekangame.space/api/health` (5-minute interval, email alert). The
+  endpoint answered 200 with database, queue and horizon true when checked.
+- Not verified from here: the UptimeRobot dashboard was not opened. Error tracking
+  (Sentry) is still not set up.
