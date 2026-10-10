@@ -973,3 +973,65 @@ code, so future sessions follow correct instructions.
     afterwards.
 - **Gotcha hit.** A test helper named `post()` clashed with Laravel's HTTP
   `post()` and fataled the suite; it was renamed `record()`.
+
+## 2026-10-10 — Envelope Ledger reshape PR-2: month close and cash equation (item 78, ADR-083 addendum)
+
+- **What.** ADR-083 2026-10-10 addendum, decisions 9–14 and 17.
+  - **Month close** (`MonthCloseService`, `accounting_period_closes`), on
+    the Monthly Summary page. It closes one KL month at a time, in order,
+    from September 2026, once the month has ended in KL time. It allocates
+    exactly operating profit + prior-month adjustment, as one
+    `profit_allocation` posting dated the month's last day. The founder
+    picks the split per envelope; a loss allocates negatively; a zero month
+    writes no posting. It is now the only writer of `profit_allocation`. A
+    direct void of one is refused; reopening the latest close voids it.
+  - **Prior-month adjustment** = Σ earlier closed months' live operating
+    profit − Σ what was allocated for them, so a closed row is never
+    rewritten and the allocations always add up to the live total.
+  - **Operating profit** (`MonthlyAccountingSummaryService::operatingProfit()`)
+    plus new Summary lines: voucher breakage, goodwill vouchers (Path A,
+    not a merge target), supplier balance corrections (non-void
+    `MANUAL_ADJUSTMENT` in MYR), envelope manual expenses (information
+    only). The FX true-up's blended rate now stops at the month's last KL
+    day (Q24), so the existing FX line no longer moves with later transfers.
+  - **Cash equation** (`CashPositionService`): supplier prepaid at the
+    month-end rate, CHIP paid-not-settled less RM1 each (new
+    `SettlementReconciliationService::paidButNotSettledBefore()`), against
+    envelopes, reseller wallets, affiliate earnings, approved-unpaid
+    affiliate withdrawals, vouchers outstanding (rebuilt from redemptions)
+    and orders paid but not delivered or compensated. A gap above RM1
+    needs a note and never blocks. The envelope identity check runs beside
+    it. The close snapshots the equation and the cash balances.
+  - **Cash accounts** (`cash_accounts`, name only), seeded with "Held by
+    Farres (mixed)"; add/rename/archive from the close form.
+  - **Removed:** the Envelope Ledger's "Allocate Monthly Profit" form,
+    route and service method, and the rough P&L estimate. The platform
+    "Request Withdrawal" button, "Available balance" header, `POST
+    /api/withdrawals` and `CreateWithdrawalRequest` (decision 17).
+- **Choices the ADR left open.**
+  - An undelivered order is a claim at its `selling_price`: that is what
+    the customer is owed in goods. A voucher or wallet balance spent on it
+    moved into this claim when spent.
+  - **Known residual gap:** revenue is recognised by `paid_at`, but the
+    supplier drawdown is costed when recorded. An order paid on the last
+    day and drawn the next leaves a month-end gap of about its margin. That
+    is the timing gap decision 13 expects a note for.
+- **Verified.**
+  - New tests red first, then green: 6 in `MonthlyAccountingSummaryServiceTest`,
+    10 in `MonthCloseServiceTest` (incl. a whole month across every module
+    whose equation closes at exactly 0 and whose identity check agrees),
+    3 in `MonthCloseControllerTest`. Withdrawal and envelope controller
+    tests rewritten for the removals.
+  - Full `php artisan test`: 2707 passed; pint clean. The new tests also
+    pass on real MySQL (34/34 via `phpunit.concurrency.xml`).
+  - Admin `tsc`, `eslint`, `next build` clean.
+  - Live browser (built admin + `artisan serve` on a throwaway sqlite DB,
+    not the dev DB): September scenario showed operating profit RM8.00,
+    gap RM0.00 with RM495 cash; closing it showed the snapshot and the
+    Reopen form. Gap box contrast 5.80 (light) / 8.19 (dark). No Allocate
+    button on Envelope Ledger; no Request button on Withdrawals.
+  - Local dev DB migrated (plain `migrate`).
+- **Gotcha hit.** `text-success-700`/`-400` and the other `-700`/`-400`
+  status shades are not defined in `globals.css`; they silently render
+  inherited colour. The new components use the theme-aware
+  `*-surface`/`*-ink` tokens instead.

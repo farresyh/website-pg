@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\AllocateMonthlyProfitRequest;
 use App\Http\Requests\Admin\StoreBudgetEnvelopePostingRequest;
 use App\Http\Requests\Admin\StoreBudgetEnvelopeRequest;
 use App\Http\Requests\Admin\UpdateBudgetEnvelopeRequest;
@@ -15,21 +14,16 @@ use App\Services\Accounting\BudgetEnvelopeService;
 use App\Services\Accounting\EnvelopePostingType;
 use App\Services\Accounting\ExpenseCategory;
 use App\Services\Accounting\FundType;
-use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\PaidFrom;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BudgetEnvelopeController extends Controller
 {
-    public function __construct(
-        private readonly BudgetEnvelopeService $envelopes,
-        private readonly MonthlyAccountingSummaryService $summary,
-    ) {}
+    public function __construct(private readonly BudgetEnvelopeService $envelopes) {}
 
     public function index(): JsonResponse
     {
@@ -40,8 +34,6 @@ class BudgetEnvelopeController extends Controller
             'balance_sen' => $envelope->balanceSen(),
         ]);
 
-        $now = Carbon::now();
-        $monthSummary = $this->summary->forPeriod($now->year, $now->month);
         $options = fn (array $cases) => collect($cases)->map(fn ($c) => ['value' => $c->value, 'label' => $c->label()])->values();
 
         return response()->json([
@@ -53,20 +45,6 @@ class BudgetEnvelopeController extends Controller
             'loan_balances' => collect($this->envelopes->loanBalances())
                 ->map(fn (int $balance, string $director) => ['counterparty' => $director, 'label' => PaidFrom::from($director)->label(), 'balance_sen' => $balance])
                 ->values(),
-            // Until the month close replaces it (ADR-083 2026-10-10 addendum,
-            // decision 9, PR-2): reference figures and a rough, unaudited
-            // estimate behind the manual "Allocate Monthly Profit" form.
-            'current_month_summary' => $monthSummary,
-            'current_month_rough_pl_estimate_sen' => $monthSummary['sales_revenue_sen']
-                + $monthSummary['membership_revenue_sen']
-                - $monthSummary['cogs_sen']
-                + $monthSummary['payment_processing_gain_loss_sen']
-                - $monthSummary['bank_transfer_fees_sen']
-                - $monthSummary['affiliate_commission_expense_sen']
-                // ADR-083 2026-10-08 addendum: profit either way, revenue or contra-commission.
-                + $monthSummary['affiliate_tier_fees_sen']
-                - $monthSummary['voucher_liability_issued_sen'],
-            'current_month_label' => $now->format('F Y'),
         ]);
     }
 
@@ -156,23 +134,6 @@ class BudgetEnvelopeController extends Controller
             ->map(fn (BudgetEnvelopeEntry $entry) => $this->entryRow($entry));
 
         return response()->json(['entries' => $entries]);
-    }
-
-    public function allocateMonthlyProfit(AllocateMonthlyProfitRequest $request): JsonResponse
-    {
-        $data = $request->validated();
-        $allocations = collect($data['allocations'])->pluck('amount_sen', 'budget_envelope_id')->all();
-
-        $posting = $this->envelopes->allocateMonthlyProfit($allocations, $data['period_label'], $request->user()->id);
-
-        Log::info('Monthly profit allocated across envelopes', [
-            'period_label' => $data['period_label'],
-            'posting_id' => $posting->id,
-            'allocations' => $allocations,
-            'admin_user_id' => $request->user()->id,
-        ]);
-
-        return response()->json(['posting' => $posting], 201);
     }
 
     public function downloadReceipt(BudgetEnvelopePosting $posting): StreamedResponse

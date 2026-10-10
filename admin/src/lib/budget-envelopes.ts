@@ -37,11 +37,6 @@ export interface BudgetEnvelopeIndex {
   expense_categories: Option[];
   /** What the company owes each director, computed from postings. */
   loan_balances: LoanBalance[];
-  /** Reference figures for the manual "Allocate Monthly Profit" form, until the month close replaces it. */
-  current_month_summary: Record<string, number>;
-  current_month_label: string;
-  /** A rough, explicitly unaudited estimate — a soft-warning aid only. */
-  current_month_rough_pl_estimate_sen: number;
 }
 
 /** One line in one envelope, with its posting's details. */
@@ -129,16 +124,6 @@ export function recordPosting(token: string, values: RecordPostingValues) {
 /** Reverses every line of the posting; the original stays. A posting is voided at most once. */
 export function voidPosting(token: string, postingId: number, reason: string) {
   return apiFetch<{ reversal: { id: number } }>(`/api/accounting/envelope-postings/${postingId}/void`, { method: "POST", token, body: { reason } });
-}
-
-export interface AllocateMonthlyProfitValues {
-  period_label: string;
-  allocations: Array<{ budget_envelope_id: number; amount_sen: number }>;
-}
-
-/** "Allocate Monthly Profit" — one posting across the chosen envelopes; the founder decides the split. */
-export function allocateMonthlyProfit(token: string, values: AllocateMonthlyProfitValues) {
-  return apiFetch<{ posting: { id: number } }>("/api/accounting/envelopes/allocate-monthly-profit", { method: "POST", token, body: values });
 }
 
 /** Bearer-token-gated (private disk) — Blob + object-URL download. */

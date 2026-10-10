@@ -31,27 +31,11 @@ export interface WithdrawalStats {
 
 export interface WithdrawalIndexResponse {
   stats: Record<WithdrawalStatus, WithdrawalStats>;
-  available_balance: number;
   withdrawals: Withdrawal[];
-}
-
-export interface WithdrawalRequestValues {
-  amount: number;
-  bank_name: string;
-  bank_account_no: string;
-  bank_account_holder: string;
 }
 
 export function listWithdrawals(token: string) {
   return apiFetch<WithdrawalIndexResponse>("/api/withdrawals", { token });
-}
-
-export function requestWithdrawal(token: string, values: WithdrawalRequestValues) {
-  return apiFetch<Withdrawal>("/api/withdrawals", {
-    method: "POST",
-    token,
-    body: values,
-  });
 }
 
 export function approveWithdrawal(token: string, id: number) {

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Withdrawal\CreateWithdrawalRequest;
 use App\Http\Requests\Withdrawal\RejectWithdrawalRequest;
 use App\Models\Withdrawal;
 use App\Services\Ledger\InsufficientBalanceException;
@@ -17,9 +16,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * WTH-1..5. MVP only ever operates on the single internal platform
- * owner (owner_type='platform', owner_id=null — see LedgerEntry's own
- * convention). Affiliate-owned withdrawals are a Phase 2 concern.
+ * WTH-1..5 — reviews withdrawal requests (affiliates request theirs from
+ * the portal, ADR-059). The platform owner no longer requests one here
+ * (ADR-083 2026-10-10 addendum, decision 17): money leaving to a director
+ * is an Envelope Ledger repayment or dividend.
  */
 class WithdrawalController extends Controller
 {
@@ -56,7 +56,6 @@ class WithdrawalController extends Controller
 
         return response()->json([
             'stats' => $stats,
-            'available_balance' => $this->ledger->balance(LedgerOwnerType::Platform, null),
             'withdrawals' => $withdrawals,
         ]);
     }
@@ -95,31 +94,6 @@ class WithdrawalController extends Controller
         return $lastApproved->bank_name !== $withdrawal->bank_name
             || $lastApproved->bank_account_no !== $withdrawal->bank_account_no
             || $lastApproved->bank_account_holder !== $withdrawal->bank_account_holder;
-    }
-
-    public function store(CreateWithdrawalRequest $request): JsonResponse
-    {
-        $data = $request->validated();
-        $availableBalance = $this->ledger->balance(LedgerOwnerType::Platform, null);
-
-        if ($data['amount'] > $availableBalance) {
-            throw ValidationException::withMessages([
-                'amount' => ["Amount exceeds the available balance ({$availableBalance} sen)."],
-            ]);
-        }
-
-        $withdrawal = Withdrawal::query()->create([
-            'owner_type' => LedgerOwnerType::Platform->value,
-            'owner_id' => null,
-            'amount' => $data['amount'],
-            'bank_name' => $data['bank_name'],
-            'bank_account_no' => $data['bank_account_no'],
-            'bank_account_holder' => $data['bank_account_holder'],
-            'status' => WithdrawalStatus::Pending,
-            'requested_by' => $request->user()->id,
-        ]);
-
-        return response()->json($withdrawal, 201);
     }
 
     /**

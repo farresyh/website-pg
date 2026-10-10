@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * ADR-083 decision 8, fills ADR-110 PR-B — read-only Monthly Accounting
- * Summary. One period at a time; the journal lines Farres copies into
- * the external accounting SaaS (Bukku) each month close.
+ * ADR-083 decision 8, fills ADR-110 PR-B — the Monthly Accounting Summary,
+ * one period at a time: the journal lines Farres copies into the external
+ * accounting SaaS (Bukku). Since the 2026-10-10 addendum it also carries
+ * the month's operating profit and the month close (decisions 9–14).
  */
 
 import { useEffect, useState } from "react";
@@ -14,7 +15,8 @@ import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { InfoTooltip } from "@/components/dashboard/InfoTooltip";
-import { type MonthlyAccountingSummary, getMonthlyAccountingSummary } from "@/lib/accounting-summary";
+import { type MonthClose, type MonthlyAccountingSummary, getMonthClose, getMonthlyAccountingSummary } from "@/lib/accounting-summary";
+import { MonthClosePanel } from "@/components/accounting/MonthClosePanel";
 
 function rm(sen: number): string {
   const negative = sen < 0;
@@ -24,12 +26,11 @@ function rm(sen: number): string {
 
 /**
  * Added after the founder (this page's own target user) said the page
- * was unclear even to them — these 8 lines deliberately mix real P&L
+ * was unclear even to them — these lines deliberately mix real P&L
  * (revenue/COGS/expense) with capital-movement/liability lines
- * (supplier prepaid top-up/FX variance, voucher liability), which is
- * exactly why there's no single "profit" figure on this page (see the
- * note below the table) — each line needs its own plain-language
- * explanation to be read correctly on its own.
+ * (supplier prepaid top-up, voucher liability, wallet balance), so each
+ * needs its own plain-language explanation. Which lines make up operating
+ * profit is decided in MonthlyAccountingSummaryService::operatingProfit().
  */
 const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: string }[] = [
   { key: "sales_revenue_sen", label: "Sales revenue", definition: "Total selling price of every order delivered this month — gross income, before subtracting what we paid suppliers. Not profit on its own." },
@@ -41,8 +42,12 @@ const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: s
   { key: "supplier_prepaid_fx_variance_sen", label: "Supplier prepaid — FX variance true-up", definition: "The gap between the FX rate assumed when pricing packages and the real blended rate actually paid to suppliers this month — tells you whether the pricing buffer is set correctly, not a cash gain or loss." },
   { key: "affiliate_commission_expense_sen", label: "Affiliate commission expense", definition: "Commission owed to affiliates from this month's sales, whether or not it has actually been paid out yet — a real expense against profit." },
   { key: "affiliate_tier_fees_sen", label: "Affiliate tier fees (from earnings, no cash)", definition: "Wholesale-tier fees deducted from affiliates' earnings this month. No money moved, so the bank statement never shows it: it lowers what we owe affiliates and adds to profit. Whether it is revenue or a reduction of commission expense is the accountant's call." },
-  { key: "voucher_liability_issued_sen", label: "Voucher liability issued", definition: "Value of store-credit vouchers issued this month to customers whose orders failed — a liability (credit we owe back), not a cash expense." },
-  { key: "reseller_wallet_balance_sen", label: "Reseller wallet balance", definition: "Money resellers have prepaid into their wallets, which isn't ours — a liability, not revenue. Always the CURRENT balance (see the \"as of\" timestamp next to it), never this period's own month-end figure — no historical snapshot exists." },
+  { key: "voucher_breakage_sen", label: "Voucher breakage", definition: "What was left unspent on vouchers that expired this month. We no longer owe it, so it becomes income." },
+  { key: "goodwill_vouchers_issued_sen", label: "Goodwill vouchers issued", definition: "Vouchers given away this month that were not for a failed order (a gesture, a promotion). A real cost: the customer never paid us for them." },
+  { key: "supplier_manual_adjustments_sen", label: "Supplier balance corrections", definition: "Manual corrections to a supplier's prepaid balance this month (e.g. a deposit fee missed at entry), in MYR at the month-end rate. Corrections on a voided transfer are left out." },
+  { key: "voucher_liability_issued_sen", label: "Voucher liability issued", definition: "Value of every store-credit voucher issued this month. Vouchers for failed orders are credit we owe back, a liability, not an expense, so operating profit leaves them out; goodwill vouchers are counted above." },
+  { key: "reseller_wallet_balance_sen", label: "Reseller wallet balance", definition: "Money resellers have prepaid into their wallets, which isn't ours — a liability, not revenue. Always the CURRENT balance (see the \"as of\" timestamp next to it), never this period's own month-end figure. The month close's equation has the month-end figure." },
+  { key: "envelope_manual_expenses_sen", label: "Manual expenses (Envelope)", definition: "Expenses recorded in the Envelope Ledger this month, including ones a director paid. Information only: they already came out of their envelopes, so operating profit does not subtract them again." },
 ];
 
 export default function MonthlyAccountingSummaryPage() {
@@ -52,6 +57,7 @@ export default function MonthlyAccountingSummaryPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [summary, setSummary] = useState<MonthlyAccountingSummary | null>(null);
+  const [monthClose, setMonthClose] = useState<MonthClose | null>(null);
   const [error, setError] = useState<string | null>(null);
   // reseller_wallet_balance_sen is always the CURRENT balance, never scoped
   // to the viewed period — this timestamps exactly when that snapshot was
@@ -59,9 +65,11 @@ export default function MonthlyAccountingSummaryPage() {
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
 
   function load(token: string, y: number, m: number) {
-    getMonthlyAccountingSummary(token, y, m)
-      .then((s) => {
+    return Promise.all([getMonthlyAccountingSummary(token, y, m), getMonthClose(token, y, m)])
+      .then(([s, c]) => {
+        setError(null);
         setSummary(s);
+        setMonthClose(c);
         setFetchedAt(new Date());
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the summary."));
@@ -86,16 +94,16 @@ export default function MonthlyAccountingSummaryPage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Monthly Accounting Summary</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Read-only journal lines for one closed period — copy these into the external accounting SaaS each month.
+          Journal lines for one month — copy these into the external accounting SaaS — then close the month below.
         </p>
         <p className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-theme-sm text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-          This is a bookkeeping export, not a profit statement — these lines deliberately mix revenue/expenses with
-          capital movements (supplier top-ups, FX variance), so there is no single &quot;profit&quot; figure below.
-          For sales and profit, see{" "}
+          The lines mix profit and loss with capital movements (supplier top-ups, wallet balances). Operating profit,
+          at the bottom, adds up only the profit-and-loss lines; it is what the month close puts into the envelopes.
+          For sales and profit by game or channel, see{" "}
           <Link href="/admin/reports" className="underline">
             Reports
           </Link>
-          {" "}→ Profit Analysis tab.
+          .
         </p>
       </div>
 
@@ -154,8 +162,25 @@ export default function MonthlyAccountingSummaryPage() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-200 dark:border-gray-700">
+                <td className="px-5 py-4 text-theme-sm font-semibold text-gray-800 dark:text-white/90">
+                  <span className="inline-flex items-center gap-1">
+                    Operating profit
+                    <InfoTooltip definition="Sales and membership revenue, less the real supplier cost (COGS with its FX true-up), payment processing, bank fees and affiliate commission, plus tier fees and voucher breakage, less goodwill vouchers, plus supplier corrections. Compensation vouchers and envelope expenses are deliberately left out." />
+                  </span>
+                </td>
+                <td className="px-5 py-4 text-right font-mono text-theme-sm font-semibold text-gray-800 dark:text-white/90">
+                  {rm(summary.operating_profit_sen)}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
+      )}
+
+      {monthClose && session && (
+        <MonthClosePanel key={monthClose.period} token={session.token} year={year} month={month} data={monthClose} onChanged={() => load(session.token, year, month)} />
       )}
     </div>
   );

@@ -5,7 +5,6 @@ namespace App\Services\Accounting;
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
 use App\Models\BudgetEnvelopePosting;
-use App\Services\Report\ReportService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -81,12 +80,18 @@ final class BudgetEnvelopeService
      * cancels so any date filter nets the pair to zero. The original stays,
      * untouched. A posting is reversed at most once (also a unique index),
      * and a reversal is never itself reversed — re-record the posting instead.
+     * A profit allocation belongs to its month close and is voided only by
+     * reopening that close (`MonthCloseService::reopen()`).
      */
-    public function void(BudgetEnvelopePosting $posting, string $reason, int $adminUserId): BudgetEnvelopePosting
+    public function void(BudgetEnvelopePosting $posting, string $reason, int $adminUserId, bool $reopeningClose = false): BudgetEnvelopePosting
     {
-        return DB::transaction(function () use ($posting, $reason, $adminUserId) {
+        return DB::transaction(function () use ($posting, $reason, $adminUserId, $reopeningClose) {
             $this->lockEnvelopes();
             $locked = BudgetEnvelopePosting::query()->with('lines')->whereKey($posting->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->type === EnvelopePostingType::ProfitAllocation && ! $reopeningClose) {
+                $this->reject('posting', 'A profit allocation belongs to its month close — reopen that month on the Monthly Summary instead.');
+            }
 
             if ($locked->reverses_posting_id !== null) {
                 $this->reject('posting', 'A void reversal cannot itself be voided — record the posting again instead.');
@@ -139,23 +144,6 @@ final class BudgetEnvelopeService
         return collect(PaidFrom::directors())
             ->mapWithKeys(fn (PaidFrom $d) => [$d->value => $this->loanBalanceSen($d)])
             ->all();
-    }
-
-    /**
-     * PR-1 keeps the manual monthly action; the month close (ADR-083
-     * 2026-10-10 addendum, decision 9, PR-2) replaces it.
-     *
-     * @param  array<int, int>  $allocations  [budget_envelope_id => amount_sen]
-     */
-    public function allocateMonthlyProfit(array $allocations, string $periodLabel, int $adminUserId): BudgetEnvelopePosting
-    {
-        return $this->post(
-            EnvelopePostingType::ProfitAllocation,
-            collect($allocations)->map(fn (int $amount, int $id) => ['budget_envelope_id' => $id, 'amount_sen' => $amount])->values()->all(),
-            now(ReportService::TIMEZONE)->toDateString(),
-            "Monthly profit allocation — {$periodLabel}",
-            $adminUserId,
-        );
     }
 
     public function downloadReceipt(BudgetEnvelopePosting $posting)

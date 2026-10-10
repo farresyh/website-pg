@@ -31,7 +31,7 @@ import {
 } from "@/lib/budget-envelopes";
 import { PostingForm } from "@/components/accounting/envelopes/PostingForm";
 import { EntriesTable } from "@/components/accounting/envelopes/EntriesTable";
-import { AllocateProfitForm } from "@/components/accounting/envelopes/AllocateProfitForm";
+import Link from "next/link";
 
 export default function EnvelopeLedgerPage() {
   const router = useRouter();
@@ -48,7 +48,7 @@ export default function EnvelopeLedgerPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const [panel, setPanel] = useState<"record" | "allocate" | null>(null);
+  const [panel, setPanel] = useState<"record" | null>(null);
 
   function loadIndex(t: string) {
     return getBudgetEnvelopes(t)
@@ -146,6 +146,11 @@ export default function EnvelopeLedgerPage() {
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Envelope Ledger</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             What the company&apos;s money is set aside for. Supplier top-ups and CHIP payouts move money between places, not between envelopes, so they are never recorded here.
+            Profit comes in once a month, from the{" "}
+            <Link href="/admin/accounting/summary" className="text-brand-500 hover:underline">
+              month close
+            </Link>
+            .
           </p>
         </div>
         <button type="button" onClick={() => void handleExport()} className="whitespace-nowrap text-theme-sm text-brand-500 hover:underline">
@@ -252,16 +257,12 @@ export default function EnvelopeLedgerPage() {
               </form>
             )}
             <div className="flex gap-2">
-              <Button size="small" variant="outlined" onClick={() => setPanel((p) => (p === "allocate" ? null : "allocate"))}>
-                Allocate Monthly Profit
-              </Button>
               <Button size="small" onClick={() => setPanel((p) => (p === "record" ? null : "record"))}>
                 {panel === "record" ? "Cancel" : "Record"}
               </Button>
             </div>
           </div>
 
-          {panel === "allocate" && <AllocateProfitForm token={token} index={index} onAllocated={async () => { setPanel(null); await reload(); }} />}
           {panel === "record" && (
             <PostingForm
               key={selectedEnvelope.id}

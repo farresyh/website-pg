@@ -8,8 +8,8 @@ use Illuminate\Foundation\Http\FormRequest;
 /**
  * ADR-059 59c. Shape only — balance sufficiency against the affiliate's
  * earnings ledger is checked in the controller (needs
- * AffiliateEarningsService). The `amount` ceiling mirrors the admin
- * CreateWithdrawalRequest — a fat-finger guard, not the real limit.
+ * AffiliateEarningsService). The `amount` ceiling is a fat-finger
+ * guard, not the real limit.
  *
  * ADR-059 addendum, 2026-09-26: no `bank_name`/`bank_account_no`/
  * `bank_account_holder` fields at all — a withdrawal request always
