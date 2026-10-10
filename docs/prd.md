@@ -710,6 +710,9 @@ code and production on 2026-10-09; re-verify before building.
 3. **66** Combo admin: leg-attempt history view.
 4. **6** Leftovers: SET-9 Telegram sender (fields exist, no sender), gallery
    in-modal picker.
+5. **78** Envelope Ledger reshape (ADR-083 2026-10-10 addendum, designed and
+   grilled): PR-1 postings + director loans, PR-2 month close + cash
+   equation. Order against 77/76/66 is the founder's call.
 
 **B. Needs a short grill / ADR addendum first**
 - **66** Combo edit-composition UI — needs an ADR-094 addendum (the
@@ -720,6 +723,9 @@ code and production on 2026-10-09; re-verify before building.
 - **6 / A3** Per-tier rate limit on the Reseller API/Bot — today one
   60/min limit per key (`AppServiceProvider` `reseller-api`).
 - **64** Membership renewal reminder over WhatsApp (ADR-068's deferred half).
+- **79** Compensation vouchers debit the platform ledger (ADR-024 addendum).
+- **80** Voucher merge counts twice and can revive an expired voucher
+  (ADR-036 addendum).
 
 **C. Founder actions (no code)**
 - **11** External uptime monitor on `https://api.pekangame.space/api/health`.
@@ -732,7 +738,9 @@ code and production on 2026-10-09; re-verify before building.
   "voucher liability issued" line should count. It sums every voucher;
   the Transaction Register and Dashboard count compensation (Path B) only.
   Prod has no marketing (Path A) voucher yet, so nothing is wrong today
-  (ADR-104 2026-10-08 addendum, consequence 1).
+  (ADR-104 2026-10-08 addendum, consequence 1). The ADR-083 2026-10-10
+  addendum (decision 11) fixes the profit treatment, Path B a liability and
+  Path A an expense; the line's own scope is still this question.
 
 **D. Waiting on a trigger — don't build early**
 - **4** bot-host resize (capacity), **10** MFA (withdrawal balances grow),
@@ -924,7 +932,10 @@ code and production on 2026-10-09; re-verify before building.
     table, so any future build here needs per-order judgment, never a
     blanket assumption or an email-based auto-detect. Same park-until-real-
     volume trigger as item 28 (ADR-115) — revisit together if either comes
-    up.
+    up. **2026-10-10:** kept out of the ADR-083 Envelope Ledger addendum
+    (item 78), to follow it as its own addendum. Whether an order can be
+    tagged after its month is closed now depends on that addendum's
+    decision 12.
 57. **Marketing Campaigns — [ADR-118](./adr/ADR-118-marketing-campaigns.md), fully designed + grilled + stress-tested,
     build deliberately parked.** New `Campaign`→`PromoCode` family for paying KOLs/influencers
     without requiring them to run their own Affiliate storefront: multi-use discount codes
@@ -956,6 +967,37 @@ code and production on 2026-10-09; re-verify before building.
     Baileys. Found during ADR-075's 2026-10-02 addendum and left unresolved there. Two options:
     - re-argue the ban-risk trade-off and switch engines (per session, if OpenWA supports it);
     - accept Baileys and record an ADR-075 addendum that corrects decision 6 to match reality.
+78. **Envelope Ledger reshape — [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md)'s
+    2026-10-10 addendum. Designed, grilled and stress-tested; build not started.**
+    - **PR-1:** one posting header with typed lines (funding / transfer /
+      expense / director-paid expense / repayment / distribution), per-director
+      loan balances, `supplier_transfers.transferred_on`, and an append-only
+      guard on `LedgerEntry`.
+    - **PR-2:** month close on the Monthly Summary page. It allocates exact
+      operating profit once per KL month from September 2026, keeps a
+      cash-account snapshot, and shows the "where is the money" equation. It
+      also removes the platform-owner withdrawal button.
+    - Production had 0 envelope entries on 2026-10-10, so no data migration is
+      needed.
+79. **Compensation vouchers debit the platform ledger — needs an ADR-024
+    addendum.**
+    - `VoucherService::issue()` writes `voucher_issued` for a failed-order
+      (Path B) voucher too. The order that redeems it still credits full
+      `order_profit`, so the platform balance is understated by every
+      compensation voucher (RM13.18 across 5 rows on 2026-10-10).
+    - Only `WithdrawalController` reads that balance, and item 78 removes it
+      from the screen.
+    - The fix: stop the Path B debit going forward, plus a founder-approved
+      reversing entry for the existing rows.
+    - Found by the item 78 code-trace.
+80. **Voucher merge: counted twice, and can revive an expired voucher — needs an
+    ADR-036 addendum.**
+    - The merge target is a new `Voucher` row, so the Monthly Summary's
+      `voucherLiabilityIssued()` counts the merged amount again.
+    - `merge()` checks `status = active` but not `expires_at`, so an expired
+      voucher can return with a new expiry after a closed month already
+      booked its breakage (item 78).
+    - Production had 0 merges on 2026-10-10. Found by the item 78 code-trace.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
