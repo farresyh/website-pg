@@ -1125,3 +1125,10 @@ succeeded.
   that one line only.
 - **Left (founder).** `.env.bak-before-dbtls` holds the DB password: delete it once the
   change has run clean for a few days.
+
+## 2026-10-10 — §16 item 71: FAQ click-through done (docs only)
+
+- Founder checked SEO › FAQ in the admin: editing works, `{store_name}` works.
+- Read-only check of the live storefront: `pekangame.com` carries `FAQPage`
+  JSON-LD with all 5 FAQs and no literal `{store_name}`.
+- Left: the GSC canonical/duplicate recheck around 2026-10-22 (founder).

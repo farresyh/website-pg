@@ -747,8 +747,8 @@ code and production on 2026-10-09; re-verify before building.
 
 **C. Founder actions (no code)**
 - **11** External uptime monitor on `https://api.pekangame.space/api/health`.
-- **71** SEO › FAQ click-through (5 FAQs exist on prod) and GSC recheck
-  around 2026-10-22.
+- **71** GSC recheck around 2026-10-22 (Pages report: duplicate / canonical
+  reasons, indexed vs not indexed).
 - **75** Ask the external reviewer which vouchers the Monthly Summary's
   "voucher liability issued" line should count. It sums every voucher;
   the Transaction Register and Dashboard count compensation (Path B) only.
@@ -884,9 +884,10 @@ code and production on 2026-10-09; re-verify before building.
       in the same pass.
 ## Buildable when triggered (design done or needs its own ADR)
 
-71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: founder
-    click-through of SEO › FAQ (5 FAQs exist on prod, checked 2026-10-08);
-    re-check GSC canonical/duplicate coverage ~2026-10-22. PR-1 meta + per-brand canonical (fixes literal
+71. **ADR-120 SEO/GEO overhaul — live 2026-10-08 (#369).** Left: re-check GSC
+    canonical/duplicate coverage ~2026-10-22. The admin SEO › FAQ click-through
+    is done (founder, 2026-10-10: edit works, `{store_name}` works; prod has 5
+    FAQs and the live `FAQPage` JSON-LD carries all 5, no literal tokens). PR-1 meta + per-brand canonical (fixes literal
     `{game_name}`/`{store_name}` on all 38 live game pages, affiliate domains
     pointing at `pekangame.com`), PR-2 GEO (all packages in HTML, `offers`,
     `aggregateRating`, fact line), PR-3 admin FAQ + `FAQPage`, PR-4 hygiene,
