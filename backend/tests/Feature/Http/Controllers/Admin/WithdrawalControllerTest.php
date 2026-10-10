@@ -21,60 +21,34 @@ class WithdrawalControllerTest extends TestCase
         app(LedgerService::class)->credit('platform', null, $amountSen, 'adjustment');
     }
 
-    private function validPayload(array $overrides = []): array
-    {
-        return array_merge([
-            'amount' => 10_000,
-            'bank_name' => 'Maybank',
-            'bank_account_no' => '1234567890',
-            'bank_account_holder' => 'PekanGame',
-        ], $overrides);
-    }
-
-    public function test_admin_can_request_a_withdrawal_within_balance(): void
+    /**
+     * ADR-083 2026-10-10 addendum, decision 17: the platform owner no longer
+     * withdraws here. Money leaving to a director is an Envelope Ledger
+     * repayment or dividend; this screen only reviews affiliate requests.
+     */
+    public function test_the_platform_owner_can_no_longer_request_a_withdrawal(): void
     {
         $this->fundPlatformLedger(50_000);
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
 
-        $response = $this->postJson('/api/withdrawals', $this->validPayload(['amount' => 10_000]));
-
-        $response->assertCreated();
-        $response->assertJsonPath('status', 'pending');
-        $this->assertDatabaseHas('withdrawals', ['amount' => 10_000, 'status' => 'pending']);
-    }
-
-    public function test_amount_above_the_sanity_ceiling_is_rejected(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $response = $this->postJson('/api/withdrawals', $this->validPayload(['amount' => 100_000_001]));
-
-        $response->assertUnprocessable();
-        $response->assertJsonValidationErrors('amount');
+        $this->postJson('/api/withdrawals', ['amount' => 10_000])->assertMethodNotAllowed();
         $this->assertDatabaseCount('withdrawals', 0);
     }
 
-    public function test_request_exceeding_available_balance_is_rejected(): void
+    public function test_index_returns_stats_without_a_platform_balance(): void
     {
-        $this->fundPlatformLedger(5_000);
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $response = $this->postJson('/api/withdrawals', $this->validPayload(['amount' => 10_000]));
-
-        $response->assertUnprocessable();
-        $this->assertDatabaseCount('withdrawals', 0);
-    }
-
-    public function test_index_returns_stats_and_available_balance(): void
-    {
-        $this->fundPlatformLedger(20_000);
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $this->postJson('/api/withdrawals', $this->validPayload(['amount' => 5_000]))->assertCreated();
+        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => 1, 'amount' => 5_000,
+            'bank_name' => 'Maybank', 'bank_account_no' => '111', 'bank_account_holder' => 'Acme',
+            'status' => WithdrawalStatus::Pending,
+        ]);
+        Sanctum::actingAs($admin);
 
         $response = $this->getJson('/api/withdrawals');
 
         $response->assertOk();
-        $response->assertJsonPath('available_balance', 20_000);
+        $response->assertJsonMissingPath('available_balance');
         $response->assertJsonPath('stats.pending.count', 1);
         $response->assertJsonPath('stats.pending.total', 5_000);
     }
@@ -332,10 +306,12 @@ class WithdrawalControllerTest extends TestCase
 
     public function test_index_never_flags_a_platform_withdrawal(): void
     {
-        $this->fundPlatformLedger(50_000);
         $admin = AdminUser::factory()->create(['role' => 'admin']);
         Sanctum::actingAs($admin);
-        $this->postJson('/api/withdrawals', $this->validPayload(['amount' => 5_000]))->assertCreated();
+        Withdrawal::query()->create([
+            'owner_type' => 'platform', 'amount' => 5_000, 'bank_name' => 'Maybank', 'bank_account_no' => '123',
+            'bank_account_holder' => 'KRS', 'status' => WithdrawalStatus::Pending, 'requested_by' => $admin->id,
+        ]);
 
         $response = $this->getJson('/api/withdrawals');
 
