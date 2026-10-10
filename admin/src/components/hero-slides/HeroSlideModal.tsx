@@ -17,6 +17,7 @@ import { Times as CloseIcon } from "@primeicons/react/times";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import type { HeroSlide, SaveHeroSlideValues } from "@/lib/hero-slides";
 
 interface HeroSlideModalProps {
@@ -162,7 +163,7 @@ function HeroSlideFields({
           </div>
           <div>
             <Label htmlFor="slide_image_url">Image URL (optional)</Label>
-            <Input id="slide_image_url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Paste a hosted image URL" />
+            <ImageUrlInput id="slide_image_url" value={imageUrl} onChange={setImageUrl} placeholder="Paste a hosted image URL" />
             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
               Recommended 1600×800px (2:1) — the hero slider displays at exactly this ratio on every screen size,
               so an off-ratio image gets cropped to fit. No banner falls back to the storefront&apos;s default gradient treatment.
