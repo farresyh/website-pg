@@ -1276,3 +1276,20 @@ bounding boxes): Monthly Summary rows "Admin-issued vouchers", "Manual expenses
 card edge); Dashboard's first three KPI tooltips. Every box inside the
 viewport; popover colours match the old classes (dark: bg rgb(34,31,27)).
 `tsc` and eslint clean. Not tested: the funnel chart's own (i) icon.
+
+---
+
+## 2026-10-11 — Docs sync after #401 / #402 (docs only)
+
+Swept PRD, ADR index and ADRs for claims the session made untrue.
+- PRD §14: "`staging` = `main` after this release" was only true at the #393
+  release; it now points at `git log origin/main..origin/staging` (31 commits
+  ahead on 2026-10-11, not live).
+- PRD §16 "Next up": re-check note (77, 76, 75, gallery picker and Telegram
+  closed); item 66's history view is the only item left in A.
+- ADR-083: pointers on the two older lines that name the old "Voucher liability
+  issued" and the merge double count, to the 2026-10-11 addendum.
+- ADR-045: addendum for the InfoTooltip portal; index row date set.
+- Remaining "goodwill" in code is free-text voucher reasons in tests only.
+Not changed: item 80's open half (revive an expired voucher), item 75's
+accountant question (expense at issue vs at redemption).
