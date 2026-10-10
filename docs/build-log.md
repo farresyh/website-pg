@@ -1059,3 +1059,28 @@ code, so future sessions follow correct instructions.
   earlier ADR-083 decisions (FX rate over the whole history, manual
   allocation) are overridden by the addendum under the file's own
   "later addendum overrides" rule.
+
+## 2026-10-10 — Release #393 (staging → main): #386–#392
+
+Founder-requested release, merged 2026-10-10 (`218f0d8`). Ships the Envelope
+Ledger reshape (item 78: #390 postings and director loans, #391 month close,
+cash equation and removal of the platform withdrawal), the settlement
+month-span fix #388, the admin package-order tiebreak #387 and docs
+#386/#389/#392. CI on `main` all green, `playwright` included; the deploy job
+succeeded.
+
+- **Pre-release check (prod, read-only):** `budget_envelope_entries` 0 rows
+  (the reshape migration's guard would pass), 5 `supplier_transfers` to
+  backfill, 0 withdrawals, server on `6db0470`.
+- **Verified on prod after the deploy (read-only tinker):**
+  - The box serves `218f0d8`; `/up` returns 200.
+  - All three 2026-10-10 migrations are `Ran`.
+  - `transferred_on` on all 5 transfers equals their KL recording date
+    (14, 15, 15, 19, 21 Sep); 0 null.
+  - `cash_accounts` holds "Held by Farres (mixed)"; 0 postings, 0 closes.
+  - September 2026 preview: closable, operating profit RM 4.64. Position
+    before any posting: supplier prepaid RM 570.05, reseller wallets
+    RM 347.96, affiliate earnings RM 0.15, vouchers outstanding RM 0.97,
+    CHIP unsettled 0, undelivered orders 0; envelope identity agrees.
+- **Next (founder):** record the real September postings, then close
+  September 2026 (§16 item 78, list C).
