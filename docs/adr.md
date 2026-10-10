@@ -97,7 +97,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-072](./adr/ADR-072-reseller-system-split.md) | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture | In force | 2026-09-04 |
 | [ADR-073](./adr/ADR-073-reseller-wallet.md) | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling | In force | 2026-10-04 |
 | [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-08 |
-| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-02 |
+| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-10 |
 | [ADR-076](./adr/ADR-076-reseller-bot-v2.md) | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling | In force | 2026-09-06 |
 | [ADR-077](./adr/ADR-077-storefront-read-path.md) | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness | In force |  |
 | [ADR-078](./adr/ADR-078-custom-domain-storefront-gaps.md) | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibility | In force | 2026-09-08 |

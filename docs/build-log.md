@@ -1084,3 +1084,20 @@ succeeded.
     CHIP unsettled 0, undelivered orders 0; envelope identity agrees.
 - **Next (founder):** record the real September postings, then close
   September 2026 (§16 item 78, list C).
+
+---
+
+## 2026-10-10 — §16 list C: item 59 decided (Baileys stays), item 78 verified (docs only)
+
+- **Item 59.** Prod read-only: OpenWA `ENGINE_TYPE=baileys`; box 3.9 GB RAM
+  (2.1 GB used, 1.8 GB available), OpenWA about 230 MB. The founder chose to
+  keep Baileys until the droplet is upgraded. ADR-075 2026-10-10 addendum
+  records the reasons and the triggers; item 59 now waits with item 4.
+- **Item 78, read-only check of the September close (prod).** Operating profit
+  recomputed live equals the closed RM 4.64 (drift 0, every `profit_lines` entry
+  the same). The cash equation recomputes to the stored gap of -RM 10.94, which
+  the founder's note explains (two pre-15-Sep CHIP payouts, RM 0.94 + RM 10.00).
+  Envelope identity (headers) equals the line sum, RM 312.34; hand check
+  RM 500 − RM 192.30 expenses + RM 4.64 = RM 312.34. 0 expense postings
+  without a receipt. The RM 17.52 expense dated 5 Oct sits outside September.
+  Expect the October close to show the same -RM 10.94 unless explained again.

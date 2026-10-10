@@ -752,8 +752,6 @@ code and production on 2026-10-09; re-verify before building.
 - **11** External uptime monitor on `https://api.pekangame.space/api/health`.
 - **71** SEO › FAQ click-through (5 FAQs exist on prod) and GSC recheck
   around 2026-10-22.
-- **59** OpenWA engine: still `ENGINE_TYPE=baileys` for both sessions —
-  switch, or record an ADR-075 addendum accepting it.
 - **9** DB SSL CA / DNSSEC — founder's call.
 - **75** Ask the external reviewer which vouchers the Monthly Summary's
   "voucher liability issued" line should count. It sums every voucher;
@@ -764,7 +762,8 @@ code and production on 2026-10-09; re-verify before building.
   Path A an expense; the line's own scope is still this question.
 
 **D. Waiting on a trigger — don't build early**
-- **4** bot-host resize (capacity), **10** MFA (withdrawal balances grow),
+- **4** bot-host resize (capacity) and **59** the OpenWA engine switch with it
+  (Baileys stays until then, ADR-075 2026-10-10 addendum), **10** MFA (withdrawal balances grow),
   **28** supplier buffer forecast and **55** test-order flag (real volume),
   **49** proxied-domain detect (an affiliate hits it), **53** parallel
   reconcile (a slow CHIP lookup), **72** Bot `max=` (a Bot price complaint),
@@ -982,12 +981,13 @@ code and production on 2026-10-09; re-verify before building.
     - validate on the single prod instance while the founder is standing by, with the
       pre-patch commit ready as a rollback.
     Build when the founder says so.
-59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — needs a founder decision.** ADR-075
-    decision 6 specified `whatsapp-web.js` for `reseller-bot` (lower ban risk on a live paid
-    ordering path). `ENGINE_TYPE` is a single global setting, so both sessions actually run
-    Baileys. Found during ADR-075's 2026-10-02 addendum and left unresolved there. Two options:
-    - re-argue the ban-risk trade-off and switch engines (per session, if OpenWA supports it);
-    - accept Baileys and record an ADR-075 addendum that corrects decision 6 to match reality.
+59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — decided 2026-10-10: Baileys
+    stays until the droplet is upgraded** ([ADR-075](./adr/ADR-075-reseller-bot-channel.md)'s
+    2026-10-10 addendum). Waiting on a trigger: the host resize (item 4), a WhatsApp
+    warning or ban, or `reseller-bot` volume that makes a ban cost more than the
+    resize. Before any switch, check whether OpenWA can set the engine per session
+    (`ENGINE_TYPE` is global, so a switch would also move `customer-support`), and
+    plan the QR re-pairing of both numbers.
 78. **Envelope Ledger reshape — [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md)'s
     2026-10-10 addendum. Designed, grilled and stress-tested. PR-1 (#390) and
     PR-2 (#391) built 2026-10-10 and live via release #393 the same day
