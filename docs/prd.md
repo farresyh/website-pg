@@ -749,7 +749,6 @@ code and production on 2026-10-09; re-verify before building.
 - **11** External uptime monitor on `https://api.pekangame.space/api/health`.
 - **71** SEO › FAQ click-through (5 FAQs exist on prod) and GSC recheck
   around 2026-10-22.
-- **9** DB SSL CA / DNSSEC — founder's call.
 - **75** Ask the external reviewer which vouchers the Monthly Summary's
   "voucher liability issued" line should count. It sums every voucher;
   the Transaction Register and Dashboard count compensation (Path B) only.
@@ -775,8 +774,11 @@ code and production on 2026-10-09; re-verify before building.
 
 ## Hardening (founder `.env` / infra)
 
-9. `MYSQL_ATTR_SSL_CA` (link already VPC-private + TLS); DuitNow QR / `fpx_b2b1`
-   are later phases; DNSSEC (founder's call).
+9. **DB TLS and DNSSEC — done 2026-10-10** (build-log, same day). The app's DB
+   connection now runs TLSv1.3 with the cluster CA (`MYSQL_ATTR_SSL_CA`); before,
+   `Ssl_cipher` was empty, so the old "VPC-private + TLS" note was wrong. DNSSEC is
+   on for `pekangame.space` and `pekangame.com` (ADR-020 2026-10-10 addendum).
+   DuitNow QR / `fpx_b2b1` are later phases.
 10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
     the partner portal's withdrawal balances get meaningful.
 11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted

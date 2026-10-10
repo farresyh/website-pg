@@ -1101,3 +1101,27 @@ succeeded.
   RM 500 − RM 192.30 expenses + RM 4.64 = RM 312.34. 0 expense postings
   without a receipt. The RM 17.52 expense dated 5 Oct sits outside September.
   Expect the October close to show the same -RM 10.94 unless explained again.
+
+## 2026-10-10 — §16 item 9 done: DNSSEC on both domains, DB connection on TLS
+
+- **DNSSEC.** Enabled in Cloudflare for `pekangame.space` and `pekangame.com`.
+  `.space`: DS (key tag 2371, algorithm 13, SHA-256) added at the Vercel registrar
+  (team JW Brothers); visible at the registry about 5 minutes later. `.com`: Cloudflare
+  Registrar added the DS itself. After: `ad` flag on 1.1.1.1, 8.8.8.8, 9.9.9.9 for both
+  domains; API health 200, storefront 200, docs 200, bot 200, admin and reseller 307.
+  One resolver answered SERVFAIL for a moment when the `.space` DS first showed up.
+- **DB TLS, before.** Prod `.env` had no `MYSQL_ATTR_SSL_CA`. From the app, `SHOW SESSION
+  STATUS LIKE 'Ssl_cipher'` was empty, so the link to the managed MySQL (VPC host
+  `private-…`) was unencrypted. PRD's "VPC-private + TLS" was wrong.
+- **What ran on prod.** The CA (`ca-certificate.crt`, 1 certificate, no private key,
+  checksum equal to the founder's download) was copied to
+  `~/api.pekangame.space/`. A standalone PHP test first: without the CA `tls=NONE`, with
+  CA + server-certificate check TLSv1.3. Then the founder ran: `.env` copy to
+  `.env.bak-before-dbtls` (mode 600), one appended line `MYSQL_ATTR_SSL_CA=…`,
+  `config:cache`, `horizon:terminate`, `pulse:restart`.
+- **After (read-only, from the app).** config has the CA path; `Ssl_version` TLSv1.3,
+  `Ssl_cipher` TLS_AES_256_GCM_SHA384; 36 orders readable; `/api/health` 200 with
+  database, queue and horizon true; Horizon running. `.env` differs from the backup by
+  that one line only.
+- **Left (founder).** `.env.bak-before-dbtls` holds the DB password: delete it once the
+  change has run clean for a few days.

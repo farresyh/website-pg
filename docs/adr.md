@@ -42,7 +42,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-017](./adr/ADR-017-order-resend-delivery.md) | Order Resend Delivery — same-game package swap + live price reconciliation | In force; decisions 2/4 revised by ADR-105 (2026-10-06) | 2026-10-06 |
 | [ADR-018](./adr/ADR-018-sandbox-test-orders.md) | Sandbox Test Orders — a middleware-only tool for exercising the real Order lifecycle without touching real data or real money | In force | 2026-07-30 |
 | [ADR-019](./adr/ADR-019-second-pass-resilience-security-audit.md) | Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restructure | In force; cache deferral closed by ADR-077 | 2026-09-29 |
-| [ADR-020](./adr/ADR-020-production-host.md) | Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fronted | Partly superseded by ADR-066 (Forge deploy, Vercel frontends) | 2026-09-05 |
+| [ADR-020](./adr/ADR-020-production-host.md) | Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fronted | Partly superseded by ADR-066 (Forge deploy, Vercel frontends) | 2026-10-10 |
 | [ADR-021](./adr/ADR-021-next-session-priority-re-sequencing.md) | Next-session priority re-sequencing — payment reconciliation before deployment infra | In force | 2026-07-30 |
 | [ADR-022](./adr/ADR-022-multi-gateway-payment-strategy.md) | Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment | In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum | 2026-09-01 |
 | [ADR-023](./adr/ADR-023-playwright-e2e-policy.md) | Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules | In force | 2026-08-21 |
